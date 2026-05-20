@@ -182,6 +182,7 @@ export function ShortFormVideo({
       {/* ── Layer 4: Captions — global frame, NOT wrapped in Sequence ── */}
       <CaptionOverlay
         captions={captions}
+        words={words}
         accentColor={accentColor}
         hideBeforeFrame={hookDurationFrames}
       />

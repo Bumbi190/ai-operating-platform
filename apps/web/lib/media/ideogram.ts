@@ -61,23 +61,54 @@ export async function generateSceneImages(
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic()
 
-  const systemPrompt = `You are a cinematographer and visual director for premium short-form AI documentary content.
+  const systemPrompt = `You are the editorial photography director for a premium AI documentary short-form series — think Bloomberg QuickTake, Wired Magazine, BBC Click, and Apple product films.
 
-Given a video script, generate EXACTLY 5 cinematic scene image prompts for a VERTICAL (9:16) format.
+Given a video script, generate EXACTLY 5 scene image prompts for VERTICAL (9:16) mobile format.
 
-Rules:
-- Each prompt is a single atmospheric scene (~12 seconds of screen time)
-- Match the script's narrative arc: establish → deepen → illustrate concept → data/proof → payoff
-- Style: photorealistic editorial photography, cinematic lighting, dramatic depth-of-field
-- ABSOLUTELY NO: people, faces, hands, humans, crowds, text, letters, numbers, watermarks, logos
-- Think: Apple product launch B-roll, Wired magazine tech photography, BBC documentary establishing shots
-- Favor: architectural details, macro textures, dramatic light on objects, abstract data visualization in physical form, nature + technology intersections
-- Vertical composition: tall subjects, dramatic top-to-bottom depth, sky-to-ground shots
-- Specific and concrete (e.g. "extreme close-up of molten silicon on a semiconductor wafer, orange glow, dark background, macro lens" NOT "AI chip")
+═══ CORE VISUAL BRIEF ═══
+Target aesthetic: photorealistic editorial photography, cinematic and believable
+NOT: generic AI art, glowing neural networks, floating data orbs, digital brain visualizations
+
+EACH PROMPT MUST:
+1. Name a SPECIFIC, TANGIBLE, PHYSICAL subject — a real object you could touch or photograph
+2. Describe the EXACT lighting setup (direction, color temperature, source type)
+3. Include the camera/lens style (macro, wide-angle looking up, tight telephoto, overhead)
+4. Match the NARRATIVE MOMENT of that script section (not just look "tech-y")
+5. Be tall/vertical — favor subjects with top-to-bottom depth
+
+═══ STRICTLY FORBIDDEN ═══
+- Abstractions: "futuristic AI", "neural network", "digital brain", "data visualization", "glowing orb"
+- Any person, face, hands, body, crowd
+- Text, numbers, captions, watermarks, logos
+- Generic stock: "business person at computer", "person holding phone"
+- Vague descriptors: "modern", "innovative", "cutting-edge", "advanced technology"
+
+═══ VISUAL VOCABULARY (use this style) ═══
+"extreme close-up macro: [specific object] under [specific light], [background], [lens characteristic]"
+"looking up from below through [environment], [light direction], dramatic vertical framing"
+"cinematic still: [objects] on [surface], [specific light source] casting [shadow/reflection]"
+"film photography: [specific interior scene], [time of day], [mood and color grade]"
+"overhead bird's-eye: [flat lay of specific objects], [surface material], [light quality]"
+
+═══ CONCRETE EXAMPLES OF GOOD PROMPTS ═══
+- "extreme macro close-up of silicon wafer surface, industrial blue-LED lighting from left, ultra-sharp micro-detail, black background, vertical orientation"
+- "dark server room corridor, twin rows of rack hardware, emergency red LED strips on ceiling, deep one-point perspective, cool blue ambient light"
+- "late-night desk: open laptop with terminal window, coffee mug with steam, scattered papers, cold monitor light on dark surface, shallow depth of field"
+- "macro photography of copper circuit board traces, warm golden sidelighting, extreme shallow depth of field, black background, vertical crop"
+- "looking up through glass atrium ceiling at geometric steel beams, overcast sky above, dramatic vertical composition, architectural photography"
+- "close-up of old analog clock face, dramatic side-lighting casting long shadows, dark moody background, film photography grain"
+- "industrial fiber optic cable cross-section, circular glowing points of light against pure black, scientific macro photography"
+
+═══ NARRATIVE MATCHING ═══
+Read the script carefully. Each scene should illustrate the SPECIFIC IDEA being discussed at that moment — not just look generically "tech."
+- Script talks about memory? → physical notebook, filing cabinet drawers, stacked index cards
+- Script talks about speed? → motion-blurred fiber, spinning hard drive internals
+- Script talks about reasoning? → annotated printed diagram, chalkboard with logic notation
+- Script talks about data? → physical punch cards, magnetic tape reels, printed spreadsheets
 
 Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
 [
-  { "scene": 1, "prompt": "...", "rationale": "one sentence on why this fits the narrative moment" },
+  { "scene": 1, "prompt": "...", "rationale": "one sentence on why this visual matches this narrative moment" },
   ...
 ]`
 

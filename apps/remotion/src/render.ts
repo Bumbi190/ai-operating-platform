@@ -140,23 +140,27 @@ function findHookEndFrame(hookText: string, words: WordTiming[]): number {
 }
 
 /**
- * Pre-download scene images to local tmp files before rendering.
+ * Pre-download scene images and serve them via a local HTTP server.
  *
- * Why: Remotion's headless Chrome can hit Supabase connection timeouts
- * (ERR_CONNECTION_CLOSED) when fetching remote assets mid-render.
- * Pre-downloading with Node's fetch() is more resilient and faster.
- * Falls back to the original URL if download fails.
+ * Why HTTP instead of file://: Remotion's headless Chrome blocks file:// URLs
+ * (security sandbox). A local http://localhost server is allowed.
+ * Falls back to the original HTTPS URL if download fails.
+ *
+ * Returns: { urls, stopServer } — call stopServer() after rendering.
  */
-async function preloadImages(urls: string[]): Promise<string[]> {
-  if (urls.length === 0) return []
+import http from 'http'
+
+async function preloadImages(urls: string[]): Promise<{ urls: string[]; stopServer: () => void }> {
+  if (urls.length === 0) return { urls: [], stopServer: () => {} }
 
   const tmpDir = path.resolve('./tmp-images')
   fs.mkdirSync(tmpDir, { recursive: true })
   console.log('🖼  Pre-loading scene images...')
 
-  return Promise.all(
+  // Download images to local disk
+  const localFiles = await Promise.all(
     urls.map(async (url, i) => {
-      if (!url) return url
+      if (!url) return { url, localFile: null }
       try {
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 20_000)
@@ -165,21 +169,50 @@ async function preloadImages(urls: string[]): Promise<string[]> {
 
         if (!res.ok) {
           console.log(`  ⚠  Scene ${i + 1}: HTTP ${res.status} — using remote URL`)
-          return url
+          return { url, localFile: null }
         }
 
         const buf = Buffer.from(await res.arrayBuffer())
-        const ext  = url.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
-        const localPath = path.join(tmpDir, `scene-${i}.${ext}`)
+        const ext = url.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
+        const filename = `scene-${i}.${ext}`
+        const localPath = path.join(tmpDir, filename)
         fs.writeFileSync(localPath, buf)
         console.log(`  ✅ Scene ${i + 1} cached (${Math.round(buf.length / 1024)} KB)`)
-        return `file://${localPath}`
+        return { url, localFile: filename }
       } catch (err) {
         console.log(`  ⚠  Scene ${i + 1}: ${(err as Error).message} — using remote URL`)
-        return url
+        return { url, localFile: null }
       }
     }),
   )
+
+  // Start a minimal HTTP server to serve the tmp-images directory
+  const server = http.createServer((req, res) => {
+    const filename = (req.url ?? '/').replace(/^\//, '')
+    const filepath = path.join(tmpDir, filename)
+    try {
+      const data = fs.readFileSync(filepath)
+      const ext = filename.split('.').pop()?.toLowerCase() ?? 'png'
+      const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png'
+      res.writeHead(200, { 'Content-Type': mime })
+      res.end(data)
+    } catch {
+      res.writeHead(404)
+      res.end('Not found')
+    }
+  })
+
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as { port: number }).port
+  console.log(`  🌐 Image server running on http://127.0.0.1:${port}`)
+
+  const stopServer = () => server.close()
+
+  const servedUrls = localFiles.map(({ url, localFile }) =>
+    localFile ? `http://127.0.0.1:${port}/${localFile}` : url,
+  )
+
+  return { urls: servedUrls, stopServer }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -225,14 +258,39 @@ async function main() {
   // Build sentence-level caption groups
   const allCaptions = words.length > 0 ? buildCaptionGroups(words) : []
 
-  // Filter out caption groups that overlap with the hook display period
-  // (words spoken during hook don't need captions — the hook text IS the visual)
-  const captions = allCaptions.filter(c => c.startFrame >= hookDurationFrames)
+  // Remove or trim caption groups that overlap with the hook display period.
+  // Instead of dropping entire groups, trim any group that starts before the hook
+  // ends but finishes after it — so we never get a caption gap after the hook.
+  const captions = allCaptions
+    .map(c => c.endFrame <= hookDurationFrames
+      ? null                                          // fully inside hook — drop
+      : c.startFrame < hookDurationFrames
+        ? { ...c, startFrame: hookDurationFrames }    // partially overlapping — trim start
+        : c                                           // fully after hook — keep as-is
+    )
+    .filter((c): c is CaptionGroup => c !== null)
 
   console.log(`📝 ${captions.length} caption groups (${allCaptions.length - captions.length} suppressed during hook)`)
 
-  // Pre-download images locally to avoid Chrome headless connection timeouts
-  const images = await preloadImages(raw.images ?? [])
+  // Pre-download images and serve via local HTTP (file:// is blocked by Chrome sandbox)
+  const { urls: images, stopServer } = await preloadImages(raw.images ?? [])
+
+  // Compute per-scene start frames from word timing.
+  // Divide all spoken words into N equal groups (by word count), then use the
+  // start time of the first word in each group as that scene's start frame.
+  // Scene 0 always starts at frame 0 (hook image).
+  const sceneStartFrames: number[] = []
+  if (images.length > 0 && words.length > 0) {
+    const wordsPerScene = Math.ceil(words.length / images.length)
+    for (let i = 0; i < images.length; i++) {
+      const firstWordInScene = words[i * wordsPerScene]
+      const startFrame = firstWordInScene
+        ? Math.floor((firstWordInScene.startMs / 1000) * FPS)
+        : 0
+      sceneStartFrames.push(i === 0 ? 0 : startFrame)
+    }
+    console.log(`🎞  Scene start frames: [${sceneStartFrames.join(', ')}]`)
+  }
 
   const inputProps: VideoInputProps = {
     hook: raw.hook,
@@ -241,6 +299,7 @@ async function main() {
     words,
     captions,
     images,
+    sceneStartFrames: sceneStartFrames.length > 0 ? sceneStartFrames : undefined,
     accentColor: raw.accentColor ?? '#6366f1',
     hookDurationFrames,
   }
@@ -274,6 +333,8 @@ async function main() {
       process.stdout.write(`\r  ${Math.round(progress * 100)}% rendered`)
     },
   })
+
+  stopServer()
 
   console.log(`\n✅ Video saved to: ${outputPath}`)
   console.log(`\n📤 To publish to dashboard:`)

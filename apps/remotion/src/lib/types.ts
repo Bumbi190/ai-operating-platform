@@ -31,6 +31,16 @@ export interface VideoInputProps {
   // If empty, falls back to dark gradient background
   images: string[]
 
+  /**
+   * Per-scene start frames — computed from word timing in render.ts.
+   * Each entry is the global frame at which that scene's image should begin.
+   * Length must equal images.length. If absent, falls back to equal-time split.
+   *
+   * This ensures each image is shown for exactly as long as the corresponding
+   * portion of the narration takes — not just a fixed equal-time block.
+   */
+  sceneStartFrames?: number[]
+
   // Branding
   accentColor?: string
 }

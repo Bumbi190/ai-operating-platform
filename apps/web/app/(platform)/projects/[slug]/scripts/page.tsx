@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   FileText, CheckCircle, XCircle, RefreshCw,
   ChevronDown, ChevronUp, Loader2, Image,
-  Play, Download, ExternalLink,
+  Play, Download, ExternalLink, Cloud,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
 
@@ -66,59 +66,97 @@ function PipelineProgress({ step }: { step: PipelineStep }) {
   )
 }
 
-// ─── Render instructions panel ───────────────────────────────────────────────
+// ─── Cloud Render button + progress ─────────────────────────────────────────
 
-function RenderInstructions({ scriptId }: { scriptId: string }) {
-  const [copied, setCopied] = useState(false)
+type RenderState = 'idle' | 'starting' | 'rendering' | 'ready' | 'failed'
 
-  const cmds = [
-    `cd apps/remotion`,
-    `curl -sO "$(node -e "console.log(window?.location?.origin ?? 'http://localhost:3000')")/api/media/render-input/${scriptId}" -o render-input.json`,
-    `npm run render -- --config=./render-input.json`,
-    `npm run upload -- --config=./render-input.json --file=./out/${scriptId}.mp4`,
-  ].join('\n')
+function CloudRenderBlock({
+  scriptId,
+  onReady,
+}: {
+  scriptId: string
+  onReady: (videoUrl: string) => void
+}) {
+  const [state, setState]       = useState<RenderState>('idle')
+  const [progress, setProgress] = useState(0)
+  const [error, setError]       = useState<string | null>(null)
+  const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  return (
-    <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">Rendera lokalt</p>
-      <div className="space-y-1.5">
-        <Step n={1} label="Ladda ned render-input.json">
-          <a
-            href={`/api/media/render-input/${scriptId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
-          >
-            <Download className="w-3 h-3" /> render-input.json <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-        </Step>
-        <Step n={2} label="Rendera">
-          <code className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-            npm run render -- --config=./render-input.json
-          </code>
-        </Step>
-        <Step n={3} label="Ladda upp till dashboard">
-          <code className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-            npm run upload -- --config=./render-input.json --file=./out/{scriptId}.mp4
-          </code>
-        </Step>
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+
+  async function start() {
+    setState('starting')
+    setError(null)
+    try {
+      const res  = await fetch('/api/media/render/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId }),
+      })
+      const data = await res.json() as { renderId?: string; bucketName?: string; error?: string }
+      if (!res.ok || !data.renderId) {
+        setState('failed')
+        setError(data.error ?? 'Kunde inte starta rendering')
+        return
+      }
+      setState('rendering')
+      poll(data.renderId, data.bucketName!)
+    } catch (err) {
+      setState('failed')
+      setError(err instanceof Error ? err.message : 'Okänt fel')
+    }
+  }
+
+  function poll(renderId: string, bucketName: string) {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      try {
+        const res  = await fetch(
+          `/api/media/render/status/${renderId}?scriptId=${scriptId}&bucketName=${encodeURIComponent(bucketName)}`
+        )
+        const data = await res.json() as { progress: number; done: boolean; videoUrl?: string; error?: string }
+        setProgress(data.progress)
+        if (data.done) {
+          clearInterval(pollRef.current!)
+          if (data.videoUrl) { setState('ready'); onReady(data.videoUrl) }
+          else               { setState('failed'); setError(data.error ?? 'Rendering misslyckades') }
+        }
+      } catch { /* keep polling */ }
+    }, 4000)
+  }
+
+  if (state === 'idle') return (
+    <button
+      onClick={start}
+      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-colors"
+    >
+      <Cloud className="w-4 h-4" /> Rendera i molnet
+    </button>
+  )
+
+  if (state === 'starting' || state === 'rendering') return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          {state === 'starting' ? 'Startar Lambda...' : 'Renderar i molnet...'}
+        </span>
+        <span className="text-emerald-400 font-mono">{progress}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-border overflow-hidden">
+        <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
       </div>
     </div>
   )
-}
 
-function Step({ n, label, children }: { n: number; label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="w-4 h-4 rounded-full bg-border text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">
-        {n}
-      </span>
-      <div>
-        <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
-        {children}
-      </div>
+  if (state === 'failed') return (
+    <div className="space-y-2">
+      <p className="text-xs text-red-400">{error ?? 'Rendering misslyckades'}</p>
+      <button onClick={start} className="text-xs text-red-400 hover:text-red-300 underline">Försök igen</button>
     </div>
   )
+
+  return null // 'ready' — video player shown by parent
 }
 
 // ─── Video Player ─────────────────────────────────────────────────────────────
@@ -145,15 +183,15 @@ function ScriptCard({ script, onUpdate }: {
   script: MediaScript & { media_news_items?: { title: string; virality_score: number } | null }
   onUpdate: () => void
 }) {
-  const [expanded, setExpanded]       = useState(false)
-  const [showRender, setShowRender]   = useState(false)
-  const [pipelineStep, setPipelineStep] = useState<PipelineStep>(null)
+  const [expanded, setExpanded]           = useState(false)
+  const [pipelineStep, setPipelineStep]   = useState<PipelineStep>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
+  const [liveVideoUrl, setLiveVideoUrl]   = useState<string | null>(null)
 
   const statusCfg      = STATUS_LABELS[script.status]
   const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none']
   const hasImages      = Array.isArray(script.images) && script.images.length > 0
-  const hasVideo       = script.video_status === 'ready' && !!script.video_url
+  const hasVideo       = !!(liveVideoUrl ?? (script.video_status === 'ready' && script.video_url))
   const isRenderReady  = script.voice_status === 'ready' && hasImages
 
   // ── Auto-chain: voice → images ───────────────────────────────────────────
@@ -184,7 +222,7 @@ function ScriptCard({ script, onUpdate }: {
 
       setPipelineStep('done')
       onUpdate()
-      setTimeout(() => { setPipelineStep(null); setShowRender(true) }, 2500)
+      setTimeout(() => { setPipelineStep(null) }, 2500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       setPipelineError(msg)
@@ -232,7 +270,7 @@ function ScriptCard({ script, onUpdate }: {
       }
       setPipelineStep('done')
       onUpdate()
-      setTimeout(() => { setPipelineStep(null); setShowRender(true) }, 2500)
+      setTimeout(() => { setPipelineStep(null) }, 2500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       setPipelineError(msg)
@@ -306,29 +344,32 @@ function ScriptCard({ script, onUpdate }: {
       <PipelineProgress step={pipelineStep} />
 
       {/* ── Video player ── */}
-      {hasVideo && expanded && (
-        <div className="border-t border-border p-5 bg-black/40">
-          <p className="text-xs font-medium text-muted-foreground mb-3">Renderad video</p>
-          <VideoPlayer url={script.video_url!} />
-          <div className="mt-3 flex gap-2">
-            <a
-              href={script.video_url!}
-              download
-              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-            >
-              <Download className="w-3 h-3" /> Ladda ned MP4
-            </a>
-            <a
-              href={script.video_url!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-            >
-              <ExternalLink className="w-3 h-3" /> Öppna i ny flik
-            </a>
+      {hasVideo && expanded && (() => {
+        const videoUrl = (liveVideoUrl ?? script.video_url)!
+        return (
+          <div className="border-t border-border p-5 bg-black/40">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Renderad video</p>
+            <VideoPlayer url={videoUrl} />
+            <div className="mt-3 flex gap-2">
+              <a
+                href={videoUrl}
+                download
+                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+              >
+                <Download className="w-3 h-3" /> Ladda ned MP4
+              </a>
+              <a
+                href={videoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" /> Öppna i ny flik
+              </a>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Expanded content ── */}
       {expanded && (
@@ -394,20 +435,12 @@ function ScriptCard({ script, onUpdate }: {
             </div>
           )}
 
-          {/* Render instructions */}
+          {/* Cloud render */}
           {isRenderReady && !hasVideo && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-muted-foreground">Pipeline ✅ redo för rendering</p>
-                <button
-                  onClick={() => setShowRender(r => !r)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {showRender ? 'Dölj' : 'Visa instruktioner'}
-                </button>
-              </div>
-              {showRender && <RenderInstructions scriptId={script.id} />}
-            </div>
+            <CloudRenderBlock
+              scriptId={script.id}
+              onReady={(url) => { setLiveVideoUrl(url); onUpdate() }}
+            />
           )}
         </div>
       )}
@@ -433,18 +466,6 @@ function ScriptCard({ script, onUpdate }: {
             </button>
           )}
 
-          {/* Render-input download — always accessible when ready */}
-          {isRenderReady && (
-            <a
-              href={`/api/media/render-input/${script.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              title="Ladda ned render-input.json"
-            >
-              <Download className="w-3 h-3" /> render-input.json
-            </a>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5">

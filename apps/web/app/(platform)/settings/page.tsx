@@ -49,6 +49,8 @@ export default async function SettingsPage() {
           {[
             { label: 'Anthropic API', desc: 'Används för alla Claude-agenter', ok: !!process.env.ANTHROPIC_API_KEY },
             { label: 'OpenAI / DALL-E', desc: 'Bildgenerering med DALL-E 3', ok: hasOpenAI },
+            { label: 'Ideogram', desc: 'Cinematiska scenbilder för videor', ok: !!process.env.IDEOGRAM_API_KEY },
+            { label: 'ElevenLabs', desc: 'Victoria röstgenerering', ok: !!process.env.ELEVENLABS_API_KEY },
             { label: 'Supabase', desc: 'Databas och autentisering', ok: !!process.env.NEXT_PUBLIC_SUPABASE_URL },
           ].map((item, i) => (
             <div key={i} className={`flex items-center justify-between py-2 ${i > 0 ? 'border-t border-border' : ''}`}>

@@ -125,6 +125,7 @@ export function ShortFormVideo({
   hook,
   audioUrl,
   captions,
+  words,
   images,
   accentColor = '#6366f1',
   hookDurationFrames: hookDurationFramesProp,

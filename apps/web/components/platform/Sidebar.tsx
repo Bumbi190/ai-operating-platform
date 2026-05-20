@@ -23,6 +23,7 @@ import {
   Radio,
   Newspaper,
   FileText,
+  Video,
 } from 'lucide-react'
 
 interface Project {
@@ -62,8 +63,9 @@ const projectNav = [
 
 // Extra nav items only for the AI Media Automation project
 const mediaProjectNav = [
-  { href: '/news',    label: 'News Feed',     icon: Newspaper },
-  { href: '/scripts', label: 'Script Queue',  icon: FileText },
+  { href: '/generate', label: 'Generate Video', icon: Video },
+  { href: '/news',     label: 'News Feed',      icon: Newspaper },
+  { href: '/scripts',  label: 'Script Queue',   icon: FileText },
 ]
 
 export function Sidebar({ projects, userEmail, recentConversations = [] }: SidebarProps) {

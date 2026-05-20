@@ -72,6 +72,37 @@ export async function uploadTimingData(
 }
 
 /**
+ * Upload a scene image (jpg/png) from a remote URL to Supabase Storage.
+ * Fetches the image from the source URL and re-hosts in our bucket.
+ * Returns the public URL.
+ */
+export async function uploadSceneImage(
+  projectId: string,
+  scriptId: string,
+  sceneIndex: number,
+  sourceUrl: string,
+): Promise<string> {
+  const db = createAdminClient()
+
+  const res = await fetch(sourceUrl)
+  if (!res.ok) throw new Error(`Failed to fetch image from ${sourceUrl}`)
+  const buffer = Buffer.from(await res.arrayBuffer())
+  const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+  const ext = contentType.includes('png') ? 'png' : 'jpg'
+
+  const storagePath = `images/${projectId}/${scriptId}-scene-${sceneIndex}.${ext}`
+
+  const { error } = await db.storage
+    .from(BUCKET)
+    .upload(storagePath, buffer, { contentType, upsert: true })
+
+  if (error) throw new Error(`Image upload failed: ${error.message}`)
+
+  const { data: { publicUrl } } = db.storage.from(BUCKET).getPublicUrl(storagePath)
+  return publicUrl
+}
+
+/**
  * Upload a rendered video (mp4) to Supabase Storage.
  * Returns the public URL.
  */

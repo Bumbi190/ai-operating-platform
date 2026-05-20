@@ -1,8 +1,12 @@
 /**
  * GET /api/media/render-input/[scriptId]
  *
- * Returns a render-input.json ready to drop into apps/remotion/
- * and run: npm run render -- --config=./render-input.json
+ * Returns a render-input.json ready for apps/remotion/
+ * Usage: npm run render -- --config=./render-input.json
+ *
+ * If images have been generated (POST /api/media/images/generate),
+ * they are included in the images[] field.
+ * Otherwise images is an empty array (falls back to gradient background).
  */
 
 import { createClient } from '@/lib/supabase/server'
@@ -24,24 +28,25 @@ export async function GET(
 
   const { data: script } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, script, captions, audio_url, timing_url, duration_ms')
+    .select('id, project_id, hook, script, captions, audio_url, timing_url, duration_ms, images')
     .eq('id', scriptId)
     .single()
 
   if (!script) return NextResponse.json({ error: 'Script not found' }, { status: 404 })
-  if (!script.audio_url) return NextResponse.json({ error: 'Voice not generated yet — run POST /api/media/voice first' }, { status: 400 })
+  if (!script.audio_url) return NextResponse.json(
+    { error: 'Voice not generated yet — run POST /api/media/voice first' },
+    { status: 400 },
+  )
 
-  const captions = Array.isArray(script.captions) ? script.captions : []
-  const caption = captions[0] ?? ''
+  const images: string[] = Array.isArray(script.images) ? script.images : []
 
   const renderInput = {
     scriptId: script.id,
     hook: script.hook ?? '',
-    script: script.script ?? '',
-    caption,
     audioUrl: script.audio_url,
     timingUrl: script.timing_url ?? '',
     durationMs: script.duration_ms ?? 45000,
+    images,
     accentColor: '#6366f1',
   }
 

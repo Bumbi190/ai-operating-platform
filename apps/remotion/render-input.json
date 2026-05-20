@@ -1,0 +1,10 @@
+{
+  "scriptId": "ef7b5de3-e9b8-44ef-9deb-65e445a8ed55",
+  "hook": "This AI can read 750,000 words in one go. Seriously.",
+  "script": "Anthropic just dropped Claude 4 — and it's kind of wild. Here's the big deal: it has a 1 million token context window. Tokens are basically chunks of text. One million of them equals roughly 750,000 words. That's like reading the entire Harry Potter series — twice — in a single prompt. Why does that matter? Most AI tools forget what you said a few messages ago. Claude 4 can hold an entire codebase, legal document, or research paper in its memory all at once. No more copy-pasting chunks. It also got major upgrades in coding, math, and reasoning. And the price? Same as the older Claude 3.5 Sonnet. So you're getting way more power for the same cost. This is a big jump for anyone using AI for real work. Drop a comment — what would YOU do with 750,000 words of AI memory?",
+  "caption": "Claude 4 just changed the AI memory game 🧠",
+  "audioUrl": "https://iboepohjwrhtgshrqaol.supabase.co/storage/v1/object/public/media-assets/audio/a8a1b1f6-c222-4893-9399-b1fb3bc2fa52/ef7b5de3-e9b8-44ef-9deb-65e445a8ed55.mp3",
+  "timingUrl": "https://iboepohjwrhtgshrqaol.supabase.co/storage/v1/object/public/media-assets/data/a8a1b1f6-c222-4893-9399-b1fb3bc2fa52/ef7b5de3-e9b8-44ef-9deb-65e445a8ed55-timing.json",
+  "durationMs": 67477,
+  "accentColor": "#6366f1"
+}

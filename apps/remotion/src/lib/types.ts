@@ -4,20 +4,29 @@ export interface WordTiming {
   endMs: number
 }
 
+/** Pre-computed sentence-level caption group */
+export interface CaptionGroup {
+  text: string
+  startFrame: number
+  endFrame: number
+}
+
 export interface VideoInputProps {
   // Script content
   hook: string
-  script: string
-  caption: string
 
   // Audio
-  audioUrl: string       // public URL to .mp3 in Supabase Storage
-  durationMs: number     // total duration in ms
+  audioUrl: string
+  durationMs: number
 
-  // Word timing (fetched from timingUrl or passed directly)
+  // Timing — pre-processed into caption groups by render.ts
   words: WordTiming[]
+  captions: CaptionGroup[]
+
+  // Visual scenes — 4–5 image URLs (Ideogram-generated)
+  // If empty, falls back to dark gradient background
+  images: string[]
 
   // Branding
-  accentColor?: string   // default: '#6366f1' (indigo)
-  theme?: 'dark' | 'light'
+  accentColor?: string
 }

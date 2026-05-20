@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   Brain,
   Radio,
+  Newspaper,
+  FileText,
 } from 'lucide-react'
 
 interface Project {
@@ -56,6 +58,12 @@ const projectNav = [
   { href: '/workflows', label: 'Workflows', icon: GitBranch },
   { href: '/runs',      label: 'Körningar', icon: Play },
   { href: '/outputs',   label: 'Utdata',    icon: FileOutput },
+]
+
+// Extra nav items only for the AI Media Automation project
+const mediaProjectNav = [
+  { href: '/news',    label: 'News Feed',     icon: Newspaper },
+  { href: '/scripts', label: 'Script Queue',  icon: FileText },
 ]
 
 export function Sidebar({ projects, userEmail, recentConversations = [] }: SidebarProps) {
@@ -220,7 +228,10 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                   {/* Project sub-nav — visible when project is active */}
                   {isActive && (
                     <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/[0.06] pl-2.5">
-                      {projectNav.map((item) => {
+                      {[
+                        ...projectNav,
+                        ...(project.slug === 'ai-media-automation' ? mediaProjectNav : []),
+                      ].map((item) => {
                         const Icon = item.icon
                         const href = `${projectBase}${item.href}`
                         const isSubActive = pathname.startsWith(href)

@@ -71,6 +71,7 @@ export interface MediaScript {
   timing_url: string | null
   duration_ms: number | null
   voice_status: VoiceStatus
+  images: string[] | null       // Ideogram-generated scene backgrounds (5 URLs)
   video_url: string | null
   video_status: string
   status: ScriptStatus

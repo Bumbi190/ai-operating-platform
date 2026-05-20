@@ -4,27 +4,36 @@ import { BackgroundSlide } from '../components/BackgroundSlide'
 import { CaptionOverlay } from '../components/CaptionOverlay'
 import type { VideoInputProps } from '../lib/types'
 
-const HOOK_DURATION_S = 4     // seconds the hook text is shown
-const FADE_IN_FRAMES  = 15    // hook fade-in
-const FADE_OUT_FRAMES = 12    // hook fade-out
+const HOOK_DURATION_S  = 4   // seconds the hook text is shown
+const HOOK_FADE_IN_F   = 15  // frames
+const HOOK_FADE_OUT_F  = 12  // frames
+const SCENE_OVERLAP_F  = 20  // cross-fade overlap between scenes
 
 /**
- * HookOverlay — large centered statement for the first HOOK_DURATION_S seconds.
+ * HookOverlay — bold opening statement, first HOOK_DURATION_S seconds.
+ * Fades in from slightly below, fades out cleanly.
  */
 function HookOverlay({ text, durationFrames }: { text: string; durationFrames: number }) {
   const frame = useCurrentFrame()
 
   const opacity = interpolate(
     frame,
-    [0, FADE_IN_FRAMES, durationFrames - FADE_OUT_FRAMES, durationFrames],
+    [0, HOOK_FADE_IN_F, durationFrames - HOOK_FADE_OUT_F, durationFrames],
     [0, 1, 1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
+
+  const translateY = interpolate(
+    frame,
+    [0, HOOK_FADE_IN_F],
+    [16, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
   const scale = interpolate(
     frame,
-    [0, FADE_IN_FRAMES],
-    [0.94, 1],
+    [0, HOOK_FADE_IN_F],
+    [0.96, 1],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
@@ -33,29 +42,48 @@ function HookOverlay({ text, durationFrames }: { text: string; durationFrames: n
       style={{
         justifyContent: 'center',
         alignItems: 'center',
-        paddingLeft: 60,
-        paddingRight: 60,
+        paddingLeft: 64,
+        paddingRight: 64,
+        paddingBottom: 80, // Slightly above center for visual balance
       }}
     >
-      <div style={{ opacity, transform: `scale(${scale})`, textAlign: 'center' }}>
-        <p
+      <div
+        style={{
+          opacity,
+          transform: `scale(${scale}) translateY(${translateY}px)`,
+          textAlign: 'center',
+        }}
+      >
+        {/* Dark backdrop behind hook for legibility */}
+        <div
           style={{
-            margin: 0,
-            fontSize: 76,
-            fontWeight: 900,
-            fontFamily:
-              '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif',
-            color: '#ffffff',
-            lineHeight: 1.15,
-            letterSpacing: '-1px',
-            textShadow: [
-              '0 4px 32px rgba(0,0,0,0.85)',
-              '0 1px 6px rgba(0,0,0,0.9)',
-            ].join(', '),
+            display: 'inline-block',
+            background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: 24,
+            paddingTop: 28,
+            paddingBottom: 32,
+            paddingLeft: 48,
+            paddingRight: 48,
           }}
         >
-          {text}
-        </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 72,
+              fontWeight: 900,
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif',
+              color: '#ffffff',
+              lineHeight: 1.18,
+              letterSpacing: '-1.5px',
+              textShadow: '0 2px 24px rgba(0,0,0,0.7)',
+            }}
+          >
+            {text}
+          </p>
+        </div>
       </div>
     </AbsoluteFill>
   )
@@ -66,7 +94,6 @@ function HookOverlay({ text, durationFrames }: { text: string; durationFrames: n
  */
 function GradientBackground({ accentColor }: { accentColor: string }) {
   const frame = useCurrentFrame()
-  // Slow moving ambient glow
   const glow = interpolate(frame, [0, 120, 240], [0.3, 0.55, 0.3], {
     extrapolateRight: 'extend',
   })
@@ -84,11 +111,15 @@ function GradientBackground({ accentColor }: { accentColor: string }) {
 /**
  * ShortFormVideo — premium 9:16 short-form composition.
  *
- * Structure:
- *   0–end:         Background slides (image per scene, Ken Burns + cross-fade)
- *   0–hookEnd:     HookOverlay (large centered text, fade-in/out)
- *   hookEnd–end:   CaptionOverlay (sentence-level captions, fade at boundaries)
- *   0–end:         Audio
+ * Layer order (bottom → top):
+ *   1. Background slides — cinematic images with Ken Burns + varied cross-fades
+ *   2. Audio track
+ *   3. Hook overlay — bold statement for first 4s, fades in/out
+ *   4. Caption overlay — sentence-level captions with frosted backdrop
+ *
+ * Key fix: CaptionOverlay is NOT wrapped in <Sequence> — it uses global frame
+ * so that caption startFrame/endFrame (built from word timing) are correct.
+ * The hideBeforeFrame prop suppresses captions during the hook period.
  */
 export function ShortFormVideo({
   hook,
@@ -99,10 +130,11 @@ export function ShortFormVideo({
 }: VideoInputProps) {
   const { fps, durationInFrames } = useVideoConfig()
   const frame = useCurrentFrame()
-  const hookDurationFrames = Math.round(fps * HOOK_DURATION_S)
 
-  // Distribute images evenly across the full video duration
+  const hookDurationFrames = Math.round(fps * HOOK_DURATION_S)
   const hasImages = images && images.length > 0
+
+  // Each scene gets equal screen time, extended by overlap for cross-fade
   const sceneDuration = hasImages
     ? Math.ceil(durationInFrames / images.length)
     : durationInFrames
@@ -110,16 +142,18 @@ export function ShortFormVideo({
   return (
     <AbsoluteFill style={{ backgroundColor: '#07080f' }}>
 
-      {/* ── Layer 1: Background ── */}
+      {/* ── Layer 1: Cinematic background scenes ── */}
       {hasImages ? (
         images.map((url, idx) => {
           const sceneStart = idx * sceneDuration
-          // Overlap scenes by 18 frames so cross-fade is seamless
-          const overlapStart = Math.max(0, sceneStart - 18)
-          const localFrame = frame - overlapStart
-          const localDuration = sceneDuration + (idx > 0 ? 18 : 0)
+          // Start rendering the overlap period early for seamless cross-fade
+          const renderStart = Math.max(0, sceneStart - SCENE_OVERLAP_F)
+          const localFrame   = frame - renderStart
+          // Each scene (except the first) gets extra OVERLAP frames at start for fade-in
+          const localDuration = sceneDuration + (idx > 0 ? SCENE_OVERLAP_F : 0)
 
-          if (frame < overlapStart || frame >= sceneStart + sceneDuration) return null
+          // Skip scenes outside their rendering window
+          if (frame < renderStart || frame >= sceneStart + sceneDuration) return null
 
           return (
             <BackgroundSlide
@@ -127,6 +161,8 @@ export function ShortFormVideo({
               imageUrl={url}
               localFrame={localFrame}
               duration={localDuration}
+              sceneIndex={idx}         // passed through for per-scene motion variety
+              fadeFrames={SCENE_OVERLAP_F}
             />
           )
         })
@@ -142,10 +178,12 @@ export function ShortFormVideo({
         <HookOverlay text={hook} durationFrames={hookDurationFrames} />
       </Sequence>
 
-      {/* ── Layer 4: Captions (after hook) ── */}
-      <Sequence from={hookDurationFrames}>
-        <CaptionOverlay captions={captions} accentColor={accentColor} />
-      </Sequence>
+      {/* ── Layer 4: Captions — global frame, NOT wrapped in Sequence ── */}
+      <CaptionOverlay
+        captions={captions}
+        accentColor={accentColor}
+        hideBeforeFrame={hookDurationFrames}
+      />
 
     </AbsoluteFill>
   )

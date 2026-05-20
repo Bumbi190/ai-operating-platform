@@ -9,7 +9,11 @@
  * - audioBuffer: raw mp3 bytes
  * - words: [{word, startMs, endMs}] for subtitle rendering
  * - durationMs: total audio duration
+ *
+ * Default voice: Victoria (see lib/voice/config.ts)
  */
+
+import { getBrandVoice, BRAND_MODEL, type BrandVoiceName } from '@/lib/voice/config'
 
 export interface WordTiming {
   word: string
@@ -23,34 +27,25 @@ export interface VoiceResult {
   durationMs: number
 }
 
-// Voices curated for AI news short-form content
-export const ELEVENLABS_VOICES = {
-  rachel: '21m00Tcm4TlvDq8ikWAM',   // Calm, clear — good for educational
-  antoni: 'ErXwobaYiN019PkySvjV',   // Professional, smooth
-  domi:   'AZnzlk1XvdvUeBnXmlld',   // Energetic — good for hype content
-  bella:  'EXAVITQu4vr4xnSDxMaL',   // Expressive
-} as const
-
-export type VoiceName = keyof typeof ELEVENLABS_VOICES
-
-const DEFAULT_VOICE: VoiceName = 'rachel'
-const DEFAULT_MODEL = 'eleven_turbo_v2_5'  // Fastest, high quality
+// Re-export for backward compatibility
+export type { BrandVoiceName as VoiceName }
 
 /**
  * Generate a voiceover with word-level timing.
  * Uses /v1/text-to-speech/{voice_id}/with-timestamps
+ * Defaults to the brand voice (Victoria) unless overridden.
  */
 export async function generateVoiceover(
   text: string,
-  voice: VoiceName = DEFAULT_VOICE,
+  voiceName: BrandVoiceName = 'victoria',
 ): Promise<VoiceResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set')
 
-  const voiceId = ELEVENLABS_VOICES[voice]
+  const voice = getBrandVoice(voiceName)
 
   const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voice.id}/with-timestamps`,
     {
       method: 'POST',
       signal: AbortSignal.timeout(30_000),
@@ -60,13 +55,8 @@ export async function generateVoiceover(
       },
       body: JSON.stringify({
         text,
-        model_id: DEFAULT_MODEL,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
-          use_speaker_boost: true,
-        },
+        model_id: BRAND_MODEL,
+        voice_settings: voice.settings,
       }),
     },
   )

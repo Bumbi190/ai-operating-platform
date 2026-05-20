@@ -26,16 +26,20 @@ const FPS = 30
 
 /**
  * Groups word-level timing into readable sentence caption chunks.
- * Rules:
- * - Break at sentence-ending punctuation (. ! ? , ;) if ≥3 words accumulated
- * - Hard break at 7 words regardless
- * - Small overlap buffer: caption stays visible 4 extra frames after last word
+ *
+ * Design goals:
+ * - NEVER word-by-word — minimum 4 words per group
+ * - Only break at true sentence endings (.!?) not commas/semicolons
+ * - Hard break at 8 words (fits 2 lines at 56px on 9:16)
+ * - Minimum display time: 0.8s so captions don't flash too quickly
+ * - Buffer: caption lingers 5 extra frames after last word ends
  */
 function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
   const groups: CaptionGroup[] = []
-  const BUFFER_FRAMES = 4
-  const MAX_WORDS = 7
-  const MIN_WORDS_BEFORE_BREAK = 3
+  const BUFFER_FRAMES      = 5
+  const MAX_WORDS          = 8
+  const MIN_WORDS          = 4     // never show fewer words than this
+  const MIN_DISPLAY_FRAMES = 24    // ~0.8s minimum caption duration
 
   let i = 0
   while (i < words.length) {
@@ -46,14 +50,17 @@ function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
       i++
 
       const lastWord = chunk[chunk.length - 1].word
-      const endsWithPunct = /[.!?,;]$/.test(lastWord)
-      if (endsWithPunct && chunk.length >= MIN_WORDS_BEFORE_BREAK) break
+      // Only break at true sentence boundaries, not mid-sentence commas
+      const endsWithSentence = /[.!?]$/.test(lastWord)
+      if (endsWithSentence && chunk.length >= MIN_WORDS) break
     }
 
     if (chunk.length === 0) break
 
     const startFrame = Math.floor((chunk[0].startMs / 1000) * FPS)
-    const endFrame = Math.floor((chunk[chunk.length - 1].endMs / 1000) * FPS) + BUFFER_FRAMES
+    const naturalEnd = Math.floor((chunk[chunk.length - 1].endMs / 1000) * FPS) + BUFFER_FRAMES
+    // Enforce minimum display duration
+    const endFrame = Math.max(naturalEnd, startFrame + MIN_DISPLAY_FRAMES)
 
     groups.push({
       text: chunk.map(w => w.word).join(' '),

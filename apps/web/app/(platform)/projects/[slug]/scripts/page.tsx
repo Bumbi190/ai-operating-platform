@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, CheckCircle, XCircle, Mic, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Loader2, Image } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -13,49 +13,162 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   published:      { label: 'Publicerad',         color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
 }
 
-const VOICE_LABELS: Record<string, string> = {
-  none: '—',
-  generating: '⏳ Genererar...',
-  ready: '✅ Klar',
-  failed: '❌ Misslyckades',
+// ─── Pipeline step indicator ─────────────────────────────────────────────────
+
+type PipelineStep = 'voice' | 'images' | 'done' | null
+
+function PipelineProgress({ step }: { step: PipelineStep }) {
+  if (!step) return null
+
+  const steps = [
+    { id: 'voice',  label: 'Genererar röst (Victoria)' },
+    { id: 'images', label: 'Genererar scener (Ideogram)' },
+    { id: 'done',   label: 'Redo för rendering' },
+  ]
+
+  const currentIndex = step === 'done' ? 2 : steps.findIndex(s => s.id === step)
+
+  return (
+    <div className="border-t border-border px-5 py-3 bg-indigo-500/5">
+      <div className="flex items-center gap-3">
+        {steps.map((s, i) => {
+          const done = i < currentIndex || step === 'done'
+          const active = s.id === step
+          return (
+            <div key={s.id} className="flex items-center gap-1.5">
+              {done ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
+              ) : active ? (
+                <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0" />
+              ) : (
+                <div className="w-3.5 h-3.5 rounded-full border border-border shrink-0" />
+              )}
+              <span className={`text-xs ${active ? 'text-indigo-300' : done ? 'text-green-400' : 'text-muted-foreground'}`}>
+                {s.label}
+              </span>
+              {i < steps.length - 1 && (
+                <div className="w-4 h-px bg-border ml-1" />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
-function ScriptCard({ script, projectId, onUpdate }: {
+// ─── Script Card ─────────────────────────────────────────────────────────────
+
+function ScriptCard({ script, onUpdate }: {
   script: MediaScript & { media_news_items?: { title: string; virality_score: number } | null }
-  projectId: string
   onUpdate: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [generatingVoice, setGeneratingVoice] = useState(false)
+  const [pipelineStep, setPipelineStep] = useState<PipelineStep>(null)
+  const [pipelineError, setPipelineError] = useState<string | null>(null)
   const statusCfg = STATUS_LABELS[script.status]
 
-  async function updateStatus(status: string, feedback?: string) {
+  const hasImages = Array.isArray(script.images) && script.images.length > 0
+
+  // ── Auto-chain: voice → images ───────────────────────────────────────────
+  async function runPipeline(scriptId: string, scriptText: string) {
+    setPipelineError(null)
+
+    try {
+      // Step 1: Voice (Victoria)
+      setPipelineStep('voice')
+      const voiceRes = await fetch('/api/media/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script_id: scriptId, text: scriptText }),
+        // voice omitted → defaults to 'victoria' in the API
+      })
+      if (!voiceRes.ok) {
+        const err = await voiceRes.json().catch(() => ({}))
+        throw new Error(err.error ?? `Voice failed (${voiceRes.status})`)
+      }
+
+      // Step 2: Images
+      setPipelineStep('images')
+      const imgRes = await fetch('/api/media/images/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script_id: scriptId }),
+      })
+      if (!imgRes.ok) {
+        const err = await imgRes.json().catch(() => ({}))
+        throw new Error(err.error ?? `Image generation failed (${imgRes.status})`)
+      }
+
+      // Done!
+      setPipelineStep('done')
+      onUpdate()
+
+      // Clear "done" indicator after 3s
+      setTimeout(() => setPipelineStep(null), 3000)
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Okänt fel'
+      setPipelineError(msg)
+      setPipelineStep(null)
+      onUpdate()
+    }
+  }
+
+  async function handleApprove() {
+    if (!script.script) return
+
+    // 1. Update status to approved
     await fetch(`/api/media/scripts/${script.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, ...(feedback ? { feedback } : {}) }),
+      body: JSON.stringify({ status: 'approved' }),
+    })
+
+    // 2. Immediately kick off voice + image pipeline
+    runPipeline(script.id, script.script)
+  }
+
+  async function handleReject() {
+    await fetch(`/api/media/scripts/${script.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'rejected' }),
     })
     onUpdate()
   }
 
-  async function generateVoice() {
+  // Manual re-trigger for edge cases (already approved but no voice)
+  async function rerunPipeline() {
     if (!script.script) return
-    setGeneratingVoice(true)
+    runPipeline(script.id, script.script)
+  }
+
+  // Manual images-only (already has voice, missing images)
+  async function generateImages() {
+    setPipelineError(null)
+    setPipelineStep('images')
     try {
-      await fetch('/api/media/voice', {
+      const res = await fetch('/api/media/images/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          script_id: script.id,
-          text: script.script,
-          voice: 'rachel',
-        }),
+        body: JSON.stringify({ script_id: script.id }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? `Image generation failed (${res.status})`)
+      }
+      setPipelineStep('done')
       onUpdate()
-    } finally {
-      setGeneratingVoice(false)
+      setTimeout(() => setPipelineStep(null), 3000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Okänt fel'
+      setPipelineError(msg)
+      setPipelineStep(null)
     }
   }
+
+  const isProcessing = pipelineStep !== null && pipelineStep !== 'done'
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -84,12 +197,25 @@ function ScriptCard({ script, projectId, onUpdate }: {
         )}
 
         {/* Meta row */}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
           {script.estimated_duration && <span>⏱ {script.estimated_duration}</span>}
           {script.tone && <span className="capitalize">🎭 {script.tone}</span>}
-          <span>🎙 {VOICE_LABELS[script.voice_status]}</span>
+          {script.voice_status === 'ready' && <span>🎙 Victoria ✅</span>}
+          {script.voice_status === 'generating' && <span>🎙 Genererar röst...</span>}
+          {script.voice_status === 'failed' && <span className="text-red-400">🎙 Röst misslyckades</span>}
+          {hasImages && <span>🎬 {(script.images as string[]).length} scener ✅</span>}
         </div>
+
+        {/* Pipeline error */}
+        {pipelineError && (
+          <p className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-1.5">
+            ⚠️ {pipelineError}
+          </p>
+        )}
       </div>
+
+      {/* Pipeline progress bar */}
+      <PipelineProgress step={pipelineStep} />
 
       {/* Expanded content */}
       {expanded && (
@@ -134,8 +260,25 @@ function ScriptCard({ script, projectId, onUpdate }: {
           {/* Audio player */}
           {script.audio_url && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Röstinspelning</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Röstinspelning — Victoria</p>
               <audio controls src={script.audio_url} className="w-full h-8" />
+            </div>
+          )}
+
+          {/* Scene thumbnails */}
+          {hasImages && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Scener ({(script.images as string[]).length})</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {(script.images as string[]).map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt={`Scen ${i + 1}`}
+                    className="h-24 w-auto rounded-md border border-border shrink-0 object-cover"
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -164,37 +307,62 @@ function ScriptCard({ script, projectId, onUpdate }: {
         </button>
 
         <div className="flex items-center gap-1.5">
+          {/* Pending review — primary CTA */}
           {script.status === 'pending_review' && (
             <>
               <button
-                onClick={() => updateStatus('approved')}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-colors"
+                onClick={handleApprove}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
               >
-                <CheckCircle className="w-3 h-3" /> Godkänn
+                {isProcessing
+                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Bearbetar...</>
+                  : <><CheckCircle className="w-3 h-3" /> Godkänn →</>
+                }
               </button>
               <button
-                onClick={() => updateStatus('rejected')}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors"
+                onClick={handleReject}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
               >
                 <XCircle className="w-3 h-3" /> Avslå
               </button>
             </>
           )}
-          {script.status === 'approved' && script.voice_status === 'none' && (
+
+          {/* Approved but pipeline failed / never ran */}
+          {script.status === 'approved' && script.voice_status === 'none' && !isProcessing && (
             <button
-              onClick={generateVoice}
-              disabled={generatingVoice}
-              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-colors disabled:opacity-50"
+              onClick={rerunPipeline}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
             >
-              <Mic className="w-3 h-3" />
-              {generatingVoice ? 'Genererar...' : 'Generera röst'}
+              <Loader2 className="w-3 h-3" /> Kör pipeline
             </button>
+          )}
+
+          {/* Has voice but missing images */}
+          {script.status === 'approved' && script.voice_status === 'ready' && !hasImages && !isProcessing && (
+            <button
+              onClick={generateImages}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+            >
+              <Image className="w-3 h-3" /> Generera bilder
+            </button>
+          )}
+
+          {/* Processing indicator */}
+          {isProcessing && (
+            <span className="inline-flex items-center gap-1 text-xs text-indigo-400">
+              <Loader2 className="w-3 h-3 animate-spin" /> Bearbetar...
+            </span>
           )}
         </div>
       </div>
     </div>
   )
 }
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScriptsPage() {
   const params = useParams()
@@ -234,7 +402,7 @@ export default function ScriptsPage() {
           <FileText className="w-5 h-5 text-muted-foreground" />
           <div>
             <h1 className="text-xl font-bold">Script Queue</h1>
-            <p className="text-sm text-muted-foreground">Granska och godkänn genererade manus</p>
+            <p className="text-sm text-muted-foreground">Godkänn → röst + bilder genereras automatiskt</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -279,8 +447,7 @@ export default function ScriptsPage() {
           <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm font-medium mb-1">Inga manus ännu</p>
           <p className="text-xs text-muted-foreground">
-            Kör &ldquo;Generate Script&rdquo;-workflowet och anropa{' '}
-            <code className="font-mono bg-muted px-1 rounded">POST /api/media/scripts/from-run</code>.
+            Kör &ldquo;Generate Script&rdquo;-workflowet för att skapa manus.
           </p>
         </div>
       ) : (
@@ -289,7 +456,6 @@ export default function ScriptsPage() {
             <ScriptCard
               key={script.id}
               script={script}
-              projectId={projectId ?? ''}
               onUpdate={load}
             />
           ))}

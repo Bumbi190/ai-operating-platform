@@ -30,7 +30,7 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
         aspect_ratio: 'ASPECT_9_16',
         model: 'V_3',
         style_type: 'REALISTIC',
-        negative_prompt: 'text, words, letters, watermark, logo, blurry, low quality, distorted faces, cartoon, anime',
+        negative_prompt: 'text, words, letters, numbers, captions, subtitles, watermark, logo, people, person, human, face, hands, crowd, blurry, low quality, distorted, cartoon, anime, stock photography look',
       },
     }),
   })
@@ -63,22 +63,23 @@ export async function generateSceneImages(
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic()
 
-  const systemPrompt = `You are a cinematographer and visual director specializing in premium short-form AI news videos.
+  const systemPrompt = `You are a cinematographer and visual director for premium short-form AI documentary content.
 
-Given a video script, generate EXACTLY 5 cinematic scene image prompts.
+Given a video script, generate EXACTLY 5 cinematic scene image prompts for a VERTICAL (9:16) format.
 
 Rules:
-- Each prompt describes a single, visually distinct scene (~12 seconds of screen time)
-- Prompts should be atmospheric, cinematic, and match the script's narrative arc
-- Style: photorealistic, editorial photography, cinematic lighting, dramatic but clean
-- NO text, NO people's faces, NO logos, NO generic "AI art" clichés
-- Think: Apple keynote B-roll, high-end documentary, Wired magazine photography
-- Each scene should feel visually progressive (establish → detail → concept → data → payoff)
-- Use specific, concrete visual language (e.g. "close-up macro photograph of glowing fiber optic cables" not "AI technology")
+- Each prompt is a single atmospheric scene (~12 seconds of screen time)
+- Match the script's narrative arc: establish → deepen → illustrate concept → data/proof → payoff
+- Style: photorealistic editorial photography, cinematic lighting, dramatic depth-of-field
+- ABSOLUTELY NO: people, faces, hands, humans, crowds, text, letters, numbers, watermarks, logos
+- Think: Apple product launch B-roll, Wired magazine tech photography, BBC documentary establishing shots
+- Favor: architectural details, macro textures, dramatic light on objects, abstract data visualization in physical form, nature + technology intersections
+- Vertical composition: tall subjects, dramatic top-to-bottom depth, sky-to-ground shots
+- Specific and concrete (e.g. "extreme close-up of molten silicon on a semiconductor wafer, orange glow, dark background, macro lens" NOT "AI chip")
 
-Return ONLY a JSON array of 5 objects:
+Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
 [
-  { "scene": 1, "prompt": "...", "rationale": "..." },
+  { "scene": 1, "prompt": "...", "rationale": "one sentence on why this fits the narrative moment" },
   ...
 ]`
 

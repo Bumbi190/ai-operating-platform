@@ -8,7 +8,7 @@
  * Body:
  *   script_id  — uuid of the media_scripts row
  *   text       — the script text to speak
- *   voice?     — 'rachel' | 'antoni' | 'domi' | 'bella' (default: 'rachel')
+ *   voice?     — BrandVoiceName (default: 'victoria' — see lib/voice/config.ts)
  */
 
 import { createClient } from '@/lib/supabase/server'
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
 
   try {
     // Generate voiceover with word-level timing
-    const result = await generateVoiceover(text, voice ?? 'rachel')
+    const result = await generateVoiceover(text, voice ?? 'victoria')
 
     // Upload audio + timing to Supabase Storage
     const [audioUrl, timingUrl] = await Promise.all([

@@ -32,7 +32,8 @@ export default async function ConversationPage({ params }: Props) {
     .eq('conversation_id', id)
     .order('created_at', { ascending: true })
 
-  const project = conv.projects as { name: string; slug: string } | null
+  const projectRaw = conv.projects as unknown
+  const project = (Array.isArray(projectRaw) ? projectRaw[0] : projectRaw) as { name: string; slug: string } | null
 
   return (
     <ChatClient

@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams()
+  const urlError = searchParams.get('error')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
-  const urlError = searchParams.get('error')
   const [error, setError] = useState<string | null>(urlError)
 
   const supabase = createClient()
@@ -36,7 +36,6 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-sm space-y-8 px-6">
-      {/* Logo / Title */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-4">
           ⚡
@@ -86,5 +85,13 @@ export default function LoginPage() {
         </form>
       )}
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-sm px-6 text-center text-muted-foreground">Laddar...</div>}>
+      <LoginForm />
+    </Suspense>
   )
 }

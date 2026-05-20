@@ -88,37 +88,98 @@ function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
  */
 const DEFAULT_HOOK_S = 4.5
 
+/**
+ * Detect when the hook period ends.
+ *
+ * Strategy 1 (primary): Find the first sentence boundary in word timing.
+ *   The display hook text and the audio script often differ (Claude refines the
+ *   hook for screen while Victoria reads the full script), so text-matching is
+ *   unreliable. Instead we look for the first `.!?` in the audio.
+ *
+ * Strategy 2 (fallback): Original text-matching against hookText.
+ *
+ * Strategy 3 (final fallback): DEFAULT_HOOK_S constant.
+ */
 function findHookEndFrame(hookText: string, words: WordTiming[]): number {
   const fallback = Math.round(DEFAULT_HOOK_S * FPS)
-  if (!hookText || words.length === 0) return fallback
+  if (words.length === 0) return fallback
 
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const hookWords = hookText.split(/\s+/).map(normalize).filter(Boolean)
-  if (hookWords.length === 0) return fallback
-
-  // Walk through word timing, matching hook words in order
-  let matched = 0
-  let hookEndMs = 0
-
-  for (const w of words) {
-    if (matched >= hookWords.length) break
-    const norm = normalize(w.word)
-    if (norm === hookWords[matched]) {
-      matched++
-      hookEndMs = w.endMs
+  // ── Strategy 1: First sentence boundary in audio ──────────────────────────
+  // Skip the first few words (avoid false positives from "Mr." "Dr." etc)
+  // Require at least 1.5s of audio before the sentence ends
+  for (let i = 3; i < words.length; i++) {
+    const word = words[i]
+    if (/[.!?]$/.test(word.word) && word.endMs >= 1500) {
+      const endFrame = Math.floor((word.endMs / 1000 + 0.4) * FPS)
+      // Sanity: hook display between 2s (60f) and 8s (240f)
+      if (endFrame >= 60 && endFrame <= 240) {
+        console.log(`  ✅ Hook: first sentence ends ${(word.endMs / 1000).toFixed(2)}s → ${endFrame} frames`)
+        return endFrame
+      }
     }
   }
 
-  // Require at least 70% match (TTS sometimes changes spelling of numbers etc)
-  if (matched < hookWords.length * 0.7) {
-    console.log(`  ⚠  Hook matching uncertain (${matched}/${hookWords.length} words) — using ${DEFAULT_HOOK_S}s default`)
-    return fallback
+  // ── Strategy 2: Text matching (fallback) ──────────────────────────────────
+  if (hookText) {
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const hookWords = hookText.split(/\s+/).map(normalize).filter(Boolean)
+    let matched = 0, hookEndMs = 0
+    for (const w of words) {
+      if (matched >= hookWords.length) break
+      if (normalize(w.word) === hookWords[matched]) { matched++; hookEndMs = w.endMs }
+    }
+    if (matched >= hookWords.length * 0.7 && hookEndMs > 0) {
+      const hookEndFrame = Math.floor((hookEndMs / 1000 + 0.5) * FPS)
+      console.log(`  ✅ Hook matched: ${(hookEndMs / 1000).toFixed(2)}s → ${hookEndFrame} frames`)
+      return hookEndFrame
+    }
   }
 
-  // Hook display: audio hook ends + 0.5s breath + fade-out buffer
-  const hookEndFrame = Math.floor((hookEndMs / 1000 + 0.5) * FPS)
-  console.log(`  ✅ Hook detected: ${(hookEndMs / 1000).toFixed(2)}s audio → ${hookEndFrame} frames display`)
-  return hookEndFrame
+  console.log(`  ⚠  Hook detection uncertain — using ${DEFAULT_HOOK_S}s default`)
+  return fallback
+}
+
+/**
+ * Pre-download scene images to local tmp files before rendering.
+ *
+ * Why: Remotion's headless Chrome can hit Supabase connection timeouts
+ * (ERR_CONNECTION_CLOSED) when fetching remote assets mid-render.
+ * Pre-downloading with Node's fetch() is more resilient and faster.
+ * Falls back to the original URL if download fails.
+ */
+async function preloadImages(urls: string[]): Promise<string[]> {
+  if (urls.length === 0) return []
+
+  const tmpDir = path.resolve('./tmp-images')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  console.log('🖼  Pre-loading scene images...')
+
+  return Promise.all(
+    urls.map(async (url, i) => {
+      if (!url) return url
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 20_000)
+        const res = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeout)
+
+        if (!res.ok) {
+          console.log(`  ⚠  Scene ${i + 1}: HTTP ${res.status} — using remote URL`)
+          return url
+        }
+
+        const buf = Buffer.from(await res.arrayBuffer())
+        const ext  = url.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
+        const localPath = path.join(tmpDir, `scene-${i}.${ext}`)
+        fs.writeFileSync(localPath, buf)
+        console.log(`  ✅ Scene ${i + 1} cached (${Math.round(buf.length / 1024)} KB)`)
+        return `file://${localPath}`
+      } catch (err) {
+        console.log(`  ⚠  Scene ${i + 1}: ${(err as Error).message} — using remote URL`)
+        return url
+      }
+    }),
+  )
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -170,13 +231,16 @@ async function main() {
 
   console.log(`📝 ${captions.length} caption groups (${allCaptions.length - captions.length} suppressed during hook)`)
 
+  // Pre-download images locally to avoid Chrome headless connection timeouts
+  const images = await preloadImages(raw.images ?? [])
+
   const inputProps: VideoInputProps = {
     hook: raw.hook,
     audioUrl: raw.audioUrl,
     durationMs: raw.durationMs,
     words,
     captions,
-    images: raw.images ?? [],
+    images,
     accentColor: raw.accentColor ?? '#6366f1',
     hookDurationFrames,
   }

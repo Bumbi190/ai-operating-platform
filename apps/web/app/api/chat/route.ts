@@ -19,7 +19,7 @@ import { runStep } from '@/lib/ai/runner'
 import { getManager } from '@/lib/ai/manager'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+export const dynamic = 'force-dynamic'
 
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.
 
@@ -108,6 +108,7 @@ const TOOLS: Anthropic.Tool[] = [
 ]
 
 export async function POST(request: Request) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   // Auth check
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

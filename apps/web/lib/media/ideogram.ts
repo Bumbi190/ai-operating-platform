@@ -18,20 +18,18 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-  const res = await fetch('https://api.ideogram.ai/generate', {
+  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
     method: 'POST',
     headers: {
       'Api-Key': apiKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      image_request: {
-        prompt,
-        aspect_ratio: 'ASPECT_9_16',
-        model: 'V_3',
-        style_type: 'REALISTIC',
-        negative_prompt: 'text, words, letters, numbers, captions, subtitles, watermark, logo, people, person, human, face, hands, crowd, blurry, low quality, distorted, cartoon, anime, stock photography look',
-      },
+      prompt,
+      aspect_ratio: '9x16',
+      style_type: 'REALISTIC',
+      rendering_speed: 'DEFAULT',
+      negative_prompt: 'text, words, letters, numbers, captions, subtitles, watermark, logo, people, person, human, face, hands, crowd, blurry, low quality, distorted, cartoon, anime, stock photography look',
     }),
   })
 

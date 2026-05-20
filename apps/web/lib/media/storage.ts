@@ -103,6 +103,31 @@ export async function uploadSceneImage(
 }
 
 /**
+ * Upload a background music track (mp3) to Supabase Storage.
+ * Returns the public URL.
+ */
+export async function uploadMusic(
+  projectId: string,
+  scriptId: string,
+  audioBuffer: Buffer,
+): Promise<string> {
+  const db = createAdminClient()
+  const path = `music/${projectId}/${scriptId}-bg.mp3`
+
+  const { error } = await db.storage
+    .from(BUCKET)
+    .upload(path, audioBuffer, {
+      contentType: 'audio/mpeg',
+      upsert: true,
+    })
+
+  if (error) throw new Error(`Music upload failed: ${error.message}`)
+
+  const { data: { publicUrl } } = db.storage.from(BUCKET).getPublicUrl(path)
+  return publicUrl
+}
+
+/**
  * Upload a rendered video (mp4) to Supabase Storage.
  * Returns the public URL.
  */

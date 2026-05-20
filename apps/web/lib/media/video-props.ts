@@ -34,6 +34,7 @@ export interface VideoInputProps {
   images: string[]
   sceneStartFrames?: number[]
   accentColor?: string
+  backgroundMusicUrl?: string
 }
 
 // ─── Caption grouping ─────────────────────────────────────────────────────────
@@ -131,8 +132,9 @@ export async function buildVideoInputProps(params: {
   durationMs: number
   images: string[]
   accentColor?: string
+  backgroundMusicUrl?: string
 }): Promise<VideoInputProps> {
-  const { hook, audioUrl, timingUrl, durationMs, images, accentColor } = params
+  const { hook, audioUrl, timingUrl, durationMs, images, accentColor, backgroundMusicUrl } = params
 
   // Fetch word timing
   let words: WordTiming[] = []
@@ -167,5 +169,6 @@ export async function buildVideoInputProps(params: {
     images,
     sceneStartFrames: sceneStartFrames.length > 0 ? sceneStartFrames : undefined,
     accentColor: accentColor ?? '#6366f1',
+    backgroundMusicUrl,
   }
 }

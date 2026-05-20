@@ -26,7 +26,7 @@ const VIDEO_STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 // ─── Pipeline step indicator ─────────────────────────────────────────────────
 
-type PipelineStep = 'voice' | 'images' | 'done' | null
+type PipelineStep = 'voice' | 'images' | 'music' | 'done' | null
 
 function PipelineProgress({ step }: { step: PipelineStep }) {
   if (!step) return null
@@ -34,10 +34,11 @@ function PipelineProgress({ step }: { step: PipelineStep }) {
   const steps = [
     { id: 'voice',  label: 'Genererar röst (Victoria)' },
     { id: 'images', label: 'Genererar scener (Ideogram)' },
+    { id: 'music',  label: '🎵 Genererar musik' },
     { id: 'done',   label: 'Redo för rendering' },
   ]
 
-  const currentIndex = step === 'done' ? 2 : steps.findIndex(s => s.id === step)
+  const currentIndex = step === 'done' ? steps.length - 1 : steps.findIndex(s => s.id === step)
 
   return (
     <div className="border-t border-border px-5 py-3 bg-indigo-500/5">
@@ -220,6 +221,17 @@ function ScriptCard({ script, onUpdate }: {
         throw new Error(err.error ?? `Image gen failed (${imgRes.status})`)
       }
 
+      setPipelineStep('music')
+      const musicRes = await fetch('/api/media/music/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId }),
+      })
+      if (!musicRes.ok) {
+        // Music failure is non-fatal — log and continue without music
+        console.warn('[pipeline] Music generation failed, continuing without music')
+      }
+
       setPipelineStep('done')
       onUpdate()
       setTimeout(() => { setPipelineStep(null) }, 2500)
@@ -268,6 +280,17 @@ function ScriptCard({ script, onUpdate }: {
         const err = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(err.error ?? `Failed (${res.status})`)
       }
+
+      setPipelineStep('music')
+      const musicRes = await fetch('/api/media/music/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId: script.id }),
+      })
+      if (!musicRes.ok) {
+        console.warn('[pipeline] Music generation failed, continuing without music')
+      }
+
       setPipelineStep('done')
       onUpdate()
       setTimeout(() => { setPipelineStep(null) }, 2500)

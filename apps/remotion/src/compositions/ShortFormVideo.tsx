@@ -41,9 +41,8 @@ function HookOverlay({ text, durationFrames }: { text: string; durationFrames: n
     <AbsoluteFill
       style={{
         flexDirection: 'column',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
         alignItems: 'center',
-        paddingBottom: 164,
         paddingLeft: 48,
         paddingRight: 48,
       }}
@@ -134,6 +133,7 @@ export function ShortFormVideo({
   sceneStartFrames,
   accentColor = '#6366f1',
   hookDurationFrames: hookDurationFramesProp,
+  backgroundMusicUrl,
 }: VideoInputProps) {
   const { durationInFrames } = useVideoConfig()
   const frame = useCurrentFrame()
@@ -183,7 +183,12 @@ export function ShortFormVideo({
         <GradientBackground accentColor={accentColor} />
       )}
 
-      {/* ── Layer 2: Audio ── */}
+      {/* ── Layer 2a: Background music — looped at low volume ── */}
+      {backgroundMusicUrl && (
+        <Audio src={backgroundMusicUrl} volume={0.08} loop />
+      )}
+
+      {/* ── Layer 2b: Voice-over ── */}
       <Audio src={audioUrl} />
 
       {/* ── Layer 3: Hook (first HOOK_DURATION_S seconds) ── */}
@@ -196,7 +201,6 @@ export function ShortFormVideo({
         captions={captions}
         words={words}
         accentColor={accentColor}
-        hideBeforeFrame={hookDurationFrames}
       />
 
     </AbsoluteFill>

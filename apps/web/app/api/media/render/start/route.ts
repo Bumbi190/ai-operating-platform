@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   // ── Load script ──────────────────────────────────────────────────────────────
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url')
     .eq('id', scriptId)
     .single()
 
@@ -50,12 +50,13 @@ export async function POST(request: Request) {
 
   // ── Build VideoInputProps ────────────────────────────────────────────────────
   const inputProps = await buildVideoInputProps({
-    hook:       script.hook ?? '',
-    audioUrl:   script.audio_url,
-    timingUrl:  script.timing_url,
-    durationMs: script.duration_ms ?? 60000,
-    images:     Array.isArray(script.images) ? script.images : [],
-    accentColor: '#6366f1',
+    hook:               script.hook ?? '',
+    audioUrl:           script.audio_url,
+    timingUrl:          script.timing_url,
+    durationMs:         script.duration_ms ?? 60000,
+    images:             Array.isArray(script.images) ? script.images : [],
+    accentColor:        '#6366f1',
+    backgroundMusicUrl: script.background_music_url ?? undefined,
   })
 
   // ── Mark as queued ───────────────────────────────────────────────────────────

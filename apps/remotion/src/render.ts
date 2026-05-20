@@ -6,12 +6,13 @@
  *
  * render-input.json format:
  * {
- *   "scriptId": "abc123",
- *   "hook": "This AI just changed everything.",
- *   "audioUrl": "https://...",
+ *   "scriptId":  "abc123",
+ *   "projectId": "xyz456",
+ *   "hook":      "This AI just changed everything.",
+ *   "audioUrl":  "https://...",
  *   "timingUrl": "https://...",
  *   "durationMs": 45000,
- *   "images": ["https://...", "https://...", "https://...", "https://...", "https://..."],
+ *   "images": ["https://...", "https://...", ...],
  *   "accentColor": "#6366f1"
  * }
  */
@@ -24,22 +25,24 @@ import type { VideoInputProps, WordTiming, CaptionGroup } from './lib/types'
 
 const FPS = 30
 
+// ─── Caption grouping ─────────────────────────────────────────────────────────
+
 /**
  * Groups word-level timing into readable sentence caption chunks.
  *
- * Design goals:
+ * Design goals (TikTok/Reels retention):
  * - NEVER word-by-word — minimum 4 words per group
- * - Only break at true sentence endings (.!?) not commas/semicolons
- * - Hard break at 8 words (fits 2 lines at 56px on 9:16)
- * - Minimum display time: 0.8s so captions don't flash too quickly
- * - Buffer: caption lingers 5 extra frames after last word ends
+ * - Break only at true sentence endings (.!?) — not commas
+ * - Hard break at 8 words (fits 2 clean lines at 56px on 9:16)
+ * - Minimum display: 0.8s — no flash captions
+ * - Buffer: caption lingers 5 extra frames so readers can finish
  */
 function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
   const groups: CaptionGroup[] = []
   const BUFFER_FRAMES      = 5
   const MAX_WORDS          = 8
-  const MIN_WORDS          = 4     // never show fewer words than this
-  const MIN_DISPLAY_FRAMES = 24    // ~0.8s minimum caption duration
+  const MIN_WORDS          = 4
+  const MIN_DISPLAY_FRAMES = 24   // 0.8s at 30fps
 
   let i = 0
   while (i < words.length) {
@@ -50,7 +53,7 @@ function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
       i++
 
       const lastWord = chunk[chunk.length - 1].word
-      // Only break at true sentence boundaries, not mid-sentence commas
+      // Only break on sentence-ending punctuation — commas keep flow going
       const endsWithSentence = /[.!?]$/.test(lastWord)
       if (endsWithSentence && chunk.length >= MIN_WORDS) break
     }
@@ -59,8 +62,7 @@ function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
 
     const startFrame = Math.floor((chunk[0].startMs / 1000) * FPS)
     const naturalEnd = Math.floor((chunk[chunk.length - 1].endMs / 1000) * FPS) + BUFFER_FRAMES
-    // Enforce minimum display duration
-    const endFrame = Math.max(naturalEnd, startFrame + MIN_DISPLAY_FRAMES)
+    const endFrame   = Math.max(naturalEnd, startFrame + MIN_DISPLAY_FRAMES)
 
     groups.push({
       text: chunk.map(w => w.word).join(' '),
@@ -72,12 +74,61 @@ function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
   return groups
 }
 
+// ─── Hook duration from word timing ──────────────────────────────────────────
+
+/**
+ * Finds where the hook words end in the audio timing data.
+ * Hook text is always the first sentence(s) of the script — Victoria says it
+ * at the start of the recording, so we scan forward word-by-word.
+ *
+ * Strategy: normalize both hook and words to lowercase/no-punct, find the
+ * last matching hook word, then add 0.5s for a natural pause before captions.
+ *
+ * Falls back to DEFAULT_HOOK_S seconds if matching is ambiguous.
+ */
+const DEFAULT_HOOK_S = 4.5
+
+function findHookEndFrame(hookText: string, words: WordTiming[]): number {
+  const fallback = Math.round(DEFAULT_HOOK_S * FPS)
+  if (!hookText || words.length === 0) return fallback
+
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const hookWords = hookText.split(/\s+/).map(normalize).filter(Boolean)
+  if (hookWords.length === 0) return fallback
+
+  // Walk through word timing, matching hook words in order
+  let matched = 0
+  let hookEndMs = 0
+
+  for (const w of words) {
+    if (matched >= hookWords.length) break
+    const norm = normalize(w.word)
+    if (norm === hookWords[matched]) {
+      matched++
+      hookEndMs = w.endMs
+    }
+  }
+
+  // Require at least 70% match (TTS sometimes changes spelling of numbers etc)
+  if (matched < hookWords.length * 0.7) {
+    console.log(`  ⚠  Hook matching uncertain (${matched}/${hookWords.length} words) — using ${DEFAULT_HOOK_S}s default`)
+    return fallback
+  }
+
+  // Hook display: audio hook ends + 0.5s breath + fade-out buffer
+  const hookEndFrame = Math.floor((hookEndMs / 1000 + 0.5) * FPS)
+  console.log(`  ✅ Hook detected: ${(hookEndMs / 1000).toFixed(2)}s audio → ${hookEndFrame} frames display`)
+  return hookEndFrame
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
   const args = Object.fromEntries(
     process.argv.slice(2).map(a => {
       const [k, ...rest] = a.replace(/^--/, '').split('=')
       return [k, rest.join('=')]
-    })
+    }),
   )
 
   if (!args.config) {
@@ -86,9 +137,10 @@ async function main() {
 
   const configPath = path.resolve(args.config)
   const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-    scriptId: string
-    hook: string
-    audioUrl: string
+    scriptId:  string
+    projectId?: string
+    hook:      string
+    audioUrl:  string
     timingUrl?: string
     durationMs: number
     images?: string[]
@@ -105,9 +157,18 @@ async function main() {
     console.log(`   ${words.length} words loaded`)
   }
 
+  // Detect hook end frame from word timing
+  console.log('🎯 Detecting hook timing...')
+  const hookDurationFrames = findHookEndFrame(raw.hook, words)
+
   // Build sentence-level caption groups
-  const captions: CaptionGroup[] = words.length > 0 ? buildCaptionGroups(words) : []
-  console.log(`📝 ${captions.length} caption groups built`)
+  const allCaptions = words.length > 0 ? buildCaptionGroups(words) : []
+
+  // Filter out caption groups that overlap with the hook display period
+  // (words spoken during hook don't need captions — the hook text IS the visual)
+  const captions = allCaptions.filter(c => c.startFrame >= hookDurationFrames)
+
+  console.log(`📝 ${captions.length} caption groups (${allCaptions.length - captions.length} suppressed during hook)`)
 
   const inputProps: VideoInputProps = {
     hook: raw.hook,
@@ -117,6 +178,7 @@ async function main() {
     captions,
     images: raw.images ?? [],
     accentColor: raw.accentColor ?? '#6366f1',
+    hookDurationFrames,
   }
 
   const outputPath = path.resolve(`./out/${raw.scriptId}.mp4`)
@@ -135,7 +197,8 @@ async function main() {
     inputProps,
   })
 
-  console.log(`🎬 Rendering ${composition.durationInFrames} frames at ${FPS}fps...`)
+  console.log(`🎬 Rendering ${composition.durationInFrames} frames at ${FPS}fps (~${(composition.durationInFrames / FPS).toFixed(1)}s)...`)
+  console.log(`   Output: ${outputPath}`)
 
   await renderMedia({
     composition,
@@ -149,6 +212,8 @@ async function main() {
   })
 
   console.log(`\n✅ Video saved to: ${outputPath}`)
+  console.log(`\n📤 To publish to dashboard:`)
+  console.log(`   npm run upload -- --config=${args.config} --file=${outputPath}`)
 }
 
 main().catch(err => {

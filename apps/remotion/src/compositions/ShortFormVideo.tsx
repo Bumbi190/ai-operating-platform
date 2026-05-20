@@ -1,13 +1,13 @@
 import React from 'react'
-import { AbsoluteFill, Audio, interpolate, Sequence, useCurrentFrame, useVideoConfig } from 'remotion'
+import { AbsoluteFill, Audio, interpolate, Sequence, useCurrentFrame, useVideoConfig } from 'remotion' // eslint-disable-line @typescript-eslint/no-unused-vars
 import { BackgroundSlide } from '../components/BackgroundSlide'
 import { CaptionOverlay } from '../components/CaptionOverlay'
 import type { VideoInputProps } from '../lib/types'
 
-const HOOK_DURATION_S  = 4   // seconds the hook text is shown
-const HOOK_FADE_IN_F   = 15  // frames
-const HOOK_FADE_OUT_F  = 12  // frames
-const SCENE_OVERLAP_F  = 20  // cross-fade overlap between scenes
+const DEFAULT_HOOK_FRAMES = 135  // 4.5s at 30fps — overridden by hookDurationFrames prop
+const HOOK_FADE_IN_F      = 15   // frames
+const HOOK_FADE_OUT_F     = 12   // frames
+const SCENE_OVERLAP_F     = 20   // cross-fade overlap between scenes
 
 /**
  * HookOverlay — bold opening statement, first HOOK_DURATION_S seconds.
@@ -127,11 +127,12 @@ export function ShortFormVideo({
   captions,
   images,
   accentColor = '#6366f1',
+  hookDurationFrames: hookDurationFramesProp,
 }: VideoInputProps) {
-  const { fps, durationInFrames } = useVideoConfig()
+  const { durationInFrames } = useVideoConfig()
   const frame = useCurrentFrame()
 
-  const hookDurationFrames = Math.round(fps * HOOK_DURATION_S)
+  const hookDurationFrames = hookDurationFramesProp ?? DEFAULT_HOOK_FRAMES
   const hasImages = images && images.length > 0
 
   // Each scene gets equal screen time, extended by overlap for cross-fade

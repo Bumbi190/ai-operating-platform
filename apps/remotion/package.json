@@ -5,6 +5,8 @@
   "scripts": {
     "studio": "remotion studio",
     "render": "tsx src/render.ts",
+    "upload": "tsx src/upload.ts",
+    "render-and-upload": "tsx src/render.ts && tsx src/upload.ts",
     "build": "remotion bundle"
   },
   "dependencies": {

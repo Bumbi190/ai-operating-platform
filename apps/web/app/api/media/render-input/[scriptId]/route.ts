@@ -42,6 +42,7 @@ export async function GET(
 
   const renderInput = {
     scriptId: script.id,
+    projectId: script.project_id,   // used by apps/remotion/src/upload.ts
     hook: script.hook ?? '',
     audioUrl: script.audio_url,
     timingUrl: script.timing_url ?? '',

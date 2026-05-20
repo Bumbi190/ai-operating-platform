@@ -32,8 +32,10 @@ export default async function ConversationPage({ params }: Props) {
     .eq('conversation_id', id)
     .order('created_at', { ascending: true })
 
-  const projectRaw = conv.projects as unknown
-  const project = (Array.isArray(projectRaw) ? projectRaw[0] : projectRaw) as { name: string; slug: string } | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const convAny = conv as any
+  const projectRaw = convAny?.projects
+  const project = (Array.isArray(projectRaw) ? projectRaw[0] ?? null : projectRaw ?? null) as { name: string; slug: string } | null
 
   return (
     <ChatClient

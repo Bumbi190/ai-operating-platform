@@ -2,6 +2,7 @@ import React from 'react'
 import { AbsoluteFill, Audio, interpolate, Sequence, useCurrentFrame, useVideoConfig } from 'remotion' // eslint-disable-line @typescript-eslint/no-unused-vars
 import { BackgroundSlide } from '../components/BackgroundSlide'
 import { CaptionOverlay } from '../components/CaptionOverlay'
+import { Watermark } from '../components/Watermark'
 import type { VideoInputProps } from '../lib/types'
 
 const DEFAULT_HOOK_FRAMES = 135  // 4.5s at 30fps — overridden by hookDurationFrames prop
@@ -202,6 +203,9 @@ export function ShortFormVideo({
         words={words}
         accentColor={accentColor}
       />
+
+      {/* ── Layer 5: The Prompt watermark — bottom-right, fades in after hook ── */}
+      <Watermark fadeInFrame={hookDurationFrames} maxOpacity={0.55} />
 
     </AbsoluteFill>
   )

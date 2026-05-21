@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200" role="img" aria-label="The Prompt">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@800&amp;display=swap');
+    </style>
+  </defs>
+
+  <!-- Top rule lines -->
+  <line x1="24" y1="38" x2="776" y2="38" stroke="white" stroke-width="2.5"/>
+  <line x1="24" y1="44" x2="776" y2="44" stroke="white" stroke-width="0.8"/>
+
+  <!-- Wordmark -->
+  <text
+    x="400"
+    y="150"
+    text-anchor="middle"
+    dominant-baseline="auto"
+    font-family="'Barlow Condensed', 'Arial Narrow', Impact, 'Helvetica Neue Condensed', sans-serif"
+    font-weight="800"
+    font-size="118"
+    letter-spacing="8"
+    fill="white"
+  >THE PROMPT</text>
+
+  <!-- Bottom rule lines -->
+  <line x1="24" y1="162" x2="776" y2="162" stroke="white" stroke-width="0.8"/>
+  <line x1="24" y1="168" x2="776" y2="168" stroke="white" stroke-width="2.5"/>
+</svg>

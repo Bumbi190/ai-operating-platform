@@ -105,6 +105,24 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         </span>
       </div>
 
+      {/* The Prompt brand badge — shown when media project is active */}
+      {projects.some(p => p.slug === 'ai-media-automation') && (
+        <div className="px-4 py-2.5 border-b border-white/[0.06] shrink-0">
+          <div className="flex flex-col items-start gap-[3px]">
+            <div className="w-full h-[1.5px] bg-white/70" />
+            <div className="w-full h-[0.5px] bg-white/40" />
+            <span
+              style={{ letterSpacing: '0.18em' }}
+              className="text-[11px] font-black text-white/90 uppercase leading-none py-[3px]"
+            >
+              THE PROMPT
+            </span>
+            <div className="w-full h-[0.5px] bg-white/40" />
+            <div className="w-full h-[1.5px] bg-white/70" />
+          </div>
+        </div>
+      )}
+
       {/* Scrollable nav */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3 space-y-5">
         {/* Global */}

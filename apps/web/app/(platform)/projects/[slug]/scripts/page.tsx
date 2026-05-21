@@ -5,8 +5,9 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   FileText, CheckCircle, XCircle, RefreshCw,
-  ChevronDown, ChevronUp, Loader2, Image,
-  Play, Download, ExternalLink, Cloud,
+  ChevronDown, ChevronUp, Loader2, ImageIcon,
+  Play, Download, ExternalLink, Cloud, Search,
+  Pencil, Shuffle,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
 
@@ -301,6 +302,59 @@ function ScriptCard({ script, onUpdate }: {
     }
   }
 
+  // ── Re-generate image only (re-roll) ────────────────────────────────────────
+  async function rerollImage() {
+    if (isProcessing) return
+    setPipelineError(null)
+    setPipelineStep('images')
+    try {
+      const res = await fetch(`/api/media/scripts/${script.id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ what: 'image' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error ?? `Failed (${res.status})`)
+      }
+      setPipelineStep('done')
+      onUpdate()
+      setTimeout(() => setPipelineStep(null), 2500)
+    } catch (err) {
+      setPipelineError(err instanceof Error ? err.message : 'Okänt fel')
+      setPipelineStep(null)
+    }
+  }
+
+  // ── Re-generate script (new hook + body, keeps news item) ───────────────────
+  async function rewriteScript() {
+    if (isProcessing) return
+    setPipelineError(null)
+    setPipelineStep('voice')  // will auto-chain voice after rewrite
+    try {
+      const res = await fetch(`/api/media/scripts/${script.id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ what: 'script' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error ?? `Failed (${res.status})`)
+      }
+      // Script rewritten — now regenerate voice with new text
+      const updated = await res.json() as { script?: string }
+      if (updated.script) {
+        await runPipeline(script.id, updated.script)
+      } else {
+        onUpdate()
+        setPipelineStep(null)
+      }
+    } catch (err) {
+      setPipelineError(err instanceof Error ? err.message : 'Okänt fel')
+      setPipelineStep(null)
+    }
+  }
+
   const isProcessing = pipelineStep !== null && pipelineStep !== 'done'
 
   return (
@@ -531,7 +585,29 @@ function ScriptCard({ script, onUpdate }: {
               onClick={generateImages}
               className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
             >
-              <Image className="w-3 h-3" /> Generera bilder
+              <ImageIcon className="w-3 h-3" /> Generera bilder
+            </button>
+          )}
+
+          {/* Re-roll image (approved + has images) */}
+          {script.status === 'approved' && hasImages && !isProcessing && (
+            <button
+              onClick={rerollImage}
+              title="Generera ny bakgrundsbild"
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Shuffle className="w-3 h-3" /> Ny bild
+            </button>
+          )}
+
+          {/* Rewrite script (approved) */}
+          {script.status === 'approved' && !isProcessing && (
+            <button
+              onClick={rewriteScript}
+              title="Skriv om hook och manus med nytt vinkel"
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <Pencil className="w-3 h-3" /> Nytt manus
             </button>
           )}
 
@@ -593,6 +669,13 @@ export default function ScriptsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/projects/${slug}/news`}
+            className="inline-flex items-center gap-1.5 text-xs rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors"
+          >
+            <Search className="w-3.5 h-3.5" />
+            Hitta ny nyhet
+          </Link>
           <Link
             href={`/projects/${slug}/workflows`}
             className="inline-flex items-center gap-1.5 text-xs rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors"

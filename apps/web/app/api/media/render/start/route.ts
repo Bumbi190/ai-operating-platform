@@ -26,7 +26,10 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { scriptId } = await request.json() as { scriptId: string }
+  const { scriptId, composition = 'SimpleNewsReel' } = await request.json() as {
+    scriptId: string
+    composition?: 'ShortFormVideo' | 'SimpleNewsReel'
+  }
   if (!scriptId) return NextResponse.json({ error: 'scriptId required' }, { status: 400 })
 
   const db = createAdminClient()
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
   // ── Load script ──────────────────────────────────────────────────────────────
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url, composition')
     .eq('id', scriptId)
     .single()
 
@@ -65,9 +68,16 @@ export async function POST(request: Request) {
     .update({ video_status: 'rendering' })
     .eq('id', scriptId)
 
+  // Use composition from DB if not overridden in request
+  const resolvedComposition = (
+    composition ??
+    (script.composition as 'ShortFormVideo' | 'SimpleNewsReel' | null) ??
+    'SimpleNewsReel'
+  ) as 'ShortFormVideo' | 'SimpleNewsReel'
+
   // ── Start Lambda render ──────────────────────────────────────────────────────
   try {
-    const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps)
+    const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, resolvedComposition)
 
     await db
       .from('media_scripts')

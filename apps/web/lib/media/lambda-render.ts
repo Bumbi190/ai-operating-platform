@@ -38,6 +38,7 @@ function requireEnv(key: string): string {
 export async function startLambdaRender(
   scriptId: string,
   inputProps: VideoInputProps,
+  composition: 'ShortFormVideo' | 'SimpleNewsReel' = 'SimpleNewsReel',
 ): Promise<{ renderId: string; bucketName: string }> {
   const { renderMediaOnLambda } = await getLambdaClient()
 
@@ -49,7 +50,7 @@ export async function startLambdaRender(
     region:          region as Parameters<typeof renderMediaOnLambda>[0]['region'],
     functionName:    fnName,
     serveUrl,
-    composition:     'ShortFormVideo',
+    composition,
     inputProps,
     codec:           'h264',
     imageFormat:     'jpeg',

@@ -27,9 +27,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
-import { generateSceneImages } from '@/lib/media/ideogram'
+import { generateSceneImages, generateNewsImage } from '@/lib/media/ideogram'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { Anthropic } from '@anthropic-ai/sdk'
+
+// Pipeline modes:
+// 'lite'  — 1 image with headline baked in, SimpleNewsReel composition (~5× cheaper)
+// 'full'  — 5 cinematic scenes, ShortFormVideo composition
+type PipelineMode = 'lite' | 'full'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300  // 5 min — image generation can be slow
@@ -93,10 +98,15 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  const { text, project_id } = await request.json() as { text: string; project_id: string }
+  const { text, project_id, mode = 'lite' } = await request.json() as {
+    text: string
+    project_id: string
+    mode?: PipelineMode
+  }
   if (!text?.trim() || !project_id) {
     return new Response('text and project_id required', { status: 400 })
   }
+  const isLite = mode !== 'full'
 
   const db = createAdminClient()
   const claude = new Anthropic()
@@ -222,31 +232,56 @@ Angle: ${news.content_angle}`,
 
         emit({ step: 'voice_done', label: `Röst klar (${(voiceResult.durationMs / 1000).toFixed(1)}s)`, progress: 70 })
 
-        // ── Step 7: Generate scene images ────────────────────────────────────
-        emit({ step: 'images', label: 'Genererar scener (Ideogram)...', progress: 74 })
+        // ── Step 7: Generate image(s) ─────────────────────────────────────────
+        if (isLite) {
+          emit({ step: 'images', label: 'Genererar nyhetsbild med rubrik (Ideogram)...', progress: 74 })
+          const imageUrl = await generateNewsImage(news.title, script.script)
 
-        const sceneImages = await generateSceneImages(script.script, script.hook)
+          emit({ step: 'uploading_images', label: 'Laddar upp bild...', progress: 88 })
+          const storedUrl = await uploadSceneImage(project_id, scriptId, 0, imageUrl)
+          await db.from('media_scripts').update({
+            images: [storedUrl],
+            composition: 'SimpleNewsReel',
+          }).eq('id', scriptId)
 
-        // ── Step 8: Upload images ─────────────────────────────────────────────
-        emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
+          emit({
+            step: 'done',
+            label: 'Pipeline klar! 🎬',
+            progress: 100,
+            scriptId,
+            hook: script.hook,
+            renderInputUrl: `/api/media/render-input/${scriptId}`,
+            durationMs: voiceResult.durationMs,
+            imageCount: 1,
+            mode: 'lite',
+            composition: 'SimpleNewsReel',
+          })
+        } else {
+          emit({ step: 'images', label: 'Genererar 5 scener (Ideogram)...', progress: 74 })
+          const sceneImages = await generateSceneImages(script.script, script.hook)
 
-        const imageUrls = await Promise.all(
-          sceneImages.map((img, i) => uploadSceneImage(project_id, scriptId, i, img.url)),
-        )
+          emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
+          const imageUrls = await Promise.all(
+            sceneImages.map((img, i) => uploadSceneImage(project_id, scriptId, i, img.url)),
+          )
+          await db.from('media_scripts').update({
+            images: imageUrls,
+            composition: 'ShortFormVideo',
+          }).eq('id', scriptId)
 
-        await db.from('media_scripts').update({ images: imageUrls }).eq('id', scriptId)
-
-        // ── Done ──────────────────────────────────────────────────────────────
-        emit({
-          step: 'done',
-          label: 'Pipeline klar! 🎬',
-          progress: 100,
-          scriptId,
-          hook: script.hook,
-          renderInputUrl: `/api/media/render-input/${scriptId}`,
-          durationMs: voiceResult.durationMs,
-          imageCount: imageUrls.length,
-        })
+          emit({
+            step: 'done',
+            label: 'Pipeline klar! 🎬',
+            progress: 100,
+            scriptId,
+            hook: script.hook,
+            renderInputUrl: `/api/media/render-input/${scriptId}`,
+            durationMs: voiceResult.durationMs,
+            imageCount: imageUrls.length,
+            mode: 'full',
+            composition: 'ShortFormVideo',
+          })
+        }
 
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Okänt fel'

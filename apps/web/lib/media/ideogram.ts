@@ -48,6 +48,78 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
 }
 
 /**
+ * Generate a single editorial news image for SimpleNewsReel format.
+ *
+ * The image is designed to fill the entire 9:16 frame and includes:
+ * - A cinematic photorealistic background relevant to the news story
+ * - The headline text rendered IN the image (Ideogram DESIGN mode)
+ * - Dark overlays at top/bottom so captions and hook remain readable
+ *
+ * This is ~5× cheaper than generateSceneImages() (1 call vs 5).
+ */
+export async function generateNewsImage(
+  headline: string,
+  script: string,
+): Promise<string> {
+  const { Anthropic } = await import('@anthropic-ai/sdk')
+  const client = new Anthropic()
+
+  // Step 1: Claude writes a tight visual prompt for the news image
+  const res = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 400,
+    messages: [{
+      role: 'user',
+      content: `You are a news photo director. Given this AI news headline and script, write a single Ideogram image generation prompt.
+
+HEADLINE: "${headline}"
+SCRIPT EXCERPT: "${script.slice(0, 300)}"
+
+Rules:
+- Describe ONE cinematic, photorealistic background scene that represents the news story
+- Physical, tangible subject — NO abstract "neural networks", "glowing orbs", "digital brains"
+- Vertical 9:16 format — favor tall subjects with depth
+- Dark, dramatic lighting — image will have text overlaid on it
+- Include the exact headline text in quotes at the bottom of the prompt so Ideogram renders it
+
+Output ONLY the prompt string, nothing else. Start directly with the visual description.
+End with: Include bold white text at bottom center: "${headline}"`,
+    }],
+  })
+
+  const visualPrompt = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+
+  // Step 2: Generate with Ideogram DESIGN mode — best text rendering
+  const apiKey = process.env.IDEOGRAM_API_KEY
+  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+
+  const ideogramRes = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+    method: 'POST',
+    headers: {
+      'Api-Key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: visualPrompt,
+      aspect_ratio: '9x16',
+      style_type: 'DESIGN',          // Best for text rendering in images
+      rendering_speed: 'DEFAULT',
+      negative_prompt: 'blurry, low quality, distorted, watermark, logo, cartoon, anime, people, face, hands, crowd',
+    }),
+  })
+
+  if (!ideogramRes.ok) {
+    const err = await ideogramRes.text()
+    throw new Error(`Ideogram API error ${ideogramRes.status}: ${err}`)
+  }
+
+  const data = await ideogramRes.json() as { data: Array<{ url: string }> }
+  const url = data.data?.[0]?.url
+  if (!url) throw new Error('Ideogram returned no image URL')
+  return url
+}
+
+/**
  * Given a video script, use Claude to generate 5 cinematic scene prompts,
  * then generate images for each scene using Ideogram v3.
  *

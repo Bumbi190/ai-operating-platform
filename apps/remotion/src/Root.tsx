@@ -1,6 +1,7 @@
 import React from 'react'
 import { Composition } from 'remotion'
 import { ShortFormVideo } from './compositions/ShortFormVideo'
+import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -17,19 +18,36 @@ const defaultProps: VideoInputProps = {
 
 export function RemotionRoot() {
   return (
-    <Composition
-      id="ShortFormVideo"
-      component={ShortFormVideo}
-      durationInFrames={Math.ceil((defaultProps.durationMs / 1000) * 30)}
-      fps={30}
-      width={1080}
-      height={1920}
-      defaultProps={defaultProps}
-      calculateMetadata={async ({ props }) => {
-        // Dynamic duration based on actual audio length
-        const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30 // +1s buffer
-        return { durationInFrames, props }
-      }}
-    />
+    <>
+      {/* Full cinematic version — 5 scenes, Ken Burns, scene transitions */}
+      <Composition
+        id="ShortFormVideo"
+        component={ShortFormVideo}
+        durationInFrames={Math.ceil((defaultProps.durationMs / 1000) * 30)}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={defaultProps}
+        calculateMetadata={async ({ props }) => {
+          const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
+          return { durationInFrames, props }
+        }}
+      />
+
+      {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}
+      <Composition
+        id="SimpleNewsReel"
+        component={SimpleNewsReel}
+        durationInFrames={Math.ceil((defaultProps.durationMs / 1000) * 30)}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={defaultProps}
+        calculateMetadata={async ({ props }) => {
+          const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
+          return { durationInFrames, props }
+        }}
+      />
+    </>
   )
 }

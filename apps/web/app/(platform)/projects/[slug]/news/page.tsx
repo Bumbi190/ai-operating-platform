@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { TrendingUp, CheckCircle, XCircle, Newspaper, ExternalLink, FileText, RefreshCw } from 'lucide-react'
 import type { MediaNewsItem } from '@/lib/media/types'
+import { NewsHunter } from '@/components/platform/NewsHunter'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new:      { label: 'Ny',         color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
@@ -101,6 +102,17 @@ export default function NewsPage() {
           </button>
         </div>
       </div>
+
+      {/* News Hunter */}
+      {projectId && (
+        <NewsHunter
+          projectId={projectId}
+          onSelectStory={() => {
+            // Reload news list after pipeline completes
+            setTimeout(() => load(), 2000)
+          }}
+        />
+      )}
 
       {/* Filter tabs */}
       <div className="flex gap-1">

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
+import { DreamStatus } from '@/components/platform/DreamStatus'
 import type { RunStatus } from '@/lib/supabase/types'
 import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -167,6 +168,9 @@ export default async function ProjectPage({
           </div>
         )}
       </section>
+
+      {/* Dream Cycle */}
+      <DreamStatus slug={slug} />
     </div>
   )
 }

@@ -110,6 +110,37 @@ export async function POST(request: Request) {
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
+/**
+ * Bygger memory-kontext som injiceras i agentens system_prompt.
+ * Dream-insikter (key: dream_*) separeras från vanliga projektminnen
+ * för tydlighet och prioritering.
+ */
+async function buildMemoryContext(db: AdminClient, projectId: string): Promise<string> {
+  const { data: memories } = await db
+    .from('memories')
+    .select('key, value')
+    .eq('project_id', projectId)
+    .order('updated_at', { ascending: false })
+    .limit(30)
+
+  if (!memories || memories.length === 0) return ''
+
+  const dreamInsights = memories.filter(m => m.key.startsWith('dream_'))
+  const regularMemories = memories.filter(m => !m.key.startsWith('dream_'))
+
+  const parts: string[] = []
+
+  if (regularMemories.length > 0) {
+    parts.push(`\nProjektminne:\n${regularMemories.map(m => `${m.key}: ${m.value}`).join('\n')}`)
+  }
+
+  if (dreamInsights.length > 0) {
+    parts.push(`\nInsikter från tidigare körningar:\n${dreamInsights.map(m => `• ${m.value}`).join('\n')}`)
+  }
+
+  return parts.join('')
+}
+
 async function executeWorkflow(
   db: AdminClient,
   runId: string,
@@ -119,6 +150,9 @@ async function executeWorkflow(
 ) {
   const context: Record<string, string> = { ...initialInput }
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
+
+  // Hämta projektminnen en gång per körning — delas av alla steg
+  const memoryContext = await buildMemoryContext(db, projectId)
 
   try {
     for (const step of sortedSteps) {
@@ -132,6 +166,11 @@ async function executeWorkflow(
 
       const userMessage = interpolate(step.input_template, context)
 
+      // Injicera projektminnen och dream-insikter i system_prompt
+      const enrichedSystemPrompt = memoryContext
+        ? `${agent.system_prompt}${memoryContext}`
+        : agent.system_prompt
+
       await db.from('run_logs').insert({
         run_id: runId,
         step_order: step.order,
@@ -141,7 +180,7 @@ async function executeWorkflow(
       })
 
       const result = await runStep({
-        systemPrompt: agent.system_prompt,
+        systemPrompt: enrichedSystemPrompt,
         userMessage,
         model: agent.model,
         maxTokens: (agent.config as { max_tokens?: number })?.max_tokens ?? 4000,

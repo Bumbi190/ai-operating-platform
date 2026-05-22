@@ -10,6 +10,7 @@
     "build": "remotion bundle"
   },
   "dependencies": {
+    "@remotion/lambda": "^4.0.464",
     "@remotion/media-utils": "4.0.290",
     "remotion": "4.0.290"
   },

@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   FileText, CheckCircle, XCircle, RefreshCw,
-  ChevronDown, ChevronUp, Loader2, ImageIcon,
-  Play, Download, ExternalLink, Cloud, Search,
-  Pencil, Shuffle, Send,
+  ChevronDown, ChevronUp, Loader2, Image,
+  Play, Download, ExternalLink, Cloud,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
 
@@ -27,7 +26,7 @@ const VIDEO_STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 // ─── Pipeline step indicator ─────────────────────────────────────────────────
 
-type PipelineStep = 'voice' | 'images' | 'music' | 'done' | null
+type PipelineStep = 'voice' | 'images' | 'done' | null
 
 function PipelineProgress({ step }: { step: PipelineStep }) {
   if (!step) return null
@@ -35,11 +34,10 @@ function PipelineProgress({ step }: { step: PipelineStep }) {
   const steps = [
     { id: 'voice',  label: 'Genererar röst (Victoria)' },
     { id: 'images', label: 'Genererar scener (Ideogram)' },
-    { id: 'music',  label: '🎵 Genererar musik' },
     { id: 'done',   label: 'Redo för rendering' },
   ]
 
-  const currentIndex = step === 'done' ? steps.length - 1 : steps.findIndex(s => s.id === step)
+  const currentIndex = step === 'done' ? 2 : steps.findIndex(s => s.id === step)
 
   return (
     <div className="border-t border-border px-5 py-3 bg-indigo-500/5">
@@ -189,14 +187,11 @@ function ScriptCard({ script, onUpdate }: {
   const [pipelineStep, setPipelineStep]   = useState<PipelineStep>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
   const [liveVideoUrl, setLiveVideoUrl]   = useState<string | null>(null)
-  const [publishing, setPublishing]       = useState(false)
-  const [publishLabel, setPublishLabel]   = useState<string | null>(null)
-  const [publishUrl, setPublishUrl]       = useState<string | null>(null)
 
   const statusCfg      = STATUS_LABELS[script.status]
   const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none']
   const hasImages      = Array.isArray(script.images) && script.images.length > 0
-  const hasVideo       = !!(liveVideoUrl ?? (script.video_status === 'ready' && script.video_url))
+  const hasVideo       = script.video_status === 'ready' && !!script.video_url
   const isRenderReady  = script.voice_status === 'ready' && hasImages
 
   // ── Auto-chain: voice → images ───────────────────────────────────────────
@@ -225,20 +220,9 @@ function ScriptCard({ script, onUpdate }: {
         throw new Error(err.error ?? `Image gen failed (${imgRes.status})`)
       }
 
-      setPipelineStep('music')
-      const musicRes = await fetch('/api/media/music/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId }),
-      })
-      if (!musicRes.ok) {
-        // Music failure is non-fatal — log and continue without music
-        console.warn('[pipeline] Music generation failed, continuing without music')
-      }
-
       setPipelineStep('done')
       onUpdate()
-      setTimeout(() => { setPipelineStep(null) }, 2500)
+      setTimeout(() => { setPipelineStep(null); setShowRender(true) }, 2500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       setPipelineError(msg)
@@ -284,122 +268,13 @@ function ScriptCard({ script, onUpdate }: {
         const err = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(err.error ?? `Failed (${res.status})`)
       }
-
-      setPipelineStep('music')
-      const musicRes = await fetch('/api/media/music/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId: script.id }),
-      })
-      if (!musicRes.ok) {
-        console.warn('[pipeline] Music generation failed, continuing without music')
-      }
-
       setPipelineStep('done')
       onUpdate()
-      setTimeout(() => { setPipelineStep(null) }, 2500)
+      setTimeout(() => { setPipelineStep(null); setShowRender(true) }, 2500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Okänt fel'
       setPipelineError(msg)
       setPipelineStep(null)
-    }
-  }
-
-  // ── Re-generate image only (re-roll) ────────────────────────────────────────
-  async function rerollImage() {
-    if (isProcessing) return
-    setPipelineError(null)
-    setPipelineStep('images')
-    try {
-      const res = await fetch(`/api/media/scripts/${script.id}/regenerate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ what: 'image' }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(err.error ?? `Failed (${res.status})`)
-      }
-      setPipelineStep('done')
-      onUpdate()
-      setTimeout(() => setPipelineStep(null), 2500)
-    } catch (err) {
-      setPipelineError(err instanceof Error ? err.message : 'Okänt fel')
-      setPipelineStep(null)
-    }
-  }
-
-  // ── Re-generate script (new hook + body, keeps news item) ───────────────────
-  async function rewriteScript() {
-    if (isProcessing) return
-    setPipelineError(null)
-    setPipelineStep('voice')  // will auto-chain voice after rewrite
-    try {
-      const res = await fetch(`/api/media/scripts/${script.id}/regenerate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ what: 'script' }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string }
-        throw new Error(err.error ?? `Failed (${res.status})`)
-      }
-      // Script rewritten — now regenerate voice with new text
-      const updated = await res.json() as { script?: string }
-      if (updated.script) {
-        await runPipeline(script.id, updated.script)
-      } else {
-        onUpdate()
-        setPipelineStep(null)
-      }
-    } catch (err) {
-      setPipelineError(err instanceof Error ? err.message : 'Okänt fel')
-      setPipelineStep(null)
-    }
-  }
-
-  // ── Publish to Instagram ─────────────────────────────────────────────────────
-  async function publishToInstagram() {
-    if (publishing) return
-    setPublishing(true)
-    setPublishLabel('Förbereder publicering...')
-    setPublishUrl(null)
-    try {
-      const res = await fetch('/api/media/publish/instagram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId: script.id }),
-      })
-      if (!res.ok || !res.body) throw new Error('Failed to start publish')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue
-          try {
-            const ev = JSON.parse(line.slice(5).trim())
-            if (ev.step === 'error') throw new Error(ev.message)
-            if (ev.label) setPublishLabel(ev.label)
-            if (ev.step === 'done') {
-              setPublishUrl(ev.permalink ?? null)
-              onUpdate()
-            }
-          } catch (e) {
-            if (e instanceof Error) setPublishLabel(`Fel: ${e.message}`)
-          }
-        }
-      }
-    } catch (err) {
-      setPublishLabel(err instanceof Error ? `Fel: ${err.message}` : 'Okänt fel')
-    } finally {
-      setPublishing(false)
     }
   }
 
@@ -469,32 +344,29 @@ function ScriptCard({ script, onUpdate }: {
       <PipelineProgress step={pipelineStep} />
 
       {/* ── Video player ── */}
-      {hasVideo && expanded && (() => {
-        const videoUrl = (liveVideoUrl ?? script.video_url)!
-        return (
-          <div className="border-t border-border p-5 bg-black/40">
-            <p className="text-xs font-medium text-muted-foreground mb-3">Renderad video</p>
-            <VideoPlayer url={videoUrl} />
-            <div className="mt-3 flex gap-2">
-              <a
-                href={videoUrl}
-                download
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-              >
-                <Download className="w-3 h-3" /> Ladda ned MP4
-              </a>
-              <a
-                href={videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" /> Öppna i ny flik
-              </a>
-            </div>
+      {hasVideo && expanded && (
+        <div className="border-t border-border p-5 bg-black/40">
+          <p className="text-xs font-medium text-muted-foreground mb-3">Renderad video</p>
+          <VideoPlayer url={script.video_url!} />
+          <div className="mt-3 flex gap-2">
+            <a
+              href={script.video_url!}
+              download
+              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+            >
+              <Download className="w-3 h-3" /> Ladda ned MP4
+            </a>
+            <a
+              href={script.video_url!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" /> Öppna i ny flik
+            </a>
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {/* ── Expanded content ── */}
       {expanded && (
@@ -560,12 +432,20 @@ function ScriptCard({ script, onUpdate }: {
             </div>
           )}
 
-          {/* Cloud render */}
+          {/* Render instructions */}
           {isRenderReady && !hasVideo && (
-            <CloudRenderBlock
-              scriptId={script.id}
-              onReady={(url) => { setLiveVideoUrl(url); onUpdate() }}
-            />
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-muted-foreground">Pipeline ✅ redo för rendering</p>
+                <button
+                  onClick={() => setShowRender(r => !r)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {showRender ? 'Dölj' : 'Visa instruktioner'}
+                </button>
+              </div>
+              {showRender && <RenderInstructions scriptId={script.id} />}
+            </div>
           )}
         </div>
       )}
@@ -591,6 +471,18 @@ function ScriptCard({ script, onUpdate }: {
             </button>
           )}
 
+          {/* Render-input download — always accessible when ready */}
+          {isRenderReady && (
+            <a
+              href={`/api/media/render-input/${script.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="Ladda ned render-input.json"
+            >
+              <Download className="w-3 h-3" /> render-input.json
+            </a>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -633,29 +525,7 @@ function ScriptCard({ script, onUpdate }: {
               onClick={generateImages}
               className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
             >
-              <ImageIcon className="w-3 h-3" /> Generera bilder
-            </button>
-          )}
-
-          {/* Re-roll image (approved + has images) */}
-          {script.status === 'approved' && hasImages && !isProcessing && (
-            <button
-              onClick={rerollImage}
-              title="Generera ny bakgrundsbild"
-              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <Shuffle className="w-3 h-3" /> Ny bild
-            </button>
-          )}
-
-          {/* Rewrite script (approved) */}
-          {script.status === 'approved' && !isProcessing && (
-            <button
-              onClick={rewriteScript}
-              title="Skriv om hook och manus med nytt vinkel"
-              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <Pencil className="w-3 h-3" /> Nytt manus
+              <Image className="w-3 h-3" /> Generera bilder
             </button>
           )}
 
@@ -664,31 +534,6 @@ function ScriptCard({ script, onUpdate }: {
             <span className="inline-flex items-center gap-1 text-xs text-indigo-400">
               <Loader2 className="w-3 h-3 animate-spin" /> Bearbetar...
             </span>
-          )}
-
-          {/* Publish to Instagram */}
-          {script.status === 'approved' && (script.video_status === 'ready') && !isProcessing && (
-            publishUrl ? (
-              <a
-                href={publishUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" /> Se på Instagram
-              </a>
-            ) : publishing ? (
-              <span className="inline-flex items-center gap-1 text-xs text-pink-400">
-                <Loader2 className="w-3 h-3 animate-spin" /> {publishLabel ?? 'Publicerar...'}
-              </span>
-            ) : script.status !== 'published' ? (
-              <button
-                onClick={publishToInstagram}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
-              >
-                <Send className="w-3 h-3" /> Posta på Instagram
-              </button>
-            ) : null
           )}
         </div>
       </div>
@@ -704,11 +549,9 @@ export default function ScriptsPage() {
   const [scripts, setScripts] = useState<(MediaScript & {
     media_news_items?: { title: string; virality_score: number } | null
   })[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [filter, setFilter]           = useState<string>('all')
-  const [projectId, setProjectId]     = useState<string | null>(null)
-  const [introRunning, setIntroRunning] = useState(false)
-  const [introLabel, setIntroLabel]   = useState<string | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [filter, setFilter]       = useState<string>('all')
+  const [projectId, setProjectId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/projects/by-slug/${slug}`)
@@ -731,42 +574,6 @@ export default function ScriptsPage() {
 
   useEffect(() => { load() }, [load])
 
-  async function runIntro() {
-    if (!projectId || introRunning) return
-    setIntroRunning(true)
-    setIntroLabel('Startar intro-pipeline...')
-    try {
-      const res = await fetch('/api/media/pipeline/intro', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId }),
-      })
-      if (!res.ok || !res.body) throw new Error('Failed to start')
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n'); buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue
-          try {
-            const ev = JSON.parse(line.slice(5).trim())
-            if (ev.label) setIntroLabel(ev.label)
-            if (ev.step === 'done') { load(); setTimeout(() => { setIntroLabel(null); setIntroRunning(false) }, 3000) }
-            if (ev.step === 'error') throw new Error(ev.message)
-          } catch (e) { if (e instanceof Error) setIntroLabel(`Fel: ${e.message}`) }
-        }
-      }
-    } catch (err) {
-      setIntroLabel(err instanceof Error ? `Fel: ${err.message}` : 'Okänt fel')
-    } finally {
-      setIntroRunning(false)
-    }
-  }
-
   const filters = ['all', 'pending_review', 'approved', 'published', 'rejected']
 
   return (
@@ -780,26 +587,6 @@ export default function ScriptsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {introLabel && (
-            <span className="text-xs text-indigo-400 flex items-center gap-1">
-              <Loader2 className="w-3 h-3 animate-spin" /> {introLabel}
-            </span>
-          )}
-          <button
-            onClick={runIntro}
-            disabled={introRunning || !projectId}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 px-3 py-1.5 hover:bg-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {introRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-            Intro-video
-          </button>
-          <Link
-            href={`/projects/${slug}/news`}
-            className="inline-flex items-center gap-1.5 text-xs rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors"
-          >
-            <Search className="w-3.5 h-3.5" />
-            Hitta ny nyhet
-          </Link>
           <Link
             href={`/projects/${slug}/workflows`}
             className="inline-flex items-center gap-1.5 text-xs rounded-md border border-border bg-card px-3 py-1.5 hover:bg-accent transition-colors"

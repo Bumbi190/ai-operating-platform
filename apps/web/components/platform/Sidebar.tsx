@@ -20,6 +20,7 @@ import {
   CalendarDays,
   ShieldCheck,
   Brain,
+  Lightbulb,
   Radio,
   Newspaper,
   FileText,
@@ -50,6 +51,7 @@ const globalNav = [
   { href: '/manager',    label: 'Mission Control',  icon: Brain,        primary: true },
   { href: '/chat',       label: 'Chatt',            icon: MessageSquare },
   { href: '/approvals',  label: 'Godkännanden',     icon: ShieldCheck },
+  { href: '/memory',     label: 'Memory',           icon: Lightbulb },
   { href: '/costs',      label: 'Kostnader',        icon: DollarSign },
   { href: '/planning',   label: 'Planering',        icon: CalendarDays },
 ]

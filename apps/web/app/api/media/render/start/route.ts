@@ -65,22 +65,19 @@ export async function POST(request: Request) {
     backgroundMusicUrl: undefined,  // fetched separately once DB schema is migrated
   })
 
-  // ── Mark as queued ───────────────────────────────────────────────────────────
-  await db
-    .from('media_scripts')
-    .update({ video_status: 'rendering' })
-    .eq('id', scriptId)
-
   // Use composition from request body (CloudRenderBlock sends it), fall back to SimpleNewsReel
   const resolvedComposition = (composition ?? 'SimpleNewsReel') as 'ShortFormVideo' | 'SimpleNewsReel'
 
   // ── Start Lambda render ──────────────────────────────────────────────────────
+  // IMPORTANT: We set video_status='rendering' ONLY after successfully getting
+  // a renderId. This prevents the script getting stuck in 'rendering' if Lambda
+  // call times out or throws before returning.
   try {
     const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, resolvedComposition)
 
     await db
       .from('media_scripts')
-      .update({ render_id: renderId, render_bucket: bucketName })
+      .update({ video_status: 'rendering', render_id: renderId, render_bucket: bucketName })
       .eq('id', scriptId)
 
     return NextResponse.json({ renderId, bucketName })

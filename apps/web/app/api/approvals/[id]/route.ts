@@ -1,11 +1,14 @@
 /**
  * PATCH /api/approvals/[id]  — approve, reject, or revise an approval
  * GET   /api/approvals/[id]  — get a single approval with full content
+ *
+ * On PATCH: also saves content_feedback for memory learning.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { saveFeedback } from '@/lib/ai/memory/feedback-store'
 
 export async function GET(
   _req: NextRequest,
@@ -52,6 +55,14 @@ export async function PATCH(
   }
 
   const db = createAdminClient()
+
+  // Fetch the approval to get project_id, output_key, content for feedback
+  const { data: existing } = await db
+    .from('approvals')
+    .select('id, project_id, output_key, content, run_id')
+    .eq('id', params.id)
+    .single()
+
   const { data, error } = await db
     .from('approvals')
     .update({
@@ -64,6 +75,26 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
+  if (existing?.project_id) {
+    try {
+      await saveFeedback({
+        projectId:       existing.project_id,
+        approvalId:      params.id,
+        outputType:      existing.output_key ?? 'unknown',
+        decision:        action as 'approved' | 'rejected' | 'revised',
+        rejectionReason: action !== 'approved' ? reviewer_notes : undefined,
+        revisionNotes:   action === 'revised'  ? reviewer_notes : undefined,
+        contentExcerpt:  typeof existing.content === 'string'
+          ? existing.content.slice(0, 300)
+          : undefined,
+      })
+    } catch (feedbackErr) {
+      // Log but don't fail — approval already saved
+      console.error('[approvals] feedback save failed:', feedbackErr)
+    }
+  }
 
   return NextResponse.json({ approval: data })
 }

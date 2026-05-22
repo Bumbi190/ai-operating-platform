@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle2, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { CheckCircle2, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Loader2, Zap, AlertTriangle, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 
@@ -22,6 +22,20 @@ interface Approval {
   } | null
 }
 
+interface EvalResult {
+  overallScore: number
+  slopScore: number
+  brandAlignment: number | null
+  specificity: number
+  pacingQuality: number
+  hookStrength: number | null
+  passed: boolean
+  slopPhrases: string[]
+  hardFails: string[]
+  issues: { dimension: string; detail: string }[]
+  suggestion: string | null
+}
+
 const STATUS_CONFIG = {
   pending:  { label: 'Väntar',     color: 'text-amber-400',  bg: 'border-amber-400/20 bg-amber-400/5',  icon: Clock },
   approved: { label: 'Godkänd',    color: 'text-green-400',  bg: 'border-green-400/20 bg-green-400/5',  icon: CheckCircle2 },
@@ -33,6 +47,8 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   const [expanded, setExpanded] = useState(approval.status === 'pending')
   const [notes, setNotes] = useState(approval.reviewer_notes ?? '')
   const [loading, setLoading] = useState<string | null>(null)
+  const [evalResult, setEvalResult] = useState<EvalResult | null>(null)
+  const [evalLoading, setEvalLoading] = useState(false)
   const router = useRouter()
 
   const cfg = STATUS_CONFIG[approval.status]
@@ -48,6 +64,37 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
       })
     : null
+
+  // Auto-evaluate when card is expanded and it's a text-based content type
+  useEffect(() => {
+    if (!expanded || evalResult || evalLoading) return
+    const textTypes = ['script', 'hook', 'caption', 'text']
+    const isTextContent = textTypes.some(t => approval.output_key?.includes(t)) ||
+      (approval.content && approval.content.length > 50 && !approval.content.startsWith('{'))
+
+    if (!isTextContent) return
+
+    setEvalLoading(true)
+    fetch('/api/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: approval.content,
+        contentType: approval.output_key?.includes('hook') ? 'hook'
+          : approval.output_key?.includes('caption') ? 'caption'
+          : 'text',
+        projectId: approval.runs?.id ? undefined : undefined,  // project_id fetched server-side
+        deepScore: false,
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.result) setEvalResult(data.result)
+      })
+      .catch(() => { /* silent fail — eval is additive */ })
+      .finally(() => setEvalLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded])
 
   // Preview: first 200 chars, strip markdown
   const preview = approval.content
@@ -113,6 +160,78 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
             </pre>
           </div>
 
+          {/* Evaluation Scores */}
+          {(evalLoading || evalResult) && (
+            <div className="border-t border-border/50 px-4 py-3 bg-muted/10">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400">
+                  Evaluation
+                </span>
+                {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+              </div>
+
+              {evalResult && (
+                <div className="space-y-2">
+                  {/* Score pills */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <ScorePill label="Overall" score={evalResult.overallScore} />
+                    <ScorePill label="Slop" score={10 - evalResult.slopScore} />
+                    {evalResult.brandAlignment !== null && (
+                      <ScorePill label="Brand" score={evalResult.brandAlignment} />
+                    )}
+                    <ScorePill label="Specificity" score={evalResult.specificity} />
+                    <ScorePill label="Pacing" score={evalResult.pacingQuality} />
+                    {evalResult.hookStrength !== null && (
+                      <ScorePill label="Hook" score={evalResult.hookStrength} />
+                    )}
+                  </div>
+
+                  {/* Pass/fail badge */}
+                  <div className="flex items-center gap-1.5">
+                    {evalResult.passed ? (
+                      <span className="text-[10px] text-green-400 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Passed auto-evaluation
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Flagged — review carefully
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Top issues */}
+                  {evalResult.issues.length > 0 && (
+                    <div className="space-y-0.5">
+                      {evalResult.issues.slice(0, 3).map((issue, i) => (
+                        <p key={i} className="text-[10px] text-muted-foreground/70">
+                          <span className="font-medium capitalize">{issue.dimension}:</span> {issue.detail}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Suggestion */}
+                  {evalResult.suggestion && (
+                    <p className="text-[10px] text-indigo-300/70 italic">
+                      💡 {evalResult.suggestion}
+                    </p>
+                  )}
+
+                  {/* Hard fails */}
+                  {evalResult.hardFails.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-red-400">
+                      <ShieldAlert className="w-3 h-3 shrink-0" />
+                      <p className="text-[10px]">
+                        Hard fails: {evalResult.hardFails.slice(0, 3).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Reviewer notes (existing) */}
           {approval.reviewer_notes && !isPending && (
             <div className="px-4 py-2 border-t border-border/50 bg-muted/20">
@@ -165,6 +284,20 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         </div>
       )}
     </div>
+  )
+}
+
+function ScorePill({ label, score }: { label: string; score: number }) {
+  const display = Math.round(score * 10) / 10
+  const color =
+    score >= 7.5 ? 'text-green-400 bg-green-400/10 border-green-400/20' :
+    score >= 5.0 ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
+                  'text-red-400 bg-red-400/10 border-red-400/20'
+
+  return (
+    <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border font-medium', color)}>
+      {label}: {display}
+    </span>
   )
 }
 

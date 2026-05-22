@@ -49,6 +49,80 @@ export interface HunterResult {
   claudeSummary: string
 }
 
+// ─── Trusted domains whitelist ────────────────────────────────────────────────
+// Only stories whose URL matches one of these domains are included.
+// RSS feeds are already curated so they bypass this check.
+// Add new domains here as the brand grows.
+
+const TRUSTED_DOMAINS = new Set([
+  // AI labs — primary sources
+  'openai.com',
+  'anthropic.com',
+  'deepmind.google',
+  'deepmind.com',
+  'blog.google',
+  'research.google',
+  'ai.google',
+  'meta.ai',
+  'mistral.ai',
+  'huggingface.co',
+  'together.ai',
+  'cohere.com',
+  'stability.ai',
+  'inflection.ai',
+  'xai.com',
+  'groq.com',
+
+  // Tech press — editorial, fact-checked
+  'theverge.com',
+  'wired.com',
+  'techcrunch.com',
+  'technologyreview.com',
+  'arstechnica.com',
+  'venturebeat.com',
+  'zdnet.com',
+  'cnet.com',
+  'engadget.com',
+  'theregister.com',
+
+  // General news with strong tech desks
+  'reuters.com',
+  'bloomberg.com',
+  'ft.com',
+  'bbc.com',
+  'bbc.co.uk',
+  'nytimes.com',
+  'wsj.com',
+  'theguardian.com',
+  'apnews.com',
+
+  // Academic / research
+  'arxiv.org',
+  'nature.com',
+  'science.org',
+  'dl.acm.org',
+  'proceedings.mlr.press',
+
+  // HN self-posts and Reddit discussions are OK (no external URL required)
+  'news.ycombinator.com',
+  'reddit.com',
+])
+
+function isDomainTrusted(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '')
+    // Check exact match or subdomain match
+    if (TRUSTED_DOMAINS.has(hostname)) return true
+    // Check if any trusted domain is a suffix (e.g. blog.openai.com → openai.com)
+    for (const domain of TRUSTED_DOMAINS) {
+      if (hostname.endsWith(`.${domain}`)) return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 // ─── Source weights (how authoritative each source is) ────────────────────────
 
 const SOURCE_WEIGHTS: Record<string, number> = {
@@ -164,6 +238,7 @@ async function fetchHackerNews(): Promise<RawStory[]> {
       for (const hit of data.hits) {
         const storyUrl = hit.url ?? `https://news.ycombinator.com/item?id=${hit.objectID}`
         if (seenUrls.has(storyUrl)) continue
+        if (!isDomainTrusted(storyUrl)) continue  // only trusted sources
         seenUrls.add(storyUrl)
 
         allHits.push({
@@ -206,7 +281,12 @@ async function fetchReddit(subreddit: string): Promise<RawStory[]> {
     }
 
     return data.data.children
-      .filter(c => !c.data.stickied && c.data.score > 20)
+      .filter(c => {
+        if (c.data.stickied || c.data.score <= 20) return false
+        // Self-posts (reddit.com URLs) are always OK — link posts must be trusted
+        if (c.data.is_self) return true
+        return isDomainTrusted(c.data.url)
+      })
       .map(c => ({
         title:           c.data.title,
         url:             c.data.is_self

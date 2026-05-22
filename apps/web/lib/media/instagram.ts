@@ -165,9 +165,11 @@ export async function postReelToInstagram(
 // ─── Caption builder ──────────────────────────────────────────────────────────
 
 export function buildInstagramCaption(opts: {
-  hook:      string
-  cta?:      string
-  hashtags?: string[]
+  hook:        string
+  cta?:        string
+  hashtags?:   string[]
+  sourceUrl?:  string
+  sourceName?: string
 }): string {
   const parts: string[] = []
 
@@ -176,6 +178,14 @@ export function buildInstagramCaption(opts: {
   if (opts.cta) {
     parts.push('')
     parts.push(opts.cta)
+  }
+
+  // Source attribution — transparent journalism, no GDPR issues (public URL)
+  if (opts.sourceUrl) {
+    parts.push('')
+    const label = opts.sourceName ? `📰 Source: ${opts.sourceName}` : '📰 Source'
+    parts.push(`${label}`)
+    parts.push(opts.sourceUrl)
   }
 
   parts.push('')

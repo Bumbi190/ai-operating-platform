@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   // Load script
   const { data: script, error } = await db
     .from('media_scripts')
-    .select('id, hook, script, cta, hashtags, video_url, video_status, status')
+    .select('id, hook, script, cta, hashtags, video_url, video_status, status, media_news_items(url, source_name)')
     .eq('id', scriptId)
     .single()
 
@@ -57,11 +57,17 @@ export async function POST(request: Request) {
       const emit = (payload: Record<string, unknown>) => sseEvent(controller, payload)
 
       try {
-        // Build caption
+        // Build caption with source attribution
+        const newsItem = Array.isArray(script.media_news_items)
+          ? script.media_news_items[0]
+          : script.media_news_items
+
         const caption = buildInstagramCaption({
-          hook:     script.hook ?? '',
-          cta:      script.cta ?? undefined,
-          hashtags: Array.isArray(script.hashtags) ? script.hashtags as string[] : [],
+          hook:        script.hook ?? '',
+          cta:         script.cta ?? undefined,
+          hashtags:    Array.isArray(script.hashtags) ? script.hashtags as string[] : [],
+          sourceUrl:   newsItem?.url ?? undefined,
+          sourceName:  newsItem?.source_name ?? undefined,
         })
 
         // Post to Instagram with live progress

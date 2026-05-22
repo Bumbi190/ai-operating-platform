@@ -79,6 +79,13 @@ Script rules:
 - NO "In this video" / "Make sure to subscribe" / generic openers
 - End with a memorable insight or open question — not a CTA
 
+FACTUAL INTEGRITY — non-negotiable:
+- Rewrite everything in your own words. Never copy sentences from the source.
+- Preserve ALL facts exactly: numbers, percentages, names, dates, company names, model names.
+- If a detail is unclear or missing from the source, OMIT it — never guess or extrapolate.
+- Do not add opinions, predictions, or conclusions that aren't in the source material.
+- Do not exaggerate or sensationalize. If the source says "may", you say "may".
+
 Return ONLY valid JSON (no markdown fences):
 {
   "hook": "...",

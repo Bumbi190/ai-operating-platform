@@ -7,7 +7,7 @@ import {
   FileText, CheckCircle, XCircle, RefreshCw,
   ChevronDown, ChevronUp, Loader2, ImageIcon,
   Play, Download, ExternalLink, Cloud, Search,
-  Pencil, Shuffle,
+  Pencil, Shuffle, Send,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
 
@@ -189,6 +189,9 @@ function ScriptCard({ script, onUpdate }: {
   const [pipelineStep, setPipelineStep]   = useState<PipelineStep>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
   const [liveVideoUrl, setLiveVideoUrl]   = useState<string | null>(null)
+  const [publishing, setPublishing]       = useState(false)
+  const [publishLabel, setPublishLabel]   = useState<string | null>(null)
+  const [publishUrl, setPublishUrl]       = useState<string | null>(null)
 
   const statusCfg      = STATUS_LABELS[script.status]
   const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none']
@@ -352,6 +355,51 @@ function ScriptCard({ script, onUpdate }: {
     } catch (err) {
       setPipelineError(err instanceof Error ? err.message : 'Okänt fel')
       setPipelineStep(null)
+    }
+  }
+
+  // ── Publish to Instagram ─────────────────────────────────────────────────────
+  async function publishToInstagram() {
+    if (publishing) return
+    setPublishing(true)
+    setPublishLabel('Förbereder publicering...')
+    setPublishUrl(null)
+    try {
+      const res = await fetch('/api/media/publish/instagram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptId: script.id }),
+      })
+      if (!res.ok || !res.body) throw new Error('Failed to start publish')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          try {
+            const ev = JSON.parse(line.slice(5).trim())
+            if (ev.step === 'error') throw new Error(ev.message)
+            if (ev.label) setPublishLabel(ev.label)
+            if (ev.step === 'done') {
+              setPublishUrl(ev.permalink ?? null)
+              onUpdate()
+            }
+          } catch (e) {
+            if (e instanceof Error) setPublishLabel(`Fel: ${e.message}`)
+          }
+        }
+      }
+    } catch (err) {
+      setPublishLabel(err instanceof Error ? `Fel: ${err.message}` : 'Okänt fel')
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -616,6 +664,31 @@ function ScriptCard({ script, onUpdate }: {
             <span className="inline-flex items-center gap-1 text-xs text-indigo-400">
               <Loader2 className="w-3 h-3 animate-spin" /> Bearbetar...
             </span>
+          )}
+
+          {/* Publish to Instagram */}
+          {script.status === 'approved' && (script.video_status === 'ready') && !isProcessing && (
+            publishUrl ? (
+              <a
+                href={publishUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" /> Se på Instagram
+              </a>
+            ) : publishing ? (
+              <span className="inline-flex items-center gap-1 text-xs text-pink-400">
+                <Loader2 className="w-3 h-3 animate-spin" /> {publishLabel ?? 'Publicerar...'}
+              </span>
+            ) : script.status !== 'published' ? (
+              <button
+                onClick={publishToInstagram}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
+              >
+                <Send className="w-3 h-3" /> Posta på Instagram
+              </button>
+            ) : null
           )}
         </div>
       </div>

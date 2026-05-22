@@ -35,14 +35,17 @@ export async function POST(request: Request) {
   const db = createAdminClient()
 
   // ── Load script ──────────────────────────────────────────────────────────────
+  // Note: 'composition' column is excluded here — it may not exist in older DB schemas.
+  // We resolve the composition from the request body (defaulting to 'SimpleNewsReel').
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url, composition')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url')
     .eq('id', scriptId)
     .single()
 
   if (scriptError || !script) {
-    return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+    console.error('[render/start] script lookup failed:', scriptError?.message)
+    return NextResponse.json({ error: scriptError?.message ?? 'Script not found' }, { status: 404 })
   }
   if (!script.audio_url || !script.timing_url) {
     return NextResponse.json({ error: 'Voice not ready yet' }, { status: 400 })
@@ -68,12 +71,8 @@ export async function POST(request: Request) {
     .update({ video_status: 'rendering' })
     .eq('id', scriptId)
 
-  // Use composition from DB if not overridden in request
-  const resolvedComposition = (
-    composition ??
-    (script.composition as 'ShortFormVideo' | 'SimpleNewsReel' | null) ??
-    'SimpleNewsReel'
-  ) as 'ShortFormVideo' | 'SimpleNewsReel'
+  // Use composition from request body (CloudRenderBlock sends it), fall back to SimpleNewsReel
+  const resolvedComposition = (composition ?? 'SimpleNewsReel') as 'ShortFormVideo' | 'SimpleNewsReel'
 
   // ── Start Lambda render ──────────────────────────────────────────────────────
   try {

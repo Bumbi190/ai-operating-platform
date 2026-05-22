@@ -35,11 +35,11 @@ export async function POST(request: Request) {
   const db = createAdminClient()
 
   // ── Load script ──────────────────────────────────────────────────────────────
-  // Note: 'composition' column is excluded here — it may not exist in older DB schemas.
-  // We resolve the composition from the request body (defaulting to 'SimpleNewsReel').
+  // Note: newer columns (composition, background_music_url, instagram_*) are excluded here
+  // to maintain compatibility with older DB schemas that may not have them yet.
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status, background_music_url')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status')
     .eq('id', scriptId)
     .single()
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     durationMs:         script.duration_ms ?? 60000,
     images:             Array.isArray(script.images) ? script.images : [],
     accentColor:        '#6366f1',
-    backgroundMusicUrl: script.background_music_url ?? undefined,
+    backgroundMusicUrl: undefined,  // fetched separately once DB schema is migrated
   })
 
   // ── Mark as queued ───────────────────────────────────────────────────────────

@@ -46,6 +46,21 @@ function sseEvent(controller: ReadableStreamDefaultController, payload: Record<s
   controller.enqueue(new TextEncoder().encode(line))
 }
 
+// Retry wrapper for transient Anthropic 529 overloaded errors
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4, baseDelayMs = 3000): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      const isOverloaded = msg.includes('overloaded') || msg.includes('529')
+      if (!isOverloaded || i === attempts - 1) throw err
+      await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, i)))
+    }
+  }
+  throw new Error('Max retries exceeded')
+}
+
 // ─── Agent prompts ────────────────────────────────────────────────────────────
 
 const NEWS_SYSTEM = `You are an AI media analyst. Given a news article or description, extract structured metadata for short-form video production.
@@ -126,12 +141,12 @@ export async function POST(request: Request) {
         // ── Step 1: Analyze article ──────────────────────────────────────────
         emit({ step: 'analyzing', label: 'Analyserar artikel...', progress: 5 })
 
-        const newsRes = await claude.messages.create({
+        const newsRes = await withRetry(() => claude.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 800,
           system: NEWS_SYSTEM,
           messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${text}` }],
-        })
+        }))
         const newsRaw = newsRes.content[0].type === 'text' ? newsRes.content[0].text : ''
         const newsClean = newsRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         const news = JSON.parse(newsClean) as NewsHunterOutput
@@ -160,7 +175,7 @@ export async function POST(request: Request) {
         // ── Step 3: Write script ─────────────────────────────────────────────
         emit({ step: 'scripting', label: 'Skriver manus...', progress: 30 })
 
-        const scriptRes = await claude.messages.create({
+        const scriptRes = await withRetry(() => claude.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 2000,
           system: SCRIPT_SYSTEM,
@@ -175,7 +190,7 @@ Virality score: ${news.virality_score}/100
 Audience: ${news.target_audience}
 Angle: ${news.content_angle}`,
           }],
-        })
+        }))
         const scriptRaw = scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : ''
         const scriptClean = scriptRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
         const script = JSON.parse(scriptClean) as ScriptWriterOutput

@@ -21,6 +21,21 @@ function sseEvent(controller: ReadableStreamDefaultController, payload: Record<s
   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`))
 }
 
+// Retry wrapper for transient Anthropic 529 overloaded errors
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4, baseDelayMs = 3000): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      const isOverloaded = msg.includes('overloaded') || msg.includes('529')
+      if (!isOverloaded || i === attempts - 1) throw err
+      await new Promise(r => setTimeout(r, baseDelayMs * Math.pow(2, i)))
+    }
+  }
+  throw new Error('Max retries exceeded')
+}
+
 // ─── The Prompt intro script ──────────────────────────────────────────────────
 // Written to be read by Victoria in ~55 seconds. Warm, confident, editorial.
 
@@ -111,7 +126,7 @@ export async function POST(request: Request) {
         emit({ step: 'image', label: 'Generating brand launch image...', progress: 60 })
 
         // Custom prompt for intro: dark, editorial, brand launch feel
-        const imgPromptRes = await claude.messages.create({
+        const imgPromptRes = await withRetry(() => claude.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 300,
           messages: [{
@@ -124,7 +139,7 @@ Must include at bottom: Include bold white text at bottom center: "THE PROMPT"
 
 Output ONLY the prompt string.`,
           }],
-        })
+        }))
 
         const visualPrompt = imgPromptRes.content[0].type === 'text'
           ? imgPromptRes.content[0].text.trim()

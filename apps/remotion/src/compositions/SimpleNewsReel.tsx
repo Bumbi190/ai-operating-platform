@@ -15,6 +15,7 @@ import type { VideoInputProps } from '../lib/types'
 const DEFAULT_HOOK_FRAMES = 135  // 4.5s at 30fps
 const HOOK_FADE_IN_F      = 15
 const HOOK_FADE_OUT_F     = 12
+const OUTRO_FRAMES        = 75   // 2.5s branded logo end-card
 
 /**
  * HookOverlay — bold opening statement for first ~4s.
@@ -138,6 +139,52 @@ function ImageBackground({ imageUrl }: { imageUrl?: string }) {
 }
 
 /**
+ * LogoOutro — 2.5-second branded end-card (shared with ShortFormVideo).
+ */
+function LogoOutro({ durationFrames }: { durationFrames: number }) {
+  const frame = useCurrentFrame()
+
+  const bgOpacity = interpolate(frame, [0, 18], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+  const contentOpacity = interpolate(frame, [12, 32], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+  const scale = interpolate(frame, [12, 32], [0.92, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+  const fadeOut = interpolate(
+    frame,
+    [durationFrames - 10, durationFrames],
+    [1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
+  const opacity = contentOpacity * fadeOut
+
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ backgroundColor: `rgba(4,4,8,${bgOpacity})` }} />
+      <AbsoluteFill style={{ flexDirection: 'column', justifyContent: 'center', alignItems: 'center', opacity, transform: `scale(${scale})` }}>
+        <div style={{ width: 220, marginBottom: 16 }}>
+          <div style={{ height: 3, background: 'white', borderRadius: 2, marginBottom: 3 }} />
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.6)', borderRadius: 1 }} />
+        </div>
+        <p style={{ margin: 0, fontSize: 64, fontWeight: 800, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif', color: '#ffffff', letterSpacing: '0.20em', lineHeight: 1, textTransform: 'uppercase', whiteSpace: 'nowrap', textShadow: '0 0 40px rgba(255,255,255,0.15)' }}>
+          THE PROMPT
+        </p>
+        <div style={{ width: 220, marginTop: 16 }}>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.6)', borderRadius: 1, marginBottom: 3 }} />
+          <div style={{ height: 3, background: 'white', borderRadius: 2 }} />
+        </div>
+        <p style={{ margin: 0, marginTop: 24, fontSize: 22, fontWeight: 400, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif', color: 'rgba(255,255,255,0.55)', letterSpacing: '0.10em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+          AI news. Daily. No fluff.
+        </p>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  )
+}
+
+/**
  * SimpleNewsReel — single-image 9:16 short-form composition for The Prompt.
  *
  * Layer order (bottom → top):
@@ -196,6 +243,11 @@ export function SimpleNewsReel({
 
       {/* ── Layer 6: The Prompt watermark ── */}
       <Watermark fadeInFrame={hookDurationFrames} maxOpacity={0.55} />
+
+      {/* ── Layer 7: Logo outro — last 2.5s ── */}
+      <Sequence from={durationInFrames - OUTRO_FRAMES} durationInFrames={OUTRO_FRAMES}>
+        <LogoOutro durationFrames={OUTRO_FRAMES} />
+      </Sequence>
 
     </AbsoluteFill>
   )

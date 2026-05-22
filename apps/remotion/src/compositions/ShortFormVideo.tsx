@@ -9,6 +9,7 @@ const DEFAULT_HOOK_FRAMES = 135  // 4.5s at 30fps — overridden by hookDuration
 const HOOK_FADE_IN_F      = 15   // frames
 const HOOK_FADE_OUT_F     = 12   // frames
 const SCENE_OVERLAP_F     = 20   // cross-fade overlap between scenes
+const OUTRO_FRAMES        = 75   // 2.5s branded logo end-card
 
 /**
  * HookOverlay — bold opening statement, first HOOK_DURATION_S seconds.
@@ -113,6 +114,106 @@ function GradientBackground({ accentColor }: { accentColor: string }) {
 }
 
 /**
+ * LogoOutro — 2.5-second branded end-card.
+ *
+ * Fades in over a solid black background. Shows THE PROMPT wordmark
+ * with double editorial rules above/below, plus the tagline.
+ * Sits as the very last layer so it always plays at the end of every video.
+ */
+function LogoOutro({ durationFrames }: { durationFrames: number }) {
+  const frame = useCurrentFrame()
+
+  // Background fades to black over first 18 frames
+  const bgOpacity = interpolate(frame, [0, 18], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+
+  // Content fades in after bg is mostly settled
+  const contentOpacity = interpolate(frame, [12, 32], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+
+  // Subtle scale-up on content entry
+  const scale = interpolate(frame, [12, 32], [0.92, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+
+  // Fade out in final 10 frames
+  const fadeOut = interpolate(
+    frame,
+    [durationFrames - 10, durationFrames],
+    [1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
+
+  const opacity = contentOpacity * fadeOut
+
+  return (
+    <AbsoluteFill>
+      {/* Solid black background */}
+      <AbsoluteFill style={{ backgroundColor: `rgba(4,4,8,${bgOpacity})` }} />
+
+      {/* Centered brand mark */}
+      <AbsoluteFill
+        style={{
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          opacity,
+          transform: `scale(${scale})`,
+        }}
+      >
+        {/* Double rule — top */}
+        <div style={{ width: 220, marginBottom: 16 }}>
+          <div style={{ height: 3, background: 'white', borderRadius: 2, marginBottom: 3 }} />
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.6)', borderRadius: 1 }} />
+        </div>
+
+        {/* Wordmark */}
+        <p style={{
+          margin: 0,
+          fontSize: 64,
+          fontWeight: 800,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
+          color: '#ffffff',
+          letterSpacing: '0.20em',
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          textShadow: '0 0 40px rgba(255,255,255,0.15)',
+        }}>
+          THE PROMPT
+        </p>
+
+        {/* Double rule — bottom */}
+        <div style={{ width: 220, marginTop: 16 }}>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.6)', borderRadius: 1, marginBottom: 3 }} />
+          <div style={{ height: 3, background: 'white', borderRadius: 2 }} />
+        </div>
+
+        {/* Tagline */}
+        <p style={{
+          margin: 0,
+          marginTop: 24,
+          fontSize: 22,
+          fontWeight: 400,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
+          color: 'rgba(255,255,255,0.55)',
+          letterSpacing: '0.10em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        }}>
+          AI news. Daily. No fluff.
+        </p>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  )
+}
+
+/**
  * ShortFormVideo — premium 9:16 short-form composition.
  *
  * Layer order (bottom → top):
@@ -206,6 +307,11 @@ export function ShortFormVideo({
 
       {/* ── Layer 5: The Prompt watermark — bottom-right, fades in after hook ── */}
       <Watermark fadeInFrame={hookDurationFrames} maxOpacity={0.55} />
+
+      {/* ── Layer 6: Logo outro — last 2.5s, fades to black then shows brand mark ── */}
+      <Sequence from={durationInFrames - OUTRO_FRAMES} durationInFrames={OUTRO_FRAMES}>
+        <LogoOutro durationFrames={OUTRO_FRAMES} />
+      </Sequence>
 
     </AbsoluteFill>
   )

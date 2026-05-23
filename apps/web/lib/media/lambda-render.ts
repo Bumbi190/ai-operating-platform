@@ -55,8 +55,8 @@ export async function startLambdaRender(
     codec:           'h264',
     imageFormat:     'jpeg',
     jpegQuality:     90,
-    maxRetries:      1,
-    framesPerLambda: 60,
+    maxRetries:      3,
+    framesPerLambda: 1000, // keeps concurrent Lambda invocations at 2–3 (account limit is 10)
     privacy:         'public',       // output MP4 is publicly readable on S3
     outName:         `${scriptId}.mp4`,
     logLevel:        'warn',

@@ -11,19 +11,17 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 
 export const dynamic = 'force-dynamic'
 
+// No auth required — renderId is a secure random UUID that acts as the access token.
+// The render status itself contains no sensitive user data.
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ renderId: string }> },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { renderId } = await params
   const url          = new URL(request.url)

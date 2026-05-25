@@ -233,12 +233,11 @@ export function SimpleNewsReel({
         <HookOverlay text={hook} durationFrames={hookDurationFrames} />
       </Sequence>
 
-      {/* ── Layer 5: Captions — global frame ── */}
+      {/* ── Layer 5: Captions — starts immediately alongside hook ── */}
       <CaptionOverlay
         captions={captions}
         words={words}
         accentColor={accentColor}
-        hideBeforeFrame={hookDurationFrames}
       />
 
       {/* ── Layer 6: The Prompt watermark ── */}

@@ -20,7 +20,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
 
 export const dynamic    = 'force-dynamic'
-export const maxDuration = 90
+export const maxDuration = 180  // 3 parallel Ideogram calls can take up to 2min
 
 const SCRIPT_SYSTEM = `You are a short-form video scriptwriter specializing in premium AI documentary content for TikTok and Instagram Reels.
 
@@ -126,20 +126,22 @@ Write a new script that covers the same story but from a different entry point o
     })
   }
 
-  // ── Regenerate image ─────────────────────────────────────────────────────────
+  // ── Regenerate images (3 distinct scenes) ───────────────────────────────────
   if (what === 'image' || what === 'both') {
-    const { generateNewsImage } = await import('@/lib/media/ideogram')
-    const { uploadSceneImage }  = await import('@/lib/media/storage')
+    const { generateNewsImages } = await import('@/lib/media/ideogram')
+    const { uploadSceneImage }   = await import('@/lib/media/storage')
 
     const headline = String(updates.hook ?? script.hook ?? '')
     const text     = String(updates.script ?? script.script ?? '')
 
-    const imageUrl   = await generateNewsImage(headline, text)
-    const storedUrl  = await uploadSceneImage(script.project_id, id, 0, imageUrl)
+    const imageUrls  = await generateNewsImages(headline, text, 3)
+    const storedUrls = await Promise.all(
+      imageUrls.map((url, i) => uploadSceneImage(script.project_id, id, i, url)),
+    )
 
-    updates.images      = [storedUrl]
-    updates.composition = 'SimpleNewsReel'
-    // Clear video since image changed
+    updates.images        = storedUrls
+    updates.composition   = 'SimpleNewsReel'
+    // Clear video since images changed
     updates.video_status  = 'none'
     updates.video_url     = null
     updates.render_id     = null

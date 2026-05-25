@@ -27,7 +27,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
-import { generateSceneImages, generateNewsImage } from '@/lib/media/ideogram'
+import { generateSceneImages, generateNewsImages } from '@/lib/media/ideogram'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 
@@ -86,36 +86,41 @@ const SCRIPT_SYSTEM = `You are a short-form video scriptwriter for "The Prompt" 
 Style: Bloomberg QuickTake meets Wired Magazine. Factual, fast, trustworthy. Zero hype, zero fluff.
 Voice: Victoria (warm, authoritative, conversational). Write for how she speaks — punchy sentences, natural rhythm.
 
-═══ HOOK — the most critical line ═══
-The hook is the FIRST sentence Victoria speaks. It becomes the first caption on screen.
-It must create immediate tension, curiosity, or industry-impact framing within 15 words.
+═══ HOOK — the single most important line ═══
+The hook is the FIRST sentence Victoria speaks. It is also the first caption on screen.
+It must create immediate tension, curiosity, or high-stakes framing within 12–15 words.
+The viewer decides in 1.5 seconds whether to keep watching. The hook is everything.
 
-STRONG hooks (use these patterns):
-- Tension: "OpenAI just made a move that could seriously affect software engineers."
-- Surprise: "Most developers missed what Anthropic quietly released this week."
-- Stakes: "This AI update may render an entire category of dev tools obsolete."
-- Specificity: "Google just gave its AI access to something it never had before."
-- Consequence: "A major AI lab just laid off its safety team. Here's what that means."
+APPROVED hook patterns (pick the one that fits the story best):
+- Tension:      "OpenAI just made a move that could seriously affect software engineers."
+- Surprise:     "Most developers completely missed what Anthropic quietly released this week."
+- Stakes:       "This single AI update may make an entire category of dev tools obsolete."
+- Specificity:  "Google just gave its AI access to something it has never had before."
+- Consequence:  "A major AI lab just disbanded its safety team. Here is what that means."
+- Inversion:    "The model everyone dismissed just outperformed GPT-4 on every benchmark."
+- Revelation:   "There is a number buried in this report that the AI industry does not want you to see."
 
-WEAK hooks (never write these):
-- "AI is changing the world." — too vague
-- "Artificial intelligence continues to..." — too generic
-- "In today's video..." — forbidden
+FORBIDDEN hooks (will be rejected):
+- "AI is changing the world." — vague non-statement
+- "Artificial intelligence continues to..." — passive, generic
+- "In today's video..." — explicitly banned
 - "You won't believe..." — clickbait
+- "Every day, AI..." — brand copy, not news
+- Any hook longer than 16 words
 
 ═══ SCRIPT BODY ═══
 - 3–5 short paragraphs, each landing ONE clear idea
-- Total: 45–70 seconds at natural speaking pace (≈120 words per minute)
-- Short sentences. Maximum 2 clauses per sentence.
+- Total: 45–65 seconds at natural speaking pace (≈120 words per minute)
+- Short sentences. Maximum 2 clauses per sentence. No run-ons.
 - No jargon without immediate plain-English explanation
-- End on an insight or open question — never a CTA
+- End on a memorable insight or open question — never a CTA
 
 ═══ FACTUAL INTEGRITY — non-negotiable ═══
-- Rewrite in your own words. Never copy source sentences.
-- Preserve ALL specifics: numbers, percentages, names, dates, model names.
-- OMIT any detail not in the source — never guess or extrapolate.
-- If the source says "may" or "could", you say "may" or "could".
-- No editorializing beyond what the source supports.
+- Rewrite in your own words. Never copy source sentences verbatim.
+- Preserve ALL specifics: numbers, percentages, names, dates, model versions.
+- OMIT any detail not explicitly in the source — never guess or extrapolate.
+- If the source says "may" or "could", Victoria says "may" or "could."
+- No editorializing beyond what the source directly supports.
 
 Return ONLY valid JSON (no markdown fences):
 {
@@ -272,13 +277,15 @@ Angle: ${news.content_angle}`,
 
         // ── Step 7: Generate image(s) ─────────────────────────────────────────
         if (isLite) {
-          emit({ step: 'images', label: 'Genererar nyhetsbild med rubrik (Ideogram)...', progress: 74 })
-          const imageUrl = await generateNewsImage(news.title, script.script)
+          emit({ step: 'images', label: 'Genererar 3 scenbilder (Ideogram)...', progress: 74 })
+          const imageUrls3 = await generateNewsImages(news.title, script.script, 3)
 
-          emit({ step: 'uploading_images', label: 'Laddar upp bild...', progress: 88 })
-          const storedUrl = await uploadSceneImage(project_id, scriptId, 0, imageUrl)
+          emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
+          const storedUrls3 = await Promise.all(
+            imageUrls3.map((url, i) => uploadSceneImage(project_id, scriptId, i, url)),
+          )
           await db.from('media_scripts').update({
-            images: [storedUrl],
+            images: storedUrls3,
             composition: 'SimpleNewsReel',
           }).eq('id', scriptId)
 
@@ -290,7 +297,7 @@ Angle: ${news.content_angle}`,
             hook: script.hook,
             renderInputUrl: `/api/media/render-input/${scriptId}`,
             durationMs: voiceResult.durationMs,
-            imageCount: 1,
+            imageCount: storedUrls3.length,
             mode: 'lite',
             composition: 'SimpleNewsReel',
           })

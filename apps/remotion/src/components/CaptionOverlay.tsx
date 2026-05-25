@@ -6,18 +6,18 @@ interface Props {
   captions: CaptionGroup[]
   words?: WordTiming[]
   accentColor?: string
-  /** @deprecated — no longer used, captions start from frame 0 */
+  /** @deprecated — captions start from frame 0 */
   hideBeforeFrame?: number
 }
 
-const FADE_FRAMES = 10  // slightly slower fade = more editorial, less karaoke
+const FADE_FRAMES = 12  // slightly slower fade = editorial calm
 
 /**
- * Warm documentary amber — used for the currently-spoken word.
- * Subtle enough to feel editorial, distinct enough to track.
+ * Warm documentary amber — softer than pure yellow.
+ * Closer to Bloomberg/Apple documentary palette.
  */
-const HIGHLIGHT_COLOR = '#F5C842'
-const HIGHLIGHT_GLOW  = 'rgba(245, 200, 66, 0.25)'
+const HIGHLIGHT_COLOR = '#E8B93A'
+const HIGHLIGHT_GLOW  = 'rgba(232, 185, 58, 0.20)'
 
 function normalizeWord(w: string): string {
   return w.toLowerCase().replace(/[^a-z0-9']/g, '')
@@ -26,13 +26,13 @@ function normalizeWord(w: string): string {
 /**
  * CaptionOverlay — premium editorial word-tracking captions.
  *
- * Design principles (Bloomberg QuickTake / documentary style):
- * - Clean, minimal glass panel — barely there, highly readable
- * - Active word: warm amber, very subtle glow — not a spotlight
- * - No borders on glass — cleaner, more integrated with image
- * - Generous line-height — editorial breathing room
- * - Slower fade (10 frames) — calm transitions, not jumpy
- * - Positioned in lower third, generous padding from edge
+ * Design (Bloomberg QuickTake / Apple documentary):
+ * - Lighter glass panel — 50% opacity, barely there
+ * - Active word: warm amber, very subtle glow
+ * - No border — clean integration with the image
+ * - 1.40 line-height — editorial breathing room
+ * - Calm fade (12 frames) — never jumpy
+ * - Generous lower-third placement
  */
 export function CaptionOverlay({ captions, words = [] }: Props) {
   const frame = useCurrentFrame()
@@ -45,7 +45,7 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
   const activeWord = words.find(w => frameMs >= w.startMs && frameMs <= w.endMs)
   const activeWordNorm = activeWord ? normalizeWord(activeWord.word) : null
 
-  // Slow, calm fade — editorial not animated
+  // Calm editorial fade
   const opacity = interpolate(
     frame,
     [
@@ -58,11 +58,11 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
-  // Minimal upward slide — barely perceptible, just adds polish
+  // Barely perceptible upward settle
   const translateY = interpolate(
     frame,
     [active.startFrame, active.startFrame + FADE_FRAMES],
-    [6, 0],
+    [5, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
@@ -73,7 +73,7 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
       style={{
         justifyContent: 'flex-end',
         alignItems: 'center',
-        paddingBottom: 180,  // generous bottom spacing
+        paddingBottom: 200,
         paddingLeft: 44,
         paddingRight: 44,
       }}
@@ -86,31 +86,30 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
           maxWidth: 820,
         }}
       >
-        {/* Minimal glass panel — more subtle than before */}
+        {/* Lighter glass panel — integrated, not heavy */}
         <div
           style={{
             display: 'inline-block',
-            background: 'rgba(2, 2, 6, 0.58)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
+            background: 'rgba(2, 2, 6, 0.50)',
+            backdropFilter: 'blur(22px)',
+            WebkitBackdropFilter: 'blur(22px)',
             borderRadius: 14,
-            // No border — cleaner, more integrated with image
-            paddingTop: 18,
+            paddingTop: 16,
             paddingBottom: 20,
-            paddingLeft: 30,
-            paddingRight: 30,
+            paddingLeft: 28,
+            paddingRight: 28,
           }}
         >
           <p
             style={{
               margin: 0,
-              fontSize: 50,
-              fontWeight: 650,
+              fontSize: 48,
+              fontWeight: 640,
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
-              lineHeight: 1.38,  // editorial breathing room
+              lineHeight: 1.40,
               letterSpacing: '-0.3px',
-              textShadow: '0 1px 8px rgba(0,0,0,0.5)',  // subtle only
+              textShadow: '0 1px 6px rgba(0,0,0,0.45)',
             }}
           >
             {tokens.map((token, i) => {
@@ -124,12 +123,11 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
                 <span
                   key={i}
                   style={{
-                    color: isActive ? HIGHLIGHT_COLOR : 'rgba(255, 255, 255, 0.92)',
+                    color: isActive ? HIGHLIGHT_COLOR : 'rgba(255, 255, 255, 0.90)',
                     textShadow: isActive
-                      ? `0 0 18px ${HIGHLIGHT_GLOW}, 0 1px 8px rgba(0,0,0,0.5)`
-                      : '0 1px 8px rgba(0,0,0,0.5)',
+                      ? `0 0 16px ${HIGHLIGHT_GLOW}, 0 1px 6px rgba(0,0,0,0.45)`
+                      : '0 1px 6px rgba(0,0,0,0.45)',
                     display: 'inline',
-                    // Subtle weight boost on active word only
                     fontWeight: isActive ? 700 : 600,
                   }}
                 >

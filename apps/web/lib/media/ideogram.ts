@@ -142,6 +142,73 @@ Output ONLY the final prompt string. No explanation.`,
 }
 
 /**
+ * Generate 3 visually distinct editorial images for a news video.
+ *
+ * Uses Claude Haiku to write distinct photojournalism prompts, then
+ * generates all images in parallel with Ideogram REALISTIC mode.
+ *
+ * Each image shows a different physical environment to create scene progression:
+ * opening → development → closing visual narrative.
+ */
+export async function generateNewsImages(
+  headline: string,
+  script: string,
+  count: number = 3,
+): Promise<string[]> {
+  const { Anthropic } = await import('@anthropic-ai/sdk')
+  const client = new Anthropic()
+
+  const res = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 800,
+    messages: [{
+      role: 'user',
+      content: `You are a photojournalism director for a premium AI news channel. Generate ${count} VISUALLY DISTINCT image prompts for a vertical news video.
+
+HEADLINE: "${headline}"
+SCRIPT: "${script.slice(0, 600)}"
+
+REQUIREMENTS:
+- Each prompt must show a COMPLETELY DIFFERENT physical environment or subject
+- Together they form a visual arc: establishing shot → close detail → atmospheric close
+- All must feel like real Reuters/Bloomberg editorial photography
+- Vertical 9:16 format, dark and dramatic (text will overlay)
+- NO people, faces, hands, text, logos, abstract AI art, glowing orbs
+
+VARY the environments — pick ${count} distinct ones from this vocabulary:
+• Dense server rack corridor, twin rows of rack units, blue emergency LEDs, deep perspective
+• Extreme macro: NVIDIA GPU die surface, industrial lighting, black background, ultra-sharp
+• Semiconductor cleanroom interior, yellow safelight, industrial precision photography
+• Developer workstation at 2am, multiple monitors with terminal windows, dark desk, monitor glow
+• Silicon wafer on clean surface, polarized light rainbow diffraction, macro photography
+• Data center cooling pipes, condensation, industrial blue-green lighting, vertical crop
+• Overhead bird's-eye: organized cable paths, GPU cluster, real facility
+• Empty modern tech office at dusk, city lights through floor-to-ceiling glass, dark interior
+• Fiber optic cable cross-section, circular glowing points, pure black background, scientific macro
+• Circuit board close-up, copper traces, warm golden sidelighting, extreme shallow depth of field
+
+Return ONLY a JSON array of ${count} prompt strings, no markdown fences:
+["prompt1", "prompt2", "prompt3"]`,
+    }],
+  })
+
+  const text = res.content[0].type === 'text' ? res.content[0].text.trim() : '[]'
+  const match = text.match(/\[[\s\S]*\]/)  // greedy — captures the full array
+  const prompts = match ? JSON.parse(match[0]) as string[] : []
+
+  if (prompts.length === 0) throw new Error('generateNewsImages: no prompts returned from Claude')
+
+  // Generate all images in parallel
+  console.log(`🎨 Generating ${prompts.length} scene images in parallel...`)
+  return Promise.all(
+    prompts.map(async (prompt, i) => {
+      console.log(`  Scene ${i + 1}: ${prompt.slice(0, 70)}...`)
+      return generateIdeogramImage(prompt)
+    }),
+  )
+}
+
+/**
  * Given a video script, use Claude to generate 5 cinematic scene prompts,
  * then generate images for each scene using Ideogram v3.
  *

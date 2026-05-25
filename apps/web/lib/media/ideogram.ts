@@ -50,10 +50,9 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
 /**
  * Generate a single editorial news image for SimpleNewsReel format.
  *
- * The image is designed to fill the entire 9:16 frame and includes:
- * - A cinematic photorealistic background relevant to the news story
- * - The headline text rendered IN the image (Ideogram DESIGN mode)
- * - Dark overlays at top/bottom so captions and hook remain readable
+ * Uses Claude to write a tight photojournalism prompt grounded in the
+ * actual news story, then generates with Ideogram REALISTIC mode.
+ * No text is rendered in the image — Remotion overlays all text.
  *
  * This is ~5× cheaper than generateSceneImages() (1 call vs 5).
  */
@@ -64,32 +63,39 @@ export async function generateNewsImage(
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic()
 
-  // Step 1: Claude writes a tight visual prompt for the news image
+  // Step 1: Claude writes a tight photojournalism prompt grounded in the news story
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 350,
     messages: [{
       role: 'user',
-      content: `You are a news photo director. Given this AI news headline and script, write a single Ideogram image generation prompt.
+      content: `You are a photojournalism director for a premium AI news channel (think Bloomberg, BBC News, Reuters).
+
+Given this news story, write ONE Ideogram image generation prompt for a vertical 9:16 news thumbnail.
 
 HEADLINE: "${headline}"
-SCRIPT EXCERPT: "${script.slice(0, 300)}"
+SCRIPT: "${script.slice(0, 600)}"
 
-Rules:
-- Describe ONE cinematic, photorealistic background scene that represents the news story
-- Physical, tangible subject — NO abstract "neural networks", "glowing orbs", "digital brains"
-- Vertical 9:16 format — favor tall subjects with depth
-- Dark, dramatic lighting — image will have text overlaid on it
-- Include the exact headline text in quotes at the bottom of the prompt so Ideogram renders it
+RULES:
+- Pick the SINGLE most iconic physical object, location, or moment from this specific news story
+- If it's about a company (e.g. OpenAI, Google, Apple): headquarters building exterior, product hardware close-up, or server room
+- If it's about a product launch: the physical product or interface on a real screen
+- If it's about regulation/government: government building, courtroom, official documents close-up
+- If it's about research: laboratory equipment, printed research paper, scientist's workspace
+- Photorealistic, editorial photography style — NOT concept art, NOT abstract AI visuals
+- Dark/moody dramatic lighting so text overlay remains readable
+- Vertical composition, no people or faces, no text in image
 
-Output ONLY the prompt string, nothing else. Start directly with the visual description.
-End with: Include bold white text at bottom center: "${headline}"`,
+BAD examples (forbidden): "glowing neural network", "AI brain visualization", "abstract data streams", "futuristic hologram"
+GOOD examples: "close-up of NVIDIA H100 GPU chip on dark surface, dramatic side lighting", "Google DeepMind London headquarters glass facade at dusk, dramatic clouds", "OpenAI office entrance sign in San Francisco financial district, blue hour lighting"
+
+Output ONLY the prompt. No explanation, no preamble.`,
     }],
   })
 
   const visualPrompt = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
 
-  // Step 2: Generate with Ideogram DESIGN mode — best text rendering
+  // Step 2: Generate with REALISTIC mode — photojournalism aesthetic
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
@@ -102,9 +108,9 @@ End with: Include bold white text at bottom center: "${headline}"`,
     body: JSON.stringify({
       prompt: visualPrompt,
       aspect_ratio: '9x16',
-      style_type: 'DESIGN',          // Best for text rendering in images
+      style_type: 'REALISTIC',
       rendering_speed: 'DEFAULT',
-      negative_prompt: 'blurry, low quality, distorted, watermark, logo, cartoon, anime, people, face, hands, crowd',
+      negative_prompt: 'text, words, letters, watermark, logo, people, person, face, hands, crowd, cartoon, anime, abstract, digital art, glowing orbs, neural network visualization, blurry, low quality, distorted, CGI render, science fiction, fantasy',
     }),
   })
 

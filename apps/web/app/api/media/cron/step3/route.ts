@@ -30,17 +30,29 @@ export async function GET(request: Request) {
   const db = createAdminClient()
 
   // Find a script from last 30 min with voice ready but no images yet
+  // video_status can be 'none' or null — match both
   const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-  const { data: script } = await db
+
+  // Also support ?scriptId=xxx for manual testing
+  const { searchParams } = new URL(request.url)
+  const scriptIdParam = searchParams.get('scriptId')
+
+  let query = db
     .from('media_scripts')
     .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, media_news_items(title)')
     .eq('voice_status', 'ready')
-    .eq('video_status', 'none')
     .eq('status', 'approved')
     .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+
+  if (scriptIdParam) {
+    query = query.eq('id', scriptIdParam)
+  } else {
+    query = query.or('video_status.eq.none,video_status.is.null')
+  }
+
+  const { data: script } = await query.single()
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for images in last 30 min' })

@@ -41,10 +41,10 @@ export interface VideoInputProps {
 
 function buildCaptionGroups(words: WordTiming[]): CaptionGroup[] {
   const groups: CaptionGroup[] = []
-  const BUFFER_FRAMES      = 5
-  const MAX_WORDS          = 8
-  const MIN_WORDS          = 4
-  const MIN_DISPLAY_FRAMES = 24  // 0.8s at 30fps
+  const BUFFER_FRAMES      = 4
+  const MAX_WORDS          = 6   // shorter groups = faster pacing, better Reels retention
+  const MIN_WORDS          = 3
+  const MIN_DISPLAY_FRAMES = 20  // 0.67s at 30fps — snappier
 
   let i = 0
   while (i < words.length) {

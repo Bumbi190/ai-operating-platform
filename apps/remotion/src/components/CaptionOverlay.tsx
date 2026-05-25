@@ -4,62 +4,48 @@ import type { CaptionGroup, WordTiming } from '../lib/types'
 
 interface Props {
   captions: CaptionGroup[]
-  /** Individual word timing — enables per-word highlight synced to Victoria's voice */
   words?: WordTiming[]
   accentColor?: string
-  /**
-   * Suppress captions before this absolute frame (hook period).
-   * NOTE: Must NOT be wrapped in <Sequence> — uses global useCurrentFrame().
-   */
+  /** @deprecated — no longer used, captions start from frame 0 */
   hideBeforeFrame?: number
 }
 
-const FADE_FRAMES = 6
+const FADE_FRAMES = 10  // slightly slower fade = more editorial, less karaoke
 
 /**
- * Warm documentary gold — the highlighted word color.
- * Not flashy, not neon. Reads clean on dark backgrounds.
- * Reference: Bloomberg QuickTake word-tracking, Apple Keynote captions.
+ * Warm documentary amber — used for the currently-spoken word.
+ * Subtle enough to feel editorial, distinct enough to track.
  */
-const HIGHLIGHT_COLOR = '#FFD060'
-const HIGHLIGHT_GLOW  = 'rgba(255, 208, 96, 0.35)'
+const HIGHLIGHT_COLOR = '#F5C842'
+const HIGHLIGHT_GLOW  = 'rgba(245, 200, 66, 0.25)'
 
-/**
- * Strip punctuation for word comparison.
- * Handles: "significant." → "significant", "AI," → "ai"
- */
 function normalizeWord(w: string): string {
   return w.toLowerCase().replace(/[^a-z0-9']/g, '')
 }
 
 /**
- * CaptionOverlay — premium word-level highlighting synced to voice.
+ * CaptionOverlay — premium editorial word-tracking captions.
  *
- * Design principles:
- * - Word groups (4–8 words) — never single word karaoke
- * - Currently spoken word: warm gold (#FFD060) with subtle glow
- * - Unspoken words in group: near-white (92% opacity)
- * - Glass backdrop: refined pill, faint border, deep blur
- * - Entry: 6-frame fade + 8px upward slide — imperceptible, not animated-feeling
- * - Typography: SF Pro Display / Helvetica — neutral, documentary
+ * Design principles (Bloomberg QuickTake / documentary style):
+ * - Clean, minimal glass panel — barely there, highly readable
+ * - Active word: warm amber, very subtle glow — not a spotlight
+ * - No borders on glass — cleaner, more integrated with image
+ * - Generous line-height — editorial breathing room
+ * - Slower fade (10 frames) — calm transitions, not jumpy
+ * - Positioned in lower third, generous padding from edge
  */
-export function CaptionOverlay({ captions, words = [], hideBeforeFrame = 0 }: Props) {
+export function CaptionOverlay({ captions, words = [] }: Props) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
-
-  if (frame < hideBeforeFrame) return null
 
   const active = captions.find(c => frame >= c.startFrame && frame < c.endFrame)
   if (!active) return null
 
-  // Convert current frame to milliseconds for word timing lookup
   const frameMs = (frame / fps) * 1000
-
-  // Find the word Victoria is currently speaking
   const activeWord = words.find(w => frameMs >= w.startMs && frameMs <= w.endMs)
   const activeWordNorm = activeWord ? normalizeWord(activeWord.word) : null
 
-  // Caption fade in/out at boundaries
+  // Slow, calm fade — editorial not animated
   const opacity = interpolate(
     frame,
     [
@@ -72,15 +58,14 @@ export function CaptionOverlay({ captions, words = [], hideBeforeFrame = 0 }: Pr
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
-  // Subtle 8px upward entry — not noticeable as animation, just polish
+  // Minimal upward slide — barely perceptible, just adds polish
   const translateY = interpolate(
     frame,
     [active.startFrame, active.startFrame + FADE_FRAMES],
-    [8, 0],
+    [6, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
-  // Split text into word tokens (preserve spaces separately for proper rendering)
   const tokens = active.text.split(/(\s+)/)
 
   return (
@@ -88,9 +73,9 @@ export function CaptionOverlay({ captions, words = [], hideBeforeFrame = 0 }: Pr
       style={{
         justifyContent: 'flex-end',
         alignItems: 'center',
-        paddingBottom: 164,
-        paddingLeft: 48,
-        paddingRight: 48,
+        paddingBottom: 180,  // generous bottom spacing
+        paddingLeft: 44,
+        paddingRight: 44,
       }}
     >
       <div
@@ -98,43 +83,38 @@ export function CaptionOverlay({ captions, words = [], hideBeforeFrame = 0 }: Pr
           opacity,
           transform: `translateY(${translateY}px)`,
           textAlign: 'center',
-          maxWidth: 860,
+          maxWidth: 820,
         }}
       >
-        {/* Premium glass backdrop — refined from frosted panel to editorial pill */}
+        {/* Minimal glass panel — more subtle than before */}
         <div
           style={{
             display: 'inline-block',
-            background: 'rgba(4, 4, 8, 0.52)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            borderRadius: 18,
-            // Faint luminous border — premium glass material feel
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            paddingTop: 20,
-            paddingBottom: 22,
-            paddingLeft: 34,
-            paddingRight: 34,
+            background: 'rgba(2, 2, 6, 0.58)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderRadius: 14,
+            // No border — cleaner, more integrated with image
+            paddingTop: 18,
+            paddingBottom: 20,
+            paddingLeft: 30,
+            paddingRight: 30,
           }}
         >
           <p
             style={{
               margin: 0,
-              fontSize: 54,
-              fontWeight: 700,
+              fontSize: 50,
+              fontWeight: 650,
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
-              lineHeight: 1.30,
-              letterSpacing: '-0.4px',
-              // Base shadow for all words
-              textShadow: '0 1px 10px rgba(0,0,0,0.65)',
+              lineHeight: 1.38,  // editorial breathing room
+              letterSpacing: '-0.3px',
+              textShadow: '0 1px 8px rgba(0,0,0,0.5)',  // subtle only
             }}
           >
             {tokens.map((token, i) => {
-              // Preserve whitespace as-is
-              if (/^\s+$/.test(token)) {
-                return <span key={i}> </span>
-              }
+              if (/^\s+$/.test(token)) return <span key={i}> </span>
 
               const isActive =
                 activeWordNorm !== null &&
@@ -144,13 +124,13 @@ export function CaptionOverlay({ captions, words = [], hideBeforeFrame = 0 }: Pr
                 <span
                   key={i}
                   style={{
-                    // Active word: warm documentary gold with subtle ambient glow
-                    // Inactive words: near-white, slightly dimmed for visual hierarchy
-                    color: isActive ? HIGHLIGHT_COLOR : 'rgba(255, 255, 255, 0.88)',
+                    color: isActive ? HIGHLIGHT_COLOR : 'rgba(255, 255, 255, 0.92)',
                     textShadow: isActive
-                      ? `0 0 22px ${HIGHLIGHT_GLOW}, 0 1px 10px rgba(0,0,0,0.65)`
-                      : '0 1px 10px rgba(0,0,0,0.65)',
+                      ? `0 0 18px ${HIGHLIGHT_GLOW}, 0 1px 8px rgba(0,0,0,0.5)`
+                      : '0 1px 8px rgba(0,0,0,0.5)',
                     display: 'inline',
+                    // Subtle weight boost on active word only
+                    fontWeight: isActive ? 700 : 600,
                   }}
                 >
                   {token}

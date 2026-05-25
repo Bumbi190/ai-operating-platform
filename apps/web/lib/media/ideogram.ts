@@ -69,27 +69,43 @@ export async function generateNewsImage(
     max_tokens: 350,
     messages: [{
       role: 'user',
-      content: `You are a photojournalism director for a premium AI news channel (think Bloomberg, BBC News, Reuters).
-
-Given this news story, write ONE Ideogram image generation prompt for a vertical 9:16 news thumbnail.
+      content: `You are the photo director for a premium AI news channel. Your job: write ONE photorealistic image prompt for a vertical news thumbnail.
 
 HEADLINE: "${headline}"
-SCRIPT: "${script.slice(0, 600)}"
+SCRIPT: "${script.slice(0, 700)}"
 
-RULES:
-- Pick the SINGLE most iconic physical object, location, or moment from this specific news story
-- If it's about a company (e.g. OpenAI, Google, Apple): headquarters building exterior, product hardware close-up, or server room
-- If it's about a product launch: the physical product or interface on a real screen
-- If it's about regulation/government: government building, courtroom, official documents close-up
-- If it's about research: laboratory equipment, printed research paper, scientist's workspace
-- Photorealistic, editorial photography style — NOT concept art, NOT abstract AI visuals
-- Dark/moody dramatic lighting so text overlay remains readable
-- Vertical composition, no people or faces, no text in image
+OBJECTIVE: The image must feel like a real Reuters or Bloomberg photo — not AI concept art.
 
-BAD examples (forbidden): "glowing neural network", "AI brain visualization", "abstract data streams", "futuristic hologram"
-GOOD examples: "close-up of NVIDIA H100 GPU chip on dark surface, dramatic side lighting", "Google DeepMind London headquarters glass facade at dusk, dramatic clouds", "OpenAI office entrance sign in San Francisco financial district, blue hour lighting"
+STEP 1 — Identify the most specific physical subject from this story:
+- A named company → their actual building, server infrastructure, or hardware product
+- A specific AI model → the hardware it runs on (GPU rack, data center, chip close-up)
+- A regulation/law → government building exterior, printed document close-up, empty courtroom
+- Research breakthrough → lab equipment, silicon wafer, microscope, printed paper on desk
+- Startup/funding → co-working office, whiteboard with writing, hardware prototype
 
-Output ONLY the prompt. No explanation, no preamble.`,
+APPROVED VISUAL VOCABULARY (pick from these):
+• "dense server rack corridor, twin rows of blinking rack units, emergency blue LED strips, deep perspective, photorealistic"
+• "extreme macro: NVIDIA H100 GPU die surface, industrial lighting, black background, ultra-sharp detail"
+• "semiconductor cleanroom interior, yellow safelight, workers in bunny suits, precise industrial photography"
+• "developer workstation at 2am: multiple monitors with terminal windows, dark desk, harsh monitor glow"
+• "silicon wafer on clean surface, polarized light creating rainbow diffraction patterns, macro photography"
+• "data center cooling pipes, condensation, industrial blue-green lighting, vertical crop"
+• "robotics lab: mechanical arm mid-motion, clean white environment, motion blur, editorial photography"
+• "government building facade at dusk, dramatic storm clouds, Reuters photojournalism style"
+• "crumpled printed spreadsheet on dark desk, single spotlight from above, financial data visible"
+• "GPU cluster overhead view, cables organized in paths, birds-eye perspective, real facility"
+
+STRICTLY FORBIDDEN:
+- Glowing AI brains, neural network visualizations, floating orbs, digital particles
+- Abstract "future AI" imagery, cyberpunk aesthetics, neon light trails
+- Any person, face, hands, or crowd
+- Text or logos in the image
+- Generic stock photography look
+
+LIGHTING: dark and dramatic — the image will have text overlaid on top.
+FORMAT: vertical 9:16, photorealistic, editorial photography quality.
+
+Output ONLY the final prompt string. No explanation.`,
     }],
   })
 

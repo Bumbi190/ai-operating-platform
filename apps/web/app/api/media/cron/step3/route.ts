@@ -29,11 +29,7 @@ export async function GET(request: Request) {
 
   const db = createAdminClient()
 
-  // Find a script from last 30 min with voice ready but no images yet
-  // video_status can be 'none' or null — match both
-  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-
-  // Also support ?scriptId=xxx for manual testing
+  // Also support ?scriptId=xxx for manual testing (bypasses time window)
   const { searchParams } = new URL(request.url)
   const scriptIdParam = searchParams.get('scriptId')
 
@@ -42,14 +38,18 @@ export async function GET(request: Request) {
     .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
-    .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(1)
 
   if (scriptIdParam) {
+    // Manual override — find by ID regardless of age
     query = query.eq('id', scriptIdParam)
   } else {
-    query = query.or('video_status.eq.none,video_status.is.null')
+    // Automatic cron — only look at last 60 min, images not yet generated
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    query = query
+      .or('video_status.eq.none,video_status.is.null')
+      .gte('created_at', cutoff)
   }
 
   const { data: script } = await query.single()

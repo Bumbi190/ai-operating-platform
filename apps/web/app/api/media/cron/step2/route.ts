@@ -27,11 +27,7 @@ export async function GET(request: Request) {
 
   const db = createAdminClient()
 
-  // Find a script from the last 15 min waiting for voice
-  // voice_status can be 'none' or null — match both
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-
-  // Also support ?scriptId=xxx for manual testing
+  // Also support ?scriptId=xxx for manual testing (bypasses time window)
   const { searchParams } = new URL(request.url)
   const scriptIdParam = searchParams.get('scriptId')
 
@@ -39,14 +35,18 @@ export async function GET(request: Request) {
     .from('media_scripts')
     .select('id, project_id, script')
     .eq('status', 'approved')
-    .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(1)
 
   if (scriptIdParam) {
+    // Manual override — find by ID regardless of age
     query = query.eq('id', scriptIdParam)
   } else {
-    query = query.or('voice_status.eq.none,voice_status.is.null')
+    // Automatic cron — only look at last 60 min, voice not yet generated
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    query = query
+      .or('voice_status.eq.none,voice_status.is.null')
+      .gte('created_at', cutoff)
   }
 
   const { data: script } = await query.single()

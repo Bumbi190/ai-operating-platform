@@ -32,9 +32,10 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
   const isApiRoute = request.nextUrl.pathname.startsWith('/api')
   const isAuthRoute2 = request.nextUrl.pathname.startsWith('/auth/')
+  const isPublicPage = ['/privacy', '/terms'].includes(request.nextUrl.pathname)
 
-  // Allow API routes and all /auth/* routes through (they handle auth themselves)
-  if (isApiRoute || isAuthRoute2) return supabaseResponse
+  // Allow API routes, /auth/* routes, and public legal pages through
+  if (isApiRoute || isAuthRoute2 || isPublicPage) return supabaseResponse
 
   // If Supabase redirected to root/any page with a ?code= param, forward to /auth/confirm
   const code = request.nextUrl.searchParams.get('code')
@@ -64,6 +65,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
   ],
 }

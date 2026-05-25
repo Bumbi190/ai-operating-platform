@@ -385,7 +385,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     durationMs:         voiceResult.durationMs,
     images:             storedImageUrls,
     accentColor:        '#6366f1',
-    backgroundMusicUrl: backgroundMusicUrl ?? undefined,
+    backgroundMusicUrl: undefined,  // Pixabay CDN blocked by Lambda — skip for now
   })
 
   const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, 'SimpleNewsReel')

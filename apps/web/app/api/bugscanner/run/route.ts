@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       summary: report.summary,
       checksRun: report.checks.length,
       emailSent: emailResult?.success ?? false,
+      checks: report.checks,   // full per-check details: { name, status, message }
     })
   } catch (err: any) {
     console.error('[BugScanner] Kritiskt fel:', err)

@@ -3,6 +3,23 @@
     {
       "path": "/api/media/news/cron",
       "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/media/cron/autonomous",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/media/cron/autonomous",
+      "schedule": "30 17 * * *"
+    },
+    {
+      "path": "/api/media/cron/publish",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/media/cron/publish",
+      "schedule": "0 18 * * *"
     }
   ]
 }
+

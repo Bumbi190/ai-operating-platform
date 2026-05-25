@@ -90,11 +90,14 @@ export async function uploadSceneImage(
   const contentType = res.headers.get('content-type') ?? 'image/jpeg'
   const ext = contentType.includes('png') ? 'png' : 'jpg'
 
-  const storagePath = `images/${projectId}/${scriptId}-scene-${sceneIndex}.${ext}`
+  // Include timestamp in path so re-generated images always get a unique URL
+  // (avoids browser caching the old image when the path/URL would otherwise be identical)
+  const ts = Date.now()
+  const storagePath = `images/${projectId}/${scriptId}-scene-${sceneIndex}-${ts}.${ext}`
 
   const { error } = await db.storage
     .from(BUCKET)
-    .upload(storagePath, buffer, { contentType, upsert: true })
+    .upload(storagePath, buffer, { contentType })
 
   if (error) throw new Error(`Image upload failed: ${error.message}`)
 

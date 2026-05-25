@@ -1,7 +1,8 @@
 /**
  * POST /api/media/publish/instagram
  *
- * Publishes a rendered video to Instagram as a Reel.
+ * Publishes a rendered video to Instagram as a Reel,
+ * and simultaneously to Facebook Page if FACEBOOK_PAGE_ACCESS_TOKEN is set.
  * Streams progress as Server-Sent Events.
  *
  * Body: { scriptId: string }
@@ -17,6 +18,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
+import { postReelToFacebook } from '@/lib/media/facebook'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300  // Video processing can take up to 5 min
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
       const emit = (payload: Record<string, unknown>) => sseEvent(controller, payload)
 
       try {
-        // Build caption with source attribution
+        // Build caption
         const newsItem = Array.isArray(script.media_news_items)
           ? script.media_news_items[0]
           : script.media_news_items
@@ -70,37 +72,71 @@ export async function POST(request: Request) {
           sourceName:  newsItem?.source_name ?? undefined,
         })
 
-        // Post to Instagram with live progress
-        const result = await postReelToInstagram(
+        const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
+
+        // ── Instagram ────────────────────────────────────────────────────────
+        emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
+
+        const igResult = await postReelToInstagram(
           script.video_url,
           caption,
           (step, pct) => {
             const labels: Record<string, string> = {
               uploading:  'Uploading video to Instagram...',
               processing: 'Instagram is processing the video...',
-              publishing: 'Publishing Reel...',
+              publishing: 'Publishing to Instagram...',
             }
-            emit({ step, label: labels[step] ?? step, progress: pct })
+            emit({ step, label: labels[step] ?? step, progress: Math.round(pct * (hasFacebook ? 0.6 : 1)) })
           },
         )
 
-        // Update DB: mark as published
+        // ── Facebook (optional) ───────────────────────────────────────────────
+        let fbResult: { postId: string; url?: string } | null = null
+        if (hasFacebook) {
+          emit({ step: 'uploading', label: 'Publicerar på Facebook...', progress: 65 })
+          try {
+            fbResult = await postReelToFacebook(
+              script.video_url,
+              caption,
+              (step, pct) => {
+                emit({
+                  step,
+                  label: step === 'uploading' ? 'Uploading to Facebook...' : 'Publishing to Facebook...',
+                  progress: 65 + Math.round(pct * 0.3),
+                })
+              },
+            )
+          } catch (fbErr) {
+            // Facebook failure is non-fatal — Instagram already succeeded
+            console.error('[publish/facebook]', fbErr instanceof Error ? fbErr.message : fbErr)
+            emit({ step: 'fb_warning', label: '⚠️ Facebook posting failed (Instagram OK)', progress: 95 })
+          }
+        }
+
+        // ── Update DB ─────────────────────────────────────────────────────────
         await db
           .from('media_scripts')
           .update({
-            status:           'published',
-            published_at:     new Date().toISOString(),
-            instagram_media_id: result.mediaId,
-            instagram_url:    result.permalink ?? null,
+            status:             'published',
+            published_at:       new Date().toISOString(),
+            instagram_media_id: igResult.mediaId,
+            instagram_url:      igResult.permalink ?? null,
+            ...(fbResult ? {
+              facebook_post_id: fbResult.postId,
+              facebook_url:     fbResult.url ?? null,
+            } : {}),
           })
           .eq('id', scriptId)
 
+        const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
+
         emit({
           step:      'done',
-          label:     '🎉 Published on Instagram!',
+          label:     `🎉 Publicerat på ${platforms}!`,
           progress:  100,
-          mediaId:   result.mediaId,
-          permalink: result.permalink,
+          mediaId:   igResult.mediaId,
+          permalink: igResult.permalink,
+          facebookUrl: fbResult?.url ?? null,
         })
 
       } catch (err) {

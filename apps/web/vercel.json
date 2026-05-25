@@ -17,6 +17,10 @@
       "schedule": "30 7 * * *"
     },
     {
+      "path": "/api/media/cron/step4",
+      "schedule": "45 7 * * *"
+    },
+    {
       "path": "/api/media/cron/publish",
       "schedule": "0 8 * * *"
     },
@@ -33,9 +37,12 @@
       "schedule": "30 17 * * *"
     },
     {
+      "path": "/api/media/cron/step4",
+      "schedule": "45 17 * * *"
+    },
+    {
       "path": "/api/media/cron/publish",
       "schedule": "0 18 * * *"
     }
   ]
 }
-

@@ -178,53 +178,69 @@ export async function generateNewsImages(
     max_tokens: 1500,
     messages: [{
       role: 'user',
-      content: `You are a documentary film director planning the visual story for a short-form AI news video.
+      content: `You are the visual director for "The Prompt" — a high-tension AI insider news channel.
 
 HEADLINE: "${headline}"
 SCRIPT: "${script.slice(0, 900)}"
 
-Plan ${count} scenes. Each scene must serve the NARRATIVE — not just look tech-related.
-Ground every scene in the specific story: companies, people, events, products mentioned.
+Plan ${count} scenes. The images must support THIS specific story — not generic AI aesthetics.
+Read the script. Identify the actual companies, products, stakes, and consequences mentioned. Build visuals around those specifics.
 
-NARRATIVE PURPOSES (assign one per scene, progress the story):
-- setup: establishes the situation or surprising stakes
-- tension: creates urgency, conflict, or a question
-- explanation: illustrates how or why something works
-- implication: what this means for developers or the industry
-- consequence: the real-world effect or outcome
-- future_impact: the broader shift — what changes from here
+NARRATIVE PURPOSES (one per scene, progress the story arc):
+- setup: the situation that makes this story important RIGHT NOW
+- tension: the conflict, the race, the decision being made
+- explanation: the mechanism — what exactly happened or changed
+- implication: what this means for developers, companies, or the industry
+- consequence: the real-world effect — winners, losers, shifts in power
 
 EMOTIONAL INTENTS (one per scene):
-curiosity | urgency | realism | scale | disruption | concern | excitement | gravity
+urgency | disruption | gravity | scale | realism | concern | curiosity | insider
 
-ENVIRONMENTS (pick DISTINCT ones tied to this specific story):
-- Late-night developer workstation: 2AM, multiple monitors, warm desk lamp, empty coffee cup
-- AI research office: whiteboards covered in diagrams, natural daylight, collaborative space
-- Chip fabrication cleanroom: yellow safelight, technical precision, industrial scale
-- Data center corridor: depth perspective, infrastructure scale, cool blue ambient
-- Startup war room: multiple screens, energy, late night, team dynamic visible
-- Executive briefing room: tension, serious, decisions being made
-- University research lab: academic, focused, discovery atmosphere
-- Hardware engineering bench: circuit components, precision, hands working
-- Modern tech campus exterior: architecture, scale, dusk or dawn light
-- Server installation: technician hands (not face), industrial close-up
+STORY-SPECIFIC ENVIRONMENTS — tie each scene directly to entities in the script:
+
+If the story is about a specific company → their physical environment:
+- OpenAI / Anthropic office: modern SF tech campus at dusk, glass facade, serious energy
+- Nvidia: GPU manufacturing, H100 hardware rack, semiconductor facility
+- Google / DeepMind: research campus, whiteboard-covered glass walls, complex diagrams
+- Meta / Apple: sleek corporate campus exterior, dusk, architectural scale
+- Startups (Cursor, Windsurf, Perplexity): startup war room, late night, multiple monitors
+
+If the story is about model performance / benchmarks:
+- Benchmark testing environment: servers running hot, monitoring screens, real facility
+- GPU cluster under load: cooling systems, dense cables, operational infrastructure
+- Engineering team reviewing results: from behind, multiple screens, late night, tension
+
+If the story is about developers / tools:
+- Late-night developer workstation: 2AM, ultrawide monitors, warm desk lamp, empty coffee cup
+- Coding workspace: mechanical keyboard, terminal glow, focused solitude
+- Team sprint: multiple developers visible from behind, collaborative tension
+
+If the story is about policy / regulation / business:
+- Government building facade: serious architecture, dusk light, Reuters photojournalism style
+- Executive boardroom: empty chairs, tension, decisions being made
+- Printed documents on dark desk: single spotlight, financial data visible but not readable
+
+Hardware close-ups (always available as scene variety):
+- NVIDIA H100 die: extreme macro, industrial lighting, black background
+- Silicon wafer: polarized light, rainbow diffraction, macro photography
+- Server rack corridor: emergency lighting, deep perspective, operational
+- Circuit board traces: warm golden sidelighting, extreme shallow depth of field
 
 CRITICAL RULES:
-- Each scene: completely different environment and composition
-- No server room as the ONLY location — vary dramatically
+- Each scene: completely different environment and composition — no repeating datacenter
+- Ground EVERY scene in a specific entity or beat from this exact story
 - People welcome but NO visible faces — from behind, silhouette, hands only
-- NO readable text, fake dashboards, fake terminals, fake UIs — they look fake and break immersion
-- Focus on: environments, lighting, atmosphere, hardware, silhouettes, reflections
-- Each image should feel intentionally chosen for THAT moment in the story
+- NO readable text, fake UI, fake dashboards, fake terminals — they break immersion
+- Lighting: dark and dramatic — text will be overlaid on top
 
 Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 [
   {
     "scene": 1,
     "narrative_purpose": "setup",
-    "emotional_intent": "curiosity",
+    "emotional_intent": "urgency",
     "environment": "late-night developer workstation",
-    "visual_concept": "Developer seen from behind at ultrawide monitor setup showing blurred graphs, 2AM, warm amber desk lamp casting long shadows, empty coffee cup, mechanical keyboard, focused silence, documentary photo"
+    "visual_concept": "Developer seen from behind at ultrawide monitor setup, 2AM, warm amber desk lamp casting long shadows across mechanical keyboard, empty coffee cup, intense focused silence, documentary editorial photo"
   }
 ]`,
     }],

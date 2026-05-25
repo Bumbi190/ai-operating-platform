@@ -141,19 +141,28 @@ Output ONLY the final prompt string. No explanation.`,
   return url
 }
 
+// ─── Scene Intent System ──────────────────────────────────────────────────────
+
+interface SceneIntent {
+  scene: number
+  narrative_purpose: 'setup' | 'tension' | 'explanation' | 'implication' | 'consequence' | 'future_impact'
+  emotional_intent: 'curiosity' | 'urgency' | 'realism' | 'scale' | 'disruption' | 'concern' | 'excitement' | 'gravity'
+  environment: string
+  visual_concept: string
+}
+
 /**
- * Generate story-driven scene images for a news video.
+ * Generate story-driven scene images using a two-step Scene Intent System.
  *
- * Uses Claude Sonnet to analyze the script narrative and assign a specific
- * visual intention to each scene — each image illustrates WHAT IS HAPPENING
- * IN THE STORY at that moment, not just generic tech environments.
+ * Step 1 — Scene Planning: Claude analyzes the script narrative and assigns each
+ * scene a narrative purpose, emotional intent, environment, and visual concept.
+ * Images serve the STORY, not a generic "AI aesthetic".
  *
- * Scene structure:
- *   1. Hook/Problem    — the surprising or unexpected opening
- *   2. Context/Reality — the environment or system being discussed
- *   3. Evidence        — data, screen, or specific detail that proves the point
- *  [4. Impact]         — consequence or industry effect (if count ≥ 4)
- *  [5. Future]         — broader implication or what comes next (if count = 5)
+ * Step 2 — Image Generation: Ideogram renders each scene from the intent-driven
+ * prompt. Human environments encouraged; fake readable text strictly blocked.
+ *
+ * Narrative purposes: setup → tension → explanation → implication → future_impact
+ * The result should feel like a documentary, not an AI moodboard.
  */
 export async function generateNewsImages(
   headline: string,
@@ -163,78 +172,101 @@ export async function generateNewsImages(
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic()
 
-  const sceneLabels = [
-    'HOOK/PROBLEM — the surprising opening moment that sets the stakes',
-    'CONTEXT/REALITY — the environment, company, or system at the center of this story',
-    'EVIDENCE/DISCOVERY — a specific detail, screen, data point, or object that proves the story',
-    'IMPACT/REACTION — how developers, researchers, or the industry responds or is affected',
-    'FUTURE/CONCLUSION — the broader implication or what this means going forward',
-  ].slice(0, count)
-
-  const res = await client.messages.create({
+  // ── Step 1: Scene planning ──────────────────────────────────────────────────
+  const planRes = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1200,
+    max_tokens: 1500,
     messages: [{
       role: 'user',
-      content: `You are a documentary film director. Your job: write ${count} story-specific image prompts for a short-form AI news video.
+      content: `You are a documentary film director planning the visual story for a short-form AI news video.
 
 HEADLINE: "${headline}"
 SCRIPT: "${script.slice(0, 900)}"
 
-Each image must ILLUSTRATE THE STORY — not just look tech-related.
-Ground every prompt in the SPECIFIC companies, products, or events mentioned in the script.
+Plan ${count} scenes. Each scene must serve the NARRATIVE — not just look tech-related.
+Ground every scene in the specific story: companies, people, events, products mentioned.
 
-SCENES TO COVER:
-${sceneLabels.map((label, i) => `Scene ${i + 1}: ${label}`).join('\n')}
+NARRATIVE PURPOSES (assign one per scene, progress the story):
+- setup: establishes the situation or surprising stakes
+- tension: creates urgency, conflict, or a question
+- explanation: illustrates how or why something works
+- implication: what this means for developers or the industry
+- consequence: the real-world effect or outcome
+- future_impact: the broader shift — what changes from here
 
-VISUAL REQUIREMENTS:
-- Photorealistic editorial photography (Reuters, Bloomberg, Wired aesthetic)
-- Vertical 9:16, cinematic and natural — not overdone
+EMOTIONAL INTENTS (one per scene):
+curiosity | urgency | realism | scale | disruption | concern | excitement | gravity
+
+ENVIRONMENTS (pick DISTINCT ones tied to this specific story):
+- Late-night developer workstation: 2AM, multiple monitors, warm desk lamp, empty coffee cup
+- AI research office: whiteboards covered in diagrams, natural daylight, collaborative space
+- Chip fabrication cleanroom: yellow safelight, technical precision, industrial scale
+- Data center corridor: depth perspective, infrastructure scale, cool blue ambient
+- Startup war room: multiple screens, energy, late night, team dynamic visible
+- Executive briefing room: tension, serious, decisions being made
+- University research lab: academic, focused, discovery atmosphere
+- Hardware engineering bench: circuit components, precision, hands working
+- Modern tech campus exterior: architecture, scale, dusk or dawn light
+- Server installation: technician hands (not face), industrial close-up
+
+CRITICAL RULES:
 - Each scene: completely different environment and composition
-- Human environments are encouraged: offices, developer setups, research labs, screens
-- People allowed but no visible faces — show from behind, over-shoulder, silhouette, or hands only
-- Specific details that ground the image in this actual story
-- Dark, moody lighting (text will overlay)
+- No server room as the ONLY location — vary dramatically
+- People welcome but NO visible faces — from behind, silhouette, hands only
+- NO readable text, fake dashboards, fake terminals, fake UIs — they look fake and break immersion
+- Focus on: environments, lighting, atmosphere, hardware, silhouettes, reflections
+- Each image should feel intentionally chosen for THAT moment in the story
 
-STRICTLY FORBIDDEN across all scenes:
-- Repeating the same environment (no server room x3)
-- Generic "AI data center with blue lights" as the only visual
-- Glowing orbs, abstract neural networks, cyberpunk aesthetics
-- Visible faces, crowds
-- Text, logos, watermarks in the image
-
-REFERENCE EXAMPLES OF GOOD PROMPTS:
-- "Developer at 2AM staring at benchmark results on an ultrawide monitor, dark startup office, warm screen glow, seen from behind, documentary photo"
-- "Google research whiteboard covered in model architecture diagrams, empty conference room, afternoon light through venetian blinds, realistic"
-- "Close-up of MacBook screen showing ChatGPT conversation, coffee cup and mechanical keyboard beside it, shallow depth of field, warm ambient light"
-- "GPU blades being installed in server rack, technician hands only visible, industrial lighting, realistic data center photography"
-- "Empty modern AI lab at dusk, city skyline through floor-to-ceiling glass, workstations with sleeping monitors, blue ambient light"
-- "Printed research paper on dark desk, highlighted passages visible, single overhead spotlight, editorial macro photography"
-
-Return ONLY a JSON array of ${count} prompt strings. No markdown, no explanation, no labels:
-["scene 1 prompt", "scene 2 prompt", "scene 3 prompt"]`,
+Return ONLY valid JSON — array of ${count} scene objects, no markdown:
+[
+  {
+    "scene": 1,
+    "narrative_purpose": "setup",
+    "emotional_intent": "curiosity",
+    "environment": "late-night developer workstation",
+    "visual_concept": "Developer seen from behind at ultrawide monitor setup showing blurred graphs, 2AM, warm amber desk lamp casting long shadows, empty coffee cup, mechanical keyboard, focused silence, documentary photo"
+  }
+]`,
     }],
   })
 
-  const text = res.content[0].type === 'text' ? res.content[0].text.trim() : '[]'
-  const match = text.match(/\[[\s\S]*\]/)
-  const prompts = match ? JSON.parse(match[0]) as string[] : []
+  const planText = planRes.content[0].type === 'text' ? planRes.content[0].text.trim() : '[]'
+  const planMatch = planText.match(/\[[\s\S]*\]/)
+  const scenes = planMatch ? JSON.parse(planMatch[0]) as SceneIntent[] : []
 
-  if (prompts.length === 0) throw new Error('generateNewsImages: no prompts returned from Claude')
+  if (scenes.length === 0) throw new Error('generateNewsImages: scene planning returned no scenes')
 
-  // Generate all images in parallel with story-aware negative prompt
-  // (allow human presence but block visible faces)
-  const negativePrompt = 'visible faces, frontal face, portrait, crowd, text, words, watermark, logo, abstract AI visualization, glowing orbs, neural network art, cyberpunk, neon lights, blurry, low quality, distorted, cartoon, anime'
+  // ── Step 2: Generate each scene image from its intent ───────────────────────
+  // Block fake text/UI but allow human presence (from behind, silhouettes)
+  const negativePrompt = [
+    'readable text', 'readable interface', 'readable screen', 'visible text',
+    'fake dashboard', 'fake email', 'fake terminal', 'chat messages', 'phone screen with text',
+    'frontal face', 'visible face', 'portrait', 'direct eye contact', 'crowd',
+    'abstract AI art', 'glowing orbs', 'neural network visualization', 'digital brain',
+    'cyberpunk', 'neon lights', 'floating shapes', 'holographic',
+    'blurry', 'low quality', 'distorted', 'cartoon', 'anime', 'stock photo look',
+  ].join(', ')
 
-  console.log(`🎨 Generating ${prompts.length} story-driven scene images...`)
+  console.log(`🎬 Scene plan ready. Generating ${scenes.length} story-driven images in parallel...`)
+
   return Promise.all(
-    prompts.map(async (prompt, i) => {
-      console.log(`  Scene ${i + 1}: ${prompt.slice(0, 80)}...`)
+    scenes.map(async (scene, i) => {
+      // Build final Ideogram prompt from scene intent
+      const prompt = [
+        scene.visual_concept,
+        `${scene.environment}`,
+        'cinematic editorial photography, 9:16 vertical format',
+        'photorealistic, documentary film aesthetic',
+        `${scene.emotional_intent} atmosphere`,
+        'natural lighting, no visible text',
+      ].join(', ')
+
+      console.log(`  Scene ${i + 1} [${scene.narrative_purpose} / ${scene.emotional_intent}]: ${scene.visual_concept.slice(0, 65)}...`)
 
       const apiKey = process.env.IDEOGRAM_API_KEY
       if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-      const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+      const ideogramRes = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
         method: 'POST',
         headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -246,12 +278,12 @@ Return ONLY a JSON array of ${count} prompt strings. No markdown, no explanation
         }),
       })
 
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`Ideogram API error ${res.status}: ${err}`)
+      if (!ideogramRes.ok) {
+        const err = await ideogramRes.text()
+        throw new Error(`Ideogram API error ${ideogramRes.status}: ${err}`)
       }
 
-      const data = await res.json() as { data: Array<{ url: string }> }
+      const data = await ideogramRes.json() as { data: Array<{ url: string }> }
       const url = data.data?.[0]?.url
       if (!url) throw new Error('Ideogram returned no image URL')
       return url

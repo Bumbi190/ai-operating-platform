@@ -8,7 +8,7 @@
  *   - video_status = 'ready'       (render finished)
  *   - status       = 'approved'    (not yet published)
  *   - published_at IS NULL         (hasn't been published)
- *   - created_at   within 3 hours  (fresh from today's cron run)
+ *   - generated_at   within 3 hours  (fresh from today's cron run)
  *
  * Also handles scripts still in 'rendering' state — polls Lambda once more
  * to give straggler renders a final chance before skipping them.
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     .eq('video_status', 'rendering')
     .eq('status', 'approved')
     .is('published_at', null)
-    .gte('created_at', cutoff)
+    .gte('generated_at', cutoff)
     .limit(3)
 
   if (renderingScripts && renderingScripts.length > 0) {
@@ -98,8 +98,8 @@ export async function GET(request: Request) {
     .eq('video_status', 'ready')
     .eq('status', 'approved')
     .is('published_at', null)
-    .gte('created_at', cutoff)
-    .order('created_at', { ascending: false })
+    .gte('generated_at', cutoff)
+    .order('generated_at', { ascending: false })
     .limit(1)
 
   if (!scripts || scripts.length === 0) {

@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     .from('media_scripts')
     .select('id, project_id, script')
     .eq('status', 'approved')
-    .order('created_at', { ascending: false })
+    .order('generated_at', { ascending: false })
     .limit(1)
 
   if (scriptIdParam) {
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     query = query
       .or('voice_status.eq.none,voice_status.is.null')
-      .gte('created_at', cutoff)
+      .gte('generated_at', cutoff)
   }
 
   const { data: script } = await query.single()

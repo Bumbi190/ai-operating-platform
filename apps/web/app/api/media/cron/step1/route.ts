@@ -142,6 +142,7 @@ export async function GET(request: Request) {
     estimated_duration: script.estimated_duration, raw_output: script,
     quality_score: qualityScore, status: 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
+    generated_at: new Date().toISOString(),
   }).select('id').single()
 
   if (!scriptRow) return NextResponse.json({ error: 'Failed to save script' }, { status: 500 })

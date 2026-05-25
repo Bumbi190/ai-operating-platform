@@ -476,13 +476,28 @@ function ScriptCard({ script, onUpdate }: {
             <p className="text-xs font-medium text-muted-foreground mb-3">Renderad video</p>
             <VideoPlayer url={videoUrl} />
             <div className="mt-3 flex gap-2">
-              <a
-                href={videoUrl}
-                download
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(videoUrl)
+                    const blob = await res.blob()
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `the-prompt-${script.id.slice(0, 8)}.mp4`
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
+                  } catch {
+                    // Fallback: open in new tab if CORS blocks blob download
+                    window.open(videoUrl, '_blank')
+                  }
+                }}
                 className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
               >
                 <Download className="w-3 h-3" /> Ladda ned MP4
-              </a>
+              </button>
               <a
                 href={videoUrl}
                 target="_blank"

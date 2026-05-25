@@ -145,17 +145,9 @@ export async function buildVideoInputProps(params: {
   }
 
   const hookDurationFrames = findHookEndFrame(hook, words)
-  const allCaptions        = buildCaptionGroups(words)
 
-  // Trim/remove captions overlapping with hook
-  const captions = allCaptions
-    .map(c => c.endFrame <= hookDurationFrames
-      ? null
-      : c.startFrame < hookDurationFrames
-        ? { ...c, startFrame: hookDurationFrames }
-        : c
-    )
-    .filter((c): c is CaptionGroup => c !== null)
+  // Build all captions from frame 0 — captions run alongside hook overlay
+  const captions = buildCaptionGroups(words)
 
   const sceneStartFrames = buildSceneStartFrames(words, images.length)
 

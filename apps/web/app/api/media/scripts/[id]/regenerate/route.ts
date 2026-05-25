@@ -178,7 +178,7 @@ Write a new script that covers the same story but from a different entry point o
     const headline = String(updates.hook ?? script.hook ?? '')
     const text     = String(updates.script ?? script.script ?? '')
 
-    const imageUrls  = await generateNewsImages(headline, text, 3)
+    const imageUrls  = await generateNewsImages(headline, text, 5)
     const storedUrls = await Promise.all(
       imageUrls.map((url, i) => uploadSceneImage(script.project_id, id, i, url)),
     )

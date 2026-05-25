@@ -724,6 +724,10 @@ export default function ScriptsPage() {
   const [projectId, setProjectId]     = useState<string | null>(null)
   const [introRunning, setIntroRunning] = useState(false)
   const [introLabel, setIntroLabel]   = useState<string | null>(null)
+  const [dailyRunning, setDailyRunning] = useState(false)
+  const [dailyLabel, setDailyLabel]   = useState<string | null>(null)
+  const [dailyProgress, setDailyProgress] = useState(0)
+  const [dailyQuality, setDailyQuality] = useState<{ overall: number; hook_strength: number } | null>(null)
 
   useEffect(() => {
     fetch(`/api/projects/by-slug/${slug}`)
@@ -745,6 +749,54 @@ export default function ScriptsPage() {
   }, [projectId, filter])
 
   useEffect(() => { load() }, [load])
+
+  async function runDaily() {
+    if (!projectId || dailyRunning) return
+    setDailyRunning(true)
+    setDailyLabel('Väljer bästa nyhet...')
+    setDailyProgress(0)
+    setDailyQuality(null)
+    try {
+      const res = await fetch('/api/media/pipeline/daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      })
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error ?? 'Kunde inte starta daglig pipeline')
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n'); buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          try {
+            const ev = JSON.parse(line.slice(5).trim())
+            if (ev.label) setDailyLabel(ev.label)
+            if (ev.progress) setDailyProgress(ev.progress)
+            if (ev.qualityScore) setDailyQuality({ overall: ev.qualityScore.overall, hook_strength: ev.qualityScore.hook_strength })
+            if (ev.step === 'done') {
+              setDailyLabel('✅ Video klar — redo för rendering!')
+              setDailyProgress(100)
+              load()
+              setTimeout(() => { setDailyRunning(false); setDailyLabel(null); setDailyProgress(0) }, 5000)
+            }
+            if (ev.step === 'error') throw new Error(ev.message)
+          } catch (e) { if (e instanceof Error) setDailyLabel(`Fel: ${e.message}`) }
+        }
+      }
+    } catch (err) {
+      setDailyLabel(err instanceof Error ? `Fel: ${err.message}` : 'Okänt fel')
+    } finally {
+      if (!dailyLabel?.startsWith('✅')) setDailyRunning(false)
+    }
+  }
 
   async function runIntro() {
     if (!projectId || introRunning) return
@@ -786,6 +838,70 @@ export default function ScriptsPage() {
 
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-6">
+
+      {/* ── ONE-CLICK DAILY VIDEO ─────────────────────────────────────────── */}
+      <div className={`rounded-xl border overflow-hidden transition-all ${
+        dailyRunning
+          ? 'border-indigo-500/40 bg-indigo-500/5'
+          : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+      }`}>
+        <div className="p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold tracking-tight">Generera daglig nyhetsvideo</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Väljer bästa nyheten automatiskt → script → röst → 5 scener → klar för rendering
+              </p>
+            </div>
+            <button
+              onClick={runDaily}
+              disabled={dailyRunning || !projectId}
+              className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all ${
+                dailyRunning
+                  ? 'bg-indigo-500/20 text-indigo-400 cursor-not-allowed'
+                  : 'bg-white text-black hover:bg-white/90 active:scale-95'
+              }`}
+            >
+              {dailyRunning
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Genererar...</>
+                : <><Play className="w-4 h-4" /> Kör idag</>
+              }
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          {dailyRunning && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-indigo-300 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {dailyLabel ?? 'Startar...'}
+                </span>
+                <div className="flex items-center gap-3">
+                  {dailyQuality && (
+                    <span className={`font-mono text-xs ${dailyQuality.hook_strength >= 8 ? 'text-green-400' : 'text-amber-400'}`}>
+                      Hook {dailyQuality.hook_strength}/10 · Overall {dailyQuality.overall.toFixed(1)}/10
+                    </span>
+                  )}
+                  <span className="text-indigo-400 font-mono">{dailyProgress}%</span>
+                </div>
+              </div>
+              <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-700 ease-out"
+                  style={{ width: `${dailyProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Completion */}
+          {!dailyRunning && dailyLabel?.startsWith('✅') && (
+            <p className="mt-3 text-xs text-green-400">{dailyLabel}</p>
+          )}
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <FileText className="w-5 h-5 text-muted-foreground" />

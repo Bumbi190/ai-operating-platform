@@ -28,6 +28,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateSceneImages, generateNewsImages } from '@/lib/media/ideogram'
+import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
+import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 
@@ -238,9 +240,54 @@ Angle: ${news.content_angle}`,
         }))
         const scriptRaw = scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : ''
         const scriptClean = scriptRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-        const script = JSON.parse(scriptClean) as ScriptWriterOutput
+        let script = JSON.parse(scriptClean) as ScriptWriterOutput
 
-        emit({ step: 'script_done', label: `Manus: "${script.hook}"`, progress: 42 })
+        // ── Step 3b: Quality gate — score hook + density, regenerate if needed ─
+        emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
+
+        const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
+        const qualityScore = await scoreScript(script.hook, script.script, sourceContext)
+
+        if (shouldRegenerate(qualityScore)) {
+          emit({
+            step: 'quality_regenerating',
+            label: `Svag hook (${qualityScore.hook_strength}/10) — skriver om...`,
+            progress: 39,
+            qualityScore,
+          })
+
+          // One auto-regeneration attempt with explicit weakness feedback
+          const rewriteRes = await withRetry(() => claude.messages.create({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 2000,
+            system: SCRIPT_SYSTEM,
+            messages: [{
+              role: 'user',
+              content: `Rewrite this script. The previous version was rejected for being too weak.
+
+ORIGINAL STORY:
+Title: ${news.title}
+Summary: ${news.summary}
+Key insight: ${news.key_insight}
+
+REJECTED HOOK: "${script.hook}"
+QUALITY VERDICT: ${qualityScore.verdict}
+WEAK SPOTS: ${qualityScore.weak_spots.join(', ')}
+
+Write a significantly stronger version. Fix every weak spot. The hook must score 8+ on insider energy and specificity.`,
+            }],
+          }))
+          const rewriteRaw = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
+          const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+          script = JSON.parse(rewriteClean) as ScriptWriterOutput
+        }
+
+        emit({
+          step: 'script_done',
+          label: `Manus klar (${qualityScore.overall.toFixed(1)}/10): "${script.hook}"`,
+          progress: 42,
+          qualityScore,
+        })
 
         // ── Step 4: Save script (auto-approved) ──────────────────────────────
         const { data: scriptRow } = await db
@@ -256,6 +303,7 @@ Angle: ${news.content_angle}`,
             tone: script.tone,
             estimated_duration: script.estimated_duration,
             raw_output: script,
+            quality_score: qualityScore,
             status: 'approved',   // skip manual approval
             voice_status: 'none',
             video_status: 'none',
@@ -299,10 +347,15 @@ Angle: ${news.content_angle}`,
 
         emit({ step: 'voice_done', label: `Röst klar (${(voiceResult.durationMs / 1000).toFixed(1)}s)`, progress: 70 })
 
-        // ── Step 7: Generate image(s) ─────────────────────────────────────────
+        // ── Step 7: Generate image(s) + fetch background music in parallel ──────
+        const musicMood = qualityScore.hook_strength >= 8 ? 'urgency' : 'neutral'
+
         if (isLite) {
-          emit({ step: 'images', label: 'Genererar 3 scenbilder (Ideogram)...', progress: 74 })
-          const imageUrls3 = await generateNewsImages(news.title, script.script, 3)
+          emit({ step: 'images', label: 'Genererar 5 scenbilder (Ideogram)...', progress: 74 })
+          const [imageUrls3, backgroundMusicUrl] = await Promise.all([
+            generateNewsImages(news.title, script.script, 5),
+            getBackgroundMusicUrl(musicMood),
+          ])
 
           emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
           const storedUrls3 = await Promise.all(
@@ -311,6 +364,7 @@ Angle: ${news.content_angle}`,
           await db.from('media_scripts').update({
             images: storedUrls3,
             composition: 'SimpleNewsReel',
+            background_music_url: backgroundMusicUrl,
           }).eq('id', scriptId)
 
           emit({

@@ -28,7 +28,7 @@ export async function GET(
 
   const { data: script } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, script, captions, audio_url, timing_url, duration_ms, images')
+    .select('id, project_id, hook, script, captions, audio_url, timing_url, duration_ms, images, background_music_url')
     .eq('id', scriptId)
     .single()
 
@@ -49,6 +49,7 @@ export async function GET(
     durationMs: script.duration_ms ?? 45000,
     images,
     accentColor: '#6366f1',
+    backgroundMusicUrl: script.background_music_url ?? null,
   }
 
   return NextResponse.json(renderInput)

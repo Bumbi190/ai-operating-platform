@@ -44,8 +44,9 @@ export async function createReelContainer(
   caption: string,
   coverImageUrl?: string,
 ): Promise<string> {
-  const userId = requireEnv('INSTAGRAM_USER_ID')
-  const token  = requireEnv('INSTAGRAM_ACCESS_TOKEN')
+  const userId   = requireEnv('INSTAGRAM_USER_ID')
+  const token    = requireEnv('INSTAGRAM_ACCESS_TOKEN')
+  const fbPageId = process.env.FACEBOOK_PAGE_ID  // optional — enables cross-posting
 
   const params = new URLSearchParams({
     media_type:    'REELS',
@@ -54,6 +55,12 @@ export async function createReelContainer(
     share_to_feed: 'true',
     access_token:  token,
   })
+
+  // Cross-post to Facebook Page automatically if FACEBOOK_PAGE_ID is set.
+  // Uses Instagram's built-in cross-posting — no pages_manage_posts needed.
+  if (fbPageId) {
+    params.set('cross_post_to_facebook_page_id', fbPageId)
+  }
 
   if (coverImageUrl) {
     params.set('thumb_offset', '0')

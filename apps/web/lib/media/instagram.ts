@@ -11,9 +11,11 @@
  *   INSTAGRAM_USER_ID        — numeric IG Business account ID (e.g. 17841437027967629)
  *
  * Docs: https://developers.facebook.com/docs/instagram-api/reference/ig-user/media
+ *
+ * NOTE: Business/Creator accounts must use graph.facebook.com (not graph.instagram.com)
  */
 
-const BASE = 'https://graph.instagram.com/v21.0'
+const BASE = 'https://graph.facebook.com/v21.0'
 
 function requireEnv(key: string): string {
   const val = process.env[key]

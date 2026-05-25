@@ -131,9 +131,12 @@ export async function GET(request: Request) {
   })
 
   // ── Publish to Instagram ──────────────────────────────────────────────────────
+  // Use a 50s poll timeout so we stay within Vercel Hobby's 60s function limit.
+  // If Instagram hasn't finished processing by then, the next publish cron (30 min
+  // later) will retry — the script stays in video_status='ready' until published.
   let igResult: { mediaId: string; permalink?: string }
   try {
-    igResult = await postReelToInstagram(script.video_url, caption)
+    igResult = await postReelToInstagram(script.video_url, caption, undefined, 50_000)
     log('publish', `Instagram OK: ${igResult.permalink}`)
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'

@@ -86,7 +86,7 @@ export async function createReelContainer(
 
 export async function pollUntilReady(
   creationId: string,
-  timeoutMs  = 300_000,  // 5 minutes
+  timeoutMs  = 300_000,  // 5 minutes default; pass lower value for short-lived crons
   intervalMs = 5_000,
 ): Promise<void> {
   const token = requireEnv('INSTAGRAM_ACCESS_TOKEN')
@@ -112,7 +112,7 @@ export async function pollUntilReady(
     // IN_PROGRESS — keep polling
   }
 
-  throw new Error('Instagram video processing timed out after 5 minutes')
+  throw new Error(`Instagram video processing timed out after ${Math.round(timeoutMs / 1000)}s`)
 }
 
 // ─── Step 3: Publish container ────────────────────────────────────────────────
@@ -154,15 +154,16 @@ export async function publishContainer(creationId: string): Promise<PublishResul
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 export async function postReelToInstagram(
-  videoUrl: string,
-  caption:  string,
-  onProgress?: (step: 'uploading' | 'processing' | 'publishing', pct: number) => void,
+  videoUrl:       string,
+  caption:        string,
+  onProgress?:    (step: 'uploading' | 'processing' | 'publishing', pct: number) => void,
+  pollTimeoutMs?: number,   // override poll timeout — use ~50000 for Vercel Hobby crons
 ): Promise<PublishResult> {
   onProgress?.('uploading', 10)
   const creationId = await createReelContainer(videoUrl, caption)
 
   onProgress?.('processing', 30)
-  await pollUntilReady(creationId)
+  await pollUntilReady(creationId, pollTimeoutMs)
 
   onProgress?.('publishing', 90)
   const result = await publishContainer(creationId)

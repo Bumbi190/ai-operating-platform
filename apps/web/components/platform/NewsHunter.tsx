@@ -47,10 +47,11 @@ const ANGLE_COLORS: Record<string, string> = {
 
 interface NewsHunterProps {
   projectId: string
+  slug?: string
   onSelectStory?: (candidate: StoryCandidate) => void
 }
 
-export function NewsHunter({ projectId, onSelectStory }: NewsHunterProps) {
+export function NewsHunter({ projectId, slug, onSelectStory }: NewsHunterProps) {
   const [state, setState] = useState<HuntState>({
     status: 'idle',
     label: '',
@@ -326,7 +327,7 @@ export function NewsHunter({ projectId, onSelectStory }: NewsHunterProps) {
 
                     {isPipelined ? (
                       <a
-                        href={`/projects/${projectId}/media`}
+                        href={`/projects/${slug ?? projectId}/scripts`}
                         className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />

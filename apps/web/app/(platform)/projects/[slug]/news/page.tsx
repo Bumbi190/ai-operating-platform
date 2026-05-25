@@ -107,6 +107,7 @@ export default function NewsPage() {
       {projectId && (
         <NewsHunter
           projectId={projectId}
+          slug={slug}
           onSelectStory={() => {
             // Reload news list after pipeline completes
             setTimeout(() => load(), 2000)

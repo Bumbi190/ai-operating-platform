@@ -142,13 +142,18 @@ Output ONLY the final prompt string. No explanation.`,
 }
 
 /**
- * Generate 3 visually distinct editorial images for a news video.
+ * Generate story-driven scene images for a news video.
  *
- * Uses Claude Haiku to write distinct photojournalism prompts, then
- * generates all images in parallel with Ideogram REALISTIC mode.
+ * Uses Claude Sonnet to analyze the script narrative and assign a specific
+ * visual intention to each scene — each image illustrates WHAT IS HAPPENING
+ * IN THE STORY at that moment, not just generic tech environments.
  *
- * Each image shows a different physical environment to create scene progression:
- * opening → development → closing visual narrative.
+ * Scene structure:
+ *   1. Hook/Problem    — the surprising or unexpected opening
+ *   2. Context/Reality — the environment or system being discussed
+ *   3. Evidence        — data, screen, or specific detail that proves the point
+ *  [4. Impact]         — consequence or industry effect (if count ≥ 4)
+ *  [5. Future]         — broader implication or what comes next (if count = 5)
  */
 export async function generateNewsImages(
   headline: string,
@@ -158,52 +163,98 @@ export async function generateNewsImages(
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic()
 
+  const sceneLabels = [
+    'HOOK/PROBLEM — the surprising opening moment that sets the stakes',
+    'CONTEXT/REALITY — the environment, company, or system at the center of this story',
+    'EVIDENCE/DISCOVERY — a specific detail, screen, data point, or object that proves the story',
+    'IMPACT/REACTION — how developers, researchers, or the industry responds or is affected',
+    'FUTURE/CONCLUSION — the broader implication or what this means going forward',
+  ].slice(0, count)
+
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 800,
+    max_tokens: 1200,
     messages: [{
       role: 'user',
-      content: `You are a photojournalism director for a premium AI news channel. Generate ${count} VISUALLY DISTINCT image prompts for a vertical news video.
+      content: `You are a documentary film director. Your job: write ${count} story-specific image prompts for a short-form AI news video.
 
 HEADLINE: "${headline}"
-SCRIPT: "${script.slice(0, 600)}"
+SCRIPT: "${script.slice(0, 900)}"
 
-REQUIREMENTS:
-- Each prompt must show a COMPLETELY DIFFERENT physical environment or subject
-- Together they form a visual arc: establishing shot → close detail → atmospheric close
-- All must feel like real Reuters/Bloomberg editorial photography
-- Vertical 9:16 format, dark and dramatic (text will overlay)
-- NO people, faces, hands, text, logos, abstract AI art, glowing orbs
+Each image must ILLUSTRATE THE STORY — not just look tech-related.
+Ground every prompt in the SPECIFIC companies, products, or events mentioned in the script.
 
-VARY the environments — pick ${count} distinct ones from this vocabulary:
-• Dense server rack corridor, twin rows of rack units, blue emergency LEDs, deep perspective
-• Extreme macro: NVIDIA GPU die surface, industrial lighting, black background, ultra-sharp
-• Semiconductor cleanroom interior, yellow safelight, industrial precision photography
-• Developer workstation at 2am, multiple monitors with terminal windows, dark desk, monitor glow
-• Silicon wafer on clean surface, polarized light rainbow diffraction, macro photography
-• Data center cooling pipes, condensation, industrial blue-green lighting, vertical crop
-• Overhead bird's-eye: organized cable paths, GPU cluster, real facility
-• Empty modern tech office at dusk, city lights through floor-to-ceiling glass, dark interior
-• Fiber optic cable cross-section, circular glowing points, pure black background, scientific macro
-• Circuit board close-up, copper traces, warm golden sidelighting, extreme shallow depth of field
+SCENES TO COVER:
+${sceneLabels.map((label, i) => `Scene ${i + 1}: ${label}`).join('\n')}
 
-Return ONLY a JSON array of ${count} prompt strings, no markdown fences:
-["prompt1", "prompt2", "prompt3"]`,
+VISUAL REQUIREMENTS:
+- Photorealistic editorial photography (Reuters, Bloomberg, Wired aesthetic)
+- Vertical 9:16, cinematic and natural — not overdone
+- Each scene: completely different environment and composition
+- Human environments are encouraged: offices, developer setups, research labs, screens
+- People allowed but no visible faces — show from behind, over-shoulder, silhouette, or hands only
+- Specific details that ground the image in this actual story
+- Dark, moody lighting (text will overlay)
+
+STRICTLY FORBIDDEN across all scenes:
+- Repeating the same environment (no server room x3)
+- Generic "AI data center with blue lights" as the only visual
+- Glowing orbs, abstract neural networks, cyberpunk aesthetics
+- Visible faces, crowds
+- Text, logos, watermarks in the image
+
+REFERENCE EXAMPLES OF GOOD PROMPTS:
+- "Developer at 2AM staring at benchmark results on an ultrawide monitor, dark startup office, warm screen glow, seen from behind, documentary photo"
+- "Google research whiteboard covered in model architecture diagrams, empty conference room, afternoon light through venetian blinds, realistic"
+- "Close-up of MacBook screen showing ChatGPT conversation, coffee cup and mechanical keyboard beside it, shallow depth of field, warm ambient light"
+- "GPU blades being installed in server rack, technician hands only visible, industrial lighting, realistic data center photography"
+- "Empty modern AI lab at dusk, city skyline through floor-to-ceiling glass, workstations with sleeping monitors, blue ambient light"
+- "Printed research paper on dark desk, highlighted passages visible, single overhead spotlight, editorial macro photography"
+
+Return ONLY a JSON array of ${count} prompt strings. No markdown, no explanation, no labels:
+["scene 1 prompt", "scene 2 prompt", "scene 3 prompt"]`,
     }],
   })
 
   const text = res.content[0].type === 'text' ? res.content[0].text.trim() : '[]'
-  const match = text.match(/\[[\s\S]*\]/)  // greedy — captures the full array
+  const match = text.match(/\[[\s\S]*\]/)
   const prompts = match ? JSON.parse(match[0]) as string[] : []
 
   if (prompts.length === 0) throw new Error('generateNewsImages: no prompts returned from Claude')
 
-  // Generate all images in parallel
-  console.log(`🎨 Generating ${prompts.length} scene images in parallel...`)
+  // Generate all images in parallel with story-aware negative prompt
+  // (allow human presence but block visible faces)
+  const negativePrompt = 'visible faces, frontal face, portrait, crowd, text, words, watermark, logo, abstract AI visualization, glowing orbs, neural network art, cyberpunk, neon lights, blurry, low quality, distorted, cartoon, anime'
+
+  console.log(`🎨 Generating ${prompts.length} story-driven scene images...`)
   return Promise.all(
     prompts.map(async (prompt, i) => {
-      console.log(`  Scene ${i + 1}: ${prompt.slice(0, 70)}...`)
-      return generateIdeogramImage(prompt)
+      console.log(`  Scene ${i + 1}: ${prompt.slice(0, 80)}...`)
+
+      const apiKey = process.env.IDEOGRAM_API_KEY
+      if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+
+      const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+        method: 'POST',
+        headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          aspect_ratio: '9x16',
+          style_type: 'REALISTIC',
+          rendering_speed: 'DEFAULT',
+          negative_prompt: negativePrompt,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`Ideogram API error ${res.status}: ${err}`)
+      }
+
+      const data = await res.json() as { data: Array<{ url: string }> }
+      const url = data.data?.[0]?.url
+      if (!url) throw new Error('Ideogram returned no image URL')
+      return url
     }),
   )
 }

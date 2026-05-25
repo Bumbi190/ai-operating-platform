@@ -13,9 +13,10 @@
  * Also handles scripts still in 'rendering' state — polls Lambda once more
  * to give straggler renders a final chance before skipping them.
  *
- * This endpoint is the fallback for cases where the Phase-1 cron timed out
- * before the render completed. In most cases, Phase-1 will have already
- * published and this cron will find nothing to do (which is fine).
+ * Instagram processing strategy:
+ *   - First call: creates container, saves creation_id to DB, polls up to 50s
+ *   - Subsequent calls: reuses saved creation_id, skips re-upload, polls up to 55s
+ *   This avoids re-uploading the video each retry and gives Instagram more poll time.
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
@@ -23,7 +24,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
-import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
+import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
 
 export const dynamic    = 'force-dynamic'
@@ -93,6 +94,7 @@ export async function GET(request: Request) {
       video_url,
       video_status,
       status,
+      instagram_creation_id,
       media_news_items ( url, source_name )
     `)
     .eq('video_status', 'ready')
@@ -131,12 +133,28 @@ export async function GET(request: Request) {
   })
 
   // ── Publish to Instagram ──────────────────────────────────────────────────────
-  // Use a 50s poll timeout so we stay within Vercel Hobby's 60s function limit.
-  // If Instagram hasn't finished processing by then, the next publish cron (30 min
-  // later) will retry — the script stays in video_status='ready' until published.
+  // Strategy: reuse existing creation_id if available (avoids re-uploading the
+  // video on retries). Poll for up to 55s. If it times out, the next cron run
+  // will retry with the same creation_id — Instagram keeps it for ~24h.
   let igResult: { mediaId: string; permalink?: string }
   try {
-    igResult = await postReelToInstagram(script.video_url, caption, undefined, 50_000)
+    let creationId = script.instagram_creation_id as string | null | undefined
+
+    if (!creationId) {
+      log('publish', 'Creating Instagram container...')
+      creationId = await createReelContainer(script.video_url, caption)
+      // Save creation_id so retries can skip re-upload
+      await db.from('media_scripts')
+        .update({ instagram_creation_id: creationId })
+        .eq('id', script.id)
+      log('publish', `Container created: ${creationId}`)
+    } else {
+      log('publish', `Reusing existing container: ${creationId}`)
+    }
+
+    // Poll up to 55s (container already created, so we have more headroom)
+    await pollUntilReady(creationId, 55_000)
+    igResult = await publishContainer(creationId)
     log('publish', `Instagram OK: ${igResult.permalink}`)
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'

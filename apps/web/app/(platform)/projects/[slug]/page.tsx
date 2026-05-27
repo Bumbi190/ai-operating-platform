@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import { DreamStatus } from '@/components/platform/DreamStatus'
 import type { RunStatus } from '@/lib/supabase/types'
-import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus } from 'lucide-react'
+import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus, Radio } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 
@@ -104,6 +104,13 @@ export default async function ProjectPage({
         >
           <Play className="w-4 h-4" />
           Kör workflow
+        </Link>
+        <Link
+          href={`/projects/${slug}/media`}
+          className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium hover:bg-white/10 transition-colors"
+        >
+          <Radio className="w-4 h-4" />
+          Media Pipeline
         </Link>
       </div>
 

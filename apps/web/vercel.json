@@ -43,6 +43,10 @@
     {
       "path": "/api/media/cron/publish",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/media/cron/refresh-tokens",
+      "schedule": "0 6 1 * *"
     }
   ]
 }

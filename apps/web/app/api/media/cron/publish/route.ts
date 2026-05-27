@@ -26,6 +26,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
+import { getToken } from '@/lib/media/token-store'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -43,6 +44,22 @@ export async function GET(request: Request) {
   }
 
   const db = createAdminClient()
+
+  // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
+  // Prioritet: platform_tokens-tabellen → env-variabel
+  // instagram.ts och facebook.ts läser alltid från process.env, så vi sätter
+  // värdet här en gång per serverless-anrop om Supabase har ett färskare token.
+  const igStored = await getToken('instagram')
+  if (igStored?.source === 'supabase') {
+    process.env.INSTAGRAM_ACCESS_TOKEN = igStored.accessToken
+    log('token', `Instagram token läst från Supabase.`)
+  }
+
+  const fbStored = await getToken('facebook')
+  if (fbStored?.source === 'supabase') {
+    process.env.FACEBOOK_PAGE_ACCESS_TOKEN = fbStored.accessToken
+    log('token', `Facebook token läst från Supabase.`)
+  }
 
   // Scripts created in the last 3 hours (today's pipeline runs)
   const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()

@@ -27,6 +27,7 @@
 
 import { NextResponse } from 'next/server'
 import { getToken, setToken } from '@/lib/media/token-store'
+import { sendPipelineAlert, sendTokenExpiryWarning } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
@@ -120,6 +121,12 @@ export async function GET(request: Request) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         log(`✗ Instagram refresh misslyckades: ${msg}`)
+        await sendPipelineAlert({
+          cronRoute: 'cron/refresh-tokens',
+          step:      'instagram_token_refresh',
+          error:     msg,
+          context:   { tip: 'Kontrollera META_APP_ID, META_APP_SECRET och att INSTAGRAM_ACCESS_TOKEN är satt i Vercel' },
+        })
         results.instagram = { status: 'failed', error: msg }
       }
     }

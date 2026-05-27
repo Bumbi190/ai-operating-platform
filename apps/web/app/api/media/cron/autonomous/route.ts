@@ -35,6 +35,7 @@ import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender, getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
+import { sendPipelineAlert } from '@/lib/media/alert'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
@@ -197,6 +198,7 @@ export async function GET(request: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     log('hunt', `Failed: ${msg}`)
+    await sendPipelineAlert({ cronRoute: 'cron/autonomous', step: 'news_hunt', error: msg })
     return NextResponse.json({ status: 'hunt_failed', error: msg }, { status: 500 })
   }
 
@@ -420,6 +422,12 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
       } else if (prog.error) {
         await db.from('media_scripts').update({ video_status: 'failed' }).eq('id', scriptId)
         log('render', `Failed: ${prog.error}`)
+        await sendPipelineAlert({
+          cronRoute: 'cron/autonomous',
+          step:      'lambda_render',
+          error:     prog.error,
+          context:   { scriptId, renderId, hook: script.hook },
+        })
         return NextResponse.json({
           status:   'render_failed',
           error:    prog.error,
@@ -455,8 +463,21 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     sourceName: top.story.sourceLabel ?? undefined,
   })
 
-  const igResult = await postReelToInstagram(videoUrl, caption)
-  log('publish', `Instagram OK: ${igResult.permalink}`)
+  let igResult: { mediaId: string; permalink?: string }
+  try {
+    igResult = await postReelToInstagram(videoUrl, caption)
+    log('publish', `Instagram OK: ${igResult.permalink}`)
+  } catch (igErr) {
+    const msg = igErr instanceof Error ? igErr.message : String(igErr)
+    log('publish', `Instagram failed: ${msg}`)
+    await sendPipelineAlert({
+      cronRoute: 'cron/autonomous',
+      step:      'instagram_publish',
+      error:     msg,
+      context:   { scriptId, hook: script.hook, videoUrl },
+    })
+    return NextResponse.json({ status: 'instagram_failed', error: msg, scriptId }, { status: 500 })
+  }
 
   let fbResult: { postId: string; url?: string } | null = null
   const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
@@ -466,7 +487,15 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
       fbResult = await postReelToFacebook(videoUrl, caption)
       log('publish', `Facebook OK: ${fbResult.url}`)
     } catch (fbErr) {
-      log('publish', `Facebook failed (non-fatal): ${fbErr instanceof Error ? fbErr.message : fbErr}`)
+      const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
+      log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
+      await sendPipelineAlert({
+        cronRoute: 'cron/autonomous',
+        step:      'facebook_publish',
+        error:     fbMsg,
+        severity:  'warning',
+        context:   { scriptId, note: 'Instagram publicerades OK — enbart Facebook failade' },
+      })
     }
   }
 

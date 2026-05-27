@@ -1090,3 +1090,246 @@
 
 /* Touch-feel safe area */
 .safe-x { padding-left: max(env(safe-area-inset-left), 16px); padding-right: max(env(safe-area-inset-right), 16px); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INTERACTION SYSTEM · motion timing scale + focus + press
+   The grammar of how Omnira responds to operator intent.
+═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Duration scale — calm, expensive, never gimmicky */
+  --dur-instant: 80ms;      /* hover tints, focus rings, press states */
+  --dur-fast:    160ms;     /* small UI shifts (chevron rotate, color change) */
+  --dur-base:    240ms;     /* default — most transitions live here */
+  --dur-slow:    400ms;     /* panel reveals, mode shifts */
+  --dur-ambient: 800ms;     /* atmospheric (orb drift, halo breath) */
+  --dur-tide:    1600ms;    /* very slow (mode switch, boot stagger) */
+
+  /* Easing — Linear/Arc style smooth curves */
+  --ease-os:     cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-emphasis: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Focus ring — subtle indigo, never harsh OS blue */
+  --focus-ring:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 0 0 3px rgba(99,102,241,0.35),
+    0 0 24px -4px rgba(99,102,241,0.30);
+}
+
+/* Default transition behavior — apply to interactive surfaces */
+.ease-os { transition-timing-function: var(--ease-os); }
+
+/* Hover lift — quiet, premium */
+.lift {
+  transition: transform var(--dur-base) var(--ease-os), box-shadow var(--dur-base) var(--ease-os);
+}
+.lift:hover { transform: translateY(-1px); }
+
+/* Press state — keys feel like real keys */
+.press {
+  transition: transform var(--dur-instant) var(--ease-os);
+}
+.press:active { transform: scale(0.985); }
+
+/* Focus visible — replace OS-blue with calm indigo */
+.focus-os:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+input:focus-visible,
+textarea:focus-visible {
+  border-color: rgba(99,102,241,0.5) !important;
+}
+
+/* In-flight bar — for command bar / page transitions */
+.inflight {
+  position: relative;
+  overflow: hidden;
+}
+.inflight::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 30%;
+  left: -30%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(99,102,241,0.6) 50%,
+    transparent 100%);
+  animation: inflightRun 1.4s linear infinite;
+}
+@keyframes inflightRun {
+  0%   { left: -30%; }
+  100% { left: 100%; }
+}
+
+/* Reveal on scroll-ish — apply via JS or directly, gives a "settle" feel */
+.settle {
+  animation: settleIn 0.6s var(--ease-os) both;
+}
+@keyframes settleIn {
+  0%   { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  60%  { filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+/* Magnify — for active workflow nodes & focused panels */
+.magnify {
+  transition: transform var(--dur-base) var(--ease-os), box-shadow var(--dur-base) var(--ease-os);
+}
+.magnify:hover { transform: scale(1.015); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OPERATOR MODES · subtle atmospheric shifts (NO new neon)
+   The OS responds to which mental mode the operator has selected.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Default · standard mode */
+body.mode-standard { /* no change */ }
+
+/* FOCUS · dim everything except the live mission surface */
+body.mode-focus .orb           { opacity: 0.35; transition: opacity var(--dur-tide) var(--ease-os); }
+body.mode-focus .os-grid       { opacity: 0.4;  transition: opacity var(--dur-tide) var(--ease-os); }
+body.mode-focus .tier-passive  { opacity: 0.65; transition: opacity var(--dur-tide) var(--ease-os); }
+body.mode-focus .tier-archived { opacity: 0.40; transition: opacity var(--dur-tide) var(--ease-os); }
+
+/* AUTONOMOUS · trust mode, warm gold breath under live surfaces */
+body.mode-autonomous .tier-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(ellipse 60% 40% at 50% 100%, rgba(212,165,116,0.05) 0%, transparent 70%);
+}
+
+/* INCIDENT · raise critical glow + speed scan line */
+body.mode-incident .tier-critical { box-shadow: var(--state-critical-glow), 0 0 32px -4px rgba(212,165,116,0.40); }
+body.mode-incident .scan-line     { animation-duration: 6s; opacity: 0.5; }
+
+/* PUBLISHING · emphasize distribution surfaces, soften others */
+body.mode-publishing .tier-passive { opacity: 0.85; }
+/* (distribution panels can opt-in by adding .publishing-emphasis) */
+body.mode-publishing .publishing-emphasis {
+  box-shadow: 0 24px 64px -16px rgba(99,102,241,0.30), 0 0 0 1px rgba(99,102,241,0.18);
+}
+
+/* MAINTENANCE · desaturate, restrained */
+body.mode-maintenance { filter: saturate(0.78); transition: filter var(--dur-tide) var(--ease-os); }
+body.mode-maintenance .orb { opacity: 0.45; }
+
+/* Mode switcher — segmented control */
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.05);
+  gap: 1px;
+}
+.mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  letter-spacing: -0.005em;
+  color: rgba(255,255,255,0.5);
+  transition: all var(--dur-fast) var(--ease-os);
+  cursor: pointer;
+}
+.mode-switch button:hover {
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.03);
+}
+.mode-switch button[data-active="true"] {
+  color: white;
+  background: linear-gradient(180deg, rgba(99,102,241,0.22), rgba(99,102,241,0.10));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px -4px rgba(99,102,241,0.40);
+}
+.mode-switch button[data-active="true"][data-tone="critical"] {
+  background: linear-gradient(180deg, rgba(212,165,116,0.22), rgba(212,165,116,0.10));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px -4px rgba(212,165,116,0.45);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COGNITION · the system thinking out loud
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Thinking shimmer — for live agent reasoning text */
+.thinking-shimmer {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.55) 0%,
+    rgba(165,180,252,0.95) 40%,
+    rgba(255,255,255,0.55) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3.2s ease-in-out infinite;
+}
+
+/* Confidence meter — animated indigo bar with subtle drift */
+.confidence-track {
+  position: relative;
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(165,180,252,0.7) 0%,
+    rgba(129,140,248,0.95) 100%);
+  box-shadow: 0 0 8px rgba(99,102,241,0.5);
+  transition: width var(--dur-slow) var(--ease-os);
+  position: relative;
+}
+.confidence-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.30) 50%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+
+/* Memory recall · soft fade in then linger */
+.recall {
+  animation: recallIn 0.7s var(--ease-os) both;
+}
+@keyframes recallIn {
+  0%   { opacity: 0; transform: translateY(-4px); filter: blur(3px); }
+  50%  { filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANEL LAYERING · canonical z-index scale
+═══════════════════════════════════════════════════════════════════════════ */
+
+.z-base    { z-index: 1; }
+.z-content { z-index: 10; }
+.z-panel   { z-index: 20; }
+.z-bar     { z-index: 30; }
+.z-rail    { z-index: 40; }
+.z-sheet   { z-index: 50; }
+.z-modal   { z-index: 60; }
+.z-toast   { z-index: 70; }

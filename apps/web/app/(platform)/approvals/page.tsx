@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { ApprovalCard } from './ApprovalCard'
+import { Panel, SectionHeader, PulseDot, HeroStat } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,13 +22,6 @@ interface ApprovalRow {
     workflows: { name: string } | null
     agents: { name: string } | null
   } | null
-}
-
-const STATUS_CONFIG = {
-  pending:  { label: 'Väntar',     color: 'text-amber-400',  bg: 'bg-amber-400/10 border-amber-400/20',  icon: Clock },
-  approved: { label: 'Godkänd',    color: 'text-green-400',  bg: 'bg-green-400/10 border-green-400/20',  icon: CheckCircle2 },
-  rejected: { label: 'Avslagen',   color: 'text-red-400',    bg: 'bg-red-400/10 border-red-400/20',      icon: XCircle },
-  revised:  { label: 'Reviderad',  color: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/20',    icon: RefreshCw },
 }
 
 export default async function ApprovalsPage() {
@@ -58,72 +52,117 @@ export default async function ApprovalsPage() {
     revised:  all.filter(a => a.status === 'revised').length,
   }
 
+  const reviewedToday = all.filter(a => {
+    if (!a.reviewed_at) return false
+    return new Date(a.reviewed_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
+  }).length
+
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
-          <ShieldCheck className="w-5 h-5 text-indigo-400" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Godkännanden</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Manager-agentens granskningskö — godkänn, avslå eller begär revision
-          </p>
-        </div>
-      </div>
+    <div className="px-7 lg:px-10 py-7 max-w-[1400px] mx-auto space-y-8 pb-24">
 
-      {/* Stat row */}
-      <div className="grid grid-cols-4 gap-3">
-        {(Object.entries(STATUS_CONFIG) as [keyof typeof STATUS_CONFIG, typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([key, cfg]) => {
-          const Icon = cfg.icon
-          return (
-            <div key={key} className={`rounded-xl border p-4 ${cfg.bg}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Icon className={`w-4 h-4 ${cfg.color}`} />
-                <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
-              </div>
-              <div className="text-2xl font-bold tabular-nums">{counts[key]}</div>
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <header className="grid grid-cols-12 gap-6 items-end animate-fade-in-up">
+        <div className="col-span-12 lg:col-span-7">
+          <div className="flex items-center gap-2 mb-3">
+            <PulseDot tone="amber" size={6} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-300">
+              Executive Review Channel
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center chrome-edge shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(168,85,247,0.10))',
+                border: '1px solid rgba(251,191,36,0.35)',
+                boxShadow: '0 12px 32px -8px rgba(251,191,36,0.35)',
+              }}
+            >
+              <ShieldCheck className="w-6 h-6 text-amber-300" />
             </div>
-          )
-        })}
-      </div>
-
-      {/* Pending first, then rest */}
-      {all.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <ShieldCheck className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Inga godkännanden ännu</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">
-            Kör ett workflow — resultatet hamnar här för granskning
-          </p>
+            <div>
+              <h1 className="text-[36px] font-black tracking-tight leading-[1.05] text-gradient-aurora">
+                Approval Center
+              </h1>
+              <p className="text-[12.5px] text-zinc-400 mt-1.5 max-w-xl leading-relaxed">
+                AI-graded outputs queued for executive judgment · approve, revise, or reject autonomous decisions
+              </p>
+            </div>
+          </div>
         </div>
+
+        <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-3">
+          <HeroStat
+            label="Awaiting Review"
+            value={counts.pending}
+            color="#fbbf24"
+            glow={counts.pending > 0}
+            caption={counts.pending > 0 ? 'Needs operator decision' : 'Inbox clear'}
+            delay={60}
+          />
+          <HeroStat
+            label="Decided Today"
+            value={reviewedToday}
+            color="#34d399"
+            caption={`${counts.approved} approved · ${counts.rejected} rejected`}
+            delay={120}
+          />
+        </div>
+      </header>
+
+      {/* ── Stat row ───────────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile label="Pending"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
+        <StatTile label="Approved"   value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
+        <StatTile label="Rejected"   value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
+        <StatTile label="Revisions"  value={counts.revised}  color="#60a5fa" icon={<RefreshCw    className="w-3.5 h-3.5" />} />
+      </section>
+
+      {/* ── Body ───────────────────────────────────────────────────────────── */}
+      {all.length === 0 ? (
+        <Panel className="p-16 text-center">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 chrome-edge"
+            style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}
+          >
+            <ShieldCheck className="w-6 h-6 text-indigo-300" />
+          </div>
+          <p className="text-[14px] text-zinc-300 font-medium">Inbox clear</p>
+          <p className="text-[11.5px] text-zinc-600 mt-1.5 max-w-sm mx-auto">
+            Trigger a workflow — autonomous outputs that fail the AI evaluator land here for executive review.
+          </p>
+        </Panel>
       ) : (
-        <div className="space-y-4">
-          {/* Pending */}
+        <div className="space-y-10">
           {counts.pending > 0 && (
             <section>
-              <h2 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                Väntar på granskning ({counts.pending})
-              </h2>
+              <SectionHeader
+                eyebrow="Priority Queue"
+                title="Awaiting Decision"
+                caption={`${counts.pending} ${counts.pending === 1 ? 'output' : 'outputs'} flagged for human judgment`}
+                right={
+                  <span className="inline-flex items-center gap-2 text-[10.5px] text-amber-300 font-semibold uppercase tracking-[0.2em]">
+                    <Sparkles className="w-3 h-3" /> AI-scored
+                  </span>
+                }
+              />
               <div className="space-y-3">
-                {all.filter(a => a.status === 'pending').map(a => (
-                  <ApprovalCard key={a.id} approval={a} />
+                {all.filter(a => a.status === 'pending').map((a, i) => (
+                  <ApprovalCard key={a.id} approval={a} delay={i * 60} />
                 ))}
               </div>
             </section>
           )}
 
-          {/* Reviewed */}
           {all.some(a => a.status !== 'pending') && (
             <section>
-              <h2 className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider mb-2">
-                Granskade
-              </h2>
+              <SectionHeader
+                eyebrow="Archive"
+                title="Decided"
+                caption="Outputs the operator has reviewed"
+              />
               <div className="space-y-3">
-                {all.filter(a => a.status !== 'pending').map(a => (
-                  <ApprovalCard key={a.id} approval={a} />
+                {all.filter(a => a.status !== 'pending').map((a, i) => (
+                  <ApprovalCard key={a.id} approval={a} delay={i * 40} />
                 ))}
               </div>
             </section>
@@ -131,5 +170,33 @@ export default async function ApprovalsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function StatTile({
+  label, value, color, icon, live = false,
+}: { label: string; value: number; color: string; icon: React.ReactNode; live?: boolean }) {
+  return (
+    <Panel className="px-5 py-4 relative overflow-hidden">
+      <div
+        className="absolute inset-x-0 top-0 h-px"
+        style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.5 }}
+      />
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-zinc-500">{label}</span>
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center chrome-edge"
+          style={{ background: `${color}1a`, border: `1px solid ${color}33` }}
+        >
+          <span style={{ color }}>{icon}</span>
+        </div>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[26px] font-black num tracking-tight" style={{ color }}>
+          {value}
+        </span>
+        {live && value > 0 && <PulseDot tone="amber" size={5} />}
+      </div>
+    </Panel>
   )
 }

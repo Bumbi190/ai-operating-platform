@@ -27,6 +27,7 @@ import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -176,6 +177,12 @@ export async function GET(request: Request) {
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'
     log('publish', `Instagram failed: ${msg}`)
+    await sendPipelineAlert({
+      cronRoute: 'cron/publish',
+      step:      'instagram_publish',
+      error:     msg,
+      context:   { scriptId: script.id, hook: script.hook ?? null },
+    })
     return NextResponse.json({ status: 'instagram_failed', error: msg, scriptId: script.id }, { status: 500 })
   }
 
@@ -188,7 +195,15 @@ export async function GET(request: Request) {
       fbResult = await postReelToFacebook(script.video_url, caption)
       log('publish', `Facebook OK: ${fbResult.url}`)
     } catch (fbErr) {
-      log('publish', `Facebook failed (non-fatal): ${fbErr instanceof Error ? fbErr.message : fbErr}`)
+      const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
+      log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
+      await sendPipelineAlert({
+        cronRoute: 'cron/publish',
+        step:      'facebook_publish',
+        error:     fbMsg,
+        severity:  'warning',
+        context:   { scriptId: script.id, note: 'Instagram publicerades OK — enbart Facebook failade' },
+      })
     }
   }
 

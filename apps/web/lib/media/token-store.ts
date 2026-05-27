@@ -56,10 +56,18 @@ export async function getToken(platform: Platform): Promise<StoredToken | null> 
     if (expiresAt) {
       const daysLeft = (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       if (daysLeft < WARN_DAYS_BEFORE_EXPIRY) {
+        const daysRounded = Math.round(daysLeft)
         console.warn(
-          `[token-store] ⚠️  ${platform} token löper ut om ${Math.round(daysLeft)} dagar! ` +
+          `[token-store] ⚠️  ${platform} token löper ut om ${daysRounded} dagar! ` +
           `Kör /api/media/cron/refresh-tokens manuellt om cron-jobbet inte åtgärdat det.`
         )
+        // Skicka mail-varning (importeras dynamiskt för att undvika cirkulärberoende)
+        try {
+          const { sendTokenExpiryWarning } = await import('@/lib/media/alert')
+          await sendTokenExpiryWarning(platform, daysRounded, expiresAt.toISOString())
+        } catch {
+          console.error('[token-store] Kunde inte skicka token-varning via mail.')
+        }
       }
     }
 

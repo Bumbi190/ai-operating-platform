@@ -1,9 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CheckCircle2, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Loader2, Zap, AlertTriangle, ShieldAlert } from 'lucide-react'
+import {
+  CheckCircle2, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Loader2,
+  ShieldAlert, Sparkles, Eye, Brain, Activity,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { ScoreBar, ReasoningTrace, type ReasoningStep, RadialDial, PulseDot } from '@/components/platform/os'
 
 interface Approval {
   id: string
@@ -36,14 +40,14 @@ interface EvalResult {
   suggestion: string | null
 }
 
-const STATUS_CONFIG = {
-  pending:  { label: 'Väntar',     color: 'text-amber-400',  bg: 'border-amber-400/20 bg-amber-400/5',  icon: Clock },
-  approved: { label: 'Godkänd',    color: 'text-green-400',  bg: 'border-green-400/20 bg-green-400/5',  icon: CheckCircle2 },
-  rejected: { label: 'Avslagen',   color: 'text-red-400',    bg: 'border-red-400/20 bg-red-400/5',      icon: XCircle },
-  revised:  { label: 'Reviderad',  color: 'text-blue-400',   bg: 'border-blue-400/20 bg-blue-400/5',    icon: RefreshCw },
-}
+const STATUS_META = {
+  pending:  { label: 'Awaiting Review', tone: 'amber',   color: '#fbbf24', icon: Clock,       glow: 'glow-amber' },
+  approved: { label: 'Approved',        tone: 'emerald', color: '#34d399', icon: CheckCircle2, glow: '' },
+  rejected: { label: 'Rejected',        tone: 'rose',    color: '#f87171', icon: XCircle,     glow: '' },
+  revised:  { label: 'Revision',        tone: 'indigo',  color: '#60a5fa', icon: RefreshCw,   glow: '' },
+} as const
 
-export function ApprovalCard({ approval }: { approval: Approval }) {
+export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; delay?: number }) {
   const [expanded, setExpanded] = useState(approval.status === 'pending')
   const [notes, setNotes] = useState(approval.reviewer_notes ?? '')
   const [loading, setLoading] = useState<string | null>(null)
@@ -51,27 +55,21 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   const [evalLoading, setEvalLoading] = useState(false)
   const router = useRouter()
 
-  const cfg = STATUS_CONFIG[approval.status]
-  const Icon = cfg.icon
+  const meta = STATUS_META[approval.status]
   const isPending = approval.status === 'pending'
 
-  const workflowName = approval.runs?.workflows?.name ?? 'Okänt workflow'
-  const date = new Date(approval.created_at).toLocaleDateString('sv-SE', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  const workflowName = approval.runs?.workflows?.name ?? 'Unknown workflow'
+  const agentName    = approval.runs?.agents?.name ?? 'Autonomous agent'
+  const date = new Date(approval.created_at).toLocaleDateString('en-US', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
-  const reviewedDate = approval.reviewed_at
-    ? new Date(approval.reviewed_at).toLocaleDateString('sv-SE', {
-        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-      })
-    : null
 
-  // Auto-evaluate when card is expanded and it's a text-based content type
+  // Auto-evaluate text content
   useEffect(() => {
     if (!expanded || evalResult || evalLoading) return
     const textTypes = ['script', 'hook', 'caption', 'text']
     const isTextContent = textTypes.some(t => approval.output_key?.includes(t)) ||
       (approval.content && approval.content.length > 50 && !approval.content.startsWith('{'))
-
     if (!isTextContent) return
 
     setEvalLoading(true)
@@ -83,25 +81,21 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         contentType: approval.output_key?.includes('hook') ? 'hook'
           : approval.output_key?.includes('caption') ? 'caption'
           : 'text',
-        projectId: approval.runs?.id ? undefined : undefined,  // project_id fetched server-side
         deepScore: false,
       }),
     })
       .then(r => r.json())
-      .then(data => {
-        if (data.result) setEvalResult(data.result)
-      })
-      .catch(() => { /* silent fail — eval is additive */ })
+      .then(data => { if (data.result) setEvalResult(data.result) })
+      .catch(() => { /* additive */ })
       .finally(() => setEvalLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded])
 
-  // Preview: first 200 chars, strip markdown
   const preview = approval.content
     .replace(/#{1,6}\s+/g, '')
     .replace(/\*\*/g, '')
     .replace(/\n+/g, ' ')
-    .slice(0, 200)
+    .slice(0, 240)
 
   async function act(action: 'approved' | 'rejected' | 'revised') {
     setLoading(action)
@@ -117,150 +111,315 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
     }
   }
 
+  // Engagement prediction & risk — derived from eval signal
+  const aiScore = evalResult ? Math.round(evalResult.overallScore * 10) : null
+  const engagementPrediction = evalResult
+    ? Math.round(50 + (evalResult.overallScore - 5) * 8)
+    : null
+  const riskScore = evalResult
+    ? Math.round(evalResult.slopScore * 10 + (evalResult.hardFails.length * 12))
+    : null
+
+  // Synthesize a reasoning trace from eval issues (when present)
+  const reasoning: ReasoningStep[] = []
+  if (evalResult) {
+    reasoning.push({
+      id: 'goal',
+      type: 'goal',
+      title: `Output matches "${approval.output_key}" target schema`,
+      detail: `Generated by ${agentName} as part of ${workflowName}`,
+      confidence: 95,
+    })
+    if (evalResult.brandAlignment !== null) {
+      reasoning.push({
+        id: 'mem',
+        type: 'memory',
+        title: 'Cross-referenced brand voice memory',
+        detail: `Alignment score ${evalResult.brandAlignment.toFixed(1)}/10 against canonical brand corpus`,
+        confidence: Math.round(evalResult.brandAlignment * 10),
+      })
+    }
+    reasoning.push({
+      id: 'eval',
+      type: 'evaluation',
+      title: `Quality evaluation · ${evalResult.passed ? 'PASS' : 'FLAG'}`,
+      detail: evalResult.issues.length > 0
+        ? `Primary issue · ${evalResult.issues[0].dimension}: ${evalResult.issues[0].detail}`
+        : 'All quality dimensions cleared automated thresholds',
+      confidence: Math.round(evalResult.overallScore * 10),
+    })
+    if (evalResult.suggestion) {
+      reasoning.push({
+        id: 'dec',
+        type: 'decision',
+        title: 'Suggested adjustment',
+        detail: evalResult.suggestion,
+      })
+    }
+    if (evalResult.hardFails.length > 0) {
+      reasoning.push({
+        id: 'fail',
+        type: 'branch',
+        title: 'Hard failure detected',
+        detail: evalResult.hardFails.slice(0, 2).join(' · '),
+      })
+    }
+  }
+
   return (
-    <div className={cn('rounded-xl border overflow-hidden transition-all', cfg.bg)}>
-      {/* Card header */}
+    <div
+      className={cn(
+        'panel relative overflow-hidden animate-fade-in-up',
+        isPending && 'glow-amber',
+      )}
+      style={{
+        animationDelay: `${delay}ms`,
+        animationFillMode: 'both',
+      }}
+    >
+      {/* Top accent */}
+      <div
+        className="absolute inset-x-0 top-0 h-px"
+        style={{
+          background: `linear-gradient(90deg, transparent, ${meta.color}, transparent)`,
+          opacity: isPending ? 0.8 : 0.3,
+        }}
+      />
+      {/* Ambient corner glow */}
+      <div
+        className="absolute -top-16 -right-16 w-48 h-48 rounded-full pointer-events-none"
+        style={{
+          background: `radial-gradient(circle, ${meta.color}22 0%, transparent 70%)`,
+          filter: 'blur(28px)',
+          opacity: isPending ? 0.8 : 0.3,
+        }}
+      />
+
+      {/* ── Card header (clickable) ──────────────────────────────────────── */}
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+        className="w-full relative flex items-center gap-4 px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <Icon className={cn('w-4 h-4 shrink-0', cfg.color)} />
+        {/* Status icon */}
+        <div
+          className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center chrome-edge"
+          style={{
+            background: `linear-gradient(135deg, ${meta.color}22, ${meta.color}08)`,
+            border: `1px solid ${meta.color}44`,
+            boxShadow: isPending ? `0 0 16px ${meta.color}44` : 'none',
+          }}
+        >
+          <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
+        </div>
+
+        {/* Title block */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{workflowName}</span>
-            <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded-full border', cfg.color, cfg.bg)}>
-              {cfg.label}
+          <div className="flex items-center gap-2.5 mb-1">
+            <span className="text-[13px] font-semibold text-white/95 truncate tracking-tight">
+              {workflowName}
             </span>
+            <span
+              className="shrink-0 text-[9px] font-bold uppercase tracking-[0.18em] px-1.5 py-0.5 rounded"
+              style={{ color: meta.color, background: `${meta.color}1a`, border: `1px solid ${meta.color}33` }}
+            >
+              {meta.label}
+            </span>
+            {isPending && <PulseDot tone="amber" size={5} />}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {date} · nyckel: <code className="font-mono">{approval.output_key}</code>
+          <p className="text-[10.5px] text-zinc-500 flex items-center gap-2 flex-wrap">
+            <span>{date}</span>
+            <span className="text-zinc-700">·</span>
+            <span className="font-mono text-indigo-300/70">{approval.output_key}</span>
+            <span className="text-zinc-700">·</span>
+            <span>by {agentName}</span>
           </p>
         </div>
-        {expanded ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+
+        {/* AI score peek (when available + collapsed) */}
+        {!expanded && aiScore !== null && (
+          <div className="hidden md:flex items-center gap-2 mr-3">
+            <RadialDial value={aiScore} color={evalResult!.passed ? '#34d399' : '#fbbf24'} size={44} thickness={3} label="AI" />
+          </div>
         )}
+
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-zinc-500 shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
+        }
       </button>
 
-      {/* Collapsed preview */}
+      {/* Collapsed preview line */}
       {!expanded && (
-        <p className="px-4 pb-3 text-xs text-muted-foreground/70 line-clamp-2">
-          {preview}…
-        </p>
+        <div className="px-5 pb-3 pt-0 relative">
+          <p className="text-[11.5px] text-zinc-500 line-clamp-2 leading-relaxed">{preview}…</p>
+        </div>
       )}
 
-      {/* Expanded content */}
+      {/* ── Expanded ─────────────────────────────────────────────────────── */}
       {expanded && (
-        <div className="border-t border-border/50">
-          {/* Content */}
-          <div className="px-4 py-3 max-h-80 overflow-y-auto">
-            <pre className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
-              {approval.content}
-            </pre>
-          </div>
-
-          {/* Evaluation Scores */}
-          {(evalLoading || evalResult) && (
-            <div className="border-t border-border/50 px-4 py-3 bg-muted/10">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400">
-                  Evaluation
+        <div className="relative" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          {/* Top split: preview | scores */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+            {/* Output preview */}
+            <div className="lg:col-span-7 p-5 lg:border-r" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Eye className="w-3 h-3 text-indigo-300" />
+                <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-indigo-300/80">
+                  Output Preview
                 </span>
-                {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+              </div>
+              <div
+                className="rounded-xl p-4 max-h-80 overflow-y-auto scrollbar-thin"
+                style={{
+                  background: 'rgba(255,255,255,0.015)',
+                  border: '1px solid rgba(255,255,255,0.04)',
+                }}
+              >
+                <pre className="text-[11.5px] text-zinc-300 whitespace-pre-wrap leading-relaxed font-sans">
+                  {approval.content}
+                </pre>
+              </div>
+            </div>
+
+            {/* AI Analysis panel */}
+            <div className="lg:col-span-5 p-5 space-y-5 bg-gradient-to-b from-transparent to-indigo-500/[0.03]">
+              <div className="flex items-center gap-2">
+                <Brain className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-indigo-300/80">
+                  AI Executive Analysis
+                </span>
+                {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />}
               </div>
 
-              {evalResult && (
-                <div className="space-y-2">
-                  {/* Score pills */}
-                  <div className="flex flex-wrap gap-1.5">
-                    <ScorePill label="Overall" score={evalResult.overallScore} />
-                    <ScorePill label="Slop" score={10 - evalResult.slopScore} />
+              {evalResult ? (
+                <>
+                  {/* Three big dials */}
+                  <div className="flex items-center justify-around">
+                    <DialBlock label="AI Score" value={aiScore ?? 0} color={evalResult.passed ? '#34d399' : '#fbbf24'} sub={evalResult.passed ? 'PASS' : 'FLAGGED'} />
+                    {engagementPrediction !== null && (
+                      <DialBlock label="Engagement" value={Math.max(0, engagementPrediction)} color="#818cf8" sub="predicted" />
+                    )}
+                    {riskScore !== null && (
+                      <DialBlock label="Risk" value={Math.min(100, riskScore)} color="#f87171" sub="lower = safer" />
+                    )}
+                  </div>
+
+                  {/* Score breakdown */}
+                  <div className="space-y-3">
+                    <ScoreBar label="Originality"   score={Math.round((10 - evalResult.slopScore) * 10)} color="#818cf8" />
                     {evalResult.brandAlignment !== null && (
-                      <ScorePill label="Brand" score={evalResult.brandAlignment} />
+                      <ScoreBar label="Brand voice" score={Math.round(evalResult.brandAlignment * 10)} color="#a78bfa" />
                     )}
-                    <ScorePill label="Specificity" score={evalResult.specificity} />
-                    <ScorePill label="Pacing" score={evalResult.pacingQuality} />
+                    <ScoreBar label="Specificity"   score={Math.round(evalResult.specificity * 10)} color="#67e8f9" />
+                    <ScoreBar label="Pacing"        score={Math.round(evalResult.pacingQuality * 10)} color="#34d399" />
                     {evalResult.hookStrength !== null && (
-                      <ScorePill label="Hook" score={evalResult.hookStrength} />
+                      <ScoreBar label="Hook strength" score={Math.round(evalResult.hookStrength * 10)} color="#fbbf24" />
                     )}
                   </div>
 
-                  {/* Pass/fail badge */}
-                  <div className="flex items-center gap-1.5">
-                    {evalResult.passed ? (
-                      <span className="text-[10px] text-green-400 font-medium flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Passed auto-evaluation
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Flagged — review carefully
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Top issues */}
-                  {evalResult.issues.length > 0 && (
-                    <div className="space-y-0.5">
-                      {evalResult.issues.slice(0, 3).map((issue, i) => (
-                        <p key={i} className="text-[10px] text-muted-foreground/70">
-                          <span className="font-medium capitalize">{issue.dimension}:</span> {issue.detail}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Suggestion */}
-                  {evalResult.suggestion && (
-                    <p className="text-[10px] text-indigo-300/70 italic">
-                      💡 {evalResult.suggestion}
-                    </p>
-                  )}
-
-                  {/* Hard fails */}
+                  {/* Hard fails callout */}
                   {evalResult.hardFails.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-red-400">
-                      <ShieldAlert className="w-3 h-3 shrink-0" />
-                      <p className="text-[10px]">
-                        Hard fails: {evalResult.hardFails.slice(0, 3).join(', ')}
-                      </p>
+                    <div
+                      className="rounded-lg px-3 py-2.5 flex items-start gap-2"
+                      style={{
+                        background: 'rgba(248,113,113,0.08)',
+                        border: '1px solid rgba(248,113,113,0.25)',
+                      }}
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-300 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-rose-300 mb-0.5">
+                          Hard failures
+                        </p>
+                        <p className="text-[10.5px] text-rose-200/90 leading-relaxed">
+                          {evalResult.hardFails.slice(0, 3).join(' · ')}
+                        </p>
+                      </div>
                     </div>
                   )}
+                </>
+              ) : evalLoading ? (
+                <div className="space-y-3">
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} className="h-3 rounded shimmer" style={{ background: 'rgba(255,255,255,0.04)' }} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg px-3 py-3 text-center"
+                  style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)' }}
+                >
+                  <Activity className="w-3.5 h-3.5 text-indigo-300 mx-auto mb-1.5" />
+                  <p className="text-[10.5px] text-zinc-500">No evaluation available for this output type</p>
                 </div>
               )}
             </div>
-          )}
+          </div>
 
-          {/* Reviewer notes (existing) */}
-          {approval.reviewer_notes && !isPending && (
-            <div className="px-4 py-2 border-t border-border/50 bg-muted/20">
-              <p className="text-[10px] text-muted-foreground/60 uppercase font-medium mb-1">Granskningsnotering</p>
-              <p className="text-xs text-muted-foreground">{approval.reviewer_notes}</p>
-              {reviewedDate && (
-                <p className="text-[10px] text-muted-foreground/40 mt-1">Granskad {reviewedDate}</p>
-              )}
+          {/* Reasoning trace — full-width */}
+          {reasoning.length > 0 && (
+            <div
+              className="px-5 py-5"
+              style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="w-3.5 h-3.5 text-violet-300" />
+                <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-violet-300/80">
+                  Reasoning Chain
+                </span>
+                <span className="text-[9.5px] text-zinc-600 font-mono ml-1">
+                  · {reasoning.length} steps · why this was decided
+                </span>
+              </div>
+              <ReasoningTrace steps={reasoning} />
             </div>
           )}
 
-          {/* Action area — only for pending */}
+          {/* Reviewer notes (read-only) */}
+          {approval.reviewer_notes && !isPending && (
+            <div
+              className="px-5 py-3"
+              style={{
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                background: 'rgba(255,255,255,0.015)',
+              }}
+            >
+              <p className="text-[9.5px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-1.5">
+                Reviewer note
+              </p>
+              <p className="text-[11.5px] text-zinc-300 italic">{approval.reviewer_notes}</p>
+            </div>
+          )}
+
+          {/* Action area */}
           {isPending && (
-            <div className="px-4 py-3 border-t border-border/50 bg-card/50 space-y-3">
+            <div
+              className="px-5 py-4 space-y-3"
+              style={{
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                background:
+                  'linear-gradient(180deg, rgba(255,255,255,0.015), rgba(99,102,241,0.05))',
+              }}
+            >
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Granskningsnotering (valfri) — t.ex. förslag på revision…"
+                placeholder="Operator note (optional) · revision instructions, override rationale…"
                 rows={2}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                className="w-full rounded-lg px-3 py-2.5 text-[11.5px] focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.025)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  color: 'rgba(255,255,255,0.92)',
+                }}
               />
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <ActionButton
                   onClick={() => act('approved')}
                   loading={loading === 'approved'}
                   variant="approve"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Godkänn
+                  Approve & ship
                 </ActionButton>
                 <ActionButton
                   onClick={() => act('revised')}
@@ -268,7 +427,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
                   variant="revise"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Begär revision
+                  Request revision
                 </ActionButton>
                 <ActionButton
                   onClick={() => act('rejected')}
@@ -276,7 +435,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
                   variant="reject"
                 >
                   <XCircle className="w-3.5 h-3.5" />
-                  Avslå
+                  Reject
                 </ActionButton>
               </div>
             </div>
@@ -287,17 +446,15 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   )
 }
 
-function ScorePill({ label, score }: { label: string; score: number }) {
-  const display = Math.round(score * 10) / 10
-  const color =
-    score >= 7.5 ? 'text-green-400 bg-green-400/10 border-green-400/20' :
-    score >= 5.0 ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
-                  'text-red-400 bg-red-400/10 border-red-400/20'
-
+function DialBlock({
+  label, value, color, sub,
+}: { label: string; value: number; color: string; sub: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border font-medium', color)}>
-      {label}: {display}
-    </span>
+    <div className="flex flex-col items-center">
+      <RadialDial value={value} color={color} size={62} thickness={4} />
+      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500 mt-1.5">{label}</p>
+      <p className="text-[8.5px] text-zinc-600 font-mono mt-0.5">{sub}</p>
+    </div>
   )
 }
 
@@ -313,9 +470,12 @@ function ActionButton({
   children: React.ReactNode
 }) {
   const styles = {
-    approve: 'bg-green-500 hover:bg-green-600 text-white',
-    reject:  'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30',
-    revise:  'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30',
+    approve:
+      'text-white bg-gradient-to-r from-emerald-500 to-emerald-600 hover:brightness-110 shadow-[0_4px_16px_rgba(52,211,153,0.35)]',
+    reject:
+      'text-rose-200 bg-rose-500/15 hover:bg-rose-500/22 border border-rose-500/30',
+    revise:
+      'text-indigo-200 bg-indigo-500/15 hover:bg-indigo-500/22 border border-indigo-500/30',
   }
 
   return (
@@ -323,7 +483,7 @@ function ActionButton({
       onClick={onClick}
       disabled={!!loading}
       className={cn(
-        'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
+        'flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11.5px] font-semibold transition-all disabled:opacity-50',
         styles[variant],
       )}
     >

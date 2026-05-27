@@ -16,6 +16,8 @@ import {
   Loader2,
   Film,
   Calendar,
+  ArrowLeft,
+  Activity,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
@@ -42,14 +44,14 @@ type PlatformToken = {
   refreshed_at: string
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Token health ─────────────────────────────────────────────────────────────
 
-function TokenHealth({ token }: { token: PlatformToken | null }) {
+function TokenBadge({ token }: { token: PlatformToken | null }) {
   if (!token) {
     return (
-      <div className="flex items-center gap-2 text-amber-400">
-        <AlertTriangle className="w-4 h-4" />
-        <span className="text-sm">Token saknas</span>
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+        <span className="text-xs font-semibold text-amber-400">Token saknas</span>
       </div>
     )
   }
@@ -58,111 +60,145 @@ function TokenHealth({ token }: { token: PlatformToken | null }) {
     ? Math.round((new Date(token.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null
 
-  const refreshed = formatDistanceToNow(new Date(token.refreshed_at), { locale: sv, addSuffix: true })
-
-  if (daysLeft !== null && daysLeft < 10) {
-    return (
-      <div className="flex flex-col gap-0.5">
-        <div className="flex items-center gap-1.5 text-red-400">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          <span className="text-sm font-medium">{daysLeft} dagar kvar</span>
-        </div>
-        <span className="text-xs text-muted-foreground">Förnyades {refreshed}</span>
-      </div>
-    )
-  }
+  const isCritical = daysLeft !== null && daysLeft < 10
+  const color = isCritical ? '#f87171' : '#34d399'
+  const Icon = isCritical ? AlertTriangle : ShieldCheck
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 text-emerald-400">
-        <ShieldCheck className="w-3.5 h-3.5" />
-        <span className="text-sm font-medium">{daysLeft !== null ? `${daysLeft} dagar kvar` : 'Aktiv'}</span>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <Icon className="w-3.5 h-3.5" style={{ color }} />
+        <span className="text-sm font-bold" style={{ color }}>
+          {daysLeft !== null ? `${daysLeft}d` : 'Aktiv'}
+        </span>
+        {!isCritical && daysLeft !== null && (
+          <span className="text-[10px] text-zinc-600">kvar</span>
+        )}
       </div>
-      <span className="text-xs text-muted-foreground">Förnyades {refreshed}</span>
+      <span className="text-[10px] text-zinc-600">
+        Förnyades {formatDistanceToNow(new Date(token.refreshed_at), { locale: sv, addSuffix: true })}
+      </span>
     </div>
   )
 }
 
-function StatusBadge({ status, videoStatus }: { status: string; videoStatus: string }) {
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusChip({ status, videoStatus }: { status: string; videoStatus: string }) {
   if (status === 'published') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-        <CheckCircle2 className="w-3 h-3" /> Publicerad
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+        style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' }}>
+        <CheckCircle2 className="w-2.5 h-2.5" /> Publicerad
       </span>
     )
   }
   if (videoStatus === 'rendering') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-        <Loader2 className="w-3 h-3 animate-spin" /> Renderar
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+        style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.2)' }}>
+        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Renderar
       </span>
     )
   }
   if (videoStatus === 'failed' || status === 'rejected') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-        <XCircle className="w-3 h-3" /> Fel
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+        style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}>
+        <XCircle className="w-2.5 h-2.5" /> Fel
       </span>
     )
   }
   if (videoStatus === 'ready') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-        <Film className="w-3 h-3" /> Klar för publicering
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+        style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.2)' }}>
+        <Film className="w-2.5 h-2.5" /> Klar för publicering
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/5 text-muted-foreground border border-white/10">
-      <Clock className="w-3 h-3" /> I kö
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ background: 'rgba(255,255,255,0.04)', color: '#52525b', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <Clock className="w-2.5 h-2.5" /> I kö
     </span>
   )
 }
 
+// ─── Quality bar ──────────────────────────────────────────────────────────────
+
 function QualityBar({ score }: { score: number | null | undefined }) {
   if (!score) return null
   const pct = Math.round(score * 10)
-  const color = score >= 8 ? 'bg-emerald-400' : score >= 6 ? 'bg-amber-400' : 'bg-red-400'
+  const color = score >= 8 ? '#34d399' : score >= 6 ? '#fbbf24' : '#f87171'
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color, boxShadow: `0 0 4px ${color}60` }} />
       </div>
-      <span className="text-xs text-muted-foreground tabular-nums w-6 text-right">{score.toFixed(1)}</span>
+      <span className="text-[10px] text-zinc-500 tabular-nums w-5 text-right">{score.toFixed(1)}</span>
     </div>
   )
 }
 
-// ─── Next scheduled times ─────────────────────────────────────────────────────
+// ─── Next cron time ───────────────────────────────────────────────────────────
 
-function getNextCronTimes() {
+function getNextCron() {
   const now = new Date()
-  const times = [
-    { hour: 7, minute: 30, label: 'Morgon' },
-    { hour: 17, minute: 30, label: 'Kväll' },
+  const slots = [
+    { hour: 7, minute: 20 },
+    { hour: 17, minute: 20 },
   ]
-
-  for (const t of times) {
-    const candidate = new Date(now)
-    candidate.setUTCHours(t.hour, t.minute, 0, 0)
-    if (candidate > now) {
-      return { label: t.label, time: candidate }
-    }
+  for (const t of slots) {
+    const c = new Date(now)
+    c.setUTCHours(t.hour, t.minute, 0, 0)
+    if (c > now) return c
   }
-  // Tomorrow morning
-  const tomorrow = new Date(now)
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
-  tomorrow.setUTCHours(7, 30, 0, 0)
-  return { label: 'Morgon', time: tomorrow }
+  const t = new Date(now)
+  t.setUTCDate(t.getUTCDate() + 1)
+  t.setUTCHours(7, 20, 0, 0)
+  return t
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  children,
+  icon: Icon,
+  color = '#6366f1',
+  delay = 0,
+}: {
+  label: string
+  children: React.ReactNode
+  icon: React.ElementType
+  color?: string
+  delay?: number
+}) {
+  return (
+    <div
+      className="relative rounded-2xl p-4 overflow-hidden glass animate-fade-in-up"
+      style={{
+        animationDelay: `${delay}ms`,
+        animationFillMode: 'both',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+          style={{ background: `${color}15`, border: `1px solid ${color}25` }}>
+          <Icon className="w-3 h-3" style={{ color }} />
+        </div>
+        <span className="text-[9.5px] font-semibold text-zinc-600 uppercase tracking-[0.15em]">{label}</span>
+      </div>
+      {children}
+    </div>
+  )
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default async function MediaDashboardPage({
-  params,
-}: {
-  params: { slug: string }
-}) {
+export default async function MediaDashboardPage({ params }: { params: { slug: string } }) {
   const supabase = await createClient()
   const db = createAdminClient()
 
@@ -175,312 +211,327 @@ export default async function MediaDashboardPage({
   if (!project) notFound()
 
   const now = new Date()
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const weekAgo  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString()
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
   const [scriptsRes, tokenRes, weekCountRes, monthCountRes] = await Promise.all([
-    db
-      .from('media_scripts')
+    db.from('media_scripts')
       .select('id, hook, status, video_status, published_at, generated_at, instagram_url, facebook_url, quality_score, images, media_news_items(title, source_name)')
       .eq('project_id', project.id)
       .order('generated_at', { ascending: false })
       .limit(30),
-    db
-      .from('platform_tokens')
-      .select('platform, expires_at, refreshed_at')
-      .eq('platform', 'instagram')
-      .maybeSingle(),
-    db
-      .from('media_scripts')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', project.id)
-      .eq('status', 'published')
-      .gte('published_at', weekAgo),
-    db
-      .from('media_scripts')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', project.id)
-      .eq('status', 'published')
-      .gte('published_at', monthAgo),
+    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', 'instagram').maybeSingle(),
+    db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', weekAgo),
+    db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', monthAgo),
   ])
 
-  const scripts = (scriptsRes.data ?? []) as MediaScript[]
-  const igToken = tokenRes.data as PlatformToken | null
+  const scripts   = (scriptsRes.data ?? []) as MediaScript[]
+  const igToken   = tokenRes.data as PlatformToken | null
   const weekCount = weekCountRes.count ?? 0
   const monthCount = monthCountRes.count ?? 0
 
   const published = scripts.filter(s => s.status === 'published')
   const inQueue   = scripts.filter(s => s.status !== 'published')
   const lastPost  = published[0]
-  const nextCron  = getNextCronTimes()
+  const nextCron  = getNextCron()
 
   const avgQuality = published.length > 0
     ? published.reduce((sum, s) => sum + ((s.quality_score as any)?.overall ?? 0), 0) / published.length
     : null
 
-  return (
-    <div className="min-h-screen p-6 space-y-6">
+  const tokenDaysLeft = igToken?.expires_at
+    ? Math.round((new Date(igToken.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
+  return (
+    <div className="relative min-h-screen">
+
+      {/* Ambient glow */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+        <div className="absolute" style={{
+          top: '-10%', left: '30%',
+          width: '500px', height: '300px',
+          background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.03) 0%, transparent 70%)',
+          animation: 'orb 25s ease-in-out infinite',
+        }} />
+      </div>
+
+      <div className="relative z-10 p-7 max-w-[1100px] mx-auto space-y-6">
+
+        {/* ── Header ────────────────────────────────────────────────────────── */}
+        <div className="flex items-start justify-between animate-fade-in-up">
+          <div>
             <Link
               href={`/projects/${params.slug}`}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors mb-2"
             >
+              <ArrowLeft className="w-3 h-3" />
               {project.name}
             </Link>
-            <span className="text-muted-foreground/40 text-xs">/</span>
-            <span className="text-xs text-muted-foreground">Media Pipeline</span>
+
+            <div className="flex items-center gap-4">
+              {/* TP logo */}
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                }}
+              >
+                <span className="text-white font-black text-sm leading-none">TP</span>
+              </div>
+
+              <div>
+                <h1 className="text-xl font-black text-zinc-100 tracking-tight">The Prompt</h1>
+                <p className="text-[11px] text-zinc-600 mt-0.5">AI news · daily reels · autonomous pipeline</p>
+              </div>
+
+              {/* Live indicator */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+                style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)' }}>
+                <div className="relative">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <div className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-400">Pipeline aktiv</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
-              <span className="text-black font-black text-xs leading-none">TP</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">The Prompt</h1>
-              <p className="text-xs text-muted-foreground">AI news. Daily. No fluff.</p>
-            </div>
-            <div className="flex items-center gap-1.5 ml-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-emerald-400 font-medium">Pipeline aktiv</span>
-            </div>
+
+          <div className="flex items-center gap-2">
+            <Link href={`/projects/${params.slug}/scripts`}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              Scripts
+            </Link>
+            <Link href={`/projects/${params.slug}/news`}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              Nyheter
+            </Link>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/projects/${params.slug}/scripts`}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-white/10 hover:border-white/20 rounded-lg transition-colors"
-          >
-            Scripts
-          </Link>
-          <Link
-            href={`/projects/${params.slug}/news`}
-            className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-white/10 hover:border-white/20 rounded-lg transition-colors"
-          >
-            Nyheter
-          </Link>
-        </div>
-      </div>
+        {/* ── Status cards ──────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-      {/* ── Status cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Instagram Token" icon={ShieldCheck} color={tokenDaysLeft !== null && tokenDaysLeft < 10 ? '#f87171' : '#34d399'} delay={60}>
+            <TokenBadge token={igToken} />
+          </StatCard>
 
-        {/* Token health */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span className="text-xs uppercase tracking-wider">Instagram Token</span>
-          </div>
-          <TokenHealth token={igToken} />
-        </div>
+          <StatCard label="Senaste post" icon={Radio} color="#818cf8" delay={100}>
+            {lastPost?.published_at ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-bold text-zinc-300">
+                  {formatDistanceToNow(new Date(lastPost.published_at), { locale: sv, addSuffix: true })}
+                </span>
+                <span className="text-[10px] text-zinc-600">
+                  {format(new Date(lastPost.published_at), 'HH:mm')} UTC
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm text-zinc-600">Ingen ännu</span>
+            )}
+          </StatCard>
 
-        {/* Last publish */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Radio className="w-3.5 h-3.5" />
-            <span className="text-xs uppercase tracking-wider">Senaste post</span>
-          </div>
-          {lastPost?.published_at ? (
+          <StatCard label="Denna vecka" icon={TrendingUp} color="#60a5fa" delay={140}>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-foreground">
-                {formatDistanceToNow(new Date(lastPost.published_at), { locale: sv, addSuffix: true })}
+              <span className="text-3xl font-black text-zinc-200 tabular-nums leading-none">{weekCount}</span>
+              <span className="text-[10px] text-zinc-600">{monthCount} senaste 30 dagarna</span>
+              {avgQuality && (
+                <span className="text-[10px] text-zinc-700">⌀ kvalitet {avgQuality.toFixed(1)}/10</span>
+              )}
+            </div>
+          </StatCard>
+
+          <StatCard label="Nästa körning" icon={Zap} color="#a78bfa" delay={180}>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-bold text-zinc-300">
+                {format(nextCron, 'HH:mm')} UTC
               </span>
-              <span className="text-xs text-muted-foreground truncate">
-                {format(new Date(lastPost.published_at), 'HH:mm', { locale: sv })} UTC
+              <span className="text-[10px] text-zinc-600">
+                om {formatDistanceToNow(nextCron, { locale: sv })}
               </span>
+            </div>
+          </StatCard>
+        </div>
+
+        {/* ── Published reels ───────────────────────────────────────────────── */}
+        <section className="animate-fade-in-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              Publicerade reels
+              <span className="font-normal text-zinc-700">({published.length})</span>
+            </h2>
+            {avgQuality && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-700">Snitt kvalitet</span>
+                <span className="text-[10px] font-bold"
+                  style={{ color: avgQuality >= 8 ? '#34d399' : avgQuality >= 6 ? '#fbbf24' : '#f87171' }}>
+                  {avgQuality.toFixed(1)}/10
+                </span>
+              </div>
+            )}
+          </div>
+
+          {published.length === 0 ? (
+            <div className="rounded-2xl p-12 text-center"
+              style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.06)' }}>
+              <Film className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+              <p className="text-sm text-zinc-600">Inga publicerade reels ännu</p>
             </div>
           ) : (
-            <span className="text-sm text-muted-foreground">Ingen ännu</span>
-          )}
-        </div>
+            <div className="space-y-2">
+              {published.map((s, i) => {
+                const news  = s.media_news_items
+                const thumb = s.images?.[0]
+                const score = (s.quality_score as any)?.overall as number | undefined
 
-        {/* This week */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span className="text-xs uppercase tracking-wider">Denna vecka</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-2xl font-bold text-foreground tabular-nums">{weekCount}</span>
-            <span className="text-xs text-muted-foreground">{monthCount} senaste 30 dagarna</span>
-          </div>
-        </div>
+                return (
+                  <div
+                    key={s.id}
+                    className="group relative rounded-2xl p-4 overflow-hidden transition-all duration-300 hover:-translate-y-px"
+                    style={{
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                    }}
+                  >
+                    {/* Hover top line */}
+                    <div className="absolute inset-x-0 top-0 h-[1px] opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.4), transparent)' }} />
 
-        {/* Next cron */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 space-y-2">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Zap className="w-3.5 h-3.5" />
-            <span className="text-xs uppercase tracking-wider">Nästa körning</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium text-foreground">
-              {nextCron.label} · {format(nextCron.time, 'HH:mm')} UTC
-            </span>
-            <span className="text-xs text-muted-foreground">
-              om {formatDistanceToNow(nextCron.time, { locale: sv })}
-            </span>
-          </div>
-        </div>
-      </div>
+                    <div className="flex items-center gap-4">
+                      {/* Rank */}
+                      <span className="text-[11px] font-black text-zinc-700 w-6 text-center shrink-0">
+                        {(i + 1).toString().padStart(2, '0')}
+                      </span>
 
-      {/* ── Published reels ──────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            Publicerade reels
-            <span className="text-xs text-muted-foreground font-normal">({published.length})</span>
-          </h2>
-          {avgQuality && (
-            <span className="text-xs text-muted-foreground">
-              Snitt kvalitet: <span className="text-foreground">{avgQuality.toFixed(1)}/10</span>
-            </span>
-          )}
-        </div>
+                      {/* Thumbnail */}
+                      {thumb ? (
+                        <div className="w-10 h-14 rounded-xl overflow-hidden shrink-0"
+                          style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                          <img src={thumb} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-14 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <Film className="w-4 h-4 text-zinc-700" />
+                        </div>
+                      )}
 
-        {published.length === 0 ? (
-          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-8 text-center">
-            <Film className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Inga publicerade reels ännu</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {published.map((s) => {
-              const news = s.media_news_items
-              const thumb = s.images?.[0]
-
-              return (
-                <div
-                  key={s.id}
-                  className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-white/[0.10] rounded-xl p-4 transition-all"
-                >
-                  <div className="flex items-start gap-4">
-
-                    {/* Thumbnail */}
-                    {thumb ? (
-                      <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-white/5">
-                        <img src={thumb} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-16 rounded-lg bg-white/5 shrink-0 flex items-center justify-center">
-                        <Film className="w-5 h-5 text-muted-foreground/30" />
-                      </div>
-                    )}
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
-                        {s.hook ?? '—'}
-                      </p>
-                      {news && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {news.source_name ? `📰 ${news.source_name} · ` : ''}
-                          {news.title}
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <p className="text-[13px] font-semibold text-zinc-200 leading-snug line-clamp-2">
+                          {s.hook ?? '—'}
                         </p>
-                      )}
-                      <QualityBar score={(s.quality_score as any)?.overall} />
-                    </div>
+                        {news && (
+                          <p className="text-[10.5px] text-zinc-600 truncate">
+                            {news.source_name ? `${news.source_name} · ` : ''}
+                            {news.title}
+                          </p>
+                        )}
+                        {score !== undefined && <QualityBar score={score} />}
+                      </div>
 
-                    {/* Meta + links */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      {s.published_at && (
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(s.published_at), 'd MMM · HH:mm', { locale: sv })}
-                        </span>
-                      )}
-                      <div className="flex items-center gap-1.5">
-                        {s.instagram_url && (
-                          <a
-                            href={s.instagram_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            <Instagram className="w-3 h-3" />
-                            IG
-                          </a>
+                      {/* Meta + links */}
+                      <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
+                        {s.published_at && (
+                          <span className="text-[10px] text-zinc-600 font-mono">
+                            {format(new Date(s.published_at), 'd MMM · HH:mm', { locale: sv })}
+                          </span>
                         )}
-                        {s.facebook_url && (
-                          <a
-                            href={s.facebook_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            FB
-                          </a>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {s.instagram_url && (
+                            <a href={s.instagram_url} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-all hover:scale-105"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: '#a1a1aa' }}>
+                              <Instagram className="w-2.5 h-2.5" />
+                              IG
+                            </a>
+                          )}
+                          {s.facebook_url && (
+                            <a href={s.facebook_url} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-all hover:scale-105"
+                              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: '#a1a1aa' }}>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                              FB
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+                )
+              })}
+            </div>
+          )}
+        </section>
 
-      {/* ── Pipeline queue ───────────────────────────────────────────────────── */}
-      {inQueue.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <Clock className="w-4 h-4 text-amber-400" />
-            Pipeline-kö
-            <span className="text-xs text-muted-foreground font-normal">({inQueue.length})</span>
+        {/* ── Pipeline queue ────────────────────────────────────────────────── */}
+        {inQueue.length > 0 && (
+          <section className="animate-fade-in-up" style={{ animationDelay: '280ms', animationFillMode: 'both' }}>
+            <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 mb-3">
+              <Activity className="w-3 h-3 text-amber-400" />
+              Pipeline-kö
+              <span className="font-normal text-zinc-700">({inQueue.length})</span>
+            </h2>
+            <div className="space-y-1.5">
+              {inQueue.map((s) => (
+                <div key={s.id}
+                  className="rounded-xl px-4 py-2.5 flex items-center gap-3"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <StatusChip status={s.status} videoStatus={s.video_status} />
+                  <p className="flex-1 text-[12px] text-zinc-500 truncate">{s.hook ?? '(hook saknas)'}</p>
+                  {s.generated_at && (
+                    <span className="text-[10px] text-zinc-700 shrink-0 font-mono">
+                      {formatDistanceToNow(new Date(s.generated_at), { locale: sv, addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Schedule ──────────────────────────────────────────────────────── */}
+        <section
+          className="rounded-2xl p-5 animate-fade-in-up glass"
+          style={{ animationDelay: '320ms', animationFillMode: 'both' }}
+        >
+          <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 mb-4">
+            <Calendar className="w-3 h-3" />
+            Schema (UTC)
           </h2>
-          <div className="space-y-2">
-            {inQueue.map((s) => (
-              <div
-                key={s.id}
-                className="bg-white/[0.02] border border-white/[0.06] rounded-xl px-4 py-3 flex items-center gap-4"
-              >
-                <StatusBadge status={s.status} videoStatus={s.video_status} />
-                <p className="flex-1 text-sm text-muted-foreground truncate">
-                  {s.hook ?? '(hook saknas)'}
-                </p>
-                {s.generated_at && (
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatDistanceToNow(new Date(s.generated_at), { locale: sv, addSuffix: true })}
-                  </span>
-                )}
+          <div className="grid grid-cols-2 gap-6">
+            {[
+              { label: 'Morgon', pipeline: '07:20', publish: '08:00' },
+              { label: 'Kväll',  pipeline: '17:20', publish: '18:00' },
+            ].map((slot) => (
+              <div key={slot.label} className="space-y-2">
+                <p className="text-xs font-semibold text-zinc-400">{slot.label}</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#818cf8' }} />
+                    <span className="text-[11px] text-zinc-600">
+                      <span className="font-mono text-zinc-400">{slot.pipeline}</span> Pipeline startar
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#34d399', boxShadow: '0 0 4px rgba(52,211,153,0.5)' }} />
+                    <span className="text-[11px] text-zinc-600">
+                      <span className="font-mono text-zinc-400">{slot.publish}</span> Publicering
+                    </span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </section>
-      )}
 
-      {/* ── Schedule info ────────────────────────────────────────────────────── */}
-      <section className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Calendar className="w-3.5 h-3.5" />
-          Schema (UTC)
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Morgon', pipeline: '07:20–07:45', publish: '08:00' },
-            { label: 'Kväll',  pipeline: '17:20–17:45', publish: '18:00' },
-          ].map((slot) => (
-            <div key={slot.label} className="space-y-1">
-              <p className="text-xs font-medium text-foreground">{slot.label}</p>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                  <span className="text-xs text-muted-foreground">{slot.pipeline} · Pipeline</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-muted-foreground">{slot.publish} · Publicering</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
+      </div>
     </div>
   )
 }

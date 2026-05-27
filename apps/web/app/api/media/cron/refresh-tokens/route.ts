@@ -31,7 +31,10 @@ import { getToken, setToken } from '@/lib/media/token-store'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 30
 
-const IG_REFRESH_URL = 'https://graph.instagram.com/refresh_access_token'
+// Instagram Graph API för Business använder Facebook User Tokens.
+// Dessa förnyas via graph.facebook.com med fb_exchange_token — INTE via
+// graph.instagram.com/refresh_access_token (det är för Basic Display API / personkonton).
+const FB_TOKEN_URL = 'https://graph.facebook.com/oauth/access_token'
 
 function log(msg: string) {
   console.log(`[cron/refresh-tokens] ${msg}`)
@@ -50,63 +53,75 @@ export async function GET(request: Request) {
   // ── Instagram ─────────────────────────────────────────────────────────────────
   log('Startar Instagram token-refresh...')
 
-  const currentIg = await getToken('instagram')
+  const appId     = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
 
-  if (!currentIg) {
-    const msg = 'Inget Instagram-token hittat (varken i Supabase eller INSTAGRAM_ACCESS_TOKEN). Sätt env-variabeln i Vercel.'
+  if (!appId || !appSecret) {
+    const msg = 'META_APP_ID eller META_APP_SECRET saknas i env. Sätt dem i Vercel → Environment Variables.'
     log(`⚠️  ${msg}`)
     results.instagram = { status: 'skipped', reason: msg }
   } else {
-    log(`Nuvarande token hämtat från ${currentIg.source}. Förnyar via Meta API...`)
+    const currentIg = await getToken('instagram')
 
-    try {
-      const url = new URL(IG_REFRESH_URL)
-      url.searchParams.set('grant_type',   'ig_refresh_token')
-      url.searchParams.set('access_token', currentIg.accessToken)
+    if (!currentIg) {
+      const msg = 'Inget Instagram-token hittat (varken i Supabase eller INSTAGRAM_ACCESS_TOKEN). Sätt env-variabeln i Vercel.'
+      log(`⚠️  ${msg}`)
+      results.instagram = { status: 'skipped', reason: msg }
+    } else {
+      log(`Nuvarande token hämtat från ${currentIg.source}. Förnyar via Meta fb_exchange_token...`)
 
-      const res = await fetch(url.toString())
+      try {
+        // Byt nuvarande long-lived token mot ett nytt (fungerar med både short- och long-lived tokens)
+        const url = new URL(FB_TOKEN_URL)
+        url.searchParams.set('grant_type',       'fb_exchange_token')
+        url.searchParams.set('client_id',        appId)
+        url.searchParams.set('client_secret',    appSecret)
+        url.searchParams.set('fb_exchange_token', currentIg.accessToken)
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => '(no body)')
-        throw new Error(`Meta API ${res.status}: ${body}`)
+        const res = await fetch(url.toString())
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '(no body)')
+          throw new Error(`Meta API ${res.status}: ${body}`)
+        }
+
+        const data = await res.json() as {
+          access_token?: string
+          token_type?:   string
+          expires_in?:   number
+          error?:        { message: string; type: string; code: number }
+        }
+
+        if (data.error) {
+          throw new Error(`Meta API-fel: ${data.error.type} (${data.error.code}) — ${data.error.message}`)
+        }
+
+        if (!data.access_token) {
+          throw new Error('Meta API returnerade inget access_token')
+        }
+
+        // expires_in är sekunder från nu
+        const expiresAt = data.expires_in
+          ? new Date(Date.now() + data.expires_in * 1000)
+          : undefined
+
+        await setToken('instagram', data.access_token, expiresAt)
+
+        const daysUntilExpiry = expiresAt
+          ? Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : null
+
+        log(`✓ Instagram token förnyat. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
+        results.instagram = {
+          status:         'refreshed',
+          expiresAt:      expiresAt?.toISOString() ?? null,
+          daysUntilExpiry,
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        log(`✗ Instagram refresh misslyckades: ${msg}`)
+        results.instagram = { status: 'failed', error: msg }
       }
-
-      const data = await res.json() as {
-        access_token?: string
-        token_type?:   string
-        expires_in?:   number
-        error?:        { message: string; type: string; code: number }
-      }
-
-      if (data.error) {
-        throw new Error(`Meta API-fel: ${data.error.type} (${data.error.code}) — ${data.error.message}`)
-      }
-
-      if (!data.access_token) {
-        throw new Error('Meta API returnerade inget access_token')
-      }
-
-      // expires_in är sekunder från nu
-      const expiresAt = data.expires_in
-        ? new Date(Date.now() + data.expires_in * 1000)
-        : undefined
-
-      await setToken('instagram', data.access_token, expiresAt)
-
-      const daysUntilExpiry = expiresAt
-        ? Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-        : null
-
-      log(`✓ Instagram token förnyat. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
-      results.instagram = {
-        status:         'refreshed',
-        expiresAt:      expiresAt?.toISOString() ?? null,
-        daysUntilExpiry,
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log(`✗ Instagram refresh misslyckades: ${msg}`)
-      results.instagram = { status: 'failed', error: msg }
     }
   }
 

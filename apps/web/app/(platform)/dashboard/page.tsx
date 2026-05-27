@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
+import { OmniraMark } from '@/components/platform/OmniraLogo'
 import type { RunStatus } from '@/lib/supabase/types'
 import {
   Bot,
@@ -29,7 +30,7 @@ import { sv } from 'date-fns/locale/sv'
 
 function Sparkline({
   values,
-  color = '#6366f1',
+  color = '#4f7fff',
   height = 32,
 }: {
   values: number[]
@@ -282,7 +283,7 @@ export default async function DashboardPage() {
             left: '10%',
             width: '600px',
             height: '600px',
-            background: 'radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse at center, rgba(79,127,255,0.06) 0%, transparent 70%)',
             animation: 'orb 20s ease-in-out infinite',
           }}
         />
@@ -304,21 +305,29 @@ export default async function DashboardPage() {
         {/* ── Header ──────────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between animate-fade-in-up">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-3">
               <div className="relative w-2 h-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                 <div className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
               </div>
-              <span className="text-[10.5px] font-semibold text-emerald-400 tracking-[0.2em] uppercase">
+              <span className="text-[10px] font-semibold text-emerald-400 tracking-[0.25em] uppercase">
                 All Systems Operational
               </span>
+              <span className="text-zinc-700 text-[10px]">·</span>
+              <span className="text-[10px] text-zinc-600 font-mono">{hourStr}:{minStr}</span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-zinc-100">
-              Mission Control
-            </h1>
-            <p className="text-[12px] text-zinc-600 mt-0.5 font-mono">
-              AI Operations Center · {hourStr}:{minStr} local
-            </p>
+            <div className="flex items-center gap-3">
+              <OmniraMark size={36} variant="silver" />
+              <div>
+                <h1 className="text-2xl font-black tracking-[0.06em] uppercase"
+                  style={{ color: 'rgba(255,255,255,0.92)', letterSpacing: '0.08em' }}>
+                  OMNIRA
+                </h1>
+                <p className="text-[10px] text-zinc-600 tracking-widest uppercase mt-0.5">
+                  Mission Control
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -351,8 +360,8 @@ export default async function DashboardPage() {
               href="/projects/new"
               className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-[12px] font-semibold text-white transition-all hover:scale-105"
               style={{
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                boxShadow: '0 4px 16px rgba(99,102,241,0.3)',
+                background: 'linear-gradient(135deg, #4f7fff 0%, #8b5cf6 100%)',
+                boxShadow: '0 4px 16px rgba(79,127,255,0.3)',
               }}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -468,8 +477,8 @@ export default async function DashboardPage() {
             href="/manager"
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-medium transition-all hover:scale-105"
             style={{
-              background: 'rgba(99,102,241,0.1)',
-              border: '1px solid rgba(99,102,241,0.2)',
+              background: 'rgba(79,127,255,0.1)',
+              border: '1px solid rgba(79,127,255,0.2)',
               color: '#a5b4fc',
             }}
           >
@@ -542,7 +551,7 @@ export default async function DashboardPage() {
               >
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center transition-all group-hover:scale-110"
-                  style={{ border: '1px dashed rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.05)' }}
+                  style={{ border: '1px dashed rgba(79,127,255,0.3)', background: 'rgba(79,127,255,0.05)' }}
                 >
                   <Plus className="w-4 h-4 text-indigo-400" />
                 </div>
@@ -557,7 +566,7 @@ export default async function DashboardPage() {
               style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.06)' }}
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto"
-                style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}
+                style={{ background: 'rgba(79,127,255,0.08)', border: '1px solid rgba(79,127,255,0.15)' }}
               >
                 <Layers className="w-5 h-5 text-indigo-400" />
               </div>
@@ -568,7 +577,7 @@ export default async function DashboardPage() {
               <Link
                 href="/projects/new"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', boxShadow: '0 4px 16px rgba(99,102,241,0.3)' }}
+                style={{ background: 'linear-gradient(135deg, #4f7fff, #8b5cf6)', boxShadow: '0 4px 16px rgba(79,127,255,0.3)' }}
               >
                 <Plus className="w-4 h-4" />
                 Skapa ditt första projekt
@@ -669,7 +678,7 @@ export default async function DashboardPage() {
               style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.06)' }}
             >
               <div className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto"
-                style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}
+                style={{ background: 'rgba(79,127,255,0.08)', border: '1px solid rgba(79,127,255,0.15)' }}
               >
                 <Play className="w-4 h-4 text-indigo-400" />
               </div>

@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════
-   DESIGN TOKENS — AI Operating System
-   OLED black · Neon indigo/purple · Glassmorphism
+   OMNIRA OS — Design Tokens
+   Deep navy · Chrome silver · Electric blue · Glassmorphism
+   "Quietly powerful intelligence infrastructure"
 ═══════════════════════════════════════════════════════ */
 
 @layer base {
@@ -60,12 +61,51 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   PLATFORM BASE — OLED background
+   OMNIRA BRAND TOKENS
+═══════════════════════════════════════════════════════ */
+
+:root {
+  /* Omnira accent — electric blue-indigo */
+  --omnira-primary: #4f7fff;
+  --omnira-primary-dim: rgba(79,127,255,0.15);
+  --omnira-primary-border: rgba(79,127,255,0.2);
+
+  /* Omnira chrome silver */
+  --omnira-silver: #c8d4e0;
+  --omnira-silver-dim: rgba(200,212,224,0.08);
+
+  /* Omnira base surfaces */
+  --omnira-bg:          #060914;
+  --omnira-surface:     rgba(255,255,255,0.025);
+  --omnira-surface-2:   rgba(255,255,255,0.04);
+  --omnira-border:      rgba(255,255,255,0.06);
+  --omnira-border-hover: rgba(255,255,255,0.12);
+
+  /* Text */
+  --omnira-text-1: rgba(255,255,255,0.92);
+  --omnira-text-2: rgba(255,255,255,0.55);
+  --omnira-text-3: rgba(255,255,255,0.28);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PLATFORM BASE — Omnira deep background
 ═══════════════════════════════════════════════════════ */
 
 .platform-root {
-  background: #050816;
+  background: var(--omnira-bg);
   min-height: 100vh;
+}
+
+/* Omnira button primary */
+.btn-omnira {
+  background: linear-gradient(135deg, #4f7fff 0%, #6366f1 100%);
+  color: white;
+  box-shadow: 0 4px 16px rgba(79,127,255,0.3);
+  transition: all 0.2s ease;
+}
+.btn-omnira:hover {
+  box-shadow: 0 6px 24px rgba(79,127,255,0.4);
+  transform: translateY(-1px);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -75,8 +115,8 @@
 .mc-grid {
   background-color: #050816;
   background-image:
-    linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
+    linear-gradient(rgba(79,127,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79,127,255,0.03) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
@@ -124,7 +164,7 @@
   .glow-indigo {
     box-shadow:
       0 0 0 1px rgba(99,102,241,0.3),
-      0 0 16px rgba(99,102,241,0.15),
+      0 0 16px rgba(79,127,255,0.15),
       0 0 40px rgba(99,102,241,0.05);
   }
 
@@ -168,14 +208,14 @@
       0 -1px 0 rgba(0,0,0,0.3) inset,
       0 16px 48px rgba(0,0,0,0.5),
       0 4px 16px rgba(0,0,0,0.3),
-      0 0 0 1px rgba(99,102,241,0.15);
+      0 0 0 1px rgba(79,127,255,0.15);
   }
 
   /* Ambient background gradients */
   .ambient-purple {
     background-image: radial-gradient(
       ellipse 60% 40% at 50% 0%,
-      rgba(99,102,241,0.08) 0%,
+      rgba(79,127,255,0.07) 0%,
       transparent 70%
     );
   }
@@ -275,7 +315,7 @@
 
   @keyframes glowPulse {
     0%, 100% { box-shadow: 0 0 8px rgba(99,102,241,0.3), 0 0 24px rgba(99,102,241,0.1); }
-    50%       { box-shadow: 0 0 16px rgba(99,102,241,0.5), 0 0 48px rgba(99,102,241,0.2); }
+    50%       { box-shadow: 0 0 16px rgba(99,102,241,0.5), 0 0 48px rgba(79,127,255,0.2); }
   }
 
   @keyframes breathe {
@@ -319,12 +359,12 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(99,102,241,0.15) transparent;
+    scrollbar-color: rgba(79,127,255,0.15) transparent;
   }
   .scrollbar-thin::-webkit-scrollbar { width: 3px; height: 3px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(99,102,241,0.15);
+    background-color: rgba(79,127,255,0.15);
     border-radius: 2px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
@@ -370,7 +410,7 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(99,102,241,0.2) 20%,
+    rgba(79,127,255,0.2) 20%,
     rgba(139,92,246,0.15) 50%,
     rgba(99,102,241,0.1) 80%,
     transparent 100%

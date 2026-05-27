@@ -13,11 +13,12 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'AI Operations Platform',
-  description: 'Centralized control center for AI agents, workflows and automations',
+  title: 'Omnira — AI Operating System',
+  description: 'The operating system behind autonomous AI companies. Mission control for intelligence infrastructure.',
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
+    icon: '/omnira-favicon.svg',
+    shortcut: '/omnira-favicon.svg',
+    apple: '/omnira-favicon.svg',
   },
 }
 

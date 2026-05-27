@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
 import {
   LayoutDashboard,
   Bot,
@@ -12,7 +13,6 @@ import {
   FileOutput,
   Settings,
   ChevronRight,
-  Zap,
   LogOut,
   Plus,
   MessageSquare,
@@ -90,40 +90,18 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 w-[220px] flex flex-col sidebar-border-gradient relative"
-      style={{ background: 'linear-gradient(180deg, #070910 0%, #060813 50%, #070910 100%)' }}
+      style={{ background: 'linear-gradient(180deg, #070c16 0%, #060914 40%, #070c16 100%)' }}
     >
       {/* Ambient glow top */}
       <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 100%)' }}
+        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,127,255,0.08) 0%, transparent 100%)' }}
       />
 
       {/* ── Logo ────────────────────────────────────────────── */}
-      <div className="relative flex items-center gap-2.5 px-4 h-12 shrink-0"
-        style={{ borderBottom: '1px solid rgba(99,102,241,0.1)' }}
+      <div className="relative px-4 py-3 shrink-0"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
       >
-        {/* Logo mark */}
-        <div className="relative flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-          style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.9) 0%, rgba(139,92,246,0.9) 100%)',
-            boxShadow: '0 0 12px rgba(99,102,241,0.4), 0 2px 4px rgba(0,0,0,0.4)',
-          }}
-        >
-          <Zap className="w-3.5 h-3.5 text-white" />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-bold tracking-tight text-gradient-indigo leading-none">
-            AI Ops
-          </p>
-          <p className="text-[9px] text-zinc-600 tracking-widest uppercase leading-none mt-0.5">
-            Platform
-          </p>
-        </div>
-
-        {/* Live indicator */}
-        <div className="relative flex items-center shrink-0">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot pulse-dot-emerald" />
-        </div>
+        <OmniraSidebarLogo isLive={true} />
       </div>
 
       {/* The Prompt brand — shown when media project exists */}
@@ -170,12 +148,12 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                     'relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold transition-all overflow-hidden',
                     isActive
                       ? 'text-indigo-200'
-                      : 'text-indigo-400/60 hover:text-indigo-300',
+                      : 'text-blue-400/60 hover:text-blue-200',
                   )}
                   style={isActive ? {
-                    background: 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.15) 100%)',
-                    border: '1px solid rgba(99,102,241,0.25)',
-                    boxShadow: '0 0 16px rgba(99,102,241,0.1), inset 0 1px 0 rgba(255,255,255,0.05)',
+                    background: 'linear-gradient(135deg, rgba(79,127,255,0.2) 0%, rgba(139,92,246,0.15) 100%)',
+                    border: '1px solid rgba(79,127,255,0.25)',
+                    boxShadow: '0 0 16px rgba(79,127,255,0.1), inset 0 1px 0 rgba(255,255,255,0.05)',
                   } : {
                     border: '1px solid transparent',
                   }}
@@ -186,7 +164,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                   <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span className="flex-1">{item.label}</span>
                   {isActive && (
-                    <Activity className="w-3 h-3 text-indigo-400 animate-pulse" />
+                    <Activity className="w-3 h-3 text-blue-400 animate-pulse" />
                   )}
                 </Link>
               )
@@ -249,7 +227,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
             </span>
             <Link
               href="/projects/new"
-              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.05] text-zinc-600 hover:text-indigo-400 transition-colors"
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.05] text-zinc-600 hover:text-blue-400 transition-colors"
               title="Nytt projekt"
             >
               <Plus className="w-3 h-3" />
@@ -358,11 +336,11 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
             {/* Avatar */}
             <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
               style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.3) 0%, rgba(139,92,246,0.3) 100%)',
-                border: '1px solid rgba(99,102,241,0.3)',
+                background: 'linear-gradient(135deg, rgba(79,127,255,0.3) 0%, rgba(139,92,246,0.3) 100%)',
+                border: '1px solid rgba(79,127,255,0.3)',
               }}
             >
-              <span className="text-[9px] font-bold text-indigo-300">{initials}</span>
+              <span className="text-[9px] font-bold text-blue-200">{initials}</span>
             </div>
             <span className="flex-1 text-[11px] text-zinc-600 truncate min-w-0">
               {userEmail}

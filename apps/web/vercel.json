@@ -1,4 +1,3 @@
 {
-  "_comment": "Schemaläggning hanteras av Supabase pg_cron — se supabase/migrations/20260528_pg_cron_setup.sql. Vercel-cron används inte (Hobby-planens 2-jobs-limit + dygnsgranularitet matchar inte vår pipeline).",
   "crons": []
 }

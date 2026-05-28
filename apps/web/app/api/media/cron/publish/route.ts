@@ -14,8 +14,8 @@
  * to give straggler renders a final chance before skipping them.
  *
  * Instagram processing strategy:
- *   - First call: creates container, saves creation_id to DB, polls up to 50s
- *   - Subsequent calls: reuses saved creation_id, skips re-upload, polls up to 55s
+ *   - First call: creates container, saves creation_id to DB, polls up to 90s
+ *   - Subsequent calls: reuses saved creation_id, skips re-upload, polls up to 90s
  *   This avoids re-uploading the video each retry and gives Instagram more poll time.
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
@@ -170,8 +170,9 @@ export async function GET(request: Request) {
       log('publish', `Reusing existing container: ${creationId}`)
     }
 
-    // Poll up to 55s (container already created, so we have more headroom)
-    await pollUntilReady(creationId, 55_000)
+    // Poll up to 90s (container already created, so we have more headroom)
+    // maxDuration=120 gives ~30s for setup+creation before polling begins
+    await pollUntilReady(creationId, 90_000)
     igResult = await publishContainer(creationId)
     log('publish', `Instagram OK: ${igResult.permalink}`)
   } catch (igErr) {

@@ -202,25 +202,25 @@ export default async function DashboardPage() {
             </div>
 
             <p className="eyebrow eyebrow-accent mb-5">
-              Omnira · {snapshot.projects.length} autonomous business{snapshot.projects.length === 1 ? '' : 'es'}
-              {' · '}{snapshot.agents.length} agent{snapshot.agents.length === 1 ? '' : 's'}
-              {' · '}{snapshot.workflows.length} workflow{snapshot.workflows.length === 1 ? '' : 's'}
+              Omnira · {snapshot.projects.length} autonom{snapshot.projects.length === 1 ? ' verksamhet' : 'a verksamheter'}
+              {' · '}{snapshot.agents.length} agent{snapshot.agents.length === 1 ? '' : 'er'}
+              {' · '}{snapshot.workflows.length} arbetsflöde{snapshot.workflows.length === 1 ? '' : 'n'}
             </p>
 
             <h1 className="display-hero text-gradient-instrument max-w-[42rem] 3xl:max-w-[56rem]">
-              Operating <span className="text-gradient-aurora">autonomous</span> systems.
+              Opererar <span className="text-gradient-aurora">autonoma</span> system.
             </h1>
 
             <p className="mt-6 text-[14px] 2xl:text-[15px] text-zinc-400 leading-relaxed max-w-[36rem] 3xl:max-w-[48rem]">
-              Real-time visibility into the agents, workflows, and decisions
-              shaping {projectsNarrative(snapshot.projects)}.
+              Realtidsöverblick över agenter, arbetsflöden och beslut
+              som formar {projectsNarrative(snapshot.projects)}.
             </p>
 
             <div className="mt-7 flex items-center gap-2.5 flex-wrap">
-              {metrics.runningRuns > 0 && <TierBadge tier="live" label={`${metrics.runningRuns} executing`} />}
+              {metrics.runningRuns > 0 && <TierBadge tier="live" label={`${metrics.runningRuns} kör`} />}
               {snapshot.pendingApprovals > 0 && (
                 <Link href="/approvals" className="hover:opacity-90 transition-opacity">
-                  <TierBadge tier="critical" label={`${snapshot.pendingApprovals} pending review`} />
+                  <TierBadge tier="critical" label={`${snapshot.pendingApprovals} väntar på granskning`} />
                 </Link>
               )}
               <Link
@@ -228,7 +228,7 @@ export default async function DashboardPage() {
                 className="btn-ghost ease-os inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-medium press"
               >
                 <Cpu className="w-3.5 h-3.5" />
-                Operator
+                Operatör
                 <ChevronRight className="w-3 h-3 opacity-60" />
               </Link>
               <Link
@@ -236,7 +236,7 @@ export default async function DashboardPage() {
                 className="btn-omnira ease-os inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold press"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Deploy system
+                Driftsätt system
               </Link>
             </div>
           </div>
@@ -249,19 +249,19 @@ export default async function DashboardPage() {
             />
             <div className="relative">
               <div className="flex items-center justify-between mb-5">
-                <p className="eyebrow eyebrow-gold">System pulse</p>
+                <p className="eyebrow eyebrow-gold">Systempuls</p>
                 <PulseDot tone="emerald" size={5} />
               </div>
 
               <div className="grid grid-cols-2 gap-5">
-                <Instrument label="Health"    value={metrics.systemHealth} unit="%" color={healthColor} caption={healthLabel} live delay={60} />
-                <Instrument label="Success"   value={metrics.successRate}  unit="%" color="#34d399" caption={`${metrics.doneRuns} of ${metrics.totalRuns}`} delay={120} />
-                <Instrument label="Decisions" value={metrics.decisionsAutonomous} color="#a5b4fc" caption="autonomous · lifetime" delay={180} />
+                <Instrument label="Hälsa"    value={metrics.systemHealth} unit="%" color={healthColor} caption={healthLabel} live delay={60} />
+                <Instrument label="Framgång"   value={metrics.successRate}  unit="%" color="#34d399" caption={`${metrics.doneRuns} av ${metrics.totalRuns}`} delay={120} />
+                <Instrument label="Beslut" value={metrics.decisionsAutonomous} color="#a5b4fc" caption="autonoma · livstid" delay={180} />
                 <Instrument
                   label="Tokens · 24h"
                   value={metrics.tokensLast24h >= 1000 ? `${(metrics.tokensLast24h / 1000).toFixed(1)}k` : metrics.tokensLast24h}
                   color="#d4a574"
-                  caption={metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s avg run` : 'no runs yet'}
+                  caption={metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s snittkörning` : 'inga körningar än'}
                   delay={240}
                 />
               </div>
@@ -288,23 +288,23 @@ export default async function DashboardPage() {
                   <AlertTriangle className="w-4 h-4" style={{ color: 'var(--state-critical)' }} />
                 </div>
                 <div>
-                  <p className="eyebrow eyebrow-gold !text-[9px]">Operator action</p>
+                  <p className="eyebrow eyebrow-gold !text-[9px]">Operatörsåtgärd</p>
                   <p className="text-[13.5px] text-white/95 font-medium tracking-tight">
-                    {snapshot.pendingApprovals} approval{snapshot.pendingApprovals === 1 ? '' : 's'}
+                    {snapshot.pendingApprovals} granskning{snapshot.pendingApprovals === 1 ? '' : 'ar'}
                     {' · '}
-                    {metrics.failedRuns} failed run{metrics.failedRuns === 1 ? '' : 's'}
+                    {metrics.failedRuns} misslyckad{metrics.failedRuns === 1 ? '' : 'e'} körning{metrics.failedRuns === 1 ? '' : 'ar'}
                   </p>
                 </div>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {snapshot.pendingApprovals > 0 && (
                   <Link href="/approvals" className="btn-ghost ease-os press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold">
-                    Review queue <ArrowUpRight className="w-3 h-3" />
+                    Granska kö <ArrowUpRight className="w-3 h-3" />
                   </Link>
                 )}
                 {metrics.failedRuns > 0 && (
                   <Link href="/manager" className="btn-ghost ease-os press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold">
-                    Inspect failures <ArrowUpRight className="w-3 h-3" />
+                    Granska fel <ArrowUpRight className="w-3 h-3" />
                   </Link>
                 )}
               </div>
@@ -321,23 +321,23 @@ export default async function DashboardPage() {
 
             <div className="relative px-5 md:pl-0">
               <Instrument
-                label="Executions · 24h" value={metrics.executionsLast24h}
-                color="#a5b4fc" caption="real runs in last day"
+                label="Körningar · 24h" value={metrics.executionsLast24h}
+                color="#a5b4fc" caption="verkliga körningar senaste dygnet"
                 size="lg" live={metrics.executionsLast24h > 0}
               />
             </div>
             <div className="relative px-5 md:border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
               <Instrument
-                label="Videos completed" value={metrics.doneRuns}
-                color="#67e8f9" caption="all-time"
+                label="Videor klara" value={metrics.doneRuns}
+                color="#67e8f9" caption="totalt"
                 size="lg" delay={60}
               />
             </div>
             <div className="relative px-5 md:border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
               <Instrument
-                label="Agents · 7d" value={scorecards.filter(s => s.state === 'active' || s.state === 'idle').length}
+                label="Agenter · 7d" value={scorecards.filter(s => s.state === 'active' || s.state === 'idle').length}
                 color="#34d399"
-                caption={`${scorecards.length} total deployed`}
+                caption={`${scorecards.length} totalt driftsatta`}
                 size="lg"
                 live={scorecards.some(s => s.state === 'active')}
                 delay={120}
@@ -345,9 +345,9 @@ export default async function DashboardPage() {
             </div>
             <div className="relative px-5 md:border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
               <Instrument
-                label="Renders live" value={metrics.runningRuns}
+                label="Rendering pågår" value={metrics.runningRuns}
                 color={metrics.runningRuns > 0 ? '#c084fc' : '#52525b'}
-                caption={metrics.runningRuns > 0 ? 'pipeline active' : 'pipeline idle'}
+                caption={metrics.runningRuns > 0 ? 'pipeline aktiv' : 'pipeline inaktiv'}
                 size="lg" live={metrics.runningRuns > 0} delay={180}
               />
             </div>
@@ -357,27 +357,27 @@ export default async function DashboardPage() {
         {/* NOW · LIVE EXECUTION · real workflow + real reasoning           */}
         <section>
           <SectionHeader
-            eyebrow={execGraph ? 'Now · Live execution' : 'Execution channel'}
-            title={execGraph?.workflowName ?? 'No active workflow'}
+            eyebrow={execGraph ? 'Nu · Live-körning' : 'Körningskanal'}
+            title={execGraph?.workflowName ?? 'Inget aktivt arbetsflöde'}
             caption={
               execGraph
-                ? `Run · ${execGraph.runId.slice(0, 8)} · ${execGraph.runStatus} · ${execGraph.nodes.length} stages`
-                : 'The execution channel is idle'
+                ? `Körning · ${execGraph.runId.slice(0, 8)} · ${execGraph.runStatus} · ${execGraph.nodes.length} steg`
+                : 'Körningskanalen är inaktiv'
             }
             right={
               execGraph
                 ? <div className="flex items-center gap-2.5">
                     {execGraph.activeIndex != null && (
-                      <TierBadge tier="live" label={`Stage ${execGraph.activeIndex + 1} of ${execGraph.nodes.length}`} />
+                      <TierBadge tier="live" label={`Steg ${execGraph.activeIndex + 1} av ${execGraph.nodes.length}`} />
                     )}
-                    {execGraph.runStatus === 'done' && <TierBadge tier="archived" label="Complete" />}
-                    {execGraph.runStatus === 'failed' && <TierBadge tier="critical" label="Failed" />}
+                    {execGraph.runStatus === 'done' && <TierBadge tier="archived" label="Klar" />}
+                    {execGraph.runStatus === 'failed' && <TierBadge tier="critical" label="Misslyckad" />}
                     <Link href="/manager" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
-                      Open Operator <ArrowUpRight className="w-3 h-3" />
+                      Öppna Operatör <ArrowUpRight className="w-3 h-3" />
                     </Link>
                   </div>
                 : <Link href="/manager" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
-                    Trigger workflow <ArrowUpRight className="w-3 h-3" />
+                    Starta arbetsflöde <ArrowUpRight className="w-3 h-3" />
                   </Link>
             }
           />
@@ -415,7 +415,7 @@ export default async function DashboardPage() {
                           >
                             <PulseDot tone="indigo" size={5} />
                             <span className="text-[12px] text-zinc-300">
-                              {activeAgent?.name ?? activeNode.label} · awaiting first log entry…
+                              {activeAgent?.name ?? activeNode.label} · väntar på första loggpost…
                             </span>
                           </div>
                         )}
@@ -437,13 +437,13 @@ export default async function DashboardPage() {
                       </div>
 
                       <div className="lg:col-span-2 panel-quiet rounded-xl px-4 py-3 stack-3">
-                        <p className="eyebrow eyebrow-accent !text-[9px]">Ensemble vote</p>
+                        <p className="eyebrow eyebrow-accent !text-[9px]">Ensembleröst</p>
                         <ConfidenceMeter
                           value={Math.round(
                             execGraph.nodes.filter(n => n.status === 'done' || n.status === 'active').length /
                             execGraph.nodes.length * 100,
                           )}
-                          label="Pipeline progress"
+                          label="Pipelineförlopp"
                           fluctuate={false}
                         />
                         <div className="grid grid-cols-2 gap-3 pt-1">
@@ -467,10 +467,10 @@ export default async function DashboardPage() {
                     <div className="mt-6">
                       <MicroTicker
                         items={[
-                          { label: 'Outcome',  value: execGraph.runStatus === 'done' ? 'Complete' : 'Failed', tone: execGraph.runStatus === 'done' ? 'live' : 'critical' },
-                          { label: 'Stages',   value: `${execGraph.nodes.filter(n => n.status === 'done').length}/${execGraph.nodes.length}` },
-                          { label: 'Started',  value: execGraph.startedAt ? formatDistanceToNow(new Date(execGraph.startedAt), { addSuffix: true, locale: sv }) : '—' },
-                          { label: 'Finished', value: execGraph.finishedAt ? formatDistanceToNow(new Date(execGraph.finishedAt), { addSuffix: true, locale: sv }) : '—' },
+                          { label: 'Utfall',    value: execGraph.runStatus === 'done' ? 'Klar' : 'Misslyckad', tone: execGraph.runStatus === 'done' ? 'live' : 'critical' },
+                          { label: 'Steg',      value: `${execGraph.nodes.filter(n => n.status === 'done').length}/${execGraph.nodes.length}` },
+                          { label: 'Startade',  value: execGraph.startedAt ? formatDistanceToNow(new Date(execGraph.startedAt), { addSuffix: true, locale: sv }) : '—' },
+                          { label: 'Avslutade', value: execGraph.finishedAt ? formatDistanceToNow(new Date(execGraph.finishedAt), { addSuffix: true, locale: sv }) : '—' },
                         ]}
                       />
                     </div>
@@ -481,11 +481,11 @@ export default async function DashboardPage() {
                     <MicroTicker
                       live={execGraph.runStatus === 'running'}
                       items={[
-                        { label: 'Run',       value: execGraph.runId.slice(0, 8), tone: 'passive' },
-                        { label: 'Stages',    value: execGraph.nodes.length },
-                        { label: 'Completed', value: execGraph.nodes.filter(n => n.status === 'done').length },
+                        { label: 'Körning',      value: execGraph.runId.slice(0, 8), tone: 'passive' },
+                        { label: 'Steg',         value: execGraph.nodes.length },
+                        { label: 'Slutförda',    value: execGraph.nodes.filter(n => n.status === 'done').length },
                         { label: 'Tokens · 24h', value: metrics.tokensLast24h.toLocaleString() },
-                        { label: 'Avg run',   value: metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s` : '—' },
+                        { label: 'Snittkörnng',  value: metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s` : '—' },
                       ]}
                     />
                   </div>
@@ -494,13 +494,13 @@ export default async function DashboardPage() {
             </MissionState>
           ) : (
             <EmptyState
-              eyebrow="Execution channel · idle"
-              title="No workflow executing"
-              body="When a run starts, this panel will show the live agent handoff graph, reasoning, and ensemble confidence in realtime."
+              eyebrow="Körningskanal · inaktiv"
+              title="Inget arbetsflöde körs"
+              body="När en körning startar visar denna panel live-agentgrafen, resonemang och ensemblekonfidensen i realtid."
               icon={<ZapOff className="w-6 h-6 text-indigo-300" />}
               action={
                 <Link href="/manager" className="btn-omnira ease-os press inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold">
-                  Open Operator <ArrowUpRight className="w-3.5 h-3.5" />
+                  Öppna Operatör <ArrowUpRight className="w-3.5 h-3.5" />
                 </Link>
               }
             />
@@ -547,12 +547,12 @@ export default async function DashboardPage() {
           {/* Agent Fleet · left-heavy · 7 cols (8 on ultrawide)             */}
           <div className="col-span-12 xl:col-span-7 3xl:col-span-8">
             <SectionHeader
-              eyebrow="Autonomous workforce · 7d"
-              title="Agent fleet"
-              caption={`${scorecards.length} agent${scorecards.length === 1 ? '' : 's'} on the platform · ranked by recent activity`}
+              eyebrow="Autonom styrka · 7d"
+              title="Agentflotta"
+              caption={`${scorecards.length} agent${scorecards.length === 1 ? '' : 'er'} på plattformen · rangordnad efter senaste aktivitet`}
               right={
                 <Link href="/manager" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
-                  View all <ArrowUpRight className="w-3 h-3" />
+                  Visa alla <ArrowUpRight className="w-3 h-3" />
                 </Link>
               }
             />
@@ -564,9 +564,9 @@ export default async function DashboardPage() {
               </MissionState>
             ) : (
               <EmptyState
-                eyebrow="Agent fleet · empty"
-                title="No agents have executed yet"
-                body="Once a workflow runs, agents will appear here ranked by recent activity, success rate, and average latency."
+                eyebrow="Agentflotta · tom"
+                title="Inga agenter har körts ännu"
+                body="När ett arbetsflöde körs visas agenter här, rangordnade efter aktivitet, framgångsgrad och svarstid."
                 icon={<Bot className="w-6 h-6 text-indigo-300" />}
               />
             )}
@@ -577,10 +577,10 @@ export default async function DashboardPage() {
             {/* Memory Graph · real memory entries */}
             <div>
               <SectionHeader
-                eyebrow="Knowledge mesh"
-                title="Memory graph"
-                caption={`${memory.total} entr${memory.total === 1 ? 'y' : 'ies'} across ${Object.keys(memory.bySource).length} source${Object.keys(memory.bySource).length === 1 ? '' : 's'}`}
-                right={memoryNodes.length > 0 ? <TierBadge tier="passive" label={`${memory.recent.length} recent`} /> : null}
+                eyebrow="Kunskapsnät"
+                title="Minnesgraf"
+                caption={`${memory.total} post${memory.total === 1 ? '' : 'er'} från ${Object.keys(memory.bySource).length} käll${Object.keys(memory.bySource).length === 1 ? 'a' : 'or'}`}
+                right={memoryNodes.length > 0 ? <TierBadge tier="passive" label={`${memory.recent.length} senaste`} /> : null}
               />
               {memoryNodes.length > 0 ? (
                 <Panel className="p-6 relative overflow-hidden">
@@ -594,17 +594,17 @@ export default async function DashboardPage() {
                     <MemoryGraph nodes={memoryNodes} edges={memoryEdges} size={320} />
                   </div>
                   <div className="relative mt-5 pt-4 grid grid-cols-3 gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    <MemoryLegend color="#a5b4fc" label="Memories" count={memoryNodes.filter(n => n.group === 'agent').length} />
-                    <MemoryLegend color="#67e8f9" label="Sources"  count={memoryNodes.filter(n => n.group === 'memory').length} />
-                    <MemoryLegend color="#d4a574" label="Links"    count={memoryEdges.length} />
+                    <MemoryLegend color="#a5b4fc" label="Minnen"     count={memoryNodes.filter(n => n.group === 'agent').length} />
+                    <MemoryLegend color="#67e8f9" label="Källor"    count={memoryNodes.filter(n => n.group === 'memory').length} />
+                    <MemoryLegend color="#d4a574" label="Kopplingar" count={memoryEdges.length} />
                   </div>
                 </Panel>
               ) : (
                 <EmptyState
                   variant="silent"
-                  eyebrow="Memory · empty"
-                  title="Knowledge store has no entries yet"
-                  body="As workflows execute, agents will write structured memory here for cross-run recall."
+                  eyebrow="Minne · tomt"
+                  title="Kunskapslagret har inga poster ännu"
+                  body="När arbetsflöden körs skriver agenter strukturerat minne här för återkallning mellan körningar."
                 />
               )}
             </div>
@@ -613,9 +613,9 @@ export default async function DashboardPage() {
             <div>
               <SectionHeader
                 eyebrow="Distribution"
-                title="Publishing pipeline"
-                caption={publishItems.length > 0 ? `${publishItems.filter(p => p.status !== 'published').length} in flight` : 'No scripts scheduled'}
-                right={publishItems.some(p => p.status === 'rendering') ? <TierBadge tier="live" label="Rendering" /> : null}
+                title="Publiceringspipeline"
+                caption={publishItems.length > 0 ? `${publishItems.filter(p => p.status !== 'published').length} pågår` : 'Inga manus schemalagda'}
+                right={publishItems.some(p => p.status === 'rendering') ? <TierBadge tier="live" label="Renderas" /> : null}
               />
               {publishItems.length > 0 ? (
                 <Panel className="p-6 relative overflow-hidden">
@@ -629,9 +629,9 @@ export default async function DashboardPage() {
               ) : (
                 <EmptyState
                   variant="silent"
-                  eyebrow="Publish pipeline · idle"
-                  title="No scripts in the distribution queue"
-                  body="When the Script Agent produces a draft, it will appear here with rendering status and platform targets."
+                  eyebrow="Publiceringspipeline · inaktiv"
+                  title="Inga manus i distributionskön"
+                  body="När Skriptagenten producerar ett utkast visas det här med renderingsstatus och plattformsmål."
                 />
               )}
             </div>
@@ -642,13 +642,13 @@ export default async function DashboardPage() {
         <section className="grid grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
           <Panel className="col-span-12 lg:col-span-8 3xl:col-span-9 p-7 2xl:p-8 relative overflow-hidden">
             <PanelHeader
-              eyebrow="Realtime telemetry"
-              title="Platform vitals"
-              subtitle="Token usage · throughput · queue depth · last 7 days"
+              eyebrow="Realtidstelemetri"
+              title="Plattformsvitals"
+              subtitle="Tokenanvändning · genomströmning · kölängd · senaste 7 dagar"
               icon={<Gauge className="w-4 h-4 text-indigo-300" />}
               right={
                 <div className="flex items-center gap-2 caption-mono text-[9.5px] text-zinc-500 uppercase tracking-[0.18em]">
-                  <PulseDot tone="emerald" size={5} /> Streaming
+                  <PulseDot tone="emerald" size={5} /> Strömmar
                 </div>
               }
             />
@@ -656,11 +656,11 @@ export default async function DashboardPage() {
             <div className="grid grid-cols-3 gap-x-0 gap-y-5">
               <div>
                 <Instrument
-                  label="Avg run"
+                  label="Snittkörning"
                   value={metrics.avgDurationSec != null ? `${metrics.avgDurationSec}` : '—'}
                   unit={metrics.avgDurationSec != null ? 's' : ''}
                   color="#34d399" size="md"
-                  caption="last 24h, completed runs"
+                  caption="senaste 24h, slutförda körningar"
                 />
               </div>
               <div className="md:pl-6 md:border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
@@ -668,25 +668,25 @@ export default async function DashboardPage() {
                   label="Tokens · 24h"
                   value={metrics.tokensLast24h >= 1000 ? `${(metrics.tokensLast24h / 1000).toFixed(1)}k` : `${metrics.tokensLast24h}`}
                   color="#a5b4fc" size="md"
-                  caption="prompt + completion"
+                  caption="prompt + komplettering"
                 />
               </div>
               <div className="md:pl-6 md:border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                 <Instrument
-                  label="Queue depth"
+                  label="Kölängd"
                   value={metrics.runningRuns}
-                  unit="jobs"
+                  unit="jobb"
                   color="#c084fc" size="md"
-                  caption="currently executing"
+                  caption="körs just nu"
                 />
               </div>
             </div>
 
             <div className="mt-7 pt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="flex items-center justify-between mb-3">
-                <span className="eyebrow !text-[9.5px]">All-time activity</span>
+                <span className="eyebrow !text-[9.5px]">All-time aktivitet</span>
                 <span className="caption-mono text-[10px] text-zinc-600">
-                  {metrics.totalRuns} runs · {metrics.failedRuns} failed
+                  {metrics.totalRuns} körningar · {metrics.failedRuns} misslyckade
                 </span>
               </div>
               <div className="h-28">
@@ -700,23 +700,23 @@ export default async function DashboardPage() {
 
           <Panel className="col-span-12 lg:col-span-4 3xl:col-span-3 p-7 2xl:p-8 relative overflow-hidden">
             <PanelHeader
-              eyebrow="Operational integrity"
-              title="System health"
+              eyebrow="Operationell integritet"
+              title="Systemhälsa"
               icon={<Shield className="w-4 h-4 text-emerald-300" />}
             />
             <div className="flex items-center gap-6">
               <RadialDial value={metrics.systemHealth} color={healthColor} size={124} thickness={7} />
               <div className="flex-1 stack-3">
-                <HealthRow label="Workflows" value={`${snapshot.workflows.length} deployed`}                 dot="emerald" />
-                <HealthRow label="Agents"    value={`${snapshot.agents.length} responsive`}                  dot="emerald" />
-                <HealthRow label="Approvals" value={`${snapshot.pendingApprovals} pending`}                  dot={snapshot.pendingApprovals > 0 ? 'amber'  : 'emerald'} />
-                <HealthRow label="Renders"   value={`${metrics.runningRuns} active`}                          dot={metrics.runningRuns > 0       ? 'indigo' : 'emerald'} />
+                <HealthRow label="Arbetsflöden" value={`${snapshot.workflows.length} driftsatta`}              dot="emerald" />
+                <HealthRow label="Agenter"      value={`${snapshot.agents.length} responsiva`}                dot="emerald" />
+                <HealthRow label="Granskningar" value={`${snapshot.pendingApprovals} väntande`}               dot={snapshot.pendingApprovals > 0 ? 'amber'  : 'emerald'} />
+                <HealthRow label="Renderingar"  value={`${metrics.runningRuns} aktiva`}                       dot={metrics.runningRuns > 0       ? 'indigo' : 'emerald'} />
               </div>
             </div>
             <div className="mt-6 pt-5 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               <span className="eyebrow !text-[9px]">Status</span>
               <span className="caption-mono text-[11px] font-bold" style={{ color: healthColor }}>
-                {healthLabel.toUpperCase()}
+                {healthLabel === 'Optimal' ? 'OPTIMAL' : healthLabel === 'Degraded' ? 'DEGRADERAD' : 'KRITISK'}
               </span>
             </div>
           </Panel>
@@ -727,11 +727,11 @@ export default async function DashboardPage() {
           <section>
             <SectionHeader
               eyebrow="Portfolio"
-              title="Autonomous businesses"
-              caption={`${snapshot.projects.length} live operation${snapshot.projects.length === 1 ? '' : 's'} · each a self-running AI-native company`}
+              title="Autonoma verksamheter"
+              caption={`${snapshot.projects.length} live-operation${snapshot.projects.length === 1 ? '' : 'er'} · varje ett självgående AI-drivet bolag`}
               right={
                 <Link href="/projects/new" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
-                  Deploy <ArrowUpRight className="w-3 h-3" />
+                  Driftsätt <ArrowUpRight className="w-3 h-3" />
                 </Link>
               }
             />
@@ -754,14 +754,14 @@ export default async function DashboardPage() {
         ) : (
           <section>
             <EmptyState
-              eyebrow="Portfolio · empty"
-              title="Awaiting first directive"
-              body="Deploy your first autonomous business to begin operational telemetry. The OS is ready and waiting."
+              eyebrow="Portfolio · tomt"
+              title="Inväntar första direktiv"
+              body="Driftsätt din första autonoma verksamhet för att påbörja operationell telemetri. OS:et är redo och väntar."
               icon={<Compass className="w-6 h-6 text-indigo-300" />}
               action={
                 <Link href="/projects/new" className="btn-omnira ease-os press inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold">
                   <Plus className="w-3.5 h-3.5" />
-                  Deploy first system
+                  Driftsätt första system
                 </Link>
               }
             />
@@ -777,12 +777,12 @@ export default async function DashboardPage() {
       <OSLayer layer="footer">
         <section>
           <SectionHeader
-            eyebrow="History · archived"
-            title="Recent executions"
-            caption={`${metrics.totalRuns} total runs across all workflows`}
+            eyebrow="Historik · arkiverad"
+            title="Senaste körningar"
+            caption={`${metrics.totalRuns} totala körningar över alla arbetsflöden`}
             right={
               <span className="caption-mono text-[10px] text-zinc-600">
-                {metrics.failedRuns} failures · {metrics.doneRuns} complete
+                {metrics.failedRuns} misslyckade · {metrics.doneRuns} slutförda
               </span>
             }
           />
@@ -793,7 +793,7 @@ export default async function DashboardPage() {
                 <table className="w-full text-[12px]">
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      {['Workflow', 'Project', 'Status', 'Started', 'Duration', ''].map((h) => (
+                      {['Arbetsflöde', 'Projekt', 'Status', 'Startad', 'Varaktighet', ''].map((h) => (
                         <th key={h} className="text-left px-6 py-3.5 eyebrow !text-[9px] !tracking-[0.20em]">
                           {h}
                         </th>
@@ -848,7 +848,7 @@ export default async function DashboardPage() {
                               href={`/projects/${project?.slug}/runs/${run.id}`}
                               className="inline-flex items-center gap-1 text-zinc-600 hover:text-indigo-300 transition-colors text-[10.5px] opacity-50 group-hover:opacity-100 ease-os"
                             >
-                              <Eye className="w-3 h-3" /> Trace
+                              <Eye className="w-3 h-3" /> Spåra
                             </Link>
                           </td>
                         </tr>
@@ -861,9 +861,9 @@ export default async function DashboardPage() {
           ) : (
             <EmptyState
               variant="silent"
-              eyebrow="No history yet"
-              title="The archive is empty"
-              body="Run trace data will collect here as workflows execute."
+              eyebrow="Ingen historik ännu"
+              title="Arkivet är tomt"
+              body="Körningsspårdata samlas här när arbetsflöden körs."
             />
           )}
         </section>
@@ -898,36 +898,36 @@ interface DerivedRecommendation {
 function deriveRecommendation(s: RecSignals): DerivedRecommendation | null {
   if (s.pendingApprovals >= 3) {
     return {
-      title:      `${s.pendingApprovals} reviews are blocking the queue`,
-      rationale:  `Clearing the approval inbox releases downstream workflows. Approvals stack quickly when left for more than a few hours.`,
-      action:     { label: 'Open approval queue', href: '/approvals' },
+      title:      `${s.pendingApprovals} granskningar blockerar kön`,
+      rationale:  `Att tömma granskningskorgen frigör nedströmsarbetsflöden. Granskningar staplas snabbt om de lämnas i mer än några timmar.`,
+      action:     { label: 'Öppna granskningskö', href: '/approvals' },
     }
   }
   if (s.failedRuns > 0 && s.failRate >= 8) {
     return {
-      title:      `${s.failedRuns} run failure${s.failedRuns === 1 ? '' : 's'} · ${s.failRate}% lifetime fail rate`,
-      rationale:  `Inspecting the failures and capturing root-cause notes lets the orchestrator suppress retries on the same error class.`,
-      action:     { label: 'Inspect failures', href: '/manager' },
+      title:      `${s.failedRuns} körningsfel · ${s.failRate}% livstidsfelfrekvens`,
+      rationale:  `Att granska felen och notera grundorsaker låter orkestreringen undertrycka återförsök på samma felklass.`,
+      action:     { label: 'Granska fel', href: '/manager' },
     }
   }
   if (s.executionsLast24h === 0 && s.agentsOnline > 0) {
     return {
-      title:      'No executions in the last 24h',
-      rationale:  `${s.agentsOnline} agent${s.agentsOnline === 1 ? '' : 's'} responsive but idle. Triggering a workflow keeps memory fresh and surfaces drift early.`,
-      action:     { label: 'Trigger workflow', href: '/manager' },
+      title:      'Inga körningar de senaste 24h',
+      rationale:  `${s.agentsOnline} agent${s.agentsOnline === 1 ? '' : 'er'} responsiv${s.agentsOnline === 1 ? '' : 'a'} men inaktiv${s.agentsOnline === 1 ? '' : 'a'}. Att starta ett arbetsflöde håller minnet färskt och synliggör drift tidigt.`,
+      action:     { label: 'Starta arbetsflöde', href: '/manager' },
     }
   }
   if (s.memoryCount < 5 && s.agentsOnline > 0) {
     return {
-      title:      'Memory store is sparse',
-      rationale:  `${s.memoryCount} memory entr${s.memoryCount === 1 ? 'y' : 'ies'} on file. Recall quality improves rapidly above 20 entries — run more workflows to enrich.`,
+      title:      'Minneslagret är glesbefolkat',
+      rationale:  `${s.memoryCount} minnesposter registrerade. Återkallningskvaliteten förbättras snabbt över 20 poster — kör fler arbetsflöden för att berika.`,
     }
   }
   if (s.avgDurationSec != null && s.avgDurationSec > 60) {
     return {
-      title:      `Average run takes ${s.avgDurationSec}s · investigate latency`,
-      rationale:  `Long-running workflows compound cost and reduce iteration speed. Profile the slowest steps and consider parallelizing.`,
-      action:     { label: 'Open Operator', href: '/manager' },
+      title:      `Genomsnittlig körning tar ${s.avgDurationSec}s · undersök latens`,
+      rationale:  `Långvariga arbetsflöden adderar kostnader och minskar iterationshastigheten. Profilera de långsammaste stegen och överväg parallellisering.`,
+      action:     { label: 'Öppna Operatör', href: '/manager' },
     }
   }
   return null
@@ -942,27 +942,27 @@ interface WarningSignals {
 function deriveWarning(s: WarningSignals): { title: string; detail?: string; action?: { label: string; href: string } } | null {
   if (s.degradedAgents > 0) {
     return {
-      title:  `${s.degradedAgents} agent${s.degradedAgents === 1 ? '' : 's'} flagged as degraded`,
-      detail: 'Recent runs touched by these agents failed at >50% · review traces before next dispatch.',
-      action: { label: 'Trace', href: '/manager' },
+      title:  `${s.degradedAgents} agent${s.degradedAgents === 1 ? '' : 'er'} flaggade som degraderade`,
+      detail: 'Senaste körningar berörda av dessa agenter misslyckades i >50% av fallen · granska spårningar innan nästa körning.',
+      action: { label: 'Spåra', href: '/manager' },
     }
   }
   if (s.failedRuns >= 3) {
     return {
-      title:  `${s.failedRuns} run failures observed`,
-      detail: `Auto-retry has been queued where applicable. Root-cause inspection is recommended.`,
-      action: { label: 'Inspect', href: '/manager' },
+      title:  `${s.failedRuns} körningsfel observerade`,
+      detail: `Auto-återförsök har ställts i kö där tillämpligt. Grundorsaksinspektion rekommenderas.`,
+      action: { label: 'Granska', href: '/manager' },
     }
   }
   return null
 }
 
 function projectsNarrative(projects: { name: string }[]): string {
-  if (projects.length === 0) return 'your autonomous portfolio'
+  if (projects.length === 0) return 'din autonoma portfolio'
   if (projects.length === 1) return projects[0].name
-  if (projects.length === 2) return `${projects[0].name} and ${projects[1].name}`
+  if (projects.length === 2) return `${projects[0].name} och ${projects[1].name}`
   const lead = projects.slice(0, -1).map(p => p.name).join(', ')
-  return `${lead}, and ${projects.at(-1)!.name}`
+  return `${lead} och ${projects.at(-1)!.name}`
 }
 
 function buildActivityTrend(recentRuns: any[], metrics: { totalRuns: number; doneRuns: number }): number[] {
@@ -1087,11 +1087,11 @@ function ProjectTile({
       >
         <span className="inline-flex items-center gap-1.5">
           <Bot className="w-3 h-3" style={{ color: `${project.color}aa` }} />
-          <strong className="text-zinc-200 font-semibold num">{agentCount}</strong> agents
+          <strong className="text-zinc-200 font-semibold num">{agentCount}</strong> agenter
         </span>
         <span className="inline-flex items-center gap-1.5">
           <GitBranch className="w-3 h-3" style={{ color: `${project.color}aa` }} />
-          <strong className="text-zinc-200 font-semibold num">{workflowCount}</strong> flows
+          <strong className="text-zinc-200 font-semibold num">{workflowCount}</strong> flöden
         </span>
         <span className="ml-auto inline-flex items-center gap-1.5">
           <PulseDot tone="emerald" size={4} />

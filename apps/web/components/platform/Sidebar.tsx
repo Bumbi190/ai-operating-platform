@@ -48,27 +48,27 @@ interface SidebarProps {
 }
 
 const globalNav = [
-  { href: '/dashboard', label: 'Mission Control', icon: LayoutDashboard, primary: true },
-  { href: '/manager',   label: 'Operator',         icon: Brain },
-  { href: '/chat',      label: 'Chat',             icon: MessageSquare },
-  { href: '/approvals', label: 'Approvals',        icon: ShieldCheck },
-  { href: '/memory',    label: 'Memory',           icon: Lightbulb },
-  { href: '/costs',     label: 'Cost',             icon: DollarSign },
-  { href: '/planning',  label: 'Planning',         icon: CalendarDays },
+  { href: '/dashboard', label: 'Operationscentral', icon: LayoutDashboard, primary: true },
+  { href: '/manager',   label: 'Operatör',           icon: Brain },
+  { href: '/chat',      label: 'Chat',               icon: MessageSquare },
+  { href: '/approvals', label: 'Granskningar',        icon: ShieldCheck },
+  { href: '/memory',    label: 'Minne',               icon: Lightbulb },
+  { href: '/costs',     label: 'Kostnader',           icon: DollarSign },
+  { href: '/planning',  label: 'Planering',           icon: CalendarDays },
 ]
 
 const projectNav = [
-  { href: '/agents',    label: 'Agents',    icon: Bot },
-  { href: '/workflows', label: 'Workflows', icon: GitBranch },
-  { href: '/runs',      label: 'Runs',      icon: Play },
-  { href: '/outputs',   label: 'Outputs',   icon: FileOutput },
+  { href: '/agents',    label: 'Agenter',       icon: Bot },
+  { href: '/workflows', label: 'Arbetsflöden',  icon: GitBranch },
+  { href: '/runs',      label: 'Körningar',     icon: Play },
+  { href: '/outputs',   label: 'Utdata',        icon: FileOutput },
 ]
 
 const mediaProjectNav = [
-  { href: '/media',    label: 'Media Pipeline', icon: Radio },
-  { href: '/generate', label: 'Generate',       icon: Video },
-  { href: '/news',     label: 'News Feed',      icon: Newspaper },
-  { href: '/scripts',  label: 'Script Queue',   icon: FileText },
+  { href: '/media',    label: 'Mediepipeline',  icon: Radio },
+  { href: '/generate', label: 'Generera',        icon: Video },
+  { href: '/news',     label: 'Nyhetsflöde',    icon: Newspaper },
+  { href: '/scripts',  label: 'Manuskriptkö',   icon: FileText },
 ]
 
 export function Sidebar({ projects, userEmail, recentConversations = [] }: SidebarProps) {
@@ -120,7 +120,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
             </span>
             <span className="eyebrow !text-[8.5px] !text-emerald-300/85 !tracking-[0.22em]">
-              All systems nominal
+              Alla system nominella
             </span>
           </div>
           <span className="caption-mono text-[9px] text-zinc-700">v4.2</span>
@@ -133,7 +133,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         {/* Operations */}
         <div>
           <p className="px-3 mb-3 eyebrow !text-[9px] !text-zinc-700">
-            Operations
+            Operationer
           </p>
           <div className="space-y-1">
             {globalNav.map((item) => {
@@ -228,12 +228,12 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         <div>
           <div className="flex items-center justify-between px-3 mb-3">
             <span className="eyebrow !text-[9px] !text-zinc-700">
-              Autonomous stack
+              Autonom stack
             </span>
             <Link
               href="/projects/new"
               className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-zinc-600 hover:text-indigo-200 transition-colors ease-os"
-              title="Deploy new project"
+              title="Driftsätt nytt projekt"
             >
               <Plus className="w-3 h-3" />
             </Link>
@@ -309,7 +309,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                 className="flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"
               >
                 <Plus className="w-3 h-3" />
-                Deploy your first system
+                Driftsätt ditt första system
               </Link>
             )}
           </div>
@@ -323,7 +323,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
       >
         <Link href="/settings" className="nav-pill ease-os" data-active={pathname === '/settings'}>
           <Settings className="w-3.5 h-3.5 shrink-0 text-zinc-600" />
-          <span className="tracking-tight">Settings</span>
+          <span className="tracking-tight">Inställningar</span>
         </Link>
 
         {userEmail && (
@@ -348,11 +348,11 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               <p className="text-[11px] text-white/90 truncate font-medium tracking-tight">
                 {userEmail.split('@')[0]}
               </p>
-              <p className="eyebrow !text-[8.5px] !text-zinc-600 !tracking-[0.20em] mt-0.5">Operator</p>
+              <p className="eyebrow !text-[8.5px] !text-zinc-600 !tracking-[0.20em] mt-0.5">Operatör</p>
             </div>
             <button
               onClick={handleSignOut}
-              title="Sign out"
+              title="Logga ut"
               className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/[0.06] text-zinc-500 hover:text-white ease-os"
             >
               <LogOut className="w-3 h-3" />

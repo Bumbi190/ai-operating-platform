@@ -41,10 +41,10 @@ interface EvalResult {
 }
 
 const STATUS_META = {
-  pending:  { label: 'Awaiting Review', tone: 'amber',   color: '#fbbf24', icon: Clock,       glow: 'glow-amber' },
-  approved: { label: 'Approved',        tone: 'emerald', color: '#34d399', icon: CheckCircle2, glow: '' },
-  rejected: { label: 'Rejected',        tone: 'rose',    color: '#f87171', icon: XCircle,     glow: '' },
-  revised:  { label: 'Revision',        tone: 'indigo',  color: '#60a5fa', icon: RefreshCw,   glow: '' },
+  pending:  { label: 'Väntar på granskning', tone: 'amber',   color: '#fbbf24', icon: Clock,       glow: 'glow-amber' },
+  approved: { label: 'Godkänd',              tone: 'emerald', color: '#34d399', icon: CheckCircle2, glow: '' },
+  rejected: { label: 'Avvisad',              tone: 'rose',    color: '#f87171', icon: XCircle,     glow: '' },
+  revised:  { label: 'Revidering',           tone: 'indigo',  color: '#60a5fa', icon: RefreshCw,   glow: '' },
 } as const
 
 export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; delay?: number }) {
@@ -58,9 +58,9 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
   const meta = STATUS_META[approval.status]
   const isPending = approval.status === 'pending'
 
-  const workflowName = approval.runs?.workflows?.name ?? 'Unknown workflow'
-  const agentName    = approval.runs?.agents?.name ?? 'Autonomous agent'
-  const date = new Date(approval.created_at).toLocaleDateString('en-US', {
+  const workflowName = approval.runs?.workflows?.name ?? 'Okänt arbetsflöde'
+  const agentName    = approval.runs?.agents?.name ?? 'Autonom agent'
+  const date = new Date(approval.created_at).toLocaleDateString('sv-SE', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
 
@@ -134,25 +134,25 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
       reasoning.push({
         id: 'mem',
         type: 'memory',
-        title: 'Cross-referenced brand voice memory',
-        detail: `Alignment score ${evalResult.brandAlignment.toFixed(1)}/10 against canonical brand corpus`,
+        title: 'Korsrefererade varumärkesröstminne',
+        detail: `Inriktningspoäng ${evalResult.brandAlignment.toFixed(1)}/10 mot kanonisk varumärkeskorpus`,
         confidence: Math.round(evalResult.brandAlignment * 10),
       })
     }
     reasoning.push({
       id: 'eval',
       type: 'evaluation',
-      title: `Quality evaluation · ${evalResult.passed ? 'PASS' : 'FLAG'}`,
+      title: `Kvalitetsutvärdering · ${evalResult.passed ? 'GODKÄND' : 'FLAGGAD'}`,
       detail: evalResult.issues.length > 0
-        ? `Primary issue · ${evalResult.issues[0].dimension}: ${evalResult.issues[0].detail}`
-        : 'All quality dimensions cleared automated thresholds',
+        ? `Primärt problem · ${evalResult.issues[0].dimension}: ${evalResult.issues[0].detail}`
+        : 'Alla kvalitetsdimensioner klarade automatiserade trösklar',
       confidence: Math.round(evalResult.overallScore * 10),
     })
     if (evalResult.suggestion) {
       reasoning.push({
         id: 'dec',
         type: 'decision',
-        title: 'Suggested adjustment',
+        title: 'Föreslagen justering',
         detail: evalResult.suggestion,
       })
     }
@@ -160,7 +160,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
       reasoning.push({
         id: 'fail',
         type: 'branch',
-        title: 'Hard failure detected',
+        title: 'Hårt fel detekterat',
         detail: evalResult.hardFails.slice(0, 2).join(' · '),
       })
     }
@@ -231,7 +231,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
             <span className="text-zinc-700">·</span>
             <span className="font-mono text-indigo-300/70">{approval.output_key}</span>
             <span className="text-zinc-700">·</span>
-            <span>by {agentName}</span>
+            <span>av {agentName}</span>
           </p>
         </div>
 
@@ -265,7 +265,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
               <div className="flex items-center gap-2 mb-3">
                 <Eye className="w-3 h-3 text-indigo-300" />
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-indigo-300/80">
-                  Output Preview
+                  Utdataförhandsvisning
                 </span>
               </div>
               <div
@@ -286,7 +286,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
               <div className="flex items-center gap-2">
                 <Brain className="w-3.5 h-3.5 text-indigo-300" />
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-indigo-300/80">
-                  AI Executive Analysis
+                  AI-exekutiv analys
                 </span>
                 {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />}
               </div>
@@ -295,25 +295,25 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                 <>
                   {/* Three big dials */}
                   <div className="flex items-center justify-around">
-                    <DialBlock label="AI Score" value={aiScore ?? 0} color={evalResult.passed ? '#34d399' : '#fbbf24'} sub={evalResult.passed ? 'PASS' : 'FLAGGED'} />
+                    <DialBlock label="AI-poäng" value={aiScore ?? 0} color={evalResult.passed ? '#34d399' : '#fbbf24'} sub={evalResult.passed ? 'GODKÄND' : 'FLAGGAD'} />
                     {engagementPrediction !== null && (
-                      <DialBlock label="Engagement" value={Math.max(0, engagementPrediction)} color="#818cf8" sub="predicted" />
+                      <DialBlock label="Engagemang" value={Math.max(0, engagementPrediction)} color="#818cf8" sub="förutsett" />
                     )}
                     {riskScore !== null && (
-                      <DialBlock label="Risk" value={Math.min(100, riskScore)} color="#f87171" sub="lower = safer" />
+                      <DialBlock label="Risk" value={Math.min(100, riskScore)} color="#f87171" sub="lägre = säkrare" />
                     )}
                   </div>
 
                   {/* Score breakdown */}
                   <div className="space-y-3">
-                    <ScoreBar label="Originality"   score={Math.round((10 - evalResult.slopScore) * 10)} color="#818cf8" />
+                    <ScoreBar label="Originalitet"   score={Math.round((10 - evalResult.slopScore) * 10)} color="#818cf8" />
                     {evalResult.brandAlignment !== null && (
-                      <ScoreBar label="Brand voice" score={Math.round(evalResult.brandAlignment * 10)} color="#a78bfa" />
+                      <ScoreBar label="Varumärkesröst" score={Math.round(evalResult.brandAlignment * 10)} color="#a78bfa" />
                     )}
-                    <ScoreBar label="Specificity"   score={Math.round(evalResult.specificity * 10)} color="#67e8f9" />
-                    <ScoreBar label="Pacing"        score={Math.round(evalResult.pacingQuality * 10)} color="#34d399" />
+                    <ScoreBar label="Specificitet"   score={Math.round(evalResult.specificity * 10)} color="#67e8f9" />
+                    <ScoreBar label="Tempo"          score={Math.round(evalResult.pacingQuality * 10)} color="#34d399" />
                     {evalResult.hookStrength !== null && (
-                      <ScoreBar label="Hook strength" score={Math.round(evalResult.hookStrength * 10)} color="#fbbf24" />
+                      <ScoreBar label="Krokstyrka" score={Math.round(evalResult.hookStrength * 10)} color="#fbbf24" />
                     )}
                   </div>
 
@@ -329,7 +329,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-300 shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-rose-300 mb-0.5">
-                          Hard failures
+                          Hårda fel
                         </p>
                         <p className="text-[10.5px] text-rose-200/90 leading-relaxed">
                           {evalResult.hardFails.slice(0, 3).join(' · ')}
@@ -349,7 +349,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                   style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)' }}
                 >
                   <Activity className="w-3.5 h-3.5 text-indigo-300 mx-auto mb-1.5" />
-                  <p className="text-[10.5px] text-zinc-500">No evaluation available for this output type</p>
+                  <p className="text-[10.5px] text-zinc-500">Ingen utvärdering tillgänglig för denna utdatatyp</p>
                 </div>
               )}
             </div>
@@ -364,10 +364,10 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="w-3.5 h-3.5 text-violet-300" />
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-violet-300/80">
-                  Reasoning Chain
+                  Resonemangskedja
                 </span>
                 <span className="text-[9.5px] text-zinc-600 font-mono ml-1">
-                  · {reasoning.length} steps · why this was decided
+                  · {reasoning.length} steg · varför detta beslutades
                 </span>
               </div>
               <ReasoningTrace steps={reasoning} />
@@ -384,7 +384,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
               }}
             >
               <p className="text-[9.5px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-1.5">
-                Reviewer note
+                Granskarnotering
               </p>
               <p className="text-[11.5px] text-zinc-300 italic">{approval.reviewer_notes}</p>
             </div>
@@ -403,7 +403,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Operator note (optional) · revision instructions, override rationale…"
+                placeholder="Operatörnotering (valfri) · revisionsinstruktioner, åsidosättningslogik…"
                 rows={2}
                 className="w-full rounded-lg px-3 py-2.5 text-[11.5px] focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none transition-all"
                 style={{
@@ -419,7 +419,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                   variant="approve"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Approve & ship
+                  Godkänn & skicka
                 </ActionButton>
                 <ActionButton
                   onClick={() => act('revised')}
@@ -427,7 +427,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                   variant="revise"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Request revision
+                  Begär revidering
                 </ActionButton>
                 <ActionButton
                   onClick={() => act('rejected')}
@@ -435,7 +435,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                   variant="reject"
                 >
                   <XCircle className="w-3.5 h-3.5" />
-                  Reject
+                  Avvisa
                 </ActionButton>
               </div>
             </div>

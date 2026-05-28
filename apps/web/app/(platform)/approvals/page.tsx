@@ -58,7 +58,7 @@ export default async function ApprovalsPage() {
           <div className="flex items-center gap-2 mb-3">
             <PulseDot tone="amber" size={6} />
             <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-300">
-              Executive Review Channel
+              Exekutiv granskningskanal
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -74,10 +74,10 @@ export default async function ApprovalsPage() {
             </div>
             <div>
               <h1 className="text-[36px] font-black tracking-tight leading-[1.05] text-gradient-aurora">
-                Approval Center
+                Granskningscenter
               </h1>
               <p className="text-[12.5px] text-zinc-400 mt-1.5 max-w-xl leading-relaxed">
-                AI-graded outputs queued for executive judgment · approve, revise, or reject autonomous decisions
+                AI-betygsatta utdata köade för exekutiv bedömning · godkänn, revidera eller avvisa autonoma beslut
               </p>
             </div>
           </div>
@@ -85,18 +85,18 @@ export default async function ApprovalsPage() {
 
         <div className="col-span-12 lg:col-span-5 3xl:col-span-4 grid grid-cols-2 gap-3">
           <HeroStat
-            label="Awaiting Review"
+            label="Väntar på granskning"
             value={counts.pending}
             color="#fbbf24"
             glow={counts.pending > 0}
-            caption={counts.pending > 0 ? 'Needs operator decision' : 'Inbox clear'}
+            caption={counts.pending > 0 ? 'Kräver operatörsbeslut' : 'Inkorg tom'}
             delay={60}
           />
           <HeroStat
-            label="Decided Today"
+            label="Beslutat idag"
             value={reviewedToday}
             color="#34d399"
-            caption={`${counts.approved} approved · ${counts.rejected} rejected`}
+            caption={`${counts.approved} godkänd · ${counts.rejected} avvisad`}
             delay={120}
           />
         </div>
@@ -106,10 +106,10 @@ export default async function ApprovalsPage() {
       {/* ── OPERATIONAL · stat tiles, full width ────────────────────────── */}
       <OSLayer layer="operational">
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 2xl:gap-5">
-        <StatTile label="Pending"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
-        <StatTile label="Approved"   value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
-        <StatTile label="Rejected"   value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
-        <StatTile label="Revisions"  value={counts.revised}  color="#60a5fa" icon={<RefreshCw    className="w-3.5 h-3.5" />} />
+        <StatTile label="Väntande"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
+        <StatTile label="Godkänd"    value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
+        <StatTile label="Avvisad"    value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
+        <StatTile label="Revideringar" value={counts.revised} color="#60a5fa" icon={<RefreshCw   className="w-3.5 h-3.5" />} />
       </section>
       </OSLayer>
 
@@ -122,9 +122,9 @@ export default async function ApprovalsPage() {
           >
             <ShieldCheck className="w-6 h-6 text-indigo-300" />
           </div>
-          <p className="text-[14px] text-zinc-300 font-medium">Inbox clear</p>
+          <p className="text-[14px] text-zinc-300 font-medium">Inkorg tom</p>
           <p className="text-[11.5px] text-zinc-600 mt-1.5 max-w-sm mx-auto">
-            Trigger a workflow — autonomous outputs that fail the AI evaluator land here for executive review.
+            Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning.
           </p>
         </Panel>
       ) : (
@@ -132,12 +132,12 @@ export default async function ApprovalsPage() {
           {counts.pending > 0 && (
             <section>
               <SectionHeader
-                eyebrow="Priority Queue"
-                title="Awaiting Decision"
-                caption={`${counts.pending} ${counts.pending === 1 ? 'output' : 'outputs'} flagged for human judgment`}
+                eyebrow="Prioritetskö"
+                title="Inväntar beslut"
+                caption={`${counts.pending} utdata${counts.pending === 1 ? '' : ''} flaggad${counts.pending === 1 ? '' : 'e'} för mänsklig bedömning`}
                 right={
                   <span className="inline-flex items-center gap-2 text-[10.5px] text-amber-300 font-semibold uppercase tracking-[0.2em]">
-                    <Sparkles className="w-3 h-3" /> AI-scored
+                    <Sparkles className="w-3 h-3" /> AI-poängsatt
                   </span>
                 }
               />
@@ -152,9 +152,9 @@ export default async function ApprovalsPage() {
           {all.some(a => a.status !== 'pending') && (
             <section>
               <SectionHeader
-                eyebrow="Archive"
-                title="Decided"
-                caption="Outputs the operator has reviewed"
+                eyebrow="Arkiv"
+                title="Beslutat"
+                caption="Utdata som operatören har granskat"
               />
               <div className="space-y-3">
                 {all.filter(a => a.status !== 'pending').map((a, i) => (

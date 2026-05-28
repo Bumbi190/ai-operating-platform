@@ -119,7 +119,7 @@ export default async function CostsPage() {
     <OSPage className="animate-fade-in">
       <OSLayer layer="hero">
         <div>
-          <p className="eyebrow eyebrow-accent mb-3">Telemetry · cost intelligence</p>
+          <p className="eyebrow eyebrow-accent mb-3">Telemetri · kostnadsintelligens</p>
           <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Kostnadsöversikt</h1>
           <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
             {monthLabel} — token-användning och API-kostnader

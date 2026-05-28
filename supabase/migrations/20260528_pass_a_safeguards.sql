@@ -19,7 +19,7 @@
 UPDATE media_scripts
   SET video_status = 'failed'
 WHERE video_status = 'rendering'
-  AND created_at < NOW() - INTERVAL '2 hours';
+  AND generated_at < NOW() - INTERVAL '2 hours';
 
 
 -- ── 1b. Städa upp fastnade körningar (runs) ───────────────────────────────────

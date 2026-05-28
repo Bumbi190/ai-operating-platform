@@ -15,13 +15,7 @@ interface ApprovalRow {
   reviewer_notes: string | null
   created_at: string
   reviewed_at: string | null
-  runs: {
-    id: string
-    status: string
-    created_at: string
-    workflows: { name: string } | null
-    agents: { name: string } | null
-  } | null
+  runs?: null  // Not fetched — ApprovalCard handles this with fallbacks
 }
 
 export default async function ApprovalsPage() {
@@ -31,20 +25,17 @@ export default async function ApprovalsPage() {
 
   const db = createAdminClient()
 
-  const { data: approvals } = await db
+  const { data: approvals, error: approvalsError } = await db
     .from('approvals')
-    .select(`
-      id, output_key, content, status, reviewer_notes, created_at, reviewed_at,
-      runs (
-        id, status, created_at,
-        workflows ( name ),
-        agents ( name )
-      )
-    `)
+    .select('id, output_key, content, status, reviewer_notes, created_at, reviewed_at')
     .order('created_at', { ascending: false })
-    .limit(50) as { data: ApprovalRow[] | null }
+    .limit(50)
 
-  const all = approvals ?? []
+  if (approvalsError) {
+    console.error('[approvals/page] Query error:', approvalsError.message)
+  }
+
+  const all = (approvals ?? []) as ApprovalRow[]
   const counts = {
     pending:  all.filter(a => a.status === 'pending').length,
     approved: all.filter(a => a.status === 'approved').length,

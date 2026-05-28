@@ -23,6 +23,7 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkAutomationPaused, handlePublishFailure } from '@/lib/media/safeguards'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
@@ -45,6 +46,13 @@ export async function GET(request: Request) {
   }
 
   const db = createAdminClient()
+
+  // ── Global pauscheck ──────────────────────────────────────────────────────────
+  const pauseCheck = await checkAutomationPaused(db)
+  if (!pauseCheck.allowed) {
+    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
+    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  }
 
   // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
   // Prioritet: platform_tokens-tabellen → env-variabel
@@ -178,13 +186,29 @@ export async function GET(request: Request) {
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'
     log('publish', `Instagram failed: ${msg}`)
+
+    // Retry-cap: räkna upp och skicka till operatörsgranskning om gränsen nåtts
+    const { sentToReview, newRetryCount } = await handlePublishFailure(db, script.id, msg)
+    log('publish', `Retry ${newRetryCount}/${(await db.from('platform_config').select('max_retry_attempts').eq('id', 1).single()).data?.max_retry_attempts ?? 3}${sentToReview ? ' — SKICKAT TILL GRANSKNING' : ''}`)
+
     await sendPipelineAlert({
       cronRoute: 'cron/publish',
       step:      'instagram_publish',
       error:     msg,
-      context:   { scriptId: script.id, hook: script.hook ?? null },
+      context:   {
+        scriptId:     script.id,
+        hook:         script.hook ?? null,
+        retryCount:   newRetryCount,
+        sentToReview,
+      },
     })
-    return NextResponse.json({ status: 'instagram_failed', error: msg, scriptId: script.id }, { status: 500 })
+    return NextResponse.json({
+      status:       'instagram_failed',
+      error:        msg,
+      scriptId:     script.id,
+      retryCount:   newRetryCount,
+      sentToReview,
+    }, { status: 500 })
   }
 
   // ── Publish to Facebook (optional, non-fatal) ─────────────────────────────────

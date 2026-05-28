@@ -25,6 +25,7 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkAutomationPaused, checkDailyRenderLimit } from '@/lib/media/safeguards'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -174,6 +175,20 @@ export async function GET(request: Request) {
   const startedAt = Date.now()
   const db        = createAdminClient()
   const claude    = new Anthropic()
+
+  // ── 0a. Global pauscheck ──────────────────────────────────────────────────────
+  const pauseCheck = await checkAutomationPaused(db)
+  if (!pauseCheck.allowed) {
+    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
+    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  }
+
+  // ── 0b. Daglig render-gräns ───────────────────────────────────────────────────
+  const renderCheck = await checkDailyRenderLimit(db)
+  if (!renderCheck.allowed) {
+    log('safeguard', `RENDER-GRÄNS — ${renderCheck.reason}`)
+    return NextResponse.json({ status: 'render_limit_reached', reason: renderCheck.reason })
+  }
 
   // ── 1. Find project ───────────────────────────────────────────────────────────
   const { searchParams } = new URL(request.url)

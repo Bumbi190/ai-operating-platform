@@ -5,7 +5,7 @@ import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
 import {
   Bot, GitBranch, Plus, ArrowRight, Cpu, Shield, ChevronRight, Eye, Gauge,
-  ArrowUpRight, AlertTriangle, Compass, ZapOff, Sparkles,
+  ArrowUpRight, AlertTriangle, Compass, ZapOff, Sparkles, Power,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
@@ -14,6 +14,8 @@ import {
   fetchDashboardSnapshot, fetchActiveExecution, fetchMemorySnapshot,
   fetchPublishPipeline,
 } from '@/lib/os/data'
+import { getPlatformConfig } from '@/lib/media/safeguards'
+import { PauseToggle } from './PauseToggle'
 import { buildExecutionGraph } from '@/lib/os/execution-graph'
 import { fetchAgentScorecards, scorecardToSnapshot } from '@/lib/os/scoring'
 
@@ -37,12 +39,13 @@ export default async function DashboardPage() {
   const db = createAdminClient()
 
   // Parallel — all real-data fetches.
-  const [snapshot, activeExec, memory, publishing, scorecards] = await Promise.all([
+  const [snapshot, activeExec, memory, publishing, scorecards, platformConfig] = await Promise.all([
     fetchDashboardSnapshot(supabase, db),
     fetchActiveExecution(db),
     fetchMemorySnapshot(db),
     fetchPublishPipeline(db),
     fetchAgentScorecards(db),
+    getPlatformConfig(db),
   ])
 
   const { metrics } = snapshot
@@ -192,81 +195,53 @@ export default async function DashboardPage() {
 
       {/* ════════════════════════════════════════════════════════════════
           LAYER 2 · HERO / MISSION
-          (Operator orientation · 8/4 asymmetric — title left, pulse right)
+          (Full-width operator orientation)
       ════════════════════════════════════════════════════════════════ */}
       <OSLayer layer="hero">
-        <header className="grid grid-cols-12 gap-5 lg:gap-7 2xl:gap-8 items-end">
-          <div className="col-span-12 lg:col-span-8 3xl:col-span-9 relative">
-            <div className="absolute -top-6 -right-6 opacity-40 pointer-events-none hidden md:block">
-              <DotMatrix cols={26} rows={6} mask="fade-radial" />
-            </div>
-
-            <p className="eyebrow eyebrow-accent mb-5">
-              Omnira · {snapshot.projects.length} autonom{snapshot.projects.length === 1 ? ' verksamhet' : 'a verksamheter'}
-              {' · '}{snapshot.agents.length} agent{snapshot.agents.length === 1 ? '' : 'er'}
-              {' · '}{snapshot.workflows.length} arbetsflöde{snapshot.workflows.length === 1 ? '' : 'n'}
-            </p>
-
-            <h1 className="display-hero text-gradient-instrument max-w-[42rem] 3xl:max-w-[56rem]">
-              Opererar <span className="text-gradient-aurora">autonoma</span> system.
-            </h1>
-
-            <p className="mt-6 text-[14px] 2xl:text-[15px] text-zinc-400 leading-relaxed max-w-[36rem] 3xl:max-w-[48rem]">
-              Realtidsöverblick över agenter, arbetsflöden och beslut
-              som formar {projectsNarrative(snapshot.projects)}.
-            </p>
-
-            <div className="mt-7 flex items-center gap-2.5 flex-wrap">
-              {metrics.runningRuns > 0 && <TierBadge tier="live" label={`${metrics.runningRuns} kör`} />}
-              {snapshot.pendingApprovals > 0 && (
-                <Link href="/approvals" className="hover:opacity-90 transition-opacity">
-                  <TierBadge tier="critical" label={`${snapshot.pendingApprovals} väntar på granskning`} />
-                </Link>
-              )}
-              <Link
-                href="/manager"
-                className="btn-ghost ease-os inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-medium press"
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                Operatör
-                <ChevronRight className="w-3 h-3 opacity-60" />
-              </Link>
-              <Link
-                href="/projects/new"
-                className="btn-omnira ease-os inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold press"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Driftsätt system
-              </Link>
-            </div>
+        <header className="relative">
+          <div className="absolute -top-6 -right-6 opacity-40 pointer-events-none hidden md:block">
+            <DotMatrix cols={26} rows={6} mask="fade-radial" />
           </div>
 
-          {/* Side instrument cluster */}
-          <aside className="col-span-12 lg:col-span-4 3xl:col-span-3 panel p-6 relative overflow-hidden drift">
-            <div
-              className="absolute -top-12 -right-12 w-44 h-44 rounded-full pointer-events-none"
-              style={{ background: 'radial-gradient(circle, rgba(212,165,116,0.18) 0%, transparent 70%)', filter: 'blur(20px)' }}
-            />
-            <div className="relative">
-              <div className="flex items-center justify-between mb-5">
-                <p className="eyebrow eyebrow-gold">Systempuls</p>
-                <PulseDot tone="emerald" size={5} />
-              </div>
+          <p className="eyebrow eyebrow-accent mb-5">
+            Omnira · {snapshot.projects.length} autonom{snapshot.projects.length === 1 ? ' verksamhet' : 'a verksamheter'}
+            {' · '}{snapshot.agents.length} agent{snapshot.agents.length === 1 ? '' : 'er'}
+            {' · '}{snapshot.workflows.length} arbetsflöde{snapshot.workflows.length === 1 ? '' : 'n'}
+          </p>
 
-              <div className="grid grid-cols-2 gap-5">
-                <Instrument label="Hälsa"    value={metrics.systemHealth} unit="%" color={healthColor} caption={healthLabel} live delay={60} />
-                <Instrument label="Framgång"   value={metrics.successRate}  unit="%" color="#34d399" caption={`${metrics.doneRuns} av ${metrics.totalRuns}`} delay={120} />
-                <Instrument label="Beslut" value={metrics.decisionsAutonomous} color="#a5b4fc" caption="autonoma · livstid" delay={180} />
-                <Instrument
-                  label="Tokens · 24h"
-                  value={metrics.tokensLast24h >= 1000 ? `${(metrics.tokensLast24h / 1000).toFixed(1)}k` : metrics.tokensLast24h}
-                  color="#d4a574"
-                  caption={metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s snittkörning` : 'inga körningar än'}
-                  delay={240}
-                />
-              </div>
-            </div>
-          </aside>
+          <h1 className="display-hero text-gradient-instrument max-w-[42rem] 3xl:max-w-[56rem]">
+            Opererar <span className="text-gradient-aurora">autonoma</span> system.
+          </h1>
+
+          <p className="mt-6 text-[14px] 2xl:text-[15px] text-zinc-400 leading-relaxed max-w-[42rem]">
+            Realtidsöverblick över agenter, arbetsflöden och beslut
+            som formar {projectsNarrative(snapshot.projects)}.
+          </p>
+
+          <div className="mt-7 flex items-center gap-2.5 flex-wrap">
+            {metrics.runningRuns > 0 && <TierBadge tier="live" label={`${metrics.runningRuns} kör`} />}
+            {snapshot.pendingApprovals > 0 && (
+              <Link href="/approvals" className="hover:opacity-90 transition-opacity">
+                <TierBadge tier="critical" label={`${snapshot.pendingApprovals} väntar på granskning`} />
+              </Link>
+            )}
+            <Link
+              href="/manager"
+              className="btn-ghost ease-os inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[12px] font-medium press"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              Operatör
+              <ChevronRight className="w-3 h-3 opacity-60" />
+            </Link>
+            <Link
+              href="/projects/new"
+              className="btn-omnira ease-os inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold press"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Driftsätt system
+            </Link>
+            <PauseToggle paused={platformConfig.automation_paused} />
+          </div>
         </header>
       </OSLayer>
 
@@ -275,6 +250,58 @@ export default async function DashboardPage() {
           (Critical strip, telemetry, live execution, mission systems)
       ════════════════════════════════════════════════════════════════ */}
       <OSLayer layer="operational" className="space-y-6 lg:space-y-7">
+
+        {/* GLOBAL PAUSE BANNER ─────────────────────────────────────────── */}
+        {platformConfig.automation_paused && (
+          <MissionState tier="critical" surface className="rounded-2xl px-5 py-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-3 shrink-0">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center chrome-edge"
+                  style={{ background: 'var(--state-critical-bg)', border: '1px solid var(--state-critical-border)' }}
+                >
+                  <Power className="w-4 h-4" style={{ color: 'var(--state-critical)' }} />
+                </div>
+                <div>
+                  <p className="eyebrow eyebrow-gold !text-[9px]">Automation pausad</p>
+                  <p className="text-[13.5px] text-white/95 font-medium tracking-tight">
+                    {platformConfig.paused_reason ?? 'All automation är manuellt pausad'}
+                    {platformConfig.paused_at && ` · sedan ${formatDistanceToNow(new Date(platformConfig.paused_at), { addSuffix: true, locale: sv })}`}
+                  </p>
+                </div>
+              </div>
+              <div className="ml-auto">
+                <PauseToggle paused={true} />
+              </div>
+            </div>
+          </MissionState>
+        )}
+
+        {/* SYSTEMPULS · full-width instrument strip ───────────────────── */}
+        <div className="panel p-6 relative overflow-hidden">
+          <div
+            className="absolute -top-12 -right-12 w-44 h-44 rounded-full pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(212,165,116,0.18) 0%, transparent 70%)', filter: 'blur(20px)' }}
+          />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-5">
+              <p className="eyebrow eyebrow-gold">Systempuls</p>
+              <PulseDot tone="emerald" size={5} />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+              <Instrument label="Hälsa"    value={metrics.systemHealth} unit="%" color={healthColor} caption={healthLabel === 'Optimal' ? 'Optimal' : healthLabel === 'Degraded' ? 'Degraderad' : 'Kritisk'} live delay={60} />
+              <Instrument label="Framgång"   value={metrics.successRate}  unit="%" color="#34d399" caption={`${metrics.doneRuns} av ${metrics.totalRuns}`} delay={120} />
+              <Instrument label="Beslut" value={metrics.decisionsAutonomous} color="#a5b4fc" caption="autonoma · livstid" delay={180} />
+              <Instrument
+                label="Tokens · 24h"
+                value={metrics.tokensLast24h >= 1000 ? `${(metrics.tokensLast24h / 1000).toFixed(1)}k` : metrics.tokensLast24h}
+                color="#d4a574"
+                caption={metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s snittkörning` : 'inga körningar än'}
+                delay={240}
+              />
+            </div>
+          </div>
+        </div>
 
         {/* CRITICAL · sticky operator strip                                */}
         {hasCritical && (
@@ -485,7 +512,7 @@ export default async function DashboardPage() {
                         { label: 'Steg',         value: execGraph.nodes.length },
                         { label: 'Slutförda',    value: execGraph.nodes.filter(n => n.status === 'done').length },
                         { label: 'Tokens · 24h', value: metrics.tokensLast24h.toLocaleString() },
-                        { label: 'Snittkörnng',  value: metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s` : '—' },
+                        { label: 'Snittkörning',  value: metrics.avgDurationSec != null ? `${metrics.avgDurationSec}s` : '—' },
                       ]}
                     />
                   </div>
@@ -507,29 +534,25 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        {/* COGNITION STRIP · real-data derived                             */}
+        {/* COGNITION STRIP · real-data derived · full-width stacked        */}
         {(recommendation || warning) && (
-          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
+          <section className="space-y-4">
             {recommendation && (
-              <div className={warning ? 'lg:col-span-7' : 'lg:col-span-12'}>
-                <Recommendation
-                  icon={<Sparkles className="w-4 h-4 text-[#e8c89a]" />}
-                  title={recommendation.title}
-                  rationale={recommendation.rationale}
-                  prediction={recommendation.prediction}
-                  confidence={recommendation.confidence}
-                  action={recommendation.action}
-                />
-              </div>
+              <Recommendation
+                icon={<Sparkles className="w-4 h-4 text-[#e8c89a]" />}
+                title={recommendation.title}
+                rationale={recommendation.rationale}
+                prediction={recommendation.prediction}
+                confidence={recommendation.confidence}
+                action={recommendation.action}
+              />
             )}
             {warning && (
-              <div className={recommendation ? 'lg:col-span-5' : 'lg:col-span-12'}>
-                <AutonomousWarning
-                  title={warning.title}
-                  detail={warning.detail}
-                  action={warning.action}
-                />
-              </div>
+              <AutonomousWarning
+                title={warning.title}
+                detail={warning.detail}
+                action={warning.action}
+              />
             )}
           </section>
         )}
@@ -542,105 +565,99 @@ export default async function DashboardPage() {
       ════════════════════════════════════════════════════════════════ */}
       <OSLayer layer="intelligence" className="space-y-6 lg:space-y-7">
 
-        {/* MISSION SYSTEMS · asymmetric · agent fleet dominates             */}
-        <section className="grid grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
-          {/* Agent Fleet · left-heavy · 7 cols (8 on ultrawide)             */}
-          <div className="col-span-12 xl:col-span-7 3xl:col-span-8">
-            <SectionHeader
-              eyebrow="Autonom styrka · 7d"
-              title="Agentflotta"
-              caption={`${scorecards.length} agent${scorecards.length === 1 ? '' : 'er'} på plattformen · rangordnad efter senaste aktivitet`}
-              right={
-                <Link href="/manager" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
-                  Visa alla <ArrowUpRight className="w-3 h-3" />
-                </Link>
-              }
+        {/* AGENT FLEET · full width ─────────────────────────────────────  */}
+        <section>
+          <SectionHeader
+            eyebrow="Autonom styrka · 7d"
+            title="Agentflotta"
+            caption={`${scorecards.length} agent${scorecards.length === 1 ? '' : 'er'} på plattformen · rangordnad efter senaste aktivitet`}
+            right={
+              <Link href="/manager" className="text-[11px] text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 transition-colors">
+                Visa alla <ArrowUpRight className="w-3 h-3" />
+              </Link>
+            }
+          />
+          {fleetSnapshots.length > 0 ? (
+            <MissionState tier={fleetSnapshots.some(f => f.status === 'active') ? 'live' : 'passive'} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {fleetSnapshots.map((a, i) => (
+                <AgentCard key={a.id} agent={a} delay={i * 80} />
+              ))}
+            </MissionState>
+          ) : (
+            <EmptyState
+              eyebrow="Agentflotta · tom"
+              title="Inga agenter har körts ännu"
+              body="När ett arbetsflöde körs visas agenter här, rangordnade efter aktivitet, framgångsgrad och svarstid."
+              icon={<Bot className="w-6 h-6 text-indigo-300" />}
             />
-            {fleetSnapshots.length > 0 ? (
-              <MissionState tier={fleetSnapshots.some(f => f.status === 'active') ? 'live' : 'passive'} className="grid grid-cols-1 gap-4">
-                {fleetSnapshots.map((a, i) => (
-                  <AgentCard key={a.id} agent={a} delay={i * 80} />
-                ))}
-              </MissionState>
-            ) : (
-              <EmptyState
-                eyebrow="Agentflotta · tom"
-                title="Inga agenter har körts ännu"
-                body="När ett arbetsflöde körs visas agenter här, rangordnade efter aktivitet, framgångsgrad och svarstid."
-                icon={<Bot className="w-6 h-6 text-indigo-300" />}
-              />
-            )}
-          </div>
-
-          {/* Right column · Memory + Publish · 5 cols (4 on ultrawide)      */}
-          <div className="col-span-12 xl:col-span-5 3xl:col-span-4 space-y-5">
-            {/* Memory Graph · real memory entries */}
-            <div>
-              <SectionHeader
-                eyebrow="Kunskapsnät"
-                title="Minnesgraf"
-                caption={`${memory.total} post${memory.total === 1 ? '' : 'er'} från ${Object.keys(memory.bySource).length} käll${Object.keys(memory.bySource).length === 1 ? 'a' : 'or'}`}
-                right={memoryNodes.length > 0 ? <TierBadge tier="passive" label={`${memory.recent.length} senaste`} /> : null}
-              />
-              {memoryNodes.length > 0 ? (
-                <Panel className="p-6 relative overflow-hidden">
-                  <div className="absolute inset-0 pointer-events-none opacity-30">
-                    <div
-                      className="absolute top-1/2 left-1/2 w-72 h-72 rounded-full -translate-x-1/2 -translate-y-1/2"
-                      style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)', filter: 'blur(40px)' }}
-                    />
-                  </div>
-                  <div className="relative flex items-center justify-center">
-                    <MemoryGraph nodes={memoryNodes} edges={memoryEdges} size={320} />
-                  </div>
-                  <div className="relative mt-5 pt-4 grid grid-cols-3 gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    <MemoryLegend color="#a5b4fc" label="Minnen"     count={memoryNodes.filter(n => n.group === 'agent').length} />
-                    <MemoryLegend color="#67e8f9" label="Källor"    count={memoryNodes.filter(n => n.group === 'memory').length} />
-                    <MemoryLegend color="#d4a574" label="Kopplingar" count={memoryEdges.length} />
-                  </div>
-                </Panel>
-              ) : (
-                <EmptyState
-                  variant="silent"
-                  eyebrow="Minne · tomt"
-                  title="Kunskapslagret har inga poster ännu"
-                  body="När arbetsflöden körs skriver agenter strukturerat minne här för återkallning mellan körningar."
-                />
-              )}
-            </div>
-
-            {/* Publish Pipeline · real media_scripts */}
-            <div>
-              <SectionHeader
-                eyebrow="Distribution"
-                title="Publiceringspipeline"
-                caption={publishItems.length > 0 ? `${publishItems.filter(p => p.status !== 'published').length} pågår` : 'Inga manus schemalagda'}
-                right={publishItems.some(p => p.status === 'rendering') ? <TierBadge tier="live" label="Renderas" /> : null}
-              />
-              {publishItems.length > 0 ? (
-                <Panel className="p-6 relative overflow-hidden">
-                  <div className="absolute inset-0 pointer-events-none opacity-20">
-                    <DotMatrix cols={24} rows={20} mask="fade-radial" gap={16} />
-                  </div>
-                  <div className="relative">
-                    <PublishPipeline items={publishItems} />
-                  </div>
-                </Panel>
-              ) : (
-                <EmptyState
-                  variant="silent"
-                  eyebrow="Publiceringspipeline · inaktiv"
-                  title="Inga manus i distributionskön"
-                  body="När Skriptagenten producerar ett utkast visas det här med renderingsstatus och plattformsmål."
-                />
-              )}
-            </div>
-          </div>
+          )}
         </section>
 
-        {/* TELEMETRY + HEALTH — 9/3 ultrawide composition                   */}
-        <section className="grid grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
-          <Panel className="col-span-12 lg:col-span-8 3xl:col-span-9 p-7 2xl:p-8 relative overflow-hidden">
+        {/* PUBLISH PIPELINE · full width ─────────────────────────────────  */}
+        <section>
+          <SectionHeader
+            eyebrow="Distribution"
+            title="Publiceringspipeline"
+            caption={publishItems.length > 0 ? `${publishItems.filter(p => p.status !== 'published').length} pågår` : 'Inga manus schemalagda'}
+            right={publishItems.some(p => p.status === 'rendering') ? <TierBadge tier="live" label="Renderas" /> : null}
+          />
+          {publishItems.length > 0 ? (
+            <Panel className="p-6 relative overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none opacity-20">
+                <DotMatrix cols={24} rows={20} mask="fade-radial" gap={16} />
+              </div>
+              <div className="relative">
+                <PublishPipeline items={publishItems} />
+              </div>
+            </Panel>
+          ) : (
+            <EmptyState
+              variant="silent"
+              eyebrow="Publiceringspipeline · inaktiv"
+              title="Inga manus i distributionskön"
+              body="När Skriptagenten producerar ett utkast visas det här med renderingsstatus och plattformsmål."
+            />
+          )}
+        </section>
+
+        {/* MEMORY GRAPH · full width ─────────────────────────────────────  */}
+        <section>
+          <SectionHeader
+            eyebrow="Kunskapsnät"
+            title="Minnesgraf"
+            caption={`${memory.total} post${memory.total === 1 ? '' : 'er'} från ${Object.keys(memory.bySource).length} käll${Object.keys(memory.bySource).length === 1 ? 'a' : 'or'}`}
+            right={memoryNodes.length > 0 ? <TierBadge tier="passive" label={`${memory.recent.length} senaste`} /> : null}
+          />
+          {memoryNodes.length > 0 ? (
+            <Panel className="p-6 relative overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none opacity-30">
+                <div
+                  className="absolute top-1/2 left-1/2 w-72 h-72 rounded-full -translate-x-1/2 -translate-y-1/2"
+                  style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)', filter: 'blur(40px)' }}
+                />
+              </div>
+              <div className="relative flex items-center justify-center">
+                <MemoryGraph nodes={memoryNodes} edges={memoryEdges} size={400} />
+              </div>
+              <div className="relative mt-5 pt-4 grid grid-cols-3 gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <MemoryLegend color="#a5b4fc" label="Minnen"     count={memoryNodes.filter(n => n.group === 'agent').length} />
+                <MemoryLegend color="#67e8f9" label="Källor"    count={memoryNodes.filter(n => n.group === 'memory').length} />
+                <MemoryLegend color="#d4a574" label="Kopplingar" count={memoryEdges.length} />
+              </div>
+            </Panel>
+          ) : (
+            <EmptyState
+              variant="silent"
+              eyebrow="Minne · tomt"
+              title="Kunskapslagret har inga poster ännu"
+              body="När arbetsflöden körs skriver agenter strukturerat minne här för återkallning mellan körningar."
+            />
+          )}
+        </section>
+
+        {/* TELEMETRY + HEALTH — full width, stacked ─────────────────────── */}
+        <section className="space-y-4 lg:space-y-5">
+          <Panel className="p-7 2xl:p-8 relative overflow-hidden">
             <PanelHeader
               eyebrow="Realtidstelemetri"
               title="Plattformsvitals"
@@ -698,7 +715,7 @@ export default async function DashboardPage() {
             </div>
           </Panel>
 
-          <Panel className="col-span-12 lg:col-span-4 3xl:col-span-3 p-7 2xl:p-8 relative overflow-hidden">
+          <Panel className="p-7 2xl:p-8 relative overflow-hidden">
             <PanelHeader
               eyebrow="Operationell integritet"
               title="Systemhälsa"

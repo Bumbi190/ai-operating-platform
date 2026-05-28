@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { getProjectMemorySummary } from '@/lib/ai/memory/memory-store'
 import { getRecentFeedback, getPatternStats } from '@/lib/ai/memory/feedback-store'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,13 +73,13 @@ export default async function MemoryPage() {
   // If no project, show empty state
   if (!project) {
     return (
-      <div className="p-8 max-w-4xl mx-auto">
+      <OSPage>
         <div className="rounded-xl border border-dashed border-border p-12 text-center">
           <Brain className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">No project found</p>
           <p className="text-xs text-muted-foreground/60 mt-1">Create a project to start building memory</p>
         </div>
-      </div>
+      </OSPage>
     )
   }
 
@@ -95,10 +96,10 @@ export default async function MemoryPage() {
   const revisedCount  = recentFeedback.filter(f => f.decision === 'revised').length
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
+    <OSPage className="animate-fade-in">
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between">
+      {/* ── HERO ── */}
+      <OSLayer layer="hero" className="flex items-start justify-between gap-6">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0 mt-0.5">
             <Brain className="w-5 h-5 text-violet-400" />
@@ -120,10 +121,10 @@ export default async function MemoryPage() {
             Seed brand rules
           </button>
         </form>
-      </div>
+      </OSLayer>
 
-      {/* ── Stats row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ── OPERATIONAL · stats cluster ── */}
+      <OSLayer layer="operational" className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
         <StatCard
           icon={Brain}
           iconColor="text-violet-400"
@@ -152,9 +153,10 @@ export default async function MemoryPage() {
           label="Revisions"
           value={revisedCount}
         />
-      </div>
+      </OSLayer>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ── INTELLIGENCE · patterns + behaviors ── */}
+      <OSLayer layer="intelligence" className="grid grid-cols-1 lg:grid-cols-2 3xl:grid-cols-3 gap-4 lg:gap-5">
 
         {/* ── Rejection triggers ── */}
         <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
@@ -293,10 +295,10 @@ export default async function MemoryPage() {
             </div>
           )}
         </section>
-      </div>
+      </OSLayer>
 
-      {/* ── Recent feedback log ── */}
-      <section className="space-y-3">
+      {/* ── FOOTER · recent feedback log archive ── */}
+      <OSLayer layer="footer" className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
           Recent Feedback Log
         </h2>
@@ -353,9 +355,9 @@ export default async function MemoryPage() {
             ))}
           </div>
         )}
-      </section>
+      </OSLayer>
 
-    </div>
+    </OSPage>
   )
 }
 

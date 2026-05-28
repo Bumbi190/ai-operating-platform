@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AgentForm, type AgentFormData } from '@/components/forms/AgentForm'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default function NewAgentPage({
   params,
@@ -45,20 +46,25 @@ export default function NewAgentPage({
   }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Ny agent</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
+        <p className="eyebrow eyebrow-accent mb-3">System · agent deployment</p>
+        <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Ny agent</h1>
+        <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
           En agent är en AI med en specifik roll, systemprompt och modell
         </p>
-      </div>
+      </OSLayer>
 
-      <AgentForm
-        onSubmit={handleSubmit}
-        submitLabel="Skapa agent"
-        isLoading={loading}
-        error={error}
-      />
-    </div>
+      <OSLayer layer="operational">
+        <div className="max-w-3xl 3xl:max-w-4xl">
+          <AgentForm
+            onSubmit={handleSubmit}
+            submitLabel="Skapa agent"
+            isLoading={loading}
+            error={error}
+          />
+        </div>
+      </OSLayer>
+    </OSPage>
   )
 }

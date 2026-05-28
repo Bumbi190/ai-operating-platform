@@ -24,19 +24,20 @@ export default async function ChatIndexPage() {
     .order('name')
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 shrink-0">
+    <div className="flex flex-col min-h-[calc(100vh-3rem)]">
+      {/* Header — OS canvas padding */}
+      <div className="flex items-center justify-between px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 py-5 lg:py-6 border-b border-white/5 shrink-0">
         <div>
-          <h1 className="text-sm font-semibold">Chattar</h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="eyebrow eyebrow-accent mb-2">Operator · conversation channel</p>
+          <h1 className="text-xl 2xl:text-2xl font-bold tracking-tight">Chattar</h1>
+          <p className="text-xs text-zinc-500 mt-1">
             {conversations?.length ?? 0} sparade konversationer
           </p>
         </div>
         <NewChatButton projects={projects ?? []} />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 py-6">
         {!conversations || conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">

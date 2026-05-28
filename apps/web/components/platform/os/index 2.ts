@@ -9,7 +9,6 @@ export { HeroStat } from './HeroStat'
 export { Instrument, InstrumentCluster } from './Instrument'
 export { DotMatrix, NowBadge } from './DotMatrix'
 export { Stage, SectionHeader } from './Stage'
-export { OSPage, OSLayer, OSGrid } from './OSPage'
 
 // Bars & chrome
 export { CommandBar } from './CommandBar'

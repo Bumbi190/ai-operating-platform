@@ -10,6 +10,14 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // ── Ultrawide breakpoints so the OS canvas progressively unlocks
+      //    more columns at 1920 / 2560 / 3840 instead of just stretching.
+      screens: {
+        '2xl': '1440px',
+        '3xl': '1760px',
+        '4xl': '2160px',
+        '5xl': '2560px',
+      },
       fontFamily: {
         sans: ['var(--font-geist-sans)', ...fontFamily.sans],
         mono: ['var(--font-geist-mono)', ...fontFamily.mono],

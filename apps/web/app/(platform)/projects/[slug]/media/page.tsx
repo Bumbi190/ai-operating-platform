@@ -256,7 +256,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         }} />
       </div>
 
-      <div className="relative z-10 p-7 max-w-[1100px] mx-auto space-y-6">
+      <div className="relative z-10 px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 pt-7 lg:pt-9 pb-20 lg:pb-24 space-y-6 lg:space-y-7">
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between animate-fade-in-up">

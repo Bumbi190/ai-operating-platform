@@ -124,78 +124,54 @@ export default async function PlatformLayout({
   const activityEvents = events.slice(0, 22)
   const liveCount = events.filter(e => e.intense).length
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  //
-  //   OMNIRA · OS SHELL · TRUE THREE-COLUMN SPATIAL GRID
-  //   ─────────────────────────────────────────────────
-  //   Replaces the old "fixed sidebar + fixed rail + margin-pushed main"
-  //   approach with a real CSS Grid where every column is a first-class
-  //   participant. The canvas owns the entire `minmax(0,1fr)` middle column
-  //   and breathes across the viewport from 1440 → 1920 → 2560 → 3840.
-  //
-  //     grid-cols → [sidebar 260px] [canvas 1fr] [rail 300px]
-  //     mobile    → canvas fills, sidebar + rail collapse to overlays
-  //
-  // ═══════════════════════════════════════════════════════════════════════════
-
   return (
     <OperatorModeProvider>
-      <div
-        className="
-          relative h-screen overflow-hidden
-          grid
-          grid-cols-1
-          lg:[grid-template-columns:260px_minmax(0,1fr)]
-          xl:[grid-template-columns:260px_minmax(0,1fr)_300px]
-          2xl:[grid-template-columns:260px_minmax(0,1fr)_320px]
-        "
-        style={{ background: '#030516' }}
-      >
-        {/* ─── Column 1 · Sidebar (260px) ───────────────────────────────── */}
+      <div className="relative flex h-screen overflow-hidden" style={{ background: '#030516' }}>
+        {/* Sidebar — fixed 260px */}
         <Sidebar
           projects={projects}
           userEmail={user.email ?? ''}
           recentConversations={conversations}
         />
 
-        {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}
-        <main className="relative overflow-y-auto scrollbar-thin os-stage os-grain">
-          {/* Ambient backdrop — grid + orbs + scan line                        */}
-          <div className="os-grid" aria-hidden />
-          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-            <div className="orb orb-indigo animate-orb"     style={{ top: '-10%',   left: '4%',    width: 640, height: 640 }} />
-            <div className="orb orb-violet animate-orb-rev" style={{ top: '32%',    right: '-10%', width: 560, height: 560 }} />
-            <div className="orb orb-gold animate-orb"       style={{ bottom: '-18%', left: '36%',  width: 500, height: 500, animationDelay: '6s' }} />
-            <div className="orb orb-cyan animate-orb"       style={{ top: '8%',     right: '22%',  width: 300, height: 300, animationDelay: '10s', opacity: 0.55 }} />
-          </div>
-          <div className="scan-line" aria-hidden />
+        {/* Main content — between sidebar and rail */}
+        <main className="flex-1 ml-[260px] lg:mr-[320px] rail-collapsed-main overflow-y-auto scrollbar-thin">
+          <div className="relative min-h-full os-stage os-grain">
+            {/* Grid + orbs */}
+            <div className="os-grid" />
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div className="orb orb-indigo animate-orb"     style={{ top: '-10%', left: '6%',   width: 620, height: 620 }} />
+              <div className="orb orb-violet animate-orb-rev" style={{ top: '38%',  right: '-8%', width: 520, height: 520 }} />
+              <div className="orb orb-gold animate-orb"       style={{ bottom: '-14%', left: '38%', width: 460, height: 460, animationDelay: '6s' }} />
+              <div className="orb orb-cyan animate-orb"       style={{ top: '10%',  right: '24%', width: 280, height: 280, animationDelay: '10s', opacity: 0.6 }} />
+            </div>
+            <div className="scan-line" />
 
-          {/* Sticky command layer */}
-          <div className="relative z-bar">
-            <CommandBar operator={user.email ?? undefined} />
-          </div>
+            {/* CommandBar — sticky at top */}
+            <div className="relative z-bar">
+              <CommandBar operator={user.email ?? undefined} />
+            </div>
 
-          {/* Page canvas */}
-          <div className="relative z-content">
-            {children}
+            {/* Children */}
+            <div className="relative z-content">
+              {children}
+            </div>
           </div>
         </main>
 
-        {/* ─── Column 3 · Context Rail (300/320px · xl+) ────────────────── */}
+        {/* Live Activity Rail — desktop */}
         <aside
-          className="relative hidden xl:flex flex-col overflow-hidden"
+          className="fixed inset-y-0 right-0 z-rail w-[320px] hidden lg:flex flex-col"
           style={{
-            // Lighter visual weight — ambient telemetry, not a competing column.
-            background: 'linear-gradient(180deg, rgba(6,9,22,0.72) 0%, rgba(5,7,20,0.84) 100%)',
-            backdropFilter: 'blur(18px) saturate(140%)',
-            WebkitBackdropFilter: 'blur(18px) saturate(140%)',
-            borderLeft: '1px solid rgba(255,255,255,0.03)',
+            background: 'linear-gradient(180deg, rgba(6,9,22,0.88) 0%, rgba(5,7,20,0.94) 100%)',
+            backdropFilter: 'blur(22px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(22px) saturate(160%)',
           }}
         >
           <ActivityRail events={activityEvents} />
         </aside>
 
-        {/* ─── Mobile · bottom-sheet rail companion ─────────────────────── */}
+        {/* Mobile rail · bottom-sheet companion */}
         <MobileRailToggle liveCount={liveCount}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>

@@ -90,7 +90,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
 
   return (
     <aside
-      className="fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col sidebar-border-gradient relative"
+      className="relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden"
       style={{
         background:
           'radial-gradient(ellipse 100% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 60%), linear-gradient(180deg, #060a18 0%, #050714 45%, #060a18 100%)',

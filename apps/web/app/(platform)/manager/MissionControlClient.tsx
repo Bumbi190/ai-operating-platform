@@ -319,8 +319,12 @@ export function MissionControlClient({
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  // Manager is a bespoke 3-column operator console that lives inside the new
+  // OS shell's main column (the parent is already `overflow-y-auto` and sized
+  // to viewport minus the command bar). We fill the canvas with min-height
+  // instead of nesting another `h-screen` viewport-locked scroller.
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#060a10] text-zinc-300">
+    <div className="min-h-[calc(100vh-3rem)] flex flex-col bg-[#060a10] text-zinc-300">
 
       {/* ═══════ TOP STATUS BAR ═════════════════════════════════════════════ */}
       <header className="h-11 flex items-center gap-3 px-4 border-b border-white/[0.06] bg-black/40 shrink-0">

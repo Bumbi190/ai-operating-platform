@@ -69,30 +69,29 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
 
   return (
     <div className="relative h-full flex flex-col rail-border-gradient">
-      {/* Header */}
+      {/* Header — quieter, smaller, less chrome.                              */}
       <div
-        className="shrink-0 px-5 pt-5 pb-4"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+        className="shrink-0 px-4 pt-4 pb-3"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <div className="flex items-center justify-between mb-2">
-          <p className="eyebrow !text-[10px] !tracking-[0.22em] !text-white/55">
-            Live Activity
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/45">
+            Telemetry
           </p>
           <button
-            className="w-6 h-6 rounded-md flex items-center justify-center text-zinc-600 hover:text-zinc-300 transition-colors"
-            style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}
+            className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-700 hover:text-zinc-400 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.035)' }}
             title="Filter"
           >
-            <Filter className="w-3 h-3" />
+            <Filter className="w-2.5 h-2.5" />
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="relative inline-flex w-1.5 h-1.5">
-            <span className="absolute inset-0 rounded-full bg-emerald-400" style={{ boxShadow: '0 0 6px #34d399' }} />
-            <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+        <div className="flex items-center gap-1.5">
+          <span className="relative inline-flex w-1 h-1">
+            <span className="absolute inset-0 rounded-full bg-emerald-400/80" />
           </span>
-          <span className="text-[10.5px] text-zinc-500">
-            Streaming · {events.length} events
+          <span className="text-[10px] text-zinc-600">
+            {events.length} events
           </span>
         </div>
       </div>
@@ -114,7 +113,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
             <p className="text-[10px] text-zinc-600 mt-1">No platform activity yet</p>
           </div>
         ) : (
-          <div className="px-2 py-2">
+          <div className="px-1.5 py-1.5">
             {events.map((e, i) => {
               const meta = TYPE_META[e.type]
               const Icon = meta.icon
@@ -122,59 +121,58 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
                 <div
                   key={e.id}
                   className={cn(
-                    'relative flex items-start gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.025] transition-all ease-os group cursor-pointer animate-fade-in-up',
+                    'relative flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/[0.02] transition-colors ease-os group cursor-pointer animate-fade-in-up',
                   )}
-                  style={{ animationDelay: `${i * 35}ms`, animationFillMode: 'both' }}
+                  style={{ animationDelay: `${i * 25}ms`, animationFillMode: 'both' }}
                 >
-                  {/* Icon — restrained monochrome */}
+                  {/* Icon — quieter, smaller, no halo unless intense          */}
                   <div className="shrink-0 mt-0.5 relative">
                     <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center"
+                      className="w-6 h-6 rounded-md flex items-center justify-center"
                       style={{
-                        background: 'rgba(255,255,255,0.025)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        boxShadow: e.intense ? `inset 0 0 0 1px ${meta.color}33` : 'none',
+                        background: 'rgba(255,255,255,0.018)',
+                        border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
-                      <Icon className="w-3 h-3" style={{ color: meta.color, opacity: 0.85 }} />
+                      <Icon className="w-2.5 h-2.5" style={{ color: meta.color, opacity: 0.7 }} />
                     </div>
                     {e.intense && (
                       <span
-                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-                        style={{ background: meta.color, boxShadow: `0 0 6px ${meta.color}` }}
+                        className="absolute -top-0 -right-0 w-1 h-1 rounded-full"
+                        style={{ background: meta.color }}
                       />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* meta line */}
+                    {/* meta line — single muted row                            */}
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span
-                        className="eyebrow !text-[8.5px] !tracking-[0.18em]"
-                        style={{ color: `${meta.color}cc` }}
+                        className="eyebrow !text-[8px] !tracking-[0.18em]"
+                        style={{ color: `${meta.color}99` }}
                       >
                         {meta.label}
                       </span>
                       {e.project && (
                         <>
-                          <span className="text-zinc-700 text-[8px]">·</span>
-                          <span className="inline-flex items-center gap-1 text-[9.5px] text-zinc-500">
-                            <span className="w-1 h-1 rounded-full" style={{ background: e.projectColor ?? '#818cf8' }} />
+                          <span className="text-zinc-800 text-[8px]">·</span>
+                          <span className="inline-flex items-center gap-1 text-[9px] text-zinc-600">
+                            <span className="w-1 h-1 rounded-full" style={{ background: e.projectColor ?? '#818cf8', opacity: 0.7 }} />
                             {e.project}
                           </span>
                         </>
                       )}
                     </div>
-                    {/* title */}
-                    <p className="text-[11.5px] text-zinc-200 leading-snug tracking-tight">
+                    {/* title — slightly smaller, slightly softer color         */}
+                    <p className="text-[11px] text-zinc-300 leading-snug tracking-tight">
                       {e.title}
                     </p>
                     {e.detail && (
-                      <p className="text-[10px] text-zinc-500 mt-0.5 leading-snug line-clamp-2">
+                      <p className="text-[9.5px] text-zinc-600 mt-0.5 leading-snug line-clamp-1">
                         {e.detail}
                       </p>
                     )}
-                    <p className="caption-mono text-[9.5px] text-zinc-600 mt-1.5">
+                    <p className="caption-mono text-[9px] text-zinc-700 mt-1">
                       {relative(e.timestamp, now)}
                     </p>
                   </div>
@@ -185,14 +183,14 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         )}
       </div>
 
-      {/* Footer status */}
+      {/* Footer status — minimal ambient ribbon                            */}
       <div
-        className="shrink-0 px-5 py-3 flex items-center justify-between caption-mono text-[9.5px]"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+        className="shrink-0 px-4 py-2.5 flex items-center justify-between caption-mono text-[9px]"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <span className="text-zinc-600">Channel · primary</span>
-        <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-          <Zap className="w-2.5 h-2.5" /> Connected
+        <span className="text-zinc-700">primary</span>
+        <span className="flex items-center gap-1 text-emerald-500/70">
+          <Zap className="w-2 h-2" /> live
         </span>
       </div>
     </div>

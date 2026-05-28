@@ -23,7 +23,6 @@ import {
   MissionState, TierBadge, MicroTicker, EmptyState,
   SystemReadyBanner, MemoryGraph, PublishPipeline,
   AgentThinking, ConfidenceMeter, Recommendation, MemoryRecall, AutonomousWarning,
-  OSPage, OSLayer, OSGrid,
   type AgentSnapshot, type MemoryNode, type MemoryEdge,
   type PublishItem,
 } from '@/components/platform/os'
@@ -176,27 +175,20 @@ export default async function DashboardPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <OSPage className="boot-in">
+    <div className="px-7 lg:px-10 py-10 max-w-[1680px] mx-auto pb-24">
 
-      {/* ════════════════════════════════════════════════════════════════
-          LAYER 1 · COMMAND
-          (System readiness banner — orientation, freshness, status)
-      ════════════════════════════════════════════════════════════════ */}
-      <OSLayer layer="command">
+      <div className="boot-in space-y-4 mb-7">
         <SystemReadyBanner
           systemsOnline={scorecards.filter(s => s.state === 'active' || s.state === 'idle').length}
           systemsTotal={scorecards.length || snapshot.agents.length}
           bootedAt={bootedAt}
         />
-      </OSLayer>
 
-      {/* ════════════════════════════════════════════════════════════════
-          LAYER 2 · HERO / MISSION
-          (Operator orientation · 8/4 asymmetric — title left, pulse right)
-      ════════════════════════════════════════════════════════════════ */}
-      <OSLayer layer="hero">
-        <header className="grid grid-cols-12 gap-5 lg:gap-7 2xl:gap-8 items-end">
-          <div className="col-span-12 lg:col-span-8 3xl:col-span-9 relative">
+        {/* ─────────────────────────────────────────────────────────────────
+            HERO
+        ───────────────────────────────────────────────────────────────── */}
+        <header className="grid grid-cols-12 gap-7 items-end pt-3">
+          <div className="col-span-12 lg:col-span-8 relative">
             <div className="absolute -top-6 -right-6 opacity-40 pointer-events-none hidden md:block">
               <DotMatrix cols={26} rows={6} mask="fade-radial" />
             </div>
@@ -207,11 +199,11 @@ export default async function DashboardPage() {
               {' · '}{snapshot.workflows.length} workflow{snapshot.workflows.length === 1 ? '' : 's'}
             </p>
 
-            <h1 className="display-hero text-gradient-instrument max-w-[42rem] 3xl:max-w-[56rem]">
+            <h1 className="display-hero text-gradient-instrument max-w-2xl">
               Operating <span className="text-gradient-aurora">autonomous</span> systems.
             </h1>
 
-            <p className="mt-6 text-[14px] 2xl:text-[15px] text-zinc-400 leading-relaxed max-w-[36rem] 3xl:max-w-[48rem]">
+            <p className="mt-6 text-[14px] text-zinc-400 leading-relaxed max-w-xl">
               Real-time visibility into the agents, workflows, and decisions
               shaping {projectsNarrative(snapshot.projects)}.
             </p>
@@ -242,7 +234,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* Side instrument cluster */}
-          <aside className="col-span-12 lg:col-span-4 3xl:col-span-3 panel p-6 relative overflow-hidden drift">
+          <aside className="col-span-12 lg:col-span-4 panel p-6 relative overflow-hidden drift">
             <div
               className="absolute -top-12 -right-12 w-44 h-44 rounded-full pointer-events-none"
               style={{ background: 'radial-gradient(circle, rgba(212,165,116,0.18) 0%, transparent 70%)', filter: 'blur(20px)' }}
@@ -268,17 +260,12 @@ export default async function DashboardPage() {
             </div>
           </aside>
         </header>
-      </OSLayer>
 
-      {/* ════════════════════════════════════════════════════════════════
-          LAYER 3 · OPERATIONAL SYSTEMS
-          (Critical strip, telemetry, live execution, mission systems)
-      ════════════════════════════════════════════════════════════════ */}
-      <OSLayer layer="operational" className="space-y-6 lg:space-y-7">
-
-        {/* CRITICAL · sticky operator strip                                */}
+        {/* ─────────────────────────────────────────────────────────────────
+            CRITICAL · sticky operator strip
+        ───────────────────────────────────────────────────────────────── */}
         {hasCritical && (
-          <MissionState tier="critical" surface className="rounded-2xl px-5 py-4">
+          <MissionState tier="critical" surface className="rounded-2xl px-5 py-4 mt-2">
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-3 shrink-0">
                 <div
@@ -312,11 +299,13 @@ export default async function DashboardPage() {
           </MissionState>
         )}
 
-        {/* INSTRUMENT CLUSTER · horizontal orchestration                  */}
-        <MissionState tier="passive">
-          <div className="grid grid-cols-2 md:grid-cols-4 panel p-7 2xl:p-9 gap-x-0 gap-y-7 relative overflow-hidden">
+        {/* ─────────────────────────────────────────────────────────────────
+            INSTRUMENT CLUSTER
+        ───────────────────────────────────────────────────────────────── */}
+        <MissionState tier="passive" className="mt-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 panel p-7 gap-x-0 gap-y-7 relative overflow-hidden">
             <div className="absolute top-0 right-0 opacity-30 pointer-events-none">
-              <DotMatrix cols={28} rows={6} mask="fade-radial" />
+              <DotMatrix cols={18} rows={5} mask="fade-radial" />
             </div>
 
             <div className="relative px-5 md:pl-0">
@@ -354,8 +343,10 @@ export default async function DashboardPage() {
           </div>
         </MissionState>
 
-        {/* NOW · LIVE EXECUTION · real workflow + real reasoning           */}
-        <section>
+        {/* ─────────────────────────────────────────────────────────────────
+            NOW · LIVE EXECUTION · real workflow + real reasoning
+        ───────────────────────────────────────────────────────────────── */}
+        <section className="mt-2">
           <SectionHeader
             eyebrow={execGraph ? 'Now · Live execution' : 'Execution channel'}
             title={execGraph?.workflowName ?? 'No active workflow'}
@@ -507,9 +498,11 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        {/* COGNITION STRIP · real-data derived                             */}
+        {/* ─────────────────────────────────────────────────────────────────
+            COGNITION STRIP · real-data derived
+        ───────────────────────────────────────────────────────────────── */}
         {(recommendation || warning) && (
-          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-2">
             {recommendation && (
               <div className={warning ? 'lg:col-span-7' : 'lg:col-span-12'}>
                 <Recommendation
@@ -534,18 +527,12 @@ export default async function DashboardPage() {
           </section>
         )}
 
-      </OSLayer>
-
-      {/* ════════════════════════════════════════════════════════════════
-          LAYER 4 · INTELLIGENCE SYSTEMS
-          (Mission systems, telemetry, portfolio, history — distributed)
-      ════════════════════════════════════════════════════════════════ */}
-      <OSLayer layer="intelligence" className="space-y-6 lg:space-y-7">
-
-        {/* MISSION SYSTEMS · asymmetric · agent fleet dominates             */}
-        <section className="grid grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
-          {/* Agent Fleet · left-heavy · 7 cols (8 on ultrawide)             */}
-          <div className="col-span-12 xl:col-span-7 3xl:col-span-8">
+        {/* ─────────────────────────────────────────────────────────────────
+            MISSION SYSTEMS · asymmetric · real data
+        ───────────────────────────────────────────────────────────────── */}
+        <section className="grid grid-cols-12 gap-5 mt-2">
+          {/* Agent Fleet · left-heavy · 7 cols */}
+          <div className="col-span-12 xl:col-span-7">
             <SectionHeader
               eyebrow="Autonomous workforce · 7d"
               title="Agent fleet"
@@ -572,8 +559,8 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* Right column · Memory + Publish · 5 cols (4 on ultrawide)      */}
-          <div className="col-span-12 xl:col-span-5 3xl:col-span-4 space-y-5">
+          {/* Right column · Memory + Publish · 5 cols */}
+          <div className="col-span-12 xl:col-span-5 space-y-5">
             {/* Memory Graph · real memory entries */}
             <div>
               <SectionHeader
@@ -638,9 +625,11 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* TELEMETRY + HEALTH — 9/3 ultrawide composition                   */}
-        <section className="grid grid-cols-12 gap-4 lg:gap-5 2xl:gap-6">
-          <Panel className="col-span-12 lg:col-span-8 3xl:col-span-9 p-7 2xl:p-8 relative overflow-hidden">
+        {/* ─────────────────────────────────────────────────────────────────
+            TELEMETRY + HEALTH
+        ───────────────────────────────────────────────────────────────── */}
+        <section className="grid grid-cols-12 gap-5 mt-2">
+          <Panel className="col-span-12 lg:col-span-8 p-7 relative overflow-hidden">
             <PanelHeader
               eyebrow="Realtime telemetry"
               title="Platform vitals"
@@ -698,7 +687,7 @@ export default async function DashboardPage() {
             </div>
           </Panel>
 
-          <Panel className="col-span-12 lg:col-span-4 3xl:col-span-3 p-7 2xl:p-8 relative overflow-hidden">
+          <Panel className="col-span-12 lg:col-span-4 p-7 relative overflow-hidden">
             <PanelHeader
               eyebrow="Operational integrity"
               title="System health"
@@ -722,9 +711,11 @@ export default async function DashboardPage() {
           </Panel>
         </section>
 
-        {/* PORTFOLIO · spatial tile grid                                    */}
+        {/* ─────────────────────────────────────────────────────────────────
+            PORTFOLIO
+        ───────────────────────────────────────────────────────────────── */}
         {snapshot.projects.length > 0 ? (
-          <section>
+          <section className="mt-2">
             <SectionHeader
               eyebrow="Portfolio"
               title="Autonomous businesses"
@@ -735,7 +726,7 @@ export default async function DashboardPage() {
                 </Link>
               }
             />
-            <MissionState tier="passive" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 3xl:grid-cols-4 5xl:grid-cols-5 gap-4 lg:gap-5">
+            <MissionState tier="passive" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {snapshot.projects.map((p, i) => {
                 const agentCount    = snapshot.agents.filter(a => a.project_id === p.id).length
                 const workflowCount = snapshot.workflows.filter(w => w.project_id === p.id).length
@@ -752,7 +743,7 @@ export default async function DashboardPage() {
             </MissionState>
           </section>
         ) : (
-          <section>
+          <section className="mt-2">
             <EmptyState
               eyebrow="Portfolio · empty"
               title="Awaiting first directive"
@@ -768,14 +759,10 @@ export default async function DashboardPage() {
           </section>
         )}
 
-      </OSLayer>
-
-      {/* ════════════════════════════════════════════════════════════════
-          LAYER 5 · FOOTER / ARCHIVE
-          (Historical runs — archived data, lowest priority)
-      ════════════════════════════════════════════════════════════════ */}
-      <OSLayer layer="footer">
-        <section>
+        {/* ─────────────────────────────────────────────────────────────────
+            HISTORY · real recent runs
+        ───────────────────────────────────────────────────────────────── */}
+        <section className="mt-2">
           <SectionHeader
             eyebrow="History · archived"
             title="Recent executions"
@@ -867,9 +854,9 @@ export default async function DashboardPage() {
             />
           )}
         </section>
-      </OSLayer>
 
-    </OSPage>
+      </div>
+    </div>
   )
 }
 

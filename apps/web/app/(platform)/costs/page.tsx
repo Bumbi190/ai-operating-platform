@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getModelPricing, formatCost, calculateCost } from '@/lib/ai/pricing'
 import { DollarSign, Cpu, TrendingUp, Zap } from 'lucide-react'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 interface AgentCost {
   agent: string
@@ -115,14 +116,19 @@ export default async function CostsPage() {
   const monthLabel = now.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' })
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Kostnadsöversikt</h1>
-        <p className="text-sm text-muted-foreground mt-1">{monthLabel} — token-användning och API-kostnader</p>
-      </div>
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
+        <div>
+          <p className="eyebrow eyebrow-accent mb-3">Telemetry · cost intelligence</p>
+          <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Kostnadsöversikt</h1>
+          <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
+            {monthLabel} — token-användning och API-kostnader
+          </p>
+        </div>
+      </OSLayer>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stat cards — horizontal 4-up cluster, expands to 5 on ultrawide   */}
+      <OSLayer layer="operational" className="grid grid-cols-2 lg:grid-cols-4 3xl:grid-cols-5 gap-4 lg:gap-5">
         <StatCard
           icon={<DollarSign className="w-4 h-4" />}
           label="Kostnad denna månad"
@@ -148,9 +154,10 @@ export default async function CostsPage() {
           value={formatCost(totalCostLastMonth)}
           sub="Total kostnad"
         />
-      </div>
+      </OSLayer>
 
-      {/* Per-agent breakdown */}
+      {/* Per-agent breakdown — intelligence layer                          */}
+      <OSLayer layer="intelligence" className="space-y-5">
       <section className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Kostnad per agent — {monthLabel}</h2>
@@ -240,7 +247,8 @@ export default async function CostsPage() {
           ))}
         </div>
       </section>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }
 

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { TrendingUp, CheckCircle, XCircle, Newspaper, ExternalLink, FileText, RefreshCw } from 'lucide-react'
 import type { MediaNewsItem } from '@/lib/media/types'
 import { NewsHunter } from '@/components/platform/NewsHunter'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new:      { label: 'Ny',         color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
@@ -75,9 +76,9 @@ export default function NewsPage() {
   const filters = ['all', 'new', 'approved', 'scripted', 'rejected']
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <OSPage>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <OSLayer layer="hero" className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Newspaper className="w-5 h-5 text-muted-foreground" />
           <div>
@@ -101,8 +102,9 @@ export default function NewsPage() {
             Uppdatera
           </button>
         </div>
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational" className="space-y-6">
       {/* News Hunter */}
       {projectId && (
         <NewsHunter
@@ -232,6 +234,7 @@ export default function NewsPage() {
           })}
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Target, Lightbulb, CheckSquare, Zap, ArrowRight } from 'lucide-react'
 import { PlanningBoard } from './PlanningBoard'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default async function PlanningPage() {
   const supabase = await createClient()
@@ -22,9 +23,9 @@ export default async function PlanningPage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-start justify-between">
+    <OSPage className="animate-fade-in">
+      {/* HERO */}
+      <OSLayer layer="hero" className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Planering</h1>
           <p className="text-sm text-muted-foreground mt-1 capitalize">{today}</p>
@@ -33,9 +34,10 @@ export default async function PlanningPage() {
           <div className="text-xs text-muted-foreground">{currentSprint.name}</div>
           <div className="text-sm font-medium mt-0.5">{currentSprint.daysLeft} dagar kvar</div>
         </div>
-      </div>
+      </OSLayer>
 
-      {/* Current sprint */}
+      {/* OPERATIONAL · current sprint + board */}
+      <OSLayer layer="operational" className="space-y-5 lg:space-y-6">
       <section className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5 flex gap-4">
         <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
           <Zap className="w-4 h-4 text-indigo-400" />
@@ -55,8 +57,10 @@ export default async function PlanningPage() {
 
       {/* Planning board */}
       <PlanningBoard />
+      </OSLayer>
 
-      {/* Roadmap */}
+      {/* INTELLIGENCE · roadmap */}
+      <OSLayer layer="intelligence">
       <section className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2">
           <Target className="w-4 h-4 text-muted-foreground" />
@@ -108,7 +112,10 @@ export default async function PlanningPage() {
         </div>
       </section>
 
-      {/* How to use */}
+      </OSLayer>
+
+      {/* FOOTER · how-to */}
+      <OSLayer layer="footer">
       <section className="rounded-xl border border-dashed border-border p-5 flex gap-3">
         <Lightbulb className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
         <div className="space-y-1">
@@ -118,6 +125,7 @@ export default async function PlanningPage() {
           </p>
         </div>
       </section>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

@@ -9,6 +9,7 @@ import { sv } from 'date-fns/locale/sv'
 import { ChevronLeft, Clock, Hash, Calendar, Play, AlertTriangle } from 'lucide-react'
 import { WorkflowStepGraph } from '@/components/platform/WorkflowStepGraph'
 import { ResumeRunButton } from '@/components/platform/ResumeRunButton'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default async function RunDetailPage({
   params,
@@ -53,7 +54,7 @@ export default async function RunDetailPage({
   ).size
 
   return (
-    <div className="min-h-screen p-6 animate-fade-in">
+    <OSPage className="animate-fade-in">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs text-zinc-600 mb-5">
         <Link
@@ -223,6 +224,6 @@ export default async function RunDetailPage({
           )}
         </div>
       </div>
-    </div>
+    </OSPage>
   )
 }

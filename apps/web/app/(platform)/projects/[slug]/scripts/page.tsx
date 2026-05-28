@@ -10,6 +10,7 @@ import {
   Pencil, Shuffle, Send,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending_review: { label: 'Väntar granskning', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
@@ -837,8 +838,9 @@ export default function ScriptsPage() {
   const filters = ['all', 'pending_review', 'approved', 'published', 'rejected']
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
+    <OSPage>
 
+      <OSLayer layer="operational" className="space-y-6 max-w-4xl 3xl:max-w-5xl">
       {/* ── ONE-CLICK DAILY VIDEO ─────────────────────────────────────────── */}
       <div className={`rounded-xl border overflow-hidden transition-all ${
         dailyRunning
@@ -986,6 +988,7 @@ export default function ScriptsPage() {
           ))}
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

@@ -49,7 +49,7 @@ export function CommandBar({ operator }: CommandBarProps) {
         borderBottom: '1px solid rgba(255,255,255,0.04)',
       }}
     >
-      <div className="px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 h-12 flex items-center gap-3 lg:gap-4">
+      <div className="px-7 lg:px-10 h-12 flex items-center gap-3 lg:gap-4">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 min-w-0 max-w-[40%] lg:max-w-none">
           {segments.length === 0 ? (

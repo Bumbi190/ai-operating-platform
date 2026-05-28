@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { slugify } from '@/lib/utils'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 const PROJECT_COLORS = [
   { value: '#6366f1', label: 'Indigo' },
@@ -53,15 +54,17 @@ export default function NewProjectPage() {
   }
 
   return (
-    <div className="p-8 max-w-lg mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Skapa projekt</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
+        <p className="eyebrow eyebrow-accent mb-3">System · deploy new business</p>
+        <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Skapa projekt</h1>
+        <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
           Ett projekt är en isolerad arbetsyta med egna agenter, workflows och utdata
         </p>
-      </div>
+      </OSLayer>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <OSLayer layer="operational">
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-xl 3xl:max-w-2xl">
         {/* Name */}
         <div className="space-y-1.5">
           <Label htmlFor="name">Projektnamn *</Label>
@@ -137,6 +140,7 @@ export default function NewProjectPage() {
           </Button>
         </div>
       </form>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

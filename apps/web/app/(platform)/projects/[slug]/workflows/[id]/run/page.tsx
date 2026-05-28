@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Play, Bot, ArrowRight } from 'lucide-react'
 import type { Workflow, WorkflowStep, Agent } from '@/lib/supabase/types'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 // Extract {{variable}} names from a template that are NOT output keys
 function extractInputVars(steps: WorkflowStep[]): string[] {
@@ -96,8 +97,8 @@ export default function RunWorkflowPage({
   const inputVars = extractInputVars(workflow.steps)
 
   return (
-    <div className="p-8 max-w-2xl mx-auto animate-fade-in">
-      <div className="mb-8">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <span>{params.slug}</span>
           <ArrowRight className="w-3 h-3" />
@@ -112,10 +113,11 @@ export default function RunWorkflowPage({
         {workflow.description && (
           <p className="text-sm text-muted-foreground mt-1">{workflow.description}</p>
         )}
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational" className="max-w-3xl 3xl:max-w-4xl space-y-6">
       {/* Workflow overview */}
-      <div className="mb-8 rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           {workflow.steps.length} steg
         </p>
@@ -207,6 +209,7 @@ export default function RunWorkflowPage({
           Du omdirigeras till körningsloggen automatiskt
         </p>
       </form>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

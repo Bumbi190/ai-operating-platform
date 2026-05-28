@@ -6,6 +6,7 @@ import type { RunStatus } from '@/lib/supabase/types'
 import { Play } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default async function RunsPage({ params }: { params: { slug: string } }) {
   const supabase = await createClient()
@@ -26,12 +27,13 @@ export default async function RunsPage({ params }: { params: { slug: string } })
     .limit(50)
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold">Körningar</h1>
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
+        <h1 className="text-2xl 2xl:text-3xl font-bold tracking-tight">Körningar</h1>
         <p className="text-sm text-muted-foreground mt-1">{project.name}</p>
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational">
       {runs && runs.length > 0 ? (
         <div className="rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
@@ -94,6 +96,7 @@ export default async function RunsPage({ params }: { params: { slug: string } })
           </p>
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

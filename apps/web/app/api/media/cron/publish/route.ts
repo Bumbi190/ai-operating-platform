@@ -8,7 +8,7 @@
  *   - video_status = 'ready'       (render finished)
  *   - status       = 'approved'    (not yet published)
  *   - published_at IS NULL         (hasn't been published)
- *   - generated_at   within 3 hours  (fresh from today's cron run)
+ *   - generated_at   within 24 hours (covers both daily cron windows)
  *
  * Also handles scripts still in 'rendering' state — polls Lambda once more
  * to give straggler renders a final chance before skipping them.
@@ -70,8 +70,10 @@ export async function GET(request: Request) {
     log('token', `Facebook token läst från Supabase.`)
   }
 
-  // Scripts created in the last 3 hours (today's pipeline runs)
-  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+  // Scripts created in the last 24 hours — covers both cron windows (07:30 + 17:30 UTC)
+  // A 3-hour window was too tight: morning renders finishing after 08:00 UTC were
+  // missed by the 18:00 UTC publish cron (cutoff would be 15:00, missing 08:xx scripts).
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   // ── Check for stuck 'rendering' scripts and poll them one more time ───────────
   const { data: renderingScripts } = await db

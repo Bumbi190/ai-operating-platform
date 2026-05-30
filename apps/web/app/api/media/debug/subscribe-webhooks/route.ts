@@ -32,8 +32,9 @@ export async function GET(request: Request) {
   // ── 1. Get Instagram Business Account ID ──────────────────────────────────────
   let igUserId: string | null = null
   if (igToken) {
-    const meRes  = await fetch(`${BASE}/me?fields=id,name,username&access_token=${igToken}`)
-    const meData = await meRes.json() as { id?: string; name?: string; username?: string; error?: { message: string } }
+    // Note: 'username' field is deprecated in v2.0+, use only id,name
+    const meRes  = await fetch(`${BASE}/me?fields=id,name&access_token=${igToken}`)
+    const meData = await meRes.json() as { id?: string; name?: string; error?: { message: string } }
     results.ig_me = meData
     igUserId = meData.id ?? null
   } else {
@@ -61,7 +62,8 @@ export async function GET(request: Request) {
     const pageToken    = page?.access_token ?? fbToken
 
     const fbSubRes  = await fetch(
-      `${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed,comments&access_token=${pageToken}`,
+      // 'comments' is not a valid standalone field — 'feed' covers comments on posts
+      `${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed&access_token=${pageToken}`,
       { method: 'POST' }
     )
     const fbSubData = await fbSubRes.json()

@@ -6,22 +6,24 @@
  *
  * Does:
  *   1. Polls Lambda until render is complete → saves video_url
+ *      - On failure: retries up to 3 times (new Lambda render each time)
+ *      - After 3 failures: sends alert email via Brevo
  *   2. Creates Instagram media container → saves instagram_creation_id
- *
- * This gives Instagram 15 minutes to process the video before the publish
- * cron runs. By then it will almost certainly be FINISHED, so publish
- * just needs a single status check before calling publishContainer().
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
+import { getLambdaRenderProgress, startLambdaRender } from '@/lib/media/lambda-render'
 import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagram'
+import { buildVideoInputProps } from '@/lib/media/video-props'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
+
+const MAX_RENDER_RETRIES = 3
 
 function log(msg: string) {
   console.log(`[cron/step4] ${msg}`)
@@ -41,7 +43,7 @@ export async function GET(request: Request) {
 
   const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
 
-  // Find scripts that have a render in progress or done but no IG container yet
+  // Fetch all fields needed for both polling and potential re-render
   let query = db
     .from('media_scripts')
     .select(`
@@ -54,6 +56,12 @@ export async function GET(request: Request) {
       render_id,
       render_bucket,
       instagram_creation_id,
+      retry_count,
+      composition,
+      audio_url,
+      timing_url,
+      duration_ms,
+      images,
       media_news_items ( url, source_name )
     `)
     .eq('status', 'approved')
@@ -77,7 +85,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'nothing_to_do' })
   }
 
-  log(`Processing script ${script.id} (video_status: ${script.video_status})`)
+  log(`Processing script ${script.id} (video_status: ${script.video_status}, retries: ${script.retry_count ?? 0})`)
 
   // ── Step 1: Poll Lambda if still rendering ────────────────────────────────────
   let videoUrl = script.video_url as string | null
@@ -87,14 +95,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ status: 'missing_render_info', scriptId: script.id })
     }
 
-    // Poll with timeout — if still rendering, try again next cron run
     const deadline = Date.now() + 45_000
     let renderDone = false
 
     while (Date.now() < deadline) {
       try {
         const prog = await getLambdaRenderProgress(script.render_id, script.render_bucket)
+
         if (prog.done && prog.videoUrl) {
+          // ✅ Render succeeded
           videoUrl = prog.videoUrl
           await db.from('media_scripts').update({
             video_url:    prog.videoUrl,
@@ -103,10 +112,76 @@ export async function GET(request: Request) {
           log(`Render complete: ${prog.videoUrl}`)
           renderDone = true
           break
+
         } else if (prog.done && prog.error) {
+          // ❌ Render failed — check retry count
+          const retryCount = (script.retry_count as number) ?? 0
+
+          if (retryCount < MAX_RENDER_RETRIES) {
+            // Re-trigger a fresh Lambda render with the same props
+            log(`Render failed (attempt ${retryCount + 1}/${MAX_RENDER_RETRIES}): ${prog.error} — retrying...`)
+
+            try {
+              const inputProps = await buildVideoInputProps({
+                hook:       script.hook as string,
+                audioUrl:   script.audio_url as string,
+                timingUrl:  script.timing_url as string,
+                durationMs: script.duration_ms as number,
+                images:     (script.images as string[]) ?? [],
+              })
+
+              const composition = (script.composition as string | null) ?? 'SimpleNewsReel'
+              const { renderId, bucketName } = await startLambdaRender(
+                script.id,
+                inputProps,
+                composition as 'SimpleNewsReel' | 'ShortFormVideo',
+              )
+
+              await db.from('media_scripts').update({
+                render_id:    renderId,
+                render_bucket: bucketName,
+                video_status: 'rendering',
+                retry_count:  retryCount + 1,
+              }).eq('id', script.id)
+
+              log(`New render started (attempt ${retryCount + 1}/${MAX_RENDER_RETRIES}): ${renderId}`)
+              return NextResponse.json({
+                status:   'render_retry',
+                attempt:  retryCount + 1,
+                renderId,
+                scriptId: script.id,
+              })
+            } catch (retryErr) {
+              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr)
+              log(`Failed to start retry render: ${retryMsg}`)
+              // Fall through to permanent failure
+            }
+          }
+
+          // 🚨 All retries exhausted (or retry-start itself failed) — mark as failed & alert
+          log(`Render permanently failed after ${retryCount + 1} attempt(s): ${prog.error}`)
           await db.from('media_scripts').update({ video_status: 'failed' }).eq('id', script.id)
-          log(`Render failed: ${prog.error}`)
-          return NextResponse.json({ status: 'render_failed', error: prog.error, scriptId: script.id })
+
+          await sendPipelineAlert({
+            cronRoute: 'cron/step4',
+            step:      'render_failed',
+            error:     prog.error ?? 'Unknown render error',
+            severity:  'error',
+            context: {
+              scriptId:   script.id,
+              hook:       (script.hook as string)?.slice(0, 80) ?? null,
+              retries:    retryCount + 1,
+              render_id:  script.render_id as string,
+            },
+          })
+
+          return NextResponse.json({
+            status:   'render_failed_permanently',
+            attempts: retryCount + 1,
+            error:    prog.error,
+            scriptId: script.id,
+          })
+
         } else {
           log(`Still rendering (${Math.round(prog.progress * 100)}%)...`)
           await new Promise(r => setTimeout(r, 5_000))

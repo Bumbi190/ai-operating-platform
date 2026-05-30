@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
       : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
 
-    // Generate 3 images (fewer than 5 to stay under 60s)
+    // Generate 3 images in parallel (Ideogram TURBO mode keeps this well under 60s)
     const rawImageUrls = await generateNewsImages(newsTitle, script.script, 3)
 
     // Upload images

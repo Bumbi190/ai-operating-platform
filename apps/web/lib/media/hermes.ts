@@ -66,6 +66,22 @@ export interface HermesReadResult {
   error?:     string
 }
 
+export interface HermesCompetitorPost {
+  title:  string
+  source: 'youtube' | 'tldr_ai' | 'rundown_ai' | 'bens_bites'
+  views:  string
+  hook:   string
+  url:    string
+}
+
+export interface HermesCompetitorResult {
+  fetched_at:      string
+  pattern_summary: string
+  top_hooks:       string[]
+  trending_topics: string[]
+  posts:           HermesCompetitorPost[]
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 
 export function isHermesConfigured(): boolean {
@@ -185,6 +201,39 @@ export async function callHermesRead(
     return await res.json() as HermesReadResult
   } catch (err) {
     console.error('[hermes] /read error:', err)
+    return null
+  }
+}
+
+// ── Competitors ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetch competitor intelligence from YouTube AI search, TLDR AI,
+ * The Rundown AI, and Ben's Bites.
+ *
+ * Run weekly — not every cron cycle. Cache result in memories table
+ * and re-use for 7 days. Takes ~20-30 seconds.
+ *
+ * Returns null if Hermes is not configured or the request fails.
+ */
+export async function callHermesCompetitors(): Promise<HermesCompetitorResult | null> {
+  if (!HERMES_URL) return null
+
+  try {
+    const res = await fetch(`${HERMES_URL}/competitors`, {
+      method:  'GET',
+      headers: hermesHeaders(),
+      signal:  AbortSignal.timeout(60 * 1000), // 60s — parallel scraping of 4 sources
+    })
+
+    if (!res.ok) {
+      console.error(`[hermes] /competitors returned ${res.status}`)
+      return null
+    }
+
+    return await res.json() as HermesCompetitorResult
+  } catch (err) {
+    console.error('[hermes] /competitors error:', err)
     return null
   }
 }

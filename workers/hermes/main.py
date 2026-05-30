@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from web_agent import WebAgent
 from article_reader import read_article
 from trends_reader import fetch_trends
+from competitor_reader import fetch_competitors
 
 load_dotenv()
 
@@ -219,6 +220,39 @@ async def read(payload: ReadRequest, request: Request):
         "title":      result.title,
         "text":       result.text,
         "word_count": result.word_count,
+    }
+
+
+@app.get("/competitors")
+async def competitors(request: Request):
+    """
+    Fetch competitor intelligence from YouTube AI search, TLDR AI,
+    The Rundown AI, and Ben's Bites.
+
+    Returns top-performing hooks, trending topics, and a pattern summary
+    to guide script writing. Run this weekly (not every cron cycle).
+
+    No Gemini — pure Playwright DOM scraping. Takes ~20-30 seconds.
+    """
+    require_auth(request)
+
+    result = await fetch_competitors()
+
+    return {
+        "fetched_at":      result.fetched_at,
+        "pattern_summary": result.pattern_summary,
+        "top_hooks":       result.top_hooks,
+        "trending_topics": result.trending_topics,
+        "posts": [
+            {
+                "title":  p.title,
+                "source": p.source,
+                "views":  p.views,
+                "hook":   p.hook,
+                "url":    p.url,
+            }
+            for p in result.posts
+        ],
     }
 
 

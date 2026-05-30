@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
-import { callHermesScrape, callHermesRead, callHermesTrends, isHermesConfigured } from '@/lib/media/hermes'
+import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
@@ -49,7 +49,15 @@ Return ONLY valid JSON (no markdown fences):
 }
 virality_score: 0–100, target_audience: "beginners"|"intermediate"|"advanced", content_angle: "educational"|"controversial"|"inspiring"|"practical"`
 
-const SCRIPT_SYSTEM = `You are the lead scriptwriter for "The Prompt" — a daily AI insider news channel for developers and tech professionals.
+function buildScriptSystem(competitorHooks?: string[], patternSummary?: string): string {
+  const competitorBlock = (competitorHooks && competitorHooks.length > 0)
+    ? `\n\nCOMPETITOR INTELLIGENCE (what's performing right now on YouTube AI news):
+Pattern: ${patternSummary ?? 'mixed'}
+Top hooks to learn from (DO NOT copy — draw inspiration only):
+${competitorHooks.slice(0, 6).map(h => `- "${h}"`).join('\n')}`
+    : ''
+
+  return `You are the lead scriptwriter for "The Prompt" — a daily AI insider news channel for developers and tech professionals.
 
 Voice: Victoria. Warm, fast, authoritative. TARGET FORMAT: 18–28 seconds. ~55–70 words.
 
@@ -57,7 +65,7 @@ HOOK (0-3s): One sentence max 12 words. Breaking insider information feel.
 CORE (3-15s): 3-4 rapid-fire facts. Real companies, models, numbers.
 WHY IT MATTERS (15-25s): 1-2 sentences. Concrete implication.
 
-FORBIDDEN hooks: "AI is changing the world", "In today's video", anything vague or over 13 words.
+FORBIDDEN hooks: "AI is changing the world", "In today's video", anything vague or over 13 words.${competitorBlock}
 
 Return ONLY valid JSON (no markdown fences):
 {
@@ -70,6 +78,7 @@ Return ONLY valid JSON (no markdown fences):
   "estimated_duration": "~22 seconds",
   "difficulty": "intermediate"
 }`
+}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
@@ -89,6 +98,36 @@ export async function GET(request: Request) {
   if (projectIdParam) q = q.eq('id', projectIdParam)
   const { data: project } = await (q as ReturnType<typeof db.from>).limit(1).single()
   if (!project) return NextResponse.json({ error: 'No project found' }, { status: 404 })
+
+  // ── Load competitor intelligence (weekly cache) ───────────────────────────
+  // Stored in memories table as JSON text under key 'competitor_intelligence'.
+  // Re-fetched from Hermes if cache is older than 7 days.
+  let competitorHooks:   string[] | undefined
+  let competitorPattern: string   | undefined
+
+  if (isHermesConfigured()) {
+    // READ-ONLY — never fetches in step1 to protect the 60s Vercel budget.
+    // The /api/media/cron/competitors route refreshes this cache weekly.
+    const { data: cached } = await db
+      .from('memories')
+      .select('value')
+      .eq('project_id', project.id)
+      .eq('key', 'competitor_intelligence')
+      .limit(1)
+      .maybeSingle()
+
+    if (cached?.value) {
+      try {
+        const parsed      = JSON.parse(cached.value)
+        competitorHooks   = parsed?.top_hooks
+        competitorPattern = parsed?.pattern_summary
+        console.log('[cron/step1] Using cached competitor intelligence')
+      } catch { /* malformed — skip */ }
+    }
+  }
+
+  const SCRIPT_SYSTEM = buildScriptSystem(competitorHooks, competitorPattern)
+  // ── End competitor intelligence ───────────────────────────────────────────
 
   // ── Fetch trends + hunt news in parallel ─────────────────────────────────
   // Trends run alongside the news hunt — no extra time cost.

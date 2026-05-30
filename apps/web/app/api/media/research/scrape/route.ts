@@ -15,7 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { callHermesScrape, isHermesConfigured } from '@/lib/media/hermes'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 300  // 5 min — Hermes can take a while
+export const maxDuration = 60   // Vercel Hobby cap — Hermes calls may time out on long scrape
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')

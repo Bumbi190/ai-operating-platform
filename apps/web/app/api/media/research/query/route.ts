@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { callHermesResearch, isHermesConfigured } from '@/lib/media/hermes'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 600  // 10 min — deep research can take a while
+export const maxDuration = 60   // Vercel Hobby cap — Hermes calls may time out on long research
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')

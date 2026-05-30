@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
-import { callHermesScrape, isHermesConfigured } from '@/lib/media/hermes'
+import { callHermesScrape, callHermesRead, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
@@ -190,21 +190,42 @@ export async function GET(request: Request) {
   }
   // ── End Hermes fallback ───────────────────────────────────────────────────
 
+  // ── Hermes article read ───────────────────────────────────────────────────
+  // If Hermes is available and the story has a URL, fetch the full article text.
+  // This gives Claude real quotes, exact numbers and concrete details —
+  // far better than RSS summaries for writing punchy scripts.
+  let fullArticleText = ''
+  const articleUrl = news.source_url ?? null
+  if (isHermesConfigured() && articleUrl) {
+    console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
+    const read = await callHermesRead(articleUrl)
+    if (read?.success && read.word_count > 100) {
+      fullArticleText = read.text
+      console.log(`[cron/step1] Got ${read.word_count} words from article`)
+    }
+  }
+
+  // Build the script-writing context — prefer full article, fall back to summary
+  const scriptContext = fullArticleText
+    ? `Title: ${news.title}\nFull article text:\n${fullArticleText}\n\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
+    : `Title: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
+  // ── End article read ──────────────────────────────────────────────────────
+
   // Write script
   const scriptRes = await withRetry(() => claude.messages.create({
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-    messages: [{ role: 'user', content: `Write a short-form video script:\nTitle: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}` }],
+    messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
   }))
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
 
   // Quality gate
-  const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
+  const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
   const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
 
   if (shouldRegenerate(qualityScore)) {
     const rewriteRes = await withRetry(() => claude.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-      messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY: ${news.title}\n${news.summary}\n${news.key_insight}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
+      messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
   }

@@ -4,8 +4,11 @@
  * One-time setup: subscribes the Instagram Business Account and Facebook Page
  * to receive webhook events. Run this ONCE after deploying the webhook handler.
  *
- * Without this call, Meta's app-level webhook subscription only registers the URL.
- * You also need to tell each account to actually send its events to that URL.
+ * Flow:
+ *   1. Resolve Page Access Token from FACEBOOK_PAGE_ACCESS_TOKEN
+ *   2. Get the Instagram Business Account ID linked to the Facebook Page
+ *   3. Subscribe the IG Business Account to comment webhooks
+ *   4. Subscribe the Facebook Page to feed webhooks
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
@@ -23,54 +26,59 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const igToken  = process.env.INSTAGRAM_ACCESS_TOKEN
-  const fbToken  = process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-  const pageId   = process.env.FACEBOOK_PAGE_ID
+  const fbToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN
+  const pageId  = process.env.FACEBOOK_PAGE_ID
+
+  if (!fbToken || !pageId) {
+    return NextResponse.json({
+      error: 'Missing FACEBOOK_PAGE_ACCESS_TOKEN or FACEBOOK_PAGE_ID',
+    }, { status: 500 })
+  }
 
   const results: Record<string, unknown> = {}
 
-  // ── 1. Get Instagram Business Account ID ──────────────────────────────────────
-  let igUserId: string | null = null
-  if (igToken) {
-    // Note: 'username' field is deprecated in v2.0+, use only id,name
-    const meRes  = await fetch(`${BASE}/me?fields=id,name&access_token=${igToken}`)
-    const meData = await meRes.json() as { id?: string; name?: string; error?: { message: string } }
-    results.ig_me = meData
-    igUserId = meData.id ?? null
-  } else {
-    results.ig_me = 'INSTAGRAM_ACCESS_TOKEN not set'
+  // ── 1. Resolve Page Access Token ─────────────────────────────────────────────
+  const accountsRes  = await fetch(`${BASE}/me/accounts?access_token=${fbToken}`)
+  const accountsData = await accountsRes.json() as {
+    data?: Array<{ id: string; name: string; access_token: string }>
   }
+  const page      = accountsData.data?.find(p => p.id === pageId)
+  const pageToken = page?.access_token ?? fbToken
+  results.page    = { id: pageId, name: page?.name ?? 'unknown', token_resolved: !!page }
 
-  // ── 2. Subscribe Instagram account to comments webhooks ───────────────────────
-  if (igUserId && igToken) {
+  // ── 2. Get Instagram Business Account ID via the Facebook Page ────────────────
+  // INSTAGRAM_ACCESS_TOKEN is actually a Facebook User token — not an IG Graph token.
+  // The correct way to get the IG Business Account ID is via the Page object.
+  const igPageRes  = await fetch(
+    `${BASE}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`
+  )
+  const igPageData = await igPageRes.json() as {
+    instagram_business_account?: { id: string }
+    error?: { message: string }
+  }
+  results.ig_lookup = igPageData
+
+  const igUserId = igPageData.instagram_business_account?.id ?? null
+
+  // ── 3. Subscribe Instagram Business Account to comment webhooks ───────────────
+  if (igUserId) {
     const subRes  = await fetch(
-      `${BASE}/${igUserId}/subscribed_fields?subscribed_fields=comments,mentions&access_token=${igToken}`,
+      `${BASE}/${igUserId}/subscribed_fields?subscribed_fields=comments,mentions&access_token=${pageToken}`,
       { method: 'POST' }
     )
     const subData = await subRes.json()
-    results.ig_subscribe = { status: subRes.status, data: subData }
+    results.ig_subscribe = { ig_user_id: igUserId, status: subRes.status, data: subData }
   } else {
-    results.ig_subscribe = 'Skipped (no IG token or user ID)'
+    results.ig_subscribe = 'Skipped — could not find Instagram Business Account linked to this Page'
   }
 
-  // ── 3. Subscribe Facebook Page to feed webhooks ───────────────────────────────
-  if (fbToken && pageId) {
-    // First resolve Page Access Token
-    const accountsRes  = await fetch(`${BASE}/me/accounts?access_token=${fbToken}`)
-    const accountsData = await accountsRes.json() as { data?: Array<{ id: string; access_token: string }> }
-    const page         = accountsData.data?.find(p => p.id === pageId)
-    const pageToken    = page?.access_token ?? fbToken
-
-    const fbSubRes  = await fetch(
-      // 'comments' is not a valid standalone field — 'feed' covers comments on posts
-      `${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed&access_token=${pageToken}`,
-      { method: 'POST' }
-    )
-    const fbSubData = await fbSubRes.json()
-    results.fb_subscribe = { status: fbSubRes.status, data: fbSubData }
-  } else {
-    results.fb_subscribe = 'Skipped (FACEBOOK_PAGE_ACCESS_TOKEN or FACEBOOK_PAGE_ID not set)'
-  }
+  // ── 4. Subscribe Facebook Page to feed webhooks ───────────────────────────────
+  const fbSubRes  = await fetch(
+    `${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed&access_token=${pageToken}`,
+    { method: 'POST' }
+  )
+  const fbSubData = await fbSubRes.json()
+  results.fb_subscribe = { status: fbSubRes.status, data: fbSubData }
 
   return NextResponse.json({ status: 'done', results })
 }

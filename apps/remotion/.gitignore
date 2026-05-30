@@ -1,9 +1,0 @@
-# Render output
-out/
-
-# Temporary image cache (pre-downloaded scene images)
-tmp-images/
-
-# Render input files (generated per-run, not source code)
-render-input.json
-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*.json

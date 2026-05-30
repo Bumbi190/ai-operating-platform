@@ -1,0 +1,27 @@
+{
+  "name": "@ai-ops/remotion",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "tsx src/render.ts",
+    "upload": "tsx src/upload.ts",
+    "render-and-upload": "tsx src/render.ts && tsx src/upload.ts",
+    "build": "remotion bundle"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.464",
+    "@remotion/lambda": "4.0.464",
+    "@remotion/media-utils": "4.0.464",
+    "@remotion/player": "4.0.464",
+    "@remotion/studio": "4.0.464",
+    "remotion": "4.0.464"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.464",
+    "@remotion/renderer": "4.0.464",
+    "@types/react": "^18.3.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.0.0"
+  }
+}

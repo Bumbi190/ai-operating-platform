@@ -1,0 +1,318 @@
+/**
+ * workflow-executor.ts
+ *
+ * Delad körningsmotor för workflows — används av både:
+ *   POST /api/runs         (ny körning från steg 1)
+ *   POST /api/runs/[id]/resume  (fortsätt från krashat steg)
+ */
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { interpolate } from '@/lib/utils'
+import { runStep } from '@/lib/ai/runner'
+import { validateStepOutput } from '@/lib/ai/validators/output-validator'
+import { sendAdminNotification } from '@/lib/email/brevo'
+import { getApprovalPendingEmail, getBugReportEmail } from '@/lib/email/templates'
+import type { WorkflowStep } from '@/lib/supabase/types'
+
+export type AdminClient = ReturnType<typeof createAdminClient>
+// Supabase-klienten saknar genererade DB-typer — vi castar internt till any
+type AnyDb = any
+
+export interface ExecuteWorkflowOptions {
+  /** Startvärden i context (användarinput). Slås ihop med existingContext. */
+  initialInput?: Record<string, string>
+  /**
+   * Befintlig context från en tidigare körning (används vid resume).
+   * Alla keys här behandlas som redan klara — steget körs inte om.
+   */
+  existingContext?: Record<string, string>
+  /**
+   * Stega med order >= startFromOrder körs (0 = kör alla).
+   * Sätt till den misslyckade stepens order vid resume.
+   */
+  startFromOrder?: number
+}
+
+export async function executeWorkflow(
+  db: AdminClient | AnyDb,
+  runId: string,
+  projectId: string,
+  steps: WorkflowStep[],
+  options: ExecuteWorkflowOptions = {},
+) {
+  const { initialInput = {}, existingContext = {}, startFromOrder = 0 } = options
+
+  // Context börjar med befintliga värden + ny input
+  const context: Record<string, string> = { ...existingContext, ...initialInput }
+
+  const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
+  // Alias med any-typ — Supabase-klienten saknar genererade DB-typer i detta projekt
+  const anyDb: AnyDb = db
+  // Hoppa över steg som redan körts
+  const pendingSteps = sortedSteps.filter(s => s.order >= startFromOrder)
+
+  if (pendingSteps.length < sortedSteps.length) {
+    const skipped = sortedSteps.length - pendingSteps.length
+    console.log(`[run ${runId}] Resume: hoppar över ${skipped} redan klara steg, kör ${pendingSteps.length} kvarvarande`)
+    await anyDb.from('run_logs').insert({
+      run_id: runId,
+      role: 'system',
+      content: `▶️ Återupptar körning från steg ${startFromOrder} — ${skipped} steg återanvänds från föregående körning.`,
+    })
+  }
+
+  // Spara förväntade bildantal per output_key — används i kvalitetskontrollen nedan.
+  // Fylls i under stegens körning när vi har tillgång till agent.config.max_images.
+  const trackedMaxImages: Record<string, number> = {}
+
+  try {
+    for (const step of pendingSteps) {
+      // Ladda agenten
+      const { data: agent, error: agentErr } = await db
+        .from('agents')
+        .select('id, name, system_prompt, model, config')
+        .eq('id', step.agent_id)
+        .single()
+
+      if (agentErr || !agent) {
+        throw new Error(`Agent "${step.agent_id}" hittades inte (steg "${step.name}")`)
+      }
+
+      // Interpolera {{variabler}} med nuvarande context
+      const userMessage = interpolate(step.input_template, context)
+
+      // ── Logga: user message ──────────────────────────────────────────────
+      await anyDb.from('run_logs').insert({
+        run_id: runId,
+        step_order: step.order,
+        step_name: step.name,
+        role: 'user',
+        content: userMessage,
+      })
+
+      // ── Anropa LLM (med validering + en retry) ───────────────────────────
+      const stepConfig = agent.config as { max_tokens?: number; temperature?: number; max_images?: number } | null
+
+      // Spåra max_images för detta steg (används i kvalitetskontrollen)
+      if (stepConfig?.max_images != null) {
+        trackedMaxImages[step.output_key] = stepConfig.max_images
+      }
+
+      let result = await runStep({
+        systemPrompt: agent.system_prompt,
+        userMessage,
+        model: agent.model,
+        maxTokens: stepConfig?.max_tokens ?? 4000,
+        temperature: stepConfig?.temperature ?? 0.7,
+        maxImages: stepConfig?.max_images,
+        runId,
+      })
+
+      // ── Validera output ──────────────────────────────────────────────────
+      const validation = validateStepOutput(step.output_key, result.content)
+
+      if (!validation.valid) {
+        await anyDb.from('run_logs').insert({
+          run_id: runId,
+          step_order: step.order,
+          step_name: step.name,
+          role: 'system',
+          content: `⚠️ Valideringsfel (${step.output_key}): ${validation.issues.join('; ')} — försöker igen...`,
+        })
+
+        console.warn(`[run ${runId}] ⚠️ Step "${step.name}" validation failed — retrying`)
+
+        const correctedMessage = validation.correctionHint
+          ? `${userMessage}\n\n---\n${validation.correctionHint}`
+          : userMessage
+
+        result = await runStep({
+          systemPrompt: agent.system_prompt,
+          userMessage: correctedMessage,
+          model: agent.model,
+          maxTokens: stepConfig?.max_tokens ?? 4000,
+          temperature: Math.max(0.3, (stepConfig?.temperature ?? 0.7) - 0.2),
+          runId,
+        })
+
+        const retryValidation = validateStepOutput(step.output_key, result.content)
+        if (!retryValidation.valid) {
+          await anyDb.from('run_logs').insert({
+            run_id: runId,
+            step_order: step.order,
+            step_name: step.name,
+            role: 'system',
+            content: `❌ Valideringsfel kvarstår efter retry (${step.output_key}): ${retryValidation.issues.join('; ')} — fortsätter ändå`,
+          })
+        } else {
+          await anyDb.from('run_logs').insert({
+            run_id: runId,
+            step_order: step.order,
+            step_name: step.name,
+            role: 'system',
+            content: `✅ Retry lyckades — output godkänd`,
+          })
+        }
+      }
+
+      // ── Logga: assistant-svar ────────────────────────────────────────────
+      await anyDb.from('run_logs').insert({
+        run_id: runId,
+        step_order: step.order,
+        step_name: step.name,
+        role: 'assistant',
+        content: result.content,
+        tokens_in: result.tokensIn,
+        tokens_out: result.tokensOut,
+        duration_ms: result.durationMs,
+      })
+
+      // Ackumulera output i context
+      context[step.output_key] = result.content
+
+      // Spara context till DB direkt — SSE-streamen och resume använder detta
+      await anyDb.from('runs').update({ context }).eq('id', runId)
+    }
+
+    // ── Alla steg klara — kvalitetskontroll ──────────────────────────────
+    // Krav: nästan alla förväntade bilder måste ha genererats.
+    // En körning som inte uppfyller kraven markeras som MISSLYCKAD direkt —
+    // ingen "Fortsätt körning" erbjuds, för att undvika onödiga API-kostnader.
+    const qualityErrors: string[] = []
+
+    // Beräkna minsta godkänd bildmängd per output_key.
+    // Om agent.config.max_images sattes (t.ex. 1 i preview-körningar) används det.
+    // Annars faller vi tillbaka på hårdkodade standardvärden för fullständiga körningar.
+    // Formel: ceil(max * 0.875) — ger 14/16, 5/5 och 1/1 för preview.
+    const FALLBACK_MAX: Record<string, number> = {
+      sagabilder:       16,
+      bilder:            5,
+      aktivitetsbilder:  5,
+      pysselbilder:      1,
+      omslagsbilder:     2,
+    }
+
+    function requiredFor(outputKey: string): number | undefined {
+      const max = trackedMaxImages[outputKey] ?? FALLBACK_MAX[outputKey]
+      if (max == null) return undefined
+      return Math.max(1, Math.ceil(max * 0.875))
+    }
+
+    for (const step of sortedSteps) {
+      const value = context[step.output_key]
+      if (!value || value.length === 0) continue
+
+      try {
+        const parsed = JSON.parse(value)
+        if (!parsed || typeof parsed !== 'object') continue
+        if (!('urls' in parsed) && !('errors' in parsed)) continue
+
+        const urlCount   = (parsed.urls   as string[] | undefined)?.length ?? 0
+        const errorCount = (parsed.errors as string[] | undefined)?.length ?? 0
+
+        if (urlCount === 0) {
+          qualityErrors.push(`❌ "${step.name}": 0 bilder genererades — steget misslyckades helt.`)
+          continue
+        }
+
+        const required = requiredFor(step.output_key)
+        if (required && urlCount < required) {
+          qualityErrors.push(
+            `❌ "${step.name}": ${urlCount} bilder genererades, kräver minst ${required}. (${errorCount} misslyckades)`
+          )
+        }
+      } catch { /* textbaserat steg — hoppa */ }
+    }
+
+    if (qualityErrors.length > 0) {
+      const errorSummary = [
+        `🚫 KÖRNING UNDERKÄND — bildkvalitetskraven uppfylldes inte.\n`,
+        ...qualityErrors,
+        `\nFör att spara kostnader: rätta till orsaken och starta en NY körning istället för att återuppta.`,
+      ].join('\n')
+
+      await anyDb.from('run_logs').insert({ run_id: runId, role: 'system', content: errorSummary })
+      throw new Error(`Bildkvalitetskrav ej uppfyllda: ${qualityErrors.join(' | ')}`)
+    }
+
+    console.log(`[run ${runId}] ✅ Kvalitetskontroll godkänd`)
+
+    // ── Spara output-post ────────────────────────────────────────────────
+    const lastOutputKey = sortedSteps[sortedSteps.length - 1]?.output_key
+    const outputContent = lastOutputKey ? context[lastOutputKey] : JSON.stringify(context)
+    let outputType: 'text' | 'json' = 'text'
+    if (outputContent) {
+      try { JSON.parse(outputContent); outputType = 'json' } catch { /* text */ }
+    }
+
+    await anyDb.from('outputs').insert({
+      run_id: runId,
+      project_id: projectId,
+      name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      type: outputType,
+      content: outputContent ?? '',
+    })
+
+    // ── Skapa approval ───────────────────────────────────────────────────
+    if (outputContent) {
+      const { data: wf } = await db
+        .from('workflows')
+        .select('name, project_id, projects(name)')
+        .eq('id', runId)
+        .maybeSingle()
+
+      await anyDb.from('approvals').insert({
+        run_id: runId,
+        output_key: lastOutputKey ?? 'output',
+        content: outputContent,
+        status: 'pending',
+      })
+      console.log(`[run ${runId}] 📋 Approval request created`)
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+      const { subject, html } = getApprovalPendingEmail({
+        workflowName: wf?.name ?? 'Okänt workflow',
+        projectName: (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
+        runId,
+        outputPreview: outputContent,
+        platformUrl: appUrl,
+      })
+      void sendAdminNotification(subject, html)
+    }
+
+    // ── Markera körning som klar ─────────────────────────────────────────
+    await anyDb.from('runs').update({
+      status: 'done',
+      finished_at: new Date().toISOString(),
+      context,
+    }).eq('id', runId)
+
+    console.log(`[run ${runId}] ✅ Done`)
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Okänt fel'
+    console.error(`[run ${runId}] ❌ Failed:`, message)
+
+    await anyDb.from('run_logs').insert({
+      run_id: runId,
+      role: 'system',
+      content: `❌ Körningsfel: ${message}`,
+    })
+
+    await anyDb.from('runs').update({
+      status: 'failed',
+      error: message,
+      finished_at: new Date().toISOString(),
+    }).eq('id', runId)
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+    const { subject, html } = getBugReportEmail({
+      project: 'AI Operating Platform',
+      errorCount: 1,
+      errors: [{ message, count: 1, lastSeen: new Date().toLocaleString('sv-SE') }],
+      runFailures: 1,
+      platformUrl: appUrl,
+    })
+    void sendAdminNotification(subject, html)
+  }
+}

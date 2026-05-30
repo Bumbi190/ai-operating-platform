@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from web_agent import WebAgent
 from article_reader import read_article
+from trends_reader import fetch_trends
 
 load_dotenv()
 
@@ -218,6 +219,35 @@ async def read(payload: ReadRequest, request: Request):
         "title":      result.title,
         "text":       result.text,
         "word_count": result.word_count,
+    }
+
+
+@app.get("/trends")
+async def trends(request: Request):
+    """
+    Fetch trending AI topics from Google Trends, Reddit, and HackerNews.
+    No Gemini — pure Playwright DOM scraping. Takes ~15-20 seconds.
+
+    Returns a ranked list of trending topics to guide editorial news selection.
+    """
+    require_auth(request)
+
+    result = await fetch_trends()
+
+    return {
+        "fetched_at": result.fetched_at,
+        "count":      len(result.topics),
+        "topics": [
+            {
+                "topic":            t.topic,
+                "source":           t.source,
+                "search_volume":    t.search_volume,
+                "engagement_score": t.engagement_score,
+                "context":          t.context,
+                "url":              t.url,
+            }
+            for t in result.topics
+        ],
     }
 
 

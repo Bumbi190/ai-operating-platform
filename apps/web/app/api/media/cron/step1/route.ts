@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
-import { callHermesScrape, callHermesRead, isHermesConfigured } from '@/lib/media/hermes'
+import { callHermesScrape, callHermesRead, callHermesTrends, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
@@ -90,12 +90,35 @@ export async function GET(request: Request) {
   const { data: project } = await (q as ReturnType<typeof db.from>).limit(1).single()
   if (!project) return NextResponse.json({ error: 'No project found' }, { status: 404 })
 
-  // Hunt news (API-based: HN, Reddit, RSS)
+  // ── Fetch trends + hunt news in parallel ─────────────────────────────────
+  // Trends run alongside the news hunt — no extra time cost.
+  // If Hermes isn't configured, trends silently returns null.
+  let trendingTopics: string[] = []
   let hunterResult
-  try {
-    hunterResult = await runNewsHunter(db, project.id, 5)
-  } catch (err) {
-    return NextResponse.json({ status: 'hunt_failed', error: err instanceof Error ? err.message : err }, { status: 500 })
+
+  const [trendsResult, hunterRes] = await Promise.allSettled([
+    callHermesTrends(),
+    runNewsHunter(db, project.id, 5, []),  // will be re-run with trends if available
+  ])
+
+  if (trendsResult.status === 'fulfilled' && trendsResult.value) {
+    trendingTopics = trendsResult.value.topics.map(t => t.topic)
+    console.log(`[cron/step1] Trends: ${trendingTopics.slice(0, 5).join(', ')}...`)
+  }
+
+  if (hunterRes.status === 'rejected') {
+    return NextResponse.json({ status: 'hunt_failed', error: String(hunterRes.reason) }, { status: 500 })
+  }
+
+  // Re-run editorial pick with trend context if we got trends
+  if (trendingTopics.length > 0) {
+    try {
+      hunterResult = await runNewsHunter(db, project.id, 5, trendingTopics)
+    } catch {
+      hunterResult = hunterRes.value  // fall back to trendless result
+    }
+  } else {
+    hunterResult = hunterRes.value
   }
 
   // ── Hermes fallback ──────────────────────────────────────────────────────

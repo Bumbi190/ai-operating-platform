@@ -42,6 +42,21 @@ export interface HermesResearchResult {
   script_hook_idea:     string
 }
 
+export interface HermesTrendingTopic {
+  topic:            string
+  source:           'google_trends' | 'reddit' | 'hackernews'
+  search_volume:    string
+  engagement_score: number
+  context:          string
+  url:              string
+}
+
+export interface HermesTrendsResult {
+  fetched_at: string
+  count:      number
+  topics:     HermesTrendingTopic[]
+}
+
 export interface HermesReadResult {
   success:    boolean
   url:        string
@@ -64,6 +79,39 @@ export async function checkHermesHealth(): Promise<boolean> {
     return res.ok
   } catch {
     return false
+  }
+}
+
+// ── Trends ────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch trending AI topics from Google Trends, Reddit, and HackerNews.
+ * No Gemini — pure Playwright scraping (~15-20 seconds).
+ *
+ * Use the result to guide news selection: prioritise stories that match
+ * what people are actively searching for and discussing right now.
+ *
+ * Returns null if Hermes is not configured or the request fails.
+ */
+export async function callHermesTrends(): Promise<HermesTrendsResult | null> {
+  if (!HERMES_URL) return null
+
+  try {
+    const res = await fetch(`${HERMES_URL}/trends`, {
+      method:  'GET',
+      headers: hermesHeaders(),
+      signal:  AbortSignal.timeout(60 * 1000), // 60s — parallel scraping of 3 sources
+    })
+
+    if (!res.ok) {
+      console.error(`[hermes] /trends returned ${res.status}`)
+      return null
+    }
+
+    return await res.json() as HermesTrendsResult
+  } catch (err) {
+    console.error('[hermes] /trends error:', err)
+    return null
   }
 }
 

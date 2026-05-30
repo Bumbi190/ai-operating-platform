@@ -13,7 +13,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
-import { uploadAudio, uploadTimingData } from '@/lib/media/storage'
+import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
+import { generateNewsImages } from '@/lib/media/ideogram'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, script')
+    .select('id, project_id, hook, script, media_news_items(title)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -61,27 +62,42 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', script.id)
 
   try {
-    const voiceResult = await generateVoiceover(script.script, 'victoria')
+    // Get news title for image generation
+    const newsTitle = Array.isArray(script.media_news_items)
+      ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
+      : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
 
-    const [audioUrl, timingUrl] = await Promise.all([
+    // Generate voice + images in parallel (independent operations)
+    console.log(`[cron/step2] Generating voice + 3 images in parallel...`)
+    const [voiceResult, rawImageUrls] = await Promise.all([
+      generateVoiceover(script.script, 'victoria'),
+      generateNewsImages(newsTitle, script.script, 3),
+    ])
+
+    // Upload everything in parallel
+    const [audioUrl, timingUrl, ...storedImageUrls] = await Promise.all([
       uploadAudio(script.project_id, script.id, voiceResult.audioBuffer),
       uploadTimingData(script.project_id, script.id, { words: voiceResult.words, durationMs: voiceResult.durationMs }),
+      ...rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
     ])
 
     await db.from('media_scripts').update({
       audio_url:    audioUrl,
       timing_url:   timingUrl,
       duration_ms:  voiceResult.durationMs,
+      images:       storedImageUrls,
+      composition:  'SimpleNewsReel',
       voice_status: 'ready',
     }).eq('id', script.id)
 
-    console.log(`[cron/step2] Done — ${(voiceResult.durationMs / 1000).toFixed(1)}s voice for script ${script.id}`)
+    console.log(`[cron/step2] Done — ${(voiceResult.durationMs / 1000).toFixed(1)}s voice + ${storedImageUrls.length} images for script ${script.id}`)
 
     return NextResponse.json({
-      status:    'step2_done',
-      scriptId:  script.id,
+      status:     'step2_done',
+      scriptId:   script.id,
       durationMs: voiceResult.durationMs,
-      next:      'step3 will run in 5 min',
+      imageCount: storedImageUrls.length,
+      next:       'step3 will run in 5 min',
     })
   } catch (err) {
     await db.from('media_scripts').update({ voice_status: 'none' }).eq('id', script.id)

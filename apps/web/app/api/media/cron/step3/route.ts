@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, media_news_items(title)')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, composition, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -64,24 +64,28 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ video_status: 'generating_images' }).eq('id', script.id)
 
   try {
-    // Get news title for image generation
-    const newsTitle = Array.isArray(script.media_news_items)
-      ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
-      : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
+    // Images are generated in step2 (parallel with voice). Only generate here as fallback.
+    let storedImageUrls: string[] = Array.isArray(script.images) && script.images.length > 0
+      ? script.images as string[]
+      : []
 
-    // Generate 3 images in parallel (Ideogram TURBO mode keeps this well under 60s)
-    const rawImageUrls = await generateNewsImages(newsTitle, script.script, 3)
+    if (storedImageUrls.length === 0) {
+      console.log(`[cron/step3] No images from step2 — generating now as fallback...`)
+      const newsTitle = Array.isArray(script.media_news_items)
+        ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
+        : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
 
-    // Upload images
-    const storedImageUrls = await Promise.all(
-      rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
-    )
-
-    await db.from('media_scripts').update({
-      images:      storedImageUrls,
-      composition: 'SimpleNewsReel',
-      // Note: background music skipped (Pixabay blocked by Lambda)
-    }).eq('id', script.id)
+      const rawImageUrls = await generateNewsImages(newsTitle, script.script, 3)
+      storedImageUrls = await Promise.all(
+        rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
+      )
+      await db.from('media_scripts').update({
+        images:      storedImageUrls,
+        composition: 'SimpleNewsReel',
+      }).eq('id', script.id)
+    } else {
+      console.log(`[cron/step3] Using ${storedImageUrls.length} images from step2`)
+    }
 
     // Start Lambda render
     const inputProps = await buildVideoInputProps({

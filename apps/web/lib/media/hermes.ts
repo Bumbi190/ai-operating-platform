@@ -223,7 +223,7 @@ export async function callHermesCompetitors(): Promise<HermesCompetitorResult | 
     const res = await fetch(`${HERMES_URL}/competitors`, {
       method:  'GET',
       headers: hermesHeaders(),
-      signal:  AbortSignal.timeout(60 * 1000), // 60s — parallel scraping of 4 sources
+      signal:  AbortSignal.timeout(45 * 1000), // 45s — leaves room for Vercel's 60s budget
     })
 
     if (!res.ok) {

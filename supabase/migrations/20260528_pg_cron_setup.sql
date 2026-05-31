@@ -93,7 +93,7 @@ begin
     p_path := '/' || p_path;
   end if;
 
-  select extensions.http_get(
+  select net.http_get(
     url     := v_url || p_path,
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || v_secret,

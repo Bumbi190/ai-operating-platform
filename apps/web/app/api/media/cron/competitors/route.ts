@@ -17,7 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 
 export const dynamic     = 'force-dynamic'
-export const maxDuration = 300  // 5 min — Playwright scraping 4 sources in parallel
+export const maxDuration = 60   // Hermes does the scraping (~30s) — Vercel just calls + saves
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')

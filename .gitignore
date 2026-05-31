@@ -28,5 +28,9 @@ Thumbs.db
 # Supabase
 supabase/.branches
 supabase/.temp
+
+# Handoff-filer — innehåller ibland konfidentiell info, lagras aldrig i repo
+HANDOFF*.md
+handoff*.md
 .vercel
 .env*

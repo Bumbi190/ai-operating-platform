@@ -7,7 +7,7 @@ import {
   Zap, CheckCircle2, XCircle, Clock,
   Bot, Play, Send, Loader2,
   Terminal, Eye, GitBranch, Plus,
-  TrendingUp, Settings, Cpu,
+  TrendingUp, Settings, Cpu, Mic, MicOff, Volume2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
@@ -158,6 +158,13 @@ export function MissionControlClient({
   const [chatBusy, setChatBusy]       = useState(false)
   const chatBottomRef = useRef<HTMLDivElement>(null)
 
+  // Voice state
+  const [voiceMode, setVoiceMode]       = useState(false)   // auto-play responses
+  const [isListening, setIsListening]   = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const recognitionRef = useRef<any>(null)
+  const audioRef       = useRef<HTMLAudioElement | null>(null)
+
   // Clock
   const [clock, setClock] = useState(() =>
     new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -183,6 +190,70 @@ export function MissionControlClient({
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => { logBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs])
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatDisplay])
+
+  // ── Voice: speak agent response via Victoria (ElevenLabs) ──────────────────
+  async function speakText(text: string) {
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        URL.revokeObjectURL(audioRef.current.src)
+      }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.play()
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Voice: start/stop microphone listening ─────────────────────────────────
+  function toggleListening() {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Din webbläsare stöder inte röstigenkänning. Använd Chrome eller Safari.')
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      setVoiceTranscript('')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang            = 'sv-SE'
+    recognition.continuous      = false
+    recognition.interimResults  = true
+
+    recognition.onstart = () => setIsListening(true)
+
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join('')
+      setVoiceTranscript(transcript)
+      // Final result → send
+      if (e.results[e.results.length - 1].isFinal) {
+        setIsListening(false)
+        setVoiceTranscript('')
+        if (transcript.trim()) sendMessage(transcript.trim())
+      }
+    }
+
+    recognition.onerror = () => { setIsListening(false); setVoiceTranscript('') }
+    recognition.onend   = () => { setIsListening(false); setVoiceTranscript('') }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
 
   // ── SSE for selected run ───────────────────────────────────────────────────
   const loadRun = useCallback((runId: string, status: string) => {
@@ -300,6 +371,9 @@ export function MissionControlClient({
 
       setChatDisplay(prev => prev.map(m => m.id === assistantId ? { ...m, isStreaming: false } : m))
       setChatHistory(prev => [...prev, { role: 'assistant', content: assistantText }])
+
+      // Auto-play response with Victoria's voice if voice mode is on
+      if (voiceMode && assistantText) speakText(assistantText)
 
     } catch (err) {
       setChatDisplay(prev =>
@@ -832,14 +906,60 @@ export function MissionControlClient({
 
           {/* Chat input */}
           <form onSubmit={handleChatSubmit} className="px-3 pb-3 pt-1 shrink-0">
+            {/* Voice transcript preview */}
+            {isListening && (
+              <div className="mb-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />
+                <span className="text-[10px] text-red-300 italic truncate flex-1">
+                  {voiceTranscript || 'Lyssnar...'}
+                </span>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <input
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
-                placeholder="Fråga Manager Agent..."
-                disabled={chatBusy}
+                placeholder={isListening ? 'Lyssnar...' : 'Fråga Manager Agent...'}
+                disabled={chatBusy || isListening}
                 className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-[11px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50 transition-colors"
               />
+
+              {/* Mic button */}
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={chatBusy}
+                title={isListening ? 'Stoppa inspelning' : 'Tala med Manager Agent (fn)'}
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors shrink-0 self-end',
+                  isListening
+                    ? 'bg-red-500/80 hover:bg-red-500 animate-pulse'
+                    : 'bg-white/[0.07] hover:bg-white/[0.12]',
+                )}
+              >
+                {isListening
+                  ? <MicOff className="w-3.5 h-3.5 text-white" />
+                  : <Mic className="w-3.5 h-3.5 text-zinc-400" />
+                }
+              </button>
+
+              {/* Voice mode toggle (auto-play responses) */}
+              <button
+                type="button"
+                onClick={() => setVoiceMode(v => !v)}
+                title={voiceMode ? 'Stäng av Victorias röst' : 'Aktivera Victorias röst på svar'}
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 self-end',
+                  voiceMode
+                    ? 'bg-indigo-600/60 hover:bg-indigo-600/80 text-indigo-300'
+                    : 'bg-white/[0.07] hover:bg-white/[0.12] text-zinc-600',
+                )}
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Send button */}
               <button
                 type="submit"
                 disabled={chatBusy || !chatInput.trim()}

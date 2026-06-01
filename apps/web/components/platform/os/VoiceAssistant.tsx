@@ -17,6 +17,7 @@ export function VoiceAssistant() {
   const audioRef    = useRef<HTMLAudioElement | null>(null)
   const historyRef  = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
   const silenceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelRef   = useRef(false)
 
   // Avoid SSR mismatch
   useEffect(() => { setMounted(true) }, [])
@@ -81,6 +82,7 @@ export function VoiceAssistant() {
   }
 
   function stopAudio() {
+    cancelRef.current = true
     try {
       audioRef.current?.pause()
       audioRef.current = null
@@ -89,6 +91,7 @@ export function VoiceAssistant() {
   }
 
   function closeAll() {
+    cancelRef.current = true
     stopListening()
     stopAudio()
     setPhase('idle')
@@ -98,17 +101,99 @@ export function VoiceAssistant() {
     if (silenceRef.current) clearTimeout(silenceRef.current)
   }
 
+  // Hämtar TTS för EN mening och returnerar en uppspelbar objectURL.
+  async function fetchTTSUrl(sentence: string): Promise<string | null> {
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text: sentence, voice: 'nova' }),
+      })
+      if (!res.ok) return null
+      const blob = await res.blob()
+      return URL.createObjectURL(blob)
+    } catch { return null }
+  }
+
+  function playUrl(url: string): Promise<void> {
+    return new Promise((resolve) => {
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => { try { URL.revokeObjectURL(url) } catch { /* ignore */ } ; audioRef.current = null; resolve() }
+      audio.onerror = () => { resolve() }
+      audio.play().catch(() => resolve())
+    })
+  }
+
+  /**
+   * Strömmande röstsvar (Phase 6 + 7):
+   * Medan LLM:en strömmar text plockar vi ut färdiga meningar och startar TTS
+   * per mening direkt — första ljudet börjar spela långt innan hela svaret är
+   * klart. En kö spelar bitarna i ordning.
+   */
   async function sendMessage(text: string) {
     setPhase('thinking')
     setTranscript(text)
+    setResponse('')
+    cancelRef.current = false
     historyRef.current = [...historyRef.current, { role: 'user', content: text }]
 
+    const urlQueue: Promise<string | null>[] = []
     let reply = ''
+    let processedLen = 0
+    let streamDone = false
+    let playerStarted = false
+
+    // Spelar upp köade ljudbitar i ordning, väntar på nya tills strömmen är klar.
+    const player = async () => {
+      setPhase('speaking')
+      let idx = 0
+      while (!cancelRef.current) {
+        if (idx >= urlQueue.length) {
+          if (streamDone) break
+          await new Promise(r => setTimeout(r, 60))
+          continue
+        }
+        const url = await urlQueue[idx]; idx++
+        if (cancelRef.current) break
+        if (url) await playUrl(url)
+      }
+      if (!cancelRef.current) {
+        setPhase('idle')
+        setTimeout(() => { if (!cancelRef.current) setOpen(false) }, 2200)
+      }
+    }
+
+    const enqueue = (sentence: string) => {
+      const s = sentence.trim()
+      if (!s) return
+      urlQueue.push(fetchTTSUrl(s))
+      if (!playerStarted) { playerStarted = true; player() }
+    }
+
+    // Plocka färdiga meningar ur den ackumulerade texten (punkt+mellanslag = klar).
+    const flush = (final: boolean) => {
+      const re = /[.!?…]+\s/g
+      re.lastIndex = processedLen
+      let m: RegExpExecArray | null
+      let boundary = processedLen
+      while ((m = re.exec(reply)) !== null) {
+        const end = m.index + m[0].length
+        enqueue(reply.slice(boundary, end))
+        boundary = end
+      }
+      processedLen = boundary
+      if (final && processedLen < reply.length) {
+        enqueue(reply.slice(processedLen))
+        processedLen = reply.length
+      }
+    }
+
     try {
       const res = await fetch('/api/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: historyRef.current }),
+        body:    JSON.stringify({ messages: historyRef.current, voice: true }),
       })
 
       if (res.ok && res.body) {
@@ -119,6 +204,7 @@ export function VoiceAssistant() {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
+          if (cancelRef.current) { try { reader.cancel() } catch { /* ignore */ } ; break }
           buf += decoder.decode(value, { stream: true })
           const lines = buf.split('\n')
           buf = lines.pop() ?? ''
@@ -126,49 +212,19 @@ export function VoiceAssistant() {
             if (!line.startsWith('data: ')) continue
             try {
               const d = JSON.parse(line.slice(6))
-              if (d.event === 'text' && d.text) { reply += d.text; setResponse(reply) }
+              if (d.event === 'text' && d.text) { reply += d.text; setResponse(reply); flush(false) }
             } catch { /* ignore */ }
           }
         }
       }
 
+      streamDone = true
+      flush(true)
       historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
-      if (reply) await playTTS(reply)
-      else setPhase('idle')
+      if (!playerStarted) setPhase('idle')   // inget tal genererades
 
     } catch {
-      setPhase('idle')
-    }
-  }
-
-  async function playTTS(text: string) {
-    setPhase('speaking')
-    try {
-      const res = await fetch('/api/chat/tts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text, voice: 'nova' }),
-      })
-
-      if (!res.ok) { setPhase('idle'); return }
-
-      const blob  = await res.blob()
-      const url   = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-
-      audio.onended = () => {
-        try { URL.revokeObjectURL(url) } catch { /* ignore */ }
-        audioRef.current = null
-        setPhase('idle')
-        setTimeout(() => setOpen(false), 2000)
-      }
-      audio.onerror = () => { setPhase('idle') }
-
-      // play() returns a Promise — must catch rejection (autoplay policy)
-      audio.play().catch(() => setPhase('idle'))
-
-    } catch {
+      streamDone = true
       setPhase('idle')
     }
   }
@@ -233,7 +289,7 @@ export function VoiceAssistant() {
         ) : (
           <>
             <Mic className="w-3.5 h-3.5" />
-            <span>Prata med Victoria</span>
+            <span>Prata med assistenten</span>
             <kbd className="text-[9px] bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded font-mono opacity-50">⌥ Space</kbd>
           </>
         )}

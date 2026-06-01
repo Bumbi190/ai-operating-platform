@@ -44,6 +44,16 @@ Manager Agent har tillgång till realtidsdata om körningar, agenter, kostnader 
 
 Svara alltid på svenska. Var kortfattad och hjälpsam.`
 
+// Röstläge — talad konversation. Korta, naturliga svar, inga monologer.
+const VOICE_DIRECTIVE = `
+
+VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL:
+- Svara MYCKET kort: 1–3 meningar. Aldrig längre vid första svaret.
+- Inga listor, ingen markdown, inga rubriker, inga emojis — bara naturligt tal.
+- Ge en snabb överblick och FRÅGA sedan om personen vill höra mer, istället för att rabbla allt.
+- Prata avslappnat och mänskligt, som en kollega.
+Exempel på bra ton: "Familje-Stunden ser bra ut. Julipaketet är klart. Vill du ha en snabb sammanfattning?"`
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'list_workflows',
@@ -114,10 +124,13 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { messages, conversation_id } = await request.json() as {
+  const { messages, conversation_id, voice } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
+    voice?: boolean
   }
+
+  const systemPrompt = voice ? SYSTEM_PROMPT + VOICE_DIRECTIVE : SYSTEM_PROMPT
 
   const db = createAdminClient()
 
@@ -167,8 +180,8 @@ export async function POST(request: Request) {
         for (let i = 0; i < 10; i++) {
           const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-6',
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
+            max_tokens: voice ? 400 : 4096,
+            system: systemPrompt,
             tools: TOOLS,
             messages: msgs,
           })

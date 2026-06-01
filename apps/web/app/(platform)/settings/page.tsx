@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { User, Key, Info, Zap, Database } from 'lucide-react'
+import { User, Key, Info, Zap, Database, Instagram } from 'lucide-react'
 import { SeedButton } from './SeedButton'
+import { TokenUpdater } from './TokenUpdater'
 import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default async function SettingsPage() {
@@ -93,6 +94,17 @@ export default async function SettingsPage() {
             Installera Familje-Stunden agenter och månadspaket-workflow. Kör detta en gång för att komma igång.
           </p>
           <SeedButton />
+        </div>
+      </section>
+
+      {/* Social media tokens */}
+      <section className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+          <Instagram className="w-4 h-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Instagram / Facebook-token</h2>
+        </div>
+        <div className="p-5">
+          <TokenUpdater />
         </div>
       </section>
 

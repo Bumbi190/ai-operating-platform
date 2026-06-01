@@ -16,6 +16,7 @@ export { CommandBar } from './CommandBar'
 
 // Business command center
 export { DashboardHero } from './DashboardHero'
+export { ExecutiveBriefing } from './ExecutiveBriefing'
 export { BusinessCard } from './BusinessCard'
 export { QuickAdd } from './QuickAdd'
 

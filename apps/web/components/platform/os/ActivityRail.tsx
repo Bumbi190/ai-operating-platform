@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
   Activity, ShieldCheck, GitBranch, Database, Send, AlertTriangle,
-  Brain, Cpu, Sparkles, Film, FileText, Zap, Filter,
+  Brain, Cpu, Sparkles, Film, FileText, Zap, Filter, ChevronRight,
 } from 'lucide-react'
 
 export type ActivityEventType =
@@ -28,6 +29,8 @@ export interface ActivityEvent {
   projectColor?: string
   timestamp: string
   intense?: boolean
+  /** valfri åtgärd — gör feeden handlingsinriktad ([ Granska ], [ Öppna ] …) */
+  action?: { label: string; href: string }
 }
 
 // Restrained icon palette — mostly monochrome with subtle warm/cool accents.
@@ -42,6 +45,12 @@ const TYPE_META: Record<ActivityEventType, { icon: any; color: string; label: st
   api:      { icon: Cpu,           color: '#60a5fa', label: 'API' },
   decision: { icon: Sparkles,      color: '#e8c89a', label: 'Decision' },
   script:   { icon: FileText,      color: '#a5b4fc', label: 'Script' },
+}
+
+function clock(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' }).format(new Date(iso))
+  } catch { return '' }
 }
 
 function relative(iso: string, nowMs: number) {
@@ -75,13 +84,13 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
       >
         <div className="flex items-center justify-between mb-1.5">
-          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/45">
-            Telemetry
+          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/45 inline-flex items-center gap-1.5">
+            <Sparkles className="w-2.5 h-2.5" style={{ color: '#d4a574' }} /> AI-briefing
           </p>
           <button
             className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-700 hover:text-zinc-400 transition-colors"
             style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.035)' }}
-            title="Filter"
+            title="Filtrera"
           >
             <Filter className="w-2.5 h-2.5" />
           </button>
@@ -91,7 +100,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
             <span className="absolute inset-0 rounded-full bg-emerald-400/80" />
           </span>
           <span className="text-[10px] text-zinc-600">
-            {events.length} events
+            Senaste händelserna i dina verksamheter
           </span>
         </div>
       </div>
@@ -109,8 +118,8 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
             >
               <Activity className="w-3.5 h-3.5 text-indigo-300" />
             </div>
-            <p className="text-[11.5px] text-zinc-400 font-medium">Listening for events</p>
-            <p className="text-[10px] text-zinc-600 mt-1">No platform activity yet</p>
+            <p className="text-[11.5px] text-zinc-400 font-medium">Inget att rapportera än</p>
+            <p className="text-[10px] text-zinc-600 mt-1">Här dyker uppdateringar upp så fort något händer</p>
           </div>
         ) : (
           <div className="px-1.5 py-1.5">
@@ -145,36 +154,37 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* meta line — single muted row                            */}
+                    {/* tid + verksamhet — människovänlig topprad                */}
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span
-                        className="eyebrow !text-[8px] !tracking-[0.18em]"
-                        style={{ color: `${meta.color}99` }}
-                      >
-                        {meta.label}
-                      </span>
+                      <span className="caption-mono text-[9px] text-zinc-500">{clock(e.timestamp)}</span>
                       {e.project && (
                         <>
                           <span className="text-zinc-800 text-[8px]">·</span>
-                          <span className="inline-flex items-center gap-1 text-[9px] text-zinc-600">
-                            <span className="w-1 h-1 rounded-full" style={{ background: e.projectColor ?? '#818cf8', opacity: 0.7 }} />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium" style={{ color: e.projectColor ?? '#a5b4fc' }}>
+                            <span className="w-1 h-1 rounded-full" style={{ background: e.projectColor ?? '#818cf8' }} />
                             {e.project}
                           </span>
                         </>
                       )}
                     </div>
-                    {/* title — slightly smaller, slightly softer color         */}
-                    <p className="text-[11px] text-zinc-300 leading-snug tracking-tight">
+                    {/* mening — affärsspråk                                     */}
+                    <p className="text-[11.5px] text-zinc-200 leading-snug tracking-tight">
                       {e.title}
                     </p>
                     {e.detail && (
-                      <p className="text-[9.5px] text-zinc-600 mt-0.5 leading-snug line-clamp-1">
+                      <p className="text-[10px] text-zinc-500 mt-0.5 leading-snug line-clamp-1">
                         {e.detail}
                       </p>
                     )}
-                    <p className="caption-mono text-[9px] text-zinc-700 mt-1">
-                      {relative(e.timestamp, now)}
-                    </p>
+                    {e.action && (
+                      <Link
+                        href={e.action.href}
+                        className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-zinc-300 hover:text-white transition-colors press"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                      >
+                        {e.action.label} <ChevronRight className="w-2.5 h-2.5" />
+                      </Link>
+                    )}
                   </div>
                 </div>
               )
@@ -188,9 +198,9 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         className="shrink-0 px-4 py-2.5 flex items-center justify-between caption-mono text-[9px]"
         style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <span className="text-zinc-700">primary</span>
+        <span className="text-zinc-700">Omnira</span>
         <span className="flex items-center gap-1 text-emerald-500/70">
-          <Zap className="w-2 h-2" /> live
+          <Zap className="w-2 h-2" /> uppdateras live
         </span>
       </div>
     </div>

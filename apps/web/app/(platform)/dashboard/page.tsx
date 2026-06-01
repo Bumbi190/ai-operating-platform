@@ -11,9 +11,10 @@ import {
   fetchBusinessSnapshots, fetchHeroSummary,
   fetchPendingApprovalsDetailed, fetchFailedRuns,
 } from '@/lib/os/business'
+import { buildExecutiveBriefing, deriveOperatorName } from '@/lib/os/briefing'
 
 import {
-  OSPage, OSLayer, DashboardHero, BusinessCard, QuickAdd,
+  OSPage, OSLayer, ExecutiveBriefing, BusinessCard, QuickAdd,
   SectionHeader, EmptyState, MissionState,
 } from '@/components/platform/os'
 import { PauseToggle } from './PauseToggle'
@@ -31,7 +32,8 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const db = createAdminClient()
 
-  const [projectsRes, platformConfig, pendingApprovals, failedRuns] = await Promise.all([
+  const [{ data: { user } }, projectsRes, platformConfig, pendingApprovals, failedRuns] = await Promise.all([
+    supabase.auth.getUser(),
     supabase
       .from('projects')
       .select('id, owner_id, name, slug, color, settings, created_at')
@@ -45,12 +47,19 @@ export default async function DashboardPage() {
   const businesses = await fetchBusinessSnapshots(db, projects)
   const hero = await fetchHeroSummary(db, projects, businesses)
 
+  const operatorName = deriveOperatorName(
+    (user?.user_metadata?.full_name as string | undefined) ?? (user?.user_metadata?.name as string | undefined),
+    user?.email,
+  )
+  const briefing = buildExecutiveBriefing(businesses, hero, operatorName)
+  const monthlyPackageSlug = projects.find(p => /familje/i.test(p.slug) || /familje/i.test(p.name))?.slug ?? null
+
   return (
     <OSPage className="boot-in">
 
-      {/* LAYER 1 · HERO — Command Center orientering ─────────────────────── */}
+      {/* LAYER 1 · EXECUTIVE BRIEFING — AI-first hemvy ───────────────────── */}
       <OSLayer layer="hero">
-        <DashboardHero summary={hero} />
+        <ExecutiveBriefing briefing={briefing} monthlyPackageSlug={monthlyPackageSlug} />
 
         {/* Global pausstatus — operationellt kritiskt, stannar på förstasidan */}
         {platformConfig.automation_paused && (

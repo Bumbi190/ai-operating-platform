@@ -47,26 +47,28 @@ export default async function PlatformLayout({
 
   const events: ActivityEvent[] = []
 
+  // Människospråkiga, affärsfokuserade, åtgärdsinriktade händelser.
   for (const r of runs as any[]) {
     const w = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
     const p = Array.isArray(r.projects)  ? r.projects[0]  : r.projects
+    const wf = w?.name ?? 'Ett arbetsflöde'
     if (r.status === 'failed') {
       events.push({
         id: `run-${r.id}-fail`,
         type: 'failure',
-        title: `${w?.name ?? 'Workflow'} failed`,
-        detail: 'Auto-retry queued · trace available',
+        title: `${wf} stötte på problem`,
+        detail: 'Behöver en titt innan det kan gå vidare',
         project: p?.name,
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
         intense: true,
+        action: { label: 'Åtgärda', href: '/system' },
       })
     } else if (r.status === 'running') {
       events.push({
         id: `run-${r.id}-active`,
         type: 'workflow',
-        title: `${w?.name ?? 'Workflow'} executing`,
-        detail: 'Agents handing off context',
+        title: `${wf} arbetar just nu`,
         project: p?.name,
         projectColor: p?.color,
         timestamp: r.created_at,
@@ -76,7 +78,7 @@ export default async function PlatformLayout({
       events.push({
         id: `run-${r.id}-done`,
         type: 'publish',
-        title: `${w?.name ?? 'Workflow'} completed`,
+        title: `${wf} är klart`,
         project: p?.name,
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
@@ -86,24 +88,24 @@ export default async function PlatformLayout({
 
   for (const a of approvals as any[]) {
     const run = Array.isArray(a.runs) ? a.runs[0] : a.runs
-    const w   = run ? (Array.isArray(run.workflows) ? run.workflows[0] : run.workflows) : null
     const p   = run ? (Array.isArray(run.projects)  ? run.projects[0]  : run.projects)  : null
     if (a.status === 'pending') {
       events.push({
         id: `appr-${a.id}-pending`,
         type: 'approval',
-        title: `Review requested · ${a.output_key ?? 'output'}`,
-        detail: `${w?.name ?? 'Workflow'} awaiting executive review`,
+        title: 'Innehåll väntar på ditt godkännande',
+        detail: 'Granska så går det vidare till publicering',
         project: p?.name,
         projectColor: p?.color,
         timestamp: a.created_at,
         intense: true,
+        action: { label: 'Granska', href: '/approvals' },
       })
     } else if (a.status === 'approved') {
       events.push({
         id: `appr-${a.id}-ok`,
         type: 'decision',
-        title: `Approved · ${a.output_key ?? 'output'}`,
+        title: 'Du godkände ett innehåll',
         project: p?.name,
         projectColor: p?.color,
         timestamp: a.reviewed_at ?? a.created_at,
@@ -112,7 +114,7 @@ export default async function PlatformLayout({
       events.push({
         id: `appr-${a.id}-rej`,
         type: 'decision',
-        title: `Rejected · ${a.output_key ?? 'output'}`,
+        title: 'Du avvisade ett innehåll',
         project: p?.name,
         projectColor: p?.color,
         timestamp: a.reviewed_at ?? a.created_at,

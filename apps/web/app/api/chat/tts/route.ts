@@ -1,53 +1,55 @@
 /**
  * POST /api/chat/tts
  *
- * Converts text to speech using Victoria's voice (ElevenLabs).
- * Used by the Manager Agent voice conversation feature.
+ * Converts text to speech using OpenAI TTS.
+ * OpenAI's nova/shimmer voices handle Swedish naturally and sound
+ * much more human than browser TTS or ElevenLabs English voices.
  *
- * Body: { text: string }
+ * Body: { text: string, voice?: 'nova' | 'shimmer' | 'alloy' | 'echo' | 'fable' | 'onyx' }
  * Returns: audio/mpeg binary
+ *
+ * Voices (all handle Swedish well):
+ *   nova    — warm, natural female (default)
+ *   shimmer — slightly softer female
+ *   alloy   — neutral
+ *   onyx    — deep male
  */
 
-import { VICTORIA_VOICE_ID, BRAND_MODEL, BRAND_VOICE_SETTINGS } from '@/lib/voice/config'
-
-export const dynamic    = 'force-dynamic'
-export const maxDuration = 30
+export const dynamic     = 'force-dynamic'
+export const maxDuration = 20
 
 export async function POST(request: Request) {
-  const apiKey = process.env.ELEVENLABS_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return Response.json({ error: 'ELEVENLABS_API_KEY saknas' }, { status: 500 })
+    return Response.json({ error: 'OPENAI_API_KEY saknas' }, { status: 500 })
   }
 
-  const { text } = await request.json() as { text: string }
+  const { text, voice = 'nova' } = await request.json() as { text: string; voice?: string }
   if (!text?.trim()) {
     return Response.json({ error: 'text krävs' }, { status: 400 })
   }
 
-  // Truncate to ~500 chars for chat responses — keeps latency low
-  const trimmed = text.trim().slice(0, 500)
+  const trimmed = text.trim().slice(0, 600)
 
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${VICTORIA_VOICE_ID}`,
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key':   apiKey,
-        'Content-Type': 'application/json',
-        'Accept':       'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text:          trimmed,
-        model_id:      BRAND_MODEL,
-        voice_settings: BRAND_VOICE_SETTINGS,
-      }),
-      signal: AbortSignal.timeout(25_000),
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type':  'application/json',
     },
-  )
+    body: JSON.stringify({
+      model:           'tts-1',       // tts-1-hd for higher quality but slower
+      voice,
+      input:           trimmed,
+      response_format: 'mp3',
+      speed:           1.0,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
 
   if (!res.ok) {
     const err = await res.text().catch(() => 'unknown')
-    return Response.json({ error: `ElevenLabs ${res.status}: ${err}` }, { status: 502 })
+    return Response.json({ error: `OpenAI TTS ${res.status}: ${err}` }, { status: 502 })
   }
 
   const audio = await res.arrayBuffer()

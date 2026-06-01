@@ -165,38 +165,40 @@ export function VoiceAssistant() {
     }
   }, [])
 
-  // ── Svensk TTS via webbläsarens inbyggda röst (instant, ingen latens) ────
-  function speakReply(text: string) {
+  // ── OpenAI TTS — naturlig svensk röst via nova-modellen ─────────────────
+  async function speakReply(text: string) {
     setPhase('speaking')
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text, voice: 'nova' }),
+      })
+      if (!res.ok) { setPhase('idle'); return }
 
-    window.speechSynthesis.cancel() // avbryt eventuell pågående uppläsning
+      const blob  = await res.blob()
+      const url   = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
 
-    const utt = new SpeechSynthesisUtterance(text)
-    utt.lang = 'sv-SE'
-    utt.rate = 1.05
-    utt.pitch = 1.0
-
-    // Välj bästa tillgängliga svenska röst
-    const voices = window.speechSynthesis.getVoices()
-    const preferred = ['Alva', 'Klara', 'Ellen', 'Astrid']
-    const svVoice = preferred
-      .map(name => voices.find(v => v.name.includes(name) && v.lang.startsWith('sv')))
-      .find(Boolean)
-      ?? voices.find(v => v.lang.startsWith('sv'))
-
-    if (svVoice) utt.voice = svVoice
-
-    utt.onend = () => {
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        audioRef.current = null
+        setPhase('idle')
+        setTimeout(() => setVisible(false), 1500)
+      }
+      audio.onerror = () => setPhase('idle')
+      audio.play()
+    } catch {
       setPhase('idle')
-      setTimeout(() => setVisible(false), 1500)
     }
-    utt.onerror = () => setPhase('idle')
-
-    window.speechSynthesis.speak(utt)
   }
 
   function stopSpeakingBrowser() {
-    window.speechSynthesis.cancel()
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
     setPhase('idle')
   }
 

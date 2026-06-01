@@ -14,9 +14,16 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getToken } from './token-store'
 
-// Stödjer både klassiska Instagram Graph API (graph.facebook.com) och nya
-// Instagram API with Instagram Login (graph.instagram.com). Vi testar båda.
-const HOSTS = ['https://graph.facebook.com/v21.0', 'https://graph.instagram.com/v21.0']
+// Stödjer både nya Instagram API with Instagram Login (graph.instagram.com,
+// token börjar på "IGAA") och klassiska Instagram Graph API (graph.facebook.com,
+// token börjar på "EAA"). Vi väljer rätt värd efter token-prefix och testar
+// den andra som fallback.
+const IG_HOST = 'https://graph.instagram.com/v22.0'
+const FB_HOST = 'https://graph.facebook.com/v21.0'
+
+function hostsForToken(token: string): string[] {
+  return token.startsWith('IGAA') ? [IG_HOST, FB_HOST] : [FB_HOST, IG_HOST]
+}
 
 // Reels stöder dessa mått. Vi begär en bred uppsättning och tål att vissa saknas.
 const METRICS = 'reach,likes,comments,saved,shares,total_interactions,views'
@@ -40,7 +47,7 @@ export interface InsightFetchResult {
 /** Hämtar insights för ett enskilt IG-media. Returnerar ok:false vid fel (t.ex. saknad behörighet). */
 export async function fetchMediaInsights(mediaId: string, token: string): Promise<InsightFetchResult> {
   let lastError = 'okänt fel'
-  for (const host of HOSTS) {
+  for (const host of hostsForToken(token)) {
     try {
       const res = await fetch(
         `${host}/${mediaId}/insights?metric=${METRICS}&access_token=${token}`,

@@ -14,6 +14,7 @@
 import { NextResponse }  from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAutomationPaused } from '@/lib/media/safeguards'
+import { getToken } from '@/lib/media/token-store'
 import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic     = 'force-dynamic'
@@ -116,6 +117,22 @@ export async function GET(request: Request) {
   if (!pauseCheck.allowed) {
     log(`PAUSAD — ${pauseCheck.reason}`)
     return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  }
+
+  // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
+  // Samma mönster som cron/publish: platform_tokens-tabellen är källan, env är fallback.
+  // Krävs för att svaren ska använda det färska, roterade token istället för ett
+  // gammalt värde i Vercels env.
+  const igStored = await getToken('instagram')
+  if (igStored?.source === 'supabase') {
+    process.env.INSTAGRAM_ACCESS_TOKEN = igStored.accessToken
+    log('Instagram token läst från Supabase.')
+  }
+
+  const fbStored = await getToken('facebook')
+  if (fbStored?.source === 'supabase') {
+    process.env.FACEBOOK_PAGE_ACCESS_TOKEN = fbStored.accessToken
+    log('Facebook token läst från Supabase.')
   }
 
   // Hämta kommentarer vars fördröjning passerat

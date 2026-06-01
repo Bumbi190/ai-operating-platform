@@ -14,7 +14,7 @@ import {
 import { buildExecutiveBriefing, deriveOperatorName } from '@/lib/os/briefing'
 
 import {
-  OSPage, OSLayer, ExecutiveBriefing, BusinessCard, QuickAdd,
+  OSPage, OSLayer, ExecutiveBriefing, BusinessCard, QuickAdd, ProactiveNudge,
   SectionHeader, EmptyState, MissionState,
 } from '@/components/platform/os'
 import { PauseToggle } from './PauseToggle'
@@ -67,6 +67,7 @@ export default async function DashboardPage() {
 
       {/* LAYER 1 · EXECUTIVE BRIEFING — AI-first hemvy ───────────────────── */}
       <OSLayer layer="hero">
+        <ProactiveNudge item={briefing.recommended ?? null} />
         <ExecutiveBriefing briefing={briefing} monthlyPackageSlug={monthlyPackageSlug} />
 
         {/* Global pausstatus — operationellt kritiskt, stannar på förstasidan */}

@@ -17,6 +17,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { getManager } from '@/lib/ai/manager'
+import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
@@ -47,12 +48,14 @@ Svara alltid på svenska. Var kortfattad och hjälpsam.`
 // Röstläge — talad konversation. Korta, naturliga svar, inga monologer.
 const VOICE_DIRECTIVE = `
 
-VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL:
-- Svara MYCKET kort: 1–3 meningar. Aldrig längre vid första svaret.
-- Inga listor, ingen markdown, inga rubriker, inga emojis — bara naturligt tal.
-- Ge en snabb överblick och FRÅGA sedan om personen vill höra mer, istället för att rabbla allt.
-- Prata avslappnat och mänskligt, som en kollega.
-Exempel på bra ton: "Familje-Stunden ser bra ut. Julipaketet är klart. Vill du ha en snabb sammanfattning?"`
+VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
+- Svara med HÖGST 2 meningar. Aldrig en rapport, aldrig en lista, aldrig markdown eller emojis.
+- Prata som en avslappnad kollega — kort, varmt, naturligt.
+- Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
+- Hellre flera korta repliker i ett samtal än ett långt svar.
+
+Dåligt: "Familje-Stunden genererade 17 aktiviteter och slutförde julipaketet samt..."
+Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en snabb sammanfattning?"`
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -130,9 +133,15 @@ export async function POST(request: Request) {
     voice?: boolean
   }
 
-  const systemPrompt = voice ? SYSTEM_PROMPT + VOICE_DIRECTIVE : SYSTEM_PROMPT
+  let systemPrompt = voice ? SYSTEM_PROMPT + VOICE_DIRECTIVE : SYSTEM_PROMPT
 
   const db = createAdminClient()
+
+  // Operativt minne (F6) — härledda mönster gör rekommendationerna vassare.
+  try {
+    const { summary } = await fetchOperatorPatterns(db)
+    if (summary) systemPrompt += `\n\n${summary}`
+  } catch { /* icke-kritiskt */ }
 
   // Helper: persist a message to DB
   async function saveMessage(role: string, content: string | null, toolData?: unknown) {
@@ -180,7 +189,7 @@ export async function POST(request: Request) {
         for (let i = 0; i < 10; i++) {
           const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-6',
-            max_tokens: voice ? 400 : 4096,
+            max_tokens: voice ? 220 : 4096,
             system: systemPrompt,
             tools: TOOLS,
             messages: msgs,

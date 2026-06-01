@@ -13,7 +13,7 @@ import {
 } from '@/lib/os/business'
 
 import {
-  OSPage, OSLayer, DashboardHero, BusinessCard,
+  OSPage, OSLayer, DashboardHero, BusinessCard, QuickAdd,
   SectionHeader, EmptyState, MissionState,
 } from '@/components/platform/os'
 import { PauseToggle } from './PauseToggle'
@@ -95,6 +95,7 @@ export default async function DashboardPage() {
                 <Link href="/system" className="text-[11px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1 transition-colors">
                   <Gauge className="w-3.5 h-3.5" /> Systemtelemetri <ChevronRight className="w-3 h-3 opacity-60" />
                 </Link>
+                {projects.length > 0 && <QuickAdd projects={projects.map(p => ({ id: p.id, name: p.name, slug: p.slug, color: p.color }))} />}
                 <Link href="/projects/new" className="btn-omnira ease-os press inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-semibold">
                   <Plus className="w-3.5 h-3.5" /> Ny verksamhet
                 </Link>

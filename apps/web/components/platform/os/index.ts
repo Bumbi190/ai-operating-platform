@@ -17,6 +17,7 @@ export { CommandBar } from './CommandBar'
 // Business command center
 export { DashboardHero } from './DashboardHero'
 export { BusinessCard } from './BusinessCard'
+export { QuickAdd } from './QuickAdd'
 
 // Mission systems
 export { AgentCard, type AgentSnapshot } from './AgentCard'

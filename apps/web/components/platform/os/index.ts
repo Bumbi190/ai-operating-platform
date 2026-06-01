@@ -14,6 +14,10 @@ export { OSPage, OSLayer, OSGrid } from './OSPage'
 // Bars & chrome
 export { CommandBar } from './CommandBar'
 
+// Business command center
+export { DashboardHero } from './DashboardHero'
+export { BusinessCard } from './BusinessCard'
+
 // Mission systems
 export { AgentCard, type AgentSnapshot } from './AgentCard'
 export { WorkflowFlow, type FlowNode } from './WorkflowFlow'

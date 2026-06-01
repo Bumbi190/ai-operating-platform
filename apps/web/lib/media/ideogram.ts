@@ -289,7 +289,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
           prompt,
           aspect_ratio: '9x16',
           style_type: 'REALISTIC',
-          rendering_speed: 'DEFAULT',
+          rendering_speed: 'TURBO',
           negative_prompt: negativePrompt,
         }),
       })

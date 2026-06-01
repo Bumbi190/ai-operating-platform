@@ -55,6 +55,7 @@ const globalNav = [
   { href: '/memory',    label: 'Minne',               icon: Lightbulb },
   { href: '/costs',     label: 'Kostnader',           icon: DollarSign },
   { href: '/planning',  label: 'Planering',           icon: CalendarDays },
+  { href: '/system',    label: 'Systemtelemetri',     icon: Activity },
 ]
 
 const projectNav = [

@@ -10,6 +10,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
 interface AuthOk {
   ok: true
@@ -48,4 +49,22 @@ export function requireApiKey(request: Request): AuthResult {
   }
 
   return { ok: true }
+}
+
+/**
+ * Tillåt antingen en inloggad app-användare ELLER en giltig API-nyckel.
+ * Används för business-endpoints som anropas både från UI och från externa
+ * integrationer (Stripe-webhooks, cron, agenter).
+ */
+export async function requireUserOrApiKey(request: Request): Promise<AuthResult> {
+  // 1. Inloggad användare?
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) return { ok: true }
+  } catch {
+    // ingen session — fall tillbaka till API-nyckel
+  }
+  // 2. API-nyckel?
+  return requireApiKey(request)
 }

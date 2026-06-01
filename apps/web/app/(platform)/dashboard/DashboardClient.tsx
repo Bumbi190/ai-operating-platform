@@ -230,7 +230,7 @@ function FailedRunRow({ run }: { run: FailedRunInfo }) {
   function handleRetry() {
     startTransition(async () => {
       try {
-        await fetch(`/api/runs/${run.id}/retry`, { method: 'POST' })
+        await fetch(`/api/runs/${run.id}/resume`, { method: 'POST' })
         router.refresh()
       } catch {
         // Silently fail — the run list will still refresh

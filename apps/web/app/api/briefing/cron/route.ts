@@ -13,7 +13,7 @@ import type { Project } from '@/lib/supabase/types'
 import { fetchBusinessSnapshots, fetchHeroSummary } from '@/lib/os/business'
 import { buildExecutiveBriefing, deriveOperatorName } from '@/lib/os/briefing'
 import { buildBriefingEmail } from '@/lib/email/briefingEmail'
-import { sendAdminNotification } from '@/lib/email/brevo'
+import { sendEmail } from '@/lib/email/brevo'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -47,13 +47,26 @@ export async function GET(request: Request) {
   const briefing = buildExecutiveBriefing(businesses, hero, operatorName, { instagramInsightsMissing })
   const { subject, html } = buildBriefingEmail(briefing)
 
-  const result = await sendAdminNotification(subject, html)
+  // Mottagare: BREVO_ADMIN_EMAIL om satt, annars projektägarens riktiga e-post.
+  let recipient = process.env.BREVO_ADMIN_EMAIL ?? null
+  if (!recipient && projects[0]?.owner_id) {
+    try {
+      const { data } = await (db as any).auth.admin.getUserById(projects[0].owner_id)
+      recipient = data?.user?.email ?? null
+    } catch { /* faller igenom */ }
+  }
+
+  if (!recipient) {
+    return NextResponse.json({ ok: false, sent: false, error: 'Ingen mottagaradress hittad (sätt BREVO_ADMIN_EMAIL)' })
+  }
+
+  const result = await sendEmail({ to: recipient, subject, html, project: 'platform' })
 
   return NextResponse.json({
     ok: true,
-    sent: result?.success ?? false,
-    error: result?.success === false ? result.error : undefined,
+    sent: result.success,
+    to: recipient.replace(/(.{2}).*(@.*)/, '$1***$2'),
+    error: result.success ? undefined : result.error,
     attentionCount: briefing.attentionCount,
-    note: result === undefined ? 'BREVO_ADMIN_EMAIL ej satt — inget mejl skickat' : undefined,
   })
 }

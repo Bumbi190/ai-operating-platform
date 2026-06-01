@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   // ── 3. Subscribe Instagram Business Account to comment webhooks ───────────────
   if (igUserId) {
     const subRes  = await fetch(
-      `${BASE}/${igUserId}/subscribed_fields?subscribed_fields=comments,mentions&access_token=${pageToken}`,
+      `${BASE}/${igUserId}/subscribed_apps?subscribed_fields=comments,mentions&access_token=${pageToken}`,
       { method: 'POST' }
     )
     const subData = await subRes.json()

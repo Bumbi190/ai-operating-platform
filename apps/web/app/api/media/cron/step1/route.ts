@@ -23,6 +23,14 @@ export const maxDuration = 60
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/** Race a promise against a timeout; resolve to `fallback` if it doesn't finish in time. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
+  ])
+}
+
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 2000): Promise<T> {
   for (let i = 0; i < attempts; i++) {
     try { return await fn() } catch (err) {
@@ -89,6 +97,7 @@ export async function GET(request: Request) {
 
   const db     = createAdminClient()
   const claude = new Anthropic()
+  const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s
 
   const { searchParams } = new URL(request.url)
   const projectIdParam = searchParams.get('project_id')
@@ -136,8 +145,8 @@ export async function GET(request: Request) {
   let hunterResult
 
   const [trendsResult, hunterRes] = await Promise.allSettled([
-    callHermesTrends(),
-    runNewsHunter(db, project.id, 5, []),  // will be re-run with trends if available
+    callHermesTrends(7_000),               // hard 7s cap (was 25s default)
+    runNewsHunter(db, project.id, 5, []),
   ])
 
   if (trendsResult.status === 'fulfilled' && trendsResult.value) {
@@ -149,16 +158,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'hunt_failed', error: String(hunterRes.reason) }, { status: 500 })
   }
 
-  // Re-run editorial pick with trend context if we got trends
-  if (trendingTopics.length > 0) {
-    try {
-      hunterResult = await runNewsHunter(db, project.id, 5, trendingTopics)
-    } catch {
-      hunterResult = hunterRes.value  // fall back to trendless result
-    }
-  } else {
-    hunterResult = hunterRes.value
-  }
+  // NOTE: we used to re-run runNewsHunter a second time with trend context.
+  // That doubled the hunt cost and pushed step1 past Vercel's 60s limit (→ 504,
+  // script never saved). We now use the single parallel hunt result directly.
+  hunterResult = hunterRes.value
 
   // ── Hermes fallback ──────────────────────────────────────────────────────
   // If the API hunt found nothing (or everything was low-virality), ask Hermes
@@ -186,7 +189,9 @@ export async function GET(request: Request) {
       .limit(50)
 
     const excludeUrls = (existingUrls ?? []).map(r => r.url).filter(Boolean) as string[]
-    const hermesResult = await callHermesScrape(excludeUrls)
+    // Time-boxed: callHermesScrape has a 3-min internal timeout — far over our 60s
+    // budget. Cap it externally at 18s and fall back to the API hunt if it stalls.
+    const hermesResult = await withTimeout(callHermesScrape(excludeUrls), 18_000, null)
 
     if (hermesResult) {
       console.log(`[cron/step1] Hermes found: "${hermesResult.title}" (virality: ${hermesResult.virality_score})`)
@@ -258,9 +263,11 @@ export async function GET(request: Request) {
   // far better than RSS summaries for writing punchy scripts.
   let fullArticleText = ''
   const articleUrl = news.source_url ?? null
-  if (isHermesConfigured() && articleUrl) {
+  // Only read the full article if Hermes is configured AND we still have budget
+  // left (skip when >30s elapsed). Bounded to 10s either way (was 30s).
+  if (isHermesConfigured() && articleUrl && Date.now() - t0 < 30_000) {
     console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
-    const read = await callHermesRead(articleUrl)
+    const read = await withTimeout(callHermesRead(articleUrl), 10_000, null)
     if (read?.success && read.word_count > 100) {
       fullArticleText = read.text
       console.log(`[cron/step1] Got ${read.word_count} words from article`)
@@ -284,7 +291,9 @@ export async function GET(request: Request) {
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
   const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
 
-  if (shouldRegenerate(qualityScore)) {
+  // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
+  // slightly weaker hook than to 504 and save nothing.
+  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
     const rewriteRes = await withRetry(() => claude.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],

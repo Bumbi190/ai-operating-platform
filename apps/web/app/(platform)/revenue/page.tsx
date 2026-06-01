@@ -17,9 +17,9 @@ import { OSPage, OSLayer } from '@/components/platform/os'
 interface RevenueEvent {
   id: string
   project_id: string | null
-  amount: number
-  event_type: string
+  amount_sek: number        // faktiskt kolumnnamn i DB
   source: string | null
+  description: string | null
   occurred_at: string
 }
 
@@ -118,7 +118,7 @@ export default async function RevenuePage() {
   // ── 2. Revenue events (last 30 days) ─────────────────────────────────
   const { data: revenueRaw } = await (db as any)
     .from('revenue_events')
-    .select('id, project_id, amount, event_type, source, occurred_at')
+    .select('id, project_id, amount_sek, source, description, occurred_at')
     .gte('occurred_at', thirtyDaysAgo)
 
   const revenueEvents: RevenueEvent[] = (revenueRaw ?? []) as RevenueEvent[]
@@ -171,8 +171,8 @@ export default async function RevenuePage() {
 
   // Revenue (month to date, exclude refunds)
   const revenueThisMonth = revenueEvents
-    .filter(e => e.occurred_at >= monthStart && e.event_type !== 'refund')
-    .reduce((s, e) => s + (e.amount ?? 0), 0)
+    .filter(e => e.occurred_at >= monthStart && true /* no event_type column */)
+    .reduce((s, e) => s + (e.amount_sek ?? 0), 0)
 
   // AI cost (month to date, USD)
   let totalAiCostUSD = 0
@@ -216,9 +216,9 @@ export default async function RevenuePage() {
   const revenueByProject = new Map<string, number>()
   for (const e of revenueEvents) {
     if (e.occurred_at < monthStart) continue
-    if (e.event_type === 'refund') continue
+    /* no refund check — no event_type column */
     if (!e.project_id) continue
-    revenueByProject.set(e.project_id, (revenueByProject.get(e.project_id) ?? 0) + (e.amount ?? 0))
+    revenueByProject.set(e.project_id, (revenueByProject.get(e.project_id) ?? 0) + (e.amount_sek ?? 0))
   }
 
   // Lead pipeline

@@ -44,9 +44,8 @@ export async function GET(request: Request) {
   ] = await Promise.allSettled([
     db.from('projects').select('id, name, color'),
     db.from('revenue_events')
-      .select('amount, currency, project_id, event_type')
-      .gte('occurred_at', since24h)
-      .neq('event_type', 'refund'),
+      .select('amount_sek, currency, project_id')
+      .gte('occurred_at', since24h),
     db.from('run_logs')
       .select('tokens_in, tokens_out, runs!inner(project_id, status)')
       .gte('created_at', since24h)
@@ -71,7 +70,7 @@ export async function GET(request: Request) {
   const activeLeads = leadsRes.status       === 'fulfilled' ? (leadsRes.value.data ?? [])       : []
 
   // ── Beräkna nyckeltal ─────────────────────────────────────────────────────
-  const totalRevenue24h = revenue24h.reduce((s: number, e: any) => s + Number(e.amount ?? 0), 0)
+  const totalRevenue24h = revenue24h.reduce((s: number, e: any) => s + Number(e.amount_sek ?? 0), 0)
 
   const totalCost24h = (logs24h as any[]).reduce((s, log) => {
     const runs = Array.isArray(log.runs) ? log.runs[0] : log.runs

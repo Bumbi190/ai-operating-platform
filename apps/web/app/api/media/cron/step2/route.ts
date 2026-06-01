@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateNewsImages } from '@/lib/media/ideogram'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -91,6 +92,8 @@ export async function GET(request: Request) {
     }).eq('id', script.id)
 
     console.log(`[cron/step2] Done — ${(voiceResult.durationMs / 1000).toFixed(1)}s voice + ${storedImageUrls.length} images for script ${script.id}`)
+
+    await logRun({ workflow: 'Generate Voiceover', context: { scriptId: script.id, durationMs: voiceResult.durationMs, imageCount: storedImageUrls.length } })
 
     return NextResponse.json({
       status:     'step2_done',

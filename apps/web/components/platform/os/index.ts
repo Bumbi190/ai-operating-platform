@@ -20,6 +20,7 @@ export { ExecutiveBriefing } from './ExecutiveBriefing'
 export { BusinessCard } from './BusinessCard'
 export { QuickAdd } from './QuickAdd'
 export { ProactiveNudge } from './ProactiveNudge'
+export { AgenticButton } from './AgenticButton'
 
 // Mission systems
 export { AgentCard, type AgentSnapshot } from './AgentCard'

@@ -6,7 +6,7 @@ import { AlertTriangle, Flame, Info, ArrowRight, Clock, CheckCircle2 } from 'luc
 import type { Project } from '@/lib/supabase/types'
 import { fetchBusinessSnapshots } from '@/lib/os/business'
 import { buildAttentionItems, formatEta, type AttentionItem, type Severity } from '@/lib/os/priority'
-import { OSPage, OSLayer, EmptyState } from '@/components/platform/os'
+import { OSPage, OSLayer, EmptyState, AgenticButton } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,14 +118,19 @@ function ActionRow({ item, color }: { item: AttentionItem; color: string }) {
         <p className="text-[14px] font-medium text-white/95 tracking-tight mt-1.5">{item.title}</p>
         <p className="text-[12px] text-zinc-400 mt-1 leading-relaxed">{item.reason}</p>
       </div>
-      {item.action && (
-        <Link
-          href={item.action.href}
-          className="btn-omnira ease-os press inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold shrink-0 self-center"
-        >
-          {item.action.label} <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
-      )}
+      <div className="flex items-center gap-2 shrink-0 self-center">
+        {item.agentic && (
+          <AgenticButton endpoint={item.agentic.endpoint} body={item.agentic.body} label={item.agentic.label} />
+        )}
+        {item.action && (
+          <Link
+            href={item.action.href}
+            className={`ease-os press inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold ${item.agentic ? 'btn-ghost' : 'btn-omnira'}`}
+          >
+            {item.action.label} <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        )}
+      </div>
     </div>
   )
 }

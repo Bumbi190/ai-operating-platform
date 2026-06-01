@@ -19,6 +19,7 @@ import { getLambdaRenderProgress, startLambdaRender } from '@/lib/media/lambda-r
 import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -221,6 +222,8 @@ export async function GET(request: Request) {
       .update({ instagram_creation_id: creationId })
       .eq('id', script.id)
     log(`Instagram container created: ${creationId}`)
+
+    await logRun({ workflow: 'Render Video', context: { scriptId: script.id, creationId } })
 
     return NextResponse.json({
       status:     'step4_done',

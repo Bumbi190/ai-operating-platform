@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -144,6 +145,14 @@ export async function GET(request: Request) {
       results.push({ project: project.slug, status: 'error', error: msg })
     }
   }
+
+  const savedCount = results.filter(r => r.status === 'saved').length
+  const hadError   = results.some(r => r.status === 'error')
+  await logRun({
+    workflow: 'Fetch AI News',
+    status:   hadError ? 'failed' : 'done',
+    context:  { storiesSaved: savedCount },
+  })
 
   return NextResponse.json({
     ranAt: new Date().toISOString(),

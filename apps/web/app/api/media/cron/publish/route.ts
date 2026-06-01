@@ -29,6 +29,7 @@ import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCa
 import { postReelToFacebook } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
 import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -264,6 +265,8 @@ export async function GET(request: Request) {
     facebookUrl:  fbResult?.url ?? null,
     warnings,
   })
+
+  await logRun({ workflow: 'Publish to Social', context: { scriptId: script.id, platforms, permalink: igResult.permalink ?? null } })
 
   return NextResponse.json({
     status:      'published',

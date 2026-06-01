@@ -32,6 +32,8 @@ export interface AttentionItem {
   /** uppskattad tid att åtgärda, i minuter */
   etaMin?:   number
   action?:   { label: string; href: string }
+  /** agentisk åtgärd — utförs på plats istället för att navigera */
+  agentic?:  { endpoint: string; body?: Record<string, unknown>; label: string }
 }
 
 export interface GlobalSignals {
@@ -58,9 +60,10 @@ export function buildAttentionItems(
       items.push({
         id: `fail-${b.id}`, score: 90, severity: 'urgent',
         title: `${b.name}: ${b.failedRuns} ${b.failedRuns === 1 ? 'körning' : 'körningar'} misslyckades`,
-        reason: 'Automation stannade och måste åtgärdas innan den kan gå vidare.',
+        reason: 'Automation stannade. Jag kan starta om den från steget som kraschade.',
         business: b.name, color: b.color, etaMin: b.failedRuns * 5,
-        action: { label: 'Åtgärda', href: '/system' },
+        action: { label: 'Visa logg', href: '/system' },
+        agentic: { endpoint: '/api/actions/resume-failed', body: { project_id: b.id }, label: 'Åtgärda automatiskt' },
       })
     }
     // Väntande godkännande — 60

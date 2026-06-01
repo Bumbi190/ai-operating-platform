@@ -16,6 +16,7 @@ import { runNewsHunter } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
+import { logRun } from '@/lib/media/run-log'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
 export const dynamic    = 'force-dynamic'
@@ -316,6 +317,8 @@ export async function GET(request: Request) {
   if (newsItemId) await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItemId)
 
   console.log(`[cron/step1] Done — scriptId: ${scriptRow.id}, hook: "${script.hook}", quality: ${qualityScore.overall.toFixed(1)}/10`)
+
+  await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
 
   return NextResponse.json({
     status: 'step1_done',

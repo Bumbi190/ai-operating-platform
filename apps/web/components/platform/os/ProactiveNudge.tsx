@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sparkles, X, ArrowRight, MessageSquare } from 'lucide-react'
 import type { AttentionItem } from '@/lib/os/priority'
+import { AgenticButton } from './AgenticButton'
 
 /** Gör om en attention-item till en mänsklig, jag-form-observation. */
 function observe(item: AttentionItem): string {
@@ -63,14 +64,16 @@ export function ProactiveNudge({ item }: { item: AttentionItem | null }) {
         <p className="eyebrow eyebrow-gold !text-[8.5px] mb-1">Assistenten</p>
         <p className="text-[13.5px] text-white/95 leading-relaxed">{observe(item)}</p>
         <div className="flex items-center gap-2 mt-3 flex-wrap">
-          {item.action && (
+          {item.agentic ? (
+            <AgenticButton endpoint={item.agentic.endpoint} body={item.agentic.body} label={item.agentic.label} />
+          ) : item.action ? (
             <button
               onClick={() => router.push(item.action!.href)}
               className="btn-omnira ease-os press inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12px] font-semibold"
             >
               {item.action.label} <ArrowRight className="w-3.5 h-3.5" />
             </button>
-          )}
+          ) : null}
           <button
             onClick={ask}
             className="btn-ghost ease-os press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium"

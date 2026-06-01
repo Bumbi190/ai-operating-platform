@@ -45,18 +45,28 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
   const activeWord = words.find(w => frameMs >= w.startMs && frameMs <= w.endMs)
   const activeWordNorm = activeWord ? normalizeWord(activeWord.word) : null
 
-  // Calm editorial fade
-  const opacity = interpolate(
+  // Calm editorial fade — robust to short captions.
+  // A single 4-point range [start, start+F, end-F, end] breaks when the caption
+  // is short enough that start+F >= end-F: Remotion's interpolate() requires a
+  // STRICTLY increasing inputRange and throws otherwise (this crashed the whole
+  // render on any caption ≤ 2*FADE_FRAMES long). Instead we fade in and out as
+  // two independent 2-point ranges and take the minimum, clamping the fade
+  // length to half the caption duration so the keyframes can never collide.
+  const duration = Math.max(2, active.endFrame - active.startFrame)
+  const fade = Math.max(1, Math.min(FADE_FRAMES, Math.floor(duration / 2)))
+  const fadeIn = interpolate(
     frame,
-    [
-      active.startFrame,
-      active.startFrame + FADE_FRAMES,
-      active.endFrame - FADE_FRAMES,
-      active.endFrame,
-    ],
-    [0, 1, 1, 0],
+    [active.startFrame, active.startFrame + fade],
+    [0, 1],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
+  const fadeOut = interpolate(
+    frame,
+    [active.endFrame - fade, active.endFrame],
+    [1, 0],
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
+  const opacity = Math.min(fadeIn, fadeOut)
 
   // Barely perceptible upward settle
   const translateY = interpolate(

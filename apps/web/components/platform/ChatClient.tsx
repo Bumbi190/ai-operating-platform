@@ -50,10 +50,10 @@ interface Props {
 }
 
 const SUGGESTED_PROMPTS = [
-  'Visa mina workflows',
-  'Kör Familje-Stunden Månadspaket för Juli 2026',
-  'Hur mår systemet idag?',
-  'Vad borde vi fokusera på?',
+  'Vad behöver min uppmärksamhet idag?',
+  'Visa verksamheternas resultat',
+  'Vad bör vi fokusera på härnäst?',
+  'Granska väntande godkännanden',
 ]
 
 // ─── ChatClient ───────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export function ChatClient({
         {
           role: 'assistant' as const,
           type: 'text' as const,
-          content: 'Hej! Jag är din AI-assistent för AI Ops Platform. Jag kan lista dina workflows, köra dem och visa resultaten — skriv bara vad du vill göra! 🚀',
+          content: 'Hej! Jag är din Executive Assistant. Jag har koll på dina verksamheter och kan brief­a läget, köra arbetsflöden, granska godkännanden och peka ut vad som bör prioriteras. Vad vill du veta?',
         },
       ]
 
@@ -218,6 +218,18 @@ export function ChatClient({
       handleSubmit()
     }
   }
+
+  // Auto-skicka en fråga som kommer via ?send= (från Executive Assistant-launchern).
+  const autoSentRef = useRef(false)
+  useEffect(() => {
+    if (autoSentRef.current || savedMessages.length > 0) return
+    const send = new URLSearchParams(window.location.search).get('send')
+    if (send) {
+      autoSentRef.current = true
+      window.history.replaceState({}, '', window.location.pathname)
+      handleSubmit(undefined, send)
+    }
+  }, [handleSubmit, savedMessages.length])
 
   return (
     <div className="flex flex-col h-screen">

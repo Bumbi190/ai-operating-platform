@@ -38,8 +38,14 @@ export interface BusinessSnapshot {
   /** saker som väntar på operatören för just denna verksamhet */
   pendingApprovals: number
   failedRuns:       number
-  /** senaste intäkt (livstid) — för sortering / kontext */
+  /** intäkter denna månad */
   revenueMonthSek:  number
+  // ── Fördjupning (Phase 4) ──
+  contentThisMonth: number          // producerade outputs + manus denna månad
+  runs7d:           number          // körningar senaste 7 dagarna (agentaktivitet)
+  decisions30d:     number          // godkännandebeslut du fattat senaste 30 dagarna
+  lastActivityAt:   string | null   // senaste körning (ISO)
+  latestPublication: { title: string; at: string | null } | null
 }
 
 export interface HeroSummary {
@@ -98,7 +104,7 @@ export async function fetchBusinessSnapshots(
 
   const [
     outputsRes, scriptsRes, newsRes, runsRes, approvalsRes,
-    leadsRes, revenueRes, campaignsRes,
+    leadsRes, revenueRes, campaignsRes, publishedRes, decidedRes, insightsRes,
   ] = await Promise.allSettled([
     (admin.from('outputs') as any)
       .select('project_id, type, created_at').gte('created_at', monthISO),
@@ -116,6 +122,17 @@ export async function fetchBusinessSnapshots(
       .select('project_id, amount_sek, occurred_at').gte('occurred_at', monthISO),
     (admin.from('campaigns') as any)
       .select('project_id, status').eq('status', 'active'),
+    // Senaste publiceringar (för "senaste publikation"-raden)
+    (admin.from('media_scripts') as any)
+      .select('project_id, hook, published_at').eq('status', 'published')
+      .order('published_at', { ascending: false }).limit(40),
+    // Fattade beslut senaste 30d (godkännanden du hanterat)
+    (admin.from('approvals') as any)
+      .select('id, status, reviewed_at, runs(project_id)').in('status', ['approved', 'rejected', 'revised'])
+      .order('reviewed_at', { ascending: false }).limit(80),
+    // Instagram-engagemang denna månad (Phase 4b — tomt tills cron fyllt det)
+    (admin.from('media_insights') as any)
+      .select('project_id, reach, total_interactions, published_at').gte('published_at', monthISO),
   ])
 
   const outputs   = rows<{ project_id: string; type: string; created_at: string }>(outputsRes)
@@ -126,6 +143,14 @@ export async function fetchBusinessSnapshots(
   const leads     = rows<{ project_id: string }>(leadsRes)
   const revenue   = rows<{ project_id: string; amount_sek: number }>(revenueRes)
   const campaigns = rows<{ project_id: string; status: string }>(campaignsRes)
+  const published = rows<{ project_id: string; hook: string | null; published_at: string | null }>(publishedRes)
+  const decided   = rows<{ id: string; reviewed_at: string | null; runs: { project_id: string } | { project_id: string }[] | null }>(decidedRes)
+  const insights  = rows<{ project_id: string; reach: number | null; total_interactions: number | null }>(insightsRes)
+
+  const projectOf = (r: { runs: { project_id: string } | { project_id: string }[] | null }) => {
+    const run = Array.isArray(r.runs) ? r.runs[0] : r.runs
+    return run?.project_id ?? null
+  }
 
   const since30d = Date.now() - 30 * 24 * 60 * 60 * 1000
 
@@ -142,12 +167,24 @@ export async function fetchBusinessSnapshots(
     const leadsCount = byP(leads).length
     const activeCamp = byP(campaigns).length
     const revMonth   = byP(revenue).reduce((a, r) => a + Number(r.amount_sek ?? 0), 0)
+    const reachMonth = byP(insights).reduce((a, r) => a + Number(r.reach ?? 0), 0)
+    const interactionsMonth = byP(insights).reduce((a, r) => a + Number(r.total_interactions ?? 0), 0)
 
     const since7d       = Date.now() - 7 * 24 * 60 * 60 * 1000
     const projRuns      = byP(runs)
     // Bara FÄRSKA fel räknas som "behöver uppmärksamhet" — gamla fel är historik.
     const failedRuns    = projRuns.filter(r => r.status === 'failed' && new Date(r.created_at).getTime() > since7d).length
     const recentRuns    = projRuns.filter(r => new Date(r.created_at).getTime() > since30d).length
+    const runs7d        = projRuns.filter(r => new Date(r.created_at).getTime() > since7d).length
+    const lastActivityAt = projRuns.reduce<string | null>((acc, r) =>
+      (!acc || new Date(r.created_at).getTime() > new Date(acc).getTime()) ? r.created_at : acc, null)
+
+    const contentThisMonth = byP(outputs).length + byP(scripts).length
+    const decisions30d = decided.filter(d => projectOf(d) === pid && d.reviewed_at && new Date(d.reviewed_at).getTime() > since30d).length
+    const latestPub = published.find(p => p.project_id === pid)
+    const latestPublication = latestPub
+      ? { title: (latestPub.hook?.trim() || 'Publicerat inlägg'), at: latestPub.published_at }
+      : null
 
     const pendingApprovals = approvals.filter(a => {
       const r = Array.isArray(a.runs) ? a.runs[0] : a.runs
@@ -163,6 +200,8 @@ export async function fetchBusinessSnapshots(
     if (videos     > 0) metrics.push({ label: 'Videor renderade', value: videos })
     if (newsCount  > 0) metrics.push({ label: 'Nyheter bevakade', value: newsCount })
     if (images     > 0) metrics.push({ label: 'Bilder skapade', value: images })
+    if (reachMonth > 0) metrics.push({ label: 'Räckvidd (IG)', value: reachMonth })
+    if (interactionsMonth > 0) metrics.push({ label: 'Interaktioner (IG)', value: interactionsMonth })
     if (leadsCount > 0) metrics.push({ label: 'Leads', value: leadsCount })
     if (activeCamp > 0) metrics.push({ label: 'Aktiva kampanjer', value: activeCamp })
 
@@ -174,6 +213,7 @@ export async function fetchBusinessSnapshots(
     return {
       id: pid, name: p.name, slug: p.slug, color: p.color,
       status, metrics, pendingApprovals, failedRuns, revenueMonthSek: revMonth,
+      contentThisMonth, runs7d, decisions30d, lastActivityAt, latestPublication,
     }
   })
 }

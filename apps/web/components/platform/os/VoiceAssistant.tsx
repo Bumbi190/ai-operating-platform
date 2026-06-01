@@ -25,9 +25,10 @@ export function VoiceAssistant() {
   const [response, setResponse]   = useState('')
   const [visible, setVisible]     = useState(false)
 
-  const recognitionRef = useRef<any>(null)
-  const audioRef       = useRef<HTMLAudioElement | null>(null)
-  const historyRef     = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const recognitionRef  = useRef<any>(null)
+  const audioRef        = useRef<HTMLAudioElement | null>(null)
+  const historyRef      = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const silenceTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Keyboard shortcut: Option+Space (⌥ Space) ────────────────────────────
   useEffect(() => {
@@ -41,7 +42,7 @@ export function VoiceAssistant() {
         } else if (phase === 'listening') {
           stopListening()
         } else if (phase === 'speaking') {
-          stopSpeaking()
+          stopSpeakingBrowser()
         }
       }
       // Escape closes
@@ -70,14 +71,25 @@ export function VoiceAssistant() {
     rec.onresult = (e: any) => {
       const text = Array.from(e.results as any[]).map((r: any) => r[0].transcript).join('')
       setTranscript(text)
+
+      // Återställ tystnadstimer vid varje nytt tal
+      if (silenceTimer.current) clearTimeout(silenceTimer.current)
+
       if (e.results[e.results.length - 1].isFinal) {
+        // Direkt avslut vid final result
         rec.stop()
         if (text.trim()) sendToAgent(text.trim())
+      } else {
+        // Auto-skicka efter 2s tystnad om vi har interim text
+        silenceTimer.current = setTimeout(() => {
+          rec.stop()
+          if (text.trim()) sendToAgent(text.trim())
+        }, 2000)
       }
     }
 
-    rec.onerror = () => stopAll()
-    rec.onend   = () => { if (phase === 'listening') setPhase('idle') }
+    rec.onerror = () => { if (silenceTimer.current) clearTimeout(silenceTimer.current); stopAll() }
+    rec.onend   = () => { if (silenceTimer.current) clearTimeout(silenceTimer.current) }
 
     recognitionRef.current = rec
     rec.start()
@@ -87,7 +99,7 @@ export function VoiceAssistant() {
     recognitionRef.current?.stop()
   }
 
-  function stopSpeaking() {
+  function stopSpeakingBrowser() {
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
@@ -97,7 +109,7 @@ export function VoiceAssistant() {
 
   function stopAll() {
     stopListening()
-    stopSpeaking()
+    stopSpeakingBrowser()
     setPhase('idle')
     setTranscript('')
     setResponse('')
@@ -153,33 +165,39 @@ export function VoiceAssistant() {
     }
   }, [])
 
-  // ── Victoria TTS ─────────────────────────────────────────────────────────
-  async function speakReply(text: string) {
+  // ── Svensk TTS via webbläsarens inbyggda röst (instant, ingen latens) ────
+  function speakReply(text: string) {
     setPhase('speaking')
-    try {
-      const res = await fetch('/api/chat/tts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text }),
-      })
-      if (!res.ok) { setPhase('idle'); return }
 
-      const blob  = await res.blob()
-      const url   = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
+    window.speechSynthesis.cancel() // avbryt eventuell pågående uppläsning
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        audioRef.current = null
-        setPhase('idle')
-        // Auto-close after speaking if no more input
-        setTimeout(() => setVisible(false), 1500)
-      }
-      audio.play()
-    } catch {
+    const utt = new SpeechSynthesisUtterance(text)
+    utt.lang = 'sv-SE'
+    utt.rate = 1.05
+    utt.pitch = 1.0
+
+    // Välj bästa tillgängliga svenska röst
+    const voices = window.speechSynthesis.getVoices()
+    const preferred = ['Alva', 'Klara', 'Ellen', 'Astrid']
+    const svVoice = preferred
+      .map(name => voices.find(v => v.name.includes(name) && v.lang.startsWith('sv')))
+      .find(Boolean)
+      ?? voices.find(v => v.lang.startsWith('sv'))
+
+    if (svVoice) utt.voice = svVoice
+
+    utt.onend = () => {
       setPhase('idle')
+      setTimeout(() => setVisible(false), 1500)
     }
+    utt.onerror = () => setPhase('idle')
+
+    window.speechSynthesis.speak(utt)
+  }
+
+  function stopSpeakingBrowser() {
+    window.speechSynthesis.cancel()
+    setPhase('idle')
   }
 
   // ── Don't render during SSR ───────────────────────────────────────────────
@@ -225,7 +243,7 @@ export function VoiceAssistant() {
           onClick={() => {
             if (!visible) { setVisible(true); startListening() }
             else if (phase === 'listening') stopListening()
-            else if (phase === 'speaking') stopSpeaking()
+            else if (phase === 'speaking') stopSpeakingBrowser()
             else if (phase === 'idle') { visible ? stopAll() : startListening() }
           }}
           className={cn(

@@ -51,6 +51,7 @@ interface SidebarProps {
 const globalNav = [
   { href: '/dashboard', label: 'Operationscentral', icon: LayoutDashboard, primary: true },
   { href: '/action-center', label: 'Action Center',  icon: Flame },
+  { href: '/agent-activity', label: 'Agentaktivitet', icon: Activity },
   { href: '/manager',   label: 'Operatör',           icon: Brain },
   { href: '/chat',      label: 'Chat',               icon: MessageSquare },
   { href: '/approvals', label: 'Granskningar',        icon: ShieldCheck },

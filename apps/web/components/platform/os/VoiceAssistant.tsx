@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 
+// Hur länge tystnad innan vi tolkar dig som färdig (ms). Höjt från 2s → 3.5s
+// så assistenten inte avbryter mitt i en mening. Kan höjas vid behov.
+const SILENCE_MS = 3500
+
 export function VoiceAssistant() {
   const [mounted, setMounted]         = useState(false)
   const [phase, setPhase]             = useState<Phase>('idle')
@@ -45,26 +49,23 @@ export function VoiceAssistant() {
 
       const rec = new SR()
       rec.lang           = 'sv-SE'
-      rec.continuous     = false
-      rec.interimResults = true
+      rec.continuous     = true   // håll mikrofonen öppen genom korta pauser
+      rec.interimResults = true   // live-transkription
 
       rec.onstart  = () => { setPhase('listening'); setTranscript(''); setResponse('') }
 
+      // Skicka FÖRST efter en tydlig tystnad — aldrig mitt i en mening.
       rec.onresult = (e: any) => {
         const text = Array.from(e.results as any[])
           .map((r: any) => r[0].transcript).join('')
         setTranscript(text)
 
+        // Varje nytt ljud nollställer tystnadstimern → vi väntar tills du är klar.
         if (silenceRef.current) clearTimeout(silenceRef.current)
-
-        if (e.results[e.results.length - 1].isFinal) {
+        silenceRef.current = setTimeout(() => {
+          try { rec.stop() } catch { /* ignore */ }
           if (text.trim()) sendMessage(text.trim())
-        } else {
-          silenceRef.current = setTimeout(() => {
-            rec.stop()
-            if (text.trim()) sendMessage(text.trim())
-          }, 2000)
-        }
+        }, SILENCE_MS)
       }
 
       rec.onerror = () => { setPhase('idle'); if (silenceRef.current) clearTimeout(silenceRef.current) }
@@ -275,7 +276,7 @@ export function VoiceAssistant() {
         {phase === 'listening' ? (
           <>
             <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-            <span className="max-w-[200px] truncate">{transcript || 'Lyssnar...'}</span>
+            <span className="max-w-[260px] truncate">{transcript || 'Lyssnar… prata på, jag väntar tills du är klar'}</span>
             <MicOff className="w-3.5 h-3.5 shrink-0 opacity-70" />
           </>
         ) : phase === 'thinking' ? (

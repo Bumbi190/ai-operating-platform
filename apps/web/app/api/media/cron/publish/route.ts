@@ -28,7 +28,7 @@ import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
-import { sendPipelineAlert } from '@/lib/media/alert'
+import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -248,6 +248,22 @@ export async function GET(request: Request) {
 
   const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
   log('done', `Published on ${platforms}`)
+
+  // ── Skicka sammanfattnings-mail (lyckad körning) ──────────────────────────────
+  const warnings: string[] = []
+  if (hasFacebook && !fbResult) warnings.push('Facebook-publicering misslyckades (Instagram gick ut)')
+  if (!hasFacebook)             warnings.push('Facebook ej konfigurerat — endast Instagram')
+
+  await sendRunReport({
+    scriptId:     script.id,
+    hook:         script.hook ?? '(ingen hook)',
+    sourceName:   newsItem?.source_name ?? null,
+    sourceUrl:    newsItem?.url ?? null,
+    platforms,
+    instagramUrl: igResult.permalink ?? null,
+    facebookUrl:  fbResult?.url ?? null,
+    warnings,
+  })
 
   return NextResponse.json({
     status:      'published',

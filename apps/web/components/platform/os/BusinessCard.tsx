@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { PulseDot } from './PulseDot'
 import type { BusinessSnapshot } from '@/lib/os/business'
+import { businessHealth } from '@/lib/os/health'
 
 const STATUS_META: Record<BusinessSnapshot['status'], { label: string; color: string; tone: 'emerald' | 'amber' | 'zinc' }> = {
   active:    { label: 'Aktiv',                 color: '#34d399', tone: 'emerald' },
@@ -35,6 +36,7 @@ function ago(iso: string | null): string | null {
 
 export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapshot; delay?: number }) {
   const meta = STATUS_META[business.status]
+  const health = businessHealth(business)
   const hasAttention = business.pendingApprovals > 0 || business.failedRuns > 0
   const lastActive = ago(business.lastActivityAt)
   const pubAgo = ago(business.latestPublication?.at ?? null)
@@ -71,9 +73,11 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
             </span>
           </div>
         </div>
-        <Link href={`/projects/${business.slug}`} className="opacity-0 group-hover:opacity-100 transition-all duration-300 ease-os shrink-0" aria-label={`Öppna ${business.name}`}>
-          <ArrowRight className="w-4 h-4" style={{ color: business.color }} />
-        </Link>
+        {/* Health Score */}
+        <div className="flex flex-col items-end shrink-0" title={health.factors.join(' · ')}>
+          <span className="num text-[20px] font-semibold tracking-tight leading-none" style={{ color: health.color }}>{health.score}</span>
+          <span className="text-[9px] font-medium mt-0.5" style={{ color: health.color }}>{health.label}</span>
+        </div>
       </div>
 
       {/* Denna månad */}

@@ -51,7 +51,15 @@ export default async function DashboardPage() {
     (user?.user_metadata?.full_name as string | undefined) ?? (user?.user_metadata?.name as string | undefined),
     user?.email,
   )
-  const briefing = buildExecutiveBriefing(businesses, hero, operatorName)
+
+  // Signal: publicerade inlägg finns men inga insights → IG-token saknar behörighet
+  const [pubCountRes, insCountRes] = await Promise.all([
+    (db.from('media_scripts') as any).select('id', { count: 'exact', head: true }).eq('status', 'published'),
+    (db.from('media_insights') as any).select('id', { count: 'exact', head: true }),
+  ])
+  const instagramInsightsMissing = (pubCountRes.count ?? 0) > 0 && (insCountRes.count ?? 0) === 0
+
+  const briefing = buildExecutiveBriefing(businesses, hero, operatorName, { instagramInsightsMissing })
   const monthlyPackageSlug = projects.find(p => /familje/i.test(p.slug) || /familje/i.test(p.name))?.slug ?? null
 
   return (

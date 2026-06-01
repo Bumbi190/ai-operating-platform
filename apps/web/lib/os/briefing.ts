@@ -1,41 +1,41 @@
 /**
  * lib/os/briefing.ts
  *
- * Executive Briefing-generator. Förvandlar de råa verksamhetssnapshotsen
- * (lib/os/business.ts) till en chief-of-staff-briefing på människospråk —
- * hälsning, en rad per verksamhet, prioriteringar och en kort lägesmening.
+ * Executive Briefing Engine (V3, Feature 1).
  *
- * Allt är grundat i riktig data. Ingen rad hittas på. En tom verksamhet får
- * ärligt "vilande", inte påhittade siffror.
+ * Förvandlar verksamhetssnapshots till en chief-of-staff-briefing: hälsning,
+ * prioritetsordnade rader (🔴🟡🟢), en rekommenderad åtgärd med uppskattad tid,
+ * och topp-prioriteringar — allt drivet av AI Priority Engine + Health Score
+ * och grundat i riktig data.
  */
 
 import type { BusinessSnapshot, HeroSummary } from './business'
+import { businessHealth } from './health'
+import { buildAttentionItems, topAttention, formatEta, type AttentionItem, type GlobalSignals } from './priority'
 
 export type LineStatus = 'ok' | 'attention' | 'idle'
+export type Dot = 'red' | 'amber' | 'green'
 
 export interface BriefingLine {
   status:   LineStatus
+  dot:      Dot
   business: string
   slug:     string
   color:    string
   message:  string
-}
-
-export interface Priority {
-  label: string
-  detail: string
-  href:  string
-  tone:  'critical' | 'warn'
+  health:   number
 }
 
 export interface ExecutiveBriefing {
-  greeting:       string   // "God morgon"
-  operatorName:   string   // "Andre"
-  dateLabel:      string   // "måndag 1 juni"
-  headline:       string   // en mening som sammanfattar dagen
-  lines:          BriefingLine[]
-  priorities:     Priority[]
-  attentionCount: number
+  greeting:        string
+  operatorName:    string
+  dateLabel:       string
+  headline:        string
+  lines:           BriefingLine[]
+  priorities:      AttentionItem[]      // topp-3 att agera på
+  recommended?:    AttentionItem        // den enskilt viktigaste åtgärden
+  recommendedEta?: string               // "~4 minuter"
+  attentionCount:  number
   revenueTodaySek: number
 }
 
@@ -54,7 +54,6 @@ function greetingFor(hour: number): string {
   return 'God kväll'
 }
 
-/** Bästa gissning på operatörens tilltalsnamn utifrån namn eller e-post. */
 export function deriveOperatorName(fullName?: string | null, email?: string | null): string {
   if (fullName && fullName.trim()) return fullName.trim().split(/\s+/)[0]
   if (email) {
@@ -69,7 +68,6 @@ export function deriveOperatorName(fullName?: string | null, email?: string | nu
 
 function topMetricSummary(b: BusinessSnapshot): string | null {
   if (b.metrics.length === 0) return null
-  // Plocka de 1–2 mest talande mätvärdena
   const parts = b.metrics.slice(0, 2).map(m => {
     if (m.kind === 'currency') {
       const v = m.value >= 1000 ? `${(m.value / 1000).toFixed(1).replace('.', ',')}k kr` : `${m.value} kr`
@@ -86,51 +84,39 @@ export function buildExecutiveBriefing(
   businesses: BusinessSnapshot[],
   hero: HeroSummary,
   operatorName: string,
+  signals: GlobalSignals = {},
   now: Date = new Date(),
 ): ExecutiveBriefing {
   const { hour, dateLabel } = stockholmParts(now)
   const greeting = greetingFor(hour)
 
   const lines: BriefingLine[] = businesses.map((b): BriefingLine => {
+    const health = businessHealth(b).score
     if (b.pendingApprovals > 0 || b.failedRuns > 0) {
       const bits: string[] = []
       if (b.pendingApprovals > 0) bits.push(`${b.pendingApprovals} väntar på godkännande`)
       if (b.failedRuns > 0) bits.push(`${b.failedRuns} körning${b.failedRuns === 1 ? '' : 'ar'} att titta på`)
-      return { status: 'attention', business: b.name, slug: b.slug, color: b.color, message: bits.join(' · ') }
+      return { status: 'attention', dot: b.failedRuns > 0 ? 'red' : 'amber', business: b.name, slug: b.slug, color: b.color, message: bits.join(' · '), health }
     }
     const summary = topMetricSummary(b)
     if (summary) {
-      return { status: 'ok', business: b.name, slug: b.slug, color: b.color, message: `${summary} denna månad` }
+      return { status: 'ok', dot: 'green', business: b.name, slug: b.slug, color: b.color, message: `${summary} denna månad`, health }
     }
-    return { status: 'idle', business: b.name, slug: b.slug, color: b.color, message: 'vilande — ingen aktivitet än' }
+    return { status: 'idle', dot: 'amber', business: b.name, slug: b.slug, color: b.color, message: 'vilande — ingen aktivitet än', health }
   })
 
-  // Prioriteringar — verkliga, åtgärdsbara
-  const priorities: Priority[] = []
-  for (const b of businesses) {
-    if (b.failedRuns > 0) {
-      priorities.push({
-        label: `${b.name}: ${b.failedRuns} fel att åtgärda`,
-        detail: 'En eller flera körningar misslyckades den senaste veckan.',
-        href: '/system',
-        tone: 'critical',
-      })
-    }
-  }
-  for (const b of businesses) {
-    if (b.pendingApprovals > 0) {
-      priorities.push({
-        label: `${b.name}: ${b.pendingApprovals} att granska`,
-        detail: 'Innehåll väntar på ditt godkännande innan det går vidare.',
-        href: '/approvals',
-        tone: 'warn',
-      })
-    }
-  }
+  // Sortera: problem först (röd), sedan väntande/vilande (gul), sist klart (grön)
+  const rank: Record<Dot, number> = { red: 0, amber: 1, green: 2 }
+  lines.sort((a, b) => rank[a.dot] - rank[b.dot] || a.health - b.health)
+
+  // Priority engine
+  const attentionItems = buildAttentionItems(businesses, signals)
+  const priorities = topAttention(attentionItems, 3)
+  const recommended = priorities.find(p => p.action) ?? priorities[0]
+  const recommendedEta = recommended?.etaMin ? formatEta(recommended.etaMin) : undefined
 
   const attentionCount = lines.filter(l => l.status === 'attention').length
 
-  // Lägesmening
   let headline: string
   if (attentionCount === 0) {
     headline = hero.activeBusinesses > 0
@@ -143,13 +129,8 @@ export function buildExecutiveBriefing(
   }
 
   return {
-    greeting,
-    operatorName,
-    dateLabel,
-    headline,
-    lines,
-    priorities,
-    attentionCount,
-    revenueTodaySek: hero.revenueTodaySek,
+    greeting, operatorName, dateLabel, headline,
+    lines, priorities, recommended, recommendedEta,
+    attentionCount, revenueTodaySek: hero.revenueTodaySek,
   }
 }

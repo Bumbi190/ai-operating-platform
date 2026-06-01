@@ -26,6 +26,7 @@ import {
   FileText,
   Video,
   Activity,
+  Flame,
 } from 'lucide-react'
 
 interface Project {
@@ -49,6 +50,7 @@ interface SidebarProps {
 
 const globalNav = [
   { href: '/dashboard', label: 'Operationscentral', icon: LayoutDashboard, primary: true },
+  { href: '/action-center', label: 'Action Center',  icon: Flame },
   { href: '/manager',   label: 'Operatör',           icon: Brain },
   { href: '/chat',      label: 'Chat',               icon: MessageSquare },
   { href: '/approvals', label: 'Granskningar',        icon: ShieldCheck },

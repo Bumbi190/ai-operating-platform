@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
-  type ActivityEvent,
+  VoiceAssistant, type ActivityEvent,
 } from '@/components/platform/os'
 
 export default async function PlatformLayout({
@@ -140,6 +140,7 @@ export default async function PlatformLayout({
 
   return (
     <OperatorModeProvider>
+      <VoiceAssistant />
       <div
         className="
           relative h-screen overflow-hidden

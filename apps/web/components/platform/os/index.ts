@@ -52,3 +52,6 @@ export {
 
 // Mobile companion
 export { MobileRailToggle } from './MobileRailToggle'
+
+// Global voice assistant
+export { VoiceAssistant } from './VoiceAssistant'

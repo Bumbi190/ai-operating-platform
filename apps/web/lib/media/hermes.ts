@@ -109,14 +109,14 @@ export async function checkHermesHealth(): Promise<boolean> {
  *
  * Returns null if Hermes is not configured or the request fails.
  */
-export async function callHermesTrends(): Promise<HermesTrendsResult | null> {
+export async function callHermesTrends(timeoutMs = 25_000): Promise<HermesTrendsResult | null> {
   if (!HERMES_URL) return null
 
   try {
     const res = await fetch(`${HERMES_URL}/trends`, {
       method:  'GET',
       headers: hermesHeaders(),
-      signal:  AbortSignal.timeout(60 * 1000), // 60s — parallel scraping of 3 sources
+      signal:  AbortSignal.timeout(timeoutMs), // 25s default — step1 budget is 60s total
     })
 
     if (!res.ok) {

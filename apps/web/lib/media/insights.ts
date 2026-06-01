@@ -14,7 +14,9 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getToken } from './token-store'
 
-const BASE = 'https://graph.facebook.com/v21.0'
+// Stödjer både klassiska Instagram Graph API (graph.facebook.com) och nya
+// Instagram API with Instagram Login (graph.instagram.com). Vi testar båda.
+const HOSTS = ['https://graph.facebook.com/v21.0', 'https://graph.instagram.com/v21.0']
 
 // Reels stöder dessa mått. Vi begär en bred uppsättning och tål att vissa saknas.
 const METRICS = 'reach,likes,comments,saved,shares,total_interactions,views'
@@ -37,26 +39,31 @@ export interface InsightFetchResult {
 
 /** Hämtar insights för ett enskilt IG-media. Returnerar ok:false vid fel (t.ex. saknad behörighet). */
 export async function fetchMediaInsights(mediaId: string, token: string): Promise<InsightFetchResult> {
-  try {
-    const res = await fetch(
-      `${BASE}/${mediaId}/insights?metric=${METRICS}&access_token=${token}`,
-      { signal: AbortSignal.timeout(12_000) },
-    )
-    const json = await res.json() as { data?: { name: string; values?: { value: number }[] }[]; error?: { message: string } }
+  let lastError = 'okänt fel'
+  for (const host of HOSTS) {
+    try {
+      const res = await fetch(
+        `${host}/${mediaId}/insights?metric=${METRICS}&access_token=${token}`,
+        { signal: AbortSignal.timeout(12_000) },
+      )
+      const json = await res.json() as { data?: { name: string; values?: { value: number }[] }[]; error?: { message: string } }
 
-    if (!res.ok || json.error) {
-      return { ok: false, error: json.error?.message ?? `Graph API ${res.status}` }
-    }
+      if (!res.ok || json.error) {
+        lastError = json.error?.message ?? `Graph API ${res.status}`
+        continue   // testa nästa värd
+      }
 
-    const metrics: MediaInsight = {}
-    for (const m of json.data ?? []) {
-      const value = m.values?.[0]?.value ?? 0
-      if (m.name in metricKeyMap) metrics[metricKeyMap[m.name]] = value
+      const metrics: MediaInsight = {}
+      for (const m of json.data ?? []) {
+        const value = m.values?.[0]?.value ?? 0
+        if (m.name in metricKeyMap) metrics[metricKeyMap[m.name]] = value
+      }
+      return { ok: true, metrics }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : 'okänt fel'
     }
-    return { ok: true, metrics }
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
   }
+  return { ok: false, error: lastError }
 }
 
 const metricKeyMap: Record<string, keyof MediaInsight> = {

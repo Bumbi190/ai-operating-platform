@@ -17,6 +17,7 @@ import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import { logRun } from '@/lib/media/run-log'
+import { logLlmCost } from '@/lib/cost/track'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 
 export const dynamic    = 'force-dynamic'
@@ -254,6 +255,7 @@ export async function GET(request: Request) {
 
     // Analyze article
     const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
+    void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
     news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
   }
   // ── End Hermes fallback ───────────────────────────────────────────────────
@@ -286,6 +288,7 @@ export async function GET(request: Request) {
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
     messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
   }))
+  void logLlmCost('claude-sonnet-4-6', scriptRes.usage, { agent: 'Script Writer', operation: 'Generate Script' })
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
 
   // Quality gate
@@ -299,6 +302,7 @@ export async function GET(request: Request) {
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
+    void logLlmCost('claude-sonnet-4-6', rewriteRes.usage, { agent: 'Script Writer', operation: 'Rewrite Script' })
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
   }
 

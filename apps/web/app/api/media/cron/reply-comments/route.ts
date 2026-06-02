@@ -15,6 +15,7 @@ import { NextResponse }  from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAutomationPaused } from '@/lib/media/safeguards'
 import { getToken } from '@/lib/media/token-store'
+import { logLlmCost } from '@/lib/cost/track'
 import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic     = 'force-dynamic'
@@ -58,6 +59,8 @@ Rules:
 Reply (or null if spam):`,
     }],
   })
+
+  void logLlmCost('claude-haiku-4-5-20251001', message.usage, { agent: 'Community Manager', operation: 'Reply to Comment' })
 
   const text = (message.content[0] as { text: string }).text.trim()
   if (text.toLowerCase() === 'null' || text.length < 5) return null

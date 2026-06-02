@@ -5,6 +5,8 @@
  * Each image corresponds to a ~12–15 second scene in the video.
  */
 
+import { logImageCost, logLlmCost } from '@/lib/cost/track'
+
 export interface IdeogramImage {
   url: string
   prompt: string
@@ -44,6 +46,7 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
 
   const url = data.data?.[0]?.url
   if (!url) throw new Error('Ideogram returned no image URL')
+  void logImageCost(1, 'ideogram', { operation: 'Scene Image' })
   return url
 }
 
@@ -110,6 +113,7 @@ Output ONLY the final prompt string. No explanation.`,
   })
 
   const visualPrompt = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+  void logLlmCost('claude-haiku-4-5-20251001', res.usage, { agent: 'Image Director', operation: 'Plan News Image' })
 
   // Step 2: Generate with REALISTIC mode — photojournalism aesthetic
   const apiKey = process.env.IDEOGRAM_API_KEY
@@ -138,6 +142,7 @@ Output ONLY the final prompt string. No explanation.`,
   const data = await ideogramRes.json() as { data: Array<{ url: string }> }
   const url = data.data?.[0]?.url
   if (!url) throw new Error('Ideogram returned no image URL')
+  void logImageCost(1, 'ideogram', { operation: 'News Image' })
   return url
 }
 
@@ -247,6 +252,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
   })
 
   const planText = planRes.content[0].type === 'text' ? planRes.content[0].text.trim() : '[]'
+  void logLlmCost('claude-haiku-4-5-20251001', planRes.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
   const planMatch = planText.match(/\[[\s\S]*\]/)
   const scenes = planMatch ? JSON.parse(planMatch[0]) as SceneIntent[] : []
 
@@ -265,7 +271,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 
   console.log(`🎬 Scene plan ready. Generating ${scenes.length} story-driven images in parallel...`)
 
-  return Promise.all(
+  const urls = await Promise.all(
     scenes.map(async (scene, i) => {
       // Build final Ideogram prompt from scene intent
       const prompt = [
@@ -305,6 +311,8 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
       return url
     }),
   )
+  void logImageCost(urls.length, 'ideogram', { operation: 'Scene Image' })
+  return urls
 }
 
 /**
@@ -387,6 +395,7 @@ Generate 5 cinematic scene prompts for this video.`
   })
 
   const text = response.content[0].type === 'text' ? response.content[0].text : ''
+  void logLlmCost('claude-sonnet-4-6', response.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
 
   // Parse JSON (strip markdown fences if present)
   const jsonMatch = text.match(/\[[\s\S]*\]/)

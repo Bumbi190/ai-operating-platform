@@ -14,6 +14,7 @@
  */
 
 import { getBrandVoice, BRAND_MODEL, type BrandVoiceName } from '@/lib/voice/config'
+import { logVoiceCost } from '@/lib/cost/track'
 
 export interface WordTiming {
   word: string
@@ -76,6 +77,10 @@ export async function generateVoiceover(
   }
 
   const audioBuffer = Buffer.from(data.audio_base64, 'base64')
+
+  // Cost Intelligence — log the voiceover spend (best-effort, never blocks).
+  await logVoiceCost(text.length, { metadata: { voice: voiceName, model: BRAND_MODEL } })
+
   const words = buildWordTimings(data.alignment)
   const durationMs = words.length > 0 ? words[words.length - 1].endMs : 0
 

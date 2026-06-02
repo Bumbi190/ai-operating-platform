@@ -20,7 +20,59 @@ import { getManager } from '@/lib/ai/manager'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
 import { gatherAtlasContext } from '@/lib/atlas/context'
+import { contentScore } from '@/lib/atlas/content-score'
+import { listOpportunities } from '@/lib/atlas/opportunities'
+import { agentActivity } from '@/lib/atlas/activity'
 import type { WorkflowStep } from '@/lib/supabase/types'
+
+// ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
+// Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
+// den sammansatta kontext-strängen kort så turer 2+ blir nära momentana.
+let _liveCtxCache: { at: number; text: string } | null = null
+const LIVE_CTX_TTL_MS = 45_000
+
+async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
+  if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
+  const k = (n: number) => `${Math.round(n)} kr`
+  const [ctxR, patR, csR, oppR, actR] = await Promise.allSettled([
+    gatherAtlasContext(db),
+    fetchOperatorPatterns(db),
+    contentScore(db),
+    listOpportunities(db),
+    agentActivity(db, 24),
+  ])
+
+  let text = ''
+  if (ctxR.status === 'fulfilled') {
+    const ctx = ctxR.value
+    text += `\n\n[LIVE LÄGE — ${new Date().toLocaleString('sv-SE')}]
+Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.costMonthSek)} (prognos ${k(ctx.totals.forecastMonthSek)}).
+Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
+Verksamheter:
+${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad ${k(b.costMonthSek)}, ${b.qualifiedLeads} leads, ${b.publishedThisWeek} publicerat denna vecka, ${b.pendingReview} att granska.`).join('\n')}${ctx.topPriority ? `\nViktigaste åtgärden nu: ${ctx.topPriority.label}.` : ''}`
+  }
+  if (actR.status === 'fulfilled') {
+    const a = actR.value
+    text += `\n\nAGENTER (24h): ${a.runsDone} klara · ${a.runsRunning} pågår · ${a.runsQueued} i kö · ${a.runsFailed} fallerade${a.stalledRuns ? ` · ${a.stalledRuns} hängda` : ''}. Success rate ${a.successRate}%. Hälsa: ${a.health}.`
+  }
+  if (csR.status === 'fulfilled' && csR.value.hasData) {
+    const cs = csR.value
+    text += `\n\nINNEHÅLLSPRESTANDA (The Prompt · n=${cs.sampleSize} · konfidens ${cs.confidence}):`
+    if (cs.best)  text += `\n- Bäst: "${(cs.best.hook ?? '').slice(0, 55)}" (score ${cs.best.score}, ${cs.best.engagementRate}% eng).`
+    if (cs.worst) text += `\n- Sämst: "${(cs.worst.hook ?? '').slice(0, 55)}" (score ${cs.worst.score}).`
+    const top = cs.byTopic[0]
+    if (top && top.posts >= 2) text += `\n- Ämne som engagerar mest: ${top.topic} (snittscore ${top.avgScore}, n=${top.posts}).`
+    text += `\nOBS: säg "för lite data för säker slutsats" om n är litet — hitta aldrig på siffror.`
+  }
+  if (oppR.status === 'fulfilled' && oppR.value.length) {
+    text += `\n\nÖPPNA MÖJLIGHETER:`
+    for (const o of (oppR.value as any[]).slice(0, 3)) text += `\n- [${o.confidence}] ${o.title}`
+  }
+  if (patR.status === 'fulfilled' && patR.value?.summary) text += `\n\n${patR.value.summary}`
+
+  _liveCtxCache = { at: Date.now(), text }
+  return text
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +107,7 @@ VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 - Prata som en avslappnad kollega — kort, varmt, naturligt.
 - Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
 - Hellre flera korta repliker i ett samtal än ett långt svar.
+- SNABBHET: svara DIREKT från LIVE-snapshoten nedan (kostnad, agenter, innehållsprestanda, möjligheter). Använd INTE verktyg (ask_manager m.fl.) för frågor om status/prestanda/vad-bör-jag-göra — det gör svaret långsamt. Verktyg används BARA när operatören ber dig GÖRA något (köra/skapa/starta).
 
 Dåligt: "Familje-Stunden genererade 17 aktiviteter och slutförde julipaketet samt..."
 Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en snabb sammanfattning?"`
@@ -174,24 +227,10 @@ export async function POST(request: Request) {
   // Atlas-identitet (Executive Chief of Staff) + verktygsvägledning.
   let systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
 
-  // Atlas Brain (live-kontext) + operativt minne hämtas PARALLELLT så de inte
-  // staplas och fördröjer första token. Båda icke-kritiska — degraderar tyst.
-  const [ctxRes, patRes] = await Promise.allSettled([
-    gatherAtlasContext(db),
-    fetchOperatorPatterns(db),
-  ])
-  if (ctxRes.status === 'fulfilled') {
-    const ctx = ctxRes.value
-    const k = (n: number) => `${Math.round(n)} kr`
-    systemPrompt += `\n\n[LIVE LÄGE — ${new Date().toLocaleString('sv-SE')}]
-Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.costMonthSek)} (prognos ${k(ctx.totals.forecastMonthSek)}).
-Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
-Verksamheter:
-${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad ${k(b.costMonthSek)}, ${b.qualifiedLeads} leads, ${b.publishedThisWeek} publicerat denna vecka, ${b.pendingReview} att granska.`).join('\n')}${ctx.topPriority ? `\nViktigaste åtgärden nu: ${ctx.topPriority.label}.` : ''}`
-  }
-  if (patRes.status === 'fulfilled' && patRes.value?.summary) {
-    systemPrompt += `\n\n${patRes.value.summary}`
-  }
+  // Live-snapshot (cachad 45s) — Atlas Brain + Content/Opportunity/Agent-intelligens.
+  // Feature 5: Atlas svarar på "hur går The Prompt / vad funkar / vad bör jag göra"
+  // direkt från denna kontext, utan den långsamma ask_manager-vägen.
+  try { systemPrompt += await buildLiveContext(db) } catch { /* icke-kritiskt */ }
 
   // Röst-direktivet läggs SIST (starkast recency) så korthet styr svaret.
   if (voice) systemPrompt += VOICE_DIRECTIVE

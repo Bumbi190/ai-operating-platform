@@ -84,22 +84,23 @@ export async function detectOpportunities(db: AnyDb, projectId?: string): Promis
   return out
 }
 
-/** Detektera och lagra (idempotent på öppna rader). */
+/** Detektera och lagra (idempotent på öppna rader + minne av avvisade). */
 export async function detectAndStoreOpportunities(db: AnyDb, projectId?: string) {
   const detected = await detectOpportunities(db, projectId)
   let stored = 0
 
-  // Befintliga öppna titlar → undvik dubbletter
-  let openTitles = new Set<string>()
+  // BESLUTSMINNE (Feature 7): hoppa över titlar som redan är öppna ELLER som
+  // operatören redan avvisat ('dismissed'). Atlas tjatar inte om avfärdade idéer.
+  let knownTitles = new Set<string>()
   try {
-    let q = db.from('opportunities').select('title').eq('status', 'open')
+    let q = db.from('opportunities').select('title, status').in('status', ['open', 'dismissed'])
     if (projectId) q = q.eq('project_id', projectId)
     const { data } = await q
-    openTitles = new Set((data ?? []).map((r: any) => r.title))
+    knownTitles = new Set((data ?? []).map((r: any) => r.title))
   } catch { /* ignore */ }
 
   for (const o of detected) {
-    if (openTitles.has(o.title)) continue
+    if (knownTitles.has(o.title)) continue
     const { error } = await (db.from('opportunities') as any).insert({
       project_id: o.projectId, type: o.type, title: o.title, rationale: o.rationale,
       score: o.score, confidence: o.confidence, evidence: o.evidence, status: 'open',
@@ -108,6 +109,28 @@ export async function detectAndStoreOpportunities(db: AnyDb, projectId?: string)
   }
 
   return { detected: detected.length, stored }
+}
+
+/**
+ * Beslutshistorik (Feature 7) — vad Atlas föreslagit och hur det togs emot.
+ * Matar framtida rekommendationer + briefingen. Återanvänder opportunities.status.
+ */
+export async function decisionHistory(db: AnyDb, projectId?: string) {
+  try {
+    let q = db.from('opportunities').select('title, status, detected_at').order('detected_at', { ascending: false })
+    if (projectId) q = q.eq('project_id', projectId)
+    const { data } = await q
+    const rows = data ?? []
+    return {
+      proposed:  rows.length,
+      accepted:  rows.filter((r: any) => r.status === 'actioned').length,
+      rejected:  rows.filter((r: any) => r.status === 'dismissed').length,
+      open:      rows.filter((r: any) => r.status === 'open').length,
+      recent:    rows.slice(0, 5).map((r: any) => ({ title: r.title, status: r.status })),
+    }
+  } catch {
+    return { proposed: 0, accepted: 0, rejected: 0, open: 0, recent: [] }
+  }
 }
 
 /** Läs öppna möjligheter (för Atlas/UI). Read-only. */

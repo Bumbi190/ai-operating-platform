@@ -1,64 +1,94 @@
 /**
- * Atlas Executive Brain.
+ * Atlas Executive Brain — Daily Briefing (Fas 5, Feature 1).
  *
- * The business-level synthesis Atlas reasons over. Reads the Context Brain +
- * agent activity + social, and answers the four executive questions:
- *   1. What happened?  2. What did it cost?  3. What worked?  4. What to do next?
+ * Affärssyntesen Atlas resonerar kring. Läser Context Brain + agentaktivitet +
+ * social + Content Score + möjligheter, och svarar på de FEM exekutiva frågorna:
+ *   1. Vad hände?  2. Vad funkade?  3. Vad föll?  4. Vad kräver uppmärksamhet?
+ *   5. Vad bör hända härnäst?
  *
- * Deterministic (free to run). Used by Atlas Home and the daily briefing.
+ * Deterministisk (gratis att köra). Återanvänder befintliga tjänster — ingen ny
+ * datamodell, ingen ny dashboard. Driver Atlas Home + dagliga briefingen.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherAtlasContext } from './context'
 import { agentActivity } from './activity'
 import { socialSummary } from './social'
-import { atlasActions, type AtlasAction } from './actions'
+import { contentScore } from './content-score'
+import { listOpportunities } from './opportunities'
+import { atlasActions, type AtlasAction, type OpportunityLike } from './actions'
 
 type AnyDb = any
 
 export interface ExecutiveSummary {
   generatedAt: string
   whatHappened: string[]
-  cost: { todaySek: number; monthSek: number; forecastSek: number }
   whatWorked: string[]
-  whatToDo: AtlasAction[]
+  whatFailed: string[]        // Fas 5
+  needsAttention: string[]    // Fas 5
+  cost: { todaySek: number; monthSek: number; forecastSek: number }
+  whatToDo: AtlasAction[]     // "vad bör hända härnäst"
 }
 
 const k = (n: number) => `${Math.round(n)} kr`
 
 export async function atlasExecutiveSummary(db?: AnyDb): Promise<ExecutiveSummary> {
   const adb = db ?? createAdminClient()
-  const [ctx, act, soc] = await Promise.all([
+  const [ctx, act, soc, cs, opps] = await Promise.all([
     gatherAtlasContext(adb),
     agentActivity(adb, 24),
     socialSummary(adb, 7),
+    contentScore(adb).catch(() => null),
+    listOpportunities(adb).catch(() => [] as any[]),
   ])
 
-  // 1. What happened
+  // 1. Vad hände
   const whatHappened: string[] = []
   for (const b of ctx.businesses) {
     if (b.publishedThisWeek > 0) whatHappened.push(`${b.name} publicerade ${b.publishedThisWeek} den här veckan.`)
   }
   if (act.runsDone > 0) whatHappened.push(`${act.runsDone} agentkörningar slutfördes senaste dygnet.`)
-  const leadBiz = ctx.businesses.filter(b => b.qualifiedLeads > 0)
-  for (const b of leadBiz) whatHappened.push(`${b.name} har ${b.qualifiedLeads} leads att bearbeta.`)
+  for (const b of ctx.businesses) if (b.qualifiedLeads > 0) whatHappened.push(`${b.name} har ${b.qualifiedLeads} leads att bearbeta.`)
   if (whatHappened.length === 0) whatHappened.push('Lugnt dygn — inga publiceringar eller nya leads registrerade.')
 
-  // 3. What worked
+  // 2. Vad funkade
   const whatWorked: string[] = []
+  if (cs?.hasData && cs.best) {
+    whatWorked.push(`Bästa innehållet: "${(cs.best.hook ?? '').slice(0, 60)}" (score ${cs.best.score}/100, ${cs.best.engagementRate}% engagemang). [n=${cs.sampleSize}, konfidens ${cs.confidence}]`)
+    const top = cs.byTopic[0]
+    if (top && top.posts >= 2) whatWorked.push(`Ämnet "${top.topic}" engagerar mest (snittscore ${top.avgScore}, n=${top.posts}).`)
+  }
   if (soc.hasData) {
     whatWorked.push(`Räckvidd ${soc.reach.toLocaleString('sv-SE')}, ${soc.saved} sparningar och ${soc.followersGained} nya följare senaste ${soc.days} dagarna.`)
-  } else {
-    whatWorked.push('Social prestanda inväntas — koppla Meta-insights för att se vad som funkar.')
+  } else if (!cs?.hasData) {
+    whatWorked.push('Social prestanda inväntas — för få datapunkter för en slutsats ännu.')
   }
   const topRev = [...ctx.businesses].sort((a, b) => b.revenueMonthSek - a.revenueMonthSek)[0]
   if (topRev && topRev.revenueMonthSek > 0) whatWorked.push(`${topRev.name} leder på intäkt (${k(topRev.revenueMonthSek)} denna månad).`)
 
+  // 3. Vad föll
+  const whatFailed: string[] = []
+  if (act.runsFailed > 0) whatFailed.push(`${act.runsFailed} agentkörning(ar) misslyckades (success rate ${act.successRate}%).`)
+  if (act.stalledRuns > 0) whatFailed.push(`${act.stalledRuns} körning(ar) verkar hängd (>2h i "running").`)
+  if (whatFailed.length === 0) whatFailed.push('Inga kritiska fel upptäckta. Pipeline frisk.')
+
+  // 4. Vad kräver uppmärksamhet
+  const needsAttention: string[] = []
+  if (ctx.totals.pendingApprovals > 0) needsAttention.push(`${ctx.totals.pendingApprovals} godkännande(n) väntar på beslut.`)
+  for (const b of ctx.businesses) {
+    if (b.costMonthSek > 0 && b.revenueMonthSek === 0) needsAttention.push(`${b.name}: ${k(b.costMonthSek)} kostnad men 0 kr intäkt — ROI omätbar tills intäkt kopplas.`)
+  }
+  if (!soc.hasData) needsAttention.push('Meta-insights saknas → tillväxtanalys ofullständig.')
+  if (Array.isArray(opps) && opps[0]) needsAttention.push(`Möjlighet: ${opps[0].title}`)
+  if (needsAttention.length === 0) needsAttention.push('Inget akut. Bra läge att planera nästa drag.')
+
   return {
     generatedAt: new Date().toISOString(),
     whatHappened,
-    cost: { todaySek: ctx.totals.costTodaySek, monthSek: ctx.totals.costMonthSek, forecastSek: ctx.totals.forecastMonthSek },
     whatWorked,
-    whatToDo: atlasActions(ctx, act, soc),
+    whatFailed,
+    needsAttention,
+    cost: { todaySek: ctx.totals.costTodaySek, monthSek: ctx.totals.costMonthSek, forecastSek: ctx.totals.forecastMonthSek },
+    whatToDo: atlasActions(ctx, act, soc, (opps ?? []) as OpportunityLike[]),
   }
 }

@@ -109,6 +109,25 @@ export default async function AtlasHome() {
         </div>
       </OSLayer>
 
+      {/* ── DAGENS BRIEFING (Fas 5) ──────────────────────────────────────── */}
+      <OSLayer layer="operational" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {([
+          { title: 'Vad funkade',          items: exec.whatWorked,     dot: 'bg-emerald-400' },
+          { title: 'Vad föll',             items: exec.whatFailed,     dot: 'bg-red-400' },
+          { title: 'Kräver uppmärksamhet', items: exec.needsAttention, dot: 'bg-amber-400' },
+        ] as const).map(col => (
+          <div key={col.title} className="rounded-xl border border-border bg-card p-4 space-y-2">
+            <p className="text-[11px] uppercase tracking-widest text-muted-foreground">{col.title}</p>
+            {col.items.slice(0, 4).map((t, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}`} />
+                <p className="text-[12px] text-foreground/85 leading-relaxed">{t}</p>
+              </div>
+            ))}
+          </div>
+        ))}
+      </OSLayer>
+
       {/* ── TALK TO ATLAS (default action) ───────────────────────────────── */}
       <OSLayer layer="operational">
         <div className="rounded-2xl border border-border bg-card p-4 lg:p-5">

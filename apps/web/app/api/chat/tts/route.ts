@@ -31,6 +31,7 @@ export async function POST(request: Request) {
 
   const trimmed = text.trim().slice(0, 600)
 
+  const tTts = Date.now()
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
@@ -53,11 +54,13 @@ export async function POST(request: Request) {
   }
 
   const audio = await res.arrayBuffer()
+  const ttsMs = Date.now() - tTts
   return new Response(audio, {
     headers: {
       'Content-Type':   'audio/mpeg',
       'Content-Length': audio.byteLength.toString(),
       'Cache-Control':  'no-store',
+      'x-tts-ms':       String(ttsMs),   // latens-mätning per mening
     },
   })
 }

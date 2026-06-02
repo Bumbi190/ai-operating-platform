@@ -168,26 +168,35 @@ export async function POST(request: Request) {
 
   const db = createAdminClient()
 
+  // ── Latens-mätning: tid tills system-prompten (Atlas Brain + minne) är klar.
+  const tStart = Date.now()
+
   // Atlas-identitet (Executive Chief of Staff) + verktygsvägledning.
   let systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
-  if (voice) systemPrompt += VOICE_DIRECTIVE
 
-  // Live-ögonblicksbild — Atlas grundar varje svar i riktig data.
-  try {
-    const ctx = await gatherAtlasContext(db)
+  // Atlas Brain (live-kontext) + operativt minne hämtas PARALLELLT så de inte
+  // staplas och fördröjer första token. Båda icke-kritiska — degraderar tyst.
+  const [ctxRes, patRes] = await Promise.allSettled([
+    gatherAtlasContext(db),
+    fetchOperatorPatterns(db),
+  ])
+  if (ctxRes.status === 'fulfilled') {
+    const ctx = ctxRes.value
     const k = (n: number) => `${Math.round(n)} kr`
     systemPrompt += `\n\n[LIVE LÄGE — ${new Date().toLocaleString('sv-SE')}]
 Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.costMonthSek)} (prognos ${k(ctx.totals.forecastMonthSek)}).
 Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
 Verksamheter:
 ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad ${k(b.costMonthSek)}, ${b.qualifiedLeads} leads, ${b.publishedThisWeek} publicerat denna vecka, ${b.pendingReview} att granska.`).join('\n')}${ctx.topPriority ? `\nViktigaste åtgärden nu: ${ctx.topPriority.label}.` : ''}`
-  } catch { /* icke-kritiskt */ }
+  }
+  if (patRes.status === 'fulfilled' && patRes.value?.summary) {
+    systemPrompt += `\n\n${patRes.value.summary}`
+  }
 
-  // Operativt minne — härledda mönster gör rekommendationerna vassare.
-  try {
-    const { summary } = await fetchOperatorPatterns(db)
-    if (summary) systemPrompt += `\n\n${summary}`
-  } catch { /* icke-kritiskt */ }
+  // Röst-direktivet läggs SIST (starkast recency) så korthet styr svaret.
+  if (voice) systemPrompt += VOICE_DIRECTIVE
+
+  const contextMs = Date.now() - tStart
 
   // Helper: persist a message to DB
   async function saveMessage(role: string, content: string | null, toolData?: unknown) {
@@ -206,17 +215,14 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
     } catch { /* non-fatal */ }
   }
 
-  // Save the latest user message (last item in messages)
+  // Spara användarmeddelandet ICKE-BLOCKERANDE — vänta aldrig på DB innan
+  // strömmen startar (det fördröjde första token, särskilt i röstläge).
   const lastMsg = messages[messages.length - 1]
   if (lastMsg?.role === 'user' && typeof lastMsg.content === 'string') {
-    await saveMessage('user', lastMsg.content)
-
-    // Auto-title conversation from first user message
+    void saveMessage('user', lastMsg.content)
     if (conversation_id && messages.filter(m => m.role === 'user').length === 1) {
       const title = lastMsg.content.slice(0, 60) + (lastMsg.content.length > 60 ? '…' : '')
-      await db.from('conversations')
-        .update({ title })
-        .eq('id', conversation_id)
+      void db.from('conversations').update({ title }).eq('id', conversation_id)
     }
   }
 
@@ -230,29 +236,31 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
         )
       }
 
+      let firstTokenMs = 0   // tid (från tStart) till första token — latens-mätning
+
       async function runConversation(msgs: Anthropic.MessageParam[]) {
         // Agentic loop — Claude can use tools multiple times
         for (let i = 0; i < 10; i++) {
-          const response = await anthropic.messages.create({
+          // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
+          // första färdiga meningen i stället för att vänta in hela svaret.
+          const llm = anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
-            max_tokens: voice ? 220 : 4096,
+            max_tokens: voice ? 150 : 4096,   // röst: kort (~2 meningar)
             system: systemPrompt,
             tools: TOOLS,
             messages: msgs,
           })
-
-          // Stream text blocks
-          for (const block of response.content) {
-            if (block.type === 'text') {
-              send('text', { text: block.text })
-            }
-          }
+          llm.on('text', (delta: string) => {
+            if (!firstTokenMs) firstTokenMs = Date.now() - tStart
+            if (delta) send('text', { text: delta })
+          })
+          const response = await llm.finalMessage()
 
           // If no tool use, we're done — save final assistant text
           if (response.stop_reason !== 'tool_use') {
             const textBlocks = response.content.filter(b => b.type === 'text')
             const fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
-            if (fullText) await saveMessage('assistant', fullText)
+            if (fullText) void saveMessage('assistant', fullText)
             break
           }
 
@@ -287,6 +295,9 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
           ]
         }
 
+        // Latens-sammanfattning från servern: hur lång tid Atlas Brain tog att
+        // bygga + tid till första token. Klienten loggar resten (STT, TTS, totalt).
+        send('timing', { contextMs, firstTokenMs, serverTotalMs: Date.now() - tStart })
         send('done', {})
         controller.close()
       }

@@ -15,12 +15,42 @@
  * NOTE: Business/Creator accounts must use graph.facebook.com (not graph.instagram.com)
  */
 
-const BASE = 'https://graph.facebook.com/v21.0'
+const FB_BASE = 'https://graph.facebook.com/v21.0'
+const IG_BASE = 'https://graph.instagram.com/v21.0'
 
 function requireEnv(key: string): string {
   const val = process.env[key]
   if (!val) throw new Error(`Missing env var: ${key}`)
   return val
+}
+
+let cachedIgUserId: string | null = null
+
+/**
+ * Resolves the correct API base + IG user id for the current token.
+ *
+ * - IGAA token (Instagram Login, starts "IG") → graph.instagram.com, id from /me.
+ *   These tokens are long-lived (60d) and decoupled from the Facebook web session,
+ *   so they don't die when the FB session logs out.
+ * - EAA token (Facebook Login) → graph.facebook.com with INSTAGRAM_USER_ID (legacy path).
+ */
+async function resolveIgApi(): Promise<{ base: string; userId: string; token: string; isIgLogin: boolean }> {
+  const token = requireEnv('INSTAGRAM_ACCESS_TOKEN')
+  const isIgLogin = token.startsWith('IG')
+
+  if (!isIgLogin) {
+    return { base: FB_BASE, userId: requireEnv('INSTAGRAM_USER_ID'), token, isIgLogin }
+  }
+
+  if (!cachedIgUserId) {
+    const res = await fetch(`${IG_BASE}/me?fields=user_id&access_token=${encodeURIComponent(token)}`)
+    const data = await res.json() as { user_id?: string; id?: string; error?: { message: string } }
+    if (!res.ok || !(data.user_id ?? data.id)) {
+      throw new Error(data.error?.message ?? `Could not resolve Instagram user id (${res.status})`)
+    }
+    cachedIgUserId = String(data.user_id ?? data.id)
+  }
+  return { base: IG_BASE, userId: cachedIgUserId, token, isIgLogin }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,9 +74,8 @@ export async function createReelContainer(
   caption: string,
   coverImageUrl?: string,
 ): Promise<string> {
-  const userId   = requireEnv('INSTAGRAM_USER_ID')
-  const token    = requireEnv('INSTAGRAM_ACCESS_TOKEN')
-  const fbPageId = process.env.FACEBOOK_PAGE_ID  // optional — enables cross-posting
+  const { base, userId, token, isIgLogin } = await resolveIgApi()
+  const fbPageId = process.env.FACEBOOK_PAGE_ID  // optional — FB cross-post (FB-login path only)
 
   const params = new URLSearchParams({
     media_type:    'REELS',
@@ -57,8 +86,8 @@ export async function createReelContainer(
   })
 
   // Cross-post to Facebook Page automatically if FACEBOOK_PAGE_ID is set.
-  // Uses Instagram's built-in cross-posting — no pages_manage_posts needed.
-  if (fbPageId) {
+  // Only supported on the Facebook-login path; graph.instagram.com rejects it.
+  if (fbPageId && !isIgLogin) {
     params.set('cross_post_to_facebook_page_id', fbPageId)
   }
 
@@ -66,7 +95,7 @@ export async function createReelContainer(
     params.set('thumb_offset', '0')
   }
 
-  const res = await fetch(`${BASE}/${userId}/media`, {
+  const res = await fetch(`${base}/${userId}/media`, {
     method: 'POST',
     body:   params,
   })
@@ -89,14 +118,14 @@ export async function pollUntilReady(
   timeoutMs  = 300_000,  // 5 minutes default; pass lower value for short-lived crons
   intervalMs = 5_000,
 ): Promise<void> {
-  const token = requireEnv('INSTAGRAM_ACCESS_TOKEN')
+  const { base, token } = await resolveIgApi()
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, intervalMs))
 
     const res = await fetch(
-      `${BASE}/${creationId}?fields=status_code,status&access_token=${token}`
+      `${base}/${creationId}?fields=status_code,status&access_token=${token}`
     )
     const data = await res.json() as { status_code?: MediaStatus; status?: string; error?: { message: string } }
 
@@ -118,15 +147,14 @@ export async function pollUntilReady(
 // ─── Step 3: Publish container ────────────────────────────────────────────────
 
 export async function publishContainer(creationId: string): Promise<PublishResult> {
-  const userId = requireEnv('INSTAGRAM_USER_ID')
-  const token  = requireEnv('INSTAGRAM_ACCESS_TOKEN')
+  const { base, userId, token } = await resolveIgApi()
 
   const params = new URLSearchParams({
     creation_id:  creationId,
     access_token: token,
   })
 
-  const res = await fetch(`${BASE}/${userId}/media_publish`, {
+  const res = await fetch(`${base}/${userId}/media_publish`, {
     method: 'POST',
     body:   params,
   })
@@ -141,7 +169,7 @@ export async function publishContainer(creationId: string): Promise<PublishResul
 
   // Fetch permalink
   const mediaRes = await fetch(
-    `${BASE}/${data.id}?fields=permalink&access_token=${token}`
+    `${base}/${data.id}?fields=permalink&access_token=${token}`
   )
   const mediaData = await mediaRes.json() as { permalink?: string }
 

@@ -73,8 +73,10 @@ async function replyInstagram(commentId: string, text: string): Promise<void> {
   const token = process.env.INSTAGRAM_ACCESS_TOKEN
   if (!token) throw new Error('Missing INSTAGRAM_ACCESS_TOKEN')
 
+  // IGAA tokens (Instagram Login) post via graph.instagram.com; EAA via graph.facebook.com.
+  const base   = token.startsWith('IG') ? 'https://graph.instagram.com/v21.0' : IG_BASE
   const params = new URLSearchParams({ message: text, access_token: token })
-  const res    = await fetch(`${IG_BASE}/${commentId}/replies`, { method: 'POST', body: params })
+  const res    = await fetch(`${base}/${commentId}/replies`, { method: 'POST', body: params })
   const data   = await res.json() as { id?: string; error?: { message: string } }
 
   if (!res.ok || !data.id) {

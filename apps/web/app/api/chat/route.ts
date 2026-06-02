@@ -18,6 +18,8 @@ import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { getManager } from '@/lib/ai/manager'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
+import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
+import { gatherAtlasContext } from '@/lib/atlas/context'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
@@ -56,6 +58,12 @@ VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 
 Dåligt: "Familje-Stunden genererade 17 aktiviteter och slutförde julipaketet samt..."
 Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en snabb sammanfattning?"`
+
+// Verktygsvägledning — hur Atlas använder sina verktyg.
+const TOOL_GUIDE = `Verktyg du har:
+- list_workflows / trigger_workflow / get_run_status — kör arbetsflöden när operatören ber dig skapa eller generera något (t.ex. "generera veckobrevet").
+- ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
+När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).`
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -133,11 +141,24 @@ export async function POST(request: Request) {
     voice?: boolean
   }
 
-  let systemPrompt = voice ? SYSTEM_PROMPT + VOICE_DIRECTIVE : SYSTEM_PROMPT
-
   const db = createAdminClient()
 
-  // Operativt minne (F6) — härledda mönster gör rekommendationerna vassare.
+  // Atlas-identitet (Executive Chief of Staff) + verktygsvägledning.
+  let systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+  if (voice) systemPrompt += VOICE_DIRECTIVE
+
+  // Live-ögonblicksbild — Atlas grundar varje svar i riktig data.
+  try {
+    const ctx = await gatherAtlasContext(db)
+    const k = (n: number) => `${Math.round(n)} kr`
+    systemPrompt += `\n\n[LIVE LÄGE — ${new Date().toLocaleString('sv-SE')}]
+Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.costMonthSek)} (prognos ${k(ctx.totals.forecastMonthSek)}).
+Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
+Verksamheter:
+${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad ${k(b.costMonthSek)}, ${b.qualifiedLeads} leads, ${b.publishedThisWeek} publicerat denna vecka, ${b.pendingReview} att granska.`).join('\n')}${ctx.topPriority ? `\nViktigaste åtgärden nu: ${ctx.topPriority.label}.` : ''}`
+  } catch { /* icke-kritiskt */ }
+
+  // Operativt minne — härledda mönster gör rekommendationerna vassare.
   try {
     const { summary } = await fetchOperatorPatterns(db)
     if (summary) systemPrompt += `\n\n${summary}`

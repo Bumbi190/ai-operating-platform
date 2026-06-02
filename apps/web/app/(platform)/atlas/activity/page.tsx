@@ -41,13 +41,14 @@ export default async function AtlasActivity() {
 
   const cutoff = new Date(Date.now() - 2 * 864e5).toISOString()
 
-  const [runs, workflows, projects, messages, pendingApprovals, pendingScripts] = await Promise.all([
+  const [runs, workflows, projects, messages, pendingApprovals, pendingScripts, managerTasks] = await Promise.all([
     safe<any[]>(db.from('runs').select('id, status, started_at, finished_at, error, project_id, workflow_id').gte('started_at', cutoff).order('started_at', { ascending: false }).limit(40), []),
     safe<any[]>(db.from('workflows').select('id, name'), []),
     safe<any[]>(db.from('projects').select('id, name, color'), []),
     safe<any[]>(db.from('agent_messages').select('id, from_agent, message_type, content, created_at').order('created_at', { ascending: false }).limit(8), []),
     safe<any[]>(db.from('approvals').select('id, output_key, created_at').eq('status', 'pending').order('created_at', { ascending: false }).limit(20), []),
     safe<any[]>(db.from('media_scripts').select('id, hook, status').in('status', ['pending_review', 'needs_review']).limit(20), []),
+    safe<any[]>(db.from('manager_tasks').select('id, title, status, priority, project_id, created_at').order('created_at', { ascending: false }).limit(15), []),
   ])
 
   const wfName = new Map(workflows.map(w => [w.id, w.name]))
@@ -131,6 +132,29 @@ export default async function AtlasActivity() {
                 </div>
               </div>
             ))}
+          </div>
+        </OSLayer>
+      )}
+
+      {/* ── DELEGERADE UPPDRAG ────────────────────────────────────────────── */}
+      {managerTasks.length > 0 && (
+        <OSLayer layer="intelligence" className="space-y-3">
+          <SectionHeader eyebrow="Delegering" title="Uppdrag Atlas tilldelat" />
+          <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
+            {managerTasks.map(t => {
+              const s = String(t.status)
+              const icon = s === 'done' ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                : ['failed', 'cancelled'].includes(s) ? <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                : s === 'in_progress' ? <Loader2 className="w-4 h-4 text-indigo-300 animate-spin shrink-0" />
+                : <span className="w-3.5 h-3.5 rounded-full border border-zinc-500 shrink-0" />
+              return (
+                <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                  {icon}
+                  <p className="text-sm truncate flex-1">{t.title}</p>
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">{s.replace(/_/g, ' ')}</span>
+                </div>
+              )
+            })}
           </div>
         </OSLayer>
       )}

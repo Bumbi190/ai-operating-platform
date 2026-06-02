@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Mic, MicOff, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -22,6 +23,22 @@ export function VoiceAssistant() {
   const historyRef  = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
   const silenceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelRef   = useRef(false)
+  const convRef     = useRef<string | null>(null)   // persisterat röstsamtal
+
+  // Skapar (en gång) ett conversation-row så att röstsamtalet sparas + kan spelas upp.
+  async function ensureConversation(firstText: string): Promise<string | null> {
+    if (convRef.current) return convRef.current
+    try {
+      const sb = createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) return null
+      const { data } = await sb.from('conversations')
+        .insert({ user_id: user.id, title: '🎙 ' + firstText.slice(0, 56) })
+        .select('id').single()
+      convRef.current = (data as any)?.id ?? null
+    } catch { /* icke-kritiskt — utan id fortsätter samtalet osparat */ }
+    return convRef.current
+  }
 
   // Avoid SSR mismatch
   useEffect(() => { setMounted(true) }, [])
@@ -161,7 +178,9 @@ export function VoiceAssistant() {
       }
       if (!cancelRef.current) {
         setPhase('idle')
-        setTimeout(() => { if (!cancelRef.current) setOpen(false) }, 2200)
+        // Kontinuerligt samtal — Atlas lyssnar igen efter att ha talat klart.
+        // (Stäng med Escape eller knappen; closeAll sätter cancelRef.)
+        setTimeout(() => { if (!cancelRef.current) startListening() }, 500)
       }
     }
 
@@ -190,11 +209,12 @@ export function VoiceAssistant() {
       }
     }
 
+    const convId = await ensureConversation(text)
     try {
       const res = await fetch('/api/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: historyRef.current, voice: true }),
+        body:    JSON.stringify({ messages: historyRef.current, voice: true, conversation_id: convId }),
       })
 
       if (res.ok && res.body) {

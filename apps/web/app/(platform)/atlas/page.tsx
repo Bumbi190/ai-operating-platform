@@ -15,7 +15,7 @@ import { gatherAtlasContext } from '@/lib/atlas/context'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import {
-  Sparkles, ArrowRight, ShieldCheck, TrendingUp, DollarSign, ListChecks, MessageSquare, AlertTriangle,
+  Sparkles, ArrowRight, ShieldCheck, TrendingUp, DollarSign, ListChecks, MessageSquare, AlertTriangle, Activity,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -54,6 +54,7 @@ export default async function AtlasHome() {
     { label: 'Granska godkännanden', href: '/approvals', icon: ShieldCheck },
     { label: 'Affärsöversikt',       href: '/revenue',   icon: TrendingUp },
     { label: 'Kostnader',            href: '/costs',     icon: DollarSign },
+    { label: 'Activity Center',      href: '/atlas/activity', icon: Activity },
     { label: 'Prata med Atlas',      href: '/chat',      icon: MessageSquare },
   ]
 

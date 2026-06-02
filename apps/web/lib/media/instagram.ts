@@ -42,15 +42,18 @@ async function resolveIgApi(): Promise<{ base: string; userId: string; token: st
     return { base: FB_BASE, userId: requireEnv('INSTAGRAM_USER_ID'), token, isIgLogin }
   }
 
-  if (!cachedIgUserId) {
+  let userId = cachedIgUserId
+  if (!userId) {
     const res = await fetch(`${IG_BASE}/me?fields=user_id&access_token=${encodeURIComponent(token)}`)
     const data = await res.json() as { user_id?: string; id?: string; error?: { message: string } }
-    if (!res.ok || !(data.user_id ?? data.id)) {
+    const resolved = data.user_id ?? data.id
+    if (!res.ok || !resolved) {
       throw new Error(data.error?.message ?? `Could not resolve Instagram user id (${res.status})`)
     }
-    cachedIgUserId = String(data.user_id ?? data.id)
+    userId = String(resolved)
+    cachedIgUserId = userId
   }
-  return { base: IG_BASE, userId: cachedIgUserId, token, isIgLogin }
+  return { base: IG_BASE, userId, token, isIgLogin }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

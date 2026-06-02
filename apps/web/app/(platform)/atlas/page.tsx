@@ -13,6 +13,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { gatherAtlasContext } from '@/lib/atlas/context'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
+import { ExecutiveAssistant } from '../chat/ExecutiveAssistant'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import {
   Sparkles, ArrowRight, ShieldCheck, TrendingUp, DollarSign, ListChecks, MessageSquare, AlertTriangle, Activity,
@@ -39,6 +40,7 @@ export default async function AtlasHome() {
   const db = createAdminClient()
   const ctx = await gatherAtlasContext(db)
   const now = new Date()
+  const projects = ctx.businesses.map(b => ({ id: b.id, name: b.name, slug: b.slug }))
 
   // Build the per-business briefing lines (only what's worth reporting).
   const lines: string[] = []
@@ -99,6 +101,13 @@ export default async function AtlasHome() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}
+        </div>
+      </OSLayer>
+
+      {/* ── TALK TO ATLAS (default action) ───────────────────────────────── */}
+      <OSLayer layer="operational">
+        <div className="rounded-2xl border border-border bg-card p-4 lg:p-5">
+          <ExecutiveAssistant projects={projects} operatorName={OPERATOR_NAME} />
         </div>
       </OSLayer>
 

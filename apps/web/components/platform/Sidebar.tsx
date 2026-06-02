@@ -28,6 +28,7 @@ import {
   Activity,
   Flame,
   TrendingUp,
+  Sparkles,
 } from 'lucide-react'
 
 interface Project {
@@ -50,7 +51,8 @@ interface SidebarProps {
 }
 
 const globalNav = [
-  { href: '/dashboard',      label: 'Operationscentral', icon: LayoutDashboard, primary: true },
+  { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
+  { href: '/dashboard',      label: 'Operationscentral', icon: LayoutDashboard },
   { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },
   { href: '/action-center',  label: 'Action Center',     icon: Flame },
   { href: '/agent-activity', label: 'Agentaktivitet',    icon: Activity },

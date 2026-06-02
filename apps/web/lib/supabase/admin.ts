@@ -19,5 +19,14 @@ export function createAdminClient() {
 
   return createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // VIKTIGT: tvinga 'no-store' på ALLA admin-anrop.
+      // Next.js/Vercel Data Cache cachar annars Supabase GET-svar (t.ex.
+      // platform_tokens) och serverar gamla värden — ett dött Instagram-token
+      // (EAAW) levde kvar i cachen trots att DB-raden uppdaterats till IGAA,
+      // och redeploys rensar inte Data Cache. Service-role-läsningar måste
+      // alltid vara färska.
+      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+    },
   })
 }

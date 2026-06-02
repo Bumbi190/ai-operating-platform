@@ -41,6 +41,11 @@ export async function GET(request: Request) {
 
   if (projectIdFilter) {
     projectsQuery = projectsQuery.eq('id', projectIdFilter)
+  } else {
+    // AI-nyhetsjägaren körs bara för The Prompt (ai-media-automation).
+    // Familje-Stunden (barninnehåll) och GainPilot (B2B-leads) är andra affärer
+    // och ska inte få AI-nyhetsvideor.
+    projectsQuery = projectsQuery.eq('slug', 'ai-media-automation')
   }
 
   const { data: projects } = await projectsQuery

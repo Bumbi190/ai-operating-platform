@@ -19,6 +19,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { logRun } from '@/lib/media/run-log'
 import { logLlmCost } from '@/lib/cost/track'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
+import { classifyTopic } from '@/lib/atlas/content-tags'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -104,9 +105,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectIdParam = searchParams.get('project_id')
 
-  // Find project
+  // Find project — AI-nyhetspipen tillhör The Prompt (ai-media-automation).
+  // Utan explicit project_id pinnar vi till The Prompt istället för att ta
+  // "första projektet" (vilket var Familje-Stunden och felattribuerade allt).
   let q = db.from('projects').select('id, slug')
   if (projectIdParam) q = q.eq('id', projectIdParam)
+  else q = q.eq('slug', 'ai-media-automation')
   const { data: project } = await (q as ReturnType<typeof db.from>).limit(1).single()
   if (!project) return NextResponse.json({ error: 'No project found' }, { status: 404 })
 
@@ -314,6 +318,7 @@ export async function GET(request: Request) {
     estimated_duration: script.estimated_duration, raw_output: script,
     quality_score: qualityScore, status: 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
+    topic: classifyTopic(script.hook, script.script), format: 'reel',
     generated_at: new Date().toISOString(),
   }).select('id').single()
 

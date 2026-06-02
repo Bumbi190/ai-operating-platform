@@ -9,6 +9,8 @@
 import { NextResponse } from 'next/server'
 import { refreshAllInsights } from '@/lib/media/insights'
 import { getToken } from '@/lib/media/token-store'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { detectAndStoreOpportunities } from '@/lib/atlas/opportunities'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -29,5 +31,16 @@ export async function GET(request: Request) {
   }
 
   const result = await refreshAllInsights()
-  return NextResponse.json({ ok: true, ...result, debug })
+
+  // Fas 4: efter att insights uppdaterats, låt Atlas samla möjligheter (best-effort).
+  let opportunities: { detected: number; stored: number } | { error: string } = { detected: 0, stored: 0 }
+  try {
+    const db = createAdminClient()
+    const { data: project } = await db.from('projects').select('id').eq('slug', 'ai-media-automation').maybeSingle()
+    opportunities = await detectAndStoreOpportunities(db, project?.id)
+  } catch (e) {
+    opportunities = { error: e instanceof Error ? e.message : 'okänt fel' }
+  }
+
+  return NextResponse.json({ ok: true, ...result, opportunities, debug })
 }

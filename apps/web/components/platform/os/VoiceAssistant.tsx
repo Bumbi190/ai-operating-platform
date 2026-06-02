@@ -29,6 +29,8 @@ export function VoiceAssistant() {
   const recActiveRef  = useRef(false)   // är en recognition igång just nu?
   const marksRef      = useRef<Record<string, number>>({})
   const ttsMsRef      = useRef(0)
+  const phaseRef      = useRef<Phase>('idle')
+  useEffect(() => { phaseRef.current = phase }, [phase])
 
   async function ensureConversation(firstText: string): Promise<string | null> {
     if (convRef.current) return convRef.current
@@ -45,6 +47,23 @@ export function VoiceAssistant() {
   }
 
   useEffect(() => { setMounted(true) }, [])
+
+  // ── Mic-watchdog: självläker mikrofonen ─────────────────────────────────────
+  // Web Speech (Chrome) kan sluta/kasta oförutsägbart vid omstart. Bevakaren
+  // garanterar: om vi VILL lyssna (listeningRef) men ingen igenkänning kör och vi
+  // inte tänker/talar → starta om. Detta löser "mikrofonen slutar efter första".
+  useEffect(() => {
+    if (!mounted) return
+    const id = setInterval(() => {
+      if (cancelRef.current) return
+      if (!listeningRef.current) return
+      if (recActiveRef.current) return
+      if (audioRef.current) return                              // talar fortfarande
+      if (phaseRef.current === 'thinking' || phaseRef.current === 'speaking') return
+      startListening()
+    }, 1500)
+    return () => clearInterval(id)
+  }, [mounted])
 
   // ⌥ Space-genväg
   useEffect(() => {

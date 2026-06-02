@@ -16,6 +16,7 @@ import { agentActivity } from './activity'
 import { socialSummary } from './social'
 import { contentScore } from './content-score'
 import { listOpportunities } from './opportunities'
+import { revenueIntel } from './revenue'
 import { atlasActions, type AtlasAction, type OpportunityLike } from './actions'
 
 type AnyDb = any
@@ -34,12 +35,13 @@ const k = (n: number) => `${Math.round(n)} kr`
 
 export async function atlasExecutiveSummary(db?: AnyDb): Promise<ExecutiveSummary> {
   const adb = db ?? createAdminClient()
-  const [ctx, act, soc, cs, opps] = await Promise.all([
+  const [ctx, act, soc, cs, opps, rev] = await Promise.all([
     gatherAtlasContext(adb),
     agentActivity(adb, 24),
     socialSummary(adb, 7),
     contentScore(adb).catch(() => null),
     listOpportunities(adb).catch(() => [] as any[]),
+    revenueIntel(adb).catch(() => null),
   ])
 
   // 1. Vad hände
@@ -65,6 +67,10 @@ export async function atlasExecutiveSummary(db?: AnyDb): Promise<ExecutiveSummar
   }
   const topRev = [...ctx.businesses].sort((a, b) => b.revenueMonthSek - a.revenueMonthSek)[0]
   if (topRev && topRev.revenueMonthSek > 0) whatWorked.push(`${topRev.name} leder på intäkt (${k(topRev.revenueMonthSek)} denna månad).`)
+  if (rev?.hasData) {
+    whatWorked.push(`Familje-Stunden: ${rev.activeSubscribers} aktiva prenumeranter, MRR ${k(rev.mrrSek)}${rev.mrrDeltaSek ? ` (${rev.mrrDeltaSek > 0 ? '+' : ''}${k(rev.mrrDeltaSek)})` : ''}, churn ${rev.churnRatePct}%.`)
+    if (rev.newSubscribers > 0) whatHappened.push(`Familje-Stunden fick ${rev.newSubscribers} ny${rev.newSubscribers === 1 ? ' prenumerant' : 'a prenumeranter'} denna månad.`)
+  }
 
   // 3. Vad föll
   const whatFailed: string[] = []

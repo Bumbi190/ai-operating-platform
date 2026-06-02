@@ -23,6 +23,7 @@ import { gatherAtlasContext } from '@/lib/atlas/context'
 import { contentScore } from '@/lib/atlas/content-score'
 import { listOpportunities } from '@/lib/atlas/opportunities'
 import { agentActivity } from '@/lib/atlas/activity'
+import { revenueIntel } from '@/lib/atlas/revenue'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -34,12 +35,13 @@ const LIVE_CTX_TTL_MS = 45_000
 async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
   if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
   const k = (n: number) => `${Math.round(n)} kr`
-  const [ctxR, patR, csR, oppR, actR] = await Promise.allSettled([
+  const [ctxR, patR, csR, oppR, actR, revR] = await Promise.allSettled([
     gatherAtlasContext(db),
     fetchOperatorPatterns(db),
     contentScore(db),
     listOpportunities(db),
     agentActivity(db, 24),
+    revenueIntel(db),
   ])
 
   let text = ''
@@ -63,6 +65,10 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
     const top = cs.byTopic[0]
     if (top && top.posts >= 2) text += `\n- Ämne som engagerar mest: ${top.topic} (snittscore ${top.avgScore}, n=${top.posts}).`
     text += `\nOBS: säg "för lite data för säker slutsats" om n är litet — hitta aldrig på siffror.`
+  }
+  if (revR.status === 'fulfilled' && revR.value.hasData) {
+    const r = revR.value
+    text += `\n\nFAMILJE-STUNDEN INTÄKT (Stripe, per ${r.asOf}): ${r.activeSubscribers} aktiva prenumeranter · MRR ${Math.round(r.mrrSek)} kr${r.mrrDeltaSek ? ` (Δ ${r.mrrDeltaSek > 0 ? '+' : ''}${Math.round(r.mrrDeltaSek)} kr)` : ''} · ${r.newSubscribers} nya denna månad · ${r.trialing} trial · churn ${r.churnRatePct}% · intäkt denna månad ${Math.round(r.revenueMonthSek)} kr.`
   }
   if (oppR.status === 'fulfilled' && oppR.value.length) {
     text += `\n\nÖPPNA MÖJLIGHETER:`

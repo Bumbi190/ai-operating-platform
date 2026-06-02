@@ -63,6 +63,7 @@ Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en s
 const TOOL_GUIDE = `Verktyg du har:
 - list_workflows / trigger_workflow / get_run_status — kör arbetsflöden när operatören ber dig skapa eller generera något (t.ex. "generera veckobrevet").
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
+- delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).`
 
 const TOOLS: Anthropic.Tool[] = [
@@ -124,6 +125,30 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['message'],
+    },
+  },
+  {
+    name: 'delegate',
+    description: 'Delegera ett mål: bryt ner det i konkreta uppgifter, tilldela ägare och spåra dem. Använd när operatören ber dig SKAPA eller STARTA något större — t.ex. "skapa en GainPilot-kampanj", "dra igång en lanseringsplan". Du föreslår själv uppgiftslistan i logisk ordning. Uppgifterna sparas och syns live i Activity Center.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal: { type: 'string', description: 'Målet, t.ex. "GainPilot-kampanj för Q3"' },
+        project_id: { type: 'string', description: 'Valfritt projekt-ID som målet gäller' },
+        tasks: {
+          type: 'array',
+          description: 'Uppgifterna att skapa, i ordning de bör utföras',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: 'Vad som ska göras' },
+              agent: { type: 'string', description: 'Vilken agent/roll som äger uppgiften, t.ex. "Research Agent", "Copy Agent", "QA Agent"' },
+            },
+            required: ['title'],
+          },
+        },
+      },
+      required: ['goal', 'tasks'],
     },
   },
 ]
@@ -412,6 +437,38 @@ async function executeTool(
     const manager = getManager()
     const response = await manager.chat(message, project_id)
     return { response }
+  }
+
+  if (name === 'delegate') {
+    const { goal, project_id, tasks } = input as { goal: string; project_id?: string; tasks: { title: string; agent?: string }[] }
+    const adb: any = db
+    let projectId = project_id
+    if (!projectId) {
+      const { data: p } = await db.from('projects').select('id').limit(1).maybeSingle()
+      projectId = (p as { id?: string } | null)?.id
+    }
+    const created: { id: string; title: string; status: string }[] = []
+    for (const t of (tasks ?? [])) {
+      try {
+        const { data } = await adb.from('manager_tasks').insert({
+          project_id:  projectId,
+          title:       t.title,
+          description: t.agent ? `Ägare: ${t.agent}` : null,
+          status:      'pending',
+        }).select('id, title, status').single()
+        if (data) created.push(data)
+      } catch { /* hoppa över enskild uppgift */ }
+    }
+    try {
+      await adb.from('agent_messages').insert({
+        project_id:   projectId,
+        from_agent:   'Atlas',
+        to_agent:     'Operator',
+        message_type: 'daily_plan',
+        content:      `Delegering: ${goal} — ${created.length} uppgifter skapade och tilldelade.`,
+      })
+    } catch { /* icke-kritiskt */ }
+    return { goal, created: created.length, tasks: created, note: 'Uppgifterna syns nu live i Atlas Activity Center.' }
   }
 
   throw new Error(`Okänt verktyg: ${name}`)

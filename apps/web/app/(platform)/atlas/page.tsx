@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { gatherAtlasContext } from '@/lib/atlas/context'
+import { atlasExecutiveSummary } from '@/lib/atlas/executive'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { ExecutiveAssistant } from '../chat/ExecutiveAssistant'
 import { OSPage, OSLayer } from '@/components/platform/os'
@@ -42,17 +43,13 @@ export default async function AtlasHome() {
   const now = new Date()
   const projects = ctx.businesses.map(b => ({ id: b.id, name: b.name, slug: b.slug }))
 
-  // Build the per-business briefing lines (only what's worth reporting).
-  const lines: string[] = []
-  for (const b of ctx.businesses) {
-    if (b.pendingReview > 0)        lines.push(`${b.name}: ${b.pendingReview} att granska.`)
-    else if (b.qualifiedLeads > 0)  lines.push(`${b.name}: ${b.qualifiedLeads} kvalificerade leads kräver uppmärksamhet.`)
-    else if (b.publishedThisWeek > 0) lines.push(`${b.name}: ${b.publishedThisWeek} publicerade den här veckan.`)
-    else                            lines.push(`${b.name}: lugnt, inget kräver dig just nu.`)
-  }
+  // Executive Brain — what happened, what it cost, what worked, what to do.
+  const exec = await atlasExecutiveSummary(db)
+  const lines = exec.whatHappened
+  const topActions = exec.whatToDo.slice(0, 3)
 
   const quickActions = [
-    { label: 'Visa prioriteringar', href: '/manager',   icon: ListChecks },
+    { label: 'Action Center',       href: '/atlas/actions', icon: ListChecks },
     { label: 'Granska godkännanden', href: '/approvals', icon: ShieldCheck },
     { label: 'Affärsöversikt',       href: '/revenue',   icon: TrendingUp },
     { label: 'Kostnader',            href: '/costs',     icon: DollarSign },
@@ -92,14 +89,22 @@ export default async function AtlasHome() {
             </div>
           </div>
 
-          {/* Recommended action */}
-          {ctx.topPriority && (
-            <Link href={ctx.topPriority.href}
-              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 transition-colors px-4 py-2.5 text-sm font-semibold text-white">
-              <span className="text-indigo-100/90 font-normal">Rekommenderad åtgärd:</span>
-              {ctx.topPriority.label}
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+          {/* Prioriterade åtgärder (Action Center) */}
+          {topActions.length > 0 && (
+            <div className="mt-6 space-y-2">
+              <p className="text-[11px] uppercase tracking-widest text-indigo-300/70">Prioriterade åtgärder</p>
+              {topActions.map((a, i) => (
+                <Link key={i} href={a.href}
+                  className="flex items-center gap-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] hover:bg-indigo-500/10 transition-colors px-3.5 py-2.5">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.severity === 'critical' ? 'bg-red-400' : a.severity === 'high' ? 'bg-amber-400' : 'bg-indigo-400'}`} />
+                  <span className="text-sm font-medium flex-1 min-w-0 truncate">{a.title}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                </Link>
+              ))}
+              <Link href="/atlas/actions" className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:underline mt-1">
+                Se alla i Action Center <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           )}
         </div>
       </OSLayer>

@@ -18,6 +18,7 @@ import { NextResponse }   from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Anthropic }      from '@anthropic-ai/sdk'
 import { calculateCost }  from '@/lib/ai/pricing'
+import { logLlmCost }     from '@/lib/cost/track'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -122,6 +123,8 @@ Data:
 ${context}`,
     }],
   })
+
+  void logLlmCost('claude-haiku-4-5-20251001', msg.usage, { projectId: null, agent: 'CFO Briefing', operation: 'Morning Briefing' })
 
   const summary = msg.content[0].type === 'text' ? msg.content[0].text : ''
 

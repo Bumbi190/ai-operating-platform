@@ -22,6 +22,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isAnthropicModel, isOpenAIModel, isImageModel } from './models'
 import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
+import { logLlmCost, logImageCost } from '@/lib/cost/track'
 
 // ── Juni-referensbilder för konsekvent karaktärsstil ─────────────────────────
 // Alla referensbilder ligger i run-images/references/juni/ i Supabase Storage.
@@ -297,6 +298,12 @@ export interface RunStepInput {
    * Set to 1 in preview/test workflows to reduce cost.
    */
   maxImages?: number
+  /**
+   * Cost Intelligence — taggar kostnaden med projekt/agent/operation.
+   * projectId null = plattformsglobal. Skickas alltid (även null) så att
+   * icke-media-anrop inte felaktigt hamnar på media-projektet.
+   */
+  cost?: { projectId?: string | null; agent?: string; operation?: string }
 }
 
 export interface RunStepResult {
@@ -384,6 +391,13 @@ async function runAnthropicStep(
     outputTokens = response.usage.output_tokens
   }
 
+  void logLlmCost(model, { tokensIn: inputTokens, tokensOut: outputTokens }, {
+    projectId: input.cost?.projectId ?? null,
+    agent: input.cost?.agent,
+    operation: input.cost?.operation,
+    runId: input.runId,
+  })
+
   return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
 }
 
@@ -433,6 +447,13 @@ async function runOpenAIStep(
     inputTokens = response.usage?.prompt_tokens ?? 0
     outputTokens = response.usage?.completion_tokens ?? 0
   }
+
+  void logLlmCost(model, { tokensIn: inputTokens, tokensOut: outputTokens }, {
+    projectId: input.cost?.projectId ?? null,
+    agent: input.cost?.agent,
+    operation: input.cost?.operation,
+    runId: input.runId,
+  })
 
   return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
 }
@@ -707,6 +728,18 @@ async function runImageStep(
   // Log summary
   console.log(`[ImageGen] Klart: ${urls.length} bilder OK, ${errors.length} fel`)
   if (errors.length) console.error('[ImageGen] Fel:', errors)
+
+  // Cost Intelligence — saga/activity körs primärt via Ideogram, omslag/färgläggning via gpt-image-1.
+  void logImageCost(
+    urls.length,
+    (isSagaMode || isActivityMode) ? 'ideogram' : 'openai',
+    {
+      projectId: input.cost?.projectId ?? null,
+      agent: input.cost?.agent ?? 'Image Director',
+      operation: input.cost?.operation ?? 'Generate Image',
+      runId: input.runId,
+    },
+  )
 
   return {
     content: JSON.stringify({ urls, errors: errors.length ? errors : undefined }),

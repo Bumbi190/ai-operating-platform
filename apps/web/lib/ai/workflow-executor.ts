@@ -106,6 +106,7 @@ export async function executeWorkflow(
         temperature: stepConfig?.temperature ?? 0.7,
         maxImages: stepConfig?.max_images,
         runId,
+        cost: { projectId, agent: agent.name, operation: step.name },
       })
 
       // ── Validera output ──────────────────────────────────────────────────
@@ -133,6 +134,7 @@ export async function executeWorkflow(
           maxTokens: stepConfig?.max_tokens ?? 4000,
           temperature: Math.max(0.3, (stepConfig?.temperature ?? 0.7) - 0.2),
           runId,
+          cost: { projectId, agent: agent.name, operation: step.name },
         })
 
         const retryValidation = validateStepOutput(step.output_key, result.content)

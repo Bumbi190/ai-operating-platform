@@ -14,8 +14,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { interpolate } from '@/lib/utils'
-import { runStep } from '@/lib/ai/runner'
 import { getManager } from '@/lib/ai/manager'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
@@ -81,6 +79,24 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
 }
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60   // cap så en hängd körning aldrig låser requesten för evigt
+
+// ── FAST PATH ─────────────────────────────────────────────────────────────────
+// Rena innehållsuppgifter ("skriv en Facebook-post") ska INTE dra igång Executive
+// Brain, verktyg eller workflows. De går direkt till LLM och streamar omedelbart.
+const FAST_PATH_SYSTEM = `Du är en skicklig copywriter för Omnira. Skriv det som efterfrågas — direkt, färdigt och i rätt ton för kanalen. Ingen meta-text, inga frågor tillbaka, inga verktyg. Svara på operatörens språk (svenska om inget annat anges). Håll det publiceringsklart.`
+
+// Klassificerar om ett meddelande är en ren innehållsuppgift (fast path).
+function isFastPathContent(text: string): boolean {
+  const t = (text || '').toLowerCase().trim()
+  if (t.length > 600) return false   // långa/komplexa briefs → normal väg
+  // "skriv/generera/utkast ... post/caption/bildtext/inlägg/blogg/text/tweet/mejl/rubrik/annons"
+  const verb = /\b(skriv|generera|formulera|utkast|gör|skapa|ge mig|föreslå)\b/.test(t)
+  const noun = /\b(post|inlägg|caption|bildtext|blogg|blogginlägg|text|tweet|mejl|email|rubrik|annons|copy|beskrivning|hook|manus(text)?|bio|slogan)\b/.test(t)
+  // Uteslut sådant som faktiskt ska köra något i systemet:
+  const systemy = /\b(workflow|arbetsflöde|kör |starta|kampanj|pipeline|status|kostnad|mrr|prenumer|hur (går|mår)|analys|rapport|prioriter)\b/.test(t)
+  return verb && noun && !systemy
+}
 
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.
 
@@ -219,28 +235,36 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { messages, conversation_id, voice } = await request.json() as {
+  const { messages, conversation_id, voice, mode } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
+    mode?: string
   }
 
   const db = createAdminClient()
-
-  // ── Latens-mätning: tid tills system-prompten (Atlas Brain + minne) är klar.
   const tStart = Date.now()
+  const origin = new URL(request.url).origin   // för asynkron workflow-trigger
 
-  // Atlas-identitet (Executive Chief of Staff) + verktygsvägledning.
-  let systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+  // ── FAST PATH-beslut ────────────────────────────────────────────────────────
+  const lastUserText = (() => {
+    const m = messages[messages.length - 1]
+    return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
+  })()
+  const fastPath = mode === 'content' || isFastPathContent(lastUserText)
+  const reqType = fastPath ? 'fast_path' : 'atlas'
 
-  // Live-snapshot (cachad 45s) — Atlas Brain + Content/Opportunity/Agent-intelligens.
-  // Feature 5: Atlas svarar på "hur går The Prompt / vad funkar / vad bör jag göra"
-  // direkt från denna kontext, utan den långsamma ask_manager-vägen.
-  try { systemPrompt += await buildLiveContext(db) } catch { /* icke-kritiskt */ }
+  let systemPrompt: string
+  if (fastPath) {
+    // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
+    systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else {
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+    try { systemPrompt += await buildLiveContext(db) } catch { /* icke-kritiskt */ }
+    if (voice) systemPrompt += VOICE_DIRECTIVE
+  }
 
-  // Röst-direktivet läggs SIST (starkast recency) så korthet styr svaret.
-  if (voice) systemPrompt += VOICE_DIRECTIVE
-
+  const activeTools = fastPath ? [] : TOOLS
   const contextMs = Date.now() - tStart
 
   // Helper: persist a message to DB
@@ -290,9 +314,9 @@ export async function POST(request: Request) {
           // första färdiga meningen i stället för att vänta in hela svaret.
           const llm = anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
-            max_tokens: voice ? 150 : 4096,   // röst: kort (~2 meningar)
+            max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,
-            tools: TOOLS,
+            tools: activeTools,   // fast path = [] → ingen verktygsloop
             messages: msgs,
           })
           llm.on('text', (delta: string) => {
@@ -318,7 +342,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, origin)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -342,7 +366,10 @@ export async function POST(request: Request) {
 
         // Latens-sammanfattning från servern: hur lång tid Atlas Brain tog att
         // bygga + tid till första token. Klienten loggar resten (STT, TTS, totalt).
-        send('timing', { contextMs, firstTokenMs, serverTotalMs: Date.now() - tStart })
+        const serverTotalMs = Date.now() - tStart
+        // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
+        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, contextMs, firstTokenMs, serverTotalMs })
         send('done', {})
         controller.close()
       }
@@ -374,6 +401,7 @@ async function executeTool(
   input: Record<string, unknown>,
   db: AdminClient,
   _userId: string,
+  origin: string,
 ): Promise<unknown> {
   if (name === 'list_workflows') {
     const { data: workflows } = await db
@@ -430,10 +458,16 @@ async function executeTool(
 
     if (!run) throw new Error('Kunde inte skapa körning')
 
-    // Execute synchronously (chat waits for result — good for short workflows)
-    await executeWorkflow(db, run.id, workflow.project_id, (workflow.steps as WorkflowStep[]) ?? [], workflowInput)
+    // ASYNKRONT — blockera ALDRIG chatten. Kör i egen invocation via /api/runs/execute.
+    // Fire-and-forget: chatten returnerar run_id direkt, status syns i Activity Center.
+    const secret = process.env.CRON_SECRET
+    void fetch(`${origin}/api/runs/execute`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', ...(secret ? { Authorization: `Bearer ${secret}` } : {}) },
+      body:    JSON.stringify({ run_id: run.id }),
+    }).catch(() => { /* körningen finns redan som 'running'; status pollas separat */ })
 
-    return { run_id: run.id, message: 'Körning startad' }
+    return { run_id: run.id, status: 'started', message: 'Körning startad i bakgrunden — fråga om status när du vill.' }
   }
 
   if (name === 'get_run_status') {
@@ -530,68 +564,4 @@ async function executeTool(
   throw new Error(`Okänt verktyg: ${name}`)
 }
 
-async function executeWorkflow(
-  db: AdminClient,
-  runId: string,
-  projectId: string,
-  steps: WorkflowStep[],
-  initialInput: Record<string, string>,
-) {
-  const context: Record<string, string> = { ...initialInput }
-  const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
-
-  try {
-    for (const step of sortedSteps) {
-      const { data: agent } = await db
-        .from('agents')
-        .select('id, name, system_prompt, model, config')
-        .eq('id', step.agent_id)
-        .single()
-
-      if (!agent) throw new Error(`Agent hittades inte (steg "${step.name}")`)
-
-      const userMessage = interpolate(step.input_template, context)
-
-      await db.from('run_logs').insert({
-        run_id: runId, step_order: step.order, step_name: step.name,
-        role: 'user', content: userMessage,
-      })
-
-      const result = await runStep({
-        systemPrompt: agent.system_prompt,
-        userMessage,
-        model: agent.model,
-        maxTokens: (agent.config as { max_tokens?: number })?.max_tokens ?? 4000,
-        temperature: (agent.config as { temperature?: number })?.temperature ?? 0.7,
-      })
-
-      await db.from('run_logs').insert({
-        run_id: runId, step_order: step.order, step_name: step.name,
-        role: 'assistant', content: result.content,
-        tokens_in: result.tokensIn, tokens_out: result.tokensOut, duration_ms: result.durationMs,
-      })
-
-      context[step.output_key] = result.content
-      await db.from('runs').update({ context }).eq('id', runId)
-    }
-
-    const lastKey = sortedSteps[sortedSteps.length - 1]?.output_key
-    await db.from('outputs').insert({
-      run_id: runId, project_id: projectId,
-      name: `Chatt-körning — ${new Date().toLocaleDateString('sv-SE')}`,
-      type: 'text',
-      content: lastKey ? context[lastKey] : '',
-    })
-
-    await db.from('runs').update({
-      status: 'done', finished_at: new Date().toISOString(), context,
-    }).eq('id', runId)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Okänt fel'
-    await db.from('run_logs').insert({ run_id: runId, role: 'system', content: `❌ ${message}` })
-    await db.from('runs').update({
-      status: 'failed', error: message, finished_at: new Date().toISOString(),
-    }).eq('id', runId)
-    throw err
-  }
-}
+// executeWorkflow flyttad till lib/ai/workflow-runner.ts (körs nu asynkront via /api/runs/execute).

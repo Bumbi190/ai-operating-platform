@@ -220,7 +220,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
       .eq('project_id', project.id)
       .order('generated_at', { ascending: false })
       .limit(30),
-    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', 'instagram').maybeSingle(),
+    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', 'instagram').eq('project_id', project.id).maybeSingle(),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', weekAgo),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', monthAgo),
   ])

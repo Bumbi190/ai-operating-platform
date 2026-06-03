@@ -16,6 +16,7 @@ import { generateNewsImages } from '@/lib/media/ideogram'
 import { uploadSceneImage } from '@/lib/media/storage'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -108,6 +109,9 @@ export async function GET(request: Request) {
 
     console.log(`[cron/step3] Render started: ${renderId} for script ${script.id}`)
 
+    // Logga "Render Video"-körningen så Atlas/Activity Center får ett run-id för render-starten.
+    await logRun({ workflow: 'Render Video', context: { scriptId: script.id, renderId, phase: 'started' } })
+
     return NextResponse.json({
       status:     'step3_done',
       scriptId:   script.id,
@@ -119,6 +123,7 @@ export async function GET(request: Request) {
     await db.from('media_scripts').update({ video_status: 'none' }).eq('id', script.id)
     const msg = err instanceof Error ? err.message : 'unknown'
     console.error(`[cron/step3] Failed: ${msg}`)
+    await logRun({ workflow: 'Render Video', status: 'failed', context: { scriptId: script.id }, error: msg })
     return NextResponse.json({ status: 'step3_failed', error: msg }, { status: 500 })
   }
 }

@@ -145,7 +145,9 @@ const MEDIA_STEPS: Record<string, { path: string; workflow: string; label: strin
   fetch_news:        { path: '/api/media/news/cron',   workflow: 'Fetch AI News',       label: 'Fetch AI News' },
   generate_script:   { path: '/api/media/cron/step1',  workflow: 'Generate Script',     label: 'Generate Script' },
   generate_voiceover:{ path: '/api/media/cron/step2',  workflow: 'Generate Voiceover',  label: 'Generate Voiceover' },
-  render_video:      { path: '/api/media/cron/step4',  workflow: 'Render Video',        label: 'Render Video' },
+  // Render = step3: genererar bilder + STARTAR Lambda-renderingen (sätter video_status='rendering').
+  // step4 bara POLLAR pågående renderingar — fel steg att "starta" video.
+  render_video:      { path: '/api/media/cron/step3',  workflow: 'Render Video',        label: 'Render Video' },
   publish_social:    { path: '/api/media/cron/publish', workflow: 'Publish to Social',  label: 'Publish to Social', isPublish: true },
   publish_youtube:   { path: '/api/media/cron/youtube', workflow: 'Publish to YouTube', label: 'Publish to YouTube', isPublish: true },
 }

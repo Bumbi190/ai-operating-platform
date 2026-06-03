@@ -232,6 +232,7 @@ Hardware close-ups (always available as scene variety):
 - Circuit board traces: warm golden sidelighting, extreme shallow depth of field
 
 CRITICAL RULES:
+- SHOW THE ACTION, not generic "tech". If the story is about AI agents → someone (from behind) operating software / a robotic arm working / a screen of abstract UI blocks (no readable text). Robotics → a robot physically doing the task. Regulation → hearing chamber, podium, flags, courtroom. A job being replaced → the empty human workspace left behind. Do NOT default to generic server rooms, random laptops or generic coding screens UNLESS the story is literally about infrastructure or coding.
 - Each scene: completely different environment and composition — no repeating datacenter
 - Ground EVERY scene in a specific entity or beat from this exact story
 - People welcome but NO visible faces — from behind, silhouette, hands only
@@ -331,7 +332,7 @@ export async function generateSceneImages(
 
   const systemPrompt = `You are the editorial photography director for a premium AI documentary short-form series — think Bloomberg QuickTake, Wired Magazine, BBC Click, and Apple product films.
 
-Given a video script, generate EXACTLY 5 scene image prompts for VERTICAL (9:16) mobile format.
+Given a video script, generate EXACTLY 8 scene image prompts for VERTICAL (9:16) mobile format. More scenes = a fresh visual every few seconds (retention). Each must be DISTINCT and map to a different moment in the script.
 
 ═══ CORE VISUAL BRIEF ═══
 Target aesthetic: photorealistic editorial photography, cinematic and believable
@@ -380,7 +381,7 @@ Read the script. Identify the SPECIFIC actor/action in each section and show THA
 - Script about a specific company → their real physical environment/product
 - Only when nothing concrete fits → fall back to a tasteful macro of relevant hardware
 
-Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
+Return ONLY valid JSON — a flat array of 8 objects, no markdown fences:
 [
   { "scene": 1, "prompt": "...", "rationale": "one sentence on why this visual matches this narrative moment" },
   ...
@@ -391,7 +392,7 @@ Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
 Script:
 ${script}
 
-Generate 5 cinematic scene prompts for this video.`
+Generate 8 cinematic scene prompts for this video.`
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',

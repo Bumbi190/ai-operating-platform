@@ -75,7 +75,7 @@ export async function GET(request: Request) {
         ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
         : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
 
-      const rawImageUrls = await generateNewsImages(newsTitle, script.script, 3)
+      const rawImageUrls = await generateNewsImages(newsTitle, script.script, 8)   // fler scener = bildbyte var ~6s (retention); genereras parallellt
       storedImageUrls = await Promise.all(
         rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
       )

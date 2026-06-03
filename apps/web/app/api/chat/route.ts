@@ -115,14 +115,26 @@ function isActionIntent(text: string): boolean {
   const t = (text || '').toLowerCase().trim()
   // Publicera/posta innebär en åtgärd i sig själv (inget objekt krävs).
   if (/\b(publicera|publish|posta|publicering)\b/.test(t)) return true
-  // Övriga handlingsverb kräver ett objekt (workflow/analys/process/agent …).
-  return /\b(starta|start|kör|kör igång|dra igång|sätt igång|aktivera|generera|trigga|exekvera|genomför|utför)\b/.test(t)
-    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|video|manus|veckobrev|rapport|render|deploy)\b/.test(t)
+  // Övriga handlingsverb kräver ett objekt (workflow/nyhet/script/analys/…).
+  return /\b(starta|start|kör|kör igång|dra igång|sätt igång|aktivera|generera|skapa|gör|trigga|exekvera|genomför|utför|hämta|sök|hitta)\b/.test(t)
+    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|post|video|reel|manus|script|nyhet|nyheter|artikel|innehåll|content|story|veckobrev|rapport|render|deploy)\b/.test(t)
 }
 
 // Ord/fraser som PÅSTÅR en utförd/pågående åtgärd. Om Atlas skriver något av dessa
 // utan att ha anropat ett verktyg i samma tur → falskt påstående (ärlighetsspärr).
-const ACTION_CLAIM_RE = /\b(jag (startar|kör|kör igång|drar igång|sätter igång|publicerar|postar|aktiverar|triggar|genomför|påbörjar)|workflow(et)? (är )?(startat|köat|köad|igång|påbörjat)|körningen (är )?(startad|köad|igång|påbörjad)|publicering(en)? (är )?(påbörjad|igång|startad)|(har )?(startat|köat|köade|triggat|publicerat) (workflow|körning|processen|analysen|agenten)|kör (nu|igång) (workflow|processen|analysen)|sätter igång (det|workflow|processen))\b/i
+const ACTION_CLAIM_RE = new RegExp(
+  [
+    // Starka åtgärds-verb i presens (med eller utan "jag") = påstår pågående körning/postning.
+    '\\b(startar|triggar|publicerar|postar|kör igång|drar igång|sätter igång|påbörjar)\\b',
+    // "kör/genomför … <workflow-objekt eller -namn>" (ej ren analys).
+    '\\b(kör|genomför)\\b[^.!?]*\\b(workflow|arbetsflöde|fetch ai news|generate script|generate voiceover|publish to social|publish to youtube|render video|render|youtube|nyhet|nyheten|artikeln|scriptet|manus|posten|inlägget|publicering|videon|reel)\\b',
+    // Status-påståenden om workflow/körning/publicering.
+    '\\bworkflow(et)?\\b[^.!?]*\\b(startat|köat|köad|igång|påbörjat|triggat)\\b',
+    '\\b(körningen|publiceringen)\\b[^.!?]*\\b(startad|köad|igång|påbörjad)\\b',
+    '\\b(har )?(startat|köat|triggat|publicerat) (workflow|körning|scriptet|nyheten|posten|inlägget)\\b',
+  ].join('|'),
+  'i',
+)
 
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.
 
@@ -340,8 +352,10 @@ export async function POST(request: Request) {
         )
       }
 
-      let firstTokenMs = 0   // tid (från tStart) till första token — latens-mätning
-      let toolCallCount = 0  // antal verkliga verktygsanrop denna förfrågan — ärlighetsspärr
+      let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
+      let actionToolUsed = false  // kördes ett ÅTGÄRDS-verktyg (trigger_workflow/delegate) DENNA förfrågan?
+      // OBS: list_workflows/get_run_status/ask_manager räknas INTE — de är läsningar.
+      // Ärlighetsspärren får bara tystas av ett verkligt, lyckat åtgärdsanrop.
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
         // Agentic loop — Claude can use tools multiple times
@@ -369,14 +383,14 @@ export async function POST(request: Request) {
             const textBlocks = response.content.filter(b => b.type === 'text')
             let fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
 
-            // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd men inget verktyg
-            // kördes denna förfrågan → korrigera direkt så svaret speglar verkligheten.
-            // Primärskyddet är forceToolFirstTurn; detta fångar missade intent-fall.
-            if (!fastPath && toolCallCount === 0 && ACTION_CLAIM_RE.test(fullText)) {
-              const correction = ' \n\n⚠️ Obs: jag har faktiskt inte kört något än — inget verktyg anropades. Säg vilket workflow du vill köra, så startar jag det på riktigt.'
+            // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
+            // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
+            // förfrågan → korrigera. list_workflows/ask_manager tystar INTE spärren.
+            if (!fastPath && !actionToolUsed && ACTION_CLAIM_RE.test(fullText)) {
+              const correction = ' \n\n⚠️ Obs: jag har faktiskt inte kört något än — ingen körning startades. Bekräfta vilket workflow du vill köra, så triggar jag det på riktigt och visar run-id.'
               send('text', { text: correction })
               fullText += correction
-              console.log('[honesty-guard] blockerade falskt åtgärdspåstående (inget verktyg kördes)')
+              console.log('[honesty-guard] blockerade falskt åtgärdspåstående (inget åtgärdsverktyg kördes)')
             }
 
             if (fullText) void saveMessage('assistant', fullText)
@@ -388,7 +402,6 @@ export async function POST(request: Request) {
           const toolResults: Anthropic.ToolResultBlockParam[] = []
 
           for (const toolUse of toolUseBlocks) {
-            toolCallCount++   // verkligt verktygsanrop → ärlighetsspärr vet att åtgärd skedde
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
 
             let result: unknown
@@ -397,6 +410,11 @@ export async function POST(request: Request) {
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
+
+            // Markera att en VERKLIG åtgärd skedde — bara åtgärdsverktyg som LYCKADES.
+            const isActionTool = toolUse.name === 'trigger_workflow' || toolUse.name === 'delegate'
+            const errored = !!result && typeof result === 'object' && 'error' in (result as Record<string, unknown>)
+            if (isActionTool && !errored) actionToolUsed = true
 
             send('tool_result', { tool: toolUse.name, result })
 

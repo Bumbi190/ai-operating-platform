@@ -34,3 +34,6 @@ HANDOFF*.md
 handoff*.md
 .vercel
 .env*
+
+.env.local
+.vercel

@@ -56,12 +56,23 @@ export interface SystemHealth {
   lastError: { message: string; workflow: string | null; at: string } | null
 }
 
+export interface TokenHealthRow {
+  platform: string
+  status: string            // ok | warning | expired | error | unknown
+  daysLeft: number | null
+  expiresAt: string | null
+  lastVerifiedAt: string | null
+  lastRefreshedAt: string | null
+  lastError: string | null
+}
+
 export interface OperationsSnapshot {
   generatedAt: string
   prompt: PromptOps
   familje: FamiljeOps
   gainpilot: GainpilotOps
   system: SystemHealth
+  tokens: TokenHealthRow[]
 }
 
 function startOfTodayIso(): string {
@@ -90,7 +101,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
   const todayStart = startOfTodayIso()
   const nowMs      = Date.now()
 
-  const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows] = await Promise.all([
+  const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows] = await Promise.all([
     safe<any[]>(db.from('projects').select('id, name, slug, color'), []),
     safe<any[]>(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, updated_at'), []),
     safe<any[]>(db.from('media_insights').select('project_id, platform, views, reach, impressions'), []),
@@ -98,6 +109,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     safe<any[]>(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), []),
     safe<any[]>(db.from('leads').select('project_id, status'), []),
     safe<any[]>(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), []),
+    safe<any[]>(db.from('token_health').select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at, last_error'), []),
   ])
 
   const idBySlug = new Map<string, string>()
@@ -188,7 +200,21 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     } : null,
   }
 
-  return { generatedAt: new Date().toISOString(), prompt, familje, gainpilot, system }
+  // ── INTEGRATIONER & TOKENS ──────────────────────────────────────────────────
+  const order = ['instagram', 'facebook', 'youtube']
+  const tokens: TokenHealthRow[] = (tokenRows as any[])
+    .map(t => ({
+      platform: t.platform,
+      status: t.status ?? 'unknown',
+      daysLeft: t.days_left ?? null,
+      expiresAt: t.expires_at ?? null,
+      lastVerifiedAt: t.last_verified_at ?? null,
+      lastRefreshedAt: t.last_refreshed_at ?? null,
+      lastError: t.last_error ?? null,
+    }))
+    .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform))
+
+  return { generatedAt: new Date().toISOString(), prompt, familje, gainpilot, system, tokens }
 }
 
 /**
@@ -207,5 +233,12 @@ export function operationsSummary(o: OperationsSnapshot): string {
   lines.push(`GainPilot — beta: ${o.gainpilot.betaUsers ?? 'ingen data'}, aktiva: ${o.gainpilot.activeUsers ?? 'ingen data'}, leads: ${o.gainpilot.leads}, fel 24h: ${o.gainpilot.failed24h}.`)
   lines.push(`System — kostnad idag ${Math.round(o.system.costTodaySek)} kr, denna månad ${Math.round(o.system.costMonthSek)} kr. Aktiva workflows: ${o.system.activeWorkflows}, hängda: ${o.system.stuckWorkflows}, misslyckade 24h: ${o.system.failedWorkflows}.`)
   if (o.system.lastError) lines.push(`Senaste fel: ${o.system.lastError.workflow ?? 'okänt'} — ${o.system.lastError.message.slice(0, 100)}.`)
+  if (o.tokens.length) {
+    const tok = o.tokens.map(t => {
+      const d = t.daysLeft !== null ? `${t.daysLeft}d kvar` : (t.status === 'ok' ? 'giltigt' : t.status)
+      return `${t.platform}: ${t.status}${t.status === 'ok' || t.status === 'warning' ? ` (${d})` : ''}`
+    }).join(', ')
+    lines.push(`Tokens — ${tok}.`)
+  }
   return lines.join('\n')
 }

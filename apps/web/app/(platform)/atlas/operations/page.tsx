@@ -15,7 +15,7 @@ import { getOperations } from '@/lib/atlas/operations'
 import { LiveRefresh } from '../activity/LiveRefresh'
 import {
   Clapperboard, Clock, Loader2, Send, CheckCircle2, XCircle, Eye,
-  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive,
+  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive, KeyRound,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -132,6 +132,40 @@ export default async function AtlasOperations() {
               <p className="text-sm text-muted-foreground">Inga fel registrerade senaste 24h.</p>
             )}
           </div>
+        </div>
+      </OSLayer>
+
+      {/* ── INTEGRATIONER & TOKENS ──────────────────────────────────────────── */}
+      <OSLayer layer="intelligence" className="space-y-3">
+        <SectionHeader eyebrow="Integrationer & Tokens" title="Publiceringskanaler"
+          flag={o.tokens.some(t => t.status === 'expired' || t.status === 'error') ? 'Token-problem'
+            : o.tokens.some(t => t.status === 'warning') ? 'Token nära utgång' : undefined} />
+        <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
+          {o.tokens.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">Ingen token-data än — körs dagligen 06:15 UTC.</div>
+          ) : o.tokens.map(t => {
+            const dot = t.status === 'ok' ? 'bg-emerald-400'
+              : t.status === 'warning' ? 'bg-amber-400'
+              : t.status === 'unknown' ? 'bg-zinc-500' : 'bg-red-400'
+            const expiry = t.daysLeft !== null ? `utgång om ${t.daysLeft} dagar`
+              : t.status === 'ok' ? 'långlivat / utgång okänd' : t.status
+            return (
+              <div key={t.platform} className="flex items-center gap-3 px-4 py-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                <KeyRound className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium capitalize w-24 shrink-0">{t.platform}</span>
+                <span className="text-[12px] text-muted-foreground flex-1 truncate">
+                  {expiry}
+                  {t.lastRefreshedAt ? ` · refresh ${rel(t.lastRefreshedAt)}` : ''}
+                  {t.lastVerifiedAt ? ` · verifierad ${rel(t.lastVerifiedAt)}` : ''}
+                  {t.lastError ? ` · ${t.lastError.slice(0, 50)}` : ''}
+                </span>
+                <span className={`text-[10px] uppercase tracking-wide shrink-0 ${
+                  t.status === 'ok' ? 'text-emerald-400' : t.status === 'warning' ? 'text-amber-300' : t.status === 'unknown' ? 'text-zinc-500' : 'text-red-400'
+                }`}>{t.status}</span>
+              </div>
+            )
+          })}
         </div>
       </OSLayer>
     </OSPage>

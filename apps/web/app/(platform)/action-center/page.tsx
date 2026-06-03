@@ -31,6 +31,30 @@ export default async function ActionCenterPage() {
   const instagramInsightsMissing = (pubCountRes.count ?? 0) > 0 && (insCountRes.count ?? 0) === 0
 
   const items = buildAttentionItems(businesses, { instagramInsightsMissing })
+
+  // Token-larm direkt från token_health (samma sanningskälla som Operations Center).
+  try {
+    const { data: tokens } = await (db.from('token_health') as any)
+      .select('platform, status, days_left')
+    for (const t of (tokens ?? []) as Array<{ platform: string; status: string; days_left: number | null }>) {
+      if (t.status === 'expired' || t.status === 'error') {
+        items.unshift({
+          id: `token-${t.platform}`, severity: 'urgent',
+          title: `${t.platform}-token ${t.status === 'expired' ? 'har gått ut' : 'svarar med fel'}`,
+          reason: 'Publicering till den här kanalen kommer att misslyckas tills tokenet förnyas.',
+          action: { href: '/atlas/operations', label: 'Visa' },
+        } as AttentionItem)
+      } else if (t.status === 'warning') {
+        items.unshift({
+          id: `token-${t.platform}`, severity: 'important',
+          title: `${t.platform}-token löper ut${t.days_left != null ? ` om ${t.days_left} dagar` : ' snart'}`,
+          reason: 'Förnya innan utgång så att publiceringen inte stoppas.',
+          action: { href: '/atlas/operations', label: 'Visa' },
+        } as AttentionItem)
+      }
+    }
+  } catch { /* token_health saknas ännu — icke-kritiskt */ }
+
   const urgent    = items.filter(i => i.severity === 'urgent')
   const important = items.filter(i => i.severity === 'important')
   const info      = items.filter(i => i.severity === 'info')

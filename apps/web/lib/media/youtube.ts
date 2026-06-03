@@ -40,6 +40,20 @@ async function getAccessToken(): Promise<string> {
   return data.access_token
 }
 
+/**
+ * Verifierar att YouTube-tokenet (refresh-token → access-token) fungerar.
+ * Refresh-token är långlivat → vi rapporterar giltig/ogiltig, inte "dagar kvar".
+ */
+export async function verifyYouTubeToken(): Promise<{ ok: boolean; error?: string }> {
+  if (!isYouTubeConfigured()) return { ok: false, error: 'YouTube ej konfigurerat (saknar env-vars)' }
+  try {
+    await getAccessToken()
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'okänt fel' }
+  }
+}
+
 export interface YouTubeUploadOptions {
   videoUrl:    string       // publik MP4-URL (Supabase Storage)
   title:       string       // max ~100 tecken

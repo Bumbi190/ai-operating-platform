@@ -180,6 +180,16 @@ export async function GET(request: Request) {
     expiresAt: currentFb?.expiresAt?.toISOString() ?? null,
   }
 
+  // ── Spårbarhet: notera senaste lyckade IG-refresh i token_health ──────────────
+  if ((results.instagram as { status?: string } | undefined)?.status === 'refreshed') {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      await createAdminClient().from('token_health')
+        .update({ last_refreshed_at: new Date().toISOString() })
+        .eq('platform', 'instagram')
+    } catch { /* non-blocking */ }
+  }
+
   // ── Sammanfattning ────────────────────────────────────────────────────────────
   const overallOk = results.instagram !== undefined &&
     (results.instagram as { status: string }).status !== 'failed'

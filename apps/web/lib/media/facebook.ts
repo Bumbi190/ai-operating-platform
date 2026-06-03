@@ -26,7 +26,9 @@ function requireEnv(key: string): string {
  * If the supplied token is already a Page token this is a no-op (returns it as-is).
  */
 async function resolvePageToken(userOrPageToken: string, pageId: string): Promise<string> {
-  const res  = await fetch(`${BASE}/me/accounts?access_token=${userOrPageToken}`)
+  // Begär BARA id + access_token (ej fulla sid-objekt) och paginera — annars svarar
+  // Graph API "reduce the amount of data you're requesting" när kontot har många/stora sidor.
+  const res  = await fetch(`${BASE}/me/accounts?fields=id,access_token&limit=200&access_token=${userOrPageToken}`)
   const data = await res.json() as { data?: Array<{ id: string; access_token: string }> }
   const page = data.data?.find(p => p.id === pageId)
   // If we find a page-specific token, use it; otherwise the caller may already have one

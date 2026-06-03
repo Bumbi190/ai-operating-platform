@@ -161,7 +161,8 @@ export async function fetchBusinessSnapshots(
     const texts      = byP(outputs).filter(o => o.type === 'text').length
     const pdfs       = byP(outputs).filter(o => o.type === 'pdf').length
     const images     = byP(outputs).filter(o => o.type === 'image').length
-    const published  = byP(scripts).filter(s => s.status === 'published').length
+    const publishedScripts = byP(scripts).filter(s => s.status === 'published')
+    const published  = publishedScripts.length
     const videos     = byP(scripts).filter(s => s.video_status === 'done').length
     const newsCount  = byP(news).length
     const leadsCount = byP(leads).length
@@ -181,7 +182,11 @@ export async function fetchBusinessSnapshots(
 
     const contentThisMonth = byP(outputs).length + byP(scripts).length
     const decisions30d = decided.filter(d => projectOf(d) === pid && d.reviewed_at && new Date(d.reviewed_at).getTime() > since30d).length
-    const latestPub = published.find(p => p.project_id === pid)
+    // BUGG-FIX: 'published' är ett antal (number) — .find() på det kraschade sidan
+    // ("i.find is not a function"). Använd den filtrerade listan och ta senaste publicerade.
+    const latestPub = publishedScripts
+      .slice()
+      .sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime())[0] ?? null
     const latestPublication = latestPub
       ? { title: (latestPub.hook?.trim() || 'Publicerat inlägg'), at: latestPub.published_at }
       : null

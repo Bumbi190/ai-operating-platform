@@ -93,9 +93,10 @@ export async function computeStripeMetrics(): Promise<StripeMetrics | null> {
   const created = await stripeList('/subscriptions', { status: 'all', 'created[gte]': String(monthStart) })
   const newSubscribers = created.length
 
-  // Churn denna månad (avslutade ≥ månadsstart).
-  const canceled = await stripeList('/subscriptions', { status: 'canceled', 'canceled_at[gte]': String(monthStart) })
-  const churnedThisMonth = canceled.length
+  // Churn denna månad (avslutade ≥ månadsstart). Stripe /subscriptions stödjer INTE
+  // canceled_at som list-filter → hämta canceled och filtrera klient-sida på unix-tid.
+  const canceled = await stripeList('/subscriptions', { status: 'canceled' })
+  const churnedThisMonth = canceled.filter(s => Number(s.canceled_at ?? s.ended_at ?? 0) >= monthStart).length
 
   // Intäkt denna månad (betalda fakturor).
   const invoices = await stripeList('/invoices', { status: 'paid', 'created[gte]': String(monthStart) })

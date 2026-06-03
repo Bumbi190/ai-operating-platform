@@ -91,11 +91,13 @@ export default async function AtlasOperations() {
       {/* ── FAMILJE-STUNDEN ────────────────────────────────────────────────── */}
       <OSLayer layer="intelligence" className="space-y-3">
         <SectionHeader eyebrow="Familje-Stunden" title="Barninnehåll & prenumeration" flag={o.familje.failed24h > 0 ? `${o.familje.failed24h} fel 24h` : undefined} />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Metric icon={Users}    color="text-emerald-400" label="Aktiva prenumeranter" value={o.familje.activeSubscribers === null ? '—' : nf(o.familje.activeSubscribers)} hint={o.familje.activeSubscribers === null ? 'Stripe ej inkopplat' : undefined} />
-          <Metric icon={Sparkles} color="text-yellow-400"  label="Leads" value={nf(o.familje.leads)} />
-          <Metric icon={Send}     color="text-blue-400"    label="Sociala poster" value={nf(o.familje.socialPosts)} />
-          <Metric icon={XCircle}  color={o.familje.failed24h ? 'text-red-400' : 'text-zinc-500'} label="Misslyckade 24h" value={nf(o.familje.failed24h)} />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <Metric icon={Users}      color="text-emerald-400" label="Aktiva prenumeranter" value={o.familje.activeSubscribers === null ? '—' : nf(o.familje.activeSubscribers)} hint={o.familje.activeSubscribers === null ? 'Stripe-snapshot saknas' : undefined} />
+          <Metric icon={DollarSign} color="text-emerald-400" label="MRR" value={o.familje.mrrSek === null ? '—' : `${nf(o.familje.mrrSek)} kr`} />
+          <Metric icon={Sparkles}   color="text-indigo-300"  label="Nya denna månad" value={o.familje.newSubscribers === null ? '—' : nf(o.familje.newSubscribers)} />
+          <Metric icon={Clock}      color="text-amber-300"   label="Trial" value={o.familje.trialing === null ? '—' : nf(o.familje.trialing)} />
+          <Metric icon={XCircle}    color={(o.familje.churnRatePct ?? 0) > 0 ? 'text-red-400' : 'text-zinc-500'} label="Churn" value={o.familje.churnRatePct === null ? '—' : `${o.familje.churnRatePct}%`} />
+          <Metric icon={Sparkles}   color="text-yellow-400"  label="Leads" value={nf(o.familje.leads)} />
         </div>
       </OSLayer>
 

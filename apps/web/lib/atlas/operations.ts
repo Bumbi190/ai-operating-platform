@@ -10,6 +10,8 @@
  * att krascha. Read-only.
  */
 
+import { revenueIntel } from './revenue'
+
 type AnyDb = any
 
 const PROMPT_SLUG   = 'ai-media-automation'
@@ -36,7 +38,11 @@ export interface PromptOps {
 }
 
 export interface FamiljeOps {
-  activeSubscribers: number | null  // placeholder tills Stripe är inkopplat
+  activeSubscribers: number | null  // null = Stripe-snapshot saknas ännu
+  mrrSek: number | null
+  newSubscribers: number | null
+  trialing: number | null
+  churnRatePct: number | null
   leads: number
   socialPosts: number
   failed24h: number
@@ -179,9 +185,14 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     } : null,
   }
 
-  // ── FAMILJE-STUNDEN ─────────────────────────────────────────────────────────
+  // ── FAMILJE-STUNDEN (intäkt från Stripe-snapshot) ───────────────────────────
+  const rev = familjeId ? await revenueIntel(db, familjeId) : null
   const familje: FamiljeOps = {
-    activeSubscribers: null,  // placeholder tills Stripe är inkopplat
+    activeSubscribers: rev?.hasData ? rev.activeSubscribers : null,
+    mrrSek:            rev?.hasData ? rev.mrrSek : null,
+    newSubscribers:    rev?.hasData ? rev.newSubscribers : null,
+    trialing:          rev?.hasData ? rev.trialing : null,
+    churnRatePct:      rev?.hasData ? rev.churnRatePct : null,
     leads:       leadsFor(familjeId),
     socialPosts: scripts.filter(s => s.project_id === familjeId && isPublished(s)).length,
     failed24h:   failed24hFor(familjeId),
@@ -256,7 +267,11 @@ export function operationsSummary(o: OperationsSnapshot): string {
   lines.push(`\n\nOPERATIONS (live):`)
   lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade: ${p.archived}, återförsöker: ${p.retrying}, fastnade fel (kräver åtgärd): ${p.pipelineErrors}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
   if (p.latestPublished) lines.push(`Senast publicerat: "${(p.latestPublished.hook ?? '').slice(0, 60)}".`)
-  lines.push(`Familje-Stunden — prenumeranter: ${o.familje.activeSubscribers ?? 'ej inkopplat (Stripe)'}, leads: ${o.familje.leads}, sociala poster: ${o.familje.socialPosts}, fel 24h: ${o.familje.failed24h}.`)
+  const f = o.familje
+  const famRev = f.activeSubscribers === null
+    ? 'intäkt: Stripe-snapshot saknas ännu'
+    : `${f.activeSubscribers} aktiva prenumeranter, MRR ${Math.round(f.mrrSek ?? 0)} kr, ${f.newSubscribers ?? 0} nya, ${f.trialing ?? 0} trial, churn ${f.churnRatePct ?? 0}%`
+  lines.push(`Familje-Stunden — ${famRev}; leads: ${f.leads}, sociala poster: ${f.socialPosts}, fel 24h: ${f.failed24h}.`)
   lines.push(`GainPilot — beta: ${o.gainpilot.betaUsers ?? 'ingen data'}, aktiva: ${o.gainpilot.activeUsers ?? 'ingen data'}, leads: ${o.gainpilot.leads}, fel 24h: ${o.gainpilot.failed24h}.`)
   lines.push(`System — kostnad idag ${Math.round(o.system.costTodaySek)} kr, denna månad ${Math.round(o.system.costMonthSek)} kr. Aktiva workflows: ${o.system.activeWorkflows}, hängda: ${o.system.stuckWorkflows}, misslyckade 24h: ${o.system.failedWorkflows}.`)
   if (o.system.lastError) lines.push(`Senaste fel: ${o.system.lastError.workflow ?? 'okänt'} — ${o.system.lastError.message.slice(0, 100)}.`)

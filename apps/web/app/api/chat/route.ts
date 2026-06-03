@@ -86,16 +86,25 @@ export const maxDuration = 60   // cap så en hängd körning aldrig låser requ
 // Brain, verktyg eller workflows. De går direkt till LLM och streamar omedelbart.
 const FAST_PATH_SYSTEM = `Du är en skicklig copywriter för Omnira. Skriv det som efterfrågas — direkt, färdigt och i rätt ton för kanalen. Ingen meta-text, inga frågor tillbaka, inga verktyg. Svara på operatörens språk (svenska om inget annat anges). Håll det publiceringsklart.`
 
-// Klassificerar om ett meddelande är en ren innehållsuppgift (fast path).
+// ── INTENT CLASSIFIER ─────────────────────────────────────────────────────────
+// Avgör FAST PATH (ren skriv-/text-uppgift → direkt LLM) vs EXECUTIVE (verksamhet
+// → Executive Brain + verktyg). FAST PATH vinner bara om inget "systemy" finns med.
 function isFastPathContent(text: string): boolean {
   const t = (text || '').toLowerCase().trim()
-  if (t.length > 600) return false   // långa/komplexa briefs → normal väg
-  // "skriv/generera/utkast ... post/caption/bildtext/inlägg/blogg/text/tweet/mejl/rubrik/annons"
-  const verb = /\b(skriv|generera|formulera|utkast|gör|skapa|ge mig|föreslå)\b/.test(t)
-  const noun = /\b(post|inlägg|caption|bildtext|blogg|blogginlägg|text|tweet|mejl|email|rubrik|annons|copy|beskrivning|hook|manus(text)?|bio|slogan)\b/.test(t)
-  // Uteslut sådant som faktiskt ska köra något i systemet:
-  const systemy = /\b(workflow|arbetsflöde|kör |starta|kampanj|pipeline|status|kostnad|mrr|prenumer|hur (går|mår)|analys|rapport|prioriter)\b/.test(t)
-  return verb && noun && !systemy
+  if (t.length > 800) return false   // långa/komplexa briefs → executive
+
+  // EXECUTIVE-signaler vinner alltid (status, analys, publicering, workflow, agenter, affär).
+  const executive = /\b(workflow|arbetsflöde|\bkör\b|starta|publicera|publish|kampanj|pipeline|status|kostnad|intäkt|mrr|prenumer|churn|hur (går|mår|presterar)|analys|analysera|rapport|prioriter|opportunit|möjlighet|agent|render|deploy)\b/.test(t)
+  if (executive) return false
+
+  // Fristående skriv-/redigeringsåtgärder (inget objekt krävs).
+  const standalone = /\b(sammanfatta|summera|summarize|förbättra|improve|skriv om|omformulera|korta ner|översätt|translate|brainstorm(a)?|ge mig (idéer|förslag)|fler idéer)\b/.test(t)
+
+  // Skriv-verb + innehålls-objekt.
+  const writeVerb = /\b(skriv|generera|formulera|utkast|skapa|gör|ge mig|föreslå|ta fram)\b/.test(t)
+  const contentNoun = /\b(post|inlägg|caption|bildtext|blogg|blogginlägg|text|texter|tweet|mejl|e-?post|email|linkedin|rubrik|rubriker|annons|copy|beskrivning|hook|hooks|manus|bio|slogan|idé|idéer|ideas|stycke|punktlista|svar)\b/.test(t)
+
+  return standalone || (writeVerb && contentNoun)
 }
 
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.

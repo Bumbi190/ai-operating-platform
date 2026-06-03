@@ -86,6 +86,7 @@ export function ChatClient({
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<'fast_path' | 'atlas' | null>(null)   // routing-verifiering
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -188,6 +189,12 @@ export function ChatClient({
               }
             }
 
+            if (event.event === 'timing') {
+              setMode(event.reqType ?? null)
+              // eslint-disable-next-line no-console
+              console.log(`[chat-mode] ${event.reqType} · första token ${event.firstTokenMs}ms · totalt ${event.serverTotalMs}ms`)
+            }
+
             if (event.event === 'error') {
               setMessages(prev => [
                 ...prev,
@@ -271,6 +278,15 @@ export function ChatClient({
           <Plus className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Routing-badge — verifierar FAST PATH vs EXECUTIVE */}
+      {mode && (
+        <div className="px-4 pt-1 flex justify-end">
+          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${mode === 'fast_path' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10'}`}>
+            {mode === 'fast_path' ? '⚡ FAST PATH' : '🧠 EXECUTIVE'}
+          </span>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">

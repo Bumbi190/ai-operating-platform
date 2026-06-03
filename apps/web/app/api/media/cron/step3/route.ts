@@ -17,6 +17,8 @@ import { uploadSceneImage } from '@/lib/media/storage'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
 import { logRun } from '@/lib/media/run-log'
+import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, composition, media_news_items(title)')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -76,7 +78,7 @@ export async function GET(request: Request) {
         ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
         : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
 
-      const rawImageUrls = await generateNewsImages(newsTitle, script.script, 8)   // fler scener = bildbyte var ~6s (retention); genereras parallellt
+      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, script.script, 8), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
       storedImageUrls = await Promise.all(
         rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
       )
@@ -99,7 +101,7 @@ export async function GET(request: Request) {
       backgroundMusicUrl: undefined,
     })
 
-    const { renderId, bucketName } = await startLambdaRender(script.id, inputProps, 'SimpleNewsReel')
+    const { renderId, bucketName } = await withRetry(() => startLambdaRender(script.id, inputProps, 'SimpleNewsReel'), { attempts: 2, label: 'Remotion Lambda render-start' })
 
     await db.from('media_scripts').update({
       video_status:  'rendering',
@@ -120,10 +122,22 @@ export async function GET(request: Request) {
       next:       'publish cron runs at 08:00 / 18:00 UTC',
     })
   } catch (err) {
-    await db.from('media_scripts').update({ video_status: 'none' }).eq('id', script.id)
     const msg = err instanceof Error ? err.message : 'unknown'
-    console.error(`[cron/step3] Failed: ${msg}`)
-    await logRun({ workflow: 'Render Video', status: 'failed', context: { scriptId: script.id }, error: msg })
-    return NextResponse.json({ status: 'step3_failed', error: msg }, { status: 500 })
+    const attempts  = (script.render_attempts ?? 0) + 1
+    const escalated = attempts >= 3
+    await db.from('media_scripts').update({
+      video_status:           'failed',
+      render_attempts:        attempts,
+      pipeline_next_retry_at: escalated ? null : new Date(Date.now() + nextRetryDelayMs(attempts - 1)).toISOString(),
+      pipeline_failed_reason: msg,
+    }).eq('id', script.id)
+    console.error(`[cron/step3] Failed (försök ${attempts}/3): ${msg}`)
+    await logRun({ workflow: 'Render Video', status: 'failed', context: { scriptId: script.id, attempts }, error: msg })
+    await sendPipelineAlert({
+      cronRoute: 'cron/step3', step: 'render', error: msg,
+      severity:  escalated ? undefined : 'warning',
+      context:   { scriptId: script.id, attempts, max: 3, escalated, note: escalated ? 'Max försök nått — kräver åtgärd' : 'Återförsök schemalagt' },
+    })
+    return NextResponse.json({ status: 'step3_failed', error: msg, attempts, escalated }, { status: 500 })
   }
 }

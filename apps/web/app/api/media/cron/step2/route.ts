@@ -16,6 +16,8 @@ import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
+import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -71,8 +73,8 @@ export async function GET(request: Request) {
     // Generate voice + images in parallel (independent operations)
     console.log(`[cron/step2] Generating voice + 3 images in parallel...`)
     const [voiceResult, rawImageUrls] = await Promise.all([
-      generateVoiceover(script.script, 'victoria'),
-      generateNewsImages(newsTitle, script.script, 3),
+      withRetry(() => generateVoiceover(script.script, 'victoria'), { attempts: 2, label: 'ElevenLabs voice' }),
+      withRetry(() => generateNewsImages(newsTitle, script.script, 3), { attempts: 2, label: 'Ideogram images' }),
     ])
 
     // Upload everything in parallel
@@ -103,9 +105,23 @@ export async function GET(request: Request) {
       next:       'step3 will run in 5 min',
     })
   } catch (err) {
-    await db.from('media_scripts').update({ voice_status: 'none' }).eq('id', script.id)
     const msg = err instanceof Error ? err.message : 'unknown'
-    console.error(`[cron/step2] Failed: ${msg}`)
-    return NextResponse.json({ status: 'voice_failed', error: msg }, { status: 500 })
+    const attempts  = (script.voice_attempts ?? 0) + 1
+    const escalated = attempts >= 3
+    // Durabel retry: markera 'failed' + schemalägg nästa försök (drainern tar det).
+    // Vid max försök → ingen mer auto-retry, eskalera till operatör (Action Center + mail).
+    await db.from('media_scripts').update({
+      voice_status:           'failed',
+      voice_attempts:         attempts,
+      pipeline_next_retry_at: escalated ? null : new Date(Date.now() + nextRetryDelayMs(attempts - 1)).toISOString(),
+      pipeline_failed_reason: msg,
+    }).eq('id', script.id)
+    console.error(`[cron/step2] Failed (försök ${attempts}/3): ${msg}`)
+    await sendPipelineAlert({
+      cronRoute: 'cron/step2', step: 'voiceover', error: msg,
+      severity:  escalated ? undefined : 'warning',
+      context:   { scriptId: script.id, attempts, max: 3, escalated, note: escalated ? 'Max försök nått — kräver åtgärd' : 'Återförsök schemalagt' },
+    })
+    return NextResponse.json({ status: 'voice_failed', error: msg, attempts, escalated }, { status: 500 })
   }
 }

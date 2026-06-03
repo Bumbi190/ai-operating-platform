@@ -22,6 +22,8 @@ export interface PromptOps {
   rendering: number       // render pågår
   waitingPublish: number  // video klar, ej publicerad (FÄRSK, ≤4 dagar)
   archived: number        // arkiverad pga färskhetspolicy (>4 dagar gammal news)
+  retrying: number        // steg som väntar på auto-omförsök (self-healing)
+  pipelineErrors: number  // steg som nått max försök → kräver operatör
   failed24h: number
   views: { instagram: number; youtube: number; facebook: number }
   latestPublished: {
@@ -103,7 +105,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
 
   const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows] = await Promise.all([
     safe<any[]>(db.from('projects').select('id, name, slug, color'), []),
-    safe<any[]>(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, updated_at'), []),
+    safe<any[]>(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, voice_attempts, render_attempts, pipeline_failed_reason, updated_at'), []),
     safe<any[]>(db.from('media_insights').select('project_id, platform, views, reach, impressions'), []),
     safe<any[]>(db.from('runs').select('project_id, status, error, last_error, created_at, finished_at, workflows(name)').gte('created_at', since24h).order('created_at', { ascending: false }), []),
     safe<any[]>(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), []),
@@ -148,6 +150,12 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     rendering:      promptScripts.filter(s => String(s.video_status) === 'rendering').length,
     waitingPublish: promptScripts.filter(s => isReadyVideo(s) && !isPublished(s)).length,
     archived:       promptScripts.filter(s => String(s.video_status) === 'archived').length,
+    retrying:       promptScripts.filter(s =>
+                      (String(s.voice_status) === 'failed' && (s.voice_attempts ?? 0) < 3) ||
+                      (String(s.video_status) === 'failed' && (s.render_attempts ?? 0) < 3)).length,
+    pipelineErrors: promptScripts.filter(s =>
+                      (String(s.voice_status) === 'failed' && (s.voice_attempts ?? 0) >= 3) ||
+                      (String(s.video_status) === 'failed' && (s.render_attempts ?? 0) >= 3)).length,
     failed24h:      failed24hFor(promptId),
     views:          promptViews,
     latestPublished: latestPubScript ? {
@@ -227,7 +235,7 @@ export function operationsSummary(o: OperationsSnapshot): string {
   const viewsTotal = p.views.instagram + p.views.youtube + p.views.facebook
   const lines: string[] = []
   lines.push(`\n\nOPERATIONS (live):`)
-  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade (gammal news): ${p.archived}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
+  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade: ${p.archived}, återförsöker: ${p.retrying}, fastnade fel (kräver åtgärd): ${p.pipelineErrors}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
   if (p.latestPublished) lines.push(`Senast publicerat: "${(p.latestPublished.hook ?? '').slice(0, 60)}".`)
   lines.push(`Familje-Stunden — prenumeranter: ${o.familje.activeSubscribers ?? 'ej inkopplat (Stripe)'}, leads: ${o.familje.leads}, sociala poster: ${o.familje.socialPosts}, fel 24h: ${o.familje.failed24h}.`)
   lines.push(`GainPilot — beta: ${o.gainpilot.betaUsers ?? 'ingen data'}, aktiva: ${o.gainpilot.activeUsers ?? 'ingen data'}, leads: ${o.gainpilot.leads}, fel 24h: ${o.gainpilot.failed24h}.`)

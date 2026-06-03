@@ -55,6 +55,23 @@ export default async function ActionCenterPage() {
     }
   } catch { /* token_health saknas ännu — icke-kritiskt */ }
 
+  // Pipeline-steg som nått max försök (kräver operatör) → brådskande.
+  try {
+    const { data: stuck } = await (db.from('media_scripts') as any)
+      .select('id, hook, voice_status, video_status, voice_attempts, render_attempts, pipeline_failed_reason')
+      .or('and(voice_status.eq.failed,voice_attempts.gte.3),and(video_status.eq.failed,render_attempts.gte.3)')
+      .limit(10)
+    for (const s of (stuck ?? []) as Array<{ id: string; hook: string | null; voice_status: string; pipeline_failed_reason: string | null }>) {
+      const step = s.voice_status === 'failed' ? 'voiceover' : 'render'
+      items.unshift({
+        id: `pipeline-${s.id}`, severity: 'urgent',
+        title: `Video fastnade i ${step} — max försök nått`,
+        reason: `"${(s.hook ?? 'Video').slice(0, 50)}" — ${s.pipeline_failed_reason ?? 'okänt fel'}. Auto-retry uttömt; behöver din åtgärd.`,
+        action: { href: '/atlas/operations', label: 'Visa' },
+      } as AttentionItem)
+    }
+  } catch { /* pipeline-kolumner saknas ännu — icke-kritiskt */ }
+
   const urgent    = items.filter(i => i.severity === 'urgent')
   const important = items.filter(i => i.severity === 'important')
   const info      = items.filter(i => i.severity === 'info')

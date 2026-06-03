@@ -15,7 +15,7 @@ import { getOperations } from '@/lib/atlas/operations'
 import { LiveRefresh } from '../activity/LiveRefresh'
 import {
   Clapperboard, Clock, Loader2, Send, CheckCircle2, XCircle, Eye,
-  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive, KeyRound,
+  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive, KeyRound, RefreshCw,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -64,6 +64,8 @@ export default async function AtlasOperations() {
           <Metric icon={Send}         color="text-amber-300"  label="Väntar publicering" value={nf(o.prompt.waitingPublish)} hint="färska ≤4 dagar" />
           <Metric icon={XCircle}      color={o.prompt.failed24h ? 'text-red-400' : 'text-zinc-500'} label="Misslyckade 24h" value={nf(o.prompt.failed24h)} />
           <Metric icon={Archive}      color="text-zinc-400"   label="Arkiverade (gammal news)" value={nf(o.prompt.archived)} hint=">4 dagar — publiceras ej" />
+          <Metric icon={RefreshCw}    color={o.prompt.retrying ? 'text-amber-300' : 'text-zinc-500'} label="Återförsöker" value={nf(o.prompt.retrying)} hint="självläker" />
+          <Metric icon={AlertTriangle} color={o.prompt.pipelineErrors ? 'text-red-400' : 'text-zinc-500'} label="Fastnade fel" value={nf(o.prompt.pipelineErrors)} hint="kräver åtgärd" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Metric icon={Eye} color="text-pink-400"  label="Instagram-visningar" value={nf(o.prompt.views.instagram)} />

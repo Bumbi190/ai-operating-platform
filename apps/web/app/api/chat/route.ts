@@ -79,7 +79,7 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
 }
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60   // cap så en hängd körning aldrig låser requesten för evigt
+export const maxDuration = 120   // cap (sekunder); ger run_media_step plats att köra ett media-steg synkront. Normala/röst-svar returnerar ändå på sekunder.
 
 // ── FAST PATH ─────────────────────────────────────────────────────────────────
 // Rena innehållsuppgifter ("skriv en Facebook-post") ska INTE dra igång Executive
@@ -116,8 +116,10 @@ function isActionIntent(text: string): boolean {
   // Publicera/posta innebär en åtgärd i sig själv (inget objekt krävs).
   if (/\b(publicera|publish|posta|publicering)\b/.test(t)) return true
   // Övriga handlingsverb kräver ett objekt (workflow/nyhet/script/analys/…).
+  // Media-stegens egennamn räknas som objekt (engelska namn → matcha direkt).
+  if (/\b(fetch ai news|generate script|generate voiceover|render video|publish to social|publish to youtube)\b/.test(t)) return true
   return /\b(starta|start|kör|kör igång|dra igång|sätt igång|aktivera|generera|skapa|gör|trigga|exekvera|genomför|utför|hämta|sök|hitta)\b/.test(t)
-    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|post|video|reel|manus|script|nyhet|nyheter|artikel|innehåll|content|story|veckobrev|rapport|render|deploy)\b/.test(t)
+    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|post|video|reel|manus|script|nyhet|nyheter|artikel|innehåll|content|story|veckobrev|rapport|render|deploy|news|publish|youtube|voiceover)\b/.test(t)
 }
 
 // Ord/fraser som PÅSTÅR en utförd/pågående åtgärd. Om Atlas skriver något av dessa
@@ -135,6 +137,18 @@ const ACTION_CLAIM_RE = new RegExp(
   ].join('|'),
   'i',
 )
+
+// ── MEDIA-BRYGGA ────────────────────────────────────────────────────────────
+// Mappar Atlas "kör <steg>" → de RIKTIGA media-pipeline-endpoints (separata från
+// durable-motorn). Cron-stegen behöver ingen input. Publicering kräver bekräftelse.
+const MEDIA_STEPS: Record<string, { path: string; workflow: string; label: string; isPublish?: boolean }> = {
+  fetch_news:        { path: '/api/media/news/cron',   workflow: 'Fetch AI News',       label: 'Fetch AI News' },
+  generate_script:   { path: '/api/media/cron/step1',  workflow: 'Generate Script',     label: 'Generate Script' },
+  generate_voiceover:{ path: '/api/media/cron/step2',  workflow: 'Generate Voiceover',  label: 'Generate Voiceover' },
+  render_video:      { path: '/api/media/cron/step4',  workflow: 'Render Video',        label: 'Render Video' },
+  publish_social:    { path: '/api/media/cron/publish', workflow: 'Publish to Social',  label: 'Publish to Social', isPublish: true },
+  publish_youtube:   { path: '/api/media/cron/youtube', workflow: 'Publish to YouTube', label: 'Publish to YouTube', isPublish: true },
+}
 
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.
 
@@ -175,7 +189,8 @@ Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en s
 
 // Verktygsvägledning — hur Atlas använder sina verktyg.
 const TOOL_GUIDE = `Verktyg du har:
-- list_workflows / trigger_workflow / get_run_status — kör arbetsflöden när operatören ber dig skapa eller generera något (t.ex. "generera veckobrevet").
+- run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
+- list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
@@ -227,6 +242,25 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['run_id'],
+    },
+  },
+  {
+    name: 'run_media_step',
+    description: 'Kör ett RIKTIGT steg i The Prompts media-pipeline. ANVÄND DETTA (inte trigger_workflow) när operatören säger "kör/starta" något av: Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social, Publish to YouTube. Cron-stegen behöver INGEN input — kör direkt. Returnerar run_id och status. Publiceringssteg (publish_social/publish_youtube) postar PUBLIKT och kräver confirm_publish=true.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        step: {
+          type: 'string',
+          enum: ['fetch_news', 'generate_script', 'generate_voiceover', 'render_video', 'publish_social', 'publish_youtube'],
+          description: 'Vilket media-steg som ska köras.',
+        },
+        confirm_publish: {
+          type: 'boolean',
+          description: 'Måste vara true för publish_social/publish_youtube (publikt inlägg). Lämna tomt/false för övriga steg.',
+        },
+      },
+      required: ['step'],
     },
   },
   {
@@ -412,9 +446,14 @@ export async function POST(request: Request) {
             }
 
             // Markera att en VERKLIG åtgärd skedde — bara åtgärdsverktyg som LYCKADES.
-            const isActionTool = toolUse.name === 'trigger_workflow' || toolUse.name === 'delegate'
-            const errored = !!result && typeof result === 'object' && 'error' in (result as Record<string, unknown>)
-            if (isActionTool && !errored) actionToolUsed = true
+            const r = (result ?? null) as Record<string, unknown> | null
+            const errored = !!r && 'error' in r
+            let took = false
+            if (toolUse.name === 'trigger_workflow' || toolUse.name === 'delegate') took = !errored
+            // run_media_step: räknas bara om steget faktiskt kördes (ok=true) — inte vid
+            // needs_confirmation (publicering ej bekräftad) eller fel.
+            if (toolUse.name === 'run_media_step') took = !!r && r.ok === true
+            if (took) actionToolUsed = true
 
             send('tool_result', { tool: toolUse.name, result })
 
@@ -531,6 +570,56 @@ async function executeTool(
       run_id: run.id,
       status: 'queued',
       message: 'Körningen är köad och körs durabelt inom kort. Fråga om status med get_run_status när du vill.',
+    }
+  }
+
+  if (name === 'run_media_step') {
+    const { step, confirm_publish } = input as { step: string; confirm_publish?: boolean }
+    const cfg = MEDIA_STEPS[step]
+    if (!cfg) return { error: `Okänt media-steg: ${step}` }
+
+    // Publiceringssteg postar publikt → kräver uttrycklig bekräftelse.
+    if (cfg.isPublish && !confirm_publish) {
+      return { needs_confirmation: true, step, message: `${cfg.label} postar publikt. Bekräfta att du vill publicera, så kör jag.` }
+    }
+
+    const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ai-operating-platform-web.vercel.app'
+    const secret = process.env.CRON_SECRET
+    try {
+      const res = await fetch(`${base}${cfg.path}`, {
+        method:  'GET',
+        headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+        signal:  AbortSignal.timeout(110_000),
+      })
+      const payload = await res.json().catch(() => ({})) as Record<string, unknown>
+
+      // Hämta run-id som media-steget loggade (logRun skriver en rad i 'runs').
+      let runId: string | null = null
+      try {
+        const { data: run } = await db.from('runs')
+          .select('id, status, workflows(name)')
+          .gte('created_at', new Date(Date.now() - 5 * 60_000).toISOString())
+          .order('created_at', { ascending: false })
+          .limit(10)
+        const match = (run as any[] | null)?.find(r => {
+          const wf = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
+          return wf?.name === cfg.workflow
+        })
+        runId = match?.id ?? null
+      } catch { /* run-id är best-effort */ }
+
+      const resultStatus = (payload.status as string) ?? (res.ok ? 'ok' : `http_${res.status}`)
+      return {
+        ok: res.ok,
+        step,
+        workflow: cfg.workflow,
+        run_id: runId,
+        status: resultStatus,
+        detail: payload,
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'okänt fel'
+      return { ok: false, step, error: `Kunde inte köra ${cfg.label}: ${msg}. Kontrollera Activity Center.` }
     }
   }
 

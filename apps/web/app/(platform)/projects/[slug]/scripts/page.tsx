@@ -20,10 +20,11 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 const VIDEO_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  none:       { label: 'Ej renderad',       color: 'text-muted-foreground' },
-  rendering:  { label: '⏳ Renderar...',    color: 'text-amber-400' },
-  ready:      { label: '🎬 Video klar',     color: 'text-green-400' },
-  failed:     { label: '❌ Render fel',     color: 'text-red-400' },
+  none:               { label: 'Ej renderad',          color: 'text-muted-foreground' },
+  generating_images:  { label: '🖼️ Genererar bilder…', color: 'text-amber-400' },
+  rendering:          { label: '⏳ Renderar…',          color: 'text-amber-400' },
+  ready:              { label: '🎬 Video klar',         color: 'text-green-400' },
+  failed:             { label: '❌ Render fel',         color: 'text-red-400' },
 }
 
 // ─── Pipeline step indicator ─────────────────────────────────────────────────
@@ -195,7 +196,7 @@ function ScriptCard({ script, onUpdate }: {
   const [publishUrl, setPublishUrl]       = useState<string | null>(null)
 
   const statusCfg      = STATUS_LABELS[script.status]
-  const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none']
+  const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none'] ?? VIDEO_STATUS_LABELS.none
   const hasImages      = Array.isArray(script.images) && script.images.length > 0
   const hasVideo       = !!(liveVideoUrl ?? (script.video_status === 'ready' && script.video_url))
   const isRenderReady  = script.voice_status === 'ready' && hasImages

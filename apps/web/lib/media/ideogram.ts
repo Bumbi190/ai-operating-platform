@@ -358,21 +358,27 @@ EACH PROMPT MUST:
 "film photography: [specific interior scene], [time of day], [mood and color grade]"
 "overhead bird's-eye: [flat lay of specific objects], [surface material], [light quality]"
 
+═══ SHOW THE STORY, NOT GENERIC "TECH" ═══
+Each image must DIRECTLY represent what the script talks about — the actual action/actor — not a mood. AVOID the lazy defaults: generic server rooms, random laptops, generic coding screens, generic office workers. We show people-free scenes (faces/hands render badly), but the SCENE itself must be the story.
+
 ═══ CONCRETE EXAMPLES OF GOOD PROMPTS ═══
-- "extreme macro close-up of silicon wafer surface, industrial blue-LED lighting from left, ultra-sharp micro-detail, black background, vertical orientation"
-- "dark server room corridor, twin rows of rack hardware, emergency red LED strips on ceiling, deep one-point perspective, cool blue ambient light"
-- "late-night desk: open laptop with terminal window, coffee mug with steam, scattered papers, cold monitor light on dark surface, shallow depth of field"
-- "macro photography of copper circuit board traces, warm golden sidelighting, extreme shallow depth of field, black background, vertical crop"
-- "looking up through glass atrium ceiling at geometric steel beams, overcast sky above, dramatic vertical composition, architectural photography"
-- "close-up of old analog clock face, dramatic side-lighting casting long shadows, dark moody background, film photography grain"
-- "industrial fiber optic cable cross-section, circular glowing points of light against pure black, scientific macro photography"
+- AI agents doing tasks → "a large screen showing an abstract calendar/scheduling interface with colored blocks (no readable text), glowing softly in a dim room, shallow depth of field, vertical"
+- AI browsing/using software → "monitor displaying stacked abstract browser windows and dashboards (no legible text), reflected in a glass desk, cold blue light, vertical composition"
+- Robotics doing real work → "an industrial robotic arm mid-motion gripping a part on a factory line, sparks and motion blur, dramatic side light, vertical"
+- Regulation / hearings → "an empty government hearing chamber, rows of microphones, national flags, polished wood podium, dramatic overhead light, vertical"
+- Negotiation / power shift → "a long boardroom table with two facing rows of empty chairs, single document in the center, tense low light, vertical"
+- A job being replaced → "an empty office workstation at night, chair pushed back, a time clock on the wall, cold monitor glow, melancholic mood, vertical"
+- Money / markets → "a stock-ticker wall of abstract green/red bars (no readable numbers), motion blur, trading-floor scale, vertical"
+- Hardware/scale (use sparingly) → "extreme macro of a GPU heatsink, warm golden sidelight, ultra-shallow depth of field, black background, vertical"
 
 ═══ NARRATIVE MATCHING ═══
-Read the script carefully. Each scene should illustrate the SPECIFIC IDEA being discussed at that moment — not just look generically "tech."
-- Script talks about memory? → physical notebook, filing cabinet drawers, stacked index cards
-- Script talks about speed? → motion-blurred fiber, spinning hard drive internals
-- Script talks about reasoning? → annotated printed diagram, chalkboard with logic notation
-- Script talks about data? → physical punch cards, magnetic tape reels, printed spreadsheets
+Read the script. Identify the SPECIFIC actor/action in each section and show THAT:
+- Script about AI agents → screens with software/booking/browser UI in action (no readable text)
+- Script about robots → a robot physically performing the task being described
+- Script about regulation/policy → hearing chambers, podiums, flags, courtrooms
+- Script about jobs/automation → the empty human workspace being left behind
+- Script about a specific company → their real physical environment/product
+- Only when nothing concrete fits → fall back to a tasteful macro of relevant hardware
 
 Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
 [

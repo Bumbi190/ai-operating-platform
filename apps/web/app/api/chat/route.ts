@@ -22,6 +22,7 @@ import { contentScore } from '@/lib/atlas/content-score'
 import { listOpportunities } from '@/lib/atlas/opportunities'
 import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
+import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -33,13 +34,14 @@ const LIVE_CTX_TTL_MS = 45_000
 async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
   if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
   const k = (n: number) => `${Math.round(n)} kr`
-  const [ctxR, patR, csR, oppR, actR, revR] = await Promise.allSettled([
+  const [ctxR, patR, csR, oppR, actR, revR, opsR] = await Promise.allSettled([
     gatherAtlasContext(db),
     fetchOperatorPatterns(db),
     contentScore(db),
     listOpportunities(db),
     agentActivity(db, 24),
     revenueIntel(db),
+    getOperations(db),
   ])
 
   let text = ''
@@ -73,6 +75,9 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
     for (const o of (oppR.value as any[]).slice(0, 3)) text += `\n- [${o.confidence}] ${o.title}`
   }
   if (patR.status === 'fulfilled' && patR.value?.summary) text += `\n\n${patR.value.summary}`
+  // Operations Center-snapshot → Atlas svarar "Hur går det idag?", "Vad väntar på
+  // publicering?", "Finns några fel?", "Vilket projekt går bäst?" direkt.
+  if (opsR.status === 'fulfilled') text += operationsSummary(opsR.value)
 
   _liveCtxCache = { at: Date.now(), text }
   return text

@@ -153,11 +153,19 @@ export async function GET(request: Request) {
 
   const savedCount = results.filter(r => r.status === 'saved').length
   const hadError   = results.some(r => r.status === 'error')
-  await logRun({
+  const fetchRunId = await logRun({
     workflow: 'Fetch AI News',
     status:   hadError ? 'failed' : 'done',
     context:  { storiesSaved: savedCount },
   })
+  // Spårbarhet: stämpla fetch-runens id på de news-items den skapade (fyller run_id
+  // som tidigare var null → hela kedjan kan följas bakåt). Non-blocking.
+  if (fetchRunId) {
+    const savedIds = results.map(r => r.newsItemId).filter((id): id is string => typeof id === 'string')
+    if (savedIds.length) {
+      try { await db.from('media_news_items').update({ run_id: fetchRunId }).in('id', savedIds) } catch { /* non-blocking */ }
+    }
+  }
 
   return NextResponse.json({
     ranAt: new Date().toISOString(),

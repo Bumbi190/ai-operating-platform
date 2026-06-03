@@ -29,7 +29,10 @@ export interface LogRunOptions {
   error?:     string | null
 }
 
-export async function logRun(opts: LogRunOptions): Promise<void> {
+// Returnerar run_id för den loggade körningen (eller null). Detta gör att varje
+// pipeline-steg kan STÄMPLA run_id på objektet det äger (news-item, script) →
+// hela kedjan kan följas bakåt. Förblir non-blocking: kastar aldrig.
+export async function logRun(opts: LogRunOptions): Promise<string | null> {
   try {
     const db = createAdminClient()
 
@@ -42,7 +45,7 @@ export async function logRun(opts: LogRunOptions): Promise<void> {
 
     if (!project?.id) {
       console.warn('[run-log] AI Media Automation-projektet hittades inte — hoppar över')
-      return
+      return null
     }
 
     const { data: workflow } = await db
@@ -55,7 +58,7 @@ export async function logRun(opts: LogRunOptions): Promise<void> {
 
     const nowIso = new Date().toISOString()
 
-    await db.from('runs').insert({
+    const { data: runRow } = await db.from('runs').insert({
       project_id:  project.id,
       workflow_id: workflow?.id ?? null,
       status:      opts.status ?? 'done',
@@ -63,8 +66,11 @@ export async function logRun(opts: LogRunOptions): Promise<void> {
       finished_at: nowIso,
       context:     opts.context ?? {},
       error:       opts.error ?? null,
-    })
+    }).select('id').single()
+
+    return (runRow as { id?: string } | null)?.id ?? null
   } catch (err) {
     console.error('[run-log] Kunde inte logga körning:', err instanceof Error ? err.message : err)
+    return null
   }
 }

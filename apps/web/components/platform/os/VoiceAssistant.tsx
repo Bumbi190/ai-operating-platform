@@ -23,7 +23,8 @@ export function VoiceAssistant() {
   const audioRef      = useRef<HTMLAudioElement | null>(null)
   const historyRef    = useRef<{ role: 'user' | 'assistant'; content: string }[]>([])
   const silenceRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cancelRef     = useRef(false)
+  const cancelRef     = useRef(false)   // TRANSIENT: avbryt pågående tur (tal/ström)
+  const closedRef     = useRef(false)   // STICKY: hela röst-sessionen stängd av användaren
   const convRef       = useRef<string | null>(null)
   const listeningRef  = useRef(false)   // INTENT: vill vi ha mikrofonen öppen?
   const recActiveRef  = useRef(false)   // är en recognition igång just nu?
@@ -55,8 +56,8 @@ export function VoiceAssistant() {
   useEffect(() => {
     if (!mounted) return
     const id = setInterval(() => {
-      if (cancelRef.current) return
-      if (!listeningRef.current) return
+      if (closedRef.current) return                            // sessionen är stängd → rör inte mic
+      if (!listeningRef.current) return                        // intent: vill vi lyssna?
       if (recActiveRef.current) return
       if (audioRef.current) return                              // talar fortfarande
       if (phaseRef.current === 'thinking' || phaseRef.current === 'speaking') return
@@ -71,7 +72,7 @@ export function VoiceAssistant() {
     const handler = (e: KeyboardEvent) => {
       if (e.code === 'Space' && e.altKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
-        if (phase === 'idle') { setOpen(true); startListening() }
+        if (phase === 'idle') { closedRef.current = false; listeningRef.current = true; setOpen(true); startListening() }
         else if (phase === 'listening') stopListening()
         else if (phase === 'speaking') stopAudio()
       }
@@ -86,8 +87,9 @@ export function VoiceAssistant() {
   // Tidigare återställdes aldrig detta → fasen fastnade på "listening" med död
   // mikrofon. Nu styr listeningRef vår INTENT och onend startar om automatiskt.
   function startListening() {
-    if (cancelRef.current) return
+    if (closedRef.current) return      // sessionen avstängd → starta inte
     if (recActiveRef.current) return   // redan igång — undvik dubbelstart
+    cancelRef.current = false          // ny lyssnings-session → nollställ transient avbryt-flagga
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) { alert('Röstigenkänning kräver Chrome eller Safari.'); return }
 
@@ -147,12 +149,19 @@ export function VoiceAssistant() {
   }
 
   function stopAudio() {
-    cancelRef.current = true
+    cancelRef.current = true   // bryt pågående uppspelning/ström
     try { audioRef.current?.pause(); audioRef.current = null } catch { /* ignore */ }
     setPhase('idle')
+    // Att avbryta Atlas tal betyder "jag vill prata" — återgå till att lyssna
+    // (sessionen är fortfarande öppen). Detta var en av deadlock-vägarna tidigare.
+    if (!closedRef.current) {
+      listeningRef.current = true
+      setTimeout(() => { if (!closedRef.current && !recActiveRef.current) startListening() }, 200)
+    }
   }
 
   function closeAll() {
+    closedRef.current = true     // sticky: hela sessionen av tills användaren öppnar igen
     cancelRef.current = true
     listeningRef.current = false
     stopListening()
@@ -341,7 +350,7 @@ export function VoiceAssistant() {
                   <div key={i} className="w-0.5 rounded-full bg-indigo-400 animate-pulse"
                     style={{ height: `${8 + Math.sin(i*1.2)*5}px`, animationDelay: `${i*0.12}s` }} />
                 ))}
-                <span className="text-[9px] text-indigo-400/60 ml-1 font-mono">NOVA</span>
+                <span className="text-[9px] text-indigo-400/60 ml-1 font-mono">ATLAS</span>
               </div>
             )}
             {perf && <span className="text-[9px] text-zinc-500 font-mono ml-auto">{perf}</span>}
@@ -352,10 +361,10 @@ export function VoiceAssistant() {
       {/* Main pill */}
       <button
         onClick={() => {
-          if (!open) { setOpen(true); startListening() }
+          if (!open) { closedRef.current = false; listeningRef.current = true; setOpen(true); startListening() }
           else if (phase === 'listening') stopListening()
           else if (phase === 'speaking') stopAudio()
-          else if (phase === 'idle') closeAll()
+          else if (phase === 'idle') { closedRef.current = false; listeningRef.current = true; startListening() }   // återuppta lyssning
         }}
         className={cn(
           'pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-xl',

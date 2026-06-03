@@ -327,7 +327,9 @@ export async function GET(request: Request) {
 
   console.log(`[cron/step1] Done — scriptId: ${scriptRow.id}, hook: "${script.hook}", quality: ${qualityScore.overall.toFixed(1)}/10`)
 
-  await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
+  const scriptRunId = await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
+  // Spårbarhet: stämpla run_id på scriptet → kedjan news → script → run kan följas bakåt.
+  if (scriptRunId) { try { await db.from('media_scripts').update({ run_id: scriptRunId }).eq('id', scriptRow.id) } catch { /* non-blocking */ } }
 
   return NextResponse.json({
     status: 'step1_done',

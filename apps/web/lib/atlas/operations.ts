@@ -20,7 +20,8 @@ export interface PromptOps {
   publishedToday: number
   waitingRender: number   // voiceover klar, render ej startad
   rendering: number       // render pågår
-  waitingPublish: number  // video klar, ej publicerad
+  waitingPublish: number  // video klar, ej publicerad (FÄRSK, ≤4 dagar)
+  archived: number        // arkiverad pga färskhetspolicy (>4 dagar gammal news)
   failed24h: number
   views: { instagram: number; youtube: number; facebook: number }
   latestPublished: {
@@ -134,6 +135,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     waitingRender:  promptScripts.filter(s => String(s.voice_status) === 'ready' && ['none', 'generating_images'].includes(String(s.video_status)) && !isPublished(s)).length,
     rendering:      promptScripts.filter(s => String(s.video_status) === 'rendering').length,
     waitingPublish: promptScripts.filter(s => isReadyVideo(s) && !isPublished(s)).length,
+    archived:       promptScripts.filter(s => String(s.video_status) === 'archived').length,
     failed24h:      failed24hFor(promptId),
     views:          promptViews,
     latestPublished: latestPubScript ? {
@@ -199,7 +201,7 @@ export function operationsSummary(o: OperationsSnapshot): string {
   const viewsTotal = p.views.instagram + p.views.youtube + p.views.facebook
   const lines: string[] = []
   lines.push(`\n\nOPERATIONS (live):`)
-  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering: ${p.waitingPublish}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
+  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade (gammal news): ${p.archived}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
   if (p.latestPublished) lines.push(`Senast publicerat: "${(p.latestPublished.hook ?? '').slice(0, 60)}".`)
   lines.push(`Familje-Stunden — prenumeranter: ${o.familje.activeSubscribers ?? 'ej inkopplat (Stripe)'}, leads: ${o.familje.leads}, sociala poster: ${o.familje.socialPosts}, fel 24h: ${o.familje.failed24h}.`)
   lines.push(`GainPilot — beta: ${o.gainpilot.betaUsers ?? 'ingen data'}, aktiva: ${o.gainpilot.activeUsers ?? 'ingen data'}, leads: ${o.gainpilot.leads}, fel 24h: ${o.gainpilot.failed24h}.`)

@@ -111,7 +111,31 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── Find ready-but-unpublished scripts ────────────────────────────────────────
+  // ── Idempotens: släpp hängda 'publishing'-hävdningar (krasch före slut) ────────
+  // En körning som hävdade en rad men dog innan publicering/fel lämnar status
+  // 'publishing'. Återställ såna efter 15 min så de kan publiceras igen.
+  await db.from('media_scripts')
+    .update({ status: 'approved' })
+    .eq('status', 'publishing')
+    .lt('updated_at', new Date(Date.now() - 15 * 60_000).toISOString())
+
+  // ── Färskhetspolicy: arkivera klara videor äldre än FRESH_DAYS ────────────────
+  // The Prompt postar AI-nyheter — gammal news ska inte ut. Arkiverade rader
+  // lämnar publiceringskön men finns kvar (syns i Operations Center).
+  const FRESH_DAYS   = 4
+  const freshCutoff  = new Date(Date.now() - FRESH_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data: archived } = await db.from('media_scripts')
+    .update({ video_status: 'archived', publish_failed_reason: `Arkiverad: nyhet äldre än ${FRESH_DAYS} dagar — publiceras ej` })
+    .eq('status', 'approved')
+    .eq('video_status', 'ready')
+    .is('published_at', null)
+    .lt('generated_at', freshCutoff)
+    .select('id')
+  if (archived && archived.length > 0) log('freshness', `Arkiverade ${archived.length} inaktuella videor (>${FRESH_DAYS}d)`)
+
+  // ── Find ready-but-unpublished scripts (FIFO: äldsta FÄRSKA först) ─────────────
+  // FIFO så ingen video svälts ut. Färskhetsfönstret (FRESH_DAYS) gör att inget
+  // äldre än policyn någonsin kan väljas.
   const { data: scripts } = await db
     .from('media_scripts')
     .select(`
@@ -129,8 +153,8 @@ export async function GET(request: Request) {
     .eq('video_status', 'ready')
     .eq('status', 'approved')
     .is('published_at', null)
-    .gte('generated_at', cutoff)
-    .order('generated_at', { ascending: false })
+    .gte('generated_at', freshCutoff)
+    .order('generated_at', { ascending: true })
     .limit(1)
 
   if (!scripts || scripts.length === 0) {
@@ -142,9 +166,27 @@ export async function GET(request: Request) {
   }
 
   const script = scripts[0]
+
+  // ── Idempotens: hävda raden ATOMISKT (approved → publishing) ──────────────────
+  // Endast den körning som lyckas flippa status fortsätter. Två överlappande
+  // cron-/manuella körningar kan därför aldrig publicera samma video två gånger.
+  const { data: claim } = await db.from('media_scripts')
+    .update({ status: 'publishing' })
+    .eq('id', script.id)
+    .eq('status', 'approved')
+    .is('published_at', null)
+    .select('id')
+    .maybeSingle()
+  if (!claim) {
+    log('claim', `Script ${script.id} hävdades redan av annan körning — hoppar över`)
+    return NextResponse.json({ status: 'already_claimed', scriptId: script.id })
+  }
+
   log('publish', `Publishing script ${script.id}...`)
 
   if (!script.video_url) {
+    // Släpp hävdningen så den kan tas igen
+    await db.from('media_scripts').update({ status: 'approved' }).eq('id', script.id)
     return NextResponse.json({ status: 'no_video_url', scriptId: script.id })
   }
 
@@ -192,6 +234,11 @@ export async function GET(request: Request) {
 
     // Retry-cap: räkna upp och skicka till operatörsgranskning om gränsen nåtts
     const { sentToReview, newRetryCount } = await handlePublishFailure(db, script.id, msg)
+    // Släpp hävdningen (publishing → approved) om den inte skickats till granskning,
+    // så nästa körning kan försöka igen. Vid granskning sätter handlern pending_review.
+    if (!sentToReview) {
+      await db.from('media_scripts').update({ status: 'approved' }).eq('id', script.id)
+    }
     log('publish', `Retry ${newRetryCount}/${(await db.from('platform_config').select('max_retry_attempts').eq('id', 1).single()).data?.max_retry_attempts ?? 3}${sentToReview ? ' — SKICKAT TILL GRANSKNING' : ''}`)
 
     await sendPipelineAlert({

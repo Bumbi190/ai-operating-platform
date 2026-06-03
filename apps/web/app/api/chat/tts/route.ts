@@ -5,14 +5,15 @@
  * OpenAI's nova/shimmer voices handle Swedish naturally and sound
  * much more human than browser TTS or ElevenLabs English voices.
  *
- * Body: { text: string, voice?: 'nova' | 'shimmer' | 'alloy' | 'echo' | 'fable' | 'onyx' }
+ * Body: { text: string, voice?: 'onyx' | 'echo' | 'nova' | 'shimmer' | 'alloy' | 'fable' }
  * Returns: audio/mpeg binary
  *
  * Voices (all handle Swedish well):
- *   nova    — warm, natural female (default)
+ *   onyx    — deep, calm, authoritative male — ATLAS standard (Executive Chief of Staff)
+ *   echo    — neutral, clear male
+ *   nova    — warm, natural female
  *   shimmer — slightly softer female
  *   alloy   — neutral
- *   onyx    — deep male
  */
 
 export const dynamic     = 'force-dynamic'
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'OPENAI_API_KEY saknas' }, { status: 500 })
   }
 
-  const { text, voice = 'nova' } = await request.json() as { text: string; voice?: string }
+  const { text, voice = 'onyx' } = await request.json() as { text: string; voice?: string }
   if (!text?.trim()) {
     return Response.json({ error: 'text krävs' }, { status: 400 })
   }

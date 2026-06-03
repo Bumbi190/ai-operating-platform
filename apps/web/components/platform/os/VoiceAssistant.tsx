@@ -169,7 +169,7 @@ export function VoiceAssistant() {
       const res = await fetch('/api/chat/tts', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: sentence, voice: 'nova' }),
+        body:    JSON.stringify({ text: sentence, voice: 'onyx' }),   // Atlas = manlig, lugn, auktoritativ executive-röst
       })
       if (!res.ok) return null
       const ms = Number(res.headers.get('x-tts-ms') || 0)

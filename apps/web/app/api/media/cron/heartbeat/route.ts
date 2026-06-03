@@ -12,6 +12,8 @@
  * (läses av Operations Center, Action Center, Atlas). Larmar deduperat.
  *
  * Skyddad med: Authorization: Bearer {CRON_SECRET}  (sätts av både pg_cron och Vercel).
+ *
+ * Deploy-not: tvingar fram en Vercel-build (tomma commits hoppas över).
  */
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'

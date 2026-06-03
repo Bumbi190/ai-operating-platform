@@ -107,6 +107,23 @@ function isFastPathContent(text: string): boolean {
   return standalone || (writeVerb && contentNoun)
 }
 
+// ── ACTION INTENT ───────────────────────────────────────────────────────────
+// Operatören ber Atlas GÖRA något konkret (köra/starta/publicera/aktivera). Då MÅSTE
+// ett verktyg anropas — Atlas får aldrig bara säga att det är gjort. Vi tvingar
+// tool_choice på första turen så ett verkligt verktygsanrop garanteras.
+function isActionIntent(text: string): boolean {
+  const t = (text || '').toLowerCase().trim()
+  // Publicera/posta innebär en åtgärd i sig själv (inget objekt krävs).
+  if (/\b(publicera|publish|posta|publicering)\b/.test(t)) return true
+  // Övriga handlingsverb kräver ett objekt (workflow/analys/process/agent …).
+  return /\b(starta|start|kör|kör igång|dra igång|sätt igång|aktivera|generera|trigga|exekvera|genomför|utför)\b/.test(t)
+    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|video|manus|veckobrev|rapport|render|deploy)\b/.test(t)
+}
+
+// Ord/fraser som PÅSTÅR en utförd/pågående åtgärd. Om Atlas skriver något av dessa
+// utan att ha anropat ett verktyg i samma tur → falskt påstående (ärlighetsspärr).
+const ACTION_CLAIM_RE = /\b(jag (startar|kör|kör igång|drar igång|sätter igång|publicerar|postar|aktiverar|triggar|genomför|påbörjar)|workflow(et)? (är )?(startat|köat|köad|igång|påbörjat)|körningen (är )?(startad|köad|igång|påbörjad)|publicering(en)? (är )?(påbörjad|igång|startad)|(har )?(startat|köat|köade|triggat|publicerat) (workflow|körning|processen|analysen|agenten)|kör (nu|igång) (workflow|processen|analysen)|sätter igång (det|workflow|processen))\b/i
+
 const SYSTEM_PROMPT = `Du är en AI-assistent inbyggd i AI Ops Platform — ett AI-operativsystem för att koordinera AI-agenter och workflows för flera verksamheter.
 
 Du hjälper användaren att:
@@ -139,6 +156,7 @@ VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 - Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
 - Hellre flera korta repliker i ett samtal än ett långt svar.
 - SNABBHET: svara DIREKT från LIVE-snapshoten nedan (kostnad, agenter, innehållsprestanda, möjligheter). Använd INTE verktyg (ask_manager m.fl.) för frågor om status/prestanda/vad-bör-jag-göra — det gör svaret långsamt. Verktyg används BARA när operatören ber dig GÖRA något (köra/skapa/starta).
+- ÄRLIGHET FÖRE KORTHET: säg ALDRIG "jag startar", "jag kör", "workflow startat/köat" eller "publicering påbörjad" om du inte faktiskt anropat verktyget i samma tur. Vet du inte vilket workflow: fråga kort "vilket workflow menar du?". Påstå aldrig en åtgärd som inte skett — det är viktigare än att vara kortfattad.
 
 Dåligt: "Familje-Stunden genererade 17 aktiviteter och slutförde julipaketet samt..."
 Bra: "Familje-Stunden ser fin ut idag. Julipaketet är klart — vill du ha en snabb sammanfattning?"`
@@ -148,7 +166,13 @@ const TOOL_GUIDE = `Verktyg du har:
 - list_workflows / trigger_workflow / get_run_status — kör arbetsflöden när operatören ber dig skapa eller generera något (t.ex. "generera veckobrevet").
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
-När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).`
+När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
+
+ÄRLIGHETSREGEL (absolut, gäller alltid):
+- Du får ALDRIG skriva eller säga att något är startat, kört, köat, triggat, publicerat eller påbörjat om du inte i SAMMA tur faktiskt anropat ett verktyg och fått ett resultat tillbaka.
+- Ber operatören dig köra/starta/publicera något → anropa verktyget (list_workflows → trigger_workflow). Vet du inte vilket workflow som avses: anropa list_workflows och FRÅGA vilket — påstå aldrig att något körts.
+- Spegla alltid verkligheten: körde inget verktyg → säg det rakt ut. Körde ett verktyg → visa resultatet (t.ex. run_id och att körningen är köad).
+- Hitta aldrig på run_id, status eller utfall.`
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -260,7 +284,9 @@ export async function POST(request: Request) {
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
   const fastPath = mode === 'content' || isFastPathContent(lastUserText)
-  const reqType = fastPath ? 'fast_path' : 'atlas'
+  // Action-intent (kör/starta/publicera …) → tvinga verktygsanrop på första turen.
+  const actionIntent = !fastPath && isActionIntent(lastUserText)
+  const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : 'atlas')
 
   let systemPrompt: string
   if (fastPath) {
@@ -273,6 +299,7 @@ export async function POST(request: Request) {
   }
 
   const activeTools = fastPath ? [] : TOOLS
+  const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const contextMs = Date.now() - tStart
 
   // Helper: persist a message to DB
@@ -314,17 +341,21 @@ export async function POST(request: Request) {
       }
 
       let firstTokenMs = 0   // tid (från tStart) till första token — latens-mätning
+      let toolCallCount = 0  // antal verkliga verktygsanrop denna förfrågan — ärlighetsspärr
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
         // Agentic loop — Claude can use tools multiple times
         for (let i = 0; i < 10; i++) {
           // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
           // första färdiga meningen i stället för att vänta in hela svaret.
+          // TVINGAD ROUTNING: vid action-intent måste FÖRSTA turen anropa ett verktyg
+          // (tool_choice=any) — Atlas kan då inte bara påstå att något körts.
           const llm = anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
+            ...(forceToolFirstTurn && i === 0 ? { tool_choice: { type: 'any' as const } } : {}),
             messages: msgs,
           })
           llm.on('text', (delta: string) => {
@@ -336,7 +367,18 @@ export async function POST(request: Request) {
           // If no tool use, we're done — save final assistant text
           if (response.stop_reason !== 'tool_use') {
             const textBlocks = response.content.filter(b => b.type === 'text')
-            const fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
+            let fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
+
+            // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd men inget verktyg
+            // kördes denna förfrågan → korrigera direkt så svaret speglar verkligheten.
+            // Primärskyddet är forceToolFirstTurn; detta fångar missade intent-fall.
+            if (!fastPath && toolCallCount === 0 && ACTION_CLAIM_RE.test(fullText)) {
+              const correction = ' \n\n⚠️ Obs: jag har faktiskt inte kört något än — inget verktyg anropades. Säg vilket workflow du vill köra, så startar jag det på riktigt.'
+              send('text', { text: correction })
+              fullText += correction
+              console.log('[honesty-guard] blockerade falskt åtgärdspåstående (inget verktyg kördes)')
+            }
+
             if (fullText) void saveMessage('assistant', fullText)
             break
           }
@@ -346,6 +388,7 @@ export async function POST(request: Request) {
           const toolResults: Anthropic.ToolResultBlockParam[] = []
 
           for (const toolUse of toolUseBlocks) {
+            toolCallCount++   // verkligt verktygsanrop → ärlighetsspärr vet att åtgärd skedde
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
 
             let result: unknown

@@ -15,7 +15,7 @@ import { getOperations } from '@/lib/atlas/operations'
 import { LiveRefresh } from '../activity/LiveRefresh'
 import {
   Clapperboard, Clock, Loader2, Send, CheckCircle2, XCircle, Eye,
-  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive, KeyRound, RefreshCw,
+  Users, Sparkles, AlertTriangle, DollarSign, Activity, ExternalLink, Archive, KeyRound, RefreshCw, HeartPulse,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -169,6 +169,42 @@ export default async function AtlasOperations() {
             )
           })}
         </div>
+      </OSLayer>
+
+      {/* ── AUTOMATION / HEARTBEAT ──────────────────────────────────────────── */}
+      <OSLayer layer="intelligence" className="space-y-3">
+        <SectionHeader eyebrow="Automation" title="Cron Heartbeat"
+          flag={o.heartbeat.some(h => h.status === 'dead' || h.status === 'endpoint_failing') ? 'Jobb nere'
+            : o.heartbeat.some(h => h.status === 'late') ? 'Jobb sent' : undefined} />
+        <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
+          {o.heartbeat.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">Ingen heartbeat-data än — körs var 10:e min.</div>
+          ) : o.heartbeat.map(h => {
+            const dot = h.status === 'ok' ? 'bg-emerald-400'
+              : h.status === 'late' ? 'bg-amber-400'
+              : h.status === 'endpoint_failing' ? 'bg-orange-400'
+              : h.status === 'pending_first_run' ? 'bg-zinc-500'
+              : h.status === 'dead' ? 'bg-red-400' : 'bg-zinc-500'
+            return (
+              <div key={h.jobname} className="flex items-center gap-3 px-4 py-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                <HeartPulse className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium w-40 shrink-0 truncate">{h.label}</span>
+                <span className="text-[11px] text-muted-foreground hidden sm:inline w-28 shrink-0">{h.cadence}</span>
+                <span className="text-[12px] text-muted-foreground flex-1 truncate">
+                  {h.detail ?? ''}{h.lastFiredAt ? ` · ${rel(h.lastFiredAt)}` : ''}
+                </span>
+                <span className={`text-[10px] uppercase tracking-wide shrink-0 ${
+                  h.status === 'ok' ? 'text-emerald-400' : h.status === 'late' ? 'text-amber-300'
+                  : h.status === 'endpoint_failing' ? 'text-orange-300' : h.status === 'dead' ? 'text-red-400' : 'text-zinc-500'
+                }`}>{h.status}</span>
+              </div>
+            )
+          })}
+        </div>
+        {o.heartbeat[0]?.checkedAt && (
+          <p className="text-[10px] text-muted-foreground">Senast kontrollerad {rel(o.heartbeat[0].checkedAt)}.</p>
+        )}
       </OSLayer>
     </OSPage>
   )

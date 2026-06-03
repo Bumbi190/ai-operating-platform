@@ -1,4 +1,5 @@
 {
-  "crons": []
+  "crons": [
+    { "path": "/api/media/cron/heartbeat", "schedule": "*/10 * * * *" }
+  ]
 }
-

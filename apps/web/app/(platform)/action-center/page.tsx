@@ -72,6 +72,24 @@ export default async function ActionCenterPage() {
     }
   } catch { /* pipeline-kolumner saknas ännu — icke-kritiskt */ }
 
+  // Cron-heartbeat: jobb som är döda/sena/endpoint-trasiga.
+  try {
+    const { data: hb } = await (db.from('cron_heartbeat') as any)
+      .select('jobname, label, status, detail')
+      .in('status', ['late', 'dead', 'endpoint_failing'])
+    for (const h of (hb ?? []) as Array<{ jobname: string; label: string; status: string; detail: string | null }>) {
+      const urgent = h.status === 'dead' || h.status === 'endpoint_failing'
+      items.unshift({
+        id: `heartbeat-${h.jobname}`, severity: urgent ? 'urgent' : 'important',
+        title: h.status === 'dead' ? `${h.label} verkar dött`
+          : h.status === 'endpoint_failing' ? `${h.label} fyrar men gör inget`
+          : `${h.label} är sent`,
+        reason: `${h.detail ?? ''} — automationen ${urgent ? 'kör inte som den ska' : 'har missat sitt schema'}.`,
+        action: { href: '/atlas/operations', label: 'Visa' },
+      } as AttentionItem)
+    }
+  } catch { /* cron_heartbeat saknas ännu — icke-kritiskt */ }
+
   const urgent    = items.filter(i => i.severity === 'urgent')
   const important = items.filter(i => i.severity === 'important')
   const info      = items.filter(i => i.severity === 'info')

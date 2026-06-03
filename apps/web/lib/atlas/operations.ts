@@ -68,6 +68,16 @@ export interface TokenHealthRow {
   lastError: string | null
 }
 
+export interface HeartbeatRow {
+  jobname: string
+  label: string
+  cadence: string
+  status: string         // ok | late | endpoint_failing | dead | pending_first_run | unknown
+  detail: string | null
+  lastFiredAt: string | null
+  checkedAt: string | null
+}
+
 export interface OperationsSnapshot {
   generatedAt: string
   prompt: PromptOps
@@ -75,6 +85,7 @@ export interface OperationsSnapshot {
   gainpilot: GainpilotOps
   system: SystemHealth
   tokens: TokenHealthRow[]
+  heartbeat: HeartbeatRow[]
 }
 
 function startOfTodayIso(): string {
@@ -103,7 +114,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
   const todayStart = startOfTodayIso()
   const nowMs      = Date.now()
 
-  const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows] = await Promise.all([
+  const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows, heartbeatRows] = await Promise.all([
     safe<any[]>(db.from('projects').select('id, name, slug, color'), []),
     safe<any[]>(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, voice_attempts, render_attempts, pipeline_failed_reason, updated_at'), []),
     safe<any[]>(db.from('media_insights').select('project_id, platform, views, reach, impressions'), []),
@@ -112,6 +123,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     safe<any[]>(db.from('leads').select('project_id, status'), []),
     safe<any[]>(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), []),
     safe<any[]>(db.from('token_health').select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at, last_error'), []),
+    safe<any[]>(db.from('cron_heartbeat').select('jobname, label, cadence, status, detail, last_fired_at, checked_at'), []),
   ])
 
   const idBySlug = new Map<string, string>()
@@ -222,7 +234,14 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
     }))
     .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform))
 
-  return { generatedAt: new Date().toISOString(), prompt, familje, gainpilot, system, tokens }
+  // ── AUTOMATION / HEARTBEAT ──────────────────────────────────────────────────
+  const heartbeat: HeartbeatRow[] = (heartbeatRows as any[]).map(h => ({
+    jobname: h.jobname, label: h.label ?? h.jobname, cadence: h.cadence ?? '',
+    status: h.status ?? 'unknown', detail: h.detail ?? null,
+    lastFiredAt: h.last_fired_at ?? null, checkedAt: h.checked_at ?? null,
+  }))
+
+  return { generatedAt: new Date().toISOString(), prompt, familje, gainpilot, system, tokens, heartbeat }
 }
 
 /**
@@ -247,6 +266,14 @@ export function operationsSummary(o: OperationsSnapshot): string {
       return `${t.platform}: ${t.status}${t.status === 'ok' || t.status === 'warning' ? ` (${d})` : ''}`
     }).join(', ')
     lines.push(`Tokens — ${tok}.`)
+  }
+  if (o.heartbeat.length) {
+    const problems = o.heartbeat.filter(h => ['late', 'dead', 'endpoint_failing'].includes(h.status))
+    if (problems.length === 0) {
+      lines.push(`Automation — alla kritiska cron-jobb körde i tid.`)
+    } else {
+      lines.push(`Automation — PROBLEM: ${problems.map(h => `${h.label} (${h.status}: ${h.detail ?? ''})`).join('; ')}.`)
+    }
   }
   return lines.join('\n')
 }

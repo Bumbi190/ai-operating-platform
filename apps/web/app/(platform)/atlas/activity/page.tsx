@@ -12,7 +12,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { OSPage, OSLayer } from '@/components/platform/os'
-import { Activity, Loader2, CheckCircle2, XCircle, ShieldCheck, MessageSquare } from 'lucide-react'
+import { Loader2, Clock, CheckCircle2, XCircle, ShieldCheck, MessageSquare } from 'lucide-react'
 import { LiveRefresh } from './LiveRefresh'
 
 export const dynamic = 'force-dynamic'
@@ -42,7 +42,7 @@ export default async function AtlasActivity() {
   const cutoff = new Date(Date.now() - 2 * 864e5).toISOString()
 
   const [runs, workflows, projects, messages, pendingApprovals, pendingScripts, managerTasks] = await Promise.all([
-    safe<any[]>(db.from('runs').select('id, status, started_at, finished_at, error, project_id, workflow_id').gte('started_at', cutoff).order('started_at', { ascending: false }).limit(40), []),
+    safe<any[]>(db.from('runs').select('id, status, created_at, started_at, finished_at, error, attempts, max_attempts, project_id, workflow_id').gte('created_at', cutoff).order('created_at', { ascending: false }).limit(40), []),
     safe<any[]>(db.from('workflows').select('id, name'), []),
     safe<any[]>(db.from('projects').select('id, name, color'), []),
     safe<any[]>(db.from('agent_messages').select('id, from_agent, message_type, content, created_at').order('created_at', { ascending: false }).limit(8), []),
@@ -79,16 +79,27 @@ export default async function AtlasActivity() {
           <Empty msg="Alla agenter är inaktiva. Inget pågår." />
         ) : (
           <div className="space-y-2">
-            {running.map(r => (
-              <div key={r.id} className="rounded-xl border border-indigo-500/25 bg-indigo-500/[0.05] p-4 flex items-center gap-3">
-                <Loader2 className="w-4 h-4 text-indigo-300 animate-spin shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{label(r)}</p>
-                  <p className="text-[11px] text-muted-foreground">{projName(r)} · startade {rel(r.started_at)}</p>
+            {running.map(r => {
+              const queued = String(r.status) === 'pending'
+              const retrying = (r.attempts ?? 0) > 1
+              return (
+                <div key={r.id} className="rounded-xl border border-indigo-500/25 bg-indigo-500/[0.05] p-4 flex items-center gap-3">
+                  {queued
+                    ? <Clock className="w-4 h-4 text-amber-300 shrink-0" />
+                    : <Loader2 className="w-4 h-4 text-indigo-300 animate-spin shrink-0" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{label(r)}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {projName(r)} · {queued ? `köad ${rel(r.created_at)}` : `kör sedan ${rel(r.started_at)}`}
+                      {retrying ? ` · försök ${r.attempts}/${r.max_attempts ?? 3}` : ''}
+                    </p>
+                  </div>
+                  <span className={`text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5 border ${queued ? 'text-amber-300 border-amber-500/30' : 'text-indigo-300 border-indigo-500/30'}`}>
+                    {queued ? 'köad' : 'kör'}
+                  </span>
                 </div>
-                <span className="text-[10px] uppercase tracking-wide text-indigo-300 border border-indigo-500/30 rounded-full px-2 py-0.5">{r.status}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </OSLayer>

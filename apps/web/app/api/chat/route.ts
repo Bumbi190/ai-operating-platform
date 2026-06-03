@@ -253,7 +253,6 @@ export async function POST(request: Request) {
 
   const db = createAdminClient()
   const tStart = Date.now()
-  const origin = new URL(request.url).origin   // för asynkron workflow-trigger
 
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
   const lastUserText = (() => {
@@ -351,7 +350,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, origin)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -410,7 +409,6 @@ async function executeTool(
   input: Record<string, unknown>,
   db: AdminClient,
   _userId: string,
-  origin: string,
 ): Promise<unknown> {
   if (name === 'list_workflows') {
     const { data: workflows } = await db
@@ -452,31 +450,27 @@ async function executeTool(
 
     if (!workflow) throw new Error('Workflow hittades inte')
 
+    // DURABLE: skapa som 'pending'. INGET fire-and-forget. pg_cron-drainern claimar
+    // och kör den durabelt — Atlas rapporterar "köad", aldrig falskt "startad".
     const { data: run } = await db
       .from('runs')
       .insert({
         workflow_id: workflow.id,
         project_id: workflow.project_id,
-        status: 'running',
+        status: 'pending',
         input: workflowInput,
         context: {},
-        started_at: new Date().toISOString(),
       })
       .select('id')
       .single()
 
     if (!run) throw new Error('Kunde inte skapa körning')
 
-    // ASYNKRONT — blockera ALDRIG chatten. Kör i egen invocation via /api/runs/execute.
-    // Fire-and-forget: chatten returnerar run_id direkt, status syns i Activity Center.
-    const secret = process.env.CRON_SECRET
-    void fetch(`${origin}/api/runs/execute`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', ...(secret ? { Authorization: `Bearer ${secret}` } : {}) },
-      body:    JSON.stringify({ run_id: run.id }),
-    }).catch(() => { /* körningen finns redan som 'running'; status pollas separat */ })
-
-    return { run_id: run.id, status: 'started', message: 'Körning startad i bakgrunden — fråga om status när du vill.' }
+    return {
+      run_id: run.id,
+      status: 'queued',
+      message: 'Körningen är köad och körs durabelt inom kort. Fråga om status med get_run_status när du vill.',
+    }
   }
 
   if (name === 'get_run_status') {
@@ -573,4 +567,5 @@ async function executeTool(
   throw new Error(`Okänt verktyg: ${name}`)
 }
 
-// executeWorkflow flyttad till lib/ai/workflow-runner.ts (körs nu asynkront via /api/runs/execute).
+// executeWorkflow flyttad till lib/ai/workflow-runner.ts. trigger_workflow skapar nu en
+// 'pending' run (durabelt); pg_cron-drainern (/api/runs/drain) claimar och kör den.

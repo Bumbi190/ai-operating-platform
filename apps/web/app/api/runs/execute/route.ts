@@ -1,9 +1,11 @@
 /**
  * POST /api/runs/execute  { run_id }
  *
- * Intern bakgrunds-exekvering av en workflow-körning. Anropas fire-and-forget av
- * chat-verktyget trigger_workflow så att CHATTEN ALDRIG BLOCKERAS. Körningen
- * sker i sin egen invocation (egen maxDuration).
+ * LEGACY / MANUELL synkron exekvering av en redan skapad körning. Kör workflowet
+ * inline (await) och sätter done/failed innan svar. Används INTE längre av chatten
+ * eller av de durabla start-vägarna — dessa skapar 'pending' och låter pg_cron-
+ * drainern (/api/runs/drain) claima och köra durabelt. Behålls för manuell
+ * felsökning / omkörning av en specifik run.
  *
  * Skyddad med: Authorization: Bearer {CRON_SECRET}
  */

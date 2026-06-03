@@ -1,0 +1,36 @@
+{
+  "brand": "familje-stunden",
+  "canon": true,
+  "note": "Kanoniska huvudkaraktärer. source_drive_id = original i Google Drive; storage_path = mål i Supabase Storage-bucketen 'familje-stunden' (transfereras i importsteget).",
+  "characters": [
+    {
+      "id": "nova",
+      "name": "Nova",
+      "role": "rymdkapten (huvudkaraktär)",
+      "description": "Varm, nyfiken rymdkapten som utforskar världen tillsammans med barnet och med Pling.",
+      "art": [
+        { "label": "vanlig (transparent)", "source_drive_id": "1GvIBZT7K3w4PRIBO4EJGC13sH7D9qIIN", "storage_path": "characters/nova/nova-vanlig.png" },
+        { "label": "alt (transparent)",     "source_drive_id": "1yw_r8eXUAOXZWjhTgOG5d4EtZVRalMhQ", "storage_path": "characters/nova/nova-alt.png" }
+      ]
+    },
+    {
+      "id": "pling",
+      "name": "Pling",
+      "role": "rymdkapten / följeslagare (huvudkaraktär)",
+      "description": "Nova's ständiga vän och medäventyrare; lekfull och hjälpsam.",
+      "art": [
+        { "label": "vanlig (transparent)", "source_drive_id": "1c8wvTBU4x93D35vTCP3mXZ1dDf0A0-kk", "storage_path": "characters/pling/pling-vanlig.png" },
+        { "label": "alt (transparent)",     "source_drive_id": "1lp9ngDxdMJejdUWxzqXPcvqOkCAZRF1a", "storage_path": "characters/pling/pling-alt.png" }
+      ]
+    }
+  ],
+  "recurring_elements": [
+    { "id": "kometvan", "name": "Kometvän", "description": "Återkommande bielement i Nova & Plings rymdäventyr." }
+  ],
+  "scene_art": {
+    "note": "40+ Nova & Pling scen-/karaktärsbilder. Enumereras fil-för-fil vid byte-transfer.",
+    "source_drive_folder_id": "1tPVFx-oyT3AHHiNHrSOGsJ-XN_2xhPKf",
+    "source_drive_folder": "Blandade bilder Nova och Pling",
+    "storage_path_prefix": "characters/scenes/"
+  }
+}

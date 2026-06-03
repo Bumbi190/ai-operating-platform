@@ -1,0 +1,36 @@
+{
+  "brand": "familje-stunden",
+  "version": "v1",
+  "generatedAt": "2026-06-03",
+  "isolation": "Helt åtskild från The Prompt. Får aldrig blandas.",
+  "sourceOfTruth": {
+    "brandRules": "content/familje-stunden/_meta/brand-rules.md",
+    "characters": "content/familje-stunden/characters/index.json",
+    "themes": "content/familje-stunden/themes/index.json"
+  },
+  "media": {
+    "store": "supabase-storage",
+    "bucket": "familje-stunden",
+    "public": false,
+    "status": "bucket skapad; byte-transfer från Drive pågår ej automatiskt (se importMechanism)",
+    "importMechanism": "Kräver nedladdning från Drive + uppladdning till Storage. Görs via (a) ett import-script med Supabase service-key, eller (b) Supabase dashboard-uppladdning enligt storage_path i theme-/character-indexen."
+  },
+  "canon": {
+    "characters": ["nova", "pling"],
+    "themes": 12,
+    "themeOrder": ["januari","februari","mars","april","maj","juni","juli","augusti","september","oktober","november","december"]
+  },
+  "agents": {
+    "consumers": ["atlas", "hermes", "marketing-engine"],
+    "rule": "Läs brand-rules.md + relevant theme/character INNAN generering. Hitta aldrig på karaktärer/teman."
+  },
+  "dedupe": {
+    "policy": "Behåll en kanonisk kopia per asset.",
+    "knownDuplicates": [
+      "Känslomånaden-paketet: 3 identiska kopior i Drive-roten → 2 set utelämnade",
+      "Familjestunden_Rymdmånaden_FINAL: 3 identiska (17642964 bytes) → 2 utelämnade",
+      "README.pdf: 4 identiska (235109 bytes) → exkluderas (ej kanon)",
+      "Meningen med familje-stunden.txt: 2 → 1; Tidslinje_Aug_Sept: 2 → 1"
+    ]
+  }
+}

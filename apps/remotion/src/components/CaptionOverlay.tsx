@@ -113,8 +113,8 @@ export function CaptionOverlay({ captions, words = [] }: Props) {
           <p
             style={{
               margin: 0,
-              fontSize: 48,
-              fontWeight: 640,
+              fontSize: 62,   // +30% — mobil-först läsbarhet
+              fontWeight: 700,
               fontFamily:
                 '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
               lineHeight: 1.40,

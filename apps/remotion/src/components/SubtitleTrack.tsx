@@ -70,10 +70,10 @@ export function SubtitleTrack({ words, accentColor, startFrame = 90 }: Props) {
             <span
               key={globalIndex}
               style={{
-                fontSize: 52,
-                fontWeight: isActive ? 800 : 600,
+                fontSize: 68,   // +30% — mobil-först läsbarhet
+                fontWeight: isActive ? 800 : 650,
                 fontFamily: 'system-ui, -apple-system, sans-serif',
-                color: isActive ? accentColor : isPast ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.85)',
+                color: isActive ? accentColor : isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.96)',
                 textShadow: isActive
                   ? `0 0 30px ${accentColor}66`
                   : '0 1px 8px rgba(0,0,0,0.6)',

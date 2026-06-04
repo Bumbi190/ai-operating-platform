@@ -96,7 +96,6 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
           <span key={m.plan_key} className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm">
             <span className="font-semibold">{m.label}</span>
             <span className="text-slate-500">{m.theme_name ?? 'tema ej satt'}</span>
-            {m.plan_status && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">{m.plan_status}</span>}
           </span>
         ))}
       </div>
@@ -150,16 +149,21 @@ function Card(props: {
 
   return (
     <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md">
-      {/* Korthuvud */}
+      {/* Korthuvud — komprimerat: ikon · format · månad + score */}
       <button onClick={onToggle} className="flex w-full items-start gap-3 px-4 py-3.5 text-left">
-        <div className="mt-0.5"><ChannelIcon channel={card.channel} /></div>
+        <div className="mt-0.5" title={card.channel_label}><ChannelIcon channel={card.channel} /></div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold">{card.channel_label} · {card.format_label}</span>
-            <span className="rounded bg-pink-50 px-1.5 py-0.5 text-[11px] font-medium text-pink-700">{card.month_label}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">{card.format_label} · {card.month_label}</span>
             <ScoreBadge score={card.score} verdict={card.verdict} critical={card.critical} status={card.status} />
           </div>
           <p className="mt-1 line-clamp-2 text-sm text-slate-600">{card.caption_preview || <span className="italic text-slate-400">Ingen caption</span>}{card.caption_full.length > 100 ? '…' : ''}</p>
+          {card.primary_reason && (
+            <p className={`mt-1.5 flex items-center gap-1.5 text-xs font-medium ${card.primary_reason.tone === 'critical' ? 'text-rose-600' : 'text-amber-600'}`}>
+              {card.primary_reason.tone === 'critical' ? <ShieldX className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+              {card.primary_reason.text}
+            </p>
+          )}
         </div>
         {open ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />}
       </button>
@@ -180,7 +184,7 @@ function Card(props: {
           className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-white">
           <Pencil className="h-4 w-4" />Redigera
         </button>
-        {card.critical && <span className="ml-auto rounded bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700">CRITICAL — kan ej godkännas</span>}
+        {card.critical && <span className="ml-auto rounded bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700">Kan ej godkännas</span>}
       </div>
 
       {/* Detalj */}
@@ -193,32 +197,23 @@ function Card(props: {
               <Section title="Caption">
                 <p className="whitespace-pre-wrap text-slate-700">{card.caption_full || '—'}</p>
               </Section>
+              {/* Beslutsrelevant först: problem → CTA → att tänka på */}
+              {card.violations.length > 0 && (
+                <Section title="Problem">
+                  <ul className="space-y-1">
+                    {card.violations.map((v, i) => {
+                      const sev = v.severity === 'CRITICAL' ? 'Allvarligt' : v.severity === 'HIGH' ? 'Viktigt' : v.severity === 'MEDIUM' ? 'Mindre' : 'Info'
+                      return <li key={i} className="flex gap-2"><span className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${v.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{sev}</span><span className="text-slate-700">{v.explanation}</span></li>
+                    })}
+                  </ul>
+                </Section>
+              )}
               <Section title="CTA">
                 <span className="rounded bg-slate-100 px-2 py-0.5">{card.cta.label ?? '—'}</span>
-                {card.cta.type && <span className="ml-2 text-slate-500">({card.cta.type})</span>}
                 {(card.cta.type === 'trial' || card.cta.type === 'subscribe') && (
                   <span className="ml-2 text-xs">{card.cta.landing_url_slot && !/^<.*>$/.test(card.cta.landing_url_slot) ? card.cta.landing_url_slot : <span className="text-rose-600">landningssida saknas</span>}</span>
                 )}
               </Section>
-              <Section title="Bilder (asset refs)">
-                <ul className="space-y-0.5">
-                  {card.asset_refs.length === 0 ? <li className="text-slate-400">—</li> : card.asset_refs.map((a, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <span className="text-slate-700">{a.ref ?? '(ingen)'}</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${a.status === 'available' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{a.status}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-              {card.violations.length > 0 && (
-                <Section title="Problem">
-                  <ul className="space-y-1">
-                    {card.violations.map((v, i) => (
-                      <li key={i} className="flex gap-2"><span className={`mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${v.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{v.severity}</span><span className="text-slate-700">{v.explanation}</span></li>
-                    ))}
-                  </ul>
-                </Section>
-              )}
               {card.warnings.length > 0 && (
                 <Section title="Att tänka på">
                   <ul className="list-disc space-y-0.5 pl-5 text-slate-600">
@@ -226,6 +221,19 @@ function Card(props: {
                   </ul>
                 </Section>
               )}
+
+              {/* Ej beslutskritiskt — dolt bakom expander */}
+              <details className="mt-1 rounded-lg bg-slate-50 px-3 py-2">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-600">Bilder</summary>
+                <ul className="mt-2 space-y-0.5">
+                  {card.asset_refs.length === 0 ? <li className="text-slate-400">—</li> : card.asset_refs.map((a, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-700">{a.ref ?? '(ingen)'}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${a.status === 'available' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{a.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
 
               {/* Audit-tidslinje */}
               <details className="mt-3 rounded-lg bg-slate-50 px-3 py-2">

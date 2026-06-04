@@ -47,6 +47,8 @@ export interface ReviewCard {
   violations: ReviewViolation[]
   warnings: ReviewViolation[]
   blocking_gaps: string[]
+  /** Den ENDA viktigaste orsaken att visa på kortytan (P0). null = inget hinder. */
+  primary_reason: { text: string; tone: 'critical' | 'warning' } | null
   audit: AuditStep[]
   created_at: string
 }
@@ -70,6 +72,38 @@ function monthLabelFromPlanKey(planKey: string): string {
   if (!m) return planKey
   const name = MONTH_SV[Number(m[1]) - 1] ?? ''
   return name ? name.charAt(0).toUpperCase() + name.slice(1) : planKey
+}
+
+// Kort, beslutsrelevant etikett per violation-id (P0 — visas på kortytan).
+const REASON_LABEL: Record<string, string> = {
+  'BR-THEPROMPT': 'The Prompt-element',
+  'CH-ROLEMIX': 'Karaktärsroller blandade',
+  'CH-WRONGTRAIT': 'Fel karaktärsdrag',
+  'CH-NEWCHAR': 'Ny karaktär',
+  'TH-WRONGTHEME': 'Fel tema',
+  'GAP-UNDEF-THEME': 'Saknar tema-underlag',
+  'TH-UNSAFE': 'Barnsäkerhet',
+  'TH-OTHERTHEME': 'Annat tema inblandat',
+  'TH-NOSYMBOL': 'Saknar tema-symboler',
+  'MKT-FALSEPRICE': 'Felaktigt pris',
+  'MKT-DEVCLAIM': 'Ogrundat löfte',
+  'MKT-LANDING-MISSING': 'Landningssida saknas',
+  'GAP-INVENTED': 'Uppfunnen uppgift',
+  'AS-INVENTED': 'Bild utan källa',
+  'MKT-WRONGCTA': 'Fel CTA',
+  'SCHEMA-INCOMPLETE': 'Ofullständigt utkast',
+}
+
+/** Den enda viktigaste orsaken att visa på kortytan, eller null om rent. */
+function primaryReason(status: string, critical: boolean, violations: Array<{ id?: string; severity: string; explanation: string }>): { text: string; tone: 'critical' | 'warning' } | null {
+  if (status === 'needs_input') return { text: 'Saknar tema-underlag', tone: 'warning' }
+  const crit = violations.find((v) => v.severity === 'CRITICAL')
+  if (critical || crit) return { text: crit ? (REASON_LABEL[crit.id ?? ''] ?? 'Canon-brott') : 'Canon-brott', tone: 'critical' }
+  const high = violations.find((v) => v.severity === 'HIGH')
+  if (high) return { text: REASON_LABEL[high.id ?? ''] ?? high.explanation, tone: 'warning' }
+  const med = violations.find((v) => v.severity === 'MEDIUM')
+  if (med) return { text: REASON_LABEL[med.id ?? ''] ?? med.explanation, tone: 'warning' }
+  return null
 }
 
 function classifyQueue(status: string): ReviewQueue {
@@ -179,6 +213,7 @@ export async function getMarketingReview(db: AdminClient, now: Date = new Date()
       violations: Array.isArray(rep?.violations) ? rep.violations.map((v: any) => ({ severity: v.severity, explanation: v.explanation })) : [],
       warnings: Array.isArray(rep?.warnings) ? rep.warnings.map((w: any) => ({ severity: w.severity, explanation: w.explanation })) : [],
       blocking_gaps: Array.isArray(rep?.gap_flags) ? rep.gap_flags.filter((g: any) => g.blocking).map((g: any) => g.field) : [],
+      primary_reason: primaryReason(d.status, critical, Array.isArray(rep?.violations) ? rep.violations : []),
       audit: [
         { label: 'Planner', run_id: planRunId, at: planRunId ? runMeta.get(planRunId)?.finished_at ?? runMeta.get(planRunId)?.created_at ?? null : null, status: planRunId ? runMeta.get(planRunId)?.status ?? null : null },
         { label: 'Drafter', run_id: d.run_id, at: d.run_id ? runMeta.get(d.run_id)?.finished_at ?? runMeta.get(d.run_id)?.created_at ?? null : null, status: d.run_id ? runMeta.get(d.run_id)?.status ?? null : null },

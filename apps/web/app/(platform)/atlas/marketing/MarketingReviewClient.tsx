@@ -10,6 +10,7 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   Instagram, Facebook, CheckCircle2, RotateCcw, Pencil, ChevronDown, ChevronRight,
   ShieldCheck, ShieldAlert, ShieldX, Clock, Megaphone, Loader2, X, Save,
+  MoreHorizontal, Eye, Wrench,
 } from 'lucide-react'
 import type { ReviewData, ReviewCard, ReviewQueue } from '@/lib/marketing/review'
 
@@ -50,6 +51,7 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
+  const [menuId, setMenuId] = useState<string | null>(null)
   const [editCaption, setEditCaption] = useState('')
   const [editUrl, setEditUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -77,10 +79,11 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
   )
 
   const c = data.counts
+  // Köbadges: dölj "Behöver underlag" helt när 0; tona ner övriga med 0.
   const chips: Array<{ key: ReviewQueue; n: number }> = [
-    { key: 'approved', n: c.approved }, { key: 'pending', n: c.pending },
+    { key: 'pending', n: c.pending }, { key: 'approved', n: c.approved },
     { key: 'rejected', n: c.rejected }, { key: 'needs_input', n: c.needs_input },
-  ]
+  ].filter((ch) => !(ch.key === 'needs_input' && ch.n === 0))
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -100,11 +103,11 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
         ))}
       </div>
 
-      {/* Köbadges */}
+      {/* Köbadges — tonas ner vid 0; "Behöver underlag" döljs vid 0 */}
       <div className="mb-5 flex flex-wrap gap-2">
         {chips.map(({ key, n }) => (
           <button key={key} onClick={() => setFilter(filter === key ? 'all' : key)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${filter === key ? 'border-slate-900 bg-slate-900 text-white' : 'bg-white hover:bg-slate-50'}`}>
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${filter === key ? 'border-slate-900 bg-slate-900 text-white' : 'bg-white hover:bg-slate-50'} ${n === 0 && filter !== key ? 'opacity-40' : ''}`}>
             <span className={`h-2 w-2 rounded-full ${QUEUE_META[key].dot}`} />
             {QUEUE_META[key].label}<span className="font-bold">{n}</span>
           </button>
@@ -115,17 +118,27 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
 
       {/* Kort */}
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed bg-white/60 px-6 py-12 text-center text-slate-500">
-          Inga utkast i den här kön.
-        </div>
+        (filter === 'pending' || filter === 'all') ? (
+          <div className="rounded-xl border border-dashed bg-white/60 px-6 py-14 text-center">
+            <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
+            <p className="text-base font-semibold text-slate-700">Allt granskat ✓</p>
+            <p className="mt-1 text-sm text-slate-500">Inget väntar på beslut just nu.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed bg-white/60 px-6 py-12 text-center text-slate-500">
+            Inga utkast i den här kön.
+          </div>
+        )
       ) : (
         <div className="space-y-3">
           {visible.map((card) => (
             <Card key={card.draft_id} card={card} open={openId === card.draft_id}
               onToggle={() => setOpenId(openId === card.draft_id ? null : card.draft_id)}
               busy={busy} onAct={act}
+              menuOpen={menuId === card.draft_id}
+              onMenuToggle={() => setMenuId(menuId === card.draft_id ? null : card.draft_id)}
               editing={editId === card.draft_id}
-              onEditStart={() => { setEditId(card.draft_id); setEditCaption(card.caption_full); setEditUrl(card.cta.landing_url_slot && !/^<.*>$/.test(card.cta.landing_url_slot) ? card.cta.landing_url_slot : '') }}
+              onEditStart={() => { setEditId(card.draft_id); setOpenId(card.draft_id); setMenuId(null); setEditCaption(card.caption_full); setEditUrl(card.cta.landing_url_slot && !/^<.*>$/.test(card.cta.landing_url_slot) ? card.cta.landing_url_slot : '') }}
               onEditCancel={() => setEditId(null)}
               editCaption={editCaption} setEditCaption={setEditCaption}
               editUrl={editUrl} setEditUrl={setEditUrl}
@@ -140,12 +153,17 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
 function Card(props: {
   card: ReviewCard; open: boolean; onToggle: () => void; busy: string | null
   onAct: (id: string, action: string, extra?: Record<string, unknown>) => void
+  menuOpen: boolean; onMenuToggle: () => void
   editing: boolean; onEditStart: () => void; onEditCancel: () => void
   editCaption: string; setEditCaption: (v: string) => void; editUrl: string; setEditUrl: (v: string) => void
 }) {
-  const { card, open, onToggle, busy, onAct, editing } = props
+  const { card, open, onToggle, busy, onAct, menuOpen, onMenuToggle, editing } = props
   const isBusy = (a: string) => busy === card.draft_id + a
-  const showApprove = card.can_approve
+
+  // En primär handling per kort enligt tillstånd.
+  const fixable = card.blocking_gaps.length > 0
+  const primary: 'approve' | 'fix' | 'return' =
+    card.critical ? 'return' : fixable ? 'fix' : card.can_approve ? 'approve' : 'return'
 
   return (
     <div className="overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md">
@@ -168,24 +186,44 @@ function Card(props: {
         {open ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />}
       </button>
 
-      {/* Snabba actions */}
+      {/* En primär handling + overflow (⋯) */}
       <div className="flex items-center gap-2 border-t bg-slate-50/60 px-4 py-2.5">
-        {showApprove && (
+        {primary === 'approve' && (
           <button disabled={isBusy('approve')} onClick={() => onAct(card.draft_id, 'approve')}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
             {isBusy('approve') ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Godkänn
           </button>
         )}
-        <button disabled={isBusy('return')} onClick={() => onAct(card.draft_id, 'return')}
-          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-white disabled:opacity-50">
-          {isBusy('return') ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Skicka tillbaka
+        {primary === 'fix' && (
+          <button onClick={props.onEditStart}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-slate-800">
+            <Wrench className="h-4 w-4" />Åtgärda
+          </button>
+        )}
+        {primary === 'return' && (
+          <button disabled={isBusy('return')} onClick={() => onAct(card.draft_id, 'return')}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
+            {isBusy('return') ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Skicka tillbaka
+          </button>
+        )}
+
+        {card.critical && <span className="ml-2 rounded bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700">Kan ej godkännas</span>}
+
+        <button onClick={onMenuToggle} aria-label="Fler val" aria-expanded={menuOpen}
+          className={`ml-auto inline-flex items-center rounded-lg border px-2 py-1.5 text-slate-600 hover:bg-white ${menuOpen ? 'bg-white' : ''}`}>
+          <MoreHorizontal className="h-4 w-4" />
         </button>
-        <button onClick={props.onEditStart}
-          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-white">
-          <Pencil className="h-4 w-4" />Redigera
-        </button>
-        {card.critical && <span className="ml-auto rounded bg-rose-100 px-2 py-1 text-[11px] font-bold text-rose-700">Kan ej godkännas</span>}
       </div>
+
+      {/* Overflow — inline rad (ingen clipping), visas vid ⋯ */}
+      {menuOpen && (
+        <div className="flex flex-wrap gap-1.5 border-t bg-white px-4 py-2">
+          <MenuItem icon={<Eye className="h-4 w-4" />} label={open ? 'Dölj detaljer' : 'Visa detaljer'} onClick={() => { onMenuToggle(); onToggle() }} />
+          {primary !== 'fix' && <MenuItem icon={<Pencil className="h-4 w-4" />} label="Redigera" onClick={props.onEditStart} />}
+          {primary !== 'return' && <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Skicka tillbaka" onClick={() => { onMenuToggle(); onAct(card.draft_id, 'return') }} />}
+          {primary === 'fix' && card.can_approve && <MenuItem icon={<CheckCircle2 className="h-4 w-4" />} label="Godkänn ändå" onClick={() => { onMenuToggle(); onAct(card.draft_id, 'approve') }} />}
+        </div>
+      )}
 
       {/* Detalj */}
       {open && (
@@ -264,6 +302,15 @@ function Card(props: {
         </div>
       )}
     </div>
+  )
+}
+
+function MenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+      {icon}{label}
+    </button>
   )
 }
 

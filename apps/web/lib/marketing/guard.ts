@@ -62,6 +62,13 @@ function isRealUrl(v: unknown): boolean {
   return typeof v === 'string' && /(https?:\/\/|www\.|\.se\b|\.com\b)/i.test(v) && !/^<.*>$/.test(v.trim())
 }
 
+// Helord-matchning (svensk-medveten): "jul" matchar inte "juli", "rymd" inte "rymdfärja-saga" osv.
+// Token får inte flankeras av ett ordtecken (inkl. å/ä/ö). Ersätter naiv substring-matchning.
+function containsWord(text: string, token: string): boolean {
+  const esc = token.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?<![0-9a-zåäö])${esc}(?![0-9a-zåäö])`, 'i').test(text)
+}
+
 /** Bedöm ett utkast. `draft` = draft_payload (oförändrat). */
 export function evaluateGuard(draft: Record<string, any>, ctx: GuardPlanContext): GuardResult {
   const violations: Violation[] = []
@@ -126,7 +133,7 @@ export function evaluateGuard(draft: Record<string, any>, ctx: GuardPlanContext)
     // Korsinblandning från annat tema
     for (const [other, tokens] of Object.entries(OTHER_THEME_TOKENS)) {
       if (other === theme.themeKey) continue
-      if (tokens.some((tk) => text.includes(tk))) {
+      if (tokens.some((tk) => containsWord(text, tk))) {
         violations.push({ id: 'TH-OTHERTHEME', severity: 'HIGH', category: 'theme', field: 'caption',
           explanation: `Element från annat tema (${other}) inblandat.`, kb_ref: 'theme-bible' })
         break

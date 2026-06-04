@@ -10,7 +10,7 @@
  * MEDIUM −10, warnings 0. Trösklar: ≥90 approved, 70–89 warning, <70 rejected.
  * ⛔ The Prompt = automatisk CRITICAL.
  */
-import { themeByMonthIndex, THEMES, CTA, PROOF_POINTS } from './kb/marketing-canon'
+import { themeByMonthIndex, THEMES, CTA, PROOF_POINTS, resolveTheme } from './kb/marketing-canon'
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 export interface Violation {
@@ -69,7 +69,7 @@ export function evaluateGuard(draft: Record<string, any>, ctx: GuardPlanContext)
   const gaps: GapFlagOut[] = []
   const text = collectText(draft)
 
-  const theme = ctx.theme_key ? THEMES.find((t) => t.themeKey === ctx.theme_key) : undefined
+  const theme = resolveTheme(ctx.theme_key)
   const channel = draft.channel as string
   const beat = (draft.beat as string) ?? ctx.expected?.beat
   const cta = (draft.cta ?? {}) as { type?: string; label?: string }

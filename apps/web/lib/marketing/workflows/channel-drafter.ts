@@ -12,7 +12,7 @@ import 'server-only'
 import type { AdminClient, MarketingHandler } from './index'
 import type { Run } from '@/lib/supabase/types'
 import { runStep } from '@/lib/ai/runner'
-import { themeByMonthIndex, THEMES } from '@/lib/marketing/kb/marketing-canon'
+import { themeByMonthIndex, resolveTheme } from '@/lib/marketing/kb/marketing-canon'
 import {
   buildDrafterSystemPrompt, buildDrafterUserMessage, parseDraftResponse, assembleDraftPost,
 } from '@/lib/marketing/drafter'
@@ -37,7 +37,7 @@ export const channelDrafterHandler: MarketingHandler = async (db: AdminClient, r
 
   const { data: plan } = await db.from('campaign_plans').select('theme_key, plan_key').eq('id', b.plan_id as string).maybeSingle()
   const themeKey = (plan as { theme_key?: string } | null)?.theme_key ?? null
-  const theme = (themeKey ? THEMES.find((t) => t.themeKey === themeKey) : undefined) ?? themeByMonthIndex(1)!
+  const theme = resolveTheme(themeKey) ?? themeByMonthIndex(1)!
 
   const payload = (b.brief_payload ?? {}) as Record<string, any>
   const briefForPrompt = { ...payload, channel: b.channel, format: b.format, beat: b.beat }

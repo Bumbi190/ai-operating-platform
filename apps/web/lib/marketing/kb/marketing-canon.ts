@@ -182,3 +182,34 @@ export function themeByMonthIndex(monthIndex: number): ThemeCanon | undefined {
 export function nextTheme(monthIndex: number): ThemeCanon | undefined {
   return themeByMonthIndex(monthIndex === 12 ? 1 : monthIndex + 1)
 }
+
+/**
+ * EVERGREEN — varumärkesmarknadsföring för månader UTAN fastställt säsongstema
+ * (t.ex. juni, vars Theme Bible-tema är [LUCKA]). Inget säsongstema hittas på:
+ * detta är ren value prop + Nova & Pling + provmånad ur Marketing Bible/Brand Rules.
+ * symbols=[] ⇒ inga säsongssymboler krävs/valideras.
+ */
+export const EVERGREEN_THEME: ThemeCanon = {
+  monthIndex: 0,
+  monthSv: 'evergreen',
+  themeKey: 'familje-evergreen',
+  name: 'Familje-Stunden (varumärke)',
+  emoji: '✨',
+  focus: 'Varumärkesmarknadsföring utan säsongstema — skärmfri kvalitetstid, Nova & Pling, provmånad.',
+  symbols: [],
+  keyVisualPath: 'covers/juni.png',
+  hasSaga: false,
+  hasAudio: false,
+  defined: true,
+  contentGap: false,
+  primaryAngle: 'Skärmfria mysstunder med Nova & Pling — färdigt att använda direkt',
+  emotionalPillar: 'Skärmfri kvalitetstid & närhet + Enkelhet utan stress',
+  mustNot: GENERIC_MUST_NOT,
+}
+
+/** Slå upp ett tema från säsongscykeln ELLER evergreen-varumärkesprofilen. */
+export function resolveTheme(themeKey: string | null | undefined): ThemeCanon | undefined {
+  if (!themeKey) return undefined
+  if (themeKey === EVERGREEN_THEME.themeKey) return EVERGREEN_THEME
+  return THEMES.find((t) => t.themeKey === themeKey)
+}

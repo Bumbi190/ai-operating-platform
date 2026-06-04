@@ -22,6 +22,10 @@ import {
 import { formatDistanceToNow, format } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 
+// Live token/DB-status — måste alltid renderas färskt (annars cachas "Token saknas"
+// från innan tokenet fanns). Samma direktiv som övriga data-drivna sidor.
+export const dynamic = 'force-dynamic'
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MediaScript = {

@@ -29,26 +29,56 @@ export interface LlmDraftCopy {
 export function buildDrafterSystemPrompt(): string {
   return [
     'Du är Channel Drafter för Familje-Stunden. Du skriver kanalfärdiga UTKAST (IG/FB) — du publicerar inte och hittar aldrig på.',
+    'MÅL: skriv MÄNSKLIGT, PRAKTISKT, VARMT och ANVÄNDBART för en trött förälder till barn 3–7 år. Skriv som en varm vän som tipsar — inte som en poet. Konkret nytta före stämning.',
+    '',
     'HÅRDA REGLER:',
     '1. Använd ENDAST briefen + medskickad kanon. ⛔ Nämn ALDRIG The Prompt, AI News eller andra projekt.',
     '2. Hitta aldrig på bilder, URL:er, priser, palett eller saga-handling. Priser endast 59/129/199 kr om de nämns.',
-    '3. Bygg captionen i fyra lager: Hook (temats känsla) → Story (Nova & Pling i kanon) → Value (proof points, bara vad paketet ger) → CTA (en, från briefen).',
-    '4. Nova = nyfiken/kännande känslohook. Pling = lekfull förklarare ("Blipp blipp!" sparsamt). Inga nya karaktärer.',
-    '5. Respektera briefens must_not. Ton: varm, trygg, magisk, svensk. Barnet/föräldern tilltalas varmt.',
-    '6. Svara med ENBART giltig JSON enligt schemat. Ingen text utanför JSON. Inga asset-referenser eller URL:er i svaret.',
+    '3. NYTTA FÖRE STÄMNING: säg vad föräldern får inom de första 1–2 raderna (saga, ljudsaga, pyssel, diplom · ingen förberedelse · provmånad). Stämning får ta MAX en mening innan nyttan.',
+    '4. Nova = nyfiken/kännande känslohook. Pling = lekfull förklarare ("Blipp blipp!" sparsamt, max 1 gång). Inga nya karaktärer.',
+    '5. EXAKT EN CTA per post — den ska matcha briefens CTA. Lägg ALDRIG till en andra/sekundär uppmaning i texten.',
+    '6. BAN-LISTA (utslitna AI-fraser — använd INTE): "Tänk dig…/Föreställ dig…" som öppning, "sandkornen kittlar", "havet/vinden viskar", generiska sensoriska klichéer. Ordet "magisk/magi" MAX 1 gång per post. Tankstreck (—) MAX 1 per post.',
+    '7. SPRÅK/GRAMMATIK: skriv korrekt, vardaglig svenska. Kalla paketet "Sagosommar" eller "Sagosommar-paketet" — ALDRIG "julipaketet", "julitema" eller "julipaket". Kombinera aldrig "juli" + "paket".',
+    '8. HASHTAGS: endast i fältet "hashtags" (aldrig i captiontexten). Varje tagg ett ord utan mellanslag.',
+    '9. Respektera briefens must_not. Ton: varm, trygg, svensk; tilltala föräldern direkt.',
+    '10. Svara med ENBART giltig JSON enligt schemat. Ingen text utanför JSON. Inga asset-referenser eller URL:er i svaret.',
   ].join('\n')
+}
+
+// Längdtak per format (tecken i caption_rendered). [v2 — format-disciplin]
+const LENGTH_CAP: Record<string, number> = { reel: 400, story: 120, carousel: 300, fb_post: 500, single_post: 500, fb_event: 500 }
+// Hook-typ roteras per beat så de 8 posterna i en plan blir varierade. [v2]
+const HOOK_BY_BEAT: Record<string, string> = {
+  teaser: 'kort, nyfiken hook (max ~6 ord) — väck nyfikenhet, ingen strand-/sand-kliché',
+  launch: 'konkret NYTTA först — vad föräldern faktiskt får denna månad, rakt på sak',
+  mid: 'en vardagsnära föräldra-situation eller fråga (igenkänning, inte stämningsmåleri)',
+  bridge: 'en kort Nova- eller Pling-replik, eller ett kort påstående',
 }
 
 export function buildDrafterUserMessage(brief: Record<string, any>, theme: ThemeCanon): string {
   const fmt = brief.format as string
+  const cap = LENGTH_CAP[fmt] ?? 500
+  const hookDirective = HOOK_BY_BEAT[brief.beat as string] ?? 'variera hooken — undvik strand/sand/viskande hav'
   const schemaHint =
     fmt === 'reel'
       ? '"reel_spec": { "duration_target_sec": 15, "scenes": [ { "order": 1, "beat_role": "hook|story|value|cta", "on_screen_text": "...", "voiceover_note": "..." } ], "audio_note": "..." }'
       : fmt === 'carousel'
         ? '"carousel_slides": [ { "order": 1, "role": "hook|story|value|cta", "headline": "...", "body": "..." } ]'
-        : '"fb_post": { "primary_text": "hela inlägget i FB-längd, längre berättande ton" }'
+        : '"fb_post": { "primary_text": "kort, varmt FB-inlägg (max 3 korta stycken)" }'
+
+  const formatRule =
+    fmt === 'story'
+      ? `FORMAT: Instagram STORY — MYCKET kort, 1–2 rader / overlay-text. caption_rendered MAX ${cap} tecken. Inte ett helt inlägg.`
+      : fmt === 'reel'
+        ? `FORMAT: Instagram REEL — kort: 1 hook + 1 nyttorad + 1 CTA. caption_rendered MAX ${cap} tecken.`
+        : fmt === 'carousel'
+          ? `FORMAT: Instagram KARUSELL — slides bär budskapet; håll caption kort. caption_rendered MAX ${cap} tecken. EN CTA.`
+          : `FORMAT: Facebook — varmt, max 3 korta stycken. caption_rendered MAX ${cap} tecken.`
 
   return [
+    formatRule,
+    `HOOK denna post: ${hookDirective}.`,
+    '',
     'BRIEF:',
     JSON.stringify({
       channel: brief.channel, format: brief.format, beat: brief.beat, objective: brief.objective,
@@ -102,10 +132,13 @@ export function bindAssets(assetRefs: string[], format: string): AssetPlanItem[]
 // ── Hashtag-regler ───────────────────────────────────────────────────────────
 export function normalizeHashtags(channel: string, hashtags: string[] | undefined): string[] {
   if (channel === 'facebook') return [] // FB: minimalt/inga
+  const seen = new Set<string>()
   const tags = (hashtags ?? [])
+    .map((t) => String(t).trim().replace(/\s+/g, ''))   // laga trasiga taggar ("#sommarmed barn" → "#sommarmedbarn")
     .map((t) => (t.startsWith('#') ? t : `#${t}`))
-    .filter((t) => /^#[\wåäöÅÄÖ]+$/.test(t))
-  if (!tags.includes('#familjestunden')) tags.unshift('#familjestunden')
+    .filter((t) => /^#[\wåäöÅÄÖ]+$/.test(t) && t.length > 1)
+    .filter((t) => { const k = t.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true })
+  if (!tags.some((t) => t.toLowerCase() === '#familjestunden')) tags.unshift('#familjestunden')
   return tags.slice(0, 10) // IG: 5–10 (cap 10)
 }
 

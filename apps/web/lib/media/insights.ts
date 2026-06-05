@@ -130,7 +130,7 @@ const FB_GRAPH = 'https://graph.facebook.com/v21.0'
  * Steg 2 (om post_id finns): post-noden → shares + räckvidd (post_impressions_unique).
  * Returnerar även `raw` för probning av faktisk fältform.
  */
-export async function fetchFacebookInsights(facebookPostId: string, pageToken: string, pageId?: string | null, probeMode = false): Promise<InsightFetchResult> {
+export async function fetchFacebookInsights(facebookPostId: string, pageToken: string, pageId?: string | null): Promise<InsightFetchResult> {
   try {
     // Steg 1 — video-noden.
     const vRes = await fetch(
@@ -154,8 +154,6 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
 
     // Steg 2 — räckvidd/impressions/shares på POST-nivå (Reels exponerar inte
     // video_insights; rätt källa är post_impressions* via post_id). read_insights krävs.
-    let probeRaw: Record<string, unknown> | undefined
-    let postSharesRaw: unknown = null
     if (v.post_id) {
       // FB post-insights kräver det FULLA page-post-id:t: {sid-id}_{post-id}.
       // Video-noden ger ofta bara den numeriska delen → prefixa, annars #12-fel.
@@ -175,33 +173,21 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
         } catch (e) { return { value: null, error: e instanceof Error ? e.message : 'okänt' } }
       }
 
-      // 2a — Media Views (ersätter 'impressions' efter Metas 2025/2026-deprekering).
-      const mv = await metricVal('post_media_view')
+      // Isolerade metrik-anrop — FB felar på HELA anropet om en ogiltig/deprecerad
+      // metrik blandas in (därför kraschade tidigare 'post_impressions_unique,post_impressions').
+      // Giltiga metriker verifierade via discovery-prob 2026-06-05.
+      const mv = await metricVal('post_media_view')          // Media Views (Metas nya standard, ersätter impressions)
       if (mv.value !== null) metrics.impressions = mv.value
+      const ru = await metricVal('post_impressions_unique')  // unik räckvidd. OBS: Meta deprecerar 2026-06-15 → degraderar då till null
+      if (ru.value !== null) metrics.reach = ru.value
 
-      // 2b — räckvidd: discovery-prob (endast första inlägget) för att hitta giltigt metriknamn.
-      //      Per-inlägg-hämtning av reach läggs till i finaliserings-deployen när vinnaren är känd.
-      if (probeMode) {
-        probeRaw = {}
-        const candidates = [
-          'post_media_view', 'post_media_view_unique', 'post_media_viewers',
-          'post_impressions_unique', 'post_video_views_unique', 'post_reach',
-          'post_impressions', 'post_video_views',
-        ]
-        for (const m of candidates) {
-          const r = await metricVal(m)
-          probeRaw[m] = r.error ? { error: r.error } : (r.value ?? 'no-data')
-        }
-      }
-
-      // 2c — shares via post-noden (rent fält, ingen insights-expansion).
+      // shares via post-noden (rent fält, ingen insights-expansion).
       try {
         const r = await fetch(
           `${FB_GRAPH}/${fullPostId}?fields=shares&access_token=${pageToken}`,
           { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
         )
         const j = await r.json() as { shares?: { count?: number }; error?: unknown }
-        postSharesRaw = j
         if (!j?.error && typeof j.shares?.count === 'number') metrics.shares = j.shares.count
       } catch { /* degradera */ }
     }
@@ -209,7 +195,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
     const interactions = (metrics.likes ?? 0) + (metrics.comments ?? 0) + (metrics.shares ?? 0)
     metrics.total_interactions = interactions
 
-    return { ok: true, metrics, raw: { video: v, probe: probeRaw, postShares: postSharesRaw } }
+    return { ok: true, metrics }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
   }
@@ -220,8 +206,6 @@ export interface RefreshSummary {
   failed: number
   firstError?: string
   byPlatform: Record<string, { updated: number; failed: number }>
-  /** Första FB-råsvaret — för probning av faktisk fältform (tas bort när mappningen är verifierad). */
-  fbSample?: unknown
 }
 
 /**
@@ -234,7 +218,6 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
   const db = createAdminClient()
   const byPlatform: Record<string, { updated: number; failed: number }> = {}
   let updated = 0, failed = 0, firstError: string | undefined
-  let fbSample: unknown
 
   const bump = (platform: string, ok: boolean) => {
     byPlatform[platform] ??= { updated: 0, failed: 0 }
@@ -323,11 +306,8 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       .order('published_at', { ascending: false })
       .limit(limit)
 
-    const fbList = (fbScripts ?? []) as any[]
-    for (let i = 0; i < fbList.length; i++) {
-      const s = fbList[i]
-      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId, i === 0)
-      if (fbSample === undefined) fbSample = result.raw   // första svaret → probning
+    for (const s of (fbScripts ?? []) as any[]) {
+      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
       const m = result.metrics
       const { error } = await (db.from('media_insights') as any).upsert({
@@ -351,5 +331,5 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
     }
   }
 
-  return { updated, failed, firstError, byPlatform, fbSample }
+  return { updated, failed, firstError, byPlatform }
 }

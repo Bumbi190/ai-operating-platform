@@ -131,8 +131,8 @@ export async function uploadShort(opts: YouTubeUploadOptions): Promise<{ videoId
  *
  * Returnerar null om: ej konfigurerat, saknad scope, eller ingen data ännu.
  */
-export async function fetchVideoRetention(videoId: string): Promise<{ pct: number | null; debug?: unknown }> {
-  if (!isYouTubeConfigured()) return { pct: null, debug: { error: 'youtube_not_configured' } }
+export async function fetchVideoRetention(videoId: string): Promise<number | null> {
+  if (!isYouTubeConfigured()) return null
   try {
     const token = await getAccessToken()
     // Analytics kräver ett datumintervall. Vi tar ett brett fönster (publicering täcks).
@@ -150,14 +150,12 @@ export async function fetchVideoRetention(videoId: string): Promise<{ pct: numbe
       signal: AbortSignal.timeout(12_000),
       cache: 'no-store',
     })
-    const data = await res.json() as { rows?: number[][]; error?: { message?: string; status?: string } }
-    if (!res.ok || data.error) {
-      return { pct: null, debug: { status: res.status, error: data.error ?? 'unknown' } }   // 403 = saknad scope / API ej aktiverat
-    }
+    const data = await res.json() as { rows?: number[][]; error?: { message?: string } }
+    if (!res.ok || data.error) return null            // 403 = saknad scope / API ej aktiverat → degradera
     const val = data.rows?.[0]?.[0]
-    return { pct: typeof val === 'number' ? Math.round(val * 10) / 10 : null, debug: { ok: true, rows: data.rows ?? [] } }
-  } catch (e) {
-    return { pct: null, debug: { thrown: e instanceof Error ? e.message : 'okänt' } }
+    return typeof val === 'number' ? Math.round(val * 10) / 10 : null
+  } catch {
+    return null
   }
 }
 

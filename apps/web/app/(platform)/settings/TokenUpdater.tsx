@@ -27,7 +27,18 @@ export function TokenUpdater() {
         body: JSON.stringify({ platform, token: token.trim(), expires_days: Number(days) || undefined }),
       })
       const j = await res.json()
-      if (res.ok) { setMsg({ ok: true, text: 'Token sparat ✓' }); setToken('') }
+      if (res.ok) {
+        let text = 'Token sparat ✓'
+        if (platform === 'facebook') {
+          const parts = [
+            j.exchanged ? 'långlivat ✓' : 'kortlivat ⚠️',
+            j.pageResolved ? 'sid-token ✓' : 'användar-token ⚠️',
+            j.readInsightsOk ? 'read_insights ✓' : 'read_insights ✗',
+          ]
+          text = `Facebook sparat — ${parts.join(', ')}`
+        }
+        setMsg({ ok: true, text }); setToken('')
+      }
       else setMsg({ ok: false, text: j.error ?? 'Kunde inte spara' })
     } catch {
       setMsg({ ok: false, text: 'Nätverksfel' })

@@ -130,7 +130,7 @@ const FB_GRAPH = 'https://graph.facebook.com/v21.0'
  * Steg 2 (om post_id finns): post-noden → shares + räckvidd (post_impressions_unique).
  * Returnerar även `raw` för probning av faktisk fältform.
  */
-export async function fetchFacebookInsights(facebookPostId: string, pageToken: string, pageId?: string | null): Promise<InsightFetchResult> {
+export async function fetchFacebookInsights(facebookPostId: string, pageToken: string, pageId?: string | null, probeMode = false): Promise<InsightFetchResult> {
   try {
     // Steg 1 — video-noden.
     const vRes = await fetch(
@@ -154,31 +154,47 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
 
     // Steg 2 — räckvidd/impressions/shares på POST-nivå (Reels exponerar inte
     // video_insights; rätt källa är post_impressions* via post_id). read_insights krävs.
-    let postInsightsRaw: unknown = null
+    let probeRaw: Record<string, unknown> | undefined
     let postSharesRaw: unknown = null
     if (v.post_id) {
       // FB post-insights kräver det FULLA page-post-id:t: {sid-id}_{post-id}.
       // Video-noden ger ofta bara den numeriska delen → prefixa, annars #12-fel.
       const fullPostId = v.post_id.includes('_') || !pageId ? v.post_id : `${pageId}_${v.post_id}`
 
-      // 2a — räckvidd (unik) + impressions via post-insights, direkt-anrop (ej fält-expansion).
-      try {
-        const r = await fetch(
-          `${FB_GRAPH}/${fullPostId}/insights?metric=post_impressions_unique,post_impressions&access_token=${pageToken}`,
-          { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
-        )
-        const j = await r.json() as { data?: { name?: string; values?: { value?: number }[] }[]; error?: unknown }
-        postInsightsRaw = j
-        if (!j?.error && Array.isArray(j.data)) {
-          for (const m of j.data) {
-            const val = m?.values?.[0]?.value
-            if (m?.name === 'post_impressions_unique' && typeof val === 'number') metrics.reach = val
-            if (m?.name === 'post_impressions'        && typeof val === 'number') metrics.impressions = val
-          }
-        }
-      } catch { /* degradera */ }
+      // Hämta EN metrik isolerat (FB felar på HELA anropet vid en ogiltig metrik).
+      const metricVal = async (metric: string): Promise<{ value: number | null; error?: string }> => {
+        try {
+          const r = await fetch(
+            `${FB_GRAPH}/${fullPostId}/insights?metric=${metric}&access_token=${pageToken}`,
+            { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+          )
+          const j = await r.json() as { data?: { values?: { value?: number }[] }[]; error?: { message?: string } }
+          if (j?.error) return { value: null, error: j.error.message }
+          const val = j.data?.[0]?.values?.[0]?.value
+          return { value: typeof val === 'number' ? val : null }
+        } catch (e) { return { value: null, error: e instanceof Error ? e.message : 'okänt' } }
+      }
 
-      // 2b — shares via post-noden (rent fält, ingen insights-expansion).
+      // 2a — Media Views (ersätter 'impressions' efter Metas 2025/2026-deprekering).
+      const mv = await metricVal('post_media_view')
+      if (mv.value !== null) metrics.impressions = mv.value
+
+      // 2b — räckvidd: discovery-prob (endast första inlägget) för att hitta giltigt metriknamn.
+      //      Per-inlägg-hämtning av reach läggs till i finaliserings-deployen när vinnaren är känd.
+      if (probeMode) {
+        probeRaw = {}
+        const candidates = [
+          'post_media_view', 'post_media_view_unique', 'post_media_viewers',
+          'post_impressions_unique', 'post_video_views_unique', 'post_reach',
+          'post_impressions', 'post_video_views',
+        ]
+        for (const m of candidates) {
+          const r = await metricVal(m)
+          probeRaw[m] = r.error ? { error: r.error } : (r.value ?? 'no-data')
+        }
+      }
+
+      // 2c — shares via post-noden (rent fält, ingen insights-expansion).
       try {
         const r = await fetch(
           `${FB_GRAPH}/${fullPostId}?fields=shares&access_token=${pageToken}`,
@@ -193,7 +209,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
     const interactions = (metrics.likes ?? 0) + (metrics.comments ?? 0) + (metrics.shares ?? 0)
     metrics.total_interactions = interactions
 
-    return { ok: true, metrics, raw: { video: v, postInsights: postInsightsRaw, postShares: postSharesRaw } }
+    return { ok: true, metrics, raw: { video: v, probe: probeRaw, postShares: postSharesRaw } }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
   }
@@ -307,8 +323,10 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       .order('published_at', { ascending: false })
       .limit(limit)
 
-    for (const s of (fbScripts ?? []) as any[]) {
-      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
+    const fbList = (fbScripts ?? []) as any[]
+    for (let i = 0; i < fbList.length; i++) {
+      const s = fbList[i]
+      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId, i === 0)
       if (fbSample === undefined) fbSample = result.raw   // första svaret → probning
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
       const m = result.metrics

@@ -10,6 +10,7 @@
   "foreign_share_min": 0.08,
   "loosen_factor_generated": 1.5,
   "provenance_epsilon": 0.06,
+  "presence_floor": 0.003,
   "neutral_tolerance": { "white_min": 245, "black_max": 12 },
   "kmeans": { "k": 8, "max_iter": 25, "quantize_bits": 4, "downsample_max_px": 256 }
 }

@@ -5,7 +5,7 @@ import type {
   Band, CcaParams, CharacterReference, CountCheck, D2Input, D2Report,
   MustHaveCheck, MustNotCheck, PaletteCheck, PaletteColorCheck, PerCharacterD2,
 } from "./types";
-import { deltaE2000 as deltaE, extractPalette, hexToRgb, nearestDeltaE, srgbToLab, type Cluster } from "./color";
+import { deltaE2000 as deltaE, extractPalette, hexToRgb, srgbToLab, type Cluster } from "./color";
 import { opaqueSamples } from "./image";
 import { perceptualMatch } from "./provenance";
 
@@ -27,17 +27,30 @@ function paletteCheck(
   const signatures = new Set(params.signature_colors[charId] ?? []);
   const tolFactor = trust === "generated" ? params.loosen_factor_generated : 1;
   const samples = opaqueSamples(pixels, params.kmeans.downsample_max_px);
+  const sampleLabs = samples.map((s) => srgbToLab(s));
+  const total = sampleLabs.length || 1;
+  // k-means is used ONLY for foreign-dominant detection (high-share clusters).
   const clusters = extractPalette(samples, params.kmeans.k, params.kmeans.max_iter, params.kmeans.quantize_bits);
 
   const canonColors = character.palette.filter((p) => p.hex);
+  // Presence is decided by direct sampling vs a presence floor — NOT by k-means
+  // centroids, which would wash out small-but-required regions (e.g. Pling's
+  // pink antenna / yellow heart).
   const colors: PaletteColorCheck[] = canonColors.map((p) => {
-    const minDE = nearestDeltaE(srgbToLab(hexToRgb(p.hex!)), clusters);
+    const targetLab = srgbToLab(hexToRgb(p.hex!));
     const tol = p.delta_e_tol * tolFactor;
-    const found = minDE <= tol;
+    let within = 0;
+    let minDE = Infinity;
+    for (const lab of sampleLabs) {
+      const d = deltaE(lab, targetLab);
+      if (d < minDE) minDE = d;
+      if (d <= tol) within++;
+    }
+    const found = within / total >= params.presence_floor;
     const signature = signatures.has(p.name);
     return {
       name: p.name, required: p.required, signature, found,
-      min_delta_e: minDE === Infinity ? -1 : minDE,
+      min_delta_e: minDE === Infinity ? -1 : Math.round(minDE * 1e4) / 1e4,
       band: found ? "pass" : (signature || p.required ? "block" : "warn"),
     };
   });

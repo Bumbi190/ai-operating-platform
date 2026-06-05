@@ -15,6 +15,7 @@
     "foreign_share_min": { "type": "number", "minimum": 0, "maximum": 1 },
     "loosen_factor_generated": { "type": "number", "minimum": 1 },
     "provenance_epsilon": { "type": "number", "minimum": 0, "maximum": 1 },
+    "presence_floor": { "type": "number", "minimum": 0, "maximum": 1 },
     "neutral_tolerance": {
       "type": "object",
       "properties": {

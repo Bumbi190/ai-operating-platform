@@ -207,6 +207,8 @@ export interface RefreshSummary {
   failed: number
   firstError?: string
   byPlatform: Record<string, { updated: number; failed: number }>
+  /** Tillfällig diagnostik: första YouTube-retention-svaret (tas bort när retention bekräftats). */
+  ytRetentionSample?: unknown
 }
 
 /**
@@ -219,6 +221,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
   const db = createAdminClient()
   const byPlatform: Record<string, { updated: number; failed: number }> = {}
   let updated = 0, failed = 0, firstError: string | undefined
+  let ytRetentionSample: unknown
 
   const bump = (platform: string, ok: boolean) => {
     byPlatform[platform] ??= { updated: 0, failed: 0 }
@@ -319,6 +322,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('youtube', false); continue }
       const m = result.metrics
       const retention = await fetchVideoRetention(s.youtube_video_id)   // genomtittnings-% (null utan analytics-scope)
+      if (ytRetentionSample === undefined) ytRetentionSample = retention.debug   // diagnostik: första svaret
       const { error } = await (db.from('media_insights') as any).upsert({
         script_id: s.id,
         project_id: s.project_id,
@@ -331,7 +335,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
         saved: null,
         shares: null,
         total_interactions: m.total_interactions ?? null,
-        avg_view_pct: retention,
+        avg_view_pct: retention.pct,
         published_at: s.published_at,
         fetched_at: new Date().toISOString(),
       }, { onConflict: 'script_id,platform' })
@@ -340,5 +344,5 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
     }
   }
 
-  return { updated, failed, firstError, byPlatform }
+  return { updated, failed, firstError, byPlatform, ytRetentionSample }
 }

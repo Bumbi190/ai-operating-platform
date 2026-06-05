@@ -43,6 +43,7 @@ export interface CcaParams {
   foreign_share_min: number;
   loosen_factor_generated: number;
   provenance_epsilon: number;
+  presence_floor: number;
   neutral_tolerance: { white_min: number; black_max: number };
   kmeans: { k: number; max_iter: number; quantize_bits: number; downsample_max_px: number };
 }

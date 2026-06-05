@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { setToken, type Platform } from '@/lib/media/token-store'
 
 export const dynamic = 'force-dynamic'
@@ -57,15 +58,30 @@ async function onboardFacebookToken(inputToken: string) {
     diag.warnings.push('FACEBOOK_PAGE_ID saknas — sparar tokenet som det är.')
   }
 
-  // 3) Verifiera read_insights via ett page-insights-anrop (best-effort).
-  if (pageId) {
-    try {
-      const r = await fetch(`${FB_GRAPH}/${pageId}/insights?metric=page_impressions&period=day&access_token=${encodeURIComponent(pageToken)}`)
+  // 3) Verifiera read_insights mot ett RIKTIGT inlägg (post-nivå) — samma anrop som
+  //    insights-cronen gör. Page-level page_impressions ger falska negativ för nya sidor.
+  try {
+    const { data: lastFb } = await createAdminClient()
+      .from('media_scripts')
+      .select('facebook_post_id')
+      .not('facebook_post_id', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const fbPostId = (lastFb as { facebook_post_id?: string } | null)?.facebook_post_id
+    if (fbPostId) {
+      // facebook_post_id är video-id:t → hämta post_id, testa post_impressions där.
+      const vr = await fetch(`${FB_GRAPH}/${fbPostId}?fields=post_id&access_token=${encodeURIComponent(pageToken)}`)
+      const vj = await vr.json() as { post_id?: string }
+      const probeId = vj.post_id ?? fbPostId
+      const r = await fetch(`${FB_GRAPH}/${probeId}/insights?metric=post_impressions&access_token=${encodeURIComponent(pageToken)}`)
       const j = await r.json() as { data?: unknown[]; error?: { message?: string } }
       diag.readInsightsOk = !j.error && Array.isArray(j.data)
       if (j.error) diag.warnings.push(`read_insights-koll: ${j.error.message}`)
-    } catch (e) { diag.warnings.push(`Insights-koll fel: ${e instanceof Error ? e.message : 'okänt'}`) }
-  }
+    } else {
+      diag.warnings.push('Inget FB-inlägg att verifiera read_insights mot ännu.')
+    }
+  } catch (e) { diag.warnings.push(`Insights-koll fel: ${e instanceof Error ? e.message : 'okänt'}`) }
 
   // 4) Spara page-tokenet (icke-utgående → ingen expiresAt).
   await setToken('facebook', pageToken, undefined, { accountId: pageId ?? undefined })

@@ -152,59 +152,44 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       comments: v.comments?.summary?.total_count,
     }
 
-    // Hjälpare: hämta video_insights-metriker isolerat så en deprecerad/ogiltig
-    // metrik inte sänker hela anropet (FB felar på HELA anropet vid en dålig metrik).
-    const fetchVideoMetric = async (metric: string): Promise<{ value: number | null; raw: unknown }> => {
+    // Steg 2 — räckvidd/impressions/shares på POST-nivå (Reels exponerar inte
+    // video_insights; rätt källa är post_impressions* via post_id). read_insights krävs.
+    let postInsightsRaw: unknown = null
+    let postSharesRaw: unknown = null
+    if (v.post_id) {
+      // 2a — räckvidd (unik) + impressions via post-insights, direkt-anrop (ej fält-expansion).
       try {
         const r = await fetch(
-          `${FB_GRAPH}/${facebookPostId}/video_insights?metric=${metric}&access_token=${pageToken}`,
+          `${FB_GRAPH}/${v.post_id}/insights?metric=post_impressions_unique,post_impressions&access_token=${pageToken}`,
           { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
         )
         const j = await r.json() as { data?: { name?: string; values?: { value?: number }[] }[]; error?: unknown }
-        if (j?.error) return { value: null, raw: j }
-        const entry = j.data?.find(d => d.name === metric) ?? j.data?.[0]
-        const val = entry?.values?.[0]?.value
-        return { value: typeof val === 'number' ? val : null, raw: j }
-      } catch (e) {
-        return { value: null, raw: { error: e instanceof Error ? e.message : 'okänt fel' } }
-      }
-    }
-
-    // Steg 2a — räckvidd/impressions via video_insights (funkar på video-id, kräver ej post_id).
-    const reachProbe = await fetchVideoMetric('total_video_impressions_unique') // unik räckvidd
-    const imprProbe  = await fetchVideoMetric('total_video_impressions')        // totala visningar/impressions
-    if (reachProbe.value !== null) metrics.reach = reachProbe.value
-    if (imprProbe.value  !== null) metrics.impressions = imprProbe.value
-
-    // Steg 2b — shares (+ räckvidd-fallback) via post-noden, om post_id finns. Best-effort.
-    let postRaw: unknown = null
-    if (v.post_id) {
-      try {
-        const pRes = await fetch(
-          `${FB_GRAPH}/${v.post_id}?fields=shares,insights.metric(post_impressions_unique)&access_token=${pageToken}`,
-          { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
-        )
-        const p = await pRes.json() as {
-          shares?: { count?: number }
-          insights?: { data?: { name?: string; values?: { value?: number }[] }[] }
-          error?: unknown
-        }
-        postRaw = p
-        if (!p?.error) {
-          if (typeof p.shares?.count === 'number') metrics.shares = p.shares.count
-          if (metrics.reach === undefined) {
-            const reachMetric = p.insights?.data?.find(d => d.name === 'post_impressions_unique')
-            const reachVal = reachMetric?.values?.[0]?.value
-            if (typeof reachVal === 'number') metrics.reach = reachVal
+        postInsightsRaw = j
+        if (!j?.error && Array.isArray(j.data)) {
+          for (const m of j.data) {
+            const val = m?.values?.[0]?.value
+            if (m?.name === 'post_impressions_unique' && typeof val === 'number') metrics.reach = val
+            if (m?.name === 'post_impressions'        && typeof val === 'number') metrics.impressions = val
           }
         }
+      } catch { /* degradera */ }
+
+      // 2b — shares via post-noden (rent fält, ingen insights-expansion).
+      try {
+        const r = await fetch(
+          `${FB_GRAPH}/${v.post_id}?fields=shares&access_token=${pageToken}`,
+          { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+        )
+        const j = await r.json() as { shares?: { count?: number }; error?: unknown }
+        postSharesRaw = j
+        if (!j?.error && typeof j.shares?.count === 'number') metrics.shares = j.shares.count
       } catch { /* degradera */ }
     }
 
     const interactions = (metrics.likes ?? 0) + (metrics.comments ?? 0) + (metrics.shares ?? 0)
     metrics.total_interactions = interactions
 
-    return { ok: true, metrics, raw: { video: v, reachProbe: reachProbe.raw, imprProbe: imprProbe.raw, post: postRaw } }
+    return { ok: true, metrics, raw: { video: v, postInsights: postInsightsRaw, postShares: postSharesRaw } }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
   }

@@ -94,6 +94,22 @@ export async function GET(request: Request) {
     ;(results.renderRetried as unknown[]).push(await callStep('/api/media/cron/step3', s.id))
   }
 
+  // ── 2c. BREAKING: publicera ready newsjacking-videos OMEDELBART (ej 08/18-slot) ─
+  const { data: breakingDue } = await db.from('media_scripts')
+    .select('id')
+    .eq('breaking', true).eq('video_status', 'ready').eq('status', 'approved')
+    .is('published_at', null)
+    .gte('generated_at', freshCutoff)
+    .order('generated_at', { ascending: true })
+    .limit(PER_TICK)
+  results.breakingPublished = []
+  for (const s of (breakingDue ?? [])) {
+    log(`Breaking-publicering för ${s.id}`)
+    const pub = await callStep('/api/media/cron/publish', s.id)
+    const yt  = await callStep('/api/media/cron/youtube', s.id)
+    ;(results.breakingPublished as unknown[]).push({ scriptId: s.id, publish: pub, youtube: yt })
+  }
+
   // ── 3. STEP1-VAKT: inget script idag vid checkpoints (09/12/15 UTC) ───────────
   const hour = new Date().getUTCHours()
   if ([9, 12, 15].includes(hour)) {

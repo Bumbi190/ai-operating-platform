@@ -32,6 +32,10 @@ export async function GET(request: Request) {
 
   const result = await refreshAllInsights()
 
+  // Tillfällig prob-logg: skriv ut FB:s råa svar så fältformen kan verifieras i Vercel-loggarna.
+  // Tas bort när FB-mappningen (räckvidd/shares) är bekräftad.
+  try { console.log('[insights] fbSample=', JSON.stringify(result.fbSample)) } catch { /* noop */ }
+
   // Fas 4: efter att insights uppdaterats, låt Atlas samla möjligheter (best-effort).
   let opportunities: { detected: number; stored: number } | { error: string } = { detected: 0, stored: 0 }
   try {

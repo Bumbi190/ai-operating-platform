@@ -32,6 +32,7 @@ const METRICS = 'reach,likes,comments,saved,shares,total_interactions,views'
 export interface MediaInsight {
   reach?: number
   views?: number
+  impressions?: number
   likes?: number
   comments?: number
   saved?: number
@@ -151,7 +152,31 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       comments: v.comments?.summary?.total_count,
     }
 
-    // Steg 2 — post-nivå (shares + unik räckvidd). Best-effort, degraderar tyst.
+    // Hjälpare: hämta video_insights-metriker isolerat så en deprecerad/ogiltig
+    // metrik inte sänker hela anropet (FB felar på HELA anropet vid en dålig metrik).
+    const fetchVideoMetric = async (metric: string): Promise<{ value: number | null; raw: unknown }> => {
+      try {
+        const r = await fetch(
+          `${FB_GRAPH}/${facebookPostId}/video_insights?metric=${metric}&access_token=${pageToken}`,
+          { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+        )
+        const j = await r.json() as { data?: { name?: string; values?: { value?: number }[] }[]; error?: unknown }
+        if (j?.error) return { value: null, raw: j }
+        const entry = j.data?.find(d => d.name === metric) ?? j.data?.[0]
+        const val = entry?.values?.[0]?.value
+        return { value: typeof val === 'number' ? val : null, raw: j }
+      } catch (e) {
+        return { value: null, raw: { error: e instanceof Error ? e.message : 'okänt fel' } }
+      }
+    }
+
+    // Steg 2a — räckvidd/impressions via video_insights (funkar på video-id, kräver ej post_id).
+    const reachProbe = await fetchVideoMetric('total_video_impressions_unique') // unik räckvidd
+    const imprProbe  = await fetchVideoMetric('total_video_impressions')        // totala visningar/impressions
+    if (reachProbe.value !== null) metrics.reach = reachProbe.value
+    if (imprProbe.value  !== null) metrics.impressions = imprProbe.value
+
+    // Steg 2b — shares (+ räckvidd-fallback) via post-noden, om post_id finns. Best-effort.
     let postRaw: unknown = null
     if (v.post_id) {
       try {
@@ -167,9 +192,11 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
         postRaw = p
         if (!p?.error) {
           if (typeof p.shares?.count === 'number') metrics.shares = p.shares.count
-          const reachMetric = p.insights?.data?.find(d => d.name === 'post_impressions_unique')
-          const reachVal = reachMetric?.values?.[0]?.value
-          if (typeof reachVal === 'number') metrics.reach = reachVal
+          if (metrics.reach === undefined) {
+            const reachMetric = p.insights?.data?.find(d => d.name === 'post_impressions_unique')
+            const reachVal = reachMetric?.values?.[0]?.value
+            if (typeof reachVal === 'number') metrics.reach = reachVal
+          }
         }
       } catch { /* degradera */ }
     }
@@ -177,7 +204,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
     const interactions = (metrics.likes ?? 0) + (metrics.comments ?? 0) + (metrics.shares ?? 0)
     metrics.total_interactions = interactions
 
-    return { ok: true, metrics, raw: { video: v, post: postRaw } }
+    return { ok: true, metrics, raw: { video: v, reachProbe: reachProbe.raw, imprProbe: imprProbe.raw, post: postRaw } }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
   }
@@ -302,6 +329,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
         platform: 'facebook',
         facebook_post_id: s.facebook_post_id,
         reach: m.reach ?? null,
+        impressions: m.impressions ?? null,
         views: m.views ?? null,
         likes: m.likes ?? null,
         comments: m.comments ?? null,

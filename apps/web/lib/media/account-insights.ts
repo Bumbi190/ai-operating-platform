@@ -71,7 +71,7 @@ export async function igAccountSnapshot(token: string): Promise<AccountSnapshot>
  * page-token (eller pageId saknas i listan) returneras inkommande token oförändrat.
  * Samma logik som publiceringen i facebook.ts använder.
  */
-async function resolveFbPageToken(userOrPageToken: string, pageId: string): Promise<string> {
+export async function resolveFbPageToken(userOrPageToken: string, pageId: string): Promise<string> {
   try {
     const j = await getJson(`${FB_HOST}/me/accounts?fields=id,access_token&limit=200&access_token=${userOrPageToken}`)
     const page = (j?.data as Array<{ id: string; access_token: string }> | undefined)?.find(p => p.id === pageId)

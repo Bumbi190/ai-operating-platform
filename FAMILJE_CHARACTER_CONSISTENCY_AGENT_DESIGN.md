@@ -7,6 +7,25 @@
 
 ---
 
+## Project Isolation (officiell arkitekturprincip)
+
+Project Isolation är en **officiell arkitekturprincip** i Omnira — på samma nivå som *Canon is the source of truth*, *Child Safety has veto* och *Human approval before publishing*.
+
+**Låsta principer:**
+1. Omnira är ett multi-project operating system.
+2. Varje projekt är ett isolerat workspace.
+3. Varje workspace har eget: memory, knowledge base, canon, QA-agenter, workflows, publishing pipeline, business intelligence.
+4. Agenter instansieras **per projekt, inte globalt** (instansiering — inte filter).
+5. Global Atlas får se alla projekt.
+6. Project Atlas får endast se sitt eget projekt.
+7. Cross-project-kommunikation får endast ske genom Omnira-orkestrering.
+8. Delat agentminne mellan projekt är **förbjudet**.
+9. `project_id` ska vara förstklassigt i datamodell, QA, automation och framtida execution engine.
+
+**Tillämpning här:** Character Consistency Agent är **inte** en global agent som tar `project_id` som filter — den **instansieras per projekt** och binds till det projektets canon (`canon(project_id)`). Embedding-cache (`canonical_embeddings`), kalibreringsmängd och trösklar (`cca_thresholds`) är **projekt-lokala** och delas aldrig mellan projekt. Familjes DINOv2-referensvektorer och VLM-kriterier är Familjes; GainPilot/The Prompt har sina egna. `project_id` ingår i `post_assets`, `qa_runs`, `canonical_embeddings` och `cca_thresholds`. Korsprojekt-behov går via Omnira-orkestrering, aldrig via delat agentminne.
+
+---
+
 ## 1. Arkitektur
 
 Character Consistency Agent (CCA) är **en** av flera QA-agenter i pipen, parallell med Image QA, och med Brand QA + Child Safety QA. Den läser kanon från manifesten och pinnar `canon_version`.

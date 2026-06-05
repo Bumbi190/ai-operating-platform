@@ -51,7 +51,7 @@ export async function contentScore(db: AnyDb, projectId?: string, days = 90): Pr
   let rows: any[] = []
   try {
     let q = db.from('media_insights')
-      .select('script_id, reach, likes, comments, saved, shares, views, published_at, media_scripts ( hook, topic )')
+      .select('script_id, platform, reach, likes, comments, saved, shares, views, published_at, media_scripts ( hook, topic )')
       .gte('published_at', since)
     if (projectId) q = q.eq('project_id', projectId)
     const { data } = await q
@@ -63,20 +63,29 @@ export async function contentScore(db: AnyDb, projectId?: string, days = 90): Pr
   }
   if (rows.length === 0) return empty
 
-  // Rådata per inlägg
-  const base = rows.map(r => {
+  // Aggregera per VIDEO (script_id) — annars räknas samma video en gång per plattform
+  // (IG+FB+YouTube) och skevar poängen. Summera måtten över plattformarna.
+  const byScript = new Map<string, any>()
+  for (const r of rows) {
     const script = Array.isArray(r.media_scripts) ? r.media_scripts[0] : r.media_scripts
-    const reach = n(r.reach), likes = n(r.likes), comments = n(r.comments), saved = n(r.saved), shares = n(r.shares), views = n(r.views)
-    const engagement = likes + 2 * comments + 3 * saved + 3 * shares   // hög-intent-handlingar väger mer
-    const engagementRate = reach > 0 ? engagement / reach : 0
-    return {
+    const key = r.script_id ?? `noscript:${r.published_at}`
+    const acc = byScript.get(key) ?? {
       scriptId: r.script_id ?? null,
       hook: script?.hook ?? null,
       topic: script?.topic ?? 'other',
       publishedAt: r.published_at ?? null,
-      reach, likes, comments, saved, shares, views,
-      engagement, engagementRate, savesShares: saved + shares,
+      reach: 0, likes: 0, comments: 0, saved: 0, shares: 0, views: 0,
     }
+    acc.reach += n(r.reach); acc.likes += n(r.likes); acc.comments += n(r.comments)
+    acc.saved += n(r.saved); acc.shares += n(r.shares); acc.views += n(r.views)
+    byScript.set(key, acc)
+  }
+
+  // Rådata per video
+  const base = [...byScript.values()].map(a => {
+    const engagement = a.likes + 2 * a.comments + 3 * a.saved + 3 * a.shares   // hög-intent-handlingar väger mer
+    const engagementRate = a.reach > 0 ? engagement / a.reach : 0
+    return { ...a, engagement, engagementRate, savesShares: a.saved + a.shares }
   })
 
   // Min-max-normalisering inom urvalet → relativ poäng

@@ -124,6 +124,42 @@ export async function uploadShort(opts: YouTubeUploadOptions): Promise<{ videoId
 }
 
 /**
+ * Hämtar genomtittnings-% (averageViewPercentage, 0–100) för en video via
+ * YouTube Analytics API. Kräver att refresh-tokenet har scope
+ * `yt-analytics.readonly` (utöver youtube.upload) — saknas det svarar API:t 403
+ * och vi degraderar tyst till null (aldrig påhittade siffror).
+ *
+ * Returnerar null om: ej konfigurerat, saknad scope, eller ingen data ännu.
+ */
+export async function fetchVideoRetention(videoId: string): Promise<number | null> {
+  if (!isYouTubeConfigured()) return null
+  try {
+    const token = await getAccessToken()
+    // Analytics kräver ett datumintervall. Vi tar ett brett fönster (publicering täcks).
+    const end   = new Date().toISOString().slice(0, 10)
+    const start = '2020-01-01'
+    const url = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
+    url.searchParams.set('ids', 'channel==MINE')
+    url.searchParams.set('startDate', start)
+    url.searchParams.set('endDate', end)
+    url.searchParams.set('metrics', 'averageViewPercentage')
+    url.searchParams.set('filters', `video==${videoId}`)
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12_000),
+      cache: 'no-store',
+    })
+    const data = await res.json() as { rows?: number[][]; error?: { message?: string } }
+    if (!res.ok || data.error) return null            // 403 = saknad scope → degradera
+    const val = data.rows?.[0]?.[0]
+    return typeof val === 'number' ? Math.round(val * 10) / 10 : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Bygger en YouTube-titel + beskrivning från ett scripts fält.
  */
 export function buildYouTubeMeta(opts: {

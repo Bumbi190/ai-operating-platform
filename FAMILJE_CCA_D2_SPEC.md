@@ -7,6 +7,25 @@
 
 ---
 
+## Project Isolation (officiell arkitekturprincip)
+
+Project Isolation är en **officiell arkitekturprincip** i Omnira — på samma nivå som *Canon is the source of truth*, *Child Safety has veto* och *Human approval before publishing*.
+
+**Låsta principer:**
+1. Omnira är ett multi-project operating system.
+2. Varje projekt är ett isolerat workspace.
+3. Varje workspace har eget: memory, knowledge base, canon, QA-agenter, workflows, publishing pipeline, business intelligence.
+4. Agenter instansieras **per projekt, inte globalt** (instansiering — inte filter).
+5. Global Atlas får se alla projekt.
+6. Project Atlas får endast se sitt eget projekt.
+7. Cross-project-kommunikation får endast ske genom Omnira-orkestrering.
+8. Delat agentminne mellan projekt är **förbjudet**.
+9. `project_id` ska vara förstklassigt i datamodell, QA, automation och framtida execution engine.
+
+**Tillämpning här:** D2-grinden körs som en **per-projekt-instans** mot det projektets `character-reference.json`. `trust_level`, alla D2-parametrar (`foreign_share_min`, `loosen_factor_generated`, signaturfärgs-listan, proveniens-ε) och alla rapporter bär `project_id`. En D2-fråga utan `project_id` ska vara **omöjlig** — inte bara obekväm. Inget D2-resultat, ingen config och inget minne delas mellan projekt.
+
+---
+
 ## 1. trust_level — styr kontrollnivån
 
 `trust_level` sätts av bildgeneratorn och avgör vilka kontroller som är meningsfulla/krävs.

@@ -14,6 +14,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getToken } from './token-store'
 import { resolveFbPageToken } from './account-insights'
+import { fetchVideoRetention } from './youtube'
 
 // Stödjer både nya Instagram API with Instagram Login (graph.instagram.com,
 // token börjar på "IGAA") och klassiska Instagram Graph API (graph.facebook.com,
@@ -275,6 +276,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       const result = await fetchYouTubeInsights(s.youtube_video_id, ytKey)
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('youtube', false); continue }
       const m = result.metrics
+      const retention = await fetchVideoRetention(s.youtube_video_id)   // genomtittnings-% (null utan analytics-scope)
       const { error } = await (db.from('media_insights') as any).upsert({
         script_id: s.id,
         project_id: s.project_id,
@@ -287,6 +289,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
         saved: null,
         shares: null,
         total_interactions: m.total_interactions ?? null,
+        avg_view_pct: retention,
         published_at: s.published_at,
         fetched_at: new Date().toISOString(),
       }, { onConflict: 'script_id,platform' })

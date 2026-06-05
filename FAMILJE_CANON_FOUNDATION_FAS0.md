@@ -8,6 +8,25 @@
 
 ---
 
+## Project Isolation (officiell arkitekturprincip)
+
+Project Isolation är en **officiell arkitekturprincip** i Omnira — på samma nivå som *Canon is the source of truth*, *Child Safety has veto* och *Human approval before publishing*. Den gäller all design i detta dokument.
+
+**Låsta principer:**
+1. Omnira är ett multi-project operating system.
+2. Varje projekt är ett isolerat workspace.
+3. Varje workspace har eget: memory, knowledge base, canon, QA-agenter, workflows, publishing pipeline, business intelligence.
+4. Agenter instansieras **per projekt, inte globalt** (instansiering — inte filter).
+5. Global Atlas får se alla projekt.
+6. Project Atlas får endast se sitt eget projekt.
+7. Cross-project-kommunikation får endast ske genom Omnira-orkestrering.
+8. Delat agentminne mellan projekt är **förbjudet**.
+9. `project_id` ska vara förstklassigt i datamodell, QA, automation och framtida execution engine.
+
+**Tillämpning här:** Canon-manifesten i `content/familje-stunden/canon/` tillhör **enbart** Familje-Stunden. Varje projekt har sin egen canon-mapp; ingen agent läser ett annat projekts canon. Canon resolvas via `canon(project_id)`, aldrig från en global lista över alla projekts canon.
+
+---
+
 ## 1. Inventering — referensbilder som faktiskt finns
 
 **Omnira-repot (`content/familje-stunden/characters/`):** inga binära bilder på disk — bara `index.json` med **Google Drive-pekare** (ej importerade till Supabase Storage). Pekar på 4 transparenta figur-PNG:er + ett scenbibliotek (~40 bilder, Drive-mapp `1tPVFx-…`).

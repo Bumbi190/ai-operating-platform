@@ -62,6 +62,12 @@ export async function atlasExecutiveSummary(db?: AnyDb): Promise<ExecutiveSummar
   }
   if (soc.hasData) {
     whatWorked.push(`Räckvidd ${soc.reach.toLocaleString('sv-SE')}, ${soc.saved} sparningar och ${soc.followersGained} nya följare senaste ${soc.days} dagarna.`)
+    if (soc.byPlatform.length > 1) {
+      const perPlatform = soc.byPlatform
+        .map(p => `${p.platform}: ${(p.reach || p.views).toLocaleString('sv-SE')} ${p.reach ? 'räckvidd' : 'visningar'} (${p.posts} inlägg)`)
+        .join(', ')
+      whatWorked.push(`Per plattform — ${perPlatform}.`)
+    }
   } else if (!cs?.hasData) {
     whatWorked.push('Social prestanda inväntas — för få datapunkter för en slutsats ännu.')
   }

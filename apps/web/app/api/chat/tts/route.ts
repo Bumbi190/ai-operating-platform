@@ -16,10 +16,17 @@
  *   alloy   — neutral
  */
 
+import { requireUserOrApiKey } from '@/lib/api-auth'
+
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
 
 export async function POST(request: Request) {
+  // Kräver inloggad användare ELLER giltig API-nyckel. Utan detta kunde vem
+  // som helst anropa endpointen och bränna OpenAI TTS-krediter.
+  const auth = await requireUserOrApiKey(request)
+  if (!auth.ok) return auth.response
+
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return Response.json({ error: 'OPENAI_API_KEY saknas' }, { status: 500 })

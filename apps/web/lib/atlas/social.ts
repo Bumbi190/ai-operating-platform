@@ -16,6 +16,15 @@ export interface SocialPost {
   likes: number
 }
 
+export interface PlatformBreakdown {
+  platform: string
+  posts: number
+  reach: number
+  views: number
+  likes: number
+  comments: number
+}
+
 export interface SocialSummary {
   hasData: boolean
   days: number
@@ -30,6 +39,8 @@ export interface SocialSummary {
   linkClicks: number
   followersGained: number
   topPosts: SocialPost[]
+  /** Uppdelning per plattform (instagram, youtube, facebook) — driver per-plattform-paneler. */
+  byPlatform: PlatformBreakdown[]
 }
 
 const n = (v: unknown) => Number(v ?? 0) || 0
@@ -39,7 +50,7 @@ export async function socialSummary(db: AnyDb, days = 30): Promise<SocialSummary
   let rows: any[] = []
   try {
     const { data } = await db.from('media_insights')
-      .select('id, reach, impressions, comments, saved, shares, likes, profile_visits, link_clicks, followers_gained, published_at')
+      .select('id, platform, reach, views, impressions, comments, saved, shares, likes, profile_visits, link_clicks, followers_gained, published_at')
       .gte('published_at', since)
     rows = data ?? []
   } catch { rows = [] }
@@ -49,6 +60,20 @@ export async function socialSummary(db: AnyDb, days = 30): Promise<SocialSummary
     .sort((a, b) => n(b.reach) - n(a.reach))
     .slice(0, 10)
     .map(r => ({ id: r.id, reach: n(r.reach), saved: n(r.saved), comments: n(r.comments), likes: n(r.likes) }))
+
+  // Uppdelning per plattform (sorterad efter störst räckvidd/visningar).
+  const platformMap = new Map<string, PlatformBreakdown>()
+  for (const r of rows) {
+    const platform = (r.platform as string) ?? 'instagram'
+    const acc = platformMap.get(platform) ?? { platform, posts: 0, reach: 0, views: 0, likes: 0, comments: 0 }
+    acc.posts    += 1
+    acc.reach    += n(r.reach)
+    acc.views    += n(r.views)
+    acc.likes    += n(r.likes)
+    acc.comments += n(r.comments)
+    platformMap.set(platform, acc)
+  }
+  const byPlatform = [...platformMap.values()].sort((a, b) => (b.reach + b.views) - (a.reach + a.views))
 
   return {
     hasData: rows.length > 0,
@@ -64,5 +89,6 @@ export async function socialSummary(db: AnyDb, days = 30): Promise<SocialSummary
     linkClicks: sum('link_clicks'),
     followersGained: sum('followers_gained'),
     topPosts,
+    byPlatform,
   }
 }

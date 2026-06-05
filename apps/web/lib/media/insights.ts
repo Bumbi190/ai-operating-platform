@@ -83,49 +83,131 @@ const metricKeyMap: Record<string, keyof MediaInsight> = {
   total_interactions: 'total_interactions',
 }
 
+const YT_HOST = 'https://www.googleapis.com/youtube/v3'
+
 /**
- * Uppdaterar insights för alla publicerade IG-inlägg.
- * Returnerar en sammanfattning: hur många som uppdaterades och ev. första felet.
+ * Hämtar per-video-statistik från YouTube Data API v3 med API-nyckel (publik data,
+ * ingen OAuth). viewCount → views, likeCount → likes, commentCount → comments.
+ * YouTube exponerar inte räckvidd/sparningar publikt → de lämnas null (aldrig påhittat).
  */
-export async function refreshAllInsights(limit = 80): Promise<{ updated: number; failed: number; firstError?: string }> {
+export async function fetchYouTubeInsights(videoId: string, apiKey: string): Promise<InsightFetchResult> {
+  try {
+    const res = await fetch(
+      `${YT_HOST}/videos?part=statistics&id=${videoId}&key=${apiKey}`,
+      { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+    )
+    const json = await res.json() as {
+      items?: { statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[]
+      error?: { message?: string }
+    }
+    if (!res.ok || json.error) return { ok: false, error: json.error?.message ?? `YouTube API ${res.status}` }
+    const stats = json.items?.[0]?.statistics
+    if (!stats) return { ok: false, error: 'Ingen video hittades (privat/raderad?)' }
+    const views    = Number(stats.viewCount ?? 0) || 0
+    const likes    = Number(stats.likeCount ?? 0) || 0
+    const comments = Number(stats.commentCount ?? 0) || 0
+    return {
+      ok: true,
+      metrics: { views, likes, comments, total_interactions: likes + comments },
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'okänt fel' }
+  }
+}
+
+export interface RefreshSummary {
+  updated: number
+  failed: number
+  firstError?: string
+  byPlatform: Record<string, { updated: number; failed: number }>
+}
+
+/**
+ * Uppdaterar per-inlägg-insights för alla publicerade inlägg, per plattform:
+ *   • Instagram via Graph API (token).
+ *   • YouTube via Data API v3 (YOUTUBE_API_KEY, publik data) — degraderar tyst om nyckel saknas.
+ * Upsertar på (script_id, platform) så varje plattform får en egen rad per video.
+ */
+export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
   const db = createAdminClient()
-  const stored = await getToken('instagram')
-  if (!stored) return { updated: 0, failed: 0, firstError: 'Inget Instagram-token' }
-
-  const { data: scripts } = await (db.from('media_scripts') as any)
-    .select('id, project_id, instagram_media_id, published_at')
-    .eq('status', 'published')
-    .not('instagram_media_id', 'is', null)
-    .order('published_at', { ascending: false })
-    .limit(limit)
-
+  const byPlatform: Record<string, { updated: number; failed: number }> = {}
   let updated = 0, failed = 0, firstError: string | undefined
 
-  for (const s of (scripts ?? []) as any[]) {
-    const result = await fetchMediaInsights(s.instagram_media_id, stored.accessToken)
-    if (!result.ok || !result.metrics) {
-      failed++
-      if (!firstError) firstError = result.error
-      continue
-    }
-    const m = result.metrics
-    const { error } = await (db.from('media_insights') as any).upsert({
-      script_id: s.id,
-      project_id: s.project_id,
-      instagram_media_id: s.instagram_media_id,
-      reach: m.reach ?? null,
-      views: m.views ?? null,
-      likes: m.likes ?? null,
-      comments: m.comments ?? null,
-      saved: m.saved ?? null,
-      shares: m.shares ?? null,
-      total_interactions: m.total_interactions ?? null,
-      published_at: s.published_at,
-      fetched_at: new Date().toISOString(),
-    }, { onConflict: 'instagram_media_id' })
-    if (error) { failed++; if (!firstError) firstError = error.message }
-    else updated++
+  const bump = (platform: string, ok: boolean) => {
+    byPlatform[platform] ??= { updated: 0, failed: 0 }
+    if (ok) { byPlatform[platform].updated++; updated++ }
+    else    { byPlatform[platform].failed++;  failed++ }
   }
 
-  return { updated, failed, firstError }
+  // ─── Instagram ──────────────────────────────────────────────────────────────
+  const ig = await getToken('instagram')
+  if (ig) {
+    const { data: scripts } = await (db.from('media_scripts') as any)
+      .select('id, project_id, instagram_media_id, published_at')
+      .eq('status', 'published')
+      .not('instagram_media_id', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(limit)
+
+    for (const s of (scripts ?? []) as any[]) {
+      const result = await fetchMediaInsights(s.instagram_media_id, ig.accessToken)
+      if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('instagram', false); continue }
+      const m = result.metrics
+      const { error } = await (db.from('media_insights') as any).upsert({
+        script_id: s.id,
+        project_id: s.project_id,
+        platform: 'instagram',
+        instagram_media_id: s.instagram_media_id,
+        reach: m.reach ?? null,
+        views: m.views ?? null,
+        likes: m.likes ?? null,
+        comments: m.comments ?? null,
+        saved: m.saved ?? null,
+        shares: m.shares ?? null,
+        total_interactions: m.total_interactions ?? null,
+        published_at: s.published_at,
+        fetched_at: new Date().toISOString(),
+      }, { onConflict: 'script_id,platform' })
+      if (error) { if (!firstError) firstError = error.message; bump('instagram', false) }
+      else bump('instagram', true)
+    }
+  } else if (!firstError) {
+    firstError = 'Inget Instagram-token'
+  }
+
+  // ─── YouTube ────────────────────────────────────────────────────────────────
+  const ytKey = process.env.YOUTUBE_API_KEY
+  if (ytKey) {
+    const { data: ytScripts } = await (db.from('media_scripts') as any)
+      .select('id, project_id, youtube_video_id, published_at')
+      .eq('status', 'published')
+      .not('youtube_video_id', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(limit)
+
+    for (const s of (ytScripts ?? []) as any[]) {
+      const result = await fetchYouTubeInsights(s.youtube_video_id, ytKey)
+      if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('youtube', false); continue }
+      const m = result.metrics
+      const { error } = await (db.from('media_insights') as any).upsert({
+        script_id: s.id,
+        project_id: s.project_id,
+        platform: 'youtube',
+        youtube_video_id: s.youtube_video_id,
+        reach: null,           // YouTube exponerar inte räckvidd publikt
+        views: m.views ?? null,
+        likes: m.likes ?? null,
+        comments: m.comments ?? null,
+        saved: null,
+        shares: null,
+        total_interactions: m.total_interactions ?? null,
+        published_at: s.published_at,
+        fetched_at: new Date().toISOString(),
+      }, { onConflict: 'script_id,platform' })
+      if (error) { if (!firstError) firstError = error.message; bump('youtube', false) }
+      else bump('youtube', true)
+    }
+  }
+
+  return { updated, failed, firstError, byPlatform }
 }

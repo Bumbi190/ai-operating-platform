@@ -7,11 +7,13 @@
  * Checks:
  *   1. API health — kritiska endpoints svarar och returnerar 200
  *   2. Supabase run-failures — misslyckade Familje-Stunden körningar senaste 24h
- *   3. Arnold QA — testar att Arnold svarar relevant och inte hallucinar
- *   4. Gainpilot shopping-list — kontrollerar att inköpslistor ser rimliga ut
+ *
+ * OBS: Arnold-kvalitet och Gainpilots inköpslistor scannas av Gainpilots EGEN
+ * bugscanner (gainpilot.se/api/bugscanner), inifrån dess egen Supabase och auth.
+ * AOP ska inte duplicera de checkarna eller nå in i Gainpilots databas/endpoints
+ * — det bröt mot per-projekt-isoleringen och gav falska varningar.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -144,192 +146,20 @@ async function checkRecentRunFailures(): Promise<CheckResult> {
   }
 }
 
-// ─── 3. Arnold QA Check ──────────────────────────────────────────────────────
-
-const ARNOLD_TEST_PROMPTS = [
-  {
-    prompt: 'Hur många kalorier bör jag äta per dag om jag väger 80kg och vill bygga muskler?',
-    mustContain: ['kalori', 'protein', 'kcal'],
-    mustNotContain: ['sprit', 'alkohol', 'steroid', 'medicin'],
-    label: 'Kaloriberäkning',
-  },
-  {
-    prompt: 'Ge mig ett träningspass för bröst',
-    mustContain: ['bänkpress', 'set', 'reps'],
-    mustNotContain: ['cancer', 'sjukhus', 'läkare rekommenderar'],
-    label: 'Träningspass',
-  },
-]
-
-async function checkArnoldQuality(): Promise<CheckResult[]> {
-  const results: CheckResult[] = []
-  const gainpilotApiUrl = process.env.GAINPILOT_API_URL ?? 'https://gainpilot-api.onrender.com'
-
-  for (const test of ARNOLD_TEST_PROMPTS) {
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 30_000)
-
-      const res = await fetch(`${gainpilotApiUrl}/api/arnold/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: test.prompt, profile: 'scan-test' }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout))
-
-      if (!res.ok) {
-        results.push({
-          name: `Arnold QA: ${test.label}`,
-          status: 'warning',
-          message: `Arnold-endpoint svarade HTTP ${res.status} — kan inte testa`,
-        })
-        continue
-      }
-
-      const data = await res.json()
-      const reply = (data.message ?? data.reply ?? data.content ?? '').toLowerCase()
-
-      if (!reply || reply.length < 20) {
-        results.push({
-          name: `Arnold QA: ${test.label}`,
-          status: 'error',
-          message: 'Arnold returnerade tomt eller mycket kort svar',
-        })
-        continue
-      }
-
-      const missingKeywords = test.mustContain.filter(kw => !reply.includes(kw))
-      const forbiddenFound = test.mustNotContain.filter(kw => reply.includes(kw))
-
-      if (forbiddenFound.length > 0) {
-        results.push({
-          name: `Arnold QA: ${test.label}`,
-          status: 'error',
-          message: `Förbjudna ord hittades i svaret: ${forbiddenFound.join(', ')}`,
-          details: reply.slice(0, 200),
-        })
-      } else if (missingKeywords.length > 1) {
-        results.push({
-          name: `Arnold QA: ${test.label}`,
-          status: 'warning',
-          message: `Svaret verkar sakna förväntade nyckelord: ${missingKeywords.join(', ')}`,
-          details: reply.slice(0, 200),
-        })
-      } else {
-        results.push({
-          name: `Arnold QA: ${test.label}`,
-          status: 'ok',
-          message: 'Svaret ser relevant ut',
-        })
-      }
-    } catch (err: any) {
-      const isTimeout = err?.name === 'AbortError'
-      results.push({
-        name: `Arnold QA: ${test.label}`,
-        status: 'warning',
-        message: isTimeout
-          ? 'Arnold svarade inte inom 30s'
-          : `Kunde inte nå Arnold: ${err?.message ?? 'okänt'}`,
-      })
-    }
-  }
-
-  return results
-}
-
-// ─── 4. Gainpilot Shopping List Sanity Check ─────────────────────────────────
-
-async function checkShoppingListSanity(): Promise<CheckResult> {
-  try {
-    const supabase = createAdminClient()
-
-    // Hämta de senaste 5 genererade inköpslistorna
-    const { data: lists, error } = await (supabase as any)
-      .from('shopping_lists')
-      .select('id, items, created_at, user_id')
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    if (error || !lists) {
-      return {
-        name: 'Gainpilot: Inköpslistor (sanitetskoll)',
-        status: 'warning',
-        message: 'Kunde inte hämta inköpslistor från Supabase',
-      }
-    }
-
-    if (lists.length === 0) {
-      return {
-        name: 'Gainpilot: Inköpslistor (sanitetskoll)',
-        status: 'ok',
-        message: 'Inga inköpslistor att kontrollera',
-      }
-    }
-
-    const issues: string[] = []
-
-    for (const list of lists) {
-      const items = Array.isArray(list.items) ? list.items : []
-
-      // Tom lista
-      if (items.length === 0) {
-        issues.push(`Lista ${list.id.slice(0, 8)}: tom`)
-        continue
-      }
-
-      // Orimligt många items (>100 = troligen fel)
-      if (items.length > 100) {
-        issues.push(`Lista ${list.id.slice(0, 8)}: ${items.length} items (misstänkt högt antal)`)
-      }
-
-      // Kontrollera att items har namn och mängd
-      const malformed = items.filter((item: any) => !item?.name || item.name.length < 2)
-      if (malformed.length > 0) {
-        issues.push(`Lista ${list.id.slice(0, 8)}: ${malformed.length} items saknar namn`)
-      }
-    }
-
-    if (issues.length === 0) {
-      return {
-        name: 'Gainpilot: Inköpslistor (sanitetskoll)',
-        status: 'ok',
-        message: `${lists.length} senaste listorna ser OK ut`,
-      }
-    }
-
-    return {
-      name: 'Gainpilot: Inköpslistor (sanitetskoll)',
-      status: 'warning',
-      message: `${issues.length} problem hittade i inköpslistor`,
-      details: issues.join('\n'),
-    }
-  } catch (err: any) {
-    return {
-      name: 'Gainpilot: Inköpslistor (sanitetskoll)',
-      status: 'warning',
-      message: `Scan-fel: ${err?.message ?? 'okänt'}`,
-    }
-  }
-}
-
 // ─── Main Scanner ─────────────────────────────────────────────────────────────
 
 export async function runBugScan(): Promise<ScanReport> {
   const timestamp = new Date().toISOString()
 
   // Kör alla checks parallellt för snabbhet
-  const [healthChecks, runFailures, arnoldChecks, shoppingCheck] = await Promise.all([
+  const [healthChecks, runFailures] = await Promise.all([
     checkApiHealth(),
     checkRecentRunFailures(),
-    checkArnoldQuality(),
-    checkShoppingListSanity(),
   ])
 
   const checks: CheckResult[] = [
     ...healthChecks,
     runFailures,
-    ...arnoldChecks,
-    shoppingCheck,
   ]
 
   const ok = checks.filter(c => c.status === 'ok').length

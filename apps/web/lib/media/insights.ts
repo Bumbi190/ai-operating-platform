@@ -130,7 +130,7 @@ const FB_GRAPH = 'https://graph.facebook.com/v21.0'
  * Steg 2 (om post_id finns): post-noden → shares + räckvidd (post_impressions_unique).
  * Returnerar även `raw` för probning av faktisk fältform.
  */
-export async function fetchFacebookInsights(facebookPostId: string, pageToken: string): Promise<InsightFetchResult> {
+export async function fetchFacebookInsights(facebookPostId: string, pageToken: string, pageId?: string | null): Promise<InsightFetchResult> {
   try {
     // Steg 1 — video-noden.
     const vRes = await fetch(
@@ -157,10 +157,14 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
     let postInsightsRaw: unknown = null
     let postSharesRaw: unknown = null
     if (v.post_id) {
+      // FB post-insights kräver det FULLA page-post-id:t: {sid-id}_{post-id}.
+      // Video-noden ger ofta bara den numeriska delen → prefixa, annars #12-fel.
+      const fullPostId = v.post_id.includes('_') || !pageId ? v.post_id : `${pageId}_${v.post_id}`
+
       // 2a — räckvidd (unik) + impressions via post-insights, direkt-anrop (ej fält-expansion).
       try {
         const r = await fetch(
-          `${FB_GRAPH}/${v.post_id}/insights?metric=post_impressions_unique,post_impressions&access_token=${pageToken}`,
+          `${FB_GRAPH}/${fullPostId}/insights?metric=post_impressions_unique,post_impressions&access_token=${pageToken}`,
           { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
         )
         const j = await r.json() as { data?: { name?: string; values?: { value?: number }[] }[]; error?: unknown }
@@ -177,7 +181,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       // 2b — shares via post-noden (rent fält, ingen insights-expansion).
       try {
         const r = await fetch(
-          `${FB_GRAPH}/${v.post_id}?fields=shares&access_token=${pageToken}`,
+          `${FB_GRAPH}/${fullPostId}?fields=shares&access_token=${pageToken}`,
           { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
         )
         const j = await r.json() as { shares?: { count?: number }; error?: unknown }
@@ -304,7 +308,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       .limit(limit)
 
     for (const s of (fbScripts ?? []) as any[]) {
-      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken)
+      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
       if (fbSample === undefined) fbSample = result.raw   // första svaret → probning
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
       const m = result.metrics

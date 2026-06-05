@@ -70,10 +70,11 @@ async function onboardFacebookToken(inputToken: string) {
       .maybeSingle()
     const fbPostId = (lastFb as { facebook_post_id?: string } | null)?.facebook_post_id
     if (fbPostId) {
-      // facebook_post_id är video-id:t → hämta post_id, testa post_impressions där.
+      // facebook_post_id är video-id:t → hämta post_id, prefixa till {sid-id}_{post-id}.
       const vr = await fetch(`${FB_GRAPH}/${fbPostId}?fields=post_id&access_token=${encodeURIComponent(pageToken)}`)
       const vj = await vr.json() as { post_id?: string }
-      const probeId = vj.post_id ?? fbPostId
+      const rawPostId = vj.post_id ?? fbPostId
+      const probeId = rawPostId.includes('_') || !pageId ? rawPostId : `${pageId}_${rawPostId}`
       const r = await fetch(`${FB_GRAPH}/${probeId}/insights?metric=post_impressions&access_token=${encodeURIComponent(pageToken)}`)
       const j = await r.json() as { data?: unknown[]; error?: { message?: string } }
       diag.readInsightsOk = !j.error && Array.isArray(j.data)

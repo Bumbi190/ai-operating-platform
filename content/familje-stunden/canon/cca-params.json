@@ -1,0 +1,15 @@
+{
+  "$schema": "./schemas/cca-params.schema.json",
+  "canon_version": "0.1.0",
+  "project_id": "familje-stunden",
+  "note": "Projekt-scopade parametrar för Character Consistency Agent D2. Färgnamn matchar EXAKT nycklarna i character-reference.json (inkl. 'trojo_turkos' som är ett känt stavfel att städa i senare canon-patch).",
+  "signature_colors": {
+    "nova": ["rosa_signatur", "trojo_turkos"],
+    "pling": ["kropp_bla_primar", "hjarta_gult", "antenn_rosa"]
+  },
+  "foreign_share_min": 0.08,
+  "loosen_factor_generated": 1.5,
+  "provenance_epsilon": 0.06,
+  "neutral_tolerance": { "white_min": 245, "black_max": 12 },
+  "kmeans": { "k": 8, "max_iter": 25, "quantize_bits": 4, "downsample_max_px": 256 }
+}

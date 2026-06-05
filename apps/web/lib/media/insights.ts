@@ -226,43 +226,85 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
     else    { byPlatform[platform].failed++;  failed++ }
   }
 
-  // ─── Instagram ──────────────────────────────────────────────────────────────
-  const ig = await getToken('instagram')
-  if (ig) {
-    const { data: scripts } = await (db.from('media_scripts') as any)
-      .select('id, project_id, instagram_media_id, published_at')
-      .eq('status', 'published')
-      .not('instagram_media_id', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(limit)
+  // Projekt-medvetet: mät varje projekt med SITT eget token. IG/FB per projekt,
+  // YouTube globalt (env-nyckel; bara The Prompt har youtube_video_id ännu).
+  const { data: projRows } = await (db.from('media_scripts') as any)
+    .select('project_id').eq('status', 'published')
+  const projectIds = [...new Set(((projRows ?? []) as any[]).map(r => r.project_id).filter(Boolean))] as string[]
 
-    for (const s of (scripts ?? []) as any[]) {
-      const result = await fetchMediaInsights(s.instagram_media_id, ig.accessToken)
-      if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('instagram', false); continue }
-      const m = result.metrics
-      const { error } = await (db.from('media_insights') as any).upsert({
-        script_id: s.id,
-        project_id: s.project_id,
-        platform: 'instagram',
-        instagram_media_id: s.instagram_media_id,
-        reach: m.reach ?? null,
-        views: m.views ?? null,
-        likes: m.likes ?? null,
-        comments: m.comments ?? null,
-        saved: m.saved ?? null,
-        shares: m.shares ?? null,
-        total_interactions: m.total_interactions ?? null,
-        published_at: s.published_at,
-        fetched_at: new Date().toISOString(),
-      }, { onConflict: 'script_id,platform' })
-      if (error) { if (!firstError) firstError = error.message; bump('instagram', false) }
-      else bump('instagram', true)
+  for (const projectId of projectIds) {
+    // ─── Instagram (projektets eget token) ────────────────────────────────────
+    const ig = await getToken('instagram', projectId)
+    if (ig) {
+      const { data: scripts } = await (db.from('media_scripts') as any)
+        .select('id, project_id, instagram_media_id, published_at')
+        .eq('status', 'published').eq('project_id', projectId)
+        .not('instagram_media_id', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(limit)
+
+      for (const s of (scripts ?? []) as any[]) {
+        const result = await fetchMediaInsights(s.instagram_media_id, ig.accessToken)
+        if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('instagram', false); continue }
+        const m = result.metrics
+        const { error } = await (db.from('media_insights') as any).upsert({
+          script_id: s.id,
+          project_id: s.project_id,
+          platform: 'instagram',
+          instagram_media_id: s.instagram_media_id,
+          reach: m.reach ?? null,
+          views: m.views ?? null,
+          likes: m.likes ?? null,
+          comments: m.comments ?? null,
+          saved: m.saved ?? null,
+          shares: m.shares ?? null,
+          total_interactions: m.total_interactions ?? null,
+          published_at: s.published_at,
+          fetched_at: new Date().toISOString(),
+        }, { onConflict: 'script_id,platform' })
+        if (error) { if (!firstError) firstError = error.message; bump('instagram', false) }
+        else bump('instagram', true)
+      }
     }
-  } else if (!firstError) {
-    firstError = 'Inget Instagram-token'
+
+    // ─── Facebook (projektets eget token) ─────────────────────────────────────
+    const fb = await getToken('facebook', projectId)
+    if (fb?.accountId) {
+      const pageToken = await resolveFbPageToken(fb.accessToken, fb.accountId)
+      const { data: fbScripts } = await (db.from('media_scripts') as any)
+        .select('id, project_id, facebook_post_id, published_at')
+        .eq('status', 'published').eq('project_id', projectId)
+        .not('facebook_post_id', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(limit)
+
+      for (const s of (fbScripts ?? []) as any[]) {
+        const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
+        if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
+        const m = result.metrics
+        const { error } = await (db.from('media_insights') as any).upsert({
+          script_id: s.id,
+          project_id: s.project_id,
+          platform: 'facebook',
+          facebook_post_id: s.facebook_post_id,
+          reach: m.reach ?? null,
+          impressions: m.impressions ?? null,
+          views: m.views ?? null,
+          likes: m.likes ?? null,
+          comments: m.comments ?? null,
+          saved: null,
+          shares: m.shares ?? null,
+          total_interactions: m.total_interactions ?? null,
+          published_at: s.published_at,
+          fetched_at: new Date().toISOString(),
+        }, { onConflict: 'script_id,platform' })
+        if (error) { if (!firstError) firstError = error.message; bump('facebook', false) }
+        else bump('facebook', true)
+      }
+    }
   }
 
-  // ─── YouTube ────────────────────────────────────────────────────────────────
+  // ─── YouTube — globalt (env-nyckel; gäller alla projekt med youtube_video_id) ─
   const ytKey = process.env.YOUTUBE_API_KEY
   if (ytKey) {
     const { data: ytScripts } = await (db.from('media_scripts') as any)
@@ -295,42 +337,6 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       }, { onConflict: 'script_id,platform' })
       if (error) { if (!firstError) firstError = error.message; bump('youtube', false) }
       else bump('youtube', true)
-    }
-  }
-
-  // ─── Facebook ───────────────────────────────────────────────────────────────
-  const fb = await getToken('facebook')
-  if (fb?.accountId) {
-    const pageToken = await resolveFbPageToken(fb.accessToken, fb.accountId)
-    const { data: fbScripts } = await (db.from('media_scripts') as any)
-      .select('id, project_id, facebook_post_id, published_at')
-      .eq('status', 'published')
-      .not('facebook_post_id', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(limit)
-
-    for (const s of (fbScripts ?? []) as any[]) {
-      const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
-      if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
-      const m = result.metrics
-      const { error } = await (db.from('media_insights') as any).upsert({
-        script_id: s.id,
-        project_id: s.project_id,
-        platform: 'facebook',
-        facebook_post_id: s.facebook_post_id,
-        reach: m.reach ?? null,
-        impressions: m.impressions ?? null,
-        views: m.views ?? null,
-        likes: m.likes ?? null,
-        comments: m.comments ?? null,
-        saved: null,
-        shares: m.shares ?? null,
-        total_interactions: m.total_interactions ?? null,
-        published_at: s.published_at,
-        fetched_at: new Date().toISOString(),
-      }, { onConflict: 'script_id,platform' })
-      if (error) { if (!firstError) firstError = error.message; bump('facebook', false) }
-      else bump('facebook', true)
     }
   }
 

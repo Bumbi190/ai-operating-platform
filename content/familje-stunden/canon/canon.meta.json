@@ -8,7 +8,8 @@
   "manifests": [
     { "file": "character-reference.json", "schema": "schemas/character-reference.schema.json", "derived_from": ["../characters/nova-v2.md", "../characters/pling-v2.md", "../characters/character-rules.md"], "checksum": null },
     { "file": "theme-canon.json",         "schema": "schemas/theme-canon.schema.json",         "derived_from": ["../themes/index.json", "../../../apps/web/lib/marketing/kb/marketing-canon.ts", "../themes/*.md"], "checksum": null },
-    { "file": "child-safety-rules.json",  "schema": "schemas/child-safety-rules.schema.json",  "derived_from": ["../_meta/brand-rules.md", "../marketing-bible.md"], "checksum": null }
+    { "file": "child-safety-rules.json",  "schema": "schemas/child-safety-rules.schema.json",  "derived_from": ["../_meta/brand-rules.md", "../marketing-bible.md"], "checksum": null },
+    { "file": "cca-params.json",          "schema": "schemas/cca-params.schema.json",          "derived_from": ["character-reference.json", "CCA-D2 build manifest"], "checksum": null }
   ],
   "binary_assets": {
     "bucket": "familje-stunden",
@@ -31,6 +32,7 @@
     "G4: characters/index.json roll 'rymdkapten' ska rättas till människoflicka/robot",
     "G5: nova-v2.md bokfärg ska uppdateras till blå",
     "G9: activities[] tomma för 9 av 11 publicerbara månader (activity_canon_complete=false)",
-    "similarity: embedding-modell ej vald (Fas 2/3)"
+    "similarity: embedding-modell ej vald (Fas 2/3)",
+    "G13: färgnamn 'trojo_turkos' i character-reference.json är stavfel (bör bli 'troja_turkos') — städas i canon-patch; cca-params.json matchar nuvarande namn"
   ]
 }

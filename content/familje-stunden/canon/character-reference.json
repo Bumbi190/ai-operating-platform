@@ -1,0 +1,135 @@
+{
+  "$schema": "./schemas/character-reference.schema.json",
+  "canon_version": "0.1.0",
+  "updated": "2026-06-05",
+  "brand": "familje-stunden",
+  "note": "Maskinläsbar projektion av characters/nova-v2.md och pling-v2.md. Hex-värden samplade ur de primära kanonbilderna (k-means på ogenomskinliga pixlar, 2026-06-05). Prosa-biblarna är människo-sanningen; denna fil härleds från dem.",
+  "palette_method": "kmeans_k9_alpha_gt_200",
+  "characters": [
+    {
+      "id": "nova",
+      "name": "Nova",
+      "species": "human_girl",
+      "pronoun": "hon",
+      "home": "Bubbelonien",
+      "role_in_duo": "nyfiken/kännande utforskare",
+      "canonical_images": [
+        {
+          "role": "primary_front",
+          "source_repo": "familje-stunden-v2/public/images/nova_clean.png",
+          "storage_path": "characters/nova/canonical-front.png",
+          "checksum": null,
+          "width": 939,
+          "height": 1056,
+          "transparent": true,
+          "status": "pending_import"
+        }
+      ],
+      "secondary_images": [
+        { "role": "season_winter", "source_repo": "familje-stunden-v2/public/images/nova-winter-transparent.png", "storage_path": "characters/nova/secondary/winter.png", "status": "pending_import" }
+      ],
+      "palette": [
+        { "name": "rosa_signatur", "hex": "#ee5172", "delta_e_tol": 8,  "where": "hårband, kjol, sneakers", "required": true,  "status": "sampled" },
+        { "name": "trojo_turkos",  "hex": "#00b0e0", "delta_e_tol": 6,  "where": "pikétröja", "required": true,  "status": "sampled" },
+        { "name": "har_brunt",     "hex": "#73371a", "delta_e_tol": 10, "where": "hår", "required": true,  "status": "sampled" },
+        { "name": "hud_varm",      "hex": "#f39f57", "delta_e_tol": 12, "where": "hud", "required": false, "status": "sampled" },
+        { "name": "bok_bla",       "hex": "#047cac", "delta_e_tol": 12, "where": "boken hon håller", "required": false, "status": "resolved_blue", "note": "Beslut 2026-06-05: blå bok är kanon. nova-v2.md (gul/orange) ska korrigeras." },
+        { "name": "kontur_mork",   "hex": "#241106", "delta_e_tol": 14, "where": "konturlinjer", "required": false, "status": "sampled" }
+      ],
+      "must_have_features": [
+        "brunt hår i sidosvans", "rosa hårband", "turkos pikétröja med krage",
+        "rosa veckkjol", "rosa sneakers", "håller en blå bok", "varmt leende, vinkar"
+      ],
+      "must_not": [
+        "robot- eller maskindrag", "byta hårfärg eller frisyr", "framställas som vuxen",
+        "skrämmande/negativt uttryck", "annat färgschema än kanon", "byta kanon-utseende"
+      ],
+      "proportions": {
+        "content_bbox_px": { "x0": 174, "y0": 94, "x1": 780, "y1": 904, "w": 607, "h": 811 },
+        "content_aspect_h_over_w": 1.34,
+        "head_to_body_ratio": null,
+        "landmarks": null,
+        "status": "gap_measure",
+        "method": "kräver landmärkespass (huvud/torso/ben) på primärbild innan proportionsgrind kan låsas"
+      },
+      "count_rule": "exakt 1 Nova per bild",
+      "vlm_criteria": [
+        "Matchar frisyr, rosa hårband och färgschema (rosa+turkos) referensbilden?",
+        "Är det samma flicka som referensen, inte en ny karaktär?",
+        "Är boken blå (kanon)?"
+      ]
+    },
+    {
+      "id": "pling",
+      "name": "Pling",
+      "species": "robot",
+      "pronoun": "han",
+      "role_in_duo": "kunnig/teknisk guide och förklarare",
+      "canonical_images": [
+        {
+          "role": "primary_front",
+          "source_repo": "familje-stunden-v2/public/images/pling_clean.png",
+          "storage_path": "characters/pling/canonical-front.png",
+          "checksum": null,
+          "width": 939,
+          "height": 1056,
+          "transparent": true,
+          "status": "pending_import"
+        }
+      ],
+      "secondary_images": [
+        { "role": "season_winter", "source_repo": "familje-stunden-v2/public/images/pling-winter-transparent.png", "storage_path": "characters/pling/secondary/winter.png", "status": "pending_import" }
+      ],
+      "palette": [
+        { "name": "kropp_bla_primar", "hex": "#018dc9", "delta_e_tol": 8,  "where": "kropp/huvud (ljusare ton)", "required": true,  "status": "sampled" },
+        { "name": "kropp_bla_mid",    "hex": "#015383", "delta_e_tol": 8,  "where": "kropp (mellanton)", "required": false, "status": "sampled" },
+        { "name": "kropp_bla_skugga", "hex": "#014169", "delta_e_tol": 10, "where": "kropp (skugga)", "required": false, "status": "sampled" },
+        { "name": "ansiktsskarm_navy","hex": "#011733", "delta_e_tol": 12, "where": "ansiktsskärm", "required": true,  "status": "sampled" },
+        { "name": "ogon_ljusbla",     "hex": "#80d6f2", "delta_e_tol": 8,  "where": "ögon", "required": true,  "status": "sampled" },
+        { "name": "antenn_rosa",      "hex": "#d66488", "delta_e_tol": 12, "where": "antennkula", "required": true,  "status": "sampled" },
+        { "name": "hjarta_gult",      "hex": "#f9cc3a", "delta_e_tol": 10, "where": "bröst-hjärta (hjärtknapp)", "required": true,  "status": "sampled" }
+      ],
+      "must_have_features": [
+        "hjälmhuvud med mörk ansiktsskärm", "ljusblå ögon + leende",
+        "rosa antennkula högst upp", "gult hjärta på bröstet", "tvåtonad blå kropp", "rundade fötter"
+      ],
+      "must_not": [
+        "människa/flicka", "byta kroppsfärg", "sakna hjärtknapp eller antenn",
+        "skrämmande/negativt uttryck", "byta kanon-utseende"
+      ],
+      "proportions": {
+        "content_bbox_px": { "x0": 198, "y0": 116, "x1": 723, "y1": 937, "w": 526, "h": 822 },
+        "content_aspect_h_over_w": 1.56,
+        "head_to_body_ratio": null,
+        "landmarks": null,
+        "status": "gap_measure",
+        "method": "kräver landmärkespass (huvud/kropp/fötter) på primärbild"
+      },
+      "count_rule": "exakt 1 Pling per bild",
+      "vlm_criteria": [
+        "Matchar hjälmhuvud, rosa antenn, gult hjärta och tvåtonad blå kropp referensbilden?",
+        "Är det en robot (inte en människa) och samma karaktär som referensen?"
+      ]
+    }
+  ],
+  "duo_rules": {
+    "default_frame": "Nova & Pling utforskar månadens tema tillsammans med barnet",
+    "allowed_characters": ["nova", "pling"],
+    "allowed_recurring_elements": ["kometvan", "stjarnstenen"],
+    "forbidden": ["nya huvudkaraktärer", "blanda med The Prompt", "namngivna verkliga personer"],
+    "max_total_main_characters": 2
+  },
+  "consistency_gates": {
+    "note": "Character Consistency Agent kör fyra kompletterande kontroller. Alla utom similarity är delvis deterministiska; similarity och vlm_criteria är modellbaserade.",
+    "palette_presence": { "method": "deltaE_histogram", "rule": "alla palette[].required=true måste finnas inom delta_e_tol; inga främmande dominanta färger", "enabled": true },
+    "proportions":      { "method": "landmark_ratio", "enabled": false, "blocked_by": "proportions.status=gap_measure" },
+    "rule_features":    { "method": "must_have/must_not + count_rule", "enabled": true },
+    "reference_similarity": {
+      "method": "image_embedding_cosine",
+      "description": "Beräkna perceptuell likhet mellan genererad/komponerad bild och primär kanonreferens (per karaktär, beskuren). Embedding-modell fastställs i senare fas.",
+      "thresholds": { "pass": 0.92, "warn": 0.85, "fail_below": 0.85 },
+      "enabled": false,
+      "blocked_by": "embedding-modell ej vald (Fas 2/3)"
+    }
+  }
+}

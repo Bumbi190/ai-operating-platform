@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "familje-stunden/canon/theme-canon.schema.json",
+  "title": "Theme Canon",
+  "type": "object",
+  "required": ["canon_version", "brand", "source_of_truth", "months", "activity_validation"],
+  "properties": {
+    "canon_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "updated": { "type": "string", "format": "date" },
+    "brand": { "const": "familje-stunden" },
+    "source_of_truth": { "const": true },
+    "note": { "type": "string" },
+    "cta_default": {
+      "type": "object",
+      "required": ["url", "price_sek", "allowed_prices_sek"],
+      "properties": {
+        "url": { "type": "string" },
+        "price_sek": { "type": "number" },
+        "allowed_prices_sek": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "months": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["slug", "month_number", "display_name", "status", "publishable", "activity_canon_complete", "symbols", "must_not", "activities"],
+        "properties": {
+          "slug": { "type": "string" },
+          "month_number": { "type": "integer", "minimum": 1, "maximum": 12 },
+          "display_name": { "type": ["string", "null"] },
+          "emoji": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["blocked", "draft", "defined"] },
+          "publishable": { "type": "boolean" },
+          "activity_canon_complete": { "type": "boolean" },
+          "produced_title": { "type": "string" },
+          "focus": { "type": ["string", "null"] },
+          "symbols": { "type": "array", "items": { "type": "string" } },
+          "must_not": { "type": "array", "items": { "type": "string" } },
+          "key_visual": { "type": "object" },
+          "activities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "type", "exists"],
+              "properties": {
+                "id": { "type": "string" },
+                "type": { "type": "string", "enum": ["farglaggning", "klipp-klistra", "diplom", "klistermarken", "broschyr", "saga", "audio"] },
+                "title": { "type": "string" },
+                "exists": { "type": "boolean" },
+                "asset_ref": { "type": "string" }
+              }
+            }
+          },
+          "note": { "type": "string" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "blocked" } } },
+            "then": { "properties": { "publishable": { "const": false } } }
+          }
+        ]
+      }
+    },
+    "activity_validation": {
+      "type": "object",
+      "required": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "rule", "severity"],
+            "properties": {
+              "id": { "type": "string" },
+              "rule": { "type": "string" },
+              "severity": { "type": "string", "enum": ["block", "warn"] },
+              "requires": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

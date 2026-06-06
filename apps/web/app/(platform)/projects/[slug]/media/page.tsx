@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import { BreakingButton } from './BreakingButton'
 
 // Live token/DB-status — måste alltid renderas färskt (annars cachas "Token saknas"
 // från innan tokenet fanns). Samma direktiv som övriga data-drivna sidor.
@@ -304,6 +305,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
           </div>
 
           <div className="flex items-center gap-2">
+            <BreakingButton projectId={project.id} />
             <Link href={`/projects/${params.slug}/scripts`}
               className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>

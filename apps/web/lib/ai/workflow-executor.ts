@@ -11,7 +11,8 @@ import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { validateStepOutput } from '@/lib/ai/validators/output-validator'
 import { sendAdminNotification } from '@/lib/email/brevo'
-import { getApprovalPendingEmail, getBugReportEmail } from '@/lib/email/templates'
+import { getApprovalPendingEmail } from '@/lib/email/templates'
+import { reportBug } from '@/lib/bugs/report'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -307,14 +308,29 @@ export async function executeWorkflow(
       finished_at: new Date().toISOString(),
     }).eq('id', runId)
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-    const { subject, html } = getBugReportEmail({
-      project: 'AI Operating Platform',
-      errorCount: 1,
-      errors: [{ message, count: 1, lastSeen: new Date().toLocaleString('sv-SE') }],
-      runFailures: 1,
-      platformUrl: appUrl,
+    // Buggövervakning (severitetsstyrd): enstaka fel → bara panel; akut → mail.
+    // Räkna projektets misslyckade körningar senaste 24h så ≥3 blir akut.
+    let occurrences = 1
+    let projectName: string | null = null
+    try {
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const [{ count }, projRow] = await Promise.all([
+        anyDb.from('runs').select('id', { count: 'exact', head: true })
+          .eq('project_id', projectId).eq('status', 'failed').gte('created_at', since24h),
+        anyDb.from('projects').select('name').eq('id', projectId).maybeSingle(),
+      ])
+      occurrences = (count ?? 1) || 1
+      projectName = projRow?.data?.name ?? null
+    } catch { /* best-effort — räkning får aldrig blockera felhanteringen */ }
+
+    await reportBug({
+      projectId,
+      projectName,
+      source: 'system',
+      title: `Misslyckad körning: ${message.slice(0, 80)}`,
+      detail: message,
+      area: `runId ${runId}`,
+      occurrences,
     })
-    void sendAdminNotification(subject, html)
   }
 }

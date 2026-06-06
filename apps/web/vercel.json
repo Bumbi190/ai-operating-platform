@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/media/cron/heartbeat", "schedule": "0 7 * * *" }
+    { "path": "/api/media/cron/heartbeat", "schedule": "0 7 * * *" },
+    { "path": "/api/bugscanner/scan-all", "schedule": "0 5 * * *" }
   ]
 }

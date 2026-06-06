@@ -69,11 +69,15 @@ export async function POST(request: Request) {
         const postId      = (value.media as Record<string, unknown>)?.id as string
         const fromUser    = value.from as Record<string, unknown>
         const username    = (fromUser?.username ?? fromUser?.name ?? '') as string
+        const fromId      = (fromUser?.id ?? '') as string
 
         if (!commentId || !commentText || !postId) continue
 
-        // Svara inte på egna kommentarer
-        if (value.from_self) continue
+        // Self-filter: hoppa över kommentarer från VÅRT eget konto — annars feedback-loop.
+        // OBS: `from_self` finns INTE på IG comment-webhooks → jämför författaren i stället.
+        const SELF_USERNAME = (process.env.IG_SELF_USERNAME ?? 'theprompt.news').toLowerCase()
+        const SELF_ID       = process.env.IG_SELF_ACCOUNT_ID ?? '' // sätts efter account_id-backfill
+        if ((SELF_ID && fromId === SELF_ID) || username.toLowerCase() === SELF_USERNAME) continue
 
         await db.from('comment_replies').upsert({
           platform:      'instagram',
@@ -97,10 +101,13 @@ export async function POST(request: Request) {
         const postId      = (value.post_id ?? value.parent_id) as string
         const fromUser    = value.from as Record<string, unknown>
         const username    = (fromUser?.name ?? '') as string
+        const fromId      = (fromUser?.id ?? '') as string
 
         // Hoppa över replies (kommentarer på kommentarer) och tomma
         if (!commentId || !commentText || !postId) continue
         if (value.parent_id && value.parent_id !== value.post_id) continue
+        // Self-filter: hoppa över sidans egna kommentarer (FACEBOOK_PAGE_ID).
+        if (process.env.FACEBOOK_PAGE_ID && fromId === process.env.FACEBOOK_PAGE_ID) continue
 
         await db.from('comment_replies').upsert({
           platform:       'facebook',

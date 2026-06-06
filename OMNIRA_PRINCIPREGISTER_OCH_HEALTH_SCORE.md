@@ -16,9 +16,10 @@ _Governance-dokument. Ingen kod. Samlar alla låsta principer på ett ställe oc
 | P6 | **Approval-grind före autonom delegering** | Ingen publicering/spend/deploy/extern förändring utan stoppbart approval-steg. | Låst | §5 |
 | P7 | **Autonomy Levels** | L0 Analys → L1 Rekommendation → L2 Utkast → L3 Utför-efter-godkännande → L4 Begränsad → L5 Delegerad. Varje projekt/agent bär en registrerad nivå. Inget >L2 före Fas 0-exit + approval-grind. | Låst | Fas 1 |
 | P8 | **Project Kill Switch** | Varje projekt stoppas individuellt utan att påverka andra. Enforcement på lägsta nivå (`claim_runs`/drainer), inte route-för-route. Paus = effektiv L0. | Låst | `claim_runs`, cron |
+| P8b | **Cron äger inte projekthantering** | Långsiktig riktning: cron-routes blir tunna triggers. Projekt-iteration, project scope och kill-switch-enforcement flyttas till `claim_runs`/drainern där de redan upprätthålls — cron ansvarar inte själv för isolation eller paus. | Låst | §4, `claim_runs` |
 | P9 | **Browser/Desktop Agent ärver allt** | Byggs ovanpå samma isolation, guard, approval, kill switch, Autonomy Levels. Ingen specialväg. | Låst | Senare |
 | **P10** | **(Ny) Project Health Score** | Atlas ser hälsa per projekt och prioriterar uppmärksamhet därefter. Isolations-säker; Global Atlas ser bara summeringar. | **Låst (framtida)** | Del B |
-| **P11** | **(Ny) Familje-Stunden kalibreringsfas** | Strikt L3, en bild i taget, QA→Review→Approval→Publicering, ingen batch/autopublicering. Första **100 godkända publiceringar = kalibrering** innan högre autonomi ens diskuteras. | **Låst** | Del C |
+| **P11** | **(Ny) Familje-Stunden kalibreringsfas** | Strikt L3. Under de första **100 godkända publiceringarna**: **1 approval = 1 bild**, **1 approval = 1 publicering**, **inga batch-publiceringar**. QA→Review→Approval→Publicering, ingen autopublicering. Högre autonomi diskuteras inte före 100 godkända + exit-kriterier. | **Låst** | Del C |
 
 ---
 
@@ -63,9 +64,13 @@ Ge Atlas en **enda hälsosiffra per projekt** (0–100) som komponerar redan ins
 - **Kedja:** Generera 1 bild → **QA** (golden-checklist + CCA D2 + style-governance) → **Review** → **Approval (hård grind)** → **Publicering**. Inget steg hoppas över.
 - **Ingen autopublicering.** Människa i loopen vid varje publicering.
 
-### Kalibreringsfas: de första 100 godkända publiceringarna
+### Kalibreringsfas: de första 100 godkända publiceringarna (skärpt 1:1:1)
+- **1 approval = 1 bild.** Varje godkännande omfattar exakt en bild.
+- **1 approval = 1 publicering.** Varje godkännande resulterar i exakt en publicering.
+- **Inga batch-publiceringar.** Aldrig flera bilder eller flera publiceringar bakom ett enda godkännande.
 - Behandlas som **kalibrering**, inte produktion-i-skala. Syftet är att bevisa att QA→Review→Approval→Publicering-kedjan håller **stabilt över tid**, inte bara i enstaka fall.
 - **Högre autonomi (L4+) får inte ens diskuteras** innan 100 godkända publiceringar är passerade och utvärderade.
+- _Implementeras i approval-grinden: en approval-rad binder exakt en bild + en publicering; grinden vägrar batch under kalibreringsfasen._
 
 ### Exit-kriterier (vad som måste bevisas innan L4 ens övervägs)
 Mäts via Health Score-dimensionerna (Del B) + approval-loggar:

@@ -94,6 +94,20 @@ export async function GET(request: Request) {
     ;(results.renderRetried as unknown[]).push(await callStep('/api/media/cron/step3', s.id))
   }
 
+  // ── 2b2. BREAKING: polla render för videos som fastnat i 'rendering' (seg Lambda) ─
+  const { data: breakingRendering } = await db.from('media_scripts')
+    .select('id')
+    .eq('breaking', true).eq('video_status', 'rendering').eq('status', 'approved')
+    .is('published_at', null)
+    .gte('generated_at', freshCutoff)
+    .order('generated_at', { ascending: true })
+    .limit(PER_TICK)
+  results.breakingRenderPolled = []
+  for (const s of (breakingRendering ?? [])) {
+    log(`Breaking render-poll (step4) för ${s.id}`)
+    ;(results.breakingRenderPolled as unknown[]).push(await callStep('/api/media/cron/step4', s.id))
+  }
+
   // ── 2c. BREAKING: publicera ready newsjacking-videos OMEDELBART (ej 08/18-slot) ─
   const { data: breakingDue } = await db.from('media_scripts')
     .select('id')

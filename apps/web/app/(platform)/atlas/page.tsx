@@ -16,6 +16,8 @@ import { atlasExecutiveSummary } from '@/lib/atlas/executive'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { ExecutiveAssistant } from '../chat/ExecutiveAssistant'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { MorningBugPopup } from '@/components/platform/os/MorningBugPopup'
+import { getMorningBugDigest } from '@/lib/bugs/digest'
 import {
   Sparkles, ArrowRight, ShieldCheck, TrendingUp, DollarSign, ListChecks, MessageSquare, AlertTriangle, Activity,
 } from 'lucide-react'
@@ -40,6 +42,7 @@ export default async function AtlasHome() {
 
   const db = createAdminClient()
   const ctx = await gatherAtlasContext(db)
+  const bugDigest = await getMorningBugDigest(db)
   const now = new Date()
   const projects = ctx.businesses.map(b => ({ id: b.id, name: b.name, slug: b.slug }))
 
@@ -59,6 +62,9 @@ export default async function AtlasHome() {
 
   return (
     <OSPage className="animate-fade-in">
+
+      {/* ── MORGON-POPUP: buggscan ───────────────────────────────────────── */}
+      <MorningBugPopup findings={bugDigest.findings} reports={bugDigest.reports} />
 
       {/* ── ATLAS GREETING ───────────────────────────────────────────────── */}
       <OSLayer layer="hero">

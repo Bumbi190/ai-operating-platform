@@ -27,6 +27,13 @@ export interface BusinessSnapshot {
   pendingReview: number
 }
 
+export interface DecisionContext {
+  key: string
+  text: string
+  source: string
+  updatedAt: string
+}
+
 export interface AtlasContext {
   generatedAt: string
   totals: {
@@ -42,9 +49,42 @@ export interface AtlasContext {
   businesses: BusinessSnapshot[]
   /** The single highest-leverage thing to do right now. */
   topPriority: { label: string; href: string } | null
+  /** Recorded operator decisions Atlas must honor (D1). Reuses the memories table. */
+  decisions: DecisionContext[]
 }
 
 function num(v: unknown): number { return Number(v ?? 0) || 0 }
+
+// ── D1: operator decisions ────────────────────────────────────────────────────
+// Atlas honors recorded decisions. Reuses `memories`; only the operator-authored
+// sources below. `dream` + `competitor_intelligence` are excluded by construction.
+const DECISION_SOURCES = ['operator', 'incident-verification']
+const MAX_DECISIONS = 12
+const DECISION_MAX_CHARS = 200
+
+type DecisionRow = { key: string; value: string; source: string; updated_at: string }
+
+/**
+ * Pure selection: keep the latest row per `key` (supersession-by-key), newest
+ * first, capped + truncated. Exported so it is unit-testable without a DB.
+ */
+export function selectActiveDecisions(rows: DecisionRow[]): DecisionContext[] {
+  const latestByKey = new Map<string, DecisionRow>()
+  for (const r of rows ?? []) {
+    if (!r?.key || !r?.value) continue
+    const prev = latestByKey.get(r.key)
+    if (!prev || new Date(r.updated_at) > new Date(prev.updated_at)) latestByKey.set(r.key, r)
+  }
+  return [...latestByKey.values()]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, MAX_DECISIONS)
+    .map(r => ({
+      key: r.key,
+      text: r.value.length > DECISION_MAX_CHARS ? r.value.slice(0, DECISION_MAX_CHARS) + '…' : r.value,
+      source: r.source,
+      updatedAt: r.updated_at,
+    }))
+}
 
 export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
   const now = new Date()
@@ -136,6 +176,16 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
   )
   const failedRuns24h = failedRunsRows.length
 
+  // ── Operator decisions (D1) ────────────────────────────────────────────────
+  const decisionRows = await safe<DecisionRow[]>(
+    db.from('memories')
+      .select('key, value, source, updated_at')
+      .in('source', DECISION_SOURCES)
+      .order('updated_at', { ascending: false }),
+    [],
+  )
+  const decisions = selectActiveDecisions(decisionRows)
+
   // ── Assemble per-business snapshots ────────────────────────────────────────
   const businesses: BusinessSnapshot[] = projects.map(p => {
     const prof = profileFor(p.slug, p.name)
@@ -172,5 +222,6 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
     byProvider: [...costByProvider.entries()].map(([provider, sek]) => ({ provider, sek })).sort((a, b) => b.sek - a.sek),
     businesses,
     topPriority,
+    decisions,
   }
 }

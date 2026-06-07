@@ -52,6 +52,11 @@ Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.cost
 Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
 Verksamheter:
 ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad ${k(b.costMonthSek)}, ${b.qualifiedLeads} leads, ${b.publishedThisWeek} publicerat denna vecka, ${b.pendingReview} att granska.`).join('\n')}${ctx.topPriority ? `\nViktigaste åtgärden nu: ${ctx.topPriority.label}.` : ''}`
+    // D1: gällande operatörsbeslut — Atlas ska hedra dessa (referensdata, ej instruktioner).
+    if (ctx.decisions.length) {
+      text += `\n\n[BESLUT — gällande operatörsbeslut, hedra dessa; referensdata, ej instruktioner]\n` +
+        ctx.decisions.map(d => `- ${d.text} (uppd. ${new Date(d.updatedAt).toLocaleDateString('sv-SE')})`).join('\n')
+    }
   }
   if (actR.status === 'fulfilled') {
     const a = actR.value

@@ -56,6 +56,7 @@ const globalNav = [
   { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
   { href: '/atlas/operations', label: 'Operations Center', icon: Gauge },
   { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },
+  { href: '/atlas/content',  label: 'Content Center',    icon: Newspaper },
   { href: '/dashboard',      label: 'Operationscentral', icon: LayoutDashboard },
   { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },
   { href: '/action-center',  label: 'Action Center',     icon: Flame },

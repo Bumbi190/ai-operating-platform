@@ -46,7 +46,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex justify-between gap-4 py-1.5 border-b border-zinc-800/60 text-xs">
-      <span className="text-zinc-500">{label}</span>
+      <span className="text-secondary">{label}</span>
       <span className="text-zinc-200 text-right break-words">{value}</span>
     </div>
   )
@@ -71,21 +71,21 @@ export default async function ContentDetail({ params }: { params: { id: string }
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* QA report */}
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="text-xs font-mono uppercase tracking-wide text-zinc-500 mb-3">QA Report</h2>
+          <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">QA Report</h2>
           <div className="flex items-center gap-2 mb-3">
             {qa.pass === true ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-rose-400" />}
             <span className={qa.pass === true ? 'text-emerald-400 text-sm font-medium' : 'text-rose-400 text-sm font-medium'}>
               {qa.pass === true ? 'PASS' : qa.pass === false ? 'FAIL' : '—'}
             </span>
-            <span className="text-xs text-zinc-500">· confidence {qa.confidence ?? '—'}</span>
+            <span className="text-xs text-secondary">· confidence {qa.confidence ?? '—'}</span>
           </div>
           <Stat label="Slop score" value={qa.slop?.score ?? '—'} />
           <Stat label="Copy overlap" value={qa.copyOverlap?.ratio ?? '—'} />
           <Stat label="Structural" value={qa.structuralOk === true ? 'ok' : qa.structuralOk === false ? 'fail' : '—'} />
           <div className="mt-3">
-            <p className="text-[11px] text-zinc-500 mb-1">Issues ({issues.length})</p>
+            <p className="text-[11px] text-secondary mb-1">Issues ({issues.length})</p>
             {issues.length === 0 ? (
-              <p className="text-xs text-zinc-600 italic">None</p>
+              <p className="text-xs text-meta italic">None</p>
             ) : (
               <ul className="list-disc list-inside space-y-0.5 text-xs text-amber-300/90">
                 {issues.map((it, i) => <li key={i}>{it}</li>)}
@@ -96,7 +96,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
         {/* Metadata */}
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="text-xs font-mono uppercase tracking-wide text-zinc-500 mb-3">Generation Metadata</h2>
+          <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Generation Metadata</h2>
           <Stat label="Model" value={row.model ?? meta.model ?? '—'} />
           <Stat label="Cost" value={fmtCost(row.cost_usd ?? meta.estCostUsd ?? null)} />
           <Stat label="Tokens in" value={meta.tokensIn ?? '—'} />
@@ -110,7 +110,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
         {/* Workflow / destination */}
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="text-xs font-mono uppercase tracking-wide text-zinc-500 mb-3">Workflow</h2>
+          <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Workflow</h2>
           <Stat label="Status" value={row.status} />
           <Stat label="Status reason" value={row.status_reason ?? '—'} />
           <Stat label="External ID" value={<span className="font-mono text-[10px]">{row.external_id}</span>} />
@@ -122,11 +122,11 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
       {/* Article body */}
       <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5">
-        <h2 className="text-xs font-mono uppercase tracking-wide text-zinc-500 mb-3">Article Body</h2>
+        <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Article Body</h2>
         {body ? (
           <pre className="text-sm text-zinc-300 whitespace-pre-wrap break-words leading-relaxed font-sans max-w-3xl">{body}</pre>
         ) : (
-          <p className="text-xs text-zinc-600 italic">No body content.</p>
+          <p className="text-xs text-meta italic">No body content.</p>
         )}
       </section>
     </OSPage>

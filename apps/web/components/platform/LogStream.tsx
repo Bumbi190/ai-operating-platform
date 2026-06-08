@@ -79,7 +79,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/5 text-zinc-500 hover:text-zinc-300"
+      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/5 text-secondary hover:text-zinc-300"
       title="Kopiera"
     >
       {copied ? (
@@ -182,7 +182,7 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
             <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
             <span className="w-3 h-3 rounded-full bg-green-500/70" />
           </div>
-          <span className="text-xs text-zinc-500 ml-1 font-sans">körningslogg</span>
+          <span className="text-xs text-secondary ml-1 font-sans">körningslogg</span>
         </div>
         <div className="flex items-center gap-3 text-xs font-sans">
           {connected && (
@@ -204,12 +204,12 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
             </span>
           )}
           {status === 'running' && !connected && (
-            <span className="text-zinc-500">ansluter...</span>
+            <span className="text-secondary">ansluter...</span>
           )}
           {totalTokens > 0 && (
-            <span className="text-zinc-600">{totalTokens} tokens totalt</span>
+            <span className="text-meta">{totalTokens} tokens totalt</span>
           )}
-          <span className="text-zinc-700">{logs.length} händelser</span>
+          <span className="text-faint">{logs.length} händelser</span>
         </div>
       </div>
 
@@ -226,7 +226,7 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
                       ? 'bg-green-500/20 border-green-500/40 text-green-400'
                       : status === 'running' && i === steps.filter((s) => s.done).length
                       ? 'bg-blue-500/20 border-blue-500/40 text-blue-400 animate-pulse'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-500',
+                      : 'bg-zinc-800 border-zinc-700 text-secondary',
                   )}
                 >
                   {step.done ? '✓' : step.order}
@@ -235,13 +235,13 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
                   <span
                     className={cn(
                       'text-[11px] font-medium',
-                      step.done ? 'text-zinc-300' : 'text-zinc-500',
+                      step.done ? 'text-zinc-300' : 'text-secondary',
                     )}
                   >
                     {step.name}
                   </span>
                   {step.done && step.duration != null && (
-                    <span className="text-[10px] text-zinc-600">
+                    <span className="text-[10px] text-meta">
                       {(step.duration / 1000).toFixed(1)}s
                       {step.tokens != null && ` · ${step.tokens}t`}
                     </span>
@@ -259,7 +259,7 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
       {/* Log output */}
       <div className="h-[32rem] overflow-y-auto scrollbar-thin p-4 space-y-2">
         {logs.length === 0 && (
-          <div className="flex items-center gap-2.5 text-zinc-600 text-xs py-4">
+          <div className="flex items-center gap-2.5 text-meta text-xs py-4">
             <span className="w-3 h-3 rounded-full border border-zinc-600 animate-pulse" />
             Väntar på första händelse...
           </div>
@@ -287,7 +287,7 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
               <span
                 className={cn(
                   'shrink-0 text-xs w-14 mt-0.5 text-right',
-                  roleColors[log.role] ?? 'text-zinc-500',
+                  roleColors[log.role] ?? 'text-secondary',
                 )}
               >
                 [{roleLabels[log.role] ?? log.role}]
@@ -300,7 +300,7 @@ export function LogStream({ runId, initialLogs = [], initialStatus = 'running' }
 
                 {/* Token/timing metadata */}
                 {(log.tokens_in != null || log.tokens_out != null) && (
-                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600 font-sans">
+                  <div className="mt-1 flex items-center gap-2 text-xs text-meta font-sans">
                     {log.duration_ms != null && (
                       <span>{(log.duration_ms / 1000).toFixed(1)}s</span>
                     )}

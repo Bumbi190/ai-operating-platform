@@ -37,7 +37,7 @@ export function MicroTicker({
       )}
       {items.map((item, i) => (
         <span key={i} className="inline-flex items-center gap-1.5">
-          <span className="text-zinc-600">{item.label}</span>
+          <span className="text-meta">{item.label}</span>
           <span
             className="num"
             style={{

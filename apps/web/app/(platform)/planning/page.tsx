@@ -118,7 +118,7 @@ export default async function PlanningPage() {
               </div>
               <span className={`shrink-0 text-xs self-start pt-0.5 ${
                 item.status === 'active' ? 'text-emerald-400' :
-                item.status === 'on-ice' ? 'text-zinc-600' :
+                item.status === 'on-ice' ? 'text-meta' :
                 'text-muted-foreground/50'
               }`}>
                 {item.status === 'active' ? 'Aktiv' : item.status === 'on-ice' ? 'På is' : 'Planerad'}

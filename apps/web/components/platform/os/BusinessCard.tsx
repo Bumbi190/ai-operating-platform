@@ -69,7 +69,7 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
             <span className="inline-flex items-center gap-1.5 mt-0.5">
               <PulseDot tone={meta.tone === 'zinc' ? 'indigo' : meta.tone} size={4} />
               <span className="text-[10.5px] font-medium" style={{ color: meta.color }}>{meta.label}</span>
-              {lastActive && <span className="text-[10px] text-zinc-600">· aktiv {lastActive}</span>}
+              {lastActive && <span className="text-[10px] text-meta">· aktiv {lastActive}</span>}
             </span>
           </div>
         </div>
@@ -88,13 +88,13 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
             {business.metrics.slice(0, 4).map((m) => (
               <div key={m.label} className="min-w-0">
                 <p className="num text-[19px] font-semibold text-white/90 tracking-tight">{fmt(m)}</p>
-                <p className="text-[10.5px] text-zinc-500 leading-tight mt-0.5">{m.label}</p>
+                <p className="text-[10.5px] text-secondary leading-tight mt-0.5">{m.label}</p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[12px] text-zinc-500 py-2">
-            <Moon className="w-3.5 h-3.5 text-zinc-600" />
+          <div className="flex items-center gap-2 text-[12px] text-secondary py-2">
+            <Moon className="w-3.5 h-3.5 text-meta" />
             Ingen aktivitet registrerad denna månad
           </div>
         )}
@@ -104,7 +104,7 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
           <div className="mt-4 flex items-start gap-2 text-[11.5px]">
             <Send className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: `${business.color}cc` }} />
             <span className="min-w-0">
-              <span className="text-zinc-500">Senast publicerat{pubAgo ? ` ${pubAgo}` : ''}: </span>
+              <span className="text-secondary">Senast publicerat{pubAgo ? ` ${pubAgo}` : ''}: </span>
               <span className="text-zinc-300">"{business.latestPublication.title.slice(0, 64)}{business.latestPublication.title.length > 64 ? '…' : ''}"</span>
             </span>
           </div>
@@ -113,7 +113,7 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
 
       {/* Drift-strip: agentaktivitet + beslut */}
       <div
-        className="relative mt-5 pt-4 flex items-center gap-5 text-[11px] text-zinc-500"
+        className="relative mt-5 pt-4 flex items-center gap-5 text-[11px] text-secondary"
         style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
         <span><strong className="text-zinc-300 font-semibold num">{business.runs7d}</strong> körningar · 7d</span>

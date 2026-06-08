@@ -78,7 +78,7 @@ const STATUS_CONFIG = {
   done:    { dot: 'bg-emerald-400',            ring: 'ring-emerald-400/20', border: 'border-emerald-500/20', bg: 'bg-emerald-500/5',  text: 'text-emerald-400', label: 'Klar'    },
   running: { dot: 'bg-blue-400 animate-pulse', ring: 'ring-blue-400/20',   border: 'border-blue-500/30',    bg: 'bg-blue-500/[0.07]', text: 'text-blue-400',    label: 'Kör…'   },
   failed:  { dot: 'bg-red-400',                ring: 'ring-red-400/20',    border: 'border-red-500/20',     bg: 'bg-red-500/5',       text: 'text-red-400',     label: 'Fel'     },
-  pending: { dot: 'bg-zinc-700',               ring: 'ring-zinc-700/20',   border: 'border-white/[0.06]',   bg: 'bg-white/[0.02]',    text: 'text-zinc-600',    label: 'Väntar'  },
+  pending: { dot: 'bg-zinc-700',               ring: 'ring-zinc-700/20',   border: 'border-white/[0.06]',   bg: 'bg-white/[0.02]',    text: 'text-meta',    label: 'Väntar'  },
 } as const
 
 function StepNode({ step, index }: { step: Step; index: number }) {
@@ -100,7 +100,7 @@ function StepNode({ step, index }: { step: Step; index: number }) {
     >
       {/* Step order badge */}
       <div className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-zinc-900 border border-white/[0.12] flex items-center justify-center">
-        <span className="text-[9px] font-bold font-mono text-zinc-500">{index + 1}</span>
+        <span className="text-[9px] font-bold font-mono text-secondary">{index + 1}</span>
       </div>
 
       {/* Status dot + name */}
@@ -121,7 +121,7 @@ function StepNode({ step, index }: { step: Step; index: number }) {
         {totalTokens > 0 && (
           <>
             <span className="text-zinc-800">·</span>
-            <span className="text-[9px] font-mono text-zinc-600">
+            <span className="text-[9px] font-mono text-meta">
               {totalTokens.toLocaleString('sv')} tok
             </span>
           </>
@@ -130,7 +130,7 @@ function StepNode({ step, index }: { step: Step; index: number }) {
         {durationSec && (
           <>
             <span className="text-zinc-800">·</span>
-            <span className="text-[9px] font-mono text-zinc-600">
+            <span className="text-[9px] font-mono text-meta">
               {durationSec}s
             </span>
           </>
@@ -170,7 +170,7 @@ function ArrowConnector({ active }: { active: boolean }) {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-4 text-[9px] font-mono text-zinc-700">
+    <div className="flex items-center gap-4 text-[9px] font-mono text-faint">
       {(Object.entries(STATUS_CONFIG) as [keyof typeof STATUS_CONFIG, typeof STATUS_CONFIG[keyof typeof STATUS_CONFIG]][]).map(([key, cfg]) => (
         <span key={key} className="flex items-center gap-1">
           <span className={cn('w-1.5 h-1.5 rounded-full', cfg.dot)} />
@@ -204,7 +204,7 @@ export function WorkflowStepGraph({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold tracking-[0.15em] uppercase text-zinc-600">
+          <span className="text-[10px] font-bold tracking-[0.15em] uppercase text-meta">
             Workflow Graph
           </span>
           {/* Progress bar */}
@@ -217,14 +217,14 @@ export function WorkflowStepGraph({
               style={{ width: `${steps.length > 0 ? (doneCount / steps.length) * 100 : 0}%` }}
             />
           </div>
-          <span className="text-[10px] font-mono text-zinc-600">
+          <span className="text-[10px] font-mono text-meta">
             {doneCount}/{steps.length} klar{doneCount !== 1 ? 'a' : ''}
             {runningCount > 0 && <span className="text-blue-400 ml-1">· kör…</span>}
             {failedCount > 0 && <span className="text-red-400 ml-1">· {failedCount} fel</span>}
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-[9px] font-mono text-zinc-700">
+        <div className="flex items-center gap-4 text-[9px] font-mono text-faint">
           {totalTokens > 0 && <span>{totalTokens.toLocaleString('sv')} tokens totalt</span>}
           {totalDurationMs > 0 && <span>{(totalDurationMs / 1000).toFixed(0)}s AI-tid</span>}
         </div>

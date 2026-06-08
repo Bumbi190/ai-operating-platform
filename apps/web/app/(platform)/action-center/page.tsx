@@ -104,7 +104,7 @@ export default async function ActionCenterPage() {
             <Flame className="w-4 h-4" style={{ color: '#d4a574' }} />
           </div>
           <div>
-            <p className="caption-mono text-[10px] text-zinc-500 uppercase tracking-[0.2em] mb-1">Mission board</p>
+            <p className="caption-mono text-[10px] text-secondary uppercase tracking-[0.2em] mb-1">Mission board</p>
             <h1 className="display-hero text-gradient-instrument text-[26px] md:text-[30px] leading-tight">Action Center</h1>
             <p className="text-[13px] text-zinc-400 mt-1">
               {actionable === 0
@@ -147,7 +147,7 @@ function Group({ title, tone, icon, items }: { title: string; tone: Severity; ic
       <div className="flex items-center gap-2 mb-3">
         <span style={{ color }}>{icon}</span>
         <p className="eyebrow !text-[9px]" style={{ color }}>{title}</p>
-        <span className="caption-mono text-[10px] text-zinc-600">{items.length}</span>
+        <span className="caption-mono text-[10px] text-meta">{items.length}</span>
       </div>
       <div className="space-y-3">
         {items.map((item) => <ActionRow key={item.id} item={item} color={color} />)}
@@ -169,7 +169,7 @@ function ActionRow({ item, color }: { item: AttentionItem; color: string }) {
             </span>
           )}
           {item.etaMin != null && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+            <span className="inline-flex items-center gap-1 text-[10px] text-secondary">
               <Clock className="w-3 h-3" /> {formatEta(item.etaMin)}
             </span>
           )}

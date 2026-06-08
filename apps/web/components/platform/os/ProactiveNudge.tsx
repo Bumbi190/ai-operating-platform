@@ -83,7 +83,7 @@ export function ProactiveNudge({ item }: { item: AttentionItem | null }) {
         </div>
       </div>
 
-      <button onClick={dismiss} className="text-zinc-600 hover:text-zinc-300 transition-colors shrink-0" aria-label="Avfärda">
+      <button onClick={dismiss} className="text-meta hover:text-zinc-300 transition-colors shrink-0" aria-label="Avfärda">
         <X className="w-4 h-4" />
       </button>
     </div>

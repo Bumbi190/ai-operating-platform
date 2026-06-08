@@ -60,7 +60,7 @@ export function WorkflowFlow({
                 <div className="h-7 flex items-end mb-1">
                   {isActiveNode && node.reasoning && (
                     <div
-                      className="caption-mono text-[9px] text-zinc-500 px-1.5 py-0.5 rounded animate-fade-in-down max-w-[136px] truncate text-center"
+                      className="caption-mono text-[9px] text-secondary px-1.5 py-0.5 rounded animate-fade-in-down max-w-[136px] truncate text-center"
                       title={node.reasoning}
                     >
                       “{node.reasoning}”
@@ -123,7 +123,7 @@ export function WorkflowFlow({
                 <div className="mt-2.5 text-center">
                   <p className="text-[11px] font-semibold text-white/90 leading-tight tracking-tight">{node.label}</p>
                   {node.sublabel && (
-                    <p className="caption-mono text-[9.5px] text-zinc-500 mt-0.5">{node.sublabel}</p>
+                    <p className="caption-mono text-[9.5px] text-secondary mt-0.5">{node.sublabel}</p>
                   )}
                 </div>
               </div>

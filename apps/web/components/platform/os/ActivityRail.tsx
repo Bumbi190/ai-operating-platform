@@ -101,11 +101,11 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
       >
         <div className="flex items-center justify-between mb-1.5">
-          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/45 inline-flex items-center gap-1.5">
+          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/60 inline-flex items-center gap-1.5">
             <Sparkles className="w-2.5 h-2.5" style={{ color: '#d4a574' }} /> AI-briefing
           </p>
           <button
-            className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-700 hover:text-zinc-400 transition-colors"
+            className="w-5 h-5 rounded-md flex items-center justify-center text-faint hover:text-zinc-400 transition-colors"
             style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.035)' }}
             title="Filtrera"
           >
@@ -116,7 +116,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
           <span className="relative inline-flex w-1 h-1">
             <span className="absolute inset-0 rounded-full bg-emerald-400/80" />
           </span>
-          <span className="text-[10px] text-zinc-600">
+          <span className="text-[10px] text-meta">
             Senaste händelserna i dina verksamheter
           </span>
         </div>
@@ -136,7 +136,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
               <Activity className="w-3.5 h-3.5 text-indigo-300" />
             </div>
             <p className="text-[11.5px] text-zinc-400 font-medium">Inget att rapportera än</p>
-            <p className="text-[10px] text-zinc-600 mt-1">Här dyker uppdateringar upp så fort något händer</p>
+            <p className="text-[10px] text-meta mt-1">Här dyker uppdateringar upp så fort något händer</p>
           </div>
         ) : (
           <div className="px-1.5 py-1.5">
@@ -173,7 +173,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
                   <div className="flex-1 min-w-0">
                     {/* tid + verksamhet — människovänlig topprad                */}
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="caption-mono text-[9px] text-zinc-500">{clock(e.timestamp)}</span>
+                      <span className="caption-mono text-[9px] text-secondary">{clock(e.timestamp)}</span>
                       {e.project && (
                         <>
                           <span className="text-zinc-800 text-[8px]">·</span>
@@ -189,7 +189,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
                       {e.title}
                     </p>
                     {e.detail && (
-                      <p className="text-[10px] text-zinc-500 mt-0.5 leading-snug line-clamp-1">
+                      <p className="text-[10px] text-secondary mt-0.5 leading-snug line-clamp-1">
                         {e.detail}
                       </p>
                     )}
@@ -215,7 +215,7 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         className="shrink-0 px-4 py-2.5 flex items-center justify-between caption-mono text-[9px]"
         style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <span className="text-zinc-700">Omnira</span>
+        <span className="text-faint">Omnira</span>
         <span className="flex items-center gap-1 text-emerald-500/70">
           <Zap className="w-2 h-2" /> uppdateras live
         </span>

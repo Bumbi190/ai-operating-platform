@@ -353,7 +353,7 @@ export function VoiceAssistant() {
                 <span className="text-[9px] text-indigo-400/60 ml-1 font-mono">ATLAS</span>
               </div>
             )}
-            {perf && <span className="text-[9px] text-zinc-500 font-mono ml-auto">{perf}</span>}
+            {perf && <span className="text-[9px] text-secondary font-mono ml-auto">{perf}</span>}
           </div>
         </div>
       )}
@@ -370,14 +370,14 @@ export function VoiceAssistant() {
           'pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-full border backdrop-blur-xl shadow-xl',
           'text-[11px] font-medium select-none transition-all duration-200',
           !open
-            ? 'bg-black/40 border-white/10 text-zinc-600 hover:text-zinc-300 hover:border-white/20 opacity-50 hover:opacity-100 scale-95 hover:scale-100'
+            ? 'bg-black/40 border-white/10 text-meta hover:text-zinc-300 hover:border-white/20 opacity-50 hover:opacity-100 scale-95 hover:scale-100'
             : phase === 'listening'
               ? 'bg-red-500/15 border-red-500/40 text-red-300 scale-105'
               : phase === 'thinking'
                 ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
                 : phase === 'speaking'
                   ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300'
-                  : 'bg-black/50 border-white/10 text-zinc-500',
+                  : 'bg-black/50 border-white/10 text-secondary',
         )}
       >
         {phase === 'listening' ? (
@@ -405,7 +405,7 @@ export function VoiceAssistant() {
 
       {/* Close when open+idle */}
       {open && phase === 'idle' && !response && (
-        <button onClick={closeAll} className="pointer-events-auto text-[9px] text-zinc-700 hover:text-zinc-500 font-mono">
+        <button onClick={closeAll} className="pointer-events-auto text-[9px] text-faint hover:text-secondary font-mono">
           stäng
         </button>
       )}

@@ -310,7 +310,7 @@ export function OmniraSidebarLogo({ isLive = true }: { isLive?: boolean }) {
             OMNIRA
           </span>
         </div>
-        <p className="text-[9px] text-zinc-600 tracking-widest uppercase leading-none mt-0.5">
+        <p className="text-[9px] text-meta tracking-widest uppercase leading-none mt-0.5">
           AI Operating System
         </p>
       </div>
@@ -377,7 +377,7 @@ export function OmniraLoadingLogo() {
             fontSize: 10,
             fontWeight: 500,
             letterSpacing: '0.3em',
-            color: 'rgba(255,255,255,0.3)',
+            color: 'rgba(255,255,255,0.6)',
             textTransform: 'uppercase',
           }}
         >

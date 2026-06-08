@@ -39,7 +39,7 @@ export default async function AgentActivityPage() {
             <Cpu className="w-4 h-4 text-indigo-300" />
           </div>
           <div>
-            <p className="caption-mono text-[10px] text-zinc-500 uppercase tracking-[0.2em] mb-1">Insyn i realtid</p>
+            <p className="caption-mono text-[10px] text-secondary uppercase tracking-[0.2em] mb-1">Insyn i realtid</p>
             <h1 className="display-hero text-gradient-instrument text-[26px] md:text-[30px] leading-tight">Agent Activity Center</h1>
             <p className="text-[13px] text-zinc-400 mt-1 inline-flex items-center gap-1.5">
               {running.length > 0
@@ -81,17 +81,17 @@ export default async function AgentActivityPage() {
                       <td className="px-5 py-3 font-medium text-zinc-200">{r.workflowName}</td>
                       <td className="px-5 py-3">
                         {r.projectName && (
-                          <span className="inline-flex items-center gap-1.5 text-zinc-500">
+                          <span className="inline-flex items-center gap-1.5 text-secondary">
                             <span className="w-1.5 h-1.5 rounded-full" style={{ background: r.projectColor ?? '#818cf8' }} />
                             {r.projectName}
                           </span>
                         )}
                       </td>
                       <td className="px-5 py-3"><RunStatusBadge status={r.status as RunStatus} /></td>
-                      <td className="px-5 py-3 text-zinc-600 caption-mono text-[10.5px]">
+                      <td className="px-5 py-3 text-meta caption-mono text-[10.5px]">
                         {r.finishedAt ? formatDistanceToNow(new Date(r.finishedAt), { addSuffix: true, locale: sv }) : '—'}
                       </td>
-                      <td className="px-5 py-3 text-zinc-500 caption-mono text-[10.5px]">{r.durationSec != null ? `${r.durationSec}s` : '—'}</td>
+                      <td className="px-5 py-3 text-secondary caption-mono text-[10.5px]">{r.durationSec != null ? `${r.durationSec}s` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -115,16 +115,16 @@ function RunningCard({ agent }: { agent: RunningAgent }) {
             <h3 className="font-semibold text-[15px] text-white/95 tracking-tight truncate">{agent.workflowName}</h3>
           </div>
           {agent.projectName && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 mt-1">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-secondary mt-1">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: agent.projectColor ?? '#818cf8' }} />
               {agent.projectName}
             </span>
           )}
         </div>
         <div className="text-right shrink-0">
-          <p className="caption-mono text-[10px] text-zinc-500 inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {fmtEta(agent.etaSeconds)}</p>
+          <p className="caption-mono text-[10px] text-secondary inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {fmtEta(agent.etaSeconds)}</p>
           {agent.startedAt && (
-            <p className="caption-mono text-[10px] text-zinc-600 mt-0.5">startade {formatDistanceToNow(new Date(agent.startedAt), { addSuffix: true, locale: sv })}</p>
+            <p className="caption-mono text-[10px] text-meta mt-0.5">startade {formatDistanceToNow(new Date(agent.startedAt), { addSuffix: true, locale: sv })}</p>
           )}
         </div>
       </div>

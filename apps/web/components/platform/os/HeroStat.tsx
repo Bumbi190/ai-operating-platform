@@ -67,7 +67,7 @@ export function HeroStat({
       <div className="relative px-5 pt-5 pb-4">
         {/* Top row */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-secondary">
             {label}
           </span>
           {icon && (
@@ -91,7 +91,7 @@ export function HeroStat({
                 {value}
               </p>
               {unit && (
-                <span className="text-[12px] font-semibold text-zinc-500 num">{unit}</span>
+                <span className="text-[12px] font-semibold text-secondary num">{unit}</span>
               )}
             </div>
             {(caption || delta) && (
@@ -107,7 +107,7 @@ export function HeroStat({
                     {delta.positive ? '↑' : '↓'} {delta.value}
                   </span>
                 )}
-                {caption && <span className="text-[10.5px] text-zinc-600">{caption}</span>}
+                {caption && <span className="text-[10.5px] text-meta">{caption}</span>}
               </div>
             )}
           </div>

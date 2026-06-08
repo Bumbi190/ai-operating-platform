@@ -59,13 +59,13 @@ export function CommandBar({ operator }: CommandBarProps) {
               <span className="eyebrow hidden md:inline">Omnira</span>
               {segments.map((seg, i) => (
                 <span key={seg.href} className="flex items-center gap-1.5 min-w-0">
-                  <ChevronRight className="w-3 h-3 text-zinc-700 shrink-0 hidden md:inline" />
+                  <ChevronRight className="w-3 h-3 text-faint shrink-0 hidden md:inline" />
                   <Link
                     href={seg.href}
                     className={
                       i === segments.length - 1
                         ? 'text-[12px] text-white/90 font-medium capitalize truncate tracking-tight'
-                        : 'text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors capitalize truncate tracking-tight hidden md:inline'
+                        : 'text-[12px] text-secondary hover:text-zinc-300 transition-colors capitalize truncate tracking-tight hidden md:inline'
                     }
                   >
                     {seg.label}
@@ -78,7 +78,7 @@ export function CommandBar({ operator }: CommandBarProps) {
 
         {/* Center · command search */}
         <button
-          className="hidden md:flex items-center gap-2 h-7 px-2.5 rounded-md text-[11px] text-zinc-500 transition-all ease-os hover:text-zinc-200 press"
+          className="hidden md:flex items-center gap-2 h-7 px-2.5 rounded-md text-[11px] text-secondary transition-all ease-os hover:text-zinc-200 press"
           style={{
             background: 'rgba(255,255,255,0.025)',
             border: '1px solid rgba(255,255,255,0.06)',
@@ -100,17 +100,17 @@ export function CommandBar({ operator }: CommandBarProps) {
         {/* Right cluster */}
         <div className="flex items-center gap-2.5 lg:gap-3 shrink-0 ml-auto lg:ml-0">
           <div className="hidden sm:flex items-baseline gap-2 caption-mono">
-            <span className="text-[10px] text-zinc-600">{dateLabel}</span>
+            <span className="text-[10px] text-meta">{dateLabel}</span>
             <span className="text-[12px] text-white/85 tabular-nums">
-              {hh}:{mm}<span className="text-zinc-700">:{ss}</span>
+              {hh}:{mm}<span className="text-faint">:{ss}</span>
             </span>
-            <span className="text-[9.5px] text-zinc-600">CET</span>
+            <span className="text-[9.5px] text-meta">CET</span>
           </div>
 
           <span className="hidden sm:block h-4 w-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
 
           <button
-            className="relative w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white transition-colors ease-os press"
+            className="relative w-7 h-7 rounded-md flex items-center justify-center text-secondary hover:text-white transition-colors ease-os press"
             style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
             aria-label="Notifications"
           >
@@ -143,7 +143,7 @@ export function CommandBar({ operator }: CommandBarProps) {
               >
                 <span className="text-[8.5px] font-bold text-white">{initials}</span>
               </div>
-              <span className="eyebrow !text-[9px] !text-zinc-500 !tracking-[0.18em] hidden xl:inline">
+              <span className="eyebrow !text-[9px] !text-secondary !tracking-[0.18em] hidden xl:inline">
                 Operator
               </span>
             </div>

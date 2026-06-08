@@ -11,6 +11,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { OSPage } from '@/components/platform/os'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
+import { ReviewActions } from './ReviewActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,6 +65,8 @@ export default async function ContentDetail({ params }: { params: { id: string }
         <h1 className="text-xl font-semibold text-zinc-100">{row.title ?? '(untitled)'}</h1>
         {row.summary && <p className="text-sm text-zinc-400 max-w-3xl">{row.summary}</p>}
       </header>
+
+      {row.status === 'pending_review' && <ReviewActions id={row.id} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* QA report */}

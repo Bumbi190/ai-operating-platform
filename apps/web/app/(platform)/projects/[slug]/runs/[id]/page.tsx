@@ -190,10 +190,15 @@ export default async function RunDetailPage({
                 {Object.entries(run.context as Record<string, string>)
                   .filter(([key]) => key !== 'månad')
                   .map(([key, value]) => {
-                    let preview = value
+                    // run.context is typed Record<string,string> but values can be
+                    // boolean/number/object at runtime → normalize before string ops.
+                    const sval = typeof value === 'string'
+                      ? value
+                      : value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+                    let preview = sval
                     let isImage = false
                     try {
-                      const parsed = JSON.parse(value)
+                      const parsed = JSON.parse(sval)
                       if (parsed?.urls || parsed?.errors) {
                         const urlCount = parsed.urls?.length ?? 0
                         const errCount = parsed.errors?.length ?? 0
@@ -201,7 +206,7 @@ export default async function RunDetailPage({
                         isImage = true
                       }
                     } catch { /* not JSON */ }
-                    if (value.startsWith('data:image/')) { preview = 'Bild (base64)'; isImage = true }
+                    if (sval.startsWith('data:image/')) { preview = 'Bild (base64)'; isImage = true }
 
                     return (
                       <div key={key} className="p-4">
@@ -213,7 +218,7 @@ export default async function RunDetailPage({
                           <p className="text-xs text-zinc-500 italic">{preview}</p>
                         ) : (
                           <pre className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto scrollbar-thin">
-                            {value.length > 500 ? value.slice(0, 500) + '…' : value}
+                            {sval.length > 500 ? sval.slice(0, 500) + '…' : sval}
                           </pre>
                         )}
                       </div>

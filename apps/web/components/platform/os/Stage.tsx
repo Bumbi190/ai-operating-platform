@@ -55,7 +55,7 @@ export function SectionHeader({
           {title}
         </h2>
         {caption && (
-          <p className="text-[12px] text-zinc-500 mt-1.5">{caption}</p>
+          <p className="text-[12px] text-secondary mt-1.5">{caption}</p>
         )}
       </div>
       {right && <div className="shrink-0">{right}</div>}

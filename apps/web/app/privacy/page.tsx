@@ -33,7 +33,7 @@ export default function PrivacyPage() {
             THE PROMPT
           </span>
         </Link>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Privacy Policy
         </span>
       </header>
@@ -41,7 +41,7 @@ export default function PrivacyPage() {
       {/* Content */}
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '72px 40px 120px' }}>
 
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 16 }}>
           Last updated: May 2025
         </p>
 
@@ -150,12 +150,12 @@ export default function PrivacyPage() {
         justifyContent: 'space-between',
         alignItems: 'center',
         fontSize: 12,
-        color: 'rgba(255,255,255,0.30)',
+        color: 'rgba(255,255,255,0.62)',
       }}>
         <span>© 2025 The Prompt. All rights reserved.</span>
         <div style={{ display: 'flex', gap: 24 }}>
-          <Link href="/privacy" style={{ color: 'rgba(255,255,255,0.50)', textDecoration: 'none' }}>Privacy</Link>
-          <Link href="/terms" style={{ color: 'rgba(255,255,255,0.50)', textDecoration: 'none' }}>Terms</Link>
+          <Link href="/privacy" style={{ color: 'rgba(255,255,255,0.62)', textDecoration: 'none' }}>Privacy</Link>
+          <Link href="/terms" style={{ color: 'rgba(255,255,255,0.62)', textDecoration: 'none' }}>Terms</Link>
         </div>
       </footer>
     </main>

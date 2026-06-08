@@ -48,7 +48,7 @@ export function ExecutiveBriefing({
       <div className="flex items-start gap-3 mb-1">
         <Sparkles className="w-5 h-5 mt-1 shrink-0" style={{ color: '#d4a574' }} />
         <div>
-          <p className="caption-mono text-[10px] text-zinc-500 uppercase tracking-[0.2em] mb-1">
+          <p className="caption-mono text-[10px] text-secondary uppercase tracking-[0.2em] mb-1">
             {briefing.dateLabel} · Dagens briefing
           </p>
           <h1 className="display-hero text-gradient-instrument text-[26px] md:text-[30px] leading-tight">
@@ -64,7 +64,7 @@ export function ExecutiveBriefing({
       <div className="ml-8 space-y-2 mb-5">
         {briefing.lines.map((l) => <BriefingRow key={l.slug} line={l} />)}
         {briefing.lines.length === 0 && (
-          <p className="text-[13px] text-zinc-500">Inga verksamheter ännu — skapa en för att börja.</p>
+          <p className="text-[13px] text-secondary">Inga verksamheter ännu — skapa en för att börja.</p>
         )}
       </div>
 
@@ -87,7 +87,7 @@ export function ExecutiveBriefing({
               </Link>
             )}
             {briefing.recommendedEta && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500">
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-secondary">
                 <Clock className="w-3.5 h-3.5" /> Uppskattad tid: {briefing.recommendedEta}
               </span>
             )}
@@ -98,7 +98,7 @@ export function ExecutiveBriefing({
       {/* Inline-kontext */}
       <div className="ml-8 flex items-center gap-5 mb-5 text-[12px] text-zinc-400">
         <span>Dagens intäkter: <strong className="text-white/90 num">{sek(briefing.revenueTodaySek)}</strong></span>
-        <span className="text-zinc-600">·</span>
+        <span className="text-meta">·</span>
         <span>{briefing.attentionCount === 0 ? 'Inget kräver dig' : `${briefing.attentionCount} kräver dig`}</span>
       </div>
 
@@ -137,9 +137,9 @@ function PriorityRow({ item, index }: { item: AttentionItem; index: number }) {
       <span className="num text-[13px] font-bold shrink-0" style={{ color }}>{index}</span>
       <div className="flex-1 min-w-0">
         <p className="text-[12.5px] font-medium text-white/90 truncate">{item.title}</p>
-        <p className="text-[11px] text-zinc-500 truncate">{item.reason}</p>
+        <p className="text-[11px] text-secondary truncate">{item.reason}</p>
       </div>
-      {item.action && <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-300 transition-colors shrink-0" />}
+      {item.action && <ChevronRight className="w-4 h-4 text-meta group-hover:text-zinc-300 transition-colors shrink-0" />}
     </div>
   )
   return item.action ? <Link href={item.action.href}>{inner}</Link> : <div>{inner}</div>
@@ -155,10 +155,10 @@ function BriefingRow({ line }: { line: BriefingLine }) {
       {icon}
       <span className="text-[13.5px]">
         <span className="font-semibold" style={{ color: line.color }}>{line.business}</span>
-        <span className="text-zinc-500"> — </span>
+        <span className="text-secondary"> — </span>
         <span className="text-zinc-300">{line.message}</span>
       </span>
-      <ChevronRight className="w-3.5 h-3.5 text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <ChevronRight className="w-3.5 h-3.5 text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
     </Link>
   )
 }

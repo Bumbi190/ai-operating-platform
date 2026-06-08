@@ -135,7 +135,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               Alla system nominella
             </span>
           </div>
-          <span className="caption-mono text-[9px] text-zinc-700">v4.2</span>
+          <span className="caption-mono text-[9px] text-faint">v4.2</span>
         </div>
       </div>
 
@@ -144,7 +144,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
 
         {/* Operations */}
         <div>
-          <p className="px-3 mb-3 eyebrow !text-[9px] !text-zinc-700">
+          <p className="px-3 mb-3 eyebrow !text-[9px] !text-faint">
             Operationer
           </p>
           <div className="space-y-1">
@@ -192,7 +192,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               return (
                 <div key={item.href}>
                   <Link href={item.href} className="nav-pill ease-os" data-active={isActive}>
-                    <Icon className={cn('w-3.5 h-3.5 shrink-0', isActive ? 'text-indigo-200' : 'text-zinc-600')} />
+                    <Icon className={cn('w-3.5 h-3.5 shrink-0', isActive ? 'text-indigo-200' : 'text-meta')} />
                     <span className="flex-1 tracking-tight">{item.label}</span>
                     {isActive && item.href === '/approvals' && (
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400" style={{ boxShadow: '0 0 6px #fbbf24' }} />
@@ -215,7 +215,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                               'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors',
                               isConvActive
                                 ? 'bg-white/[0.06] text-zinc-200'
-                                : 'text-zinc-600 hover:text-zinc-400',
+                                : 'text-meta hover:text-zinc-400',
                             )}
                           >
                             <MessageSquare className="w-2.5 h-2.5 shrink-0 opacity-60" />
@@ -239,12 +239,12 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         {/* Autonomous stack */}
         <div>
           <div className="flex items-center justify-between px-3 mb-3">
-            <span className="eyebrow !text-[9px] !text-zinc-700">
+            <span className="eyebrow !text-[9px] !text-faint">
               Autonom stack
             </span>
             <Link
               href="/projects/new"
-              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-zinc-600 hover:text-indigo-200 transition-colors ease-os"
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-meta hover:text-indigo-200 transition-colors ease-os"
               title="Driftsätt nytt projekt"
             >
               <Plus className="w-3 h-3" />
@@ -274,8 +274,8 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                     <span className="flex-1 truncate tracking-tight">{project.name}</span>
                     <ChevronRight
                       className={cn(
-                        'w-3 h-3 shrink-0 transition-all ease-os text-zinc-700',
-                        isActive ? 'rotate-90 text-zinc-400' : 'group-hover:text-zinc-500',
+                        'w-3 h-3 shrink-0 transition-all ease-os text-faint',
+                        isActive ? 'rotate-90 text-zinc-400' : 'group-hover:text-secondary',
                       )}
                     />
                   </Link>
@@ -298,7 +298,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                             href={href}
                             className={cn(
                               'flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] transition-all ease-os',
-                              isSubActive ? 'text-white/95 font-medium' : 'text-zinc-600 hover:text-zinc-300',
+                              isSubActive ? 'text-white/95 font-medium' : 'text-meta hover:text-zinc-300',
                             )}
                             style={isSubActive ? {
                               background: `linear-gradient(90deg, ${project.color}24, transparent)`,
@@ -318,7 +318,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
             {projects.length === 0 && (
               <Link
                 href="/projects/new"
-                className="flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-600 hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"
+                className="flex items-center gap-2 px-3 py-2 text-[11px] text-meta hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"
               >
                 <Plus className="w-3 h-3" />
                 Driftsätt ditt första system
@@ -334,7 +334,7 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
       >
         <Link href="/settings" className="nav-pill ease-os" data-active={pathname === '/settings'}>
-          <Settings className="w-3.5 h-3.5 shrink-0 text-zinc-600" />
+          <Settings className="w-3.5 h-3.5 shrink-0 text-meta" />
           <span className="tracking-tight">Inställningar</span>
         </Link>
 
@@ -360,12 +360,12 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               <p className="text-[11px] text-white/90 truncate font-medium tracking-tight">
                 {userEmail.split('@')[0]}
               </p>
-              <p className="eyebrow !text-[8.5px] !text-zinc-600 !tracking-[0.20em] mt-0.5">Operatör</p>
+              <p className="eyebrow !text-[8.5px] !text-meta !tracking-[0.20em] mt-0.5">Operatör</p>
             </div>
             <button
               onClick={handleSignOut}
               title="Logga ut"
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/[0.06] text-zinc-500 hover:text-white ease-os"
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/[0.06] text-secondary hover:text-white ease-os"
             >
               <LogOut className="w-3 h-3" />
             </button>

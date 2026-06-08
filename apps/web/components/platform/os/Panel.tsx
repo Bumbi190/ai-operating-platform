@@ -73,7 +73,7 @@ export function PanelHeader({
             {title}
           </h2>
           {subtitle && (
-            <p className="text-[11.5px] text-zinc-500 mt-1">{subtitle}</p>
+            <p className="text-[11.5px] text-secondary mt-1">{subtitle}</p>
           )}
         </div>
       </div>

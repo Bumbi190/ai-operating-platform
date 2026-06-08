@@ -102,7 +102,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close"
-            className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white transition-colors ease-os"
+            className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center text-secondary hover:text-white transition-colors ease-os"
             style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
           >
             <X className="w-3.5 h-3.5" />

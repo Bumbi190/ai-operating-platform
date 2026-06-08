@@ -75,14 +75,14 @@ export function Instrument({
           {value}
         </span>
         {unit && (
-          <span className="text-[11px] text-zinc-600 caption-mono">{unit}</span>
+          <span className="text-[11px] text-meta caption-mono">{unit}</span>
         )}
       </div>
 
       {/* Caption + sparkline */}
       <div className="mt-2.5 flex items-center justify-between gap-3">
         {caption && (
-          <span className="text-[10.5px] text-zinc-600 truncate">{caption}</span>
+          <span className="text-[10.5px] text-meta truncate">{caption}</span>
         )}
         {trend && trend.length > 1 && (
           <div className="shrink-0 ml-auto">

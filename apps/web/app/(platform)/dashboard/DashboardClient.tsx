@@ -96,7 +96,7 @@ function ApprovalRow({ approval }: { approval: PendingApproval }) {
 
   if (done) {
     return (
-      <div className="px-5 py-3 flex items-center gap-2 text-[11px] text-zinc-500">
+      <div className="px-5 py-3 flex items-center gap-2 text-[11px] text-secondary">
         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
         <span>{approval.output_key} — hanterad</span>
       </div>
@@ -118,7 +118,7 @@ function ApprovalRow({ approval }: { approval: PendingApproval }) {
             {approval.workflow_name ?? 'Arbetsflöde'} — <span className="text-amber-300/80 font-mono">{approval.output_key}</span>
           </p>
           {approval.project_name && (
-            <p className="text-[10px] text-zinc-500 truncate">{approval.project_name}</p>
+            <p className="text-[10px] text-secondary truncate">{approval.project_name}</p>
           )}
         </div>
       </div>

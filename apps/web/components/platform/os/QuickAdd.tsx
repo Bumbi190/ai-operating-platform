@@ -90,7 +90,7 @@ function QuickAddModal({ projects, onClose }: { projects: ProjectOpt[]; onClose:
         style={{ animationFillMode: 'both' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={onClose} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
+        <button onClick={onClose} className="absolute top-4 right-4 text-secondary hover:text-zinc-200 transition-colors">
           <X className="w-4 h-4" />
         </button>
 

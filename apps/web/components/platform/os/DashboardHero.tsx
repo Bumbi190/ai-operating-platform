@@ -73,7 +73,7 @@ export function DashboardHero({ summary }: { summary: HeroSummary }) {
             Övervakar och driver autonoma verksamheter
           </p>
         </div>
-        <div className="flex items-center gap-2 caption-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
+        <div className="flex items-center gap-2 caption-mono text-[10px] text-secondary uppercase tracking-[0.18em]">
           <PulseDot tone="emerald" size={5} /> Live
         </div>
       </div>
@@ -99,7 +99,7 @@ export function DashboardHero({ summary }: { summary: HeroSummary }) {
                 {s.value}
               </p>
               <p className="eyebrow !text-[8.5px] mt-1.5">{s.label}</p>
-              <p className="text-[10.5px] text-zinc-500 mt-0.5">{s.caption}</p>
+              <p className="text-[10.5px] text-secondary mt-0.5">{s.caption}</p>
             </div>
           )
           return s.href

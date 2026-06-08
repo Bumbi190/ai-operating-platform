@@ -126,7 +126,7 @@ export function MorningBugPopup({
               <div className="flex items-start gap-2.5">
                 {dot(item.level)}
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-zinc-500">{item.project}</p>
+                  <p className="text-xs text-secondary">{item.project}</p>
                   <p className="text-sm font-medium text-foreground/90 break-words">{item.title}</p>
                   {item.message && <p className="text-xs text-zinc-400 mt-0.5 break-words">{item.message}</p>}
                 </div>
@@ -147,7 +147,7 @@ export function MorningBugPopup({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 p-4 border-t border-zinc-800">
-          <p className="text-xs text-zinc-500 inline-flex items-center gap-1.5">
+          <p className="text-xs text-secondary inline-flex items-center gap-1.5">
             <ClipboardCheck className="w-3.5 h-3.5" /> Kopiera en prompt → klistra in i Claude-chatten.
           </p>
           <button onClick={dismiss} className="text-xs px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white">

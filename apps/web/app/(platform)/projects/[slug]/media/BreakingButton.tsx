@@ -133,11 +133,11 @@ export function BreakingButton({ projectId }: { projectId: string }) {
                 </div>
                 <div>
                   <h2 className="text-sm font-black text-zinc-100">🚨 Breaking — newsjacking</h2>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">Producerar &amp; publicerar direkt, utanför schemat</p>
+                  <p className="text-[10px] text-meta mt-0.5">Producerar &amp; publicerar direkt, utanför schemat</p>
                 </div>
               </div>
               <button onClick={close} disabled={loading}
-                className="text-zinc-600 hover:text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                className="text-meta hover:text-zinc-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -151,7 +151,7 @@ export function BreakingButton({ projectId }: { projectId: string }) {
                     <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-[12px] font-semibold text-red-300">Det gick inte att producera</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">{error}</p>
+                      <p className="text-[11px] text-secondary mt-0.5">{error}</p>
                     </div>
                   </div>
                 )}
@@ -162,7 +162,7 @@ export function BreakingButton({ projectId }: { projectId: string }) {
                     <Clock className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-[12px] font-semibold text-indigo-300">Producerar i bakgrunden</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                      <p className="text-[11px] text-secondary mt-0.5">
                         Rendern tog längre än inline-budgeten. Säkerhetsnätet (pipeline-retry) slutför och
                         publicerar videon automatiskt inom några minuter — du behöver inte göra något mer.
                       </p>
@@ -175,9 +175,9 @@ export function BreakingButton({ projectId }: { projectId: string }) {
                     style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-3 h-3 text-amber-400" />
-                      <span className="text-[9.5px] font-semibold text-zinc-600 uppercase tracking-[0.15em]">Hook</span>
+                      <span className="text-[9.5px] font-semibold text-meta uppercase tracking-[0.15em]">Hook</span>
                       {result.steps?.source && (
-                        <span className="ml-auto text-[9px] text-zinc-700 uppercase tracking-wide">
+                        <span className="ml-auto text-[9px] text-faint uppercase tracking-wide">
                           källa: {result.steps.source}
                         </span>
                       )}
@@ -230,7 +230,7 @@ export function BreakingButton({ projectId }: { projectId: string }) {
 
                 {/* Lägesbeskrivning + input */}
                 {mode === 'auto' && (
-                  <p className="text-[11px] text-zinc-500 leading-relaxed px-0.5">
+                  <p className="text-[11px] text-secondary leading-relaxed px-0.5">
                     News Hunter hämtar dagens största AI-story automatiskt och producerar en reel av den.
                     Inget att fylla i — klicka bara nedan.
                   </p>
@@ -238,30 +238,30 @@ export function BreakingButton({ projectId }: { projectId: string }) {
 
                 {mode === 'url' && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide px-0.5">Artikel-URL</label>
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wide px-0.5">Artikel-URL</label>
                     <input
                       type="url"
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
                       disabled={loading}
                       placeholder="https://…"
-                      className="w-full px-3 py-2.5 rounded-xl text-[12px] text-zinc-200 placeholder:text-zinc-700 outline-none transition-all disabled:opacity-40 focus:ring-1 focus:ring-red-400/30"
+                      className="w-full px-3 py-2.5 rounded-xl text-[12px] text-zinc-200 placeholder:text-faint outline-none transition-all disabled:opacity-40 focus:ring-1 focus:ring-red-400/30"
                       style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.08)' }}
                     />
-                    <p className="text-[10px] text-zinc-700 px-0.5">Skrapas på servern och blir manusunderlag.</p>
+                    <p className="text-[10px] text-faint px-0.5">Skrapas på servern och blir manusunderlag.</p>
                   </div>
                 )}
 
                 {mode === 'text' && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide px-0.5">Artikeltext</label>
+                    <label className="text-[10px] font-semibold text-secondary uppercase tracking-wide px-0.5">Artikeltext</label>
                     <textarea
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       disabled={loading}
                       rows={5}
                       placeholder="Klistra in artikeltexten här för full kontroll…"
-                      className="w-full px-3 py-2.5 rounded-xl text-[12px] text-zinc-200 placeholder:text-zinc-700 outline-none transition-all resize-none disabled:opacity-40 focus:ring-1 focus:ring-red-400/30"
+                      className="w-full px-3 py-2.5 rounded-xl text-[12px] text-zinc-200 placeholder:text-faint outline-none transition-all resize-none disabled:opacity-40 focus:ring-1 focus:ring-red-400/30"
                       style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.08)' }}
                     />
                   </div>
@@ -269,8 +269,8 @@ export function BreakingButton({ projectId }: { projectId: string }) {
 
                 {/* Tidsnotis */}
                 <div className="flex items-start gap-2 px-0.5">
-                  <Clock className="w-3 h-3 text-zinc-600 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-zinc-600 leading-relaxed">
+                  <Clock className="w-3 h-3 text-meta shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-meta leading-relaxed">
                     Hela kedjan (analys → manus → röst → bild → render → publicering) tar några minuter.
                     Håll fönstret öppet om du vill se resultatet — annars slutförs den ändå i bakgrunden.
                   </p>

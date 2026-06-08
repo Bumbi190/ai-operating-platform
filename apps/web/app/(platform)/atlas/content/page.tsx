@@ -84,7 +84,7 @@ export default async function ContentCenter() {
         </span>
         <div>
           <h1 className="text-lg font-semibold text-zinc-100">Content Center</h1>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-secondary">
             System A — Website Content · Atlas is the editorial system of record · website is destination-only
             {pendingCount > 0 && <span className="text-amber-400"> · {pendingCount} pending review</span>}
           </p>
@@ -95,12 +95,12 @@ export default async function ContentCenter() {
         const items = byStatus(group.key)
         return (
           <section key={group.key} className="space-y-2">
-            <h2 className="text-xs font-mono uppercase tracking-wide text-zinc-500">
-              {group.label} <span className="text-zinc-600">({items.length})</span>
+            <h2 className="text-xs font-mono uppercase tracking-wide text-secondary">
+              {group.label} <span className="text-meta">({items.length})</span>
             </h2>
 
             {items.length === 0 ? (
-              <p className="text-xs text-zinc-600 italic px-1">Inga objekt.</p>
+              <p className="text-xs text-meta italic px-1">Inga objekt.</p>
             ) : (
               <ul className="space-y-2">
                 {items.map(r => {
@@ -126,7 +126,7 @@ export default async function ContentCenter() {
                           </span>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-secondary">
                           <span className="inline-flex items-center gap-1">
                             {pass.ok === true && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
                             {pass.ok === false && <XCircle className="w-3 h-3 text-rose-400" />}

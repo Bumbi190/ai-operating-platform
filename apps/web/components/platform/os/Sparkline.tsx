@@ -174,7 +174,7 @@ export function RadialDial({
         <span className="text-[13px] font-bold num" style={{ color }}>
           {Math.round(value)}
         </span>
-        {label && <span className="text-[8px] text-zinc-500 uppercase tracking-wider">{label}</span>}
+        {label && <span className="text-[8px] text-secondary uppercase tracking-wider">{label}</span>}
       </div>
     </div>
   )

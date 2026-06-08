@@ -110,7 +110,7 @@ export default async function DashboardPage() {
             caption={`${hero.activeBusinesses} av ${projects.length} verksamheter aktiva`}
             right={
               <div className="flex items-center gap-3">
-                <Link href="/system" className="text-[11px] text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1 transition-colors">
+                <Link href="/system" className="text-[11px] text-secondary hover:text-zinc-300 inline-flex items-center gap-1 transition-colors">
                   <Gauge className="w-3.5 h-3.5" /> Systemtelemetri <ChevronRight className="w-3 h-3 opacity-60" />
                 </Link>
                 {projects.length > 0 && <QuickAdd projects={projects.map(p => ({ id: p.id, name: p.name, slug: p.slug, color: p.color }))} />}

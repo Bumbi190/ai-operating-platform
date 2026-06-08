@@ -93,8 +93,8 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
                   {isLive && <PulseDot tone={item.status === 'rendering' ? 'violet' : 'indigo'} size={4} />}
                   {item.project && (
                     <>
-                      <span className="text-zinc-700 text-[8px]">·</span>
-                      <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+                      <span className="text-faint text-[8px]">·</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-secondary">
                         <span className="w-1 h-1 rounded-full" style={{ background: item.projectColor ?? '#818cf8' }} />
                         {item.project}
                       </span>
@@ -120,7 +120,7 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
                       {p}
                     </span>
                   ))}
-                  <span className="caption-mono text-[9.5px] text-zinc-600 inline-flex items-center gap-1 ml-1">
+                  <span className="caption-mono text-[9.5px] text-meta inline-flex items-center gap-1 ml-1">
                     <Clock className="w-2.5 h-2.5" />
                     {timeUntil(item.scheduledAt)}
                   </span>

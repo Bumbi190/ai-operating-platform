@@ -664,7 +664,7 @@ export default async function DashboardPage() {
               subtitle="Tokenanvändning · genomströmning · kölängd · senaste 7 dagar"
               icon={<Gauge className="w-4 h-4 text-indigo-300" />}
               right={
-                <div className="flex items-center gap-2 caption-mono text-[9.5px] text-zinc-500 uppercase tracking-[0.18em]">
+                <div className="flex items-center gap-2 caption-mono text-[9.5px] text-secondary uppercase tracking-[0.18em]">
                   <PulseDot tone="emerald" size={5} /> Strömmar
                 </div>
               }
@@ -702,7 +702,7 @@ export default async function DashboardPage() {
             <div className="mt-7 pt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="flex items-center justify-between mb-3">
                 <span className="eyebrow !text-[9.5px]">All-time aktivitet</span>
-                <span className="caption-mono text-[10px] text-zinc-600">
+                <span className="caption-mono text-[10px] text-meta">
                   {metrics.totalRuns} körningar · {metrics.failedRuns} misslyckade
                 </span>
               </div>
@@ -798,7 +798,7 @@ export default async function DashboardPage() {
             title="Senaste körningar"
             caption={`${metrics.totalRuns} totala körningar över alla arbetsflöden`}
             right={
-              <span className="caption-mono text-[10px] text-zinc-600">
+              <span className="caption-mono text-[10px] text-meta">
                 {metrics.failedRuns} misslyckade · {metrics.doneRuns} slutförda
               </span>
             }
@@ -839,7 +839,7 @@ export default async function DashboardPage() {
                           </td>
                           <td className="px-6 py-3.5">
                             {project && (
-                              <span className="inline-flex items-center gap-1.5 text-zinc-500">
+                              <span className="inline-flex items-center gap-1.5 text-secondary">
                                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: project.color, boxShadow: `0 0 6px ${project.color}88` }} />
                                 {project.name}
                               </span>
@@ -848,10 +848,10 @@ export default async function DashboardPage() {
                           <td className="px-6 py-3.5">
                             <RunStatusBadge status={run.status as RunStatus} />
                           </td>
-                          <td className="px-6 py-3.5 text-zinc-600 caption-mono text-[10.5px]">
+                          <td className="px-6 py-3.5 text-meta caption-mono text-[10.5px]">
                             {formatDistanceToNow(new Date(run.created_at), { addSuffix: true, locale: sv })}
                           </td>
-                          <td className="px-6 py-3.5 text-zinc-500 caption-mono text-[10.5px]">
+                          <td className="px-6 py-3.5 text-secondary caption-mono text-[10.5px]">
                             {duration != null
                               ? `${duration}s`
                               : isRunning
@@ -863,7 +863,7 @@ export default async function DashboardPage() {
                           <td className="px-6 py-3.5 text-right">
                             <Link
                               href={`/projects/${project?.slug}/runs/${run.id}`}
-                              className="inline-flex items-center gap-1 text-zinc-600 hover:text-indigo-300 transition-colors text-[10.5px] opacity-50 group-hover:opacity-100 ease-os"
+                              className="inline-flex items-center gap-1 text-meta hover:text-indigo-300 transition-colors text-[10.5px] opacity-50 group-hover:opacity-100 ease-os"
                             >
                               <Eye className="w-3 h-3" /> Spåra
                             </Link>
@@ -1006,7 +1006,7 @@ function HealthRow({
 }: { label: string; value: string; dot: 'emerald' | 'amber' | 'rose' | 'indigo' }) {
   return (
     <div className="flex items-center justify-between text-[11px]">
-      <span className="flex items-center gap-2 text-zinc-500">
+      <span className="flex items-center gap-2 text-secondary">
         <PulseDot tone={dot} size={5} />
         {label}
       </span>
@@ -1095,11 +1095,11 @@ function ProjectTile({
 
       <div className="relative">
         <h3 className="font-semibold text-[15px] text-white/95 mb-1 tracking-tight">{project.name}</h3>
-        <p className="caption-mono text-[10.5px] text-zinc-600">/{project.slug}</p>
+        <p className="caption-mono text-[10.5px] text-meta">/{project.slug}</p>
       </div>
 
       <div
-        className="relative mt-5 pt-3.5 flex items-center gap-5 text-[11px] text-zinc-500"
+        className="relative mt-5 pt-3.5 flex items-center gap-5 text-[11px] text-secondary"
         style={{ borderTop: `1px solid ${project.color}1a` }}
       >
         <span className="inline-flex items-center gap-1.5">

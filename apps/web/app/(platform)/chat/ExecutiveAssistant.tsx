@@ -54,7 +54,7 @@ export function ExecutiveAssistant({ projects, operatorName }: { projects: Proje
         </div>
         <div>
           <h1 className="display-hero text-gradient-instrument text-[22px] leading-tight">Executive Assistant</h1>
-          <p className="text-[12px] text-zinc-500">{operatorName ? `Vad kan jag hjälpa dig med, ${operatorName}?` : 'Vad kan jag hjälpa dig med?'}</p>
+          <p className="text-[12px] text-secondary">{operatorName ? `Vad kan jag hjälpa dig med, ${operatorName}?` : 'Vad kan jag hjälpa dig med?'}</p>
         </div>
       </div>
 
@@ -71,7 +71,7 @@ export function ExecutiveAssistant({ projects, operatorName }: { projects: Proje
             placeholder="Fråga assistenten vad som helst om dina verksamheter…"
             rows={1}
             disabled={loading}
-            className="flex-1 bg-transparent text-[14px] resize-none focus:outline-none placeholder:text-zinc-600 max-h-32 scrollbar-thin disabled:opacity-50"
+            className="flex-1 bg-transparent text-[14px] resize-none focus:outline-none placeholder:text-meta max-h-32 scrollbar-thin disabled:opacity-50"
             style={{ minHeight: '24px' }}
           />
           <button

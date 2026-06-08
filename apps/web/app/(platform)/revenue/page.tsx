@@ -88,7 +88,7 @@ const LEAD_STATUS_COLORS: Record<string, string> = {
   warm: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
   proposal: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
   won: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-  lost: 'text-zinc-500 bg-zinc-500/10 border-zinc-500/20',
+  lost: 'text-secondary bg-zinc-500/10 border-zinc-500/20',
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────

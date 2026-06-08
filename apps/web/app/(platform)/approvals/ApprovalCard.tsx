@@ -226,11 +226,11 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
             </span>
             {isPending && <PulseDot tone="amber" size={5} />}
           </div>
-          <p className="text-[10.5px] text-zinc-500 flex items-center gap-2 flex-wrap">
+          <p className="text-[10.5px] text-secondary flex items-center gap-2 flex-wrap">
             <span>{date}</span>
-            <span className="text-zinc-700">·</span>
+            <span className="text-faint">·</span>
             <span className="font-mono text-indigo-300/70">{approval.output_key}</span>
-            <span className="text-zinc-700">·</span>
+            <span className="text-faint">·</span>
             <span>av {agentName}</span>
           </p>
         </div>
@@ -243,15 +243,15 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
         )}
 
         {expanded
-          ? <ChevronUp className="w-4 h-4 text-zinc-500 shrink-0" />
-          : <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
+          ? <ChevronUp className="w-4 h-4 text-secondary shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-secondary shrink-0" />
         }
       </button>
 
       {/* Collapsed preview line */}
       {!expanded && (
         <div className="px-5 pb-3 pt-0 relative">
-          <p className="text-[11.5px] text-zinc-500 line-clamp-2 leading-relaxed">{preview}…</p>
+          <p className="text-[11.5px] text-secondary line-clamp-2 leading-relaxed">{preview}…</p>
         </div>
       )}
 
@@ -288,7 +288,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-indigo-300/80">
                   AI-exekutiv analys
                 </span>
-                {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />}
+                {evalLoading && <Loader2 className="w-3 h-3 animate-spin text-secondary" />}
               </div>
 
               {evalResult ? (
@@ -349,7 +349,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                   style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)' }}
                 >
                   <Activity className="w-3.5 h-3.5 text-indigo-300 mx-auto mb-1.5" />
-                  <p className="text-[10.5px] text-zinc-500">Ingen utvärdering tillgänglig för denna utdatatyp</p>
+                  <p className="text-[10.5px] text-secondary">Ingen utvärdering tillgänglig för denna utdatatyp</p>
                 </div>
               )}
             </div>
@@ -366,7 +366,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                 <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-violet-300/80">
                   Resonemangskedja
                 </span>
-                <span className="text-[9.5px] text-zinc-600 font-mono ml-1">
+                <span className="text-[9.5px] text-meta font-mono ml-1">
                   · {reasoning.length} steg · varför detta beslutades
                 </span>
               </div>
@@ -383,7 +383,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
                 background: 'rgba(255,255,255,0.015)',
               }}
             >
-              <p className="text-[9.5px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-1.5">
+              <p className="text-[9.5px] uppercase font-bold tracking-[0.2em] text-secondary mb-1.5">
                 Granskarnotering
               </p>
               <p className="text-[11.5px] text-zinc-300 italic">{approval.reviewer_notes}</p>
@@ -452,8 +452,8 @@ function DialBlock({
   return (
     <div className="flex flex-col items-center">
       <RadialDial value={value} color={color} size={62} thickness={4} />
-      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500 mt-1.5">{label}</p>
-      <p className="text-[8.5px] text-zinc-600 font-mono mt-0.5">{sub}</p>
+      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-secondary mt-1.5">{label}</p>
+      <p className="text-[8.5px] text-meta font-mono mt-0.5">{sub}</p>
     </div>
   )
 }

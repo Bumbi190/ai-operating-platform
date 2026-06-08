@@ -123,7 +123,7 @@ export default async function ApprovalsPage() {
             <ShieldCheck className="w-6 h-6 text-indigo-300" />
           </div>
           <p className="text-[14px] text-zinc-300 font-medium">Inkorg tom</p>
-          <p className="text-[11.5px] text-zinc-600 mt-1.5 max-w-sm mx-auto">
+          <p className="text-[11.5px] text-meta mt-1.5 max-w-sm mx-auto">
             Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning.
           </p>
         </Panel>
@@ -180,7 +180,7 @@ function StatTile({
         style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.5 }}
       />
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-zinc-500">{label}</span>
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-secondary">{label}</span>
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center chrome-edge"
           style={{ background: `${color}1a`, border: `1px solid ${color}33` }}

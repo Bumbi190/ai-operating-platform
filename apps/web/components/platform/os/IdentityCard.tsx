@@ -59,9 +59,9 @@ export function IdentityCard({
         <p className="eyebrow eyebrow-accent !text-[9px]">Authenticated</p>
         <p className="text-[15px] font-semibold text-white tracking-tight mt-1 truncate">{name}</p>
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-[10.5px] text-zinc-500 caption-mono">{clearance}</span>
-          <span className="text-zinc-700 text-[10px]">·</span>
-          <span className="text-[10.5px] text-zinc-500">{systemsAccess}</span>
+          <span className="text-[10.5px] text-secondary caption-mono">{clearance}</span>
+          <span className="text-faint text-[10px]">·</span>
+          <span className="text-[10.5px] text-secondary">{systemsAccess}</span>
         </div>
       </div>
 

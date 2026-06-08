@@ -62,10 +62,10 @@ export default async function AtlasOperations() {
           <Metric icon={Clock}        color="text-zinc-300"   label="Väntar på render" value={nf(o.prompt.waitingRender)} />
           <Metric icon={Loader2}      color="text-indigo-300" label="Rendering pågår" value={nf(o.prompt.rendering)} />
           <Metric icon={Send}         color="text-amber-300"  label="Väntar publicering" value={nf(o.prompt.waitingPublish)} hint="färska ≤4 dagar" />
-          <Metric icon={XCircle}      color={o.prompt.failed24h ? 'text-red-400' : 'text-zinc-500'} label="Misslyckade 24h" value={nf(o.prompt.failed24h)} />
+          <Metric icon={XCircle}      color={o.prompt.failed24h ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.prompt.failed24h)} />
           <Metric icon={Archive}      color="text-zinc-400"   label="Arkiverade (gammal news)" value={nf(o.prompt.archived)} hint=">4 dagar — publiceras ej" />
-          <Metric icon={RefreshCw}    color={o.prompt.retrying ? 'text-amber-300' : 'text-zinc-500'} label="Återförsöker" value={nf(o.prompt.retrying)} hint="självläker" />
-          <Metric icon={AlertTriangle} color={o.prompt.pipelineErrors ? 'text-red-400' : 'text-zinc-500'} label="Fastnade fel" value={nf(o.prompt.pipelineErrors)} hint="kräver åtgärd" />
+          <Metric icon={RefreshCw}    color={o.prompt.retrying ? 'text-amber-300' : 'text-secondary'} label="Återförsöker" value={nf(o.prompt.retrying)} hint="självläker" />
+          <Metric icon={AlertTriangle} color={o.prompt.pipelineErrors ? 'text-red-400' : 'text-secondary'} label="Fastnade fel" value={nf(o.prompt.pipelineErrors)} hint="kräver åtgärd" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Metric icon={Eye} color="text-pink-400"  label="Instagram-visningar" value={nf(o.prompt.views.instagram)} />
@@ -96,7 +96,7 @@ export default async function AtlasOperations() {
           <Metric icon={DollarSign} color="text-emerald-400" label="MRR" value={o.familje.mrrSek === null ? '—' : `${nf(o.familje.mrrSek)} kr`} />
           <Metric icon={Sparkles}   color="text-indigo-300"  label="Nya denna månad" value={o.familje.newSubscribers === null ? '—' : nf(o.familje.newSubscribers)} />
           <Metric icon={Clock}      color="text-amber-300"   label="Trial" value={o.familje.trialing === null ? '—' : nf(o.familje.trialing)} />
-          <Metric icon={XCircle}    color={(o.familje.churnRatePct ?? 0) > 0 ? 'text-red-400' : 'text-zinc-500'} label="Churn" value={o.familje.churnRatePct === null ? '—' : `${o.familje.churnRatePct}%`} />
+          <Metric icon={XCircle}    color={(o.familje.churnRatePct ?? 0) > 0 ? 'text-red-400' : 'text-secondary'} label="Churn" value={o.familje.churnRatePct === null ? '—' : `${o.familje.churnRatePct}%`} />
           <Metric icon={Sparkles}   color="text-yellow-400"  label="Leads" value={nf(o.familje.leads)} />
         </div>
       </OSLayer>
@@ -108,7 +108,7 @@ export default async function AtlasOperations() {
           <Metric icon={Users}    color="text-indigo-300" label="Beta-användare" value={o.gainpilot.betaUsers === null ? '—' : nf(o.gainpilot.betaUsers)} hint={o.gainpilot.betaUsers === null ? 'Ingen datakälla ännu' : undefined} />
           <Metric icon={Activity} color="text-emerald-400" label="Aktiva användare" value={o.gainpilot.activeUsers === null ? '—' : nf(o.gainpilot.activeUsers)} hint={o.gainpilot.activeUsers === null ? 'Ingen datakälla ännu' : undefined} />
           <Metric icon={Sparkles} color="text-yellow-400" label="Leads" value={nf(o.gainpilot.leads)} />
-          <Metric icon={XCircle}  color={o.gainpilot.failed24h ? 'text-red-400' : 'text-zinc-500'} label="Misslyckade 24h" value={nf(o.gainpilot.failed24h)} />
+          <Metric icon={XCircle}  color={o.gainpilot.failed24h ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.gainpilot.failed24h)} />
         </div>
       </OSLayer>
 
@@ -119,11 +119,11 @@ export default async function AtlasOperations() {
           <Metric icon={DollarSign} color="text-emerald-400" label="API-kostnad idag" value={`${nf(o.system.costTodaySek)} kr`} />
           <Metric icon={DollarSign} color="text-emerald-400" label="API-kostnad månad" value={`${nf(o.system.costMonthSek)} kr`} />
           <Metric icon={Loader2}    color="text-indigo-300"  label="Aktiva workflows" value={nf(o.system.activeWorkflows)} />
-          <Metric icon={AlertTriangle} color={o.system.stuckWorkflows ? 'text-amber-400' : 'text-zinc-500'} label="Fastnade workflows" value={nf(o.system.stuckWorkflows)} />
-          <Metric icon={XCircle}    color={o.system.failedWorkflows ? 'text-red-400' : 'text-zinc-500'} label="Misslyckade 24h" value={nf(o.system.failedWorkflows)} />
+          <Metric icon={AlertTriangle} color={o.system.stuckWorkflows ? 'text-amber-400' : 'text-secondary'} label="Fastnade workflows" value={nf(o.system.stuckWorkflows)} />
+          <Metric icon={XCircle}    color={o.system.failedWorkflows ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.system.failedWorkflows)} />
         </div>
         <div className="rounded-xl border border-border bg-card p-4 flex items-start gap-3">
-          <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${o.system.lastError ? 'text-red-400' : 'text-zinc-500'}`} />
+          <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${o.system.lastError ? 'text-red-400' : 'text-secondary'}`} />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-muted-foreground">Senaste fel</p>
             {o.system.lastError ? (
@@ -165,7 +165,7 @@ export default async function AtlasOperations() {
                   {t.lastError ? ` · ${t.lastError.slice(0, 50)}` : ''}
                 </span>
                 <span className={`text-[10px] uppercase tracking-wide shrink-0 ${
-                  t.status === 'ok' ? 'text-emerald-400' : t.status === 'warning' ? 'text-amber-300' : t.status === 'unknown' ? 'text-zinc-500' : 'text-red-400'
+                  t.status === 'ok' ? 'text-emerald-400' : t.status === 'warning' ? 'text-amber-300' : t.status === 'unknown' ? 'text-secondary' : 'text-red-400'
                 }`}>{t.status}</span>
               </div>
             )
@@ -198,7 +198,7 @@ export default async function AtlasOperations() {
                 </span>
                 <span className={`text-[10px] uppercase tracking-wide shrink-0 ${
                   h.status === 'ok' ? 'text-emerald-400' : h.status === 'late' ? 'text-amber-300'
-                  : h.status === 'endpoint_failing' ? 'text-orange-300' : h.status === 'dead' ? 'text-red-400' : 'text-zinc-500'
+                  : h.status === 'endpoint_failing' ? 'text-orange-300' : h.status === 'dead' ? 'text-red-400' : 'text-secondary'
                 }`}>{h.status}</span>
               </div>
             )

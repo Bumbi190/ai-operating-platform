@@ -37,8 +37,8 @@ export function EmptyState({
         </div>
         <div className="relative">
           {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
-          <p className="text-[12px] text-zinc-500 tracking-tight">{title}</p>
-          {body && <p className="text-[10.5px] text-zinc-600 mt-1.5 max-w-xs mx-auto leading-relaxed">{body}</p>}
+          <p className="text-[12px] text-secondary tracking-tight">{title}</p>
+          {body && <p className="text-[10.5px] text-meta mt-1.5 max-w-xs mx-auto leading-relaxed">{body}</p>}
         </div>
       </div>
     )
@@ -73,7 +73,7 @@ export function EmptyState({
         </h3>
 
         {body && (
-          <p className="text-[12.5px] text-zinc-500 mt-3 max-w-sm mx-auto leading-relaxed">
+          <p className="text-[12.5px] text-secondary mt-3 max-w-sm mx-auto leading-relaxed">
             {body}
           </p>
         )}

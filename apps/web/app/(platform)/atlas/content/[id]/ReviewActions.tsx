@@ -63,7 +63,7 @@ export function ReviewActions({ id }: { id: string }) {
         </button>
       </div>
       {error && <p className="text-xs text-rose-400">{error}</p>}
-      <p className="text-[10px] text-zinc-600">Approve publishes to The Prompt via the existing publishing mechanism. Atlas records the outcome.</p>
+      <p className="text-[10px] text-meta">Approve publishes to The Prompt via the existing publishing mechanism. Atlas records the outcome.</p>
     </section>
   )
 }

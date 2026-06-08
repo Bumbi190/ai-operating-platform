@@ -98,7 +98,7 @@ export function AgentCard({
               <h3 className="text-[13.5px] font-semibold text-white/95 truncate leading-tight">
                 {agent.name}
               </h3>
-              <p className="text-[10.5px] text-zinc-500 mt-0.5 truncate">
+              <p className="text-[10.5px] text-secondary mt-0.5 truncate">
                 {agent.role}
               </p>
             </div>
@@ -135,14 +135,14 @@ export function AgentCard({
                 className="absolute left-0 top-0 bottom-0 w-px"
                 style={{ background: `linear-gradient(180deg, ${color}80, transparent)` }}
               />
-              <p className="text-[10.5px] text-zinc-500 italic leading-relaxed line-clamp-2">
+              <p className="text-[10.5px] text-secondary italic leading-relaxed line-clamp-2">
                 "{agent.reasoning}"
               </p>
             </div>
           )}
 
           {/* Bottom row — metrics */}
-          <div className="mt-4 pt-3 flex items-center gap-4 text-[10.5px] text-zinc-500" style={{ borderTop: `1px solid ${color}1a` }}>
+          <div className="mt-4 pt-3 flex items-center gap-4 text-[10.5px] text-secondary" style={{ borderTop: `1px solid ${color}1a` }}>
             <span className="flex items-center gap-1">
               <Clock className="w-2.5 h-2.5" />
               <span className="num text-zinc-400">{formatRuntime(agent.runtimeSeconds)}</span>

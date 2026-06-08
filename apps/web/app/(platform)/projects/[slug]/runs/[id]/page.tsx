@@ -10,18 +10,25 @@ import { ChevronLeft, Clock, Hash, Calendar, Play, AlertTriangle } from 'lucide-
 import { WorkflowStepGraph } from '@/components/platform/WorkflowStepGraph'
 import { ResumeRunButton } from '@/components/platform/ResumeRunButton'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function RunDetailPage({
   params,
 }: {
   params: { slug: string; id: string }
 }) {
+  // Scope the run lookup to the project in the URL so a run from another
+  // project can't be opened under this project's URL.
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
   const supabase = await createClient()
 
   const { data: run } = await (supabase as any)
     .from('runs')
     .select('*, workflows(name, id), projects(name, slug)')
     .eq('id', params.id)
+    .eq('project_id', project.id)
     .single()
 
   if (!run) notFound()
@@ -33,7 +40,6 @@ export default async function RunDetailPage({
     .order('created_at')
 
   const workflow = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
-  const project = Array.isArray(run.projects) ? run.projects[0] : run.projects
 
   const duration =
     run.started_at && run.finished_at

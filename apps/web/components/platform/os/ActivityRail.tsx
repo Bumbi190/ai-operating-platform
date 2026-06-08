@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   Activity, ShieldCheck, GitBranch, Database, Send, AlertTriangle,
@@ -26,6 +27,7 @@ export interface ActivityEvent {
   title: string
   detail?: string
   project?: string
+  projectSlug?: string
   projectColor?: string
   timestamp: string
   intense?: boolean
@@ -68,8 +70,23 @@ function relative(iso: string, nowMs: number) {
  * Linear-quiet design — monochrome with restrained color accents on icons.
  */
 export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[] }) {
-  const [events] = useState<ActivityEvent[]>(initial)
+  const [allEvents] = useState<ActivityEvent[]>(initial)
   const [now, setNow] = useState(() => Date.now())
+  const pathname = usePathname()
+
+  // Scope to the active project when inside /projects/[slug]/*. On global and
+  // Atlas surfaces the rail stays cross-project (Atlas sees everything).
+  const activeSlug = useMemo(() => {
+    const m = pathname?.match(/^\/projects\/([^/]+)/)
+    return m ? m[1] : null
+  }, [pathname])
+
+  const events = useMemo(() => {
+    if (!activeSlug) return allEvents
+    // Keep this project's events; drop events that belong to a *different*
+    // project. Project-less system events are hidden inside a project view.
+    return allEvents.filter((e) => e.projectSlug === activeSlug)
+  }, [allEvents, activeSlug])
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 5_000)

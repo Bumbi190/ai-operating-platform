@@ -31,11 +31,11 @@ export default async function PlatformLayout({
       .order('updated_at', { ascending: false })
       .limit(8),
     (db.from('runs') as any)
-      .select('id, status, created_at, finished_at, workflows(name), projects(name, color)')
+      .select('id, status, created_at, finished_at, workflows(name), projects(name, color, slug)')
       .order('created_at', { ascending: false })
       .limit(12),
     (db.from('approvals') as any)
-      .select('id, status, output_key, created_at, reviewed_at, runs(workflows(name), projects:projects(name, color))')
+      .select('id, status, output_key, created_at, reviewed_at, runs(workflows(name), projects:projects(name, color, slug))')
       .order('created_at', { ascending: false })
       .limit(8),
   ])
@@ -59,6 +59,7 @@ export default async function PlatformLayout({
         title: `${wf} stötte på problem`,
         detail: 'Behöver en titt innan det kan gå vidare',
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
         intense: true,
@@ -70,6 +71,7 @@ export default async function PlatformLayout({
         type: 'workflow',
         title: `${wf} arbetar just nu`,
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: r.created_at,
         intense: true,
@@ -80,6 +82,7 @@ export default async function PlatformLayout({
         type: 'publish',
         title: `${wf} är klart`,
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
       })
@@ -96,6 +99,7 @@ export default async function PlatformLayout({
         title: 'Innehåll väntar på ditt godkännande',
         detail: 'Granska så går det vidare till publicering',
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: a.created_at,
         intense: true,
@@ -107,6 +111,7 @@ export default async function PlatformLayout({
         type: 'decision',
         title: 'Du godkände ett innehåll',
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: a.reviewed_at ?? a.created_at,
       })
@@ -116,6 +121,7 @@ export default async function PlatformLayout({
         type: 'decision',
         title: 'Du avvisade ett innehåll',
         project: p?.name,
+        projectSlug: p?.slug,
         projectColor: p?.color,
         timestamp: a.reviewed_at ?? a.created_at,
       })

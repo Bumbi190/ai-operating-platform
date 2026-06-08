@@ -8,23 +8,19 @@ import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus, Radio } from 'lucid
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function ProjectPage({
   params,
 }: {
   params: { slug: string }
 }) {
-  const supabase = await createClient()
   const { slug } = params
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('slug', slug)
-    .single()
-
+  const project = await getProjectBySlug(slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const [
     { data: agents, count: agentCount },
     { data: workflows, count: workflowCount },

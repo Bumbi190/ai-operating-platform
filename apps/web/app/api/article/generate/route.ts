@@ -1,19 +1,23 @@
 /**
  * POST /api/article/generate
  *
- * M1 generation test surface — generates an article and returns the draft, QA report,
- * and the would-be publish payload. Does NOT publish (M1 is generation only).
+ * M1 generation surface — generates an article and returns the draft, QA report,
+ * and the would-be publish payload. Generation-only by default (does NOT publish).
+ *
+ * Opt-in: pass "publish_draft": true to additionally publish a DRAFT to The Prompt
+ * website via the existing generateAndPublishArticle seam (generate → QA → publish
+ * draft). Omitted/false preserves the exact original generation-only behaviour.
  *
  * Body (one of):
- *   { "news_item_id": "<uuid>", "tier"?: "breaking|standard|deep" }
- *   { "news_item": { id, title, summary?, key_insight?, url?, source_name?, content_angle? }, "tier"? }
+ *   { "news_item_id": "<uuid>", "tier"?: "breaking|standard|deep", "publish_draft"?: boolean }
+ *   { "news_item": { id, title, summary?, key_insight?, url?, source_name?, content_angle? }, "tier"?, "publish_draft"? }
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { generateArticle } from '@/lib/article'
+import { generateArticle, generateAndPublishArticle } from '@/lib/article'
 import type { LengthTier, NewsItemInput } from '@/lib/article/types'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +35,7 @@ export async function POST(request: Request) {
     news_item?: NewsItemInput
     tier?: LengthTier
     trending_topics?: string[]
+    publish_draft?: boolean
   }
   try {
     body = await request.json()
@@ -60,6 +65,22 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Opt-in: generate → QA → publish a DRAFT to The Prompt website (reuses the seam).
+    // QA-gated: when the draft fails QA nothing is published (skippedReason is returned).
+    if (body.publish_draft === true) {
+      const r = await generateAndPublishArticle(newsItem, {
+        tier: body.tier,
+        trendingTopics: body.trending_topics,
+      })
+      return NextResponse.json({
+        ok: r.published !== null,
+        published: r.published,         // { published_url, status:'draft', operation, ... } or null
+        skippedReason: r.skippedReason, // set when QA blocked publishing
+        qa: r.generated.qa,
+        meta: r.generated.draft._meta,
+      })
+    }
+
     const result = await generateArticle(newsItem, {
       tier: body.tier,
       trendingTopics: body.trending_topics,

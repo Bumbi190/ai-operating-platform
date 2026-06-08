@@ -1,10 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import { FileOutput } from 'lucide-react'
 import Link from 'next/link'
 import { OutputCard } from './OutputCard'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function OutputsPage({
   params,
@@ -16,14 +16,7 @@ export default async function OutputsPage({
   const { slug } = await params
   const { all } = await searchParams
 
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', slug)
-    .single()
-
+  const project = await getProjectBySlug(slug)
   if (!project) notFound()
 
   const db = createAdminClient()

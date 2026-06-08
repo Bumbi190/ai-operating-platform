@@ -3,18 +3,13 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Bot, Plus, Cpu } from 'lucide-react'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function AgentsPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const { data: agents } = await supabase
     .from('agents')
     .select('*')

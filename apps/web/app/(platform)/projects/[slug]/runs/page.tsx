@@ -7,18 +7,13 @@ import { Play } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function RunsPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const { data: runs } = await supabase
     .from('runs')
     .select('*, workflows(name)')

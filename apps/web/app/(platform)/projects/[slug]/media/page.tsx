@@ -1,7 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getProjectBySlug } from '@/lib/project/get-project'
+import { resolveMediaSettings, getNextCronFromSchedule } from '@/lib/project/media-settings'
 import {
   ExternalLink,
   Instagram,
@@ -146,25 +147,6 @@ function QualityBar({ score }: { score: number | null | undefined }) {
   )
 }
 
-// ─── Next cron time ───────────────────────────────────────────────────────────
-
-function getNextCron() {
-  const now = new Date()
-  const slots = [
-    { hour: 7, minute: 20 },
-    { hour: 17, minute: 20 },
-  ]
-  for (const t of slots) {
-    const c = new Date(now)
-    c.setUTCHours(t.hour, t.minute, 0, 0)
-    if (c > now) return c
-  }
-  const t = new Date(now)
-  t.setUTCDate(t.getUTCDate() + 1)
-  t.setUTCHours(7, 20, 0, 0)
-  return t
-}
-
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({
@@ -204,16 +186,19 @@ function StatCard({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default async function MediaDashboardPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-  const db = createAdminClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
+
+  const media = resolveMediaSettings(project)
+
+  // Projects without a media pipeline get a graceful empty state rather than
+  // another project's scaffolding.
+  if (!media.enabled) {
+    return <NoMediaPipeline projectName={project.name} slug={project.slug} />
+  }
+
+  const db = createAdminClient()
+  const platformLabel = media.platform.charAt(0).toUpperCase() + media.platform.slice(1)
 
   const now = new Date()
   const weekAgo  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString()
@@ -225,7 +210,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
       .eq('project_id', project.id)
       .order('generated_at', { ascending: false })
       .limit(30),
-    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', 'instagram').eq('project_id', project.id).maybeSingle(),
+    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', media.platform).eq('project_id', project.id).maybeSingle(),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', weekAgo),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', monthAgo),
   ])
@@ -238,7 +223,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
   const published = scripts.filter(s => s.status === 'published')
   const inQueue   = scripts.filter(s => s.status !== 'published')
   const lastPost  = published[0]
-  const nextCron  = getNextCron()
+  const nextCron  = getNextCronFromSchedule(media.schedule, now)
 
   const avgQuality = published.length > 0
     ? published.reduce((sum, s) => sum + ((s.quality_score as any)?.overall ?? 0), 0) / published.length
@@ -275,21 +260,23 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
             </Link>
 
             <div className="flex items-center gap-4">
-              {/* TP logo */}
+              {/* Project logo — initials + project color */}
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+                  background: `linear-gradient(135deg, ${project.color}cc 0%, ${project.color}66 100%)`,
                   border: '1px solid rgba(255,255,255,0.1)',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                 }}
               >
-                <span className="text-white font-black text-sm leading-none">TP</span>
+                <span className="text-white font-black text-sm leading-none">{media.brandInitials}</span>
               </div>
 
               <div>
-                <h1 className="text-xl font-black text-zinc-100 tracking-tight">The Prompt</h1>
-                <p className="text-[11px] text-zinc-600 mt-0.5">AI news · daily reels · autonomous pipeline</p>
+                <h1 className="text-xl font-black text-zinc-100 tracking-tight">{project.name}</h1>
+                {media.tagline && (
+                  <p className="text-[11px] text-zinc-600 mt-0.5">{media.tagline}</p>
+                )}
               </div>
 
               {/* Live indicator */}
@@ -322,7 +309,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         {/* ── Status cards ──────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-          <StatCard label="Instagram Token" icon={ShieldCheck} color={tokenDaysLeft !== null && tokenDaysLeft < 10 ? '#f87171' : '#34d399'} delay={60}>
+          <StatCard label={`${platformLabel} Token`} icon={ShieldCheck} color={tokenDaysLeft !== null && tokenDaysLeft < 10 ? '#f87171' : '#34d399'} delay={60}>
             <TokenBadge token={igToken} />
           </StatCard>
 
@@ -353,12 +340,18 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
 
           <StatCard label="Nästa körning" icon={Zap} color="#a78bfa" delay={180}>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-zinc-300">
-                {format(nextCron, 'HH:mm')} UTC
-              </span>
-              <span className="text-[10px] text-zinc-600">
-                om {formatDistanceToNow(nextCron, { locale: sv })}
-              </span>
+              {nextCron ? (
+                <>
+                  <span className="text-sm font-bold text-zinc-300">
+                    {format(nextCron, 'HH:mm')} UTC
+                  </span>
+                  <span className="text-[10px] text-zinc-600">
+                    om {formatDistanceToNow(nextCron, { locale: sv })}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-zinc-600">Inget schema</span>
+              )}
             </div>
           </StatCard>
         </div>
@@ -503,6 +496,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         )}
 
         {/* ── Schedule ──────────────────────────────────────────────────────── */}
+        {media.schedule.length > 0 && (
         <section
           className="rounded-2xl p-5 animate-fade-in-up glass"
           style={{ animationDelay: '320ms', animationFillMode: 'both' }}
@@ -512,10 +506,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
             Schema (UTC)
           </h2>
           <div className="grid grid-cols-2 gap-6">
-            {[
-              { label: 'Morgon', pipeline: '07:20', publish: '08:00' },
-              { label: 'Kväll',  pipeline: '17:20', publish: '18:00' },
-            ].map((slot) => (
+            {media.schedule.map((slot) => (
               <div key={slot.label} className="space-y-2">
                 <p className="text-xs font-semibold text-zinc-400">{slot.label}</p>
                 <div className="space-y-1.5">
@@ -536,7 +527,50 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
             ))}
           </div>
         </section>
+        )}
 
+      </div>
+    </div>
+  )
+}
+
+// ─── Empty state: project has no media pipeline ─────────────────────────────────
+
+function NoMediaPipeline({ projectName, slug }: { projectName: string; slug: string }) {
+  return (
+    <div className="relative min-h-screen">
+      <div className="relative z-10 px-6 md:px-8 lg:px-10 pt-7 lg:pt-9 pb-20 space-y-6">
+        <Link
+          href={`/projects/${slug}`}
+          className="inline-flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
+        >
+          <ArrowLeft className="w-3 h-3" />
+          {projectName}
+        </Link>
+
+        <div
+          className="rounded-2xl p-12 text-center max-w-xl mx-auto mt-12"
+          style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.08)' }}
+        >
+          <div
+            className="w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.16)' }}
+          >
+            <Film className="w-5 h-5 text-indigo-300" />
+          </div>
+          <h1 className="text-base font-bold text-zinc-200">Ingen mediapipeline för {projectName}</h1>
+          <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+            Det här projektet har ingen mediapipeline konfigurerad. När en pipeline aktiveras
+            visas reels, publiceringsstatus, token-hälsa och schema här — isolerat till {projectName}.
+          </p>
+          <Link
+            href={`/projects/${slug}`}
+            className="inline-flex items-center gap-1.5 mt-6 px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            Tillbaka till projektet
+          </Link>
+        </div>
       </div>
     </div>
   )

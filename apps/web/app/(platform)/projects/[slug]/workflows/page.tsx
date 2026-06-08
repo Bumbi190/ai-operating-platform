@@ -3,18 +3,13 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { GitBranch, Plus, Play } from 'lucide-react'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function WorkflowsPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const { data: workflows } = await supabase
     .from('workflows')
     .select('*, runs(id, status, created_at)')

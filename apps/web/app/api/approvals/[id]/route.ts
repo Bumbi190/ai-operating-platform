@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { saveFeedback } from '@/lib/ai/memory/feedback-store'
+import { ARTICLE_APPROVAL_KIND, publishApprovedArticle } from '@/lib/article/approval'
 
 export async function GET(
   _req: NextRequest,
@@ -56,10 +57,10 @@ export async function PATCH(
 
   const db = createAdminClient()
 
-  // Fetch the approval to get project_id, output_key, content for feedback
+  // Fetch the approval to get project_id, output_key, content, kind for feedback + publish hook
   const { data: existing } = await db
     .from('approvals')
-    .select('id, project_id, output_key, content, run_id')
+    .select('id, project_id, output_key, content, run_id, kind')
     .eq('id', params.id)
     .single()
 
@@ -96,5 +97,19 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ approval: data })
+  // Publish-on-approve hook: only for article_publish approvals that were just approved.
+  // Guarded so all other approval kinds are completely unaffected. Idempotent (RPC keyed
+  // on external_id), non-blocking — the approval already saved; report publish outcome.
+  let published: unknown = undefined
+  let publishError: string | undefined
+  if (action === 'approved' && existing?.kind === ARTICLE_APPROVAL_KIND && typeof existing.content === 'string') {
+    try {
+      published = await publishApprovedArticle(existing.content)
+    } catch (pubErr) {
+      publishError = pubErr instanceof Error ? pubErr.message : String(pubErr)
+      console.error('[approvals] publish-on-approve failed:', publishError)
+    }
+  }
+
+  return NextResponse.json({ approval: data, published, publishError })
 }

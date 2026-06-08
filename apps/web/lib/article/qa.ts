@@ -21,7 +21,7 @@ import {
 const TAG_SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 const SLOP_HARD_FAIL = 5.0 // heavy_slop
 const SLOP_SOFT = 2.5 // minor → medium confidence
-const COPY_WINDOW = 12
+const COPY_WINDOW = 15
 
 function words(text: string): string[] {
   return text

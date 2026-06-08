@@ -20,6 +20,8 @@ export type PipelineWorkflow =
   | 'Generate Voiceover'
   | 'Render Video'
   | 'Publish to Social'
+  | 'Generate Article'
+  | 'Publish to Website'
 
 export interface LogRunOptions {
   workflow:   PipelineWorkflow

@@ -10,7 +10,8 @@ import { writeArticle } from './writer'
 import { reviewArticle } from './qa'
 import { toPublishPayload } from './to-contract'
 import type { ArticleDraft, ArticleQa, LengthTier, NewsItemInput } from './types'
-import type { PublishPayload } from '@/lib/publishing/types'
+import type { PublishPayload, PublishSuccess } from '@/lib/publishing/types'
+import { publishArticle } from '@/lib/publishing/publish'
 
 export interface GenerateArticleOptions {
   tier?: LengthTier
@@ -55,6 +56,36 @@ export async function generateArticle(
   })
 
   return { draft, qa, payload }
+}
+
+export interface PublishGeneratedResult {
+  generated: GeneratedArticle
+  /** The publish result, or null when QA blocked publishing. */
+  published: PublishSuccess | null
+  /** Set when publishing was skipped (QA failed); null when published. */
+  skippedReason: string | null
+}
+
+/**
+ * Seam that connects M1 generation to the M0 publishing spine:
+ * generate → QA-gate → publish. Reuses generateArticle + publishArticle; adds no
+ * infrastructure. Defaults to DRAFT (published_at = null) so the article lands
+ * hidden in the destination's review queue (the website owns approval). Publishing
+ * is skipped (never throws on QA) when the draft fails QA.
+ */
+export async function generateAndPublishArticle(
+  newsItem: NewsItemInput,
+  opts: GenerateArticleOptions & { destinationKey?: string } = {},
+): Promise<PublishGeneratedResult> {
+  const generated = await generateArticle(newsItem, opts)
+
+  if (!generated.qa.pass) {
+    const reason = generated.qa.issues.length ? generated.qa.issues.join('; ') : 'qa_failed'
+    return { generated, published: null, skippedReason: reason }
+  }
+
+  const published = await publishArticle(opts.destinationKey ?? 'the-prompt', generated.payload)
+  return { generated, published, skippedReason: null }
 }
 
 export * from './types'

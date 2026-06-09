@@ -13,6 +13,7 @@ import { sv } from 'date-fns/locale/sv'
 import { PulseDot } from './PulseDot'
 import type { BusinessSnapshot } from '@/lib/os/business'
 import { businessHealth } from '@/lib/os/health'
+import { resolveDestination } from '@/lib/nav/registry'
 
 const STATUS_META: Record<BusinessSnapshot['status'], { label: string; color: string; tone: 'emerald' | 'amber' | 'zinc' }> = {
   active:    { label: 'Aktiv',                 color: '#34d399', tone: 'emerald' },
@@ -126,13 +127,13 @@ export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapsh
         <div className="relative mt-4 pt-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <p className="eyebrow eyebrow-gold !text-[8.5px]">Behöver uppmärksamhet</p>
           {business.pendingApprovals > 0 && (
-            <Link href="/approvals" className="flex items-center gap-2 text-[12px] text-amber-200/90 hover:text-amber-100 transition-colors press">
+            <Link href={resolveDestination('approvals', { project: business.slug, filters: { state: 'pending' } })?.href ?? '/approvals'} className="flex items-center gap-2 text-[12px] text-amber-200/90 hover:text-amber-100 transition-colors press">
               <ClipboardCheck className="w-3.5 h-3.5 shrink-0" />
               {business.pendingApprovals} objekt väntar på godkännande
             </Link>
           )}
           {business.failedRuns > 0 && (
-            <Link href="/system" className="flex items-center gap-2 text-[12px] text-rose-200/90 hover:text-rose-100 transition-colors press">
+            <Link href={resolveDestination('activity', { project: business.slug, filters: { status: 'failed' } })?.href ?? '/agent-activity'} className="flex items-center gap-2 text-[12px] text-rose-200/90 hover:text-rose-100 transition-colors press">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               {business.failedRuns} {business.failedRuns === 1 ? 'körning' : 'körningar'} att åtgärda
             </Link>

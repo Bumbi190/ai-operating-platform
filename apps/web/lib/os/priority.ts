@@ -18,6 +18,17 @@
  */
 
 import type { BusinessSnapshot } from './business'
+import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+
+// Single source of truth for routes — every attention-item action resolves its
+// href through the navigation registry (never a hard-coded path).
+function navHref(
+  id: DestinationId,
+  opts: { project?: string; filters?: Record<string, string> } = {},
+  fallback = '/atlas',
+): string {
+  return resolveDestination(id, opts)?.href ?? fallback
+}
 
 export type Severity = 'urgent' | 'important' | 'info'
 
@@ -62,7 +73,7 @@ export function buildAttentionItems(
         title: `${b.name}: ${b.failedRuns} ${b.failedRuns === 1 ? 'körning' : 'körningar'} misslyckades`,
         reason: 'Automation stannade. Jag kan starta om den från steget som kraschade.',
         business: b.name, color: b.color, etaMin: b.failedRuns * 5,
-        action: { label: 'Visa logg', href: '/system' },
+        action: { label: 'Visa logg', href: navHref('activity', { project: b.slug, filters: { status: 'failed' } }) },
         agentic: { endpoint: '/api/actions/resume-failed', body: { project_id: b.id }, label: 'Åtgärda automatiskt' },
       })
     }
@@ -74,7 +85,7 @@ export function buildAttentionItems(
         title: `${b.name}: ${b.pendingApprovals} ${b.pendingApprovals === 1 ? 'objekt väntar' : 'objekt väntar'} på godkännande`,
         reason: 'Innehåll är blockerat tills du granskar det — nedströmssteg står stilla.',
         business: b.name, color: b.color, etaMin: Math.max(2, b.pendingApprovals * 2),
-        action: { label: 'Granska', href: '/approvals' },
+        action: { label: 'Granska', href: navHref('approvals', { project: b.slug, filters: { state: 'pending' } }) },
       })
       void days
     }
@@ -87,7 +98,7 @@ export function buildAttentionItems(
         title: `${b.name}: inaktiv${staleDays != null ? ` i ${staleDays} dagar` : ' — ingen aktivitet än'}`,
         reason: 'Verksamheten producerar inget värde just nu. Starta ett arbetsflöde eller fyll på data.',
         business: b.name, color: b.color, etaMin: 10,
-        action: { label: 'Öppna', href: `/projects/${b.slug}` },
+        action: { label: 'Öppna', href: navHref('project_home', { project: b.slug }) },
       })
     }
     // Nyligen publicerat — 20 (positiv info)
@@ -111,7 +122,7 @@ export function buildAttentionItems(
       title: 'Instagram-engagemang saknas',
       reason: 'Inlägg publiceras men ingen räckvidd/engagemang läses in — tokenet saknar insights-behörighet.',
       etaMin: 5,
-      action: { label: 'Fixa nu', href: '/settings' },
+      action: { label: 'Fixa nu', href: navHref('settings') },
     })
   }
 

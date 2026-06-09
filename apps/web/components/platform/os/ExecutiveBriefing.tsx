@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { ExecutiveBriefing as Briefing, BriefingLine } from '@/lib/os/briefing'
 import type { AttentionItem } from '@/lib/os/priority'
+import { resolveDestination } from '@/lib/nav/registry'
 
 function sek(n: number): string {
   if (n <= 0) return '—'
@@ -37,9 +38,9 @@ export function ExecutiveBriefing({
   const actions: QuickAction[] = [
     { label: 'Vad behöver min uppmärksamhet?', icon: ListChecks, onClick: () => setShowPriorities(v => !v) },
     ...(monthlyPackageSlug ? [{ label: 'Kör månadspaket', icon: PlayCircle, href: `/projects/${monthlyPackageSlug}/workflows` }] : []),
-    { label: 'Skapa veckoplan', icon: CalendarDays, href: '/planning' },
-    { label: 'Granska godkännanden', icon: ClipboardCheck, href: '/approvals' },
-    { label: 'Fråga assistenten', icon: MessageSquare, href: '/chat' },
+    { label: 'Skapa veckoplan', icon: CalendarDays, href: resolveDestination('planning')?.href ?? '/planning' },
+    { label: 'Granska godkännanden', icon: ClipboardCheck, href: resolveDestination('approvals', { filters: { state: 'pending' } })?.href ?? '/approvals' },
+    { label: 'Fråga assistenten', icon: MessageSquare, href: resolveDestination('chat')?.href ?? '/chat' },
   ]
 
   return (

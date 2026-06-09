@@ -6,6 +6,17 @@ import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
   VoiceAssistant, type ActivityEvent,
 } from '@/components/platform/os'
+import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+
+// Single source of truth for routes — resolve a registry href (with a safe
+// fallback if a destination/project can't be resolved).
+function navHref(
+  id: DestinationId,
+  opts: { project?: string; filters?: Record<string, string> } = {},
+  fallback = '/atlas',
+): string {
+  return resolveDestination(id, opts)?.href ?? fallback
+}
 
 export default async function PlatformLayout({
   children,
@@ -63,7 +74,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
         intense: true,
-        action: { label: 'Åtgärda', href: '/system' },
+        action: { label: 'Åtgärda', href: navHref('activity', { project: p?.slug, filters: { status: 'failed' } }) },
       })
     } else if (r.status === 'running') {
       events.push({
@@ -103,7 +114,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: a.created_at,
         intense: true,
-        action: { label: 'Granska', href: '/approvals' },
+        action: { label: 'Granska', href: navHref('approvals', { project: p?.slug, filters: { state: 'pending' } }) },
       })
     } else if (a.status === 'approved') {
       events.push({

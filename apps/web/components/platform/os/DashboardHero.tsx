@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { Building2, Banknote, ClipboardCheck, Workflow } from 'lucide-react'
 import { PulseDot } from './PulseDot'
 import type { HeroSummary } from '@/lib/os/business'
+import { resolveDestination } from '@/lib/nav/registry'
 
 function sek(n: number): string {
   if (n <= 0) return '—'
@@ -49,7 +50,7 @@ export function DashboardHero({ summary }: { summary: HeroSummary }) {
       caption: summary.pendingApprovals > 0 ? 'kräver ditt beslut' : 'allt hanterat',
       icon: ClipboardCheck,
       color: summary.pendingApprovals > 0 ? '#fbbf24' : '#34d399',
-      href: '/approvals',
+      href: resolveDestination('approvals', { filters: { state: 'pending' } })?.href ?? '/approvals',
       attention: summary.pendingApprovals > 0,
     },
     {

@@ -262,6 +262,51 @@ export const PRIMARY_JUMP_TARGETS: DestinationId[] = [
 
 interface ProjectLite { name: string; slug: string }
 
+/**
+ * Score a set of candidate terms against a query.
+ *
+ * Handles BOTH whole-query matches ("approvals") and multi-word queries
+ * ("failed runs", "project health"): each query word is matched against the
+ * terms independently, so a phrase resolves as long as its words map onto a
+ * destination's label/keywords — even if no single term contains the whole
+ * phrase. Returns 0 for no match.
+ */
+function scoreTerms(terms: string[], q: string): number {
+  const lower = terms.map(t => t.toLowerCase())
+
+  // Whole-query match first — strongest signal.
+  let best = 0
+  for (const t of lower) {
+    if (t === q) return 100
+    if (t.startsWith(q)) best = Math.max(best, 75)
+    else if (t.includes(q)) best = Math.max(best, 45)
+  }
+
+  // Per-token match — the multi-word path. Reward queries whose words each
+  // land on some term; weight by how many of the query's words matched.
+  const tokens = q.split(/\s+/).filter(Boolean)
+  if (tokens.length > 1) {
+    let sum = 0
+    let matched = 0
+    for (const tok of tokens) {
+      let b = 0
+      for (const t of lower) {
+        if (t === tok) { b = 100; break }
+        if (t.startsWith(tok)) b = Math.max(b, 70)
+        else if (t.includes(tok)) b = Math.max(b, 40)
+      }
+      if (b > 0) { sum += b; matched++ }
+    }
+    if (matched > 0) {
+      const avg = sum / matched
+      const coverage = matched / tokens.length // 1.0 = every word matched
+      best = Math.max(best, avg * (0.6 + 0.4 * coverage))
+    }
+  }
+
+  return best
+}
+
 /** Rank destinations + projects for the ⌘K palette. */
 export function searchDestinations(query: string, opts: { projects?: ProjectLite[] } = {}): NavResult[] {
   const q = query.trim().toLowerCase()
@@ -283,13 +328,7 @@ export function searchDestinations(query: string, opts: { projects?: ProjectLite
 
   for (const def of Object.values(DESTINATIONS)) {
     if (def.hidden) continue
-    const hay = [def.label.toLowerCase(), ...def.keywords]
-    let score = 0
-    for (const term of hay) {
-      if (term === q) { score = Math.max(score, 100); break }
-      if (term.startsWith(q)) score = Math.max(score, 70)
-      else if (term.includes(q)) score = Math.max(score, 40)
-    }
+    const score = scoreTerms([def.label, ...def.keywords], q)
     if (score > 0) {
       const r = resolveDestination(def.id)
       if (r) scored.push({ score, item: { kind: 'page', id: r.id, label: r.label, href: r.href } })
@@ -297,12 +336,7 @@ export function searchDestinations(query: string, opts: { projects?: ProjectLite
   }
 
   for (const p of projects) {
-    const name = p.name.toLowerCase()
-    const slug = p.slug.toLowerCase()
-    let score = 0
-    if (name === q || slug === q) score = 95
-    else if (name.startsWith(q) || slug.startsWith(q)) score = 65
-    else if (name.includes(q) || slug.includes(q)) score = 35
+    const score = scoreTerms([p.name, p.slug], q)
     if (score > 0) {
       const r = resolveDestination('project_home', { project: p.slug })
       scored.push({ score, item: { kind: 'project', label: p.name, href: r?.href, hint: 'Project' } })

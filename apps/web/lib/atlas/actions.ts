@@ -12,6 +12,12 @@
 import type { AtlasContext } from './context'
 import type { AgentActivity } from './activity'
 import type { SocialSummary } from './social'
+import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+
+/** Single source of truth for routes — resolve a registry href server-side. */
+function navHref(id: DestinationId, opts?: { project?: string; filters?: Record<string, string> }): string {
+  return resolveDestination(id, opts)?.href ?? '/atlas'
+}
 
 export type Severity = 'critical' | 'high' | 'normal'
 
@@ -55,7 +61,7 @@ export function atlasActions(
       recommendation: 'Öppna Activity Center och åtgärda grundorsaken.',
       owner: 'Operator',
       status: 'open',
-      href: '/atlas/activity',
+      href: navHref('activity', { filters: { status: 'failed' } }),
     })
   }
   if (activity.stalledRuns > 0) {
@@ -67,7 +73,7 @@ export function atlasActions(
       recommendation: 'Avbryt och kör om de hängda körningarna.',
       owner: 'Operator',
       status: 'open',
-      href: '/atlas/activity',
+      href: navHref('activity', { filters: { status: 'stalled' } }),
     })
   }
 
@@ -81,7 +87,7 @@ export function atlasActions(
       recommendation: 'Öppna godkännanden och besluta.',
       owner: 'Operator',
       status: 'open',
-      href: '/approvals',
+      href: navHref('approvals', { filters: { state: 'pending' } }),
     })
   }
   for (const b of ctx.businesses) {
@@ -94,7 +100,7 @@ export function atlasActions(
         recommendation: 'Bearbeta leadsen nu.',
         owner: b.name,
         status: 'open',
-        href: '/revenue',
+        href: navHref('revenue', { project: b.slug }),
       })
     }
   }
@@ -109,7 +115,7 @@ export function atlasActions(
       recommendation: o.title,
       owner: 'Atlas',
       status: 'open',
-      href: '/atlas/actions',
+      href: navHref('actions'),
     })
   }
 
@@ -124,7 +130,7 @@ export function atlasActions(
         recommendation: 'Koppla intäkts-ingestion (Stripe → revenue_events).',
         owner: b.name,
         status: 'open',
-        href: '/revenue',
+        href: navHref('revenue', { project: b.slug }),
       })
     }
   }
@@ -137,7 +143,7 @@ export function atlasActions(
       recommendation: 'Återanslut Meta-behörigheter / insights-scope.',
       owner: 'Operator',
       status: 'open',
-      href: '/atlas/activity',
+      href: navHref('activity'),
     })
   }
 
@@ -148,7 +154,7 @@ export function atlasActions(
       severity: 'normal', title: 'Allt nominellt',
       why: 'Inget kräver din uppmärksamhet just nu. Bra läge att planera nästa drag.',
       impact: '—', recommendation: 'Planera nästa drag.', owner: 'Operator', status: 'open',
-      href: '/manager',
+      href: navHref('actions'),
     })
   }
   return out

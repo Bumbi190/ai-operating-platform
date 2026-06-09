@@ -10,6 +10,8 @@ import {
 import type Anthropic from '@anthropic-ai/sdk'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { AtlasActionChips } from '@/components/platform/os/AtlasActionChips'
+import type { ResolvedLink } from '@/lib/nav/registry'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +35,13 @@ interface SystemMessage {
   content: string
 }
 
-type ChatMessage = TextMessage | ToolCallMessage | SystemMessage
+interface LinksMessage {
+  role: 'assistant'
+  type: 'links'
+  links: ResolvedLink[]
+}
+
+type ChatMessage = TextMessage | ToolCallMessage | SystemMessage | LinksMessage
 
 interface SavedMessage {
   role: string
@@ -66,15 +74,20 @@ export function ChatClient({
 }: Props) {
   const router = useRouter()
 
-  // Convert saved DB messages to UI format
+  // Convert saved DB messages to UI format. Saved navigation rows (content null,
+  // tool_data.kind === 'links') rehydrate as chips; everything else is text.
   const initialMessages: ChatMessage[] = savedMessages.length > 0
     ? savedMessages
         .filter(m => m.role === 'user' || m.role === 'assistant')
-        .map(m => ({
-          role: m.role as 'user' | 'assistant',
-          type: 'text' as const,
-          content: m.content ?? '',
-        }))
+        .map((m): ChatMessage | null => {
+          const td = m.tool_data as { kind?: string; links?: ResolvedLink[] } | null
+          if (m.role === 'assistant' && td?.kind === 'links' && Array.isArray(td.links)) {
+            return { role: 'assistant', type: 'links', links: td.links }
+          }
+          if (!m.content) return null
+          return { role: m.role as 'user' | 'assistant', type: 'text', content: m.content }
+        })
+        .filter((m): m is ChatMessage => m !== null)
     : [
         {
           role: 'assistant' as const,
@@ -93,8 +106,8 @@ export function ChatClient({
   // Track API message history for Claude (text only)
   const apiMessages = useRef<Anthropic.MessageParam[]>(
     savedMessages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content ?? '' }))
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && !!m.content)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content as string }))
   )
 
   useEffect(() => {
@@ -177,6 +190,19 @@ export function ChatClient({
                 }
                 return updated
               })
+            }
+
+            // Atlas navigation layer — deep-link chips beneath the answer.
+            if (event.event === 'links' && Array.isArray(event.links) && event.links.length) {
+              setMessages(prev => [
+                ...prev,
+                { role: 'assistant', type: 'links', links: event.links as ResolvedLink[] } as LinksMessage,
+              ])
+            }
+
+            // Atlas navigation layer — direct navigation (after operator confirmation).
+            if (event.event === 'navigate' && event.href) {
+              router.push(event.href as string)
             }
 
             if (event.event === 'done') {
@@ -293,6 +319,14 @@ export function ChatClient({
         {messages.map((msg, i) => {
           if (msg.type === 'tool_call') {
             return <ToolCallCard key={i} msg={msg} />
+          }
+
+          if (msg.type === 'links') {
+            return (
+              <div key={i} className="flex justify-start pl-10">
+                <AtlasActionChips links={msg.links} />
+              </div>
+            )
           }
 
           if (msg.type === 'system') {

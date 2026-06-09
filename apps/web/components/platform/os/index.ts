@@ -13,6 +13,8 @@ export { OSPage, OSLayer, OSGrid } from './OSPage'
 
 // Bars & chrome
 export { CommandBar } from './CommandBar'
+export { CommandPalette } from './CommandPalette'
+export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center
 export { DashboardHero } from './DashboardHero'

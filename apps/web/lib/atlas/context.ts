@@ -10,8 +10,14 @@
  */
 
 import { profileFor } from './identity'
+import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 
 type AnyDb = any
+
+/** Resolve a registry href once, server-side. Single source of truth for routes. */
+function navHref(id: DestinationId, opts?: { project?: string; filters?: Record<string, string> }): string {
+  return resolveDestination(id, opts)?.href ?? '/atlas'
+}
 
 export interface BusinessSnapshot {
   id: string
@@ -154,12 +160,12 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
   let topPriority: AtlasContext['topPriority'] = null
   const totalReview = pendingApprovals + businesses.reduce((s, b) => s + b.pendingReview, 0)
   if (totalReview > 0) {
-    topPriority = { label: `Granska ${totalReview} väntande godkännande${totalReview === 1 ? '' : 'n'}`, href: '/approvals' }
+    topPriority = { label: `Granska ${totalReview} väntande godkännande${totalReview === 1 ? '' : 'n'}`, href: navHref('approvals', { filters: { state: 'pending' } }) }
   } else if (failedRuns24h > 0) {
-    topPriority = { label: `${failedRuns24h} körning${failedRuns24h === 1 ? '' : 'ar'} har fallerat — undersök`, href: '/agent-activity' }
+    topPriority = { label: `${failedRuns24h} körning${failedRuns24h === 1 ? '' : 'ar'} har fallerat — undersök`, href: navHref('activity', { filters: { status: 'failed' } }) }
   } else {
     const topLeads = businesses.find(b => b.qualifiedLeads > 0)
-    if (topLeads) topPriority = { label: `${topLeads.qualifiedLeads} leads i ${topLeads.name} väntar`, href: '/revenue' }
+    if (topLeads) topPriority = { label: `${topLeads.qualifiedLeads} leads i ${topLeads.name} väntar`, href: navHref('revenue') }
   }
 
   return {

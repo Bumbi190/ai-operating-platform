@@ -5,9 +5,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Search, Bell, Plus } from 'lucide-react'
 import { OperatorModeSwitcher } from './OperatorMode'
+import { CommandPalette } from './CommandPalette'
 
 interface CommandBarProps {
   operator?: string
+  projects?: { name: string; slug: string }[]
 }
 
 /**
@@ -16,13 +18,26 @@ interface CommandBarProps {
  *
  * Sticky above the page content. Acts as the OS title bar.
  */
-export function CommandBar({ operator }: CommandBarProps) {
+export function CommandBar({ operator, projects = [] }: CommandBarProps) {
   const pathname = usePathname()
   const [now, setNow] = useState(() => new Date())
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
+  }, [])
+
+  // Global ⌘K / Ctrl+K → open the command palette.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const segments = pathname
@@ -78,6 +93,7 @@ export function CommandBar({ operator }: CommandBarProps) {
 
         {/* Center · command search */}
         <button
+          onClick={() => setPaletteOpen(true)}
           className="hidden md:flex items-center gap-2 h-7 px-2.5 rounded-md text-[11px] text-secondary transition-all ease-os hover:text-zinc-200 press"
           style={{
             background: 'rgba(255,255,255,0.025)',
@@ -150,6 +166,8 @@ export function CommandBar({ operator }: CommandBarProps) {
           )}
         </div>
       </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} />
     </div>
   )
 }

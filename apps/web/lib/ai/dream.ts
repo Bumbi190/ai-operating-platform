@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { deriveIssueId } from '@/lib/atlas/dream'
 import Anthropic from '@anthropic-ai/sdk'
 
 // DreamAnalyzer skill — inline för att undvika paketimport-komplexitet
@@ -31,11 +32,15 @@ Format: Returnera alltid giltig JSON med denna struktur:
   "insights": [
     {
       "key": "dream_<datum>_<kategori>",
+      "issue_id": "<stabil_slug_för_problemet>",
       "value": "<konkret insikt på en mening>",
       "severity": "info | warning | critical",
       "action": "<specifik förbättringsåtgärd>"
     }
   ],
+
+VIKTIGT om issue_id: det är en STABIL identitet för det underliggande problemet (en kort snake_case-slug utan datum, t.ex. "alerting_missing", "step_logs_missing", "ig_self_account_id"). Om ett problem är SAMMA som ett tidigare (se listan KÄNDA ÖPPNA PROBLEM nedan) MÅSTE du återanvända exakt samma issue_id — hitta inte på en ny. Bara HELT nya problem får ett nytt issue_id. Detta gör att återkommande problem spåras som ETT ärende över tid i stället för ett nytt varje natt.
+
   "agent_suggestions": [
     {
       "agent_name": "<namn>",
@@ -110,6 +115,15 @@ export async function runDreamCycleForProject(
     .order('updated_at', { ascending: false })
     .limit(30)
 
+  // 3b. Kända öppna problem (dream_issues) — så analyzern återanvänder issue_id
+  //     för återkommande problem i stället för att skapa ett nytt varje natt.
+  const { data: knownIssues } = await db
+    .from('dream_issues')
+    .select('issue_id, title, severity, manager_task_id')
+    .eq('project_id', project.id)
+    .order('last_seen_at', { ascending: false })
+    .limit(40)
+
   // 4. Statistik per steg
   const stepStats: Record<string, {
     count: number
@@ -165,6 +179,10 @@ export async function runDreamCycleForProject(
     .map(m => `  ${m.key}: ${m.value}`)
     .join('\n')
 
+  const knownIssuesSummary = (knownIssues ?? [])
+    .map((i: any) => `  ${i.issue_id} (${i.severity ?? '?'}${i.manager_task_id ? ', delegerad' : ''}): ${i.title ?? ''}`)
+    .join('\n')
+
   const analysisReport = `Analysera följande körningsdata för projektet "${project.name}" (${dateStr}):
 
 KÖRNINGSSTATISTIK (senaste 24h):
@@ -180,11 +198,14 @@ ${failuresList || '(inga misslyckanden)'}
 NUVARANDE MINNEN (befintlig kontext):
 ${memorySummary || '(inga sparade minnen)'}
 
+KÄNDA ÖPPNA PROBLEM (återanvänd exakt dessa issue_id om problemet återkommer):
+${knownIssuesSummary || '(inga kända problem ännu)'}
+
 Returnera din analys som giltig JSON enligt det format du instruerats att använda.`
 
   // 6. Anropa Claude
   let analysisResult: {
-    insights: Array<{ key: string; value: string; severity: string; action: string }>
+    insights: Array<{ key: string; issue_id?: string; value: string; severity: string; action: string }>
     agent_suggestions: Array<{ agent_name: string; suggestion: string }>
     summary: string
   }
@@ -238,6 +259,43 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
       { onConflict: 'project_id,key' },
     )
     if (!error) savedCount++
+
+    // ── Stable issue ledger ──────────────────────────────────────────────────
+    // Stamp the finding onto its stable issue. Recurring issues (same issue_id)
+    // UPDATE the existing row — occurrences++ / last_seen — instead of forking a
+    // new lifecycle. Lifecycle itself is NOT stored here; it is derived from the
+    // linked manager_task (single source of truth), so we never touch the link.
+    try {
+      const slug = ((insight as { issue_id?: string }).issue_id || '').trim() || deriveIssueId(insight.key)
+      const { data: existing } = await db
+        .from('dream_issues')
+        .select('id, occurrences')
+        .eq('project_id', project.id)
+        .eq('issue_id', slug)
+        .maybeSingle()
+
+      if (existing) {
+        await db.from('dream_issues').update({
+          severity: insight.severity,
+          latest_insight: insight.value,
+          latest_action: insight.action,
+          latest_memory_key: insight.key,
+          occurrences: ((existing as { occurrences?: number }).occurrences ?? 1) + 1,
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', (existing as { id: string }).id)
+      } else {
+        await db.from('dream_issues').insert({
+          project_id: project.id,
+          issue_id: slug,
+          title: insight.value,
+          severity: insight.severity,
+          latest_insight: insight.value,
+          latest_action: insight.action,
+          latest_memory_key: insight.key,
+        })
+      }
+    } catch { /* ledger is best-effort; memory log already persisted */ }
   }
 
   return {

@@ -1,16 +1,18 @@
 /**
  * Atlas ↔ Dream Cycle bridge.
  *
- * Dream Cycle (lib/ai/dream.ts) writes its findings into the `memories` table:
- *   - key:    `dream_<YYYYMMDD>_<category>`
- *   - value:  `[SEVERITY] <insight> → <action>`   (severity ∈ CRITICAL|WARNING|INFO)
- *   - source: 'dream'
- *   - scoped by project_id, UNIQUE(project_id, key)
+ * Two layers back this module:
+ *   - memories (dream_*)  : the immutable nightly observation log written by the
+ *                           Dream engine (lib/ai/dream.ts). Preserved for history.
+ *   - dream_issues        : the stable issue ledger — one row per real issue per
+ *                           project, keyed by a stable `issue_id` reused across
+ *                           nights. Recurring findings update the same row.
  *
- * Atlas's context brain (lib/atlas/context.ts) and the chat route never read this
- * table, so Atlas had no path to Dream findings. This module is the single read
- * surface that turns those rows into structured, severity-typed intelligence Atlas
- * can summarize and act on. Read-only; project-scoped.
+ * Atlas reasons over `dream_issues` (stable identity), NOT the dated memory keys,
+ * so a recurring problem is one finding with one lifecycle. Lifecycle
+ * (open/in_progress/completed) is DERIVED from the linked manager_task status —
+ * manager_tasks stays the single source of truth for execution state. Read-only
+ * here except delegate/resolve, which go through manager_tasks. Project-scoped.
  */
 
 export type DreamSeverity = 'critical' | 'warning' | 'info'
@@ -26,13 +28,19 @@ export interface DreamLinkedTask {
 }
 
 export interface DreamFinding {
-  key: string
+  /** Stable identity, reused across nights for the same underlying issue. */
+  issueId: string
   severity: DreamSeverity
-  /** The observation (left of the arrow). */
+  /** Latest observed insight. */
   insight: string
-  /** The recommended action (right of the arrow), when present. */
+  /** Latest recommended action, when present. */
   action: string | null
-  updatedAt: string
+  /** How many nights this issue has recurred. */
+  occurrences: number
+  firstSeenAt: string
+  lastSeenAt: string
+  /** Newest dated memory key for this issue (traceability into the raw log). */
+  latestMemoryKey: string | null
   /** open = not yet delegated; in_progress = task pending/working; completed = task done. */
   lifecycle: DreamLifecycle
   /** The delegated task, when one exists. */
@@ -93,14 +101,34 @@ export function parseDreamValue(value: string): {
 const SEVERITY_RANK: Record<DreamSeverity, number> = { critical: 0, warning: 1, info: 2 }
 
 /**
- * Retrieve Dream Cycle findings for a single project, parsed and sorted by
- * severity (critical first) then recency. Defensive: degrades to empty rather
- * than throwing, so it can be embedded in context assembly safely.
+ * Deterministic fallback for a stable issue identity, derived from a dated dream
+ * memory key. MUST match the backfill regex in 20260609_dream_issues_ledger.sql:
+ * strip the `dream_<date>_` prefix and any trailing `_dayN` / `_N` counter.
+ * Used only when the analyzer doesn't supply an explicit issue_id.
+ */
+export function deriveIssueId(key: string): string {
+  const stem = (key ?? '')
+    .replace(/^dream_\d{4}-?\d{2}-?\d{2}_/, '')
+    .replace(/_(day)?\d+$/, '')
+    .trim()
+  return stem || (key ?? '').trim() || 'unknown'
+}
+
+function normSeverity(s: string | null | undefined): DreamSeverity {
+  const v = (s ?? '').toLowerCase()
+  return v === 'critical' || v === 'warning' ? v : 'info'
+}
+
+/**
+ * Retrieve Dream findings for a project from the stable issue ledger, with
+ * lifecycle derived from each issue's linked manager_task. One row per issue
+ * (recurring problems are NOT duplicated). Sorted by severity then recency.
+ * Defensive: degrades to empty rather than throwing.
  */
 export async function getDreamFindings(
   db: AnyDb,
   projectId: string,
-  limit = 20,
+  limit = 50,
 ): Promise<DreamFindingsResult> {
   const empty: DreamFindingsResult = {
     hasData: false,
@@ -113,77 +141,63 @@ export async function getDreamFindings(
 
   try {
     const { data } = await db
-      .from('memories')
-      .select('key, value, updated_at')
+      .from('dream_issues')
+      .select('issue_id, severity, latest_insight, latest_action, latest_memory_key, manager_task_id, occurrences, first_seen_at, last_seen_at')
       .eq('project_id', projectId)
-      .like('key', 'dream_%')
-      .order('updated_at', { ascending: false })
+      .order('last_seen_at', { ascending: false })
       .limit(limit)
 
-    const rows = (data ?? []) as { key: string; value: string; updated_at: string }[]
+    const rows = (data ?? []) as any[]
     if (rows.length === 0) return empty
 
-    // Linked tasks (source='dream') so each finding's lifecycle can be derived
-    // from its task status. Keep only the newest task per source_key.
-    const taskByKey = new Map<string, DreamLinkedTask>()
-    try {
-      const { data: tasks } = await db
-        .from('manager_tasks')
-        .select('id, status, owner, source_key, created_at')
-        .eq('project_id', projectId)
-        .eq('source', 'dream')
-        .order('created_at', { ascending: false })
-      // Ordered created_at desc. Pick the newest task that isn't cancelled/failed
-      // (those don't represent active/resolved work) — matches delegate's dedup
-      // logic so the read-side lifecycle and write-side idempotency never disagree.
-      for (const t of (tasks ?? []) as any[]) {
-        if (!t.source_key) continue
-        if (t.status === 'cancelled' || t.status === 'failed') continue
-        if (!taskByKey.has(t.source_key)) {
-          taskByKey.set(t.source_key, { id: t.id, status: t.status, owner: t.owner ?? null })
+    // Resolve linked tasks in one query (lifecycle source of truth).
+    const taskIds = rows.map(r => r.manager_task_id).filter(Boolean)
+    const taskById = new Map<string, DreamLinkedTask>()
+    if (taskIds.length) {
+      try {
+        const { data: tasks } = await db
+          .from('manager_tasks')
+          .select('id, status, owner')
+          .in('id', taskIds)
+        for (const t of (tasks ?? []) as any[]) {
+          taskById.set(t.id, { id: t.id, status: t.status, owner: t.owner ?? null })
         }
-      }
-    } catch { /* columns may not exist pre-migration — degrade to no links */ }
+      } catch { /* degrade to no links */ }
+    }
 
     const findings: DreamFinding[] = rows.map((r) => {
-      const { severity, insight, action } = parseDreamValue(r.value)
-      const task = taskByKey.get(r.key) ?? null
+      const task = r.manager_task_id ? (taskById.get(r.manager_task_id) ?? null) : null
+      // A cancelled/failed task means the issue is actionable again → treat as open.
+      const effectiveTask = task && (task.status === 'cancelled' || task.status === 'failed') ? null : task
       return {
-        key: r.key,
-        severity,
-        insight,
-        action,
-        updatedAt: r.updated_at,
-        lifecycle: lifecycleFromTaskStatus(task?.status),
-        task,
+        issueId: r.issue_id,
+        severity: normSeverity(r.severity),
+        insight: r.latest_insight ?? '',
+        action: r.latest_action ?? null,
+        occurrences: r.occurrences ?? 1,
+        firstSeenAt: r.first_seen_at,
+        lastSeenAt: r.last_seen_at,
+        latestMemoryKey: r.latest_memory_key ?? null,
+        lifecycle: lifecycleFromTaskStatus(effectiveTask?.status),
+        task: effectiveTask,
       }
     })
 
     const counts = findings.reduce(
-      (acc, f) => {
-        acc[f.severity]++
-        acc.total++
-        return acc
-      },
+      (acc, f) => { acc[f.severity]++; acc.total++; return acc },
       { critical: 0, warning: 0, info: 0, total: 0 },
     )
-
     const lifecycle = findings.reduce(
-      (acc, f) => {
-        acc[f.lifecycle]++
-        return acc
-      },
+      (acc, f) => { acc[f.lifecycle]++; return acc },
       { open: 0, in_progress: 0, completed: 0 },
     )
-
     const lastRunAt = rows.reduce<string | null>(
-      (max, r) => (!max || r.updated_at > max ? r.updated_at : max),
-      null,
+      (max, r) => (!max || r.last_seen_at > max ? r.last_seen_at : max), null,
     )
 
     findings.sort((a, b) => {
       const s = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
-      return s !== 0 ? s : b.updatedAt.localeCompare(a.updatedAt)
+      return s !== 0 ? s : (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')
     })
 
     return { hasData: true, findings, counts, lifecycle, lastRunAt }
@@ -240,73 +254,73 @@ const SEVERITY_TO_PRIORITY: Record<DreamSeverity, string> = {
 export interface DelegateDreamResult {
   ok: boolean
   error?: string
-  /** true when an open/active task already existed → no duplicate created. */
+  /** true when an active task already existed for this issue → no duplicate. */
   alreadyExisted?: boolean
   task?: { id: string; title: string; status: string; owner: string | null; priority: string }
-  finding?: { key: string; severity: DreamSeverity; insight: string; action: string | null }
+  finding?: { issueId: string; severity: DreamSeverity; insight: string; action: string | null }
 }
 
 /**
- * Create a manager_task from a Dream finding, reusing the existing delegation
- * infrastructure (manager_tasks + agent_messages). Idempotent: if a non-
- * cancelled/failed task already references this finding, returns that task
- * instead of creating a duplicate. The task carries source='dream' and
- * source_key=<finding key>, which is how lifecycle is later derived.
+ * Create a manager_task from a Dream ISSUE (stable identity), reusing the
+ * existing delegation infrastructure (manager_tasks + agent_messages).
+ *
+ * Dedup is on the stable issue, not a dated key: if the issue already links to a
+ * non-cancelled/failed task, that task is returned (no duplicate) even if the
+ * issue recurred under a new memory key. The new task carries source='dream' and
+ * source_key=<issue_id>, and the issue's manager_task_id is linked back so
+ * lifecycle derives correctly.
  */
 export async function delegateDreamFinding(
   db: AnyDb,
-  params: { projectId: string; findingKey: string; owner?: string; title?: string },
+  params: { projectId: string; issueId: string; owner?: string; title?: string },
 ): Promise<DelegateDreamResult> {
-  const { projectId, findingKey } = params
+  const { projectId, issueId } = params
   const owner = (params.owner || 'Atlas').trim()
-  if (!projectId || !findingKey) {
-    return { ok: false, error: 'projectId och findingKey krävs.' }
+  if (!projectId || !issueId) {
+    return { ok: false, error: 'projectId och issueId krävs.' }
   }
 
-  // 1. Load the originating finding.
-  const { data: mem } = await db
-    .from('memories')
-    .select('key, value')
+  // 1. Load the issue from the ledger.
+  const { data: issue } = await db
+    .from('dream_issues')
+    .select('id, issue_id, severity, latest_insight, latest_action, manager_task_id')
     .eq('project_id', projectId)
-    .eq('key', findingKey)
+    .eq('issue_id', issueId)
     .maybeSingle()
-  if (!mem) {
-    return { ok: false, error: `Hittade ingen Dream-insikt med nyckel ${findingKey} i projektet.` }
+  if (!issue) {
+    return { ok: false, error: `Hittade inget Dream-ärende med issue_id ${issueId} i projektet.` }
   }
-  const parsed = parseDreamValue((mem as { value: string }).value)
-  const finding = { key: findingKey, severity: parsed.severity, insight: parsed.insight, action: parsed.action }
+  const severity = normSeverity((issue as any).severity)
+  const insight = (issue as any).latest_insight ?? ''
+  const action = (issue as any).latest_action ?? null
+  const finding = { issueId, severity, insight, action }
 
-  // 2. Idempotency — reuse an existing active/resolved task for this finding.
-  //    Fetch this finding's dream tasks and filter in JS (deterministic; avoids
-  //    depending on PostgREST not-in encoding). A cancelled/failed task does not
-  //    block re-delegation; any pending/in_progress/done task does.
-  try {
-    const { data: existing } = await db
-      .from('manager_tasks')
-      .select('id, title, status, owner, priority, created_at')
-      .eq('project_id', projectId)
-      .eq('source', 'dream')
-      .eq('source_key', findingKey)
-      .order('created_at', { ascending: false })
-    const row = ((existing ?? []) as any[]).find(
-      (t) => t.status !== 'cancelled' && t.status !== 'failed',
-    )
-    if (row) {
-      return {
-        ok: true,
-        alreadyExisted: true,
-        task: { id: row.id, title: row.title, status: row.status, owner: row.owner ?? null, priority: row.priority },
-        finding,
+  // 2. Idempotency — if the issue already links to an active/resolved task, reuse it.
+  const linkedId = (issue as any).manager_task_id as string | null
+  if (linkedId) {
+    try {
+      const { data: t } = await db
+        .from('manager_tasks')
+        .select('id, title, status, owner, priority')
+        .eq('id', linkedId)
+        .maybeSingle()
+      if (t && t.status !== 'cancelled' && t.status !== 'failed') {
+        return {
+          ok: true,
+          alreadyExisted: true,
+          task: { id: t.id, title: t.title, status: t.status, owner: t.owner ?? null, priority: t.priority },
+          finding,
+        }
       }
-    }
-  } catch { /* pre-migration safety — fall through to insert */ }
+    } catch { /* fall through to create a fresh task */ }
+  }
 
   // 3. Create the task.
-  const title = (params.title?.trim()) || parsed.action || parsed.insight.slice(0, 120)
+  const title = (params.title?.trim()) || action || insight.slice(0, 120) || issueId
   const description =
-    `Källa: Dream Cycle (${findingKey})\n` +
-    `Insikt [${parsed.severity.toUpperCase()}]: ${parsed.insight}` +
-    (parsed.action ? `\nRekommenderad åtgärd: ${parsed.action}` : '')
+    `Källa: Dream Cycle (issue ${issueId})\n` +
+    `Insikt [${severity.toUpperCase()}]: ${insight}` +
+    (action ? `\nRekommenderad åtgärd: ${action}` : '')
 
   try {
     const { data, error } = await db
@@ -316,23 +330,30 @@ export async function delegateDreamFinding(
         title,
         description,
         status: 'pending',
-        priority: SEVERITY_TO_PRIORITY[parsed.severity],
+        priority: SEVERITY_TO_PRIORITY[severity],
         owner,
         source: 'dream',
-        source_key: findingKey,
+        source_key: issueId,
       })
       .select('id, title, status, owner, priority')
       .single()
     if (error || !data) return { ok: false, error: error?.message ?? 'Kunde inte skapa uppgift.' }
 
-    // 4. Mirror into the agent message stream (same as the delegate tool).
+    // 4. Link the task back onto the issue so lifecycle derives from it.
+    try {
+      await db.from('dream_issues')
+        .update({ manager_task_id: data.id, updated_at: new Date().toISOString() })
+        .eq('id', (issue as any).id)
+    } catch { /* non-critical: dedup still works via the next delegate's check */ }
+
+    // 5. Mirror into the agent message stream (same as the delegate tool).
     try {
       await db.from('agent_messages').insert({
         project_id: projectId,
         from_agent: 'Atlas',
         to_agent: owner,
         message_type: 'daily_plan',
-        content: `Dream-åtgärd delegerad: "${title}" (${parsed.severity}) — källa ${findingKey}.`,
+        content: `Dream-åtgärd delegerad: "${title}" (${severity}) — issue ${issueId}.`,
         task_id: data.id,
       })
     } catch { /* non-critical */ }
@@ -343,6 +364,51 @@ export async function delegateDreamFinding(
       task: { id: data.id, title: data.title, status: data.status, owner: data.owner ?? null, priority: data.priority },
       finding,
     }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export interface ResolveDreamResult {
+  ok: boolean
+  error?: string
+  issueId?: string
+  taskId?: string
+  status?: string
+}
+
+/**
+ * Mark a Dream issue resolved by completing its linked manager_task (status
+ * 'done' → lifecycle derives to 'completed'). Operator-confirmed: Atlas calls
+ * this only when the operator says the work is done. Reuses manager_tasks as the
+ * execution source of truth (no separate completion state). Idempotent.
+ */
+export async function resolveDreamFinding(
+  db: AnyDb,
+  params: { projectId: string; issueId: string; result?: string },
+): Promise<ResolveDreamResult> {
+  const { projectId, issueId } = params
+  if (!projectId || !issueId) return { ok: false, error: 'projectId och issueId krävs.' }
+
+  const { data: issue } = await db
+    .from('dream_issues')
+    .select('id, manager_task_id')
+    .eq('project_id', projectId)
+    .eq('issue_id', issueId)
+    .maybeSingle()
+  if (!issue) return { ok: false, error: `Hittade inget Dream-ärende med issue_id ${issueId}.` }
+
+  const taskId = (issue as any).manager_task_id as string | null
+  if (!taskId) {
+    return { ok: false, error: `Ärendet ${issueId} har ingen delegerad uppgift att slutföra — delegera först.` }
+  }
+
+  try {
+    await db.from('manager_tasks')
+      .update({ status: 'done', result: params.result ?? 'Markerad som löst via Atlas.', updated_at: new Date().toISOString() })
+      .eq('id', taskId)
+      .eq('project_id', projectId) // defensive: never update across projects
+    return { ok: true, issueId, taskId, status: 'done' }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }

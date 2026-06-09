@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   Send, Bot, User, Play, CheckCircle2, Loader2, AlertCircle, Zap,
@@ -73,6 +73,7 @@ export function ChatClient({
   savedMessages = [],
 }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
 
   // Convert saved DB messages to UI format. Saved navigation rows (content null,
   // tool_data.kind === 'links') rehydrate as chips; everything else is text.
@@ -202,7 +203,25 @@ export function ChatClient({
 
             // Atlas navigation layer — direct navigation (after operator confirmation).
             if (event.event === 'navigate' && event.href) {
-              router.push(event.href as string)
+              const href = event.href as string
+              const targetPath = href.split('?')[0]
+              if (targetPath === pathname) {
+                // Same page already in view — router.push would be a silent
+                // no-op. Surface a clickable chip + a short note instead, so the
+                // operator gets a real affordance rather than "nothing happened".
+                const link: ResolvedLink = {
+                  id: (event.id as ResolvedLink['id']) ?? 'atlas',
+                  label: (event.label as string) ?? 'Öppna vyn',
+                  href,
+                }
+                setMessages(prev => [
+                  ...prev,
+                  { role: 'system', type: 'system', content: 'Du är redan på den här vyn.' } as SystemMessage,
+                  { role: 'assistant', type: 'links', links: [link] } as LinksMessage,
+                ])
+              } else {
+                router.push(href)
+              }
             }
 
             if (event.event === 'done') {
@@ -243,7 +262,7 @@ export function ChatClient({
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [input, loading, conversationId, router])
+  }, [input, loading, conversationId, router, pathname])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {

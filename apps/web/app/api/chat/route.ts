@@ -24,6 +24,7 @@ import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
+import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -133,21 +134,8 @@ function isActionIntent(text: string): boolean {
     && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|post|video|reel|manus|script|nyhet|nyheter|artikel|innehåll|content|story|veckobrev|rapport|render|deploy|news|publish|youtube|voiceover)\b/.test(t)
 }
 
-// Ord/fraser som PÅSTÅR en utförd/pågående åtgärd. Om Atlas skriver något av dessa
-// utan att ha anropat ett verktyg i samma tur → falskt påstående (ärlighetsspärr).
-const ACTION_CLAIM_RE = new RegExp(
-  [
-    // Starka åtgärds-verb i presens (med eller utan "jag") = påstår pågående körning/postning.
-    '\\b(startar|triggar|publicerar|postar|kör igång|drar igång|sätter igång|påbörjar)\\b',
-    // "kör/genomför … <workflow-objekt eller -namn>" (ej ren analys).
-    '\\b(kör|genomför)\\b[^.!?]*\\b(workflow|arbetsflöde|fetch ai news|generate script|generate voiceover|publish to social|publish to youtube|render video|render|youtube|nyhet|nyheten|artikeln|scriptet|manus|posten|inlägget|publicering|videon|reel)\\b',
-    // Status-påståenden om workflow/körning/publicering.
-    '\\bworkflow(et)?\\b[^.!?]*\\b(startat|köat|köad|igång|påbörjat|triggat)\\b',
-    '\\b(körningen|publiceringen)\\b[^.!?]*\\b(startad|köad|igång|påbörjad)\\b',
-    '\\b(har )?(startat|köat|triggat|publicerat) (workflow|körning|scriptet|nyheten|posten|inlägget)\\b',
-  ].join('|'),
-  'i',
-)
+// Ärlighetsspärrarnas claim-regexar (ACTION_CLAIM_RE / NAV_CLAIM_RE) bor i
+// @/lib/atlas/honesty så de kan enhetstestas utan att ladda route-beroenden.
 
 // ── MEDIA-BRYGGA ────────────────────────────────────────────────────────────
 // Mappar Atlas "kör <steg>" → de RIKTIGA media-pipeline-endpoints (separata från
@@ -209,8 +197,8 @@ const TOOL_GUIDE = `Verktyg du har:
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
-- present_links — NAVIGATIONSLAGER. När ditt svar nämner en plats operatören kan agera på (godkännanden, en kö, kostnader/intäkter, fallerade körningar, Dream-fynd) → anropa present_links med relevanta destinationer så att klickbara genvägar visas under svaret. Du skickar ALDRIG råa URL:er — bara logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Håll det till 1–3 mest relevanta. Registret bygger rätt länk.
-- navigate — öppnar en vy DIREKT åt operatören. Anropa BARA efter att operatören bekräftat att de vill dit ("öppna den", "ja, ta mig dit", "visa"). Erbjud annars present_links först och låt operatören välja. Samma destinationer/project/filters som present_links. Påstå aldrig att du öppnat något utan att ha anropat navigate.
+- present_links — NAVIGATIONSLAGER. När ditt svar nämner en plats operatören kan agera på (godkännanden, en kö, kostnader/intäkter, fallerade körningar, Dream-fynd) → anropa present_links med relevanta destinationer så att klickbara genvägar visas under svaret. Du skickar ALDRIG råa URL:er — bara logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Håll det till 1–3 mest relevanta. Registret bygger rätt länk. VIKTIGT om formulering: present_links ÖPPNAR ingenting — det visar bara genvägar att klicka på. Säg därför "Här är genvägar:" / "Här är snabblänkar:" (eng. "Here are shortcuts:"). Påstå ALDRIG att du öppnat, navigerat till, visat eller tagit operatören till sidan när du bara använt present_links — det har du inte gjort förrän de klickar.
+- navigate — öppnar en vy DIREKT åt operatören. Anropa BARA efter att operatören bekräftat att de vill dit ("öppna den", "ja, ta mig dit", "visa"). Erbjud annars present_links först och låt operatören välja. Samma destinationer/project/filters som present_links. ENDAST ett lyckat navigate-anrop får beskrivas som genomförd navigering ("öppnade", "tog dig till", "navigerade", "visar nu sidan"). Använd sådana formuleringar ALDRIG om du inte anropat navigate och fått ok=true denna tur — annars korrigeras du automatiskt.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
 
 ÄRLIGHETSREGEL (absolut, gäller alltid):
@@ -486,6 +474,8 @@ export async function POST(request: Request) {
       let actionToolUsed = false  // kördes ett ÅTGÄRDS-verktyg (trigger_workflow/delegate) DENNA förfrågan?
       // OBS: list_workflows/get_run_status/ask_manager räknas INTE — de är läsningar.
       // Ärlighetsspärren får bara tystas av ett verkligt, lyckat åtgärdsanrop.
+      let navigateSucceeded = false  // emitterades ett LYCKAT navigate-event DENNA förfrågan?
+      // present_links räknas INTE — det visar bara genvägar, det navigerar inte.
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
         // Agentic loop — Claude can use tools multiple times
@@ -521,6 +511,17 @@ export async function POST(request: Request) {
               send('text', { text: correction })
               fullText += correction
               console.log('[honesty-guard] blockerade falskt åtgärdspåstående (inget åtgärdsverktyg kördes)')
+            }
+
+            // NAVIGATIONS-ÄRLIGHETSSPÄRR: om Atlas PÅSTÅR att den öppnat/navigerat/
+            // visat en vy ("jag öppnade godkännanden") men inget LYCKAT navigate-anrop
+            // skedde denna tur → korrigera. present_links (genvägar) räknas INTE som
+            // navigering; bara ett verkligt navigate-event får tysta spärren.
+            if (!fastPath && !navigateSucceeded && NAV_CLAIM_RE.test(fullText)) {
+              const correction = ' \n\n⚠️ Obs: jag har faktiskt inte öppnat eller navigerat någonstans — jag kan visa genvägar att klicka på, eller öppna direkt om du bekräftar. Klicka på en genväg, eller säg "öppna den" så tar jag dig dit på riktigt.'
+              send('text', { text: correction })
+              fullText += correction
+              console.log('[honesty-guard] blockerade falskt navigeringspåstående (inget navigate-anrop lyckades)')
             }
 
             if (fullText) void saveMessage('assistant', fullText)
@@ -561,6 +562,7 @@ export async function POST(request: Request) {
             }
             if (toolUse.name === 'navigate' && r && (r as any).ok === true && (r as any).href) {
               send('navigate', { href: (r as any).href, label: (r as any).label, id: (r as any).id })
+              navigateSucceeded = true
             }
 
             send('tool_result', { tool: toolUse.name, result })

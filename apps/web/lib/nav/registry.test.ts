@@ -160,3 +160,42 @@ describe('searchDestinations — multi-word queries', () => {
     expect(res.map(r => r.id)).toContain('approvals')
   })
 })
+
+describe('navigation targets — the exact hrefs `navigate` resolves', () => {
+  // These mirror what the navigate tool emits (resolveDestination → href),
+  // covering the explicit verification list.
+  it('The Prompt resolves to ai-media-automation', () => {
+    expect(resolveDestination('project_home', { project: 'The Prompt' })?.href)
+      .toBe('/projects/ai-media-automation')
+    expect(resolveDestination('money', { project: 'The Prompt' })?.href)
+      .toBe('/costs?project=ai-media-automation')
+  })
+
+  it('GainPilot resolves correctly', () => {
+    expect(resolveDestination('project_home', { project: 'GainPilot' })?.href)
+      .toBe('/projects/gainpilot')
+    expect(resolveDestination('revenue', { project: 'GainPilot' })?.href)
+      .toBe('/revenue?project=gainpilot')
+  })
+
+  it('Familje-Stunden resolves correctly', () => {
+    expect(resolveDestination('project_home', { project: 'Familje-Stunden' })?.href)
+      .toBe('/projects/familje-stunden')
+    expect(resolveDestination('project_home', { project: 'familje' })?.href)
+      .toBe('/projects/familje-stunden')
+  })
+
+  it('approvals navigates to the approvals page (with pending filter)', () => {
+    expect(resolveDestination('approvals', { filters: { state: 'pending' } })?.href)
+      .toBe('/approvals?state=pending')
+  })
+
+  it('failed runs navigates to the activity page filtered to failed', () => {
+    expect(resolveDestination('activity', { filters: { status: 'failed' } })?.href)
+      .toBe('/agent-activity?status=failed')
+  })
+
+  it('activity navigates to the activity page', () => {
+    expect(resolveDestination('activity')?.href).toBe('/agent-activity')
+  })
+})

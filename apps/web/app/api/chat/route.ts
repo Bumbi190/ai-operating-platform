@@ -23,7 +23,7 @@ import { listOpportunities } from '@/lib/atlas/opportunities'
 import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
-import { getDreamFindings, dreamLiveSummary } from '@/lib/atlas/dream'
+import { getDreamFindings, dreamLiveSummary, delegateDreamFinding } from '@/lib/atlas/dream'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -209,7 +209,8 @@ const TOOL_GUIDE = `Verktyg du har:
 - run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
-- get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång till dess insikter per projekt via detta verktyg. När operatören frågar om Dream-varningar, systemhälsa, återkommande fel eller "vad bör vi förbättra": anropa get_dream_findings med projektets ID, sammanfatta sedan kritiska → varningar → info och föreslå konkreta åtgärder. Säg ALDRIG att du inte kan se Dream Cycle — det kan du.
+- get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång till dess insikter per projekt via detta verktyg. När operatören frågar om Dream-varningar, systemhälsa, återkommande fel eller "vad bör vi förbättra": anropa get_dream_findings med projektets ID, sammanfatta sedan kritiska → varningar → info och föreslå konkreta åtgärder. Varje finding har lifecycle (open/in_progress/completed) → så du kan svara på "vilka är öppna / delegerade / lösta?". Säg ALDRIG att du inte kan se Dream Cycle — det kan du.
+- delegate_dream_finding — stänger Dream→Action-loopen. När en finding har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (finding_key + project_id, valfri owner), och returnera sedan task-id, ägare och status. Du får aldrig påstå att en uppgift skapats utan att ha anropat verktyget och fått tillbaka ett task-id.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
 
@@ -335,6 +336,20 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['project_id'],
+    },
+  },
+  {
+    name: 'delegate_dream_finding',
+    description: 'Omvandla en Dream-insikt till en konkret uppgift i manager_tasks (stänger Dream→Action-loopen). Anropa DIREKT — utan att fråga om lov — när en finding har lifecycle="open" och en recommended_action. Idempotent: skapar ingen dubblett om findingen redan delegerats. Returnerar task-id, ägare och status.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project_id: { type: 'string', description: 'Projekt-ID som findingen tillhör (från LIVE LÄGE).' },
+        finding_key: { type: 'string', description: 'Dream-findingens nyckel (fältet "key" från get_dream_findings, t.ex. dream_2026-06-09_critical_alerting_missing).' },
+        owner: { type: 'string', description: 'Vem uppgiften tilldelas (agent eller person). Default "Atlas" om utelämnad.' },
+        title: { type: 'string', description: 'Valfri uppgiftstitel. Default: findingens rekommenderade åtgärd.' },
+      },
+      required: ['project_id', 'finding_key'],
     },
   },
 ]
@@ -733,13 +748,41 @@ async function executeTool(
       has_data: true,
       last_run_at: res.lastRunAt,
       summary: res.counts,
+      lifecycle: res.lifecycle, // { open, in_progress, completed } — answers "which are open/delegated/resolved?"
       findings: res.findings.map(f => ({
+        key: f.key, // pass to delegate_dream_finding to act on this finding
         severity: f.severity,
         insight: f.insight,
         recommended_action: f.action,
+        lifecycle: f.lifecycle, // open | in_progress | completed
+        task: f.task, // { id, status, owner } when already delegated
         updated_at: f.updatedAt,
       })),
-      note: 'Sammanfatta per allvarlighetsgrad (kritisk → varning → info) och föreslå konkreta åtgärder baserat på recommended_action-fälten.',
+      note: 'Sammanfatta per allvarlighetsgrad (kritisk → varning → info). För findings med lifecycle="open" och en recommended_action: delegera DIREKT med delegate_dream_finding (fråga inte om lov). Säg vad du gör, skapa uppgiften, och returnera task-id/ägare/status.',
+    }
+  }
+
+  if (name === 'delegate_dream_finding') {
+    const { project_id, finding_key, owner, title } = input as {
+      project_id?: string; finding_key?: string; owner?: string; title?: string
+    }
+    if (!project_id || !finding_key) {
+      return { error: 'project_id och finding_key krävs.' }
+    }
+    const r = await delegateDreamFinding(db, { projectId: project_id, findingKey: finding_key, owner, title })
+    if (!r.ok) return { ok: false, error: r.error }
+    return {
+      ok: true,
+      already_existed: r.alreadyExisted ?? false,
+      task_id: r.task?.id,
+      owner: r.task?.owner,
+      status: r.task?.status,
+      priority: r.task?.priority,
+      title: r.task?.title,
+      dream_finding: r.finding,
+      note: r.alreadyExisted
+        ? 'Den här findingen var redan delegerad — återanvände befintlig uppgift (ingen dubblett). Rapportera task-id, ägare och status.'
+        : 'Uppgift skapad i manager_tasks och synlig i Activity Center. Findingens lifecycle är nu "in_progress". Rapportera task-id, ägare och status till operatören.',
     }
   }
 

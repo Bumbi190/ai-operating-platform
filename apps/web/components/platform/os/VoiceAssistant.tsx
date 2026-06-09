@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import { Mic, MicOff, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -12,6 +13,8 @@ type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 const SILENCE_MS = 1100
 
 export function VoiceAssistant() {
+  const router   = useRouter()
+  const pathname = usePathname()
   const [mounted, setMounted]       = useState(false)
   const [phase, setPhase]           = useState<Phase>('idle')
   const [transcript, setTranscript] = useState('')
@@ -314,6 +317,19 @@ export function VoiceAssistant() {
                 reply += d.text; setResponse(reply); flush(false)
               } else if (d.event === 'timing') {
                 serverTiming = { contextMs: d.contextMs, firstTokenMs: d.firstTokenMs, serverTotalMs: d.serverTotalMs }
+              } else if (d.event === 'navigate' && d.href) {
+                // Atlas-navigationslagret — direkt router-navigering (samma som
+                // ChatClient). Utan denna gren ignorerades navigate-eventet i röst-
+                // läget, så sidan ändrades aldrig trots att Atlas sa "öppnade".
+                const href = d.href as string
+                const targetPath = href.split('?')[0]
+                if (targetPath !== pathname) {
+                  router.push(href)
+                } else {
+                  // Redan på vyn — undvik tyst no-op; notera det i svaret.
+                  reply += (reply ? '\n\n' : '') + 'Du är redan på den här vyn.'
+                  setResponse(reply)
+                }
               }
             } catch { /* ignore */ }
           }

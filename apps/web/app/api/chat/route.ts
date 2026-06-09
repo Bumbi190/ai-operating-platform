@@ -27,6 +27,7 @@ import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamF
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -409,11 +410,12 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { messages, conversation_id, voice, mode } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
+    view?: ClientViewEnvelope
   }
 
   const db = createAdminClient()
@@ -444,6 +446,14 @@ export async function POST(request: Request) {
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
     try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
+    // currently looking at. Hint-only — route/project re-resolved via the registry.
+    if (isViewAwarenessEnabled()) {
+      try {
+        const nv = normalizeView(view)
+        if (nv) systemPrompt += renderViewBlock(nv)
+      } catch { /* icke-kritiskt */ }
+    }
     if (voice) systemPrompt += VOICE_DIRECTIVE
   }
 

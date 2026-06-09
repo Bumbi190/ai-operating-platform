@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { Mic, MicOff, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { buildChatRequestBody } from '@/lib/atlas/view-client'
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -294,7 +295,7 @@ export function VoiceAssistant() {
       const res = await fetch('/api/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: historyRef.current, voice: true, conversation_id: convId }),
+        body:    JSON.stringify(buildChatRequestBody({ messages: historyRef.current, voice: true, conversation_id: convId })),
       })
 
       if (res.ok && res.body) {

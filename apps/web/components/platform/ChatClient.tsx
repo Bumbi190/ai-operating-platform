@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AtlasActionChips } from '@/components/platform/os/AtlasActionChips'
 import type { ResolvedLink } from '@/lib/nav/registry'
+import { buildChatRequestBody } from '@/lib/atlas/view-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,10 +134,10 @@ export function ChatClient({
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(buildChatRequestBody({
           messages: apiMessages.current,
           conversation_id: conversationId,
-        }),
+        })),
       })
 
       if (!res.ok || !res.body) throw new Error('Anslutning misslyckades')

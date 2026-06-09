@@ -255,6 +255,38 @@ export function resolveLinks(
 /** The destination ids Atlas may reference — exported for the tool schema enum. */
 export const DESTINATION_IDS = Object.keys(DESTINATIONS) as DestinationId[]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Reverse lookups — used by the View Awareness layer to describe the current page
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolve a live pathname back to a logical destination id (best-effort, longest base path wins). */
+export function pathToDestination(pathname: string): DestinationId | null {
+  if (!pathname) return null
+  const path = (pathname.split('?')[0] || '/').replace(/\/+$/, '') || '/'
+  const entries = (Object.keys(ROUTE_MAP) as DestinationId[])
+    .map(id => [id, ROUTE_MAP[id]] as const)
+    .sort((a, b) => b[1].length - a[1].length) // longest base path first
+  for (const [id, base] of entries) {
+    if (path === base || path.startsWith(base + '/')) return id
+  }
+  return null
+}
+
+/** Human label for a destination ("Approvals", "Money", …). */
+export function destinationLabel(id: DestinationId): string {
+  return DESTINATIONS[id]?.label ?? id
+}
+
+/** The allowed filter keys+values for a destination (or undefined if it takes none). */
+export function destinationFilters(id: DestinationId): Record<string, readonly string[]> | undefined {
+  return DESTINATIONS[id]?.filters
+}
+
+/** Display name for a project slug (falls back to the slug). */
+export function projectDisplayName(slug: string): string | undefined {
+  return BUSINESS_PROFILES[slug]?.name ?? slug
+}
+
 /** Default jump targets shown in the palette before the operator types. */
 export const PRIMARY_JUMP_TARGETS: DestinationId[] = [
   'atlas', 'chat', 'approvals', 'activity', 'money', 'revenue', 'actions', 'health', 'knowledge',

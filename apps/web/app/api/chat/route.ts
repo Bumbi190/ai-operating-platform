@@ -25,6 +25,7 @@ import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
+import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -197,8 +198,11 @@ const TOOL_GUIDE = `Verktyg du har:
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
-- present_links — NAVIGATIONSLAGER. När ditt svar nämner en plats operatören kan agera på (godkännanden, en kö, kostnader/intäkter, fallerade körningar, Dream-fynd) → anropa present_links med relevanta destinationer så att klickbara genvägar visas under svaret. Du skickar ALDRIG råa URL:er — bara logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Håll det till 1–3 mest relevanta. Registret bygger rätt länk. VIKTIGT om formulering: present_links ÖPPNAR ingenting — det visar bara genvägar att klicka på. Säg därför "Här är genvägar:" / "Här är snabblänkar:" (eng. "Here are shortcuts:"). Påstå ALDRIG att du öppnat, navigerat till, visat eller tagit operatören till sidan när du bara använt present_links — det har du inte gjort förrän de klickar.
-- navigate — öppnar en vy DIREKT åt operatören. Anropa BARA efter att operatören bekräftat att de vill dit ("öppna den", "ja, ta mig dit", "visa"). Erbjud annars present_links först och låt operatören välja. Samma destinationer/project/filters som present_links. ENDAST ett lyckat navigate-anrop får beskrivas som genomförd navigering ("öppnade", "tog dig till", "navigerade", "visar nu sidan"). Använd sådana formuleringar ALDRIG om du inte anropat navigate och fått ok=true denna tur — annars korrigeras du automatiskt.
+- present_links — FÖRSLAG/BLÄDDRING. Använd BARA när operatören bläddrar, ställer en fråga, eller när flera destinationer är relevanta och du vill låta dem välja. Det ÖPPNAR ingenting — det visar klickbara genvägar under svaret. Logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue", "project_home") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Aldrig råa URL:er. Håll till 1–3 mest relevanta. FORMULERING: säg "Här är genvägar:" / "Here are shortcuts:". Påstå ALDRIG att du öppnat, navigerat till eller tagit operatören till sidan när du bara använt present_links — det har du inte gjort förrän de klickar.
+- navigate — ÖPPNAR en vy DIREKT åt operatören. Ett DIREKT navigeringskommando ("öppna X", "gå till X", "ta mig till X", "visa X", eng. "open/go to/take me to/show X") ÄR i sig bekräftelsen → anropa navigate OMEDELBART, samma tur, utan att fråga om bekräftelse och utan att erbjuda present_links först. Använd present_links endast när operatören bläddrar/frågar eller flera mål är relevanta. Samma destinationer/project/filters som present_links.
+  • Att öppna en hel VERKSAMHET/ett PROJEKT ("öppna The Prompt", "open GainPilot", "ta mig till Familje-Stunden") → navigate med destination:"project_home" och project:"<namn>" (t.ex. project:"The Prompt", "GainPilot", "Familje-Stunden"). Registret översätter namnet till rätt slug.
+  • Att öppna en SIDA ("öppna godkännanden", "show failed runs") → navigate med rätt destination (approvals, activity {status:"failed"}, …).
+  ENDAST ett lyckat navigate-anrop får beskrivas som genomförd navigering ("öppnade", "tog dig till", "navigerade", "visar nu sidan"). Använd sådana formuleringar ALDRIG om du inte anropat navigate och fått ok=true denna tur — annars korrigeras du automatiskt.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
 
 ÄRLIGHETSREGEL (absolut, gäller alltid):
@@ -378,12 +382,12 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'navigate',
-    description: 'Öppna en vy DIREKT åt operatören (router-navigering). Anropa BARA efter att operatören bekräftat att de vill dit — annars använd present_links. Skicka en logisk destination, aldrig en rå URL.',
+    description: 'Öppna en vy DIREKT åt operatören (router-navigering). Ett direkt kommando ("öppna/gå till/ta mig till/visa X", eng. "open/go to/take me to/show X") ÄR bekräftelsen → anropa omedelbart, fråga inte. För att öppna en hel verksamhet/projekt: destination="project_home" + project="The Prompt"/"GainPilot"/"Familje-Stunden". Skicka en logisk destination, aldrig en rå URL.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        destination: { type: 'string', enum: [...DESTINATION_IDS], description: 'Logisk destination att öppna.' },
-        project: { type: 'string', description: 'Valfri verksamhet (namn eller slug).' },
+        destination: { type: 'string', enum: [...DESTINATION_IDS], description: 'Logisk destination att öppna. För en hel verksamhet/projekt: "project_home" (kombinera med project).' },
+        project: { type: 'string', description: 'Verksamhet (namn eller slug), t.ex. "The Prompt", "GainPilot", "Familje-Stunden". Krävs för project_home.' },
         filters: { type: 'object', description: 'Valfria filter, t.ex. {"state":"pending"}.', additionalProperties: { type: 'string' } },
       },
       required: ['destination'],
@@ -416,7 +420,10 @@ export async function POST(request: Request) {
   const fastPath = mode === 'content' || isFastPathContent(lastUserText)
   // Action-intent (kör/starta/publicera …) → tvinga verktygsanrop på första turen.
   const actionIntent = !fastPath && isActionIntent(lastUserText)
-  const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : 'atlas')
+  // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
+  // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
+  const navIntent = !fastPath && !actionIntent && isNavIntent(lastUserText)
+  const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
 
   let systemPrompt: string
   if (fastPath) {
@@ -430,6 +437,8 @@ export async function POST(request: Request) {
 
   const activeTools = fastPath ? [] : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
+  // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
+  const forceNavigateFirstTurn = navIntent && activeTools.length > 0
   const contextMs = Date.now() - tStart
 
   // Helper: persist a message to DB
@@ -482,14 +491,22 @@ export async function POST(request: Request) {
         for (let i = 0; i < 10; i++) {
           // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
           // första färdiga meningen i stället för att vänta in hela svaret.
-          // TVINGAD ROUTNING: vid action-intent måste FÖRSTA turen anropa ett verktyg
-          // (tool_choice=any) — Atlas kan då inte bara påstå att något körts.
+          // TVINGAD ROUTNING (turn 0):
+          //  • navigerings-kommando → tvinga specifikt navigate (kommandot ÄR bekräftelsen).
+          //  • action-intent → tvinga något verktyg (tool_choice=any) så Atlas inte bara påstår.
+          const toolChoice = i === 0
+            ? (forceNavigateFirstTurn
+                ? { tool_choice: { type: 'tool' as const, name: 'navigate' } }
+                : forceToolFirstTurn
+                  ? { tool_choice: { type: 'any' as const } }
+                  : {})
+            : {}
           const llm = anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
-            ...(forceToolFirstTurn && i === 0 ? { tool_choice: { type: 'any' as const } } : {}),
+            ...toolChoice,
             messages: msgs,
           })
           llm.on('text', (delta: string) => {

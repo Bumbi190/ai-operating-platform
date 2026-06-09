@@ -154,6 +154,14 @@ describe('searchDestinations — multi-word queries', () => {
     expect(res.some(r => r.kind === 'project' && r.label === 'The Prompt')).toBe(true)
   })
 
+  it('"the prompt" no longer fuzzy-resolves to the content queue', () => {
+    const res = searchDestinations('the prompt', {
+      projects: [{ name: 'The Prompt', slug: 'ai-media-automation' }],
+    })
+    expect(res.some(r => r.id === 'content_queue')).toBe(false)
+    expect(res.some(r => r.kind === 'project' && r.label === 'The Prompt')).toBe(true)
+  })
+
   it('returns the default jump targets for a blank query', () => {
     const res = searchDestinations('', { projects: [] })
     expect(res.length).toBeGreaterThan(0)

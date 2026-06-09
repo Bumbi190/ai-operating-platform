@@ -130,7 +130,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
   },
   content_queue: {
     id: 'content_queue', label: 'Content Queue',
-    keywords: ['content', 'articles', 'queue', 'innehåll', 'editorial', 'the prompt'],
+    keywords: ['content', 'articles', 'queue', 'innehåll', 'editorial'],
     projectMode: 'none',
   },
   marketing_queue: {

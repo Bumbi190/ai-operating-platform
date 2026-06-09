@@ -23,6 +23,7 @@ import { listOpportunities } from '@/lib/atlas/opportunities'
 import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
+import { getDreamFindings, dreamLiveSummary } from '@/lib/atlas/dream'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -34,7 +35,7 @@ const LIVE_CTX_TTL_MS = 45_000
 async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
   if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
   const k = (n: number) => `${Math.round(n)} kr`
-  const [ctxR, patR, csR, oppR, actR, revR, opsR] = await Promise.allSettled([
+  const [ctxR, patR, csR, oppR, actR, revR, opsR, dreamR] = await Promise.allSettled([
     gatherAtlasContext(db),
     fetchOperatorPatterns(db),
     contentScore(db),
@@ -42,6 +43,7 @@ async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promi
     agentActivity(db, 24),
     revenueIntel(db),
     getOperations(db),
+    dreamLiveSummary(db),
   ])
 
   let text = ''
@@ -78,6 +80,9 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
   // Operations Center-snapshot → Atlas svarar "Hur går det idag?", "Vad väntar på
   // publicering?", "Finns några fel?", "Vilket projekt går bäst?" direkt.
   if (opsR.status === 'fulfilled') text += operationsSummary(opsR.value)
+  // Dream Cycle findings — nightly self-improvement intelligence, surfaced
+  // passively so criticals/warnings appear in briefings without being asked.
+  if (dreamR.status === 'fulfilled' && dreamR.value) text += dreamR.value
 
   _liveCtxCache = { at: Date.now(), text }
   return text
@@ -199,6 +204,7 @@ const TOOL_GUIDE = `Verktyg du har:
 - run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
+- get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång till dess insikter per projekt via detta verktyg. När operatören frågar om Dream-varningar, systemhälsa, återkommande fel eller "vad bör vi förbättra": anropa get_dream_findings med projektets ID, sammanfatta sedan kritiska → varningar → info och föreslå konkreta åtgärder. Säg ALDRIG att du inte kan se Dream Cycle — det kan du.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
 
@@ -310,6 +316,20 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['goal', 'tasks'],
+    },
+  },
+  {
+    name: 'get_dream_findings',
+    description: 'Hämta Dream Cycle-insikter (nattlig självförbättringsanalys) för ett projekt. Returnerar kritiska/varnings-/info-fynd med rekommenderade åtgärder, samt en sammanfattning per allvarlighetsgrad. Använd när operatören frågar om Dream-varningar, systemhälsa, återkommande fel, eller "vad bör vi förbättra" för ett projekt.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project_id: {
+          type: 'string',
+          description: 'Projekt-ID vars Dream-insikter ska hämtas. Använd projekt-ID:t från LIVE LÄGE-kontexten för den verksamhet operatören frågar om.',
+        },
+      },
+      required: ['project_id'],
     },
   },
 ]
@@ -687,6 +707,35 @@ async function executeTool(
     const manager = getManager()
     const response = await manager.chat(message, project_id)
     return { response }
+  }
+
+  if (name === 'get_dream_findings') {
+    const { project_id } = input as { project_id?: string }
+    if (!project_id) {
+      return { error: 'project_id krävs. Använd projekt-ID:t från LIVE LÄGE-kontexten.' }
+    }
+    const { data: proj } = await db.from('projects').select('name').eq('id', project_id).maybeSingle()
+    const res = await getDreamFindings(db, project_id, 20)
+    if (!res.hasData) {
+      return {
+        project: (proj as { name?: string } | null)?.name ?? null,
+        has_data: false,
+        note: 'Inga Dream Cycle-insikter för det här projektet ännu (dream cycle har inte kört, eller inga körningar att analysera de senaste 24h).',
+      }
+    }
+    return {
+      project: (proj as { name?: string } | null)?.name ?? null,
+      has_data: true,
+      last_run_at: res.lastRunAt,
+      summary: res.counts,
+      findings: res.findings.map(f => ({
+        severity: f.severity,
+        insight: f.insight,
+        recommended_action: f.action,
+        updated_at: f.updatedAt,
+      })),
+      note: 'Sammanfatta per allvarlighetsgrad (kritisk → varning → info) och föreslå konkreta åtgärder baserat på recommended_action-fälten.',
+    }
   }
 
   if (name === 'delegate') {

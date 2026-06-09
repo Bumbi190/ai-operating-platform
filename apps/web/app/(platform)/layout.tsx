@@ -181,7 +181,10 @@ export default async function PlatformLayout({
 
           {/* Sticky command layer */}
           <div className="relative z-bar">
-            <CommandBar operator={user.email ?? undefined} />
+            <CommandBar
+              operator={user.email ?? undefined}
+              projects={projects.map((p: any) => ({ name: p.name, slug: p.slug }))}
+            />
           </div>
 
           {/* Page canvas */}

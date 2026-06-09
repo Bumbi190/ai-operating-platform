@@ -24,6 +24,7 @@ import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
+import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -213,6 +214,8 @@ const TOOL_GUIDE = `Verktyg du har:
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
+- present_links — NAVIGATIONSLAGER. När ditt svar nämner en plats operatören kan agera på (godkännanden, en kö, kostnader/intäkter, fallerade körningar, Dream-fynd) → anropa present_links med relevanta destinationer så att klickbara genvägar visas under svaret. Du skickar ALDRIG råa URL:er — bara logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Håll det till 1–3 mest relevanta. Registret bygger rätt länk.
+- navigate — öppnar en vy DIREKT åt operatören. Anropa BARA efter att operatören bekräftat att de vill dit ("öppna den", "ja, ta mig dit", "visa"). Erbjud annars present_links först och låt operatören välja. Samma destinationer/project/filters som present_links. Påstå aldrig att du öppnat något utan att ha anropat navigate.
 När operatören vill köra något: hitta rätt workflow, trigga det, presentera resultatet snyggt. Svara på operatörens språk (svenska om inget annat anges).
 
 ÄRLIGHETSREGEL (absolut, gäller alltid):
@@ -366,6 +369,43 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['project_id', 'issue_id'],
     },
   },
+  {
+    name: 'present_links',
+    description: 'Visa klickbara navigationsgenvägar UNDER ditt svar (Atlas-navigationslagret). Använd när svaret refererar till en plats operatören kan agera på. Skicka logiska destinationer — ALDRIG råa URL:er. Registret bygger rätt länk och filtrerar bort ogiltiga. Håll till 1–3 mest relevanta.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        items: {
+          type: 'array',
+          description: 'Destinationerna att visa som genvägar.',
+          items: {
+            type: 'object',
+            properties: {
+              destination: { type: 'string', enum: [...DESTINATION_IDS], description: 'Logisk destination, t.ex. approvals, activity, money, revenue, dream, content_queue, marketing_queue.' },
+              project: { type: 'string', description: 'Valfri verksamhet (namn eller slug), t.ex. "The Prompt" eller "gainpilot".' },
+              filters: { type: 'object', description: 'Valfria filter, t.ex. {"state":"pending"} eller {"status":"failed"}.', additionalProperties: { type: 'string' } },
+              label: { type: 'string', description: 'Valfri egen etikett på genvägen.' },
+            },
+            required: ['destination'],
+          },
+        },
+      },
+      required: ['items'],
+    },
+  },
+  {
+    name: 'navigate',
+    description: 'Öppna en vy DIREKT åt operatören (router-navigering). Anropa BARA efter att operatören bekräftat att de vill dit — annars använd present_links. Skicka en logisk destination, aldrig en rå URL.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        destination: { type: 'string', enum: [...DESTINATION_IDS], description: 'Logisk destination att öppna.' },
+        project: { type: 'string', description: 'Valfri verksamhet (namn eller slug).' },
+        filters: { type: 'object', description: 'Valfria filter, t.ex. {"state":"pending"}.', additionalProperties: { type: 'string' } },
+      },
+      required: ['destination'],
+    },
+  },
 ]
 
 export async function POST(request: Request) {
@@ -515,6 +555,18 @@ export async function POST(request: Request) {
             // needs_confirmation (publicering ej bekräftad) eller fel.
             if (toolUse.name === 'run_media_step') took = !!r && r.ok === true
             if (took) actionToolUsed = true
+
+            // ── NAVIGATIONSLAGRET ──────────────────────────────────────────────
+            // present_links → klickbara genvägar under svaret (persisteras för reload).
+            // navigate → klienten router-navigerar direkt (efter operatörens bekräftelse).
+            if (toolUse.name === 'present_links' && r && Array.isArray((r as any).links) && (r as any).links.length) {
+              const links = (r as any).links
+              send('links', { links })
+              void saveMessage('assistant', null, { kind: 'links', links })
+            }
+            if (toolUse.name === 'navigate' && r && (r as any).ok === true && (r as any).href) {
+              send('navigate', { href: (r as any).href, label: (r as any).label, id: (r as any).id })
+            }
 
             send('tool_result', { tool: toolUse.name, result })
 
@@ -850,6 +902,23 @@ async function executeTool(
       })
     } catch { /* icke-kritiskt */ }
     return { goal, created: created.length, tasks: created, note: 'Uppgifterna syns nu live i Atlas Activity Center.' }
+  }
+
+  if (name === 'present_links') {
+    const { items } = input as { items?: { destination: DestinationId; project?: string; filters?: Record<string, string>; label?: string }[] }
+    const links = resolveLinks(items ?? [])
+    if (links.length === 0) {
+      return { links: [], note: 'Inga giltiga destinationer kunde byggas — kontrollera destination/projekt.' }
+    }
+    return { links, note: 'Genvägar visade under svaret. Beskriv kort vad de leder till.' }
+  }
+
+  if (name === 'navigate') {
+    const { destination, project, filters } = input as { destination?: DestinationId; project?: string; filters?: Record<string, string> }
+    if (!destination) return { ok: false, error: 'destination krävs.' }
+    const r = resolveDestination(destination, { project, filters })
+    if (!r) return { ok: false, error: 'Okänd destination eller projekt — kunde inte navigera.' }
+    return { ok: true, id: r.id, label: r.label, href: r.href, note: 'Vyn öppnas för operatören.' }
   }
 
   throw new Error(`Okänt verktyg: ${name}`)

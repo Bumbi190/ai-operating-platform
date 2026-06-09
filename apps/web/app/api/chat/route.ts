@@ -26,27 +26,34 @@ import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
 // den sammansatta kontext-strängen kort så turer 2+ blir nära momentana.
-let _liveCtxCache: { at: number; text: string } | null = null
+// Keyed by the sorted allowed-project-id set so each tenant's snapshot is cached
+// independently (single owner today → one key → identical behavior).
+const _liveCtxCache = new Map<string, { at: number; text: string }>()
 const LIVE_CTX_TTL_MS = 45_000
 
-async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
-  if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
+async function buildLiveContext(db: ReturnType<typeof createAdminClient>, allowedProjectIds: string[] = []): Promise<string> {
+  // ISOLATION: the live snapshot is scoped to the caller's allowed projects.
+  // Cache is keyed per allow-list set so one tenant's snapshot never serves another.
+  const cacheKey = [...allowedProjectIds].sort().join(',')
+  const cached = _liveCtxCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < LIVE_CTX_TTL_MS) return cached.text
   const k = (n: number) => `${Math.round(n)} kr`
   const [ctxR, patR, csR, oppR, actR, revR, opsR, dreamR] = await Promise.allSettled([
-    gatherAtlasContext(db),
-    fetchOperatorPatterns(db),
-    contentScore(db),
-    listOpportunities(db),
-    agentActivity(db, 24),
-    revenueIntel(db),
-    getOperations(db),
-    dreamLiveSummary(db),
+    gatherAtlasContext(db, allowedProjectIds),
+    fetchOperatorPatterns(db, allowedProjectIds),
+    contentScore(db, undefined, allowedProjectIds),
+    listOpportunities(db, undefined, allowedProjectIds),
+    agentActivity(db, 24, allowedProjectIds),
+    revenueIntel(db, undefined, allowedProjectIds),
+    getOperations(db, allowedProjectIds),
+    dreamLiveSummary(db, allowedProjectIds),
   ])
 
   let text = ''
@@ -87,7 +94,7 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
   // passively so criticals/warnings appear in briefings without being asked.
   if (dreamR.status === 'fulfilled' && dreamR.value) text += dreamR.value
 
-  _liveCtxCache = { at: Date.now(), text }
+  _liveCtxCache.set(cacheKey, { at: Date.now(), text })
   return text
 }
 
@@ -412,6 +419,11 @@ export async function POST(request: Request) {
   const db = createAdminClient()
   const tStart = Date.now()
 
+  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
+  // path (live context, ask_manager, get_dream_findings) is scoped to these.
+  // Single-owner today → all projects; multi-tenant ready by construction.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
   const lastUserText = (() => {
     const m = messages[messages.length - 1]
@@ -431,7 +443,7 @@ export async function POST(request: Request) {
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
-    try { systemPrompt += await buildLiveContext(db) } catch { /* icke-kritiskt */ }
+    try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
     if (voice) systemPrompt += VOICE_DIRECTIVE
   }
 
@@ -554,7 +566,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, allowedProjectIds)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -636,6 +648,7 @@ async function executeTool(
   input: Record<string, unknown>,
   db: AdminClient,
   _userId: string,
+  allowedProjectIds: string[] = [],
 ): Promise<unknown> {
   if (name === 'list_workflows') {
     const { data: workflows } = await db
@@ -804,8 +817,12 @@ async function executeTool(
 
   if (name === 'ask_manager') {
     const { message, project_id } = input as { message: string; project_id?: string }
+    // ISOLATION: only narrow by a model-supplied project_id if the operator owns
+    // it; otherwise ignore it. The manager's reads are scoped to allowedProjectIds
+    // regardless, so a spoofed id can never widen access.
+    const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
     const manager = getManager()
-    const response = await manager.chat(message, project_id)
+    const response = await manager.chat(message, scopedProjectId, allowedProjectIds)
     return { response }
   }
 
@@ -813,6 +830,11 @@ async function executeTool(
     const { project_id } = input as { project_id?: string }
     if (!project_id) {
       return { error: 'project_id krävs. Använd projekt-ID:t från LIVE LÄGE-kontexten.' }
+    }
+    // ISOLATION: a model-supplied project_id is only trusted if the operator owns
+    // it. Otherwise behave as "no data" (never read another tenant's findings).
+    if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+      return { project: null, has_data: false, note: 'Inget sådant projekt i din åtkomst.' }
     }
     const { data: proj } = await db.from('projects').select('name').eq('id', project_id).maybeSingle()
     const res = await getDreamFindings(db, project_id, 20)

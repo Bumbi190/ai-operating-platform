@@ -66,6 +66,8 @@ function lifecycleFromTaskStatus(status: string | null | undefined): DreamLifecy
   return 'open'
 }
 
+import { applyProjectScope } from './isolation'
+
 type AnyDb = any
 
 /** Parse the stored `[SEVERITY] insight → action` string into parts. */
@@ -212,9 +214,9 @@ export async function getDreamFindings(
  * latest dream criticals/warnings across all projects without the operator
  * having to ask. Returns '' when there is nothing noteworthy.
  */
-export async function dreamLiveSummary(db: AnyDb): Promise<string> {
+export async function dreamLiveSummary(db: AnyDb, allowedProjectIds?: string[]): Promise<string> {
   try {
-    const { data: projects } = await db.from('projects').select('id, name')
+    const { data: projects } = await applyProjectScope(db.from('projects').select('id, name'), allowedProjectIds, 'id')
     const list = (projects ?? []) as { id: string; name: string }[]
     if (list.length === 0) return ''
 

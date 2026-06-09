@@ -7,6 +7,8 @@
  * Stripe-snapshoten börjat fyllas. Read-only, deterministisk.
  */
 
+import { applyProjectScope } from './isolation'
+
 type AnyDb = any
 
 export interface RevenueIntel {
@@ -30,12 +32,12 @@ const EMPTY: RevenueIntel = {
 
 const n = (v: unknown) => Number(v ?? 0) || 0
 
-export async function revenueIntel(db: AnyDb, projectId?: string): Promise<RevenueIntel> {
+export async function revenueIntel(db: AnyDb, projectId?: string, allowedProjectIds?: string[]): Promise<RevenueIntel> {
   try {
-    let q = db.from('revenue_snapshots')
+    let q = applyProjectScope(db.from('revenue_snapshots')
       .select('snapshot_date, active_subscribers, new_subscribers, trialing, churned_this_month, mrr_sek, revenue_month_sek, currency')
       .order('snapshot_date', { ascending: false })
-      .limit(2)
+      .limit(2), allowedProjectIds)
     if (projectId) q = q.eq('project_id', projectId)
     const { data } = await q
     const rows = data ?? []

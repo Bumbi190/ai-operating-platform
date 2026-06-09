@@ -17,6 +17,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
+import { applyProjectScope } from '@/lib/atlas/isolation'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -96,51 +97,58 @@ export class ManagerAgent {
   // ── Context builder ─────────────────────────────────────────────────────────
   // Assembles a rich operational snapshot for LLM reasoning.
 
-  private async buildContext(projectId?: string): Promise<string> {
+  private async buildContext(projectId?: string, allowedProjectIds?: string[]): Promise<string> {
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
+    // ISOLATION: scope every project-native read to the caller's allowed
+    // projects. `undefined` = no scoping (daily-plan/cron callers stay global);
+    // a provided array (even empty → impossible id → zero rows) scopes.
+
     // Parallel DB fetches
     const [runsRes, agentsRes, approvalsRes, costsRes, tasksRes, projectsRes] =
       await Promise.allSettled([
-        this.db
+        applyProjectScope(this.db
           .from('runs')
           .select('id, status, error, created_at, finished_at, workflows(name), project_id')
           .gte('created_at', weekAgo)
           .order('created_at', { ascending: false })
-          .limit(30),
+          .limit(30), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('agents')
           .select('id, name, model, project_id')
-          .limit(30),
+          .limit(30), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('approvals')
           .select('id, output_key, status, created_at, runs(workflows(name))')
           .in('status', ['pending'])
           .order('created_at', { ascending: false })
-          .limit(10),
+          .limit(10), allowedProjectIds),
 
+        // run_logs has no project_id (indirect scope via run_id) — DEFERRED.
+        // Token totals here remain global; safe for single-owner, must be
+        // run_id-scoped before multi-tenant. Tracked in the isolation checklist.
         this.db
           .from('run_logs')
           .select('tokens_in, tokens_out, runs(agents(name, model), workflows(name))')
           .gte('created_at', monthStart)
           .not('tokens_in', 'is', null),
 
-        this.db
+        applyProjectScope(this.db
           .from('manager_tasks')
           .select('*')
           .in('status', ['pending', 'in_progress'])
           .order('created_at', { ascending: false })
-          .limit(15),
+          .limit(15), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('projects')
           .select('id, name, slug')
-          .limit(10),
+          .limit(10), allowedProjectIds, 'id'),
       ])
 
     // Safely unwrap results
@@ -221,8 +229,8 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
    * Conversational interface — answers questions, gives recommendations,
    * provides project updates. Used by /chat command center.
    */
-  async chat(message: string, projectId?: string): Promise<string> {
-    const context = await this.buildContext(projectId)
+  async chat(message: string, projectId?: string, allowedProjectIds: string[] = []): Promise<string> {
+    const context = await this.buildContext(projectId, allowedProjectIds)
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',

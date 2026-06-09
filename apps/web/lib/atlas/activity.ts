@@ -10,6 +10,8 @@
  *   - hälsopoäng: healthy | warning | critical
  */
 
+import { applyProjectScope } from './isolation'
+
 type AnyDb = any
 
 export type AgentHealth = 'healthy' | 'warning' | 'critical'
@@ -36,15 +38,15 @@ export interface AgentActivity {
 
 const STALL_HOURS = 2
 
-export async function agentActivity(db: AnyDb, sinceHours = 24): Promise<AgentActivity> {
+export async function agentActivity(db: AnyDb, sinceHours = 24, allowedProjectIds?: string[]): Promise<AgentActivity> {
   const since = new Date(Date.now() - sinceHours * 3600_000).toISOString()
   const safe = async <T>(p: Promise<{ data: T | null }>, fb: T): Promise<T> => {
     try { const { data } = await p; return data ?? fb } catch { return fb }
   }
 
   const [runs, costs] = await Promise.all([
-    safe<any[]>(db.from('runs').select('status, started_at').gte('started_at', since), []),
-    safe<any[]>(db.from('cost_events').select('agent, cost_sek, created_at').gte('created_at', since), []),
+    safe<any[]>(applyProjectScope(db.from('runs').select('status, started_at, project_id').gte('started_at', since), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('cost_events').select('agent, cost_sek, created_at').gte('created_at', since), allowedProjectIds), []),
   ])
 
   let runsDone = 0, runsFailed = 0, runsRunning = 0, runsQueued = 0, stalledRuns = 0

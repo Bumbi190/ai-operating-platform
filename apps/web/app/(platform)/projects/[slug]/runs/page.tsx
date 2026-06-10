@@ -6,7 +6,7 @@ import type { RunStatus } from '@/lib/supabase/types'
 import { Play } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function RunsPage({ params }: { params: { slug: string } }) {
@@ -23,6 +23,11 @@ export default async function RunsPage({ params }: { params: { slug: string } })
 
   return (
     <OSPage className="animate-fade-in">
+      {/* Atlas view awareness — publish the runs on screen. */}
+      <ViewVisibleSync refs={(runs ?? []).slice(0, 12).map((r) => {
+        const wf = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
+        return { domain: 'runs', id: r.id, label: wf?.name ?? r.status }
+      })} />
       <OSLayer layer="hero">
         <h1 className="text-2xl 2xl:text-3xl font-bold tracking-tight">Körningar</h1>
         <p className="text-sm text-muted-foreground mt-1">{project.name}</p>

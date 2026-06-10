@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import EditAgentClient from './EditAgentClient'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { ViewSelectionSync } from '@/components/platform/os'
 
 export default async function EditAgentPage({
   params,
@@ -23,5 +24,11 @@ export default async function EditAgentPage({
 
   if (!agent) notFound()
 
-  return <EditAgentClient agent={agent} slug={params.slug} />
+  return (
+    <>
+      {/* Atlas selection awareness — the open agent IS the operator's selection. */}
+      <ViewSelectionSync refs={[{ domain: 'agents', id: agent.id, label: agent.name }]} />
+      <EditAgentClient agent={agent} slug={params.slug} />
+    </>
+  )
 }

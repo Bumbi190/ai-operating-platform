@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Bot, Plus, Cpu } from 'lucide-react'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function AgentsPage({ params }: { params: { slug: string } }) {
@@ -18,6 +18,8 @@ export default async function AgentsPage({ params }: { params: { slug: string } 
 
   return (
     <OSPage className="animate-fade-in">
+      {/* Atlas view awareness — publish the agents on screen. */}
+      <ViewVisibleSync refs={(agents ?? []).slice(0, 12).map((a) => ({ domain: 'agents', id: a.id, label: a.name }))} />
       <OSLayer layer="hero" className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Agenter</h1>

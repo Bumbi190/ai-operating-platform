@@ -30,6 +30,7 @@ import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolatio
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
+import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -209,7 +210,7 @@ const TOOL_GUIDE = `Verktyg du har:
 - run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
-- get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs) + valfritt project/filters/id. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
+- get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs, approvals, manager_tasks, opportunities, agents) + valfritt project/filters/id. När [RECORDS IN VIEW] redan finns i prompten är sidans rader REDAN hämtade — referera dem direkt och anropa get_records bara för andra domäner, fler rader eller PII. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
 - get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id (samma över tid även om problemet återkommer) och lifecycle (open/in_progress/completed) → svara på "vilka är öppna / under arbete / lösta?" direkt från det. Sammanfatta kritiska → varningar → info. Säg ALDRIG att du inte kan se Dream Cycle.
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
@@ -411,11 +412,11 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_records',
-    description: 'Hämta poster på RAD-nivå för en vy operatören tittar på (eller frågar om). Använd när du behöver konkreta poster — "vilka leads finns", "vad ligger i innehållskön", "visa körningarna". Domäner: leads, memories, website_content, runs. Alltid projekt-isolerat. PII (e-post/telefon) returneras ALDRIG om du inte sätter include_pii=true (gör det bara om operatören uttryckligen ber om kontaktuppgifter). Hitta aldrig på poster — använd bara det verktyget returnerar.',
+    description: 'Hämta poster på RAD-nivå för en vy operatören tittar på (eller frågar om). Använd när du behöver konkreta poster — "vilka leads finns", "vad ligger i innehållskön", "vad väntar på godkännande", "visa körningarna", "vilka uppgifter är öppna". Domäner: leads, memories, website_content, runs, approvals, manager_tasks, opportunities, agents. NOTERA: när [RECORDS IN VIEW] redan finns i kontexten är raderna på skärmen redan hämtade — använd dem direkt; anropa get_records bara för ANDRA domäner, FLER rader eller PII. Alltid projekt-isolerat. PII (e-post/telefon) returneras ALDRIG om du inte sätter include_pii=true (gör det bara om operatören uttryckligen ber om kontaktuppgifter). Hitta aldrig på poster — använd bara det verktyget returnerar.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        domain: { type: 'string', enum: [...RECORD_DOMAINS], description: 'Vilken posttyp: leads, memories, website_content eller runs.' },
+        domain: { type: 'string', enum: [...RECORD_DOMAINS], description: 'Vilken posttyp: leads, memories, website_content, runs, approvals, manager_tasks, opportunities eller agents.' },
         project: { type: 'string', description: 'Valfri verksamhet (namn eller slug) att begränsa till, t.ex. "The Prompt".' },
         filters: { type: 'object', description: 'Valfria filter, t.ex. {"status":"pending_review"} eller {"status":"failed"}.', additionalProperties: { type: 'string' } },
         id: { type: 'string', description: 'Valfritt: hämta en specifik post via id (t.ex. från [CURRENT VIEW]).' },
@@ -475,7 +476,15 @@ export async function POST(request: Request) {
     if (isViewAwarenessEnabled()) {
       try {
         const nv = normalizeView(view)
-        if (nv) systemPrompt += renderViewBlock(nv)
+        if (nv) {
+          systemPrompt += renderViewBlock(nv)
+          // View → Record bridge (Foundation 2, flag-gated): auto-prefetch the
+          // actual rows on screen so Atlas can reason about them directly.
+          // Project-isolated and PII-free by construction (see view-records.ts).
+          if (isRecordAwarenessEnabled()) {
+            systemPrompt += await buildRecordsInView(db, nv, allowedProjectIds)
+          }
+        }
       } catch { /* icke-kritiskt */ }
     }
     if (voice) systemPrompt += VOICE_DIRECTIVE

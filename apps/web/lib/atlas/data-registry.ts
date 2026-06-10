@@ -14,7 +14,15 @@
  * Columns/filters below are grounded in the live schema.
  */
 
-export type RecordDomain = 'leads' | 'memories' | 'website_content' | 'runs'
+export type RecordDomain =
+  | 'leads'
+  | 'memories'
+  | 'website_content'
+  | 'runs'
+  | 'approvals'
+  | 'manager_tasks'
+  | 'opportunities'
+  | 'agents'
 
 export interface DomainSpec {
   /** Physical table. Must be project-native. */
@@ -72,6 +80,56 @@ export const DOMAIN_REGISTRY: Record<RecordDomain, DomainSpec> = {
     columns: ['id', 'workflow_id', 'status', 'last_error', 'started_at', 'finished_at', 'created_at', 'attempts', 'kind'],
     filters: { status: ['queued', 'running', 'done', 'failed', 'stalled'] },
     truncate: { last_error: 240 },
+    defaultOrder: { column: 'created_at', ascending: false },
+    maxLimit: 25,
+  },
+  // Approvals — the operator's review queue. Large/internal fields (`content`,
+  // `fix_patch`, `guard_report_id`, `draft_id`) are intentionally NOT exposed.
+  approvals: {
+    table: 'approvals',
+    projectColumn: 'project_id',
+    columns: [
+      'id', 'kind', 'status', 'output_key', 'operator', 'reviewer_notes',
+      'run_id', 'created_at', 'reviewed_at', 'decided_at',
+    ],
+    filters: { status: ['pending', 'approved', 'rejected', 'revised'], kind: ['*'] },
+    truncate: { reviewer_notes: 200 },
+    defaultOrder: { column: 'created_at', ascending: false },
+    maxLimit: 25,
+  },
+  // Manager tasks — the planning / delegated-work backlog.
+  manager_tasks: {
+    table: 'manager_tasks',
+    projectColumn: 'project_id',
+    columns: [
+      'id', 'title', 'status', 'priority', 'owner', 'source', 'description',
+      'workflow_id', 'run_id', 'created_at', 'updated_at',
+    ],
+    filters: { status: ['*'], priority: ['*'] },
+    truncate: { title: 160, description: 240 },
+    defaultOrder: { column: 'created_at', ascending: false },
+    maxLimit: 25,
+  },
+  // Opportunities — Atlas-detected growth/improvement signals.
+  opportunities: {
+    table: 'opportunities',
+    projectColumn: 'project_id',
+    columns: [
+      'id', 'title', 'type', 'status', 'score', 'confidence', 'rationale',
+      'detected_at', 'created_at',
+    ],
+    filters: { status: ['*'], type: ['*'] },
+    truncate: { title: 160, rationale: 240 },
+    defaultOrder: { column: 'created_at', ascending: false },
+    maxLimit: 25,
+  },
+  // Agents — the configured agents per project. `system_prompt` and `config`
+  // are internal and intentionally excluded from record reads.
+  agents: {
+    table: 'agents',
+    projectColumn: 'project_id',
+    columns: ['id', 'name', 'model', 'description', 'skill_ids', 'created_at'],
+    truncate: { description: 200 },
     defaultOrder: { column: 'created_at', ascending: false },
     maxLimit: 25,
   },

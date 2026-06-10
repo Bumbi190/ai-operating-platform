@@ -9,7 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { OSPage } from '@/components/platform/os'
+import { OSPage, ViewSelectionSync } from '@/components/platform/os'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { ReviewActions } from './ReviewActions'
 
@@ -53,6 +53,8 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
   return (
     <OSPage density="spacious">
+      {/* Atlas selection awareness — the open record IS the operator's selection. */}
+      <ViewSelectionSync refs={[{ domain: 'website_content', id: row.id, label: row.title ?? '(untitled)' }]} />
       <Link href="/atlas/content" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200">
         <ArrowLeft className="w-3.5 h-3.5" /> Content Center
       </Link>

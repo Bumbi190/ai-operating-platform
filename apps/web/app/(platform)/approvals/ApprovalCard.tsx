@@ -8,6 +8,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { ScoreBar, ReasoningTrace, type ReasoningStep, RadialDial, PulseDot } from '@/components/platform/os'
+import { setViewSelection } from '@/lib/atlas/view-client'
 
 interface Approval {
   id: string
@@ -57,6 +58,13 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
 
   const meta = STATUS_META[approval.status]
   const isPending = approval.status === 'pending'
+
+  // Atlas selection awareness — an expanded card IS the operator's selection.
+  useEffect(() => {
+    if (!expanded) return
+    setViewSelection([{ domain: 'approvals', id: approval.id, label: `${approval.output_key} (${approval.status})` }])
+    return () => setViewSelection([])
+  }, [expanded, approval.id, approval.output_key, approval.status])
 
   const workflowName = approval.runs?.workflows?.name ?? 'Okänt arbetsflöde'
   const agentName    = approval.runs?.agents?.name ?? 'Autonom agent'

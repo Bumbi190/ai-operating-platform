@@ -65,3 +65,6 @@ export { MobileRailToggle } from './MobileRailToggle'
 
 // Global voice assistant
 export { VoiceAssistant } from './VoiceAssistant'
+
+// Atlas view-awareness page wiring (selection / visible)
+export { ViewVisibleSync, ViewSelectionSync } from './ViewSync'

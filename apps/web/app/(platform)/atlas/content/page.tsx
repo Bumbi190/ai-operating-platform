@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { OSPage } from '@/components/platform/os'
+import { OSPage, ViewVisibleSync } from '@/components/platform/os'
 import { Newspaper, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -76,8 +76,14 @@ export default async function ContentCenter() {
   const byStatus = (s: string) => rows.filter(r => r.status === s)
   const pendingCount = byStatus('pending_review').length
 
+  // Atlas view awareness — publish the content rows on screen (queue order).
+  const visibleRefs = rows.slice(0, 12).map(r => ({
+    domain: 'website_content', id: r.id, label: r.title ?? `(${r.content_type})`,
+  }))
+
   return (
     <OSPage>
+      <ViewVisibleSync refs={visibleRefs} />
       <header className="flex items-center gap-3">
         <span className="grid place-items-center w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400">
           <Newspaper className="w-5 h-5" />

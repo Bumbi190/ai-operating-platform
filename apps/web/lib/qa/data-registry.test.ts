@@ -45,4 +45,21 @@ describe('data-registry invariants', () => {
     expect(DOMAIN_REGISTRY.leads.columns).not.toContain('email')
     expect(DOMAIN_REGISTRY.leads.columns).not.toContain('phone')
   })
+
+  it('registers the Sprint-1 bridge domains', () => {
+    for (const d of ['approvals', 'manager_tasks', 'opportunities', 'agents'] as const) {
+      expect(RECORD_DOMAINS).toContain(d)
+    }
+  })
+
+  it('agents never exposes system_prompt or config', () => {
+    expect(DOMAIN_REGISTRY.agents.columns).not.toContain('system_prompt')
+    expect(DOMAIN_REGISTRY.agents.columns).not.toContain('config')
+  })
+
+  it('approvals never exposes large/internal fields (content, fix_patch, draft_id)', () => {
+    for (const c of ['content', 'fix_patch', 'draft_id', 'guard_report_id']) {
+      expect(DOMAIN_REGISTRY.approvals.columns).not.toContain(c)
+    }
+  })
 })

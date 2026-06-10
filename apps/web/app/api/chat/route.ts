@@ -26,12 +26,14 @@ import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
-import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
+import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
-import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
+import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
@@ -211,6 +213,7 @@ const TOOL_GUIDE = `Verktyg du har:
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
 - get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs, approvals, manager_tasks, opportunities, agents) + valfritt project/filters/id. När [RECORDS IN VIEW] redan finns i prompten är sidans rader REDAN hämtade — referera dem direkt och anropa get_records bara för andra domäner, fler rader eller PII. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
+- validate_workflow / save_workflow — när operatören ber dig SKAPA eller ÄNDRA ett workflow (ett automationsflöde av agent-steg, INTE en engångsuppgift → det är delegate). Arbetsgång: 1) hämta giltiga agent_id med get_records(domain=agents, project=…), 2) bygg stegen (varje steg: agent_id + input_template med {{output_key}} från tidigare steg + unik output_key), 3) validate_workflow (dry-run), 4) åtgärda ev. errors, 5) save_workflow (workflow_id för ändring, annars project för nytt). Rapportera workflow_id och required_inputs. Påstå ALDRIG att ett workflow sparats utan saved=true. Kör det inte automatiskt — föreslå trigger_workflow separat.
 - get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id (samma över tid även om problemet återkommer) och lifecycle (open/in_progress/completed) → svara på "vilka är öppna / under arbete / lösta?" direkt från det. Sammanfatta kritiska → varningar → info. Säg ALDRIG att du inte kan se Dream Cycle.
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
@@ -424,6 +427,69 @@ const TOOLS: Anthropic.Tool[] = [
         include_pii: { type: 'boolean', description: 'Sätt true BARA om operatören uttryckligen ber om PII (e-post/telefon för leads).' },
       },
       required: ['domain'],
+    },
+  },
+  {
+    name: 'validate_workflow',
+    description: 'Validera ett workflow-utkast UTAN att spara (dry-run). Använd ALLTID innan save_workflow för nya/ändrade workflows. Kontrollerar att steg-ordning och output_key är unika, att varje agent_id finns i projektet, att {{variabler}} produceras av tidigare steg eller listas som indata, samt trigger/cron. Returnerar valid, errors[], warnings[] och required_inputs[]. Tips: lista projektets agenter med get_records(domain=agents) för att få giltiga agent_id.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        project: { type: 'string', description: 'Verksamhet (namn eller slug) workflowet hör till, t.ex. "The Prompt". Krävs för nya workflows; för befintliga räcker workflow_id.' },
+        workflow_id: { type: 'string', description: 'Valfritt: id för ett BEFINTLIGT workflow som ska valideras/ändras (projektet härleds då därifrån).' },
+        name: { type: 'string', description: 'Workflowets namn.' },
+        description: { type: 'string', description: 'Valfri beskrivning.' },
+        trigger: { type: 'string', enum: ['manual', 'cron', 'webhook'], description: 'Hur workflowet startas. Default "manual".' },
+        cron_expr: { type: 'string', description: 'Cron-uttryck, krävs när trigger="cron" (t.ex. "0 7 * * *").' },
+        steps: {
+          type: 'array',
+          description: 'Stegen i körordning. Varje steg kör en agent och skriver sitt resultat till output_key.',
+          items: {
+            type: 'object',
+            properties: {
+              order: { type: 'number', description: 'Körordning (1,2,3…). Utelämna för att ordna efter listan.' },
+              name: { type: 'string', description: 'Stegets namn.' },
+              agent_id: { type: 'string', description: 'Agentens id (måste finnas i projektet — hämta via get_records domain=agents).' },
+              input_template: { type: 'string', description: 'Prompt/indata. Använd {{output_key}} från tidigare steg eller {{indata}} som fylls vid körning.' },
+              output_key: { type: 'string', description: 'Nyckel resultatet sparas under (alfanumeriskt/understreck), unik i workflowet.' },
+            },
+            required: ['name', 'agent_id', 'output_key'],
+          },
+        },
+      },
+      required: ['steps'],
+    },
+  },
+  {
+    name: 'save_workflow',
+    description: 'Skapa ETT nytt workflow eller uppdatera ett befintligt (om workflow_id anges). Validerar alltid först (samma regler som validate_workflow) och vägrar spara ogiltiga utkast. Projekt-isolerat: du kan bara spara i verksamheter du äger. Returnerar saved, workflow_id, required_inputs[] och ev. errors[]. Påstå ALDRIG att ett workflow sparats utan att ha fått saved=true tillbaka.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        workflow_id: { type: 'string', description: 'Ange för att UPPDATERA ett befintligt workflow. Utelämna för att SKAPA ett nytt.' },
+        project: { type: 'string', description: 'Verksamhet (namn eller slug) för ett NYTT workflow, t.ex. "The Prompt". Krävs vid skapande.' },
+        name: { type: 'string', description: 'Workflowets namn.' },
+        description: { type: 'string', description: 'Valfri beskrivning.' },
+        trigger: { type: 'string', enum: ['manual', 'cron', 'webhook'], description: 'Hur workflowet startas. Default "manual".' },
+        cron_expr: { type: 'string', description: 'Cron-uttryck, krävs när trigger="cron".' },
+        active: { type: 'boolean', description: 'Om workflowet är aktivt. Default true för nya.' },
+        steps: {
+          type: 'array',
+          description: 'Stegen i körordning (samma form som validate_workflow).',
+          items: {
+            type: 'object',
+            properties: {
+              order: { type: 'number' },
+              name: { type: 'string' },
+              agent_id: { type: 'string' },
+              input_template: { type: 'string' },
+              output_key: { type: 'string' },
+            },
+            required: ['name', 'agent_id', 'output_key'],
+          },
+        },
+      },
+      required: ['name', 'steps'],
     },
   },
 ]
@@ -1008,7 +1074,97 @@ async function executeTool(
     return await fetchRecords(db, { domain, project, filters, id, limit, includePii: !!include_pii }, allowedProjectIds)
   }
 
+  if (name === 'validate_workflow' || name === 'save_workflow') {
+    return await authorWorkflow(name, input, db, allowedProjectIds)
+  }
+
   throw new Error(`Okänt verktyg: ${name}`)
+}
+
+/**
+ * Resolve the target project (from workflow_id for edits, else from project
+ * name/slug for new), gather that project's agent ids, validate the draft, and —
+ * for save_workflow — persist it. Project-isolated: writes only to owned projects.
+ */
+async function authorWorkflow(
+  name: 'validate_workflow' | 'save_workflow',
+  input: Record<string, unknown>,
+  db: AdminClient,
+  allowedProjectIds: string[],
+): Promise<unknown> {
+  const { workflow_id, project, name: wfName, description, steps, trigger, cron_expr, active } = input as {
+    workflow_id?: string; project?: string; name?: string; description?: string
+    steps?: unknown; trigger?: string; cron_expr?: string; active?: boolean
+  }
+
+  // ── Resolve the target project (and assert ownership) ──
+  let projectId: string | null = null
+  if (workflow_id) {
+    const { data: existing } = await db.from('workflows').select('id, project_id').eq('id', workflow_id).single()
+    if (!existing) return { ok: false, error: 'Workflow hittades inte.' }
+    if (!assertProjectAllowed(existing.project_id, allowedProjectIds)) {
+      return { ok: false, error: 'Du har inte åtkomst till det workflowets projekt.' }
+    }
+    projectId = existing.project_id
+  } else {
+    const slug = resolveProjectSlug(project)
+    if (!slug) return { ok: false, error: 'project krävs (verksamhetens namn eller slug) för ett nytt workflow.' }
+    const { data: proj } = await db
+      .from('projects').select('id, slug').eq('slug', slug)
+      .in('id', scopeProjectFilter(allowedProjectIds)).maybeSingle()
+    if (!proj) return { ok: false, error: `Projektet "${project}" finns inte i din åtkomst.` }
+    projectId = proj.id
+  }
+
+  // ── Known agent ids for THAT project (steps may only target them) ──
+  const { data: agentRows } = await db.from('agents').select('id').eq('project_id', projectId)
+  const knownAgentIds = (agentRows ?? []).map((a: { id: string }) => a.id)
+
+  const draft: WorkflowDraft = {
+    name: wfName,
+    description: description ?? null,
+    steps: Array.isArray(steps) ? steps : [],
+    trigger,
+    cron_expr: cron_expr ?? null,
+  }
+  const v = validateWorkflowDraft(draft, knownAgentIds)
+
+  if (name === 'validate_workflow' || !v.valid) {
+    return {
+      ok: v.valid,
+      valid: v.valid,
+      saved: false,
+      errors: v.errors,
+      warnings: v.warnings,
+      required_inputs: v.requiredInputs,
+      steps: v.normalizedSteps.length,
+      ...(name === 'save_workflow' && !v.valid ? { note: 'Sparades INTE — åtgärda errors och försök igen.' } : {}),
+    }
+  }
+
+  // ── Persist (create or update). Mirrors the existing workflows API. ──
+  // `steps` is a Json column; cast at the DB boundary only (logic above is typed).
+  const payload = {
+    name: (wfName ?? '').trim(),
+    description: description ?? null,
+    steps: v.normalizedSteps as unknown as Json,
+    trigger: v.trigger as string,
+    cron_expr: v.trigger === 'cron' ? (cron_expr ?? null) : null,
+    ...(typeof active === 'boolean' ? { active } : {}),
+  }
+
+  if (workflow_id) {
+    const { data, error } = await db.from('workflows').update(payload).eq('id', workflow_id).select('id').single()
+    if (error || !data) return { ok: false, saved: false, error: error?.message ?? 'Kunde inte uppdatera workflowet.' }
+    return { ok: true, saved: true, action: 'updated', workflow_id: data.id, steps: v.normalizedSteps.length, required_inputs: v.requiredInputs, warnings: v.warnings }
+  }
+
+  const { data, error } = await db
+    .from('workflows')
+    .insert({ project_id: projectId as string, ...payload })
+    .select('id').single()
+  if (error || !data) return { ok: false, saved: false, error: error?.message ?? 'Kunde inte skapa workflowet.' }
+  return { ok: true, saved: true, action: 'created', workflow_id: data.id, steps: v.normalizedSteps.length, required_inputs: v.requiredInputs, warnings: v.warnings }
 }
 
 // executeWorkflow flyttad till lib/ai/workflow-runner.ts. trigger_workflow skapar nu en

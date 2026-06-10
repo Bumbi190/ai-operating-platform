@@ -9,7 +9,7 @@ import { sv } from 'date-fns/locale/sv'
 import { ChevronLeft, Clock, Hash, Calendar, Play, AlertTriangle } from 'lucide-react'
 import { WorkflowStepGraph } from '@/components/platform/WorkflowStepGraph'
 import { ResumeRunButton } from '@/components/platform/ResumeRunButton'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, ViewSelectionSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function RunDetailPage({
@@ -61,6 +61,9 @@ export default async function RunDetailPage({
 
   return (
     <OSPage className="animate-fade-in">
+      {/* Atlas selection awareness — the open run IS the operator's selection. */}
+      <ViewSelectionSync refs={[{ domain: 'runs', id: run.id, label: workflow?.name ?? 'Körning' }]} />
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs text-meta mb-5">
         <Link

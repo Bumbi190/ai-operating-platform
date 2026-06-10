@@ -28,6 +28,8 @@ import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
+import { fetchRecords } from '@/lib/atlas/record-access'
+import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -202,6 +204,7 @@ const TOOL_GUIDE = `Verktyg du har:
 - run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
+- get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs) + valfritt project/filters/id. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
 - get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id (samma över tid även om problemet återkommer) och lifecycle (open/in_progress/completed) → svara på "vilka är öppna / under arbete / lösta?" direkt från det. Sammanfatta kritiska → varningar → info. Säg ALDRIG att du inte kan se Dream Cycle.
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
@@ -399,6 +402,22 @@ const TOOLS: Anthropic.Tool[] = [
         filters: { type: 'object', description: 'Valfria filter, t.ex. {"state":"pending"}.', additionalProperties: { type: 'string' } },
       },
       required: ['destination'],
+    },
+  },
+  {
+    name: 'get_records',
+    description: 'Hämta poster på RAD-nivå för en vy operatören tittar på (eller frågar om). Använd när du behöver konkreta poster — "vilka leads finns", "vad ligger i innehållskön", "visa körningarna". Domäner: leads, memories, website_content, runs. Alltid projekt-isolerat. PII (e-post/telefon) returneras ALDRIG om du inte sätter include_pii=true (gör det bara om operatören uttryckligen ber om kontaktuppgifter). Hitta aldrig på poster — använd bara det verktyget returnerar.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: { type: 'string', enum: [...RECORD_DOMAINS], description: 'Vilken posttyp: leads, memories, website_content eller runs.' },
+        project: { type: 'string', description: 'Valfri verksamhet (namn eller slug) att begränsa till, t.ex. "The Prompt".' },
+        filters: { type: 'object', description: 'Valfria filter, t.ex. {"status":"pending_review"} eller {"status":"failed"}.', additionalProperties: { type: 'string' } },
+        id: { type: 'string', description: 'Valfritt: hämta en specifik post via id (t.ex. från [CURRENT VIEW]).' },
+        limit: { type: 'number', description: 'Max antal rader (tak 25).' },
+        include_pii: { type: 'boolean', description: 'Sätt true BARA om operatören uttryckligen ber om PII (e-post/telefon för leads).' },
+      },
+      required: ['domain'],
     },
   },
 ]
@@ -965,6 +984,14 @@ async function executeTool(
     const r = resolveDestination(destination, { project, filters })
     if (!r) return { ok: false, error: 'Okänd destination eller projekt — kunde inte navigera.' }
     return { ok: true, id: r.id, label: r.label, href: r.href, note: 'Vyn öppnas för operatören.' }
+  }
+
+  if (name === 'get_records') {
+    const { domain, project, filters, id, limit, include_pii } = input as {
+      domain: string; project?: string; filters?: Record<string, string>; id?: string; limit?: number; include_pii?: boolean
+    }
+    // Reuses the shipped isolation boundary via allowedProjectIds.
+    return await fetchRecords(db, { domain, project, filters, id, limit, includePii: !!include_pii }, allowedProjectIds)
   }
 
   throw new Error(`Okänt verktyg: ${name}`)

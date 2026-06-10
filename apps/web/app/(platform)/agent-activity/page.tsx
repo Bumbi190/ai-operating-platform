@@ -7,7 +7,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 
 import { fetchAgentActivity, type RunningAgent, type RecentRun } from '@/lib/os/agents-activity'
-import { OSPage, OSLayer, EmptyState, PulseDot } from '@/components/platform/os'
+import { OSPage, OSLayer, EmptyState, PulseDot, ViewVisibleSync } from '@/components/platform/os'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
 import { LiveRefresh } from './LiveRefresh'
@@ -28,8 +28,15 @@ export default async function AgentActivityPage() {
   const db = createAdminClient()
   const { running, recent } = await fetchAgentActivity(db)
 
+  // Atlas view awareness — publish the runs on screen (running first, then recent).
+  const visibleRefs = [
+    ...running.map((a: RunningAgent) => ({ domain: 'runs', id: a.runId, label: `${a.workflowName} (running)` })),
+    ...recent.map((r: RecentRun) => ({ domain: 'runs', id: r.runId, label: `${r.workflowName} (${r.status})` })),
+  ].slice(0, 12)
+
   return (
     <OSPage className="boot-in">
+      <ViewVisibleSync refs={visibleRefs} />
       <LiveRefresh seconds={15} />
 
       <OSLayer layer="hero">

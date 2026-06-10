@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { ApprovalCard } from './ApprovalCard'
-import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer } from '@/components/platform/os'
+import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,8 +48,14 @@ export default async function ApprovalsPage() {
     return new Date(a.reviewed_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
   }).length
 
+  // Atlas view awareness — publish the approval rows on screen.
+  const visibleRefs = all.slice(0, 12).map(a => ({
+    domain: 'approvals', id: a.id, label: `${a.output_key} (${a.status})`,
+  }))
+
   return (
     <OSPage>
+      <ViewVisibleSync refs={visibleRefs} />
 
       {/* ── HERO LAYER ──────────────────────────────────────────────────── */}
       <OSLayer layer="hero">

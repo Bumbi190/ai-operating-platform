@@ -11,6 +11,7 @@
  */
 
 import { contentScore } from './content-score'
+import { applyProjectScope } from './isolation'
 
 type AnyDb = any
 
@@ -134,9 +135,9 @@ export async function decisionHistory(db: AnyDb, projectId?: string) {
 }
 
 /** Läs öppna möjligheter (för Atlas/UI). Read-only. */
-export async function listOpportunities(db: AnyDb, projectId?: string) {
+export async function listOpportunities(db: AnyDb, projectId?: string, allowedProjectIds?: string[]) {
   try {
-    let q = db.from('opportunities').select('*').eq('status', 'open').order('score', { ascending: false })
+    let q = applyProjectScope(db.from('opportunities').select('*').eq('status', 'open').order('score', { ascending: false }), allowedProjectIds)
     if (projectId) q = q.eq('project_id', projectId)
     const { data } = await q
     return data ?? []

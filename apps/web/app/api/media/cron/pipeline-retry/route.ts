@@ -94,6 +94,29 @@ export async function GET(request: Request) {
     ;(results.renderRetried as unknown[]).push(await callStep('/api/media/cron/step3', s.id))
   }
 
+  // ── 2b-rescue. ORPHAN: voice klar men render startade ALDRIG (video_status 'none'/null) ─
+  // Dött tillstånd som ingen annan regel täcker: 2b kräver video_status='failed', och den
+  // schemalagda step3 tittar bara på scripts < 60 min. Om step3:s ordinarie slot missas/
+  // hinner inte (t.ex. voice blev klart sent efter en STUCK-flaggning) blir scriptet kvar
+  // med video_status='none' och fastnar tyst. Vi kräver ≥10 min ålder så vi inte krockar med
+  // den ordinarie step3-körningen (step3 går ~10 min efter generering). Färska (≤4 dagar).
+  const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString()
+  const { data: orphanDue } = await db.from('media_scripts')
+    .select('id')
+    .or('video_status.eq.none,video_status.is.null')
+    .eq('voice_status', 'ready').eq('status', 'approved')
+    .is('published_at', null)
+    .lt('render_attempts', MAX_ATTEMPTS)
+    .gte('generated_at', freshCutoff)
+    .lt('generated_at', tenMinAgo)
+    .order('generated_at', { ascending: true })
+    .limit(PER_TICK)
+  results.renderOrphanRescued = []
+  for (const s of (orphanDue ?? [])) {
+    log(`Rescue orphan render (step3) för ${s.id}`)
+    ;(results.renderOrphanRescued as unknown[]).push(await callStep('/api/media/cron/step3', s.id))
+  }
+
   // ── 2b2. BREAKING: polla render för videos som fastnat i 'rendering' (seg Lambda) ─
   const { data: breakingRendering } = await db.from('media_scripts')
     .select('id')

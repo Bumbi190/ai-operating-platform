@@ -11,6 +11,7 @@
 
 import { profileFor } from './identity'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+import { applyProjectScope } from './isolation'
 
 type AnyDb = any
 
@@ -92,7 +93,9 @@ export function selectActiveDecisions(rows: DecisionRow[]): DecisionContext[] {
     }))
 }
 
-export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
+export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]): Promise<AtlasContext> {
+  // ISOLATION: scope every project-native read to the caller's allowed projects.
+  // `undefined` = no scoping (legacy/global callers); an array (even empty) scopes.
   const now = new Date()
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const weekStart  = new Date(now.getTime() - 7 * 864e5)
@@ -104,14 +107,14 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
 
   // ── Projects (businesses) ──────────────────────────────────────────────────
   const projects = await safe<any[]>(
-    db.from('projects').select('id, name, slug, color'), [],
+    applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), [],
   )
 
   // ── Cost events this month (today/week/month + per-project + per-provider) ──
   const costRows = await safe<any[]>(
-    db.from('cost_events')
+    applyProjectScope(db.from('cost_events')
       .select('project_id, provider, cost_sek, created_at')
-      .gte('created_at', monthStart.toISOString()),
+      .gte('created_at', monthStart.toISOString()), allowedProjectIds),
     [],
   )
   let costToday = 0, costWeek = 0, costMonth = 0
@@ -132,7 +135,7 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
 
   // ── Revenue this month, per project ────────────────────────────────────────
   const revRows = await safe<any[]>(
-    db.from('revenue_events').select('project_id, amount_sek, occurred_at').gte('occurred_at', monthStart.toISOString()),
+    applyProjectScope(db.from('revenue_events').select('project_id, amount_sek, occurred_at').gte('occurred_at', monthStart.toISOString()), allowedProjectIds),
     [],
   )
   let revenueMonth = 0
@@ -145,7 +148,7 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
 
   // ── Leads (qualified) per project ──────────────────────────────────────────
   const leadRows = await safe<any[]>(
-    db.from('leads').select('project_id, status'), [],
+    applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), [],
   )
   const qualifiedByProject = new Map<string, number>()
   for (const l of leadRows) {
@@ -156,7 +159,7 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
 
   // ── Media scripts: published this week + pending review, per project ───────
   const scriptRows = await safe<any[]>(
-    db.from('media_scripts').select('project_id, status, published_at').gte('generated_at', weekStart.toISOString()),
+    applyProjectScope(db.from('media_scripts').select('project_id, status, published_at').gte('generated_at', weekStart.toISOString()), allowedProjectIds),
     [],
   )
   const publishedByProject = new Map<string, number>()
@@ -172,22 +175,25 @@ export async function gatherAtlasContext(db: AnyDb): Promise<AtlasContext> {
 
   // ── Platform: pending approvals + failed runs (24h) ────────────────────────
   const pendingApprovalsRows = await safe<any[]>(
-    db.from('approvals').select('id').eq('status', 'pending'), [],
+    applyProjectScope(db.from('approvals').select('id').eq('status', 'pending'), allowedProjectIds), [],
   )
   const pendingApprovals = pendingApprovalsRows.length
 
   const failedRunsRows = await safe<any[]>(
-    db.from('runs').select('id').eq('status', 'failed').gte('created_at', new Date(now.getTime() - 864e5).toISOString()),
+    applyProjectScope(db.from('runs').select('id').eq('status', 'failed').gte('created_at', new Date(now.getTime() - 864e5).toISOString()), allowedProjectIds),
     [],
   )
   const failedRuns24h = failedRunsRows.length
 
-  // ── Operator decisions (D1) ────────────────────────────────────────────────
+  // ── Operator decisions (D1) — project-scoped like every other read ──────────
   const decisionRows = await safe<DecisionRow[]>(
-    db.from('memories')
-      .select('key, value, source, updated_at')
-      .in('source', DECISION_SOURCES)
-      .order('updated_at', { ascending: false }),
+    applyProjectScope(
+      db.from('memories')
+        .select('key, value, source, updated_at')
+        .in('source', DECISION_SOURCES)
+        .order('updated_at', { ascending: false }),
+      allowedProjectIds,
+    ),
     [],
   )
   const decisions = selectActiveDecisions(decisionRows)

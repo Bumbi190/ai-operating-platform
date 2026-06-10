@@ -26,27 +26,37 @@ import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
+import { fetchRecords } from '@/lib/atlas/record-access'
+import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { resolveDestination, resolveLinks, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
 // den sammansatta kontext-strängen kort så turer 2+ blir nära momentana.
-let _liveCtxCache: { at: number; text: string } | null = null
+// Keyed by the sorted allowed-project-id set so each tenant's snapshot is cached
+// independently (single owner today → one key → identical behavior).
+const _liveCtxCache = new Map<string, { at: number; text: string }>()
 const LIVE_CTX_TTL_MS = 45_000
 
-async function buildLiveContext(db: ReturnType<typeof createAdminClient>): Promise<string> {
-  if (_liveCtxCache && Date.now() - _liveCtxCache.at < LIVE_CTX_TTL_MS) return _liveCtxCache.text
+async function buildLiveContext(db: ReturnType<typeof createAdminClient>, allowedProjectIds: string[] = []): Promise<string> {
+  // ISOLATION: the live snapshot is scoped to the caller's allowed projects.
+  // Cache is keyed per allow-list set so one tenant's snapshot never serves another.
+  const cacheKey = [...allowedProjectIds].sort().join(',')
+  const cached = _liveCtxCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < LIVE_CTX_TTL_MS) return cached.text
   const k = (n: number) => `${Math.round(n)} kr`
   const [ctxR, patR, csR, oppR, actR, revR, opsR, dreamR] = await Promise.allSettled([
-    gatherAtlasContext(db),
-    fetchOperatorPatterns(db),
-    contentScore(db),
-    listOpportunities(db),
-    agentActivity(db, 24),
-    revenueIntel(db),
-    getOperations(db),
-    dreamLiveSummary(db),
+    gatherAtlasContext(db, allowedProjectIds),
+    fetchOperatorPatterns(db, allowedProjectIds),
+    contentScore(db, undefined, allowedProjectIds),
+    listOpportunities(db, undefined, allowedProjectIds),
+    agentActivity(db, 24, allowedProjectIds),
+    revenueIntel(db, undefined, allowedProjectIds),
+    getOperations(db, allowedProjectIds),
+    dreamLiveSummary(db, allowedProjectIds),
   ])
 
   let text = ''
@@ -92,7 +102,7 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
   // passively so criticals/warnings appear in briefings without being asked.
   if (dreamR.status === 'fulfilled' && dreamR.value) text += dreamR.value
 
-  _liveCtxCache = { at: Date.now(), text }
+  _liveCtxCache.set(cacheKey, { at: Date.now(), text })
   return text
 }
 
@@ -199,6 +209,7 @@ const TOOL_GUIDE = `Verktyg du har:
 - run_media_step — DETTA är rätt verktyg för The Prompts media-pipeline. När operatören säger "kör/starta" Fetch AI News, Generate Script, Generate Voiceover, Render Video, Publish to Social eller Publish to YouTube: anropa run_media_step DIREKT med rätt steg. Be ALDRIG om input för dessa — cron-stegen hämtar sin egen data. Säg sedan kort "Kört — Run ID: <id>, status: <status>". För publish_social/publish_youtube: bekräfta först med operatören (publikt inlägg), sätt sedan confirm_publish=true.
 - list_workflows / trigger_workflow / get_run_status — för ÖVRIGA workflows (t.ex. Familje-Stunden). trigger_workflow kräver input. Använd INTE dessa för de sex media-stegen ovan — använd run_media_step.
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
+- get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs) + valfritt project/filters/id. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
 - get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id (samma över tid även om problemet återkommer) och lifecycle (open/in_progress/completed) → svara på "vilka är öppna / under arbete / lösta?" direkt från det. Sammanfatta kritiska → varningar → info. Säg ALDRIG att du inte kan se Dream Cycle.
 - delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
 - resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
@@ -398,6 +409,22 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['destination'],
     },
   },
+  {
+    name: 'get_records',
+    description: 'Hämta poster på RAD-nivå för en vy operatören tittar på (eller frågar om). Använd när du behöver konkreta poster — "vilka leads finns", "vad ligger i innehållskön", "visa körningarna". Domäner: leads, memories, website_content, runs. Alltid projekt-isolerat. PII (e-post/telefon) returneras ALDRIG om du inte sätter include_pii=true (gör det bara om operatören uttryckligen ber om kontaktuppgifter). Hitta aldrig på poster — använd bara det verktyget returnerar.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: { type: 'string', enum: [...RECORD_DOMAINS], description: 'Vilken posttyp: leads, memories, website_content eller runs.' },
+        project: { type: 'string', description: 'Valfri verksamhet (namn eller slug) att begränsa till, t.ex. "The Prompt".' },
+        filters: { type: 'object', description: 'Valfria filter, t.ex. {"status":"pending_review"} eller {"status":"failed"}.', additionalProperties: { type: 'string' } },
+        id: { type: 'string', description: 'Valfritt: hämta en specifik post via id (t.ex. från [CURRENT VIEW]).' },
+        limit: { type: 'number', description: 'Max antal rader (tak 25).' },
+        include_pii: { type: 'boolean', description: 'Sätt true BARA om operatören uttryckligen ber om PII (e-post/telefon för leads).' },
+      },
+      required: ['domain'],
+    },
+  },
 ]
 
 export async function POST(request: Request) {
@@ -407,15 +434,21 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { messages, conversation_id, voice, mode } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
+    view?: ClientViewEnvelope
   }
 
   const db = createAdminClient()
   const tStart = Date.now()
+
+  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
+  // path (live context, ask_manager, get_dream_findings) is scoped to these.
+  // Single-owner today → all projects; multi-tenant ready by construction.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
 
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
   const lastUserText = (() => {
@@ -436,7 +469,15 @@ export async function POST(request: Request) {
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
-    try { systemPrompt += await buildLiveContext(db) } catch { /* icke-kritiskt */ }
+    try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
+    // currently looking at. Hint-only — route/project re-resolved via the registry.
+    if (isViewAwarenessEnabled()) {
+      try {
+        const nv = normalizeView(view)
+        if (nv) systemPrompt += renderViewBlock(nv)
+      } catch { /* icke-kritiskt */ }
+    }
     if (voice) systemPrompt += VOICE_DIRECTIVE
   }
 
@@ -559,7 +600,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, allowedProjectIds)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -641,6 +682,7 @@ async function executeTool(
   input: Record<string, unknown>,
   db: AdminClient,
   _userId: string,
+  allowedProjectIds: string[] = [],
 ): Promise<unknown> {
   if (name === 'list_workflows') {
     const { data: workflows } = await db
@@ -809,8 +851,12 @@ async function executeTool(
 
   if (name === 'ask_manager') {
     const { message, project_id } = input as { message: string; project_id?: string }
+    // ISOLATION: only narrow by a model-supplied project_id if the operator owns
+    // it; otherwise ignore it. The manager's reads are scoped to allowedProjectIds
+    // regardless, so a spoofed id can never widen access.
+    const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
     const manager = getManager()
-    const response = await manager.chat(message, project_id)
+    const response = await manager.chat(message, scopedProjectId, allowedProjectIds)
     return { response }
   }
 
@@ -818,6 +864,11 @@ async function executeTool(
     const { project_id } = input as { project_id?: string }
     if (!project_id) {
       return { error: 'project_id krävs. Använd projekt-ID:t från LIVE LÄGE-kontexten.' }
+    }
+    // ISOLATION: a model-supplied project_id is only trusted if the operator owns
+    // it. Otherwise behave as "no data" (never read another tenant's findings).
+    if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+      return { project: null, has_data: false, note: 'Inget sådant projekt i din åtkomst.' }
     }
     const { data: proj } = await db.from('projects').select('name').eq('id', project_id).maybeSingle()
     const res = await getDreamFindings(db, project_id, 20)
@@ -938,6 +989,14 @@ async function executeTool(
     const r = resolveDestination(destination, { project, filters })
     if (!r) return { ok: false, error: 'Okänd destination eller projekt — kunde inte navigera.' }
     return { ok: true, id: r.id, label: r.label, href: r.href, note: 'Vyn öppnas för operatören.' }
+  }
+
+  if (name === 'get_records') {
+    const { domain, project, filters, id, limit, include_pii } = input as {
+      domain: string; project?: string; filters?: Record<string, string>; id?: string; limit?: number; include_pii?: boolean
+    }
+    // Reuses the shipped isolation boundary via allowedProjectIds.
+    return await fetchRecords(db, { domain, project, filters, id, limit, includePii: !!include_pii }, allowedProjectIds)
   }
 
   throw new Error(`Okänt verktyg: ${name}`)

@@ -12,6 +12,8 @@
  * Läser befintliga tabeller (media_insights + media_scripts). Read-only, deterministisk.
  */
 
+import { applyProjectScope } from './isolation'
+
 type AnyDb = any
 
 export interface ScoredPost {
@@ -45,14 +47,14 @@ function confidenceFor(size: number): 'low' | 'medium' | 'high' {
   return 'low'
 }
 
-export async function contentScore(db: AnyDb, projectId?: string, days = 90): Promise<ContentScoreResult> {
+export async function contentScore(db: AnyDb, projectId?: string, allowedProjectIds?: string[], days = 90): Promise<ContentScoreResult> {
   const since = new Date(Date.now() - days * 864e5).toISOString()
 
   let rows: any[] = []
   try {
-    let q = db.from('media_insights')
+    let q = applyProjectScope(db.from('media_insights')
       .select('script_id, platform, reach, likes, comments, saved, shares, views, published_at, media_scripts ( hook, topic )')
-      .gte('published_at', since)
+      .gte('published_at', since), allowedProjectIds)
     if (projectId) q = q.eq('project_id', projectId)
     const { data } = await q
     rows = data ?? []

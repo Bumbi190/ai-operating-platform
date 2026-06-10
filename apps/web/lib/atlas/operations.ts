@@ -11,6 +11,7 @@
  */
 
 import { revenueIntel } from './revenue'
+import { applyProjectScope } from './isolation'
 
 type AnyDb = any
 
@@ -110,7 +111,7 @@ function wfName(r: any): string | null {
   return w?.name ?? null
 }
 
-export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
+export async function getOperations(db: AnyDb, allowedProjectIds?: string[]): Promise<OperationsSnapshot> {
   const safe = async <T>(p: Promise<{ data: T | null }>, fb: T): Promise<T> => {
     try { const { data } = await p; return data ?? fb } catch { return fb }
   }
@@ -119,15 +120,17 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
   const monthStart = startOfMonthIso()
   const todayStart = startOfTodayIso()
   const nowMs      = Date.now()
+  // ISOLATION: scope project-native reads (undefined = no scope, legacy callers).
+  // token_health + cron_heartbeat are infra tables with no project_id → global.
 
   const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows, heartbeatRows] = await Promise.all([
-    safe<any[]>(db.from('projects').select('id, name, slug, color'), []),
-    safe<any[]>(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, voice_attempts, render_attempts, pipeline_failed_reason, updated_at'), []),
-    safe<any[]>(db.from('media_insights').select('project_id, platform, views, reach, impressions'), []),
-    safe<any[]>(db.from('runs').select('project_id, status, error, last_error, created_at, finished_at, workflows(name)').gte('created_at', since24h).order('created_at', { ascending: false }), []),
-    safe<any[]>(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), []),
-    safe<any[]>(db.from('leads').select('project_id, status'), []),
-    safe<any[]>(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), []),
+    safe<any[]>(applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), []),
+    safe<any[]>(applyProjectScope(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, voice_attempts, render_attempts, pipeline_failed_reason, updated_at'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('media_insights').select('project_id, platform, views, reach, impressions'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('runs').select('project_id, status, error, last_error, created_at, finished_at, workflows(name)').gte('created_at', since24h).order('created_at', { ascending: false }), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), allowedProjectIds), []),
     safe<any[]>(db.from('token_health').select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at, last_error'), []),
     safe<any[]>(db.from('cron_heartbeat').select('jobname, label, cadence, status, detail, last_fired_at, checked_at'), []),
   ])
@@ -186,7 +189,7 @@ export async function getOperations(db: AnyDb): Promise<OperationsSnapshot> {
   }
 
   // ── FAMILJE-STUNDEN (intäkt från Stripe-snapshot) ───────────────────────────
-  const rev = familjeId ? await revenueIntel(db, familjeId) : null
+  const rev = familjeId ? await revenueIntel(db, familjeId, allowedProjectIds) : null
   const familje: FamiljeOps = {
     activeSubscribers: rev?.hasData ? rev.activeSubscribers : null,
     mrrSek:            rev?.hasData ? rev.mrrSek : null,

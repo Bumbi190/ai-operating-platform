@@ -12,6 +12,7 @@
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { applyProjectScope } from '@/lib/atlas/isolation'
 
 export interface OperatorPatterns {
   summary: string        // klar för att injiceras i en systemprompt
@@ -22,14 +23,14 @@ function rows<T>(res: PromiseSettledResult<{ data: T[] | null }>): T[] {
   return res.status === 'fulfilled' ? ((res.value as any).data ?? []) : []
 }
 
-export async function fetchOperatorPatterns(admin: SupabaseClient): Promise<OperatorPatterns> {
+export async function fetchOperatorPatterns(admin: SupabaseClient, allowedProjectIds?: string[]): Promise<OperatorPatterns> {
   const [projectsRes, approvalsRes, runsRes, scriptsRes, newsRes] = await Promise.allSettled([
-    (admin.from('projects') as any).select('id, name'),
-    (admin.from('approvals') as any)
-      .select('status, created_at, reviewed_at').not('reviewed_at', 'is', null).limit(200),
-    (admin.from('runs') as any).select('project_id, created_at').limit(500),
-    (admin.from('media_scripts') as any).select('project_id').limit(500),
-    (admin.from('media_news_items') as any).select('project_id').limit(500),
+    applyProjectScope((admin.from('projects') as any).select('id, name'), allowedProjectIds, 'id'),
+    applyProjectScope((admin.from('approvals') as any)
+      .select('status, created_at, reviewed_at, project_id').not('reviewed_at', 'is', null).limit(200), allowedProjectIds),
+    applyProjectScope((admin.from('runs') as any).select('project_id, created_at').limit(500), allowedProjectIds),
+    applyProjectScope((admin.from('media_scripts') as any).select('project_id').limit(500), allowedProjectIds),
+    applyProjectScope((admin.from('media_news_items') as any).select('project_id').limit(500), allowedProjectIds),
   ])
 
   const projects = rows<{ id: string; name: string }>(projectsRes)

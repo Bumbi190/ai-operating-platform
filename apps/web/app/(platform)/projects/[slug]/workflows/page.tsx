@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { GitBranch, Plus, Play } from 'lucide-react'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function WorkflowsPage({ params }: { params: { slug: string } }) {
@@ -18,6 +18,8 @@ export default async function WorkflowsPage({ params }: { params: { slug: string
 
   return (
     <OSPage className="animate-fade-in">
+      {/* Atlas view awareness — publish the workflows on screen. */}
+      <ViewVisibleSync refs={(workflows ?? []).slice(0, 12).map((w) => ({ domain: 'workflows', id: w.id, label: w.name }))} />
       <OSLayer layer="hero" className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Workflows</h1>

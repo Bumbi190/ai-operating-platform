@@ -50,9 +50,38 @@ VIKTIGT om issue_id: det är en STABIL identitet för det underliggande probleme
   "summary": "<2-3 meningar om hälsotillståndet>"
 }`,
   config: {
-    max_tokens: 2000,
+    // 2000 var för snålt: när olösta insikter ackumulerades växte JSON-svaret
+    // förbi taket → trunkerat svar utan avslutande ```-stängsel → parsningsfel.
+    max_tokens: 4096,
     temperature: 0.3,
   },
+}
+
+/**
+ * Robust extraktion av ett JSON-objekt ur ett modellsvar.
+ * Hanterar: rå JSON, ```json-/```-instängslad JSON, instängsling UTAN avslutande
+ * stängsel (trunkerade svar), samt inledande/avslutande prosa runt objektet.
+ * Exporterad för enhetstester.
+ */
+export function extractJsonObject(raw: string): string {
+  let s = raw.trim()
+
+  // Strip ett inledande kodstängsel (```json / ``` / ```JSON) – även om det
+  // avslutande stängslet saknas (vanligt vid trunkerade svar).
+  const openFence = s.match(/^```[ \t]*[A-Za-z]*[ \t]*\r?\n?/)
+  if (openFence) {
+    s = s.slice(openFence[0].length)
+    const close = s.lastIndexOf('```')
+    if (close !== -1) s = s.slice(0, close)
+    s = s.trim()
+  }
+
+  // Snäva in till det yttersta {...}-objektet om prosa finns kvar runtom.
+  const first = s.indexOf('{')
+  const last = s.lastIndexOf('}')
+  if (first !== -1 && last > first) s = s.slice(first, last + 1)
+
+  return s.trim()
 }
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -219,9 +248,19 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
   })
 
   const rawText = response.content[0]?.type === 'text' ? response.content[0].text : ''
-  const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim()
-  analysisResult = JSON.parse(jsonStr) // kastar vid ogiltig JSON → anroparen hanterar
+  const jsonStr = extractJsonObject(rawText)
+  try {
+    analysisResult = JSON.parse(jsonStr)
+  } catch (err) {
+    // Diagnostik vid fortsatt parsningsfel: stop_reason='max_tokens' avslöjar
+    // trunkering; raw_len + startutdrag gör tysta nattliga fel synliga i loggen.
+    throw new Error(
+      `Dream-analys: JSON-parsning misslyckades ` +
+        `(model=${dreamAnalyzerSkill.defaultModel}, stop_reason=${response.stop_reason}, ` +
+        `raw_len=${rawText.length}). ${(err as Error).message}. ` +
+        `Råsvar (start): ${rawText.slice(0, 160)}`,
+    )
+  }
 
   // 7. Upserta insikter
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')

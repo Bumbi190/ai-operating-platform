@@ -24,8 +24,9 @@ import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
-import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
+import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
+import { isActionIntent } from '@/lib/atlas/action-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
@@ -109,6 +110,51 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
   return text
 }
 
+/**
+ * Cross-turn tool memory. Reads the persisted 'tool' rows for this conversation
+ * and surfaces the most recent get_dream_findings result so Atlas can delegate by
+ * issue_id WITHOUT re-fetching every turn (the cause of the fetch loop). Purely
+ * additive context — never touches the messages array, so it can't break the
+ * tool-use/tool-result pairing the Anthropic API requires.
+ */
+async function buildToolMemory(
+  db: ReturnType<typeof createAdminClient>,
+  conversationId?: string,
+): Promise<string> {
+  if (!conversationId) return ''
+  try {
+    const { data } = await db
+      .from('conversation_messages')
+      .select('tool_data, created_at')
+      .eq('conversation_id', conversationId)
+      .eq('role', 'tool')
+      .order('created_at', { ascending: false })
+      .limit(12)
+    const rows = (data ?? []) as { tool_data: any }[]
+    if (!rows.length) return ''
+
+    const dream = rows
+      .map(r => r.tool_data)
+      .find(td => td?.tool === 'get_dream_findings' && Array.isArray(td?.result?.findings) && td.result.findings.length)
+    if (!dream) return ''
+
+    const findings = dream.result.findings as Array<Record<string, any>>
+    const lines = [
+      `\n\n[SENASTE DREAM-FYND — från ditt förra get_dream_findings i denna konversation]`,
+      `Projekt: ${dream.result.project ?? '—'}. Använd dessa issue_id DIREKT vid delegate_dream_finding — hämta INTE om i onödan.`,
+    ]
+    for (const f of findings.slice(0, 12)) {
+      lines.push(
+        `- issue_id=${f.issue_id} · ${f.severity} · lifecycle=${f.lifecycle ?? 'open'}` +
+        (f.insight ? ` · ${String(f.insight).slice(0, 80)}` : ''),
+      )
+    }
+    return lines.join('\n')
+  } catch {
+    return ''
+  }
+}
+
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120   // cap (sekunder); ger run_media_step plats att köra ett media-steg synkront. Normala/röst-svar returnerar ändå på sekunder.
 
@@ -136,21 +182,6 @@ function isFastPathContent(text: string): boolean {
   const contentNoun = /\b(post|inlägg|caption|bildtext|blogg|blogginlägg|text|texter|tweet|mejl|e-?post|email|linkedin|rubrik|rubriker|annons|copy|beskrivning|hook|hooks|manus|bio|slogan|idé|idéer|ideas|stycke|punktlista|svar)\b/.test(t)
 
   return standalone || (writeVerb && contentNoun)
-}
-
-// ── ACTION INTENT ───────────────────────────────────────────────────────────
-// Operatören ber Atlas GÖRA något konkret (köra/starta/publicera/aktivera). Då MÅSTE
-// ett verktyg anropas — Atlas får aldrig bara säga att det är gjort. Vi tvingar
-// tool_choice på första turen så ett verkligt verktygsanrop garanteras.
-function isActionIntent(text: string): boolean {
-  const t = (text || '').toLowerCase().trim()
-  // Publicera/posta innebär en åtgärd i sig själv (inget objekt krävs).
-  if (/\b(publicera|publish|posta|publicering)\b/.test(t)) return true
-  // Övriga handlingsverb kräver ett objekt (workflow/nyhet/script/analys/…).
-  // Media-stegens egennamn räknas som objekt (engelska namn → matcha direkt).
-  if (/\b(fetch ai news|generate script|generate voiceover|render video|publish to social|publish to youtube)\b/.test(t)) return true
-  return /\b(starta|start|kör|kör igång|dra igång|sätt igång|aktivera|generera|skapa|gör|trigga|exekvera|genomför|utför|hämta|sök|hitta)\b/.test(t)
-    && /\b(workflow|arbetsflöde|flöde|analys|process|agent|kampanj|pipeline|körning|jobb|inlägg|post|video|reel|manus|script|nyhet|nyheter|artikel|innehåll|content|story|veckobrev|rapport|render|deploy|news|publish|youtube|voiceover)\b/.test(t)
 }
 
 // Ärlighetsspärrarnas claim-regexar (ACTION_CLAIM_RE / NAV_CLAIM_RE) bor i
@@ -537,6 +568,9 @@ export async function POST(request: Request) {
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
     try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
+    // delegation across turns doesn't require re-fetching (kills the fetch loop).
+    try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {
@@ -606,6 +640,8 @@ export async function POST(request: Request) {
       // Ärlighetsspärren får bara tystas av ett verkligt, lyckat åtgärdsanrop.
       let navigateSucceeded = false  // emitterades ett LYCKAT navigate-event DENNA förfrågan?
       // present_links räknas INTE — det visar bara genvägar, det navigerar inte.
+      let delegateToolUsed = false  // kördes ett LYCKAT delegate/delegate_dream_finding DENNA förfrågan?
+      // Tystar delegerings-ärlighetsspärren — bara en verklig, lyckad delegering räknas.
 
       async function runConversation(msgs: Anthropic.MessageParam[]) {
         // Agentic loop — Claude can use tools multiple times
@@ -662,6 +698,16 @@ export async function POST(request: Request) {
               console.log('[honesty-guard] blockerade falskt navigeringspåstående (inget navigate-anrop lyckades)')
             }
 
+            // DELEGERINGS-ÄRLIGHETSSPÄRR: om Atlas PÅSTÅR en delegering ("jag delegerar
+            // de kritiska", "skapade uppgift") men inget delegate/delegate_dream_finding
+            // LYCKADES denna tur → korrigera (egen text, ej workflow-formulerad).
+            if (!fastPath && !delegateToolUsed && DELEGATE_CLAIM_RE.test(fullText)) {
+              const correction = ' \n\n⚠️ Obs: jag har faktiskt inte delegerat något än — ingen uppgift skapades. Säg till så kör jag delegeringen på riktigt (delegate_dream_finding) och visar task-id.'
+              send('text', { text: correction })
+              fullText += correction
+              console.log('[honesty-guard] blockerade falskt delegeringspåstående (inget delegate-verktyg kördes)')
+            }
+
             if (fullText) void saveMessage('assistant', fullText)
             break
           }
@@ -688,7 +734,16 @@ export async function POST(request: Request) {
             // run_media_step: räknas bara om steget faktiskt kördes (ok=true) — inte vid
             // needs_confirmation (publicering ej bekräftad) eller fel.
             if (toolUse.name === 'run_media_step') took = !!r && r.ok === true
+            // save_workflow: bara om det FAKTISKT sparades.
+            if (toolUse.name === 'save_workflow') took = !!r && (r as { saved?: boolean }).saved === true
             if (took) actionToolUsed = true
+
+            // Delegerings-spärr: en delegering räknas som utförd bara om verktyget LYCKADES.
+            // delegate (mål→uppgifter) + delegate_dream_finding (Dream→uppgift) + resolve_dream_finding.
+            if (toolUse.name === 'delegate') delegateToolUsed = delegateToolUsed || !errored
+            if (toolUse.name === 'delegate_dream_finding' || toolUse.name === 'resolve_dream_finding') {
+              if (!!r && (r as { ok?: boolean }).ok === true) delegateToolUsed = true
+            }
 
             // ── NAVIGATIONSLAGRET ──────────────────────────────────────────────
             // present_links → klickbara genvägar under svaret (persisteras för reload).
@@ -704,6 +759,11 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+
+            // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
+            // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.
+            // Visas inte i UI (klientens filter behåller bara user/assistant).
+            void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, input: toolUse.input, result })
 
             toolResults.push({
               type: 'tool_result',

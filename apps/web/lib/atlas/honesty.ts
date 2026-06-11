@@ -27,6 +27,20 @@ export const ACTION_CLAIM_RE = new RegExp(
   'i',
 )
 
+// Fraser som PÅSTÅR att en delegering/uppgift skapats — Dream→Action eller
+// generell delegate. Paras i route.ts med delegateToolUsed (delegate /
+// delegate_dream_finding som LYCKADES denna tur). Påstående utan backande
+// verktygsanrop → delegerings-ärlighetsspärr (egen, workflow-oberoende text).
+export const DELEGATE_CLAIM_RE = new RegExp(
+  [
+    '(?<![\\wåäöÅÄÖ])(delegerar|delegerat|delegerade)(?![\\wåäöÅÄÖ])',
+    '\\b(delegating|delegated)\\b',
+    '(?<![\\wåäöÅÄÖ])(skapar|skapat|skapade)(?![\\wåäöÅÄÖ])[^.!?]*(?<![\\wåäöÅÄÖ])(uppgift|uppgifter|uppgiften)(?![\\wåäöÅÄÖ])',
+    '\\b(creating|created)\\b[^.!?]*\\b(task|tasks)\\b',
+  ].join('|'),
+  'i',
+)
+
 // Fraser som PÅSTÅR en utförd/pågående NAVIGERING — att en vy/sida/projekt
 // öppnats eller att operatören tagits dit. Om Atlas skriver något av dessa utan
 // att ett LYCKAT navigate-verktyg kördes denna tur → falskt påstående

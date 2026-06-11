@@ -34,6 +34,7 @@ import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientView
 import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
+import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
@@ -571,6 +572,9 @@ export async function POST(request: Request) {
     // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
     // delegation across turns doesn't require re-fetching (kills the fetch loop).
     try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }
+    // Action memory (atlas_actions): surface actions Atlas actually performed so it
+    // can answer "what did you just do?" from memory instead of re-fetching.
+    try { systemPrompt += await buildActionMemory(db, conversation_id, allowedProjectIds) } catch { /* icke-kritiskt */ }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {
@@ -716,6 +720,17 @@ export async function POST(request: Request) {
           const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
           const toolResults: Anthropic.ToolResultBlockParam[] = []
 
+          // KVITTO-PERSISTENS: assistenttext som följer MED verktygsanrop (t.ex.
+          // delegeringskvittot precis innan present_links) sparas annars aldrig —
+          // final-saveMessage körs bara i icke-verktygsgrenen. Spara den här så att
+          // kvittot överlever en reload. (Oberoende av atlas_actions.)
+          const inlineText = (response.content as Anthropic.ContentBlock[])
+            .filter(b => b.type === 'text')
+            .map(b => (b as Anthropic.TextBlock).text)
+            .join('')
+            .trim()
+          if (inlineText) void saveMessage('assistant', inlineText)
+
           for (const toolUse of toolUseBlocks) {
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
 
@@ -743,6 +758,36 @@ export async function POST(request: Request) {
             if (toolUse.name === 'delegate') delegateToolUsed = delegateToolUsed || !errored
             if (toolUse.name === 'delegate_dream_finding' || toolUse.name === 'resolve_dream_finding') {
               if (!!r && (r as { ok?: boolean }).ok === true) delegateToolUsed = true
+            }
+
+            // ── ÅTGÄRDSMINNE (atlas_actions, Phase 1) ──────────────────────────
+            // Registrera bara FAKTISKT utförda åtgärder. Phase 1: dream_delegation + workflow_run.
+            const ra = r as any
+            if (toolUse.name === 'delegate_dream_finding' && ra?.ok === true) {
+              void recordAction(db, {
+                projectId: ra.project_id ?? null,
+                conversationId: conversation_id,
+                actionType: 'dream_delegation',
+                toolName: 'delegate_dream_finding',
+                targetKind: 'manager_task',
+                targetId: ra.task_id ?? null,
+                status: ra.status ?? null,
+                summary: `Delegerade Dream-fynd ${ra.issue_id ?? '?'} → uppgift "${ra.title ?? ''}" (task ${ra.task_id ?? '?'})`,
+                detail: { issue_id: ra.issue_id ?? null, owner: ra.owner ?? null, priority: ra.priority ?? null, already_existed: ra.already_existed ?? false },
+              })
+            }
+            if (toolUse.name === 'trigger_workflow' && !errored && ra?.run_id) {
+              void recordAction(db, {
+                projectId: ra.project_id ?? null,
+                conversationId: conversation_id,
+                actionType: 'workflow_run',
+                toolName: 'trigger_workflow',
+                targetKind: 'run',
+                targetId: ra.run_id ?? null,
+                status: ra.status ?? 'queued',
+                summary: `Köade workflow "${ra.workflow_name ?? ''}" → körning ${ra.run_id} (${ra.status ?? 'queued'})`,
+                detail: { workflow_name: ra.workflow_name ?? null },
+              })
             }
 
             // ── NAVIGATIONSLAGRET ──────────────────────────────────────────────
@@ -907,6 +952,8 @@ async function executeTool(
 
     return {
       run_id: run.id,
+      project_id: workflow.project_id,
+      workflow_name: workflow.name,
       status: 'queued',
       message: 'Körningen är köad och körs durabelt inom kort. Fråga om status med get_run_status när du vill.',
     }
@@ -1081,6 +1128,8 @@ async function executeTool(
     if (!r.ok) return { ok: false, error: r.error }
     return {
       ok: true,
+      project_id: resolvedId,
+      issue_id,
       already_existed: r.alreadyExisted ?? false,
       task_id: r.task?.id,
       owner: r.task?.owner,

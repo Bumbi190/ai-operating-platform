@@ -7,7 +7,7 @@
  * answers would be wrongly corrected.
  */
 import { describe, it, expect } from 'vitest'
-import { ACTION_CLAIM_RE, NAV_CLAIM_RE } from '@/lib/atlas/honesty'
+import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
 
 describe('NAV_CLAIM_RE — detects navigation claims (English)', () => {
   const claims = [
@@ -73,5 +73,37 @@ describe('ACTION_CLAIM_RE — unchanged behavior', () => {
   })
   it('does not match a plain status answer', () => {
     expect(ACTION_CLAIM_RE.test('Du har 3 väntande godkännanden.')).toBe(false)
+  })
+  it('does NOT match delegation claims (those are DELEGATE_CLAIM_RE)', () => {
+    expect(ACTION_CLAIM_RE.test('Jag delegerar de kritiska fynden.')).toBe(false)
+  })
+})
+
+describe('DELEGATE_CLAIM_RE — detects delegation / task-creation claims', () => {
+  const claims = [
+    'Jag delegerar de kritiska fynden nu.',
+    'Jag har delegerat ärendet.',
+    'Jag delegerade alla kritiska.',
+    "I'm delegating the critical findings.",
+    'Delegated all critical issues.',
+    'Jag skapar en uppgift för det.',
+    'Jag skapade uppgifter för de kritiska fynden.',
+    'Creating tasks from the findings now.',
+    'Created 8 tasks for the critical issues.',
+  ]
+  for (const c of claims) {
+    it(`matches: "${c}"`, () => expect(DELEGATE_CLAIM_RE.test(c)).toBe(true))
+  }
+
+  const safe = [
+    'Du har 8 kritiska Dream-fynd.',          // pure status
+    'Vill du att jag delegerar dem?',          // offer/question is acceptable-ish but...
+    'Jag kan delegera dem om du vill.',        // offer (infinitive) — should not claim done
+  ]
+  it('does not fire on a pure status answer', () => {
+    expect(DELEGATE_CLAIM_RE.test(safe[0])).toBe(false)
+  })
+  it('does not fire on the infinitive offer "kan delegera"', () => {
+    expect(DELEGATE_CLAIM_RE.test(safe[2])).toBe(false)
   })
 })

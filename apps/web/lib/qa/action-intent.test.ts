@@ -49,3 +49,22 @@ describe('isActionIntent — does NOT fire on reads / questions', () => {
     it(`does not force a tool for: "${r}"`, () => expect(isActionIntent(r)).toBe(false))
   }
 })
+
+describe('isActionIntent — recall questions about delegation are NOT actions (no forced re-fetch)', () => {
+  const recalls = [
+    'What did you just delegate?',
+    'Which tasks did you delegate?',
+    'Vilka uppgifter delegerade du nyss?',
+    'Vad delegerade du?',
+    'have you delegated the critical findings?',
+  ]
+  for (const r of recalls) {
+    it(`does not force a tool for recall: "${r}"`, () => expect(isActionIntent(r)).toBe(false))
+  }
+
+  // Imperative delegation requests must STILL force a tool.
+  const actions = ['delegate the critical Dream findings', 'Delegera de kritiska fynden', 'create tasks from the critical findings']
+  for (const a of actions) {
+    it(`still forces a tool for imperative: "${a}"`, () => expect(isActionIntent(a)).toBe(true))
+  }
+})

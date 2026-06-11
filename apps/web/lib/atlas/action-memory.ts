@@ -85,28 +85,37 @@ export function renderActionMemory(rows: ActionRow[]): string {
   return lines.join('\n')
 }
 
+export interface ActionMemory {
+  /** The rendered [SENASTE ÅTGÄRDER] block (or '' when empty). */
+  text: string
+  /** True if the recent ledger contains a delegation — used to corroborate
+   *  truthful recall so the delegation honesty guard doesn't fire on it. */
+  hasRecentDelegation: boolean
+}
+
+const DELEGATION_TYPES = new Set(['dream_delegation', 'manager_delegation'])
+
 /**
- * Read the recent action ledger and render it. Project-isolated via
- * scopeProjectFilter (empty allow-list → impossible id → zero rows). When a
- * conversation is active, narrows to it (the operator's current thread); else
- * falls back to recent actions across owned projects. Returns '' on no data/error.
+ * Read the recent action ledger (PROJECT-scoped, NOT conversation-scoped, so
+ * "what did you do?" works across chats/sessions) and render it. Isolation via
+ * scopeProjectFilter (empty allow-list → impossible id → zero rows). Also reports
+ * whether a delegation is present so the route can suppress a false-claim
+ * correction on truthful recall. Returns empty/false on no data or error.
  */
 export async function buildActionMemory(
   db: AnyDb,
-  conversationId: string | null | undefined,
   allowedProjectIds: string[],
-): Promise<string> {
+): Promise<ActionMemory> {
   try {
-    let q = (db.from('atlas_actions') as any)
+    const { data } = await (db.from('atlas_actions') as any)
       .select('action_type, summary, target_id, status, created_at')
       .in('project_id', scopeProjectFilter(allowedProjectIds))
       .order('created_at', { ascending: false })
       .limit(10)
-    if (conversationId) q = q.eq('conversation_id', conversationId)
-    const { data } = await q
     const rows = (data ?? []) as ActionRow[]
-    return renderActionMemory(rows)
+    const hasRecentDelegation = rows.some(r => DELEGATION_TYPES.has(r.action_type))
+    return { text: renderActionMemory(rows), hasRecentDelegation }
   } catch {
-    return ''
+    return { text: '', hasRecentDelegation: false }
   }
 }

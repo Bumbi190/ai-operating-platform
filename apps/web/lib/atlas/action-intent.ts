@@ -11,13 +11,22 @@
  */
 export function isActionIntent(text: string): boolean {
   const t = (text || '').toLowerCase().trim()
+  // RECALL/FRÅGA om DÅTIDA åtgärder ("vad/vilka delegerade du nyss?", "what did you
+  // delegate?") är INTE en åtgärdsbegäran — då får vi inte tvinga ett verktyg.
+  const isRecallQuestion =
+    t.endsWith('?')
+    || /(?<![\wåäöÅÄÖ])(vad|vilka|vilken|vilket)(?![\wåäöÅÄÖ])/.test(t)
+    || /\b(what|which|did you|have you|har du|gjorde du)\b/.test(t)
+    || /(?<![\wåäöÅÄÖ])du nyss(?![\wåäöÅÄÖ])/.test(t)
   // Publicera/posta innebär en åtgärd i sig själv (inget objekt krävs).
   if (/\b(publicera|publish|posta|publicering)\b/.test(t)) return true
-  // Delegering / Dream→Action är en åtgärd i sig själv (kräver inget objekt):
-  // "delegera de kritiska", "delegate all critical dream issues".
-  if (/(?<![\wåäöÅÄÖ])delegera(?![\wåäöÅÄÖ])|\bdelegate\b/.test(t)) return true
-  // "skapa/create uppgift(er)/task(s) (av/från fynd …)".
-  if (/\b(skapa|create|gör)\b[^.!?]*\b(uppgift|uppgifter|task|tasks)\b/.test(t)) return true
+  // Delegering / Dream→Action är en åtgärd i sig själv — men BARA som imperativ,
+  // inte som recall-fråga ("delegera de kritiska" ✓ / "vad delegerade du?" ✗).
+  if (!isRecallQuestion) {
+    if (/(?<![\wåäöÅÄÖ])delegera(?![\wåäöÅÄÖ])|\bdelegate\b/.test(t)) return true
+    // "skapa/create uppgift(er)/task(s) (av/från fynd …)".
+    if (/\b(skapa|create|gör)\b[^.!?]*\b(uppgift|uppgifter|task|tasks)\b/.test(t)) return true
+  }
   // Media-stegens egennamn räknas som objekt (engelska namn → matcha direkt).
   if (/\b(fetch ai news|generate script|generate voiceover|render video|publish to social|publish to youtube)\b/.test(t)) return true
   // Övriga handlingsverb kräver ett objekt (workflow/nyhet/script/analys/fynd/uppgift …).

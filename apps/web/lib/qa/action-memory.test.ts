@@ -75,26 +75,38 @@ describe('renderActionMemory', () => {
   })
 })
 
-describe('buildActionMemory — isolation', () => {
-  it('scopes by project and narrows to the conversation when present', async () => {
+describe('buildActionMemory — project-scoped (cross-conversation) + corroboration flag', () => {
+  it('scopes by project, does NOT narrow to conversation, flags recent delegation', async () => {
     const { db, queries } = makeDb({
       atlas_actions: [
         { action_type: 'dream_delegation', summary: 'a', target_id: 't', status: 'pending', created_at: iso(1), project_id: 'p-prompt', conversation_id: 'c1' },
         { action_type: 'workflow_run', summary: 'b', target_id: 'r', status: 'queued', created_at: iso(3), project_id: 'p-prompt', conversation_id: 'c2' },
       ],
     })
-    const out = await buildActionMemory(db, 'c1', ['p-prompt'])
+    const am = await buildActionMemory(db, ['p-prompt'])
     const q = queries.find(x => x.table === 'atlas_actions')!
     expect(q.ins.find(i => i.c === 'project_id')?.v).toEqual(['p-prompt'])
-    expect(q.eqs.find(e => e.c === 'conversation_id')?.v).toBe('c1')
-    expect(out).toContain('[dream_delegation]') // row a (c1) included
-    expect(out).not.toContain('[workflow_run]')  // row b (c2) excluded by conversation filter
+    expect(q.eqs.find(e => e.c === 'conversation_id')).toBeUndefined() // recall works across chats
+    expect(am.text).toContain('[dream_delegation]') // row from c1
+    expect(am.text).toContain('[workflow_run]')     // row from c2 — both returned (cross-conversation)
+    expect(am.hasRecentDelegation).toBe(true)
+  })
+
+  it('hasRecentDelegation is false when there is no delegation in the window', async () => {
+    const { db } = makeDb({
+      atlas_actions: [
+        { action_type: 'workflow_run', summary: 'b', target_id: 'r', status: 'queued', created_at: iso(1), project_id: 'p-prompt', conversation_id: 'c2' },
+      ],
+    })
+    const am = await buildActionMemory(db, ['p-prompt'])
+    expect(am.hasRecentDelegation).toBe(false)
   })
 
   it('empty allow-list → impossible id → no leakage', async () => {
     const { db, queries } = makeDb({ atlas_actions: [] })
-    await buildActionMemory(db, undefined, [])
+    const am = await buildActionMemory(db, [])
     const q = queries.find(x => x.table === 'atlas_actions')!
     expect(q.ins.find(i => i.c === 'project_id')?.v).toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(am.text).toBe('')
   })
 })

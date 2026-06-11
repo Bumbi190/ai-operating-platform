@@ -562,6 +562,10 @@ export async function POST(request: Request) {
   const navIntent = !fastPath && !actionIntent && isNavIntent(lastUserText)
   const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
 
+  // True when the action ledger already shows a delegation — corroborates truthful
+  // recall so the delegation honesty guard does NOT fire on it (set below).
+  let recentDelegationKnown = false
+
   let systemPrompt: string
   if (fastPath) {
     // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
@@ -572,9 +576,14 @@ export async function POST(request: Request) {
     // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
     // delegation across turns doesn't require re-fetching (kills the fetch loop).
     try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): surface actions Atlas actually performed so it
-    // can answer "what did you just do?" from memory instead of re-fetching.
-    try { systemPrompt += await buildActionMemory(db, conversation_id, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
+    // across chats/sessions. Also reports whether a delegation is on record, used
+    // to suppress a false-claim correction on truthful recall.
+    try {
+      const am = await buildActionMemory(db, allowedProjectIds)
+      systemPrompt += am.text
+      recentDelegationKnown = am.hasRecentDelegation
+    } catch { /* icke-kritiskt */ }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {
@@ -702,10 +711,12 @@ export async function POST(request: Request) {
               console.log('[honesty-guard] blockerade falskt navigeringspåstående (inget navigate-anrop lyckades)')
             }
 
-            // DELEGERINGS-ÄRLIGHETSSPÄRR: om Atlas PÅSTÅR en delegering ("jag delegerar
-            // de kritiska", "skapade uppgift") men inget delegate/delegate_dream_finding
-            // LYCKADES denna tur → korrigera (egen text, ej workflow-formulerad).
-            if (!fastPath && !delegateToolUsed && DELEGATE_CLAIM_RE.test(fullText)) {
+            // DELEGERINGS-ÄRLIGHETSSPÄRR: korrigera bara FALSKA delegeringspåståenden.
+            // Tystas av (a) ett lyckat delegate-verktyg DENNA tur, ELLER (b) en delegering
+            // som redan finns i åtgärdsloggen (atlas_actions) — då är "jag delegerade …"
+            // en sann historisk recall, inte ett falskt påstående. Falska påståenden utan
+            // vare sig verktygsanrop eller loggpost fångas fortfarande.
+            if (!fastPath && !delegateToolUsed && !recentDelegationKnown && DELEGATE_CLAIM_RE.test(fullText)) {
               const correction = ' \n\n⚠️ Obs: jag har faktiskt inte delegerat något än — ingen uppgift skapades. Säg till så kör jag delegeringen på riktigt (delegate_dream_finding) och visar task-id.'
               send('text', { text: correction })
               fullText += correction

@@ -23,6 +23,22 @@ import { sendPipelineAlert } from '@/lib/media/alert'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
 
+/**
+ * Watchdog: ser till att en hängande extern call (t.ex. Remotion Lambda vid
+ * versionsmismatch) kastar i tid så catch-blocket hinner köra INNAN Vercel
+ * dödar funktionen vid maxDuration. Utan denna räknas inga render_attempts
+ * upp och inget larm skickas (tyst 504-loop — hände 2026-06-10).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timade ut efter ${Math.round(ms / 1000)}s (watchdog)`)), ms)
+    }),
+  ])
+}
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
@@ -91,7 +107,7 @@ export async function GET(request: Request) {
     }
 
     // Start Lambda render
-    const inputProps = await buildVideoInputProps({
+    const inputProps = await withTimeout(buildVideoInputProps({
       hook:               script.hook,
       audioUrl:           script.audio_url!,
       timingUrl:          script.timing_url!,
@@ -99,9 +115,12 @@ export async function GET(request: Request) {
       images:             storedImageUrls,
       accentColor:        '#6366f1',
       backgroundMusicUrl: undefined,
-    })
+    }), 8_000, 'buildVideoInputProps (timing-fetch)')
 
-    const { renderId, bucketName } = await withRetry(() => startLambdaRender(script.id, inputProps, 'SimpleNewsReel'), { attempts: 2, label: 'Remotion Lambda render-start' })
+    const { renderId, bucketName } = await withRetry(
+      () => withTimeout(startLambdaRender(script.id, inputProps, 'SimpleNewsReel'), 20_000, 'Remotion Lambda render-start'),
+      { attempts: 2, label: 'Remotion Lambda render-start' },
+    )
 
     await db.from('media_scripts').update({
       video_status:  'rendering',

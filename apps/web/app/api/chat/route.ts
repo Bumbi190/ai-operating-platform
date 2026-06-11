@@ -343,7 +343,7 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         project_id: {
           type: 'string',
-          description: 'Projekt-ID vars Dream-insikter ska hämtas. Använd projekt-ID:t från LIVE LÄGE-kontexten för den verksamhet operatören frågar om.',
+          description: 'Vilken verksamhet Dream-insikterna gäller — UUID, slug ELLER namn (t.ex. "The Prompt", "Familje-Stunden"). Ta namnet från LIVE LÄGE / CURRENT VIEW; det resolvas och ägarkontrolleras server-side.',
         },
       },
       required: ['project_id'],
@@ -355,7 +355,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        project_id: { type: 'string', description: 'Projekt-ID som ärendet tillhör (från LIVE LÄGE).' },
+        project_id: { type: 'string', description: 'Verksamheten ärendet tillhör — UUID, slug eller namn (t.ex. "The Prompt"). Resolvas och ägarkontrolleras server-side.' },
         issue_id: { type: 'string', description: 'Dream-ärendets stabila issue_id (fältet "issue_id" från get_dream_findings, t.ex. critical_alerting_missing).' },
         owner: { type: 'string', description: 'Vem uppgiften tilldelas (agent eller person). Default "Atlas" om utelämnad.' },
         title: { type: 'string', description: 'Valfri uppgiftstitel. Default: ärendets rekommenderade åtgärd.' },
@@ -369,7 +369,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        project_id: { type: 'string', description: 'Projekt-ID som ärendet tillhör.' },
+        project_id: { type: 'string', description: 'Verksamheten ärendet tillhör — UUID, slug eller namn (t.ex. "The Prompt"). Resolvas och ägarkontrolleras server-side.' },
         issue_id: { type: 'string', description: 'Dream-ärendets stabila issue_id.' },
         result: { type: 'string', description: 'Valfri kort notering om hur det löstes.' },
       },
@@ -752,6 +752,36 @@ export async function POST(request: Request) {
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
+/**
+ * Resolve a model-supplied project reference (UUID, slug, or name) to a project
+ * id the operator OWNS, or null. Mirrors the get_records/fetchRecords pattern so
+ * the Dream tools accept the same identifiers Atlas actually has in context
+ * (LIVE LÄGE / CURRENT VIEW expose name + slug, never the UUID).
+ *
+ * Isolation is preserved: a raw id is only accepted if it's in the allow-list,
+ * and a slug/name lookup is scoped via scopeProjectFilter (empty allow-list →
+ * impossible id → no match), so this can never reach another tenant's project.
+ */
+async function resolveOwnedProjectId(
+  db: AdminClient,
+  input: string | undefined,
+  allowedProjectIds: string[],
+): Promise<string | null> {
+  if (!input) return null
+  // 1) Already an owned UUID → trust as-is.
+  if (assertProjectAllowed(input, allowedProjectIds)) return input
+  // 2) Treat as name/slug → canonical slug → owned project id (scoped lookup).
+  const slug = resolveProjectSlug(input)
+  if (!slug) return null
+  const { data } = await db
+    .from('projects')
+    .select('id')
+    .eq('slug', slug)
+    .in('id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
+}
+
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -938,15 +968,17 @@ async function executeTool(
   if (name === 'get_dream_findings') {
     const { project_id } = input as { project_id?: string }
     if (!project_id) {
-      return { error: 'project_id krävs. Använd projekt-ID:t från LIVE LÄGE-kontexten.' }
+      return { error: 'project krävs (UUID, slug eller namn — t.ex. "The Prompt" från LIVE LÄGE / CURRENT VIEW).' }
     }
-    // ISOLATION: a model-supplied project_id is only trusted if the operator owns
-    // it. Otherwise behave as "no data" (never read another tenant's findings).
-    if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+    // ISOLATION: accept UUID/slug/name, resolve to an OWNED project id (same
+    // pattern as get_records). Unresolvable/non-owned → behave as "no data"
+    // (never read another tenant's findings).
+    const resolvedId = await resolveOwnedProjectId(db, project_id, allowedProjectIds)
+    if (!resolvedId) {
       return { project: null, has_data: false, note: 'Inget sådant projekt i din åtkomst.' }
     }
-    const { data: proj } = await db.from('projects').select('name').eq('id', project_id).maybeSingle()
-    const res = await getDreamFindings(db, project_id, 20)
+    const { data: proj } = await db.from('projects').select('name').eq('id', resolvedId).maybeSingle()
+    const res = await getDreamFindings(db, resolvedId, 20)
     if (!res.hasData) {
       return {
         project: (proj as { name?: string } | null)?.name ?? null,
@@ -980,9 +1012,12 @@ async function executeTool(
       project_id?: string; issue_id?: string; owner?: string; title?: string
     }
     if (!project_id || !issue_id) {
-      return { error: 'project_id och issue_id krävs.' }
+      return { error: 'project (UUID/slug/namn) och issue_id krävs.' }
     }
-    const r = await delegateDreamFinding(db, { projectId: project_id, issueId: issue_id, owner, title })
+    // ISOLATION: resolve UUID/slug/name → owned project id before any write.
+    const resolvedId = await resolveOwnedProjectId(db, project_id, allowedProjectIds)
+    if (!resolvedId) return { ok: false, error: 'Inget sådant projekt i din åtkomst.' }
+    const r = await delegateDreamFinding(db, { projectId: resolvedId, issueId: issue_id, owner, title })
     if (!r.ok) return { ok: false, error: r.error }
     return {
       ok: true,
@@ -1004,9 +1039,12 @@ async function executeTool(
       project_id?: string; issue_id?: string; result?: string
     }
     if (!project_id || !issue_id) {
-      return { error: 'project_id och issue_id krävs.' }
+      return { error: 'project (UUID/slug/namn) och issue_id krävs.' }
     }
-    const r = await resolveDreamFinding(db, { projectId: project_id, issueId: issue_id, result })
+    // ISOLATION: resolve UUID/slug/name → owned project id before any write.
+    const resolvedId = await resolveOwnedProjectId(db, project_id, allowedProjectIds)
+    if (!resolvedId) return { ok: false, error: 'Inget sådant projekt i din åtkomst.' }
+    const r = await resolveDreamFinding(db, { projectId: resolvedId, issueId: issue_id, result })
     if (!r.ok) return { ok: false, error: r.error }
     return {
       ok: true,

@@ -52,13 +52,6 @@ export interface DailyPlan {
   summary: string
 }
 
-export interface EvaluationResult {
-  score: number          // 0–100
-  approved: boolean
-  issues: string[]
-  feedback: string
-}
-
 export interface ManagerTask {
   id: string
   project_id: string | null
@@ -310,53 +303,6 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
     })
 
     return plan
-  }
-
-  /**
-   * Evaluates an approval's content for quality.
-   * Returns structured score + feedback for human review aid.
-   */
-  async evaluateOutput(approvalId: string): Promise<EvaluationResult> {
-    const { data: approval } = await this.db
-      .from('approvals')
-      .select('*, runs(workflows(name))')
-      .eq('id', approvalId)
-      .single()
-
-    if (!approval) throw new Error(`Approval ${approvalId} not found`)
-
-    const workflowName = (approval.runs as any)?.workflows?.name ?? 'Unknown'
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      system: MANAGER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Evaluate this AI-generated output from workflow "${workflowName}".
-
-CONTENT (first 3000 chars):
-${(approval.content ?? '').slice(0, 3000)}
-
-Return ONLY valid JSON:
-{
-  "score": 0-100,
-  "approved": true|false,
-  "issues": ["issue if any"],
-  "feedback": "Concise quality assessment"
-}`,
-        },
-      ],
-    })
-
-    const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
-    try {
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0]) as EvaluationResult
-    } catch { /* fall through */ }
-
-    return { score: 0, approved: false, issues: ['Evaluation parse error'], feedback: 'Could not evaluate output.' }
   }
 
   /**

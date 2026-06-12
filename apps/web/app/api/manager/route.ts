@@ -44,29 +44,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ response })
       }
 
-      // ── Evaluate a pending approval ────────────────────────────────────────
-      case 'evaluate': {
-        const { approval_id } = body as { approval_id: string }
-        if (!approval_id) {
-          return NextResponse.json({ error: 'approval_id krävs' }, { status: 400 })
-        }
-        const evaluation = await manager.evaluateOutput(approval_id)
-
-        // Persist evaluation to DB
-        const { createAdminClient } = await import('@/lib/supabase/admin')
-        const db = createAdminClient()
-        await db.from('evaluations').insert({
-          approval_id,
-          evaluator_name: 'manager',
-          score: evaluation.score,
-          approved: evaluation.approved,
-          issues: evaluation.issues,
-          feedback: evaluation.feedback,
-        })
-
-        return NextResponse.json({ evaluation })
-      }
-
       // ── Plan tasks from a high-level goal ──────────────────────────────────
       case 'plan_tasks': {
         const { goal, project_id } = body as { goal: string; project_id: string }

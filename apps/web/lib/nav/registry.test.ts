@@ -61,9 +61,9 @@ describe('resolveDestination — filtered destinations', () => {
       .toBe('/approvals?project=ai-media-automation&state=pending')
   })
 
-  it('maps logical "money" to the current /costs path with project', () => {
+  it('maps logical "money" to the current /revenue path with project', () => {
     expect(resolveDestination('money', { project: 'gainpilot' })?.href)
-      .toBe('/costs?project=gainpilot')
+      .toBe('/revenue?project=gainpilot')
   })
 
   it('builds a path-mode project destination', () => {

@@ -54,6 +54,10 @@ export async function POST(request: Request) {
     return new Response('Already published', { status: 409 })
   }
 
+  // Capture as local — the `!script.video_url` narrowing above doesn't survive
+  // into the ReadableStream start() closure.
+  const videoUrl = script.video_url
+
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (payload: Record<string, unknown>) => sseEvent(controller, payload)
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
         emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
 
         const igResult = await postReelToInstagram(
-          script.video_url,
+          videoUrl,
           caption,
           (step, pct) => {
             const labels: Record<string, string> = {
@@ -96,7 +100,7 @@ export async function POST(request: Request) {
           emit({ step: 'uploading', label: 'Publicerar på Facebook...', progress: 65 })
           try {
             fbResult = await postReelToFacebook(
-              script.video_url,
+              videoUrl,
               caption,
               (step, pct) => {
                 emit({

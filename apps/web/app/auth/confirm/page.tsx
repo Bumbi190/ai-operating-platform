@@ -40,7 +40,7 @@ export default function AuthConfirmPage() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          router.replace('/dashboard')
+          router.replace('/atlas')
           return
         }
         console.warn('[auth/confirm] Code exchange failed:', error.message)
@@ -49,7 +49,7 @@ export default function AuthConfirmPage() {
       // 2. Check if implicit flow already set a session via hash fragment
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        router.replace('/dashboard')
+        router.replace('/atlas')
         return
       }
 
@@ -58,7 +58,7 @@ export default function AuthConfirmPage() {
         (event, session) => {
           if (event === 'SIGNED_IN' && session) {
             subscription.unsubscribe()
-            router.replace('/dashboard')
+            router.replace('/atlas')
           }
         },
       )

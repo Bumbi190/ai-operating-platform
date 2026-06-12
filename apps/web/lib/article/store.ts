@@ -10,6 +10,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toJson } from '@/lib/supabase/json'
 import type { GeneratedArticle } from './index'
 
 /** The Prompt's Omnira project. Articles + reels share this project; A/B
@@ -66,9 +67,9 @@ export async function saveGeneratedArticle(
     title:         draft.title,
     slug:          payload.slug ?? null,
     summary:       draft.summary || null,
-    payload,                                   // jsonb — full publish-contract payload (incl. body)
-    qa,                                        // jsonb
-    meta,                                      // jsonb
+    payload: toJson(payload),                  // jsonb — full publish-contract payload (incl. body)
+    qa: toJson(qa),                            // jsonb
+    meta: toJson(meta),                        // jsonb
     model:         meta?.model ?? null,        // denormalized for Atlas reporting
     cost_usd:      meta?.estCostUsd ?? null,   // denormalized for Atlas reporting
     generated_by:  args.generatedBy ?? 'omnira-article-pipeline',

@@ -35,7 +35,7 @@ export function buildBriefingEmail(b: ExecutiveBriefing): { subject: string; htm
       <div style="font-size: 15px; font-weight: 600; color: #111827;">${escapeHtml(b.recommended.title)}</div>
       <div style="font-size: 13px; color: #6b7280; margin-top: 4px;">${escapeHtml(b.recommended.reason)}</div>
       <div style="margin-top: 12px;">
-        <a href="${APP_URL}/action-center" style="display:inline-block; background:#6366f1; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 16px; border-radius:8px;">Öppna Action Center</a>
+        <a href="${APP_URL}/atlas" style="display:inline-block; background:#6366f1; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:9px 16px; border-radius:8px;">Öppna Atlas</a>
         ${b.recommendedEta ? `<span style="font-size:12px; color:#9ca3af; margin-left:12px;">Uppskattad tid: ${escapeHtml(b.recommendedEta)}</span>` : ''}
       </div>
     </div>` : ''

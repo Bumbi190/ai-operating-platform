@@ -21,6 +21,7 @@ import { logLlmCost } from '@/lib/cost/track'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
+import { toJson } from '@/lib/supabase/json'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -270,8 +271,8 @@ export async function GET(request: Request) {
     project_id: project.id, news_item_id: newsItemId,
     hook: script.hook, script: script.script, captions: script.captions,
     hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-    estimated_duration: script.estimated_duration, raw_output: script,
-    quality_score: qualityScore, status: 'approved',
+    estimated_duration: script.estimated_duration, raw_output: toJson(script),
+    quality_score: toJson(qualityScore), status: 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
     topic: classifyTopic(script.hook, script.script), format: 'reel',
     generated_at: new Date().toISOString(),

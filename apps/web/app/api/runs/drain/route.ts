@@ -11,7 +11,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
-import type { WorkflowStep, Run } from '@/lib/supabase/types'
+import type { Run } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -34,14 +35,15 @@ export async function GET(request: Request) {
 
   for (const run of runs) {
     try {
-      if (isMarketingRun(run.kind)) {
+      const kind = run.kind
+      if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
-        await MARKETING_HANDLERS[run.kind](db, run as Run)
+        await MARKETING_HANDLERS[kind](db, run as Run)
       } else {
         // Legacy agent-step-workflow: kör stegen från workflows.steps.
         const { data: wf } = await db.from('workflows').select('steps').eq('id', run.workflow_id).single()
-        const steps = (wf?.steps as WorkflowStep[]) ?? []
+        const steps = parseWorkflowSteps(wf?.steps)
         await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
       }
       await db.from('runs').update({

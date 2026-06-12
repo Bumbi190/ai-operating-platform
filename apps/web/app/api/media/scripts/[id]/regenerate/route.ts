@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { Database } from '@/lib/supabase/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
 
@@ -115,7 +116,12 @@ export async function POST(
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 
-  const updates: Record<string, unknown> = {}
+  const projectId = script.project_id
+  if (!projectId) {
+    return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+
+  const updates: Database['public']['Tables']['media_scripts']['Update'] = {}
 
   // ── Regenerate script ────────────────────────────────────────────────────────
   if (what === 'script' || what === 'both') {
@@ -180,7 +186,7 @@ Write a new script that covers the same story but from a different entry point o
 
     const imageUrls  = await generateNewsImages(headline, text, 5)
     const storedUrls = await Promise.all(
-      imageUrls.map((url, i) => uploadSceneImage(script.project_id, id, i, url)),
+      imageUrls.map((url, i) => uploadSceneImage(projectId, id, i, url)),
     )
 
     updates.images        = storedUrls

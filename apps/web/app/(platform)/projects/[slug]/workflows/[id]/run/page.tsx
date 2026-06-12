@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Play, Bot, ArrowRight } from 'lucide-react'
 import type { Workflow, WorkflowStep, Agent } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { OSPage, OSLayer } from '@/components/platform/os'
 
 // Extract {{variable}} names from a template that are NOT output keys
@@ -48,7 +49,8 @@ export default function RunWorkflowPage({
         if (wf) {
           setWorkflow(wf)
           // Init input values
-          const vars = extractInputVars(wf.steps)
+          const steps = parseWorkflowSteps(wf.steps)
+          const vars = extractInputVars(steps)
           setInputValues(Object.fromEntries(vars.map((v) => [v, ''])))
         }
       })
@@ -94,7 +96,8 @@ export default function RunWorkflowPage({
     )
   }
 
-  const inputVars = extractInputVars(workflow.steps)
+  const steps = parseWorkflowSteps(workflow.steps)
+  const inputVars = extractInputVars(steps)
 
   return (
     <OSPage className="animate-fade-in">
@@ -119,9 +122,9 @@ export default function RunWorkflowPage({
       {/* Workflow overview */}
       <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-          {workflow.steps.length} steg
+          {steps.length} steg
         </p>
-        {[...workflow.steps]
+        {[...steps]
           .sort((a, b) => a.order - b.order)
           .map((step) => {
             const agent = agents[step.agent_id]

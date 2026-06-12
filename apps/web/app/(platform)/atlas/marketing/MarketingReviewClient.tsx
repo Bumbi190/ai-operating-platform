@@ -81,8 +81,8 @@ export function MarketingReviewClient({ initial }: { initial: ReviewData }) {
   const c = data.counts
   // Köbadges: dölj "Behöver underlag" helt när 0; tona ner övriga med 0.
   const chips: Array<{ key: ReviewQueue; n: number }> = [
-    { key: 'pending', n: c.pending }, { key: 'approved', n: c.approved },
-    { key: 'rejected', n: c.rejected }, { key: 'needs_input', n: c.needs_input },
+    { key: 'pending' as const, n: c.pending }, { key: 'approved' as const, n: c.approved },
+    { key: 'rejected' as const, n: c.rejected }, { key: 'needs_input' as const, n: c.needs_input },
   ].filter((ch) => !(ch.key === 'needs_input' && ch.n === 0))
 
   return (

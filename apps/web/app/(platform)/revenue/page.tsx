@@ -11,6 +11,7 @@ import {
   BarChart3,
 } from 'lucide-react'
 import { OSPage, OSLayer } from '@/components/platform/os'
+import { CostIntelligence } from './CostIntelligence'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -512,6 +513,9 @@ export default async function RevenuePage() {
           <p className="text-xs text-muted-foreground">{aiCostPct.toFixed(1)}% förbrukat</p>
         </div>
       </OSLayer>
+
+      {/* ── KOSTNADER (P0: f.d. /costs) ─────────────────────────────────── */}
+      <CostIntelligence />
 
     </OSPage>
   )

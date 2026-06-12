@@ -15,7 +15,7 @@ interface ApprovalRow {
   reviewer_notes: string | null
   created_at: string
   reviewed_at: string | null
-  runs?: null  // Not fetched — ApprovalCard handles this with fallbacks
+  runs: null  // Not fetched — ApprovalCard handles this with fallbacks
 }
 
 export default async function ApprovalsPage() {

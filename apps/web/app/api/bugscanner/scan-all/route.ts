@@ -38,7 +38,7 @@ async function handle(request: Request) {
   }
   try {
     const result = await runScanAll()
-    return NextResponse.json({ ok: true, ...result })
+    return NextResponse.json({ ...result })
   } catch (err: any) {
     console.error('[scan-all] Kritiskt fel:', err)
     return NextResponse.json({ error: 'Scan-all misslyckades', details: err?.message }, { status: 500 })

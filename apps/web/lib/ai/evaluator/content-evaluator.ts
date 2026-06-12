@@ -22,6 +22,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { detectSlop, slopToQualityScore } from './slop-detector'
+import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ function scoreBrandAlignment(text: string): { score: number; hardFails: string[]
  */
 async function scoreHookWithHaiku(
   hookText: string
-): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string }> {
+): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string | null }> {
   const client = new Anthropic()
 
   const prompt = `You are a script quality evaluator for "The Prompt" — an AI news channel.
@@ -438,7 +439,7 @@ export function toDbRecord(
     soft_fails:      result.softFails,
     pass_signals:    result.passSignals,
     slop_phrases:    result.slopPhrases,
-    issues:          result.issues,
+    issues:          toJson(result.issues),
     suggestion:      result.suggestion,
     content_preview: result.contentPreview,
   }

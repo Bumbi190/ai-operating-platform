@@ -134,7 +134,7 @@ export default function NewProjectPage() {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/atlas')}
           >
             Avbryt
           </Button>

@@ -65,23 +65,26 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', script.id)
 
   try {
+    const { script: scriptText, project_id: projectId, hook } = script
+    if (!scriptText || !projectId || !hook) throw new Error('Script saknar obligatoriskt fält: script, project_id eller hook')
+
     // Get news title for image generation
     const newsTitle = Array.isArray(script.media_news_items)
-      ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
-      : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
+      ? (script.media_news_items[0] as { title?: string })?.title ?? hook
+      : (script.media_news_items as { title?: string } | null)?.title ?? hook
 
     // Generate voice + images in parallel (independent operations)
     console.log(`[cron/step2] Generating voice + 3 images in parallel...`)
     const [voiceResult, rawImageUrls] = await Promise.all([
-      withRetry(() => generateVoiceover(script.script, 'victoria'), { attempts: 2, label: 'ElevenLabs voice' }),
-      withRetry(() => generateNewsImages(newsTitle, script.script, 3), { attempts: 2, label: 'Ideogram images' }),
+      withRetry(() => generateVoiceover(scriptText, 'victoria'), { attempts: 2, label: 'ElevenLabs voice' }),
+      withRetry(() => generateNewsImages(newsTitle, scriptText, 3), { attempts: 2, label: 'Ideogram images' }),
     ])
 
     // Upload everything in parallel
     const [audioUrl, timingUrl, ...storedImageUrls] = await Promise.all([
-      uploadAudio(script.project_id, script.id, voiceResult.audioBuffer),
-      uploadTimingData(script.project_id, script.id, { words: voiceResult.words, durationMs: voiceResult.durationMs }),
-      ...rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
+      uploadAudio(projectId, script.id, voiceResult.audioBuffer),
+      uploadTimingData(projectId, script.id, { words: voiceResult.words, durationMs: voiceResult.durationMs }),
+      ...rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
     ])
 
     await db.from('media_scripts').update({

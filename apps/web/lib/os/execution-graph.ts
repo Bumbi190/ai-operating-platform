@@ -17,7 +17,8 @@ import {
   Bot, Brain, FileText, GitBranch, Send, Shield, Sparkles, Radio, Database,
   Cpu, Image as ImageIcon, Mic, Film,
 } from 'lucide-react'
-import type { Workflow, WorkflowStep, Run, RunLog, Agent } from '@/lib/supabase/types'
+import type { Workflow, Run, RunLog, Agent } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
 import type { FlowNode } from '@/components/platform/os'
 import type { ActiveExecution } from './data'
 
@@ -88,7 +89,7 @@ export interface ExecutionGraph {
 
 export function buildExecutionGraph(exec: ActiveExecution): ExecutionGraph | null {
   if (!exec.workflow) return null
-  const steps = (exec.workflow.steps ?? []) as WorkflowStep[]
+  const steps = parseWorkflowSteps(exec.workflow.steps)
   if (steps.length === 0) return null
 
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)

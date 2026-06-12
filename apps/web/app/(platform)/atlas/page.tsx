@@ -14,12 +14,15 @@ import Link from 'next/link'
 import { gatherAtlasContext } from '@/lib/atlas/context'
 import { atlasExecutiveSummary } from '@/lib/atlas/executive'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
+import { collectAttentionItems } from '@/lib/os/attention'
+import { formatEta } from '@/lib/os/priority'
+import type { Project } from '@/lib/supabase/types'
 import { ExecutiveAssistant } from '../chat/ExecutiveAssistant'
-import { OSPage, OSLayer } from '@/components/platform/os'
-import { MorningBugPopup } from '@/components/platform/os/MorningBugPopup'
+import { OSPage, OSLayer, AgenticButton } from '@/components/platform/os'
+import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
 import {
-  Sparkles, ArrowRight, ShieldCheck, TrendingUp, DollarSign, ListChecks, MessageSquare, AlertTriangle, Activity,
+  Sparkles, ArrowRight, ShieldCheck, TrendingUp, MessageSquare, AlertTriangle, Activity, Clock,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -46,25 +49,27 @@ export default async function AtlasHome() {
   const now = new Date()
   const projects = ctx.businesses.map(b => ({ id: b.id, name: b.name, slug: b.slug }))
 
-  // Executive Brain — what happened, what it cost, what worked, what to do.
+  // Executive Brain — what happened, what it cost, what worked.
   const exec = await atlasExecutiveSummary(db)
   const lines = exec.whatHappened
-  const topActions = exec.whatToDo.slice(0, 3)
+
+  // EN åtgärdsmotor (P0): samma signaler som Action Center, renderade här.
+  const { data: projectsRaw } = await supabase
+    .from('projects')
+    .select('id, owner_id, name, slug, color, settings, created_at')
+    .order('created_at', { ascending: true })
+  const attention = await collectAttentionItems(db, (projectsRaw ?? []) as Project[])
+  const topActions = [...attention.urgent, ...attention.important].slice(0, 6)
 
   const quickActions = [
-    { label: 'Action Center',       href: '/atlas/actions', icon: ListChecks },
     { label: 'Granska godkännanden', href: '/approvals', icon: ShieldCheck },
     { label: 'Affärsöversikt',       href: '/revenue',   icon: TrendingUp },
-    { label: 'Kostnader',            href: '/costs',     icon: DollarSign },
-    { label: 'Activity Center',      href: '/atlas/activity', icon: Activity },
+    { label: 'Aktivitet',            href: '/agent-activity', icon: Activity },
     { label: 'Prata med Atlas',      href: '/chat',      icon: MessageSquare },
   ]
 
   return (
     <OSPage className="animate-fade-in">
-
-      {/* ── MORGON-POPUP: buggscan ───────────────────────────────────────── */}
-      <MorningBugPopup findings={bugDigest.findings} reports={bugDigest.reports} />
 
       {/* ── ATLAS GREETING ───────────────────────────────────────────────── */}
       <OSLayer layer="hero">
@@ -95,21 +100,38 @@ export default async function AtlasHome() {
             </div>
           </div>
 
-          {/* Prioriterade åtgärder (Action Center) */}
+          {/* Prioriterade åtgärder — EN motor (lib/os/attention), agentiska knappar inkluderade */}
           {topActions.length > 0 && (
             <div className="mt-6 space-y-2">
-              <p className="text-[11px] uppercase tracking-widest text-indigo-300/70">Prioriterade åtgärder</p>
-              {topActions.map((a, i) => (
-                <Link key={i} href={a.href}
-                  className="flex items-center gap-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] hover:bg-indigo-500/10 transition-colors px-3.5 py-2.5">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.severity === 'critical' ? 'bg-red-400' : a.severity === 'high' ? 'bg-amber-400' : 'bg-indigo-400'}`} />
-                  <span className="text-sm font-medium flex-1 min-w-0 truncate">{a.title}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                </Link>
+              <p className="text-[11px] uppercase tracking-widest text-indigo-300/70">
+                Prioriterade åtgärder{attention.actionable > 0 ? ` · ${attention.actionable}` : ''}
+              </p>
+              {topActions.map((a) => (
+                <div key={a.id}
+                  className="flex items-center gap-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] px-3.5 py-2.5">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.severity === 'urgent' ? 'bg-red-400' : a.severity === 'important' ? 'bg-amber-400' : 'bg-indigo-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{a.title}</p>
+                    <p className="text-[11px] text-zinc-500 truncate">
+                      {a.reason}
+                      {a.etaMin != null && (
+                        <span className="inline-flex items-center gap-1 ml-2 text-zinc-400">
+                          <Clock className="w-2.5 h-2.5" /> {formatEta(a.etaMin)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {a.agentic && (
+                    <AgenticButton endpoint={a.agentic.endpoint} body={a.agentic.body} label={a.agentic.label} />
+                  )}
+                  {a.action && (
+                    <Link href={a.action.href}
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-indigo-300 hover:text-indigo-200 shrink-0">
+                      {a.action.label} <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  )}
+                </div>
               ))}
-              <Link href="/atlas/actions" className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:underline mt-1">
-                Se alla i Action Center <ArrowRight className="w-3 h-3" />
-              </Link>
             </div>
           )}
         </div>
@@ -132,6 +154,11 @@ export default async function AtlasHome() {
             ))}
           </div>
         ))}
+      </OSLayer>
+
+      {/* ── NATTENS SYSTEMFYND (P0: f.d. MorningBugPopup, nu briefing-sektion) ── */}
+      <OSLayer layer="operational">
+        <NightlyFindings findings={bugDigest.findings} reports={bugDigest.reports} />
       </OSLayer>
 
       {/* ── TALK TO ATLAS (default action) ───────────────────────────────── */}

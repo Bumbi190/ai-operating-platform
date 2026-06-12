@@ -23,7 +23,7 @@ export interface PipelineAlertOptions {
   step:        string          // t.ex. 'news_hunt', 'instagram_publish'
   error:       string          // Felmeddelandet
   severity?:   AlertSeverity  // default: 'error'
-  context?:    Record<string, string | number | null>  // Extra info (scriptId, hook etc.)
+  context?:    Record<string, string | number | boolean | null>  // Extra info (scriptId, hook etc.)
 }
 
 // ─── Intern HTML-builder ──────────────────────────────────────────────────────

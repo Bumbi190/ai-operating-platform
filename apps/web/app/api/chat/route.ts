@@ -36,7 +36,7 @@ import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
 import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
-import type { WorkflowStep } from '@/lib/supabase/types'
+import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -532,6 +532,9 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Capture as local — the `!user` narrowing above doesn't survive into the
+  // streaming closure further down.
+  const userId = user.id
 
   const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -617,7 +620,7 @@ export async function POST(request: Request) {
         conversation_id,
         role,
         content,
-        tool_data: toolData ?? null,
+        tool_data: toolData ? toJson(toolData) : null,
       })
       // Touch updated_at on conversation
       await db.from('conversations')
@@ -687,8 +690,8 @@ export async function POST(request: Request) {
 
           // If no tool use, we're done — save final assistant text
           if (response.stop_reason !== 'tool_use') {
-            const textBlocks = response.content.filter(b => b.type === 'text')
-            let fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
+            const textBlocks = response.content.filter((b: Anthropic.ContentBlock) => b.type === 'text')
+            let fullText = textBlocks.map((b: Anthropic.ContentBlock) => (b as Anthropic.TextBlock).text).join('')
 
             // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
             // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
@@ -728,7 +731,7 @@ export async function POST(request: Request) {
           }
 
           // Process tool calls
-          const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+          const toolUseBlocks = response.content.filter((b: Anthropic.ContentBlock): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
           const toolResults: Anthropic.ToolResultBlockParam[] = []
 
           // KVITTO-PERSISTENS: assistenttext som följer MED verktygsanrop (t.ex.
@@ -747,7 +750,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, allowedProjectIds)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -912,7 +915,7 @@ async function executeTool(
       .order('created_at', { ascending: false })
 
     return (workflows ?? []).map((w) => {
-      const steps = (w.steps as WorkflowStep[]) ?? []
+      const steps = parseWorkflowSteps(w.steps)
       const project = Array.isArray(w.projects) ? w.projects[0] : w.projects
       const inputVars = new Set<string>()
       steps.forEach((s) => {

@@ -39,6 +39,7 @@ import { postReelToFacebook } from '@/lib/media/facebook'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
+import { toJson } from '@/lib/supabase/json'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300
@@ -334,8 +335,8 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     cta:                script.cta,
     tone:               script.tone,
     estimated_duration: script.estimated_duration,
-    raw_output:         script,
-    quality_score:      qualityScore,
+    raw_output:         toJson(script),
+    quality_score:      toJson(qualityScore),
     status:             'approved',
     voice_status:       'none',
     video_status:       'none',

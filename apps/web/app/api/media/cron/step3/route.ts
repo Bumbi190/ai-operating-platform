@@ -83,6 +83,9 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ video_status: 'generating_images' }).eq('id', script.id)
 
   try {
+    const { script: scriptText, project_id: projectId, hook } = script
+    if (!scriptText || !projectId || !hook) throw new Error('Script saknar obligatoriskt fält: script, project_id eller hook')
+
     // Images are generated in step2 (parallel with voice). Only generate here as fallback.
     let storedImageUrls: string[] = Array.isArray(script.images) && script.images.length > 0
       ? script.images as string[]
@@ -91,12 +94,12 @@ export async function GET(request: Request) {
     if (storedImageUrls.length === 0) {
       console.log(`[cron/step3] No images from step2 — generating now as fallback...`)
       const newsTitle = Array.isArray(script.media_news_items)
-        ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
-        : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
+        ? (script.media_news_items[0] as { title?: string })?.title ?? hook
+        : (script.media_news_items as { title?: string } | null)?.title ?? hook
 
-      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, script.script, 8), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
+      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, scriptText, 8), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
       storedImageUrls = await Promise.all(
-        rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
+        rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
       )
       await db.from('media_scripts').update({
         images:      storedImageUrls,
@@ -108,7 +111,7 @@ export async function GET(request: Request) {
 
     // Start Lambda render
     const inputProps = await withTimeout(buildVideoInputProps({
-      hook:               script.hook,
+      hook:               hook,
       audioUrl:           script.audio_url!,
       timingUrl:          script.timing_url!,
       durationMs:         script.duration_ms ?? 60000,

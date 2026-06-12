@@ -4,6 +4,7 @@
  */
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { Database } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -48,7 +49,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const updates: Record<string, unknown> = {}
+  const updates: Database['public']['Tables']['media_scripts']['Update'] = {}
   if (body.status) {
     updates.status = body.status
     if (body.status === 'approved' || body.status === 'rejected') {

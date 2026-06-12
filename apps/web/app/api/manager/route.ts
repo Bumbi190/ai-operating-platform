@@ -44,29 +44,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ response })
       }
 
-      // ── Evaluate a pending approval ────────────────────────────────────────
-      case 'evaluate': {
-        const { approval_id } = body as { approval_id: string }
-        if (!approval_id) {
-          return NextResponse.json({ error: 'approval_id krävs' }, { status: 400 })
-        }
-        const evaluation = await manager.evaluateOutput(approval_id)
-
-        // Persist evaluation to DB
-        const { createAdminClient } = await import('@/lib/supabase/admin')
-        const db = createAdminClient()
-        await db.from('evaluations').insert({
-          approval_id,
-          evaluator_name: 'manager',
-          score: evaluation.score,
-          approved: evaluation.approved,
-          issues: evaluation.issues,
-          feedback: evaluation.feedback,
-        })
-
-        return NextResponse.json({ evaluation })
-      }
-
       // ── Plan tasks from a high-level goal ──────────────────────────────────
       case 'plan_tasks': {
         const { goal, project_id } = body as { goal: string; project_id: string }
@@ -97,7 +74,7 @@ export async function POST(req: NextRequest) {
           .eq('id', newRunId)
           .single()
 
-        if (newRun) {
+        if (newRun?.workflow_id) {
           const { interpolate } = await import('@/lib/utils')
           const { runStep } = await import('@/lib/ai/runner')
           const { data: workflow } = await db
@@ -110,7 +87,13 @@ export async function POST(req: NextRequest) {
             // Fire and forget — mirrors /api/runs logic
             void (async () => {
               const steps = (workflow.steps as any[]).sort((a, b) => a.order - b.order)
-              const context: Record<string, string> = { ...(newRun.input ?? {}) }
+              const input = newRun.input
+              // Json kan legalt vara t.ex. en sträng — spread av icke-objekt ger skräp.
+              // Cast oundviklig: Json-värden är inte bevisbart strängar (interpolate stringifierar).
+              const context: Record<string, string> =
+                input && typeof input === 'object' && !Array.isArray(input)
+                  ? { ...(input as Record<string, string>) }
+                  : {}
               try {
                 for (const step of steps) {
                   const { data: agent } = await db.from('agents').select('*').eq('id', step.agent_id).single()

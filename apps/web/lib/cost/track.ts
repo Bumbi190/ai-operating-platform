@@ -16,6 +16,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost, getModelPricing } from '@/lib/ai/pricing'
+import { toJson } from '@/lib/supabase/json'
 
 const DEFAULT_MEDIA_SLUG = 'ai-media-automation'
 
@@ -106,7 +107,7 @@ async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
       cost_sek:   Number(costSek.toFixed(4)),
       run_id:     ctx.runId ?? null,
       script_id:  ctx.scriptId ?? null,
-      metadata:   ctx.metadata ?? {},
+      metadata:   toJson(ctx.metadata ?? {}),
     })
   } catch (err) {
     console.warn('[cost] Kunde inte logga kostnad:', err instanceof Error ? err.message : err)

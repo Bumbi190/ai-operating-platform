@@ -14,5 +14,5 @@ export async function toggleAutomationPause(paused: boolean, reason?: string) {
   const db = createAdminClient()
   await setAutomationPaused(db, paused, reason)
 
-  revalidatePath('/dashboard')
+  revalidatePath('/atlas')
 }

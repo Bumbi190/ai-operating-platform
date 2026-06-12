@@ -166,8 +166,6 @@ export default async function PlatformLayout({
           grid
           grid-cols-1
           lg:[grid-template-columns:260px_minmax(0,1fr)]
-          xl:[grid-template-columns:260px_minmax(0,1fr)_300px]
-          2xl:[grid-template-columns:260px_minmax(0,1fr)_320px]
         "
         style={{ background: '#030516' }}
       >
@@ -204,21 +202,9 @@ export default async function PlatformLayout({
           </div>
         </main>
 
-        {/* ─── Column 3 · Context Rail (300/320px · xl+) ────────────────── */}
-        <aside
-          className="relative hidden xl:flex flex-col overflow-hidden"
-          style={{
-            // Lighter visual weight — ambient telemetry, not a competing column.
-            background: 'linear-gradient(180deg, rgba(6,9,22,0.72) 0%, rgba(5,7,20,0.84) 100%)',
-            backdropFilter: 'blur(18px) saturate(140%)',
-            WebkitBackdropFilter: 'blur(18px) saturate(140%)',
-            borderLeft: '1px solid rgba(255,255,255,0.03)',
-          }}
-        >
-          <ActivityRail events={activityEvents} />
-        </aside>
-
-        {/* ─── Mobile · bottom-sheet rail companion ─────────────────────── */}
+        {/* ─── Aktivitets-peek (P0): railen är inte längre en permanent kolumn.
+             Samma händelseström nås via flytande knapp → panel, alla skärmstorlekar.
+             Fullvyn bor i /agent-activity. ─────────────────────────────── */}
         <MobileRailToggle liveCount={liveCount}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>

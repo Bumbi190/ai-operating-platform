@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
+import { toJson } from '@/lib/supabase/json'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -49,13 +50,6 @@ export interface DailyPlan {
   concerns: string[]
   opportunities: string[]
   summary: string
-}
-
-export interface EvaluationResult {
-  score: number          // 0–100
-  approved: boolean
-  issues: string[]
-  feedback: string
 }
 
 export interface ManagerTask {
@@ -312,53 +306,6 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   }
 
   /**
-   * Evaluates an approval's content for quality.
-   * Returns structured score + feedback for human review aid.
-   */
-  async evaluateOutput(approvalId: string): Promise<EvaluationResult> {
-    const { data: approval } = await this.db
-      .from('approvals')
-      .select('*, runs(workflows(name))')
-      .eq('id', approvalId)
-      .single()
-
-    if (!approval) throw new Error(`Approval ${approvalId} not found`)
-
-    const workflowName = (approval.runs as any)?.workflows?.name ?? 'Unknown'
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      system: MANAGER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Evaluate this AI-generated output from workflow "${workflowName}".
-
-CONTENT (first 3000 chars):
-${(approval.content ?? '').slice(0, 3000)}
-
-Return ONLY valid JSON:
-{
-  "score": 0-100,
-  "approved": true|false,
-  "issues": ["issue if any"],
-  "feedback": "Concise quality assessment"
-}`,
-        },
-      ],
-    })
-
-    const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
-    try {
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0]) as EvaluationResult
-    } catch { /* fall through */ }
-
-    return { score: 0, approved: false, issues: ['Evaluation parse error'], feedback: 'Could not evaluate output.' }
-  }
-
-  /**
    * Breaks a high-level goal into manager_tasks and persists them.
    */
   async planTasks(goal: string, projectId: string): Promise<ManagerTask[]> {
@@ -453,36 +400,40 @@ Return ONLY valid JSON:
   }
 
   async logMessage(msg: AgentMessage): Promise<void> {
-    await this.db.from('agent_messages').insert(msg).catch(() => {
+    try {
+      await this.db.from('agent_messages').insert({ ...msg, metadata: msg.metadata ? toJson(msg.metadata) : undefined })
+    } catch {
       // Table might not exist yet — fail silently until migration runs
-    })
+    }
   }
 
   async getRecentMessages(limit = 30): Promise<unknown[]> {
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
-      .catch(() => ({ data: null }))
-    return data ?? []
+    try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      return data ?? []
+    } catch {
+      return []
+    }
   }
 
   async getTodaysPlan(): Promise<DailyPlan | null> {
     const today = new Date().toISOString().slice(0, 10)
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('content')
-      .eq('from_agent', 'manager')
-      .eq('message_type', 'daily_plan')
-      .gte('created_at', today + 'T00:00:00Z')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .catch(() => ({ data: null }))
-
-    if (!data?.content) return null
     try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('content')
+        .eq('from_agent', 'manager')
+        .eq('message_type', 'daily_plan')
+        .gte('created_at', today + 'T00:00:00Z')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!data?.content) return null
       return JSON.parse(data.content) as DailyPlan
     } catch {
       return null

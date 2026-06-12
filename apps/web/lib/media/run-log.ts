@@ -11,6 +11,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toJson } from '@/lib/supabase/json'
 
 const MEDIA_PROJECT_SLUG = 'ai-media-automation'
 
@@ -66,7 +67,7 @@ export async function logRun(opts: LogRunOptions): Promise<string | null> {
       status:      opts.status ?? 'done',
       started_at:  (opts.startedAt ?? new Date()).toISOString(),
       finished_at: nowIso,
-      context:     opts.context ?? {},
+      context:     toJson(opts.context ?? {}),
       error:       opts.error ?? null,
     }).select('id').single()
 

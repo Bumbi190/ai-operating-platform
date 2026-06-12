@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ async function updateMemoryFromFeedback(
           project_id:     projectId,
           category:       update.category,
           key:            update.key,
-          value:          update.value,
+          value:          toJson(update.value),
           confidence:     0.3 + update.confidenceDelta,
           evidence_count: 1,
         })

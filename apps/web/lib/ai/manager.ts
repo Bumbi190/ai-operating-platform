@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
+import { toJson } from '@/lib/supabase/json'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -453,7 +454,7 @@ Return ONLY valid JSON:
   }
 
   async logMessage(msg: AgentMessage): Promise<void> {
-    await this.db.from('agent_messages').insert(msg).catch(() => {
+    await this.db.from('agent_messages').insert({ ...msg, metadata: msg.metadata ? toJson(msg.metadata) : undefined }).catch(() => {
       // Table might not exist yet — fail silently until migration runs
     })
   }

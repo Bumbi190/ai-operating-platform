@@ -16,6 +16,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -215,7 +216,7 @@ export async function upsertMemoryItem(
       project_id:     projectId,
       category:       item.category,
       key:            item.key,
-      value:          item.value,
+      value:          toJson(item.value),
       confidence:     item.confidence ?? 0.8,
       evidence_count: 1,
       last_seen_at:   new Date().toISOString(),

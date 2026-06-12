@@ -99,7 +99,7 @@ export default async function OutputsPage({
           {runs.map((run) => (
             <OutputCard
               key={run.id}
-              run={run}
+              run={{ ...run, context: run.context as unknown as Record<string, string> | null }}
             />
           ))}
         </div>

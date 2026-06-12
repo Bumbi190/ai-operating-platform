@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import type { NewsHunterOutput } from '@/lib/media/types'
+import { toJson } from '@/lib/supabase/json'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       content_angle: parsed.content_angle,
       virality_score: parsed.virality_score ?? 0,
       status: 'new',
-      raw_output: parsed,
+      raw_output: toJson(parsed),
     })
     .select()
     .single()

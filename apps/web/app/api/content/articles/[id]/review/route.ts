@@ -71,7 +71,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   // ── Approve — publish via the existing mechanism only ──────────────────────
   const destinationKey = (row.destination_key as string) ?? 'the-prompt'
-  const payload: PublishPayload = { ...(row.payload as PublishPayload), published_at: nowIso }
+  const payload: PublishPayload = { ...(row.payload as unknown as PublishPayload), published_at: nowIso }
 
   try {
     const result = await publishArticle(destinationKey, payload)

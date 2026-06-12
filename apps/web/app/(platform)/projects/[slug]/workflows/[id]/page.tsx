@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import EditWorkflowClient from './EditWorkflowClient'
-import type { Agent, WorkflowStep } from '@/lib/supabase/types'
+import type { Agent } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { ViewSelectionSync } from '@/components/platform/os'
 
 export default async function EditWorkflowPage({
@@ -43,7 +44,7 @@ export default async function EditWorkflowPage({
           id: workflow.id,
           name: workflow.name,
           description: workflow.description ?? '',
-          steps: (workflow.steps as WorkflowStep[]) ?? [],
+          steps: parseWorkflowSteps(workflow.steps),
         }}
         agents={(agents ?? []) as Agent[]}
         slug={params.slug}

@@ -22,6 +22,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { detectSlop, slopToQualityScore } from './slop-detector'
+import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -438,7 +439,7 @@ export function toDbRecord(
     soft_fails:      result.softFails,
     pass_signals:    result.passSignals,
     slop_phrases:    result.slopPhrases,
-    issues:          result.issues,
+    issues:          toJson(result.issues),
     suggestion:      result.suggestion,
     content_preview: result.contentPreview,
   }

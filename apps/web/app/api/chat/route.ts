@@ -36,7 +36,7 @@ import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
 import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
-import type { WorkflowStep } from '@/lib/supabase/types'
+import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -617,7 +617,7 @@ export async function POST(request: Request) {
         conversation_id,
         role,
         content,
-        tool_data: toolData ?? null,
+        tool_data: toolData ? toJson(toolData) : null,
       })
       // Touch updated_at on conversation
       await db.from('conversations')
@@ -912,7 +912,7 @@ async function executeTool(
       .order('created_at', { ascending: false })
 
     return (workflows ?? []).map((w) => {
-      const steps = (w.steps as WorkflowStep[]) ?? []
+      const steps = parseWorkflowSteps(w.steps)
       const project = Array.isArray(w.projects) ? w.projects[0] : w.projects
       const inputVars = new Set<string>()
       steps.forEach((s) => {

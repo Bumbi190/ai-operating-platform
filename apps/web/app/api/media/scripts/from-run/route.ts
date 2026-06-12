@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import type { ScriptWriterOutput } from '@/lib/media/types'
+import { toJson } from '@/lib/supabase/json'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       cta: parsed.cta,
       tone: parsed.tone,
       estimated_duration: parsed.estimated_duration,
-      raw_output: parsed,
+      raw_output: toJson(parsed),
       status: 'pending_review',
       voice_status: 'none',
       video_status: 'none',

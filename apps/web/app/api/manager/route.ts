@@ -87,7 +87,13 @@ export async function POST(req: NextRequest) {
             // Fire and forget — mirrors /api/runs logic
             void (async () => {
               const steps = (workflow.steps as any[]).sort((a, b) => a.order - b.order)
-              const context: Record<string, string> = { ...(newRun.input ?? {}) }
+              const input = newRun.input
+              // Json kan legalt vara t.ex. en sträng — spread av icke-objekt ger skräp.
+              // Cast oundviklig: Json-värden är inte bevisbart strängar (interpolate stringifierar).
+              const context: Record<string, string> =
+                input && typeof input === 'object' && !Array.isArray(input)
+                  ? { ...(input as Record<string, string>) }
+                  : {}
               try {
                 for (const step of steps) {
                   const { data: agent } = await db.from('agents').select('*').eq('id', step.agent_id).single()

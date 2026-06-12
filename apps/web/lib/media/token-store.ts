@@ -18,6 +18,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { Database } from '@/lib/supabase/types'
 
 const WARN_DAYS_BEFORE_EXPIRY = 10
 
@@ -151,7 +152,7 @@ export async function setToken(
   if (!projectId) throw new Error(`[token-store] Okänt projekt "${opts.project}" — kan inte spara ${platform}-token.`)
 
   const tokenType = platform === 'facebook' ? 'page' : 'user'
-  const row: Record<string, unknown> = {
+  const row: Database['public']['Tables']['platform_tokens']['Insert'] = {
     project_id:   projectId,
     platform,
     token_type:   tokenType,

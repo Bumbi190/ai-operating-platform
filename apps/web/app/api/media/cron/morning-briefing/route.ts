@@ -76,7 +76,7 @@ export async function GET(request: Request) {
   const totalCost24h = (logs24h as any[]).reduce((s, log) => {
     const runs = Array.isArray(log.runs) ? log.runs[0] : log.runs
     const model = 'claude-sonnet-4-6' // default
-    const { cost } = calculateCost(model, log.tokens_in ?? 0, log.tokens_out ?? 0)
+    const cost = calculateCost(model, log.tokens_in ?? 0, log.tokens_out ?? 0)
     return s + cost
   }, 0)
 

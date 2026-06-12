@@ -698,14 +698,14 @@ function ScriptCard({ script, onUpdate }: {
               <span className="inline-flex items-center gap-1 text-xs text-pink-400">
                 <Loader2 className="w-3 h-3 animate-spin" /> {publishLabel ?? 'Publicerar...'}
               </span>
-            ) : script.status !== 'published' ? (
+            ) : (
               <button
                 onClick={publishToInstagram}
                 className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
               >
                 <Send className="w-3 h-3" /> Posta på Instagram
               </button>
-            ) : null
+            )
           )}
         </div>
       </div>

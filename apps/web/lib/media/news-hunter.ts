@@ -277,7 +277,7 @@ async function fetchReddit(subreddit: string): Promise<RawStory[]> {
     if (!res.ok) return []
 
     const data = await res.json() as {
-      data: { children: Array<{ data: { id: string; title: string; url: string; selftext: string; score: number; created_utc: number; is_self: boolean; permalink: string } }> }
+      data: { children: Array<{ data: { id: string; title: string; url: string; selftext: string; score: number; created_utc: number; is_self: boolean; stickied?: boolean; permalink: string } }> }
     }
 
     return data.data.children

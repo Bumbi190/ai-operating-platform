@@ -400,36 +400,40 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   }
 
   async logMessage(msg: AgentMessage): Promise<void> {
-    await this.db.from('agent_messages').insert({ ...msg, metadata: msg.metadata ? toJson(msg.metadata) : undefined }).catch(() => {
+    try {
+      await this.db.from('agent_messages').insert({ ...msg, metadata: msg.metadata ? toJson(msg.metadata) : undefined })
+    } catch {
       // Table might not exist yet — fail silently until migration runs
-    })
+    }
   }
 
   async getRecentMessages(limit = 30): Promise<unknown[]> {
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
-      .catch(() => ({ data: null }))
-    return data ?? []
+    try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      return data ?? []
+    } catch {
+      return []
+    }
   }
 
   async getTodaysPlan(): Promise<DailyPlan | null> {
     const today = new Date().toISOString().slice(0, 10)
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('content')
-      .eq('from_agent', 'manager')
-      .eq('message_type', 'daily_plan')
-      .gte('created_at', today + 'T00:00:00Z')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .catch(() => ({ data: null }))
-
-    if (!data?.content) return null
     try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('content')
+        .eq('from_agent', 'manager')
+        .eq('message_type', 'daily_plan')
+        .gte('created_at', today + 'T00:00:00Z')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!data?.content) return null
       return JSON.parse(data.content) as DailyPlan
     } catch {
       return null

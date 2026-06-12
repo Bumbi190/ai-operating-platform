@@ -35,10 +35,11 @@ export async function GET(request: Request) {
 
   for (const run of runs) {
     try {
-      if (isMarketingRun(run.kind)) {
+      const kind = run.kind
+      if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
-        await MARKETING_HANDLERS[run.kind](db, run as Run)
+        await MARKETING_HANDLERS[kind](db, run as Run)
       } else {
         // Legacy agent-step-workflow: kör stegen från workflows.steps.
         const { data: wf } = await db.from('workflows').select('steps').eq('id', run.workflow_id).single()

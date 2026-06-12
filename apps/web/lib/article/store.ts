@@ -68,8 +68,8 @@ export async function saveGeneratedArticle(
     slug:          payload.slug ?? null,
     summary:       draft.summary || null,
     payload: toJson(payload),                  // jsonb — full publish-contract payload (incl. body)
-    qa,                                        // jsonb
-    meta,                                      // jsonb
+    qa: toJson(qa),                            // jsonb
+    meta: toJson(meta),                        // jsonb
     model:         meta?.model ?? null,        // denormalized for Atlas reporting
     cost_usd:      meta?.estCostUsd ?? null,   // denormalized for Atlas reporting
     generated_by:  args.generatedBy ?? 'omnira-article-pipeline',

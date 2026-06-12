@@ -23,6 +23,7 @@ export type PipelineWorkflow =
   | 'Publish to Social'
   | 'Generate Article'
   | 'Publish to Website'
+  | 'Publish to YouTube'
 
 export interface LogRunOptions {
   workflow:   PipelineWorkflow

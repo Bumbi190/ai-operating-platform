@@ -690,8 +690,8 @@ export async function POST(request: Request) {
 
           // If no tool use, we're done — save final assistant text
           if (response.stop_reason !== 'tool_use') {
-            const textBlocks = response.content.filter(b => b.type === 'text')
-            let fullText = textBlocks.map(b => (b as Anthropic.TextBlock).text).join('')
+            const textBlocks = response.content.filter((b: Anthropic.ContentBlock) => b.type === 'text')
+            let fullText = textBlocks.map((b: Anthropic.ContentBlock) => (b as Anthropic.TextBlock).text).join('')
 
             // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
             // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
@@ -731,7 +731,7 @@ export async function POST(request: Request) {
           }
 
           // Process tool calls
-          const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+          const toolUseBlocks = response.content.filter((b: Anthropic.ContentBlock): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
           const toolResults: Anthropic.ToolResultBlockParam[] = []
 
           // KVITTO-PERSISTENS: assistenttext som följer MED verktygsanrop (t.ex.

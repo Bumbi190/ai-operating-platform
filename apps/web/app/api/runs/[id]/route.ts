@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
 
 // GET /api/runs/[id] — get run status + context
@@ -30,11 +31,9 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const allowed = ['status', 'error']
-  const updates: Record<string, string> = {}
-  for (const key of allowed) {
-    if (body[key] !== undefined) updates[key] = body[key]
-  }
+  const updates: Database['public']['Tables']['runs']['Update'] = {}
+  if (body.status !== undefined) updates.status = body.status
+  if (body.error !== undefined) updates.error = body.error
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Inget att uppdatera' }, { status: 400 })
   }

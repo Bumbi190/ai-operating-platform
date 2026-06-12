@@ -15,7 +15,7 @@ import {
   fetchPublishPipeline,
 } from '@/lib/os/data'
 import { getPlatformConfig } from '@/lib/media/safeguards'
-import { PauseToggle } from '../dashboard/PauseToggle'
+import { PauseToggle } from '@/components/platform/PauseToggle'
 import { buildExecutionGraph } from '@/lib/os/execution-graph'
 import { fetchAgentScorecards, scorecardToSnapshot } from '@/lib/os/scoring'
 
@@ -204,7 +204,7 @@ export default async function DashboardPage() {
           </div>
 
           <p className="eyebrow eyebrow-accent mb-5">
-            <Link href="/dashboard" className="hover:text-white/80 transition-colors">← Command Center</Link>
+            <Link href="/atlas" className="hover:text-white/80 transition-colors">← Atlas</Link>
             {' · '}{snapshot.agents.length} agent{snapshot.agents.length === 1 ? '' : 'er'}
             {' · '}{snapshot.workflows.length} arbetsflöde{snapshot.workflows.length === 1 ? '' : 'n'}
           </p>

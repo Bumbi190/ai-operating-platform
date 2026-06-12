@@ -73,15 +73,15 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   chat: '/chat',
   approvals: '/approvals',
   activity: '/agent-activity', // → '/activity' when the Activity instrument ships
-  money: '/costs', // → '/money' when the Money instrument ships
-  costs: '/costs',
+  money: '/revenue', // P0: kostnader bor i /revenue (→ '/money' när Money-instrumentet skeppas)
+  costs: '/revenue', // P0: /costs är redirect till /revenue
   revenue: '/revenue',
   dream: '/system', // → '/health' (Dream/bug status lives in Health)
   knowledge: '/memory', // → '/knowledge' (Obsidian / Knowledge graph)
   health: '/system', // → '/health'
   content_queue: '/atlas/content',
   marketing_queue: '/atlas/marketing',
-  actions: '/atlas/actions',
+  actions: '/atlas',
   planning: '/planning',
   settings: '/settings',
   project_home: '/projects', // path mode → /projects/<slug>

@@ -18,7 +18,6 @@ export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center
 export { DashboardHero } from './DashboardHero'
-export { ExecutiveBriefing } from './ExecutiveBriefing'
 export { BusinessCard } from './BusinessCard'
 export { QuickAdd } from './QuickAdd'
 export { ProactiveNudge } from './ProactiveNudge'

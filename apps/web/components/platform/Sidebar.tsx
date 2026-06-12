@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
 import {
-  LayoutDashboard,
   Bot,
   GitBranch,
   Play,
@@ -16,20 +15,15 @@ import {
   LogOut,
   Plus,
   MessageSquare,
-  DollarSign,
-  CalendarDays,
   ShieldCheck,
-  Brain,
   Lightbulb,
   Radio,
   Newspaper,
   FileText,
   Video,
   Activity,
-  Flame,
   TrendingUp,
   Sparkles,
-  Gauge,
   Megaphone,
 } from 'lucide-react'
 
@@ -52,21 +46,19 @@ interface SidebarProps {
   recentConversations?: RecentConversation[]
 }
 
+// P0: 14 → 9 poster. /manager, /planning och /atlas/operations är DOLDA
+// (nås via URL/Atlas, inte via nav). /dashboard, /action-center, /atlas/actions
+// och /atlas/activity är redirects och har därför ingen nav-post.
+// Marknadsgranskning + Content Center flyttar till projektscope i P2.
 const globalNav = [
   { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
-  { href: '/atlas/operations', label: 'Operations Center', icon: Gauge },
   { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },
   { href: '/atlas/content',  label: 'Content Center',    icon: Newspaper },
-  { href: '/dashboard',      label: 'Operationscentral', icon: LayoutDashboard },
   { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },
-  { href: '/action-center',  label: 'Action Center',     icon: Flame },
-  { href: '/agent-activity', label: 'Agentaktivitet',    icon: Activity },
-  { href: '/manager',        label: 'Operatör',          icon: Brain },
+  { href: '/agent-activity', label: 'Aktivitet',    icon: Activity },
   { href: '/chat',           label: 'Chat',              icon: MessageSquare },
   { href: '/approvals',      label: 'Granskningar',      icon: ShieldCheck },
   { href: '/memory',         label: 'Minne',             icon: Lightbulb },
-  { href: '/costs',          label: 'Kostnader',         icon: DollarSign },
-  { href: '/planning',       label: 'Planering',         icon: CalendarDays },
 ]
 
 const projectNav = [

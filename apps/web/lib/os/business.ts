@@ -109,7 +109,7 @@ export async function fetchBusinessSnapshots(
     (admin.from('outputs') as any)
       .select('project_id, type, created_at').gte('created_at', monthISO),
     (admin.from('media_scripts') as any)
-      .select('project_id, status, video_status, published_at, generated_at').gte('generated_at', monthISO),
+      .select('project_id, status, video_status, hook, published_at, generated_at').gte('generated_at', monthISO),
     (admin.from('media_news_items') as any)
       .select('project_id, status, created_at').gte('created_at', monthISO),
     (admin.from('runs') as any)
@@ -136,7 +136,7 @@ export async function fetchBusinessSnapshots(
   ])
 
   const outputs   = rows<{ project_id: string; type: string; created_at: string }>(outputsRes)
-  const scripts   = rows<{ project_id: string; status: string; video_status: string | null; published_at: string | null }>(scriptsRes)
+  const scripts   = rows<{ project_id: string; status: string; video_status: string | null; hook: string | null; published_at: string | null }>(scriptsRes)
   const news      = rows<{ project_id: string; status: string }>(newsRes)
   const runs      = rows<{ project_id: string; status: string; created_at: string }>(runsRes)
   const approvals = rows<{ id: string; runs: { project_id: string } | { project_id: string }[] | null }>(approvalsRes)

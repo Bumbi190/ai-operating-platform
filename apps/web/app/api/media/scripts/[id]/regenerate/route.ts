@@ -115,6 +115,11 @@ export async function POST(
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 
+  const projectId = script.project_id
+  if (!projectId) {
+    return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+
   const updates: Record<string, unknown> = {}
 
   // ── Regenerate script ────────────────────────────────────────────────────────
@@ -180,7 +185,7 @@ Write a new script that covers the same story but from a different entry point o
 
     const imageUrls  = await generateNewsImages(headline, text, 5)
     const storedUrls = await Promise.all(
-      imageUrls.map((url, i) => uploadSceneImage(script.project_id, id, i, url)),
+      imageUrls.map((url, i) => uploadSceneImage(projectId, id, i, url)),
     )
 
     updates.images        = storedUrls

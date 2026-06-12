@@ -532,6 +532,9 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Capture as local — the `!user` narrowing above doesn't survive into the
+  // streaming closure further down.
+  const userId = user.id
 
   const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -747,7 +750,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, user.id, allowedProjectIds)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }

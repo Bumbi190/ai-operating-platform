@@ -37,6 +37,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 
+  const projectId = script.project_id
+  if (!projectId) {
+    return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+
   try {
     // Generate scene images via Claude + Ideogram
     const sceneImages = await generateSceneImages(script.script ?? '', script.hook ?? '')
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     // Upload each image to Supabase Storage
     const imageUrls = await Promise.all(
       sceneImages.map((img, i) =>
-        uploadSceneImage(script.project_id, script.id, i, img.url)
+        uploadSceneImage(projectId, script.id, i, img.url)
       )
     )
 

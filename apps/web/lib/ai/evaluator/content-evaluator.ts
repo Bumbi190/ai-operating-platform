@@ -228,7 +228,7 @@ function scoreBrandAlignment(text: string): { score: number; hardFails: string[]
  */
 async function scoreHookWithHaiku(
   hookText: string
-): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string }> {
+): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string | null }> {
   const client = new Anthropic()
 
   const prompt = `You are a script quality evaluator for "The Prompt" — an AI news channel.

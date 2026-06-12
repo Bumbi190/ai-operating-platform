@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
           .eq('id', newRunId)
           .single()
 
-        if (newRun) {
+        if (newRun?.workflow_id) {
           const { interpolate } = await import('@/lib/utils')
           const { runStep } = await import('@/lib/ai/runner')
           const { data: workflow } = await db

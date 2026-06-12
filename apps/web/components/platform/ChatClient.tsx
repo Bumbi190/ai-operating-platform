@@ -48,7 +48,7 @@ interface SavedMessage {
   role: string
   content: string | null
   tool_data: unknown
-  created_at: string
+  created_at: string | null
 }
 
 interface Props {

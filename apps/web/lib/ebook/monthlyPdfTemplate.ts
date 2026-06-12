@@ -767,7 +767,7 @@ function parseActivitySections(content: string): {
     if (!text) return []
     return text.split('\n')
       .map(l => l.match(/^(?:[-•*]|\d+[.)]) *(.+)/)?.[1]?.trim())
-      .filter((s): s is string => Boolean(s) && s.length > 2)
+      .filter((s): s is string => typeof s === 'string' && s.length > 2)
   }
 
   // Find a named section (bold header or ## heading) and return its content until next section

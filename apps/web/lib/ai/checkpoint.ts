@@ -43,12 +43,21 @@ export async function computeCheckpoint(
   const existingContext = (run.context ?? {}) as Record<string, string>
   const sorted = [...steps].sort((a, b) => a.order - b.order)
 
-  const { data: logs } = await db
+  const { data: logs, error } = await db
     .from('run_logs')
     .select('step_order')
     .eq('run_id', run.id)
     .eq('role', 'assistant')
     .not('step_order', 'is', null)
+
+  // #8 (H1.P2): a transient read error must NOT be swallowed. If we fell through to
+  // `logs ?? []` we'd see zero completed steps and restart the run from step 0,
+  // re-running already-completed work (and, combined with the output insert, risking
+  // a duplicate deliverable). Throw instead so the drain marks the run pending and
+  // retries the whole tick later, preserving real checkpoint progress.
+  if (error) {
+    throw new Error(`computeCheckpoint: run_logs read failed for run ${run.id}: ${error.message}`)
+  }
 
   const loggedOrders = new Set<number>(((logs ?? []) as { step_order: number }[]).map(l => l.step_order))
 

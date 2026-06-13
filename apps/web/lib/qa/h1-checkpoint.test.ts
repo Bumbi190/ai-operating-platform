@@ -20,6 +20,18 @@ function mockDb(loggedOrders: number[]) {
   return chain
 }
 
+/** Mock whose run_logs query resolves to a DB error (transient read failure). */
+function mockDbError(message: string) {
+  const result = Promise.resolve({ data: null, error: { message } })
+  const chain: any = {
+    from: () => chain,
+    select: () => chain,
+    eq: () => chain,
+    not: () => result,
+  }
+  return chain
+}
+
 describe('computeCheckpoint — H1 step resume', () => {
   it('first attempt (no logs) runs from the first step', async () => {
     const cp = await computeCheckpoint(mockDb([]), { id: 'r', context: {} }, steps)
@@ -48,7 +60,15 @@ describe('computeCheckpoint — H1 step resume', () => {
   })
 })
 
-describe('mergeRunContext — completed outputs win over initial input (#8)', () => {
+describe('computeCheckpoint — DB read error is fatal (#8)', () => {
+  it('throws instead of silently restarting from step 0 on a run_logs read error', async () => {
+    await expect(
+      computeCheckpoint(mockDbError('connection reset by peer'), { id: 'r', context: {} }, steps),
+    ).rejects.toThrow(/run_logs read failed/)
+  })
+})
+
+describe('mergeRunContext — completed outputs win over initial input (#8 merge)', () => {
   it('first run (no existing context) = just the input', () => {
     expect(mergeRunContext({ topic: 'AI' }, {})).toEqual({ topic: 'AI' })
   })

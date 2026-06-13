@@ -2,8 +2,8 @@
  * PATCH /api/media/scripts/[id]  — approve / reject / update feedback
  * GET   /api/media/scripts/[id]  — fetch single script
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import type { Database } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
 
@@ -13,9 +13,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { id } = await params
   const db = createAdminClient()
@@ -25,6 +24,7 @@ export async function GET(
     .eq('id', id)
     .single()
   if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!assertProjectAllowed(data.project_id, access.allowedProjectIds)) return projectForbidden()
   return NextResponse.json(data)
 }
 
@@ -32,9 +32,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { id } = await params
   const body = await request.json() as {
@@ -64,6 +63,16 @@ export async function PATCH(
   if (body.script !== undefined) updates.script = body.script
 
   const db = createAdminClient()
+
+  // Verify ownership BEFORE mutating — fetch the row's project first.
+  const { data: existing } = await db
+    .from('media_scripts')
+    .select('id, project_id')
+    .eq('id', id)
+    .single()
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!assertProjectAllowed(existing.project_id, access.allowedProjectIds)) return projectForbidden()
+
   const { data, error } = await db
     .from('media_scripts')
     .update(updates)

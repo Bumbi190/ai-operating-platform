@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { getManager } from '@/lib/ai/manager'
+import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
 import { gatherAtlasContext } from '@/lib/atlas/context'
@@ -952,13 +953,7 @@ async function executeTool(
     // och kör den durabelt — Atlas rapporterar "köad", aldrig falskt "startad".
     const { data: run } = await db
       .from('runs')
-      .insert({
-        workflow_id: workflow.id,
-        project_id: workflow.project_id,
-        status: 'pending',
-        input: workflowInput,
-        context: {},
-      })
+      .insert(buildAgentRunInsert(workflow, workflowInput))
       .select('id')
       .single()
 

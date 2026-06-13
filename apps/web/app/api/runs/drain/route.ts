@@ -54,9 +54,15 @@ export async function GET(request: Request) {
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
         await MARKETING_HANDLERS[kind](db, run as Run)
       } else {
-        // Agent-step-workflow: kör stegen från workflows.steps.
-        const { data: wf } = await db.from('workflows').select('steps').eq('id', run.workflow_id).single()
-        const steps = parseWorkflowSteps(wf?.steps)
+        // Agent-step-workflow: kör stegen från den immutabla snapshotten (H1.P3) om
+        // den finns; annars fall tillbaka på live workflows.steps (pre-P3-körningar).
+        // Snapshotten gör att en workflow-edit mitt under en körning inte kan byta ut
+        // ett steg och återanvända fel agents output.
+        let steps = parseWorkflowSteps(run.steps_snapshot)
+        if (steps.length === 0) {
+          const { data: wf } = await db.from('workflows').select('steps').eq('id', run.workflow_id).single()
+          steps = parseWorkflowSteps(wf?.steps)
+        }
         if (UNIFIED_EXECUTOR) {
           // H1.P2: rich engine + checkpointed resume. Drain still owns status below.
           const { startFromOrder, existingContext } = await computeCheckpoint(db, run, steps)

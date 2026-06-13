@@ -13,6 +13,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { buildAgentRunInsert } from '@/lib/ai/run-create'
 
 export async function POST(request: Request) {
   // Auth check uses the user's session
@@ -51,13 +52,7 @@ export async function POST(request: Request) {
   // pg_cron-drainern (/api/runs/drain) claimar och kör den durabelt.
   const { data: run, error: runErr } = await anySupabase
     .from('runs')
-    .insert({
-      workflow_id: workflow.id,
-      project_id: workflow.project_id,
-      status: 'pending',
-      input,
-      context: {},
-    })
+    .insert(buildAgentRunInsert(workflow, input))
     .select('id')
     .single()
 

@@ -13,6 +13,7 @@ import { validateStepOutput } from '@/lib/ai/validators/output-validator'
 import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { reportBug } from '@/lib/bugs/report'
+import { mergeRunContext } from '@/lib/ai/checkpoint'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -34,17 +35,29 @@ export interface ExecuteWorkflowOptions {
   startFromOrder?: number
 }
 
-export async function executeWorkflow(
+/**
+ * executeRunSteps — THE single step-running core (H1.P2).
+ *
+ * Runs the workflow's steps with validation (+1 retry), image quality gate,
+ * run_logs, per-step context persistence, cost logging, and the final output row.
+ * Skips already-completed steps via `startFromOrder`/`existingContext`.
+ *
+ * Contract: THROWS on failure. Does NOT set runs.status and does NOT create
+ * approvals — the caller owns lifecycle. The durable drainer owns status; the
+ * `executeWorkflow` wrapper below adds status + approval for resume/manual.
+ */
+export async function executeRunSteps(
   db: AdminClient | AnyDb,
   runId: string,
   projectId: string,
   steps: WorkflowStep[],
   options: ExecuteWorkflowOptions = {},
-) {
+): Promise<{ outputContent: string; lastOutputKey: string | undefined; context: Record<string, string> }> {
   const { initialInput = {}, existingContext = {}, startFromOrder = 0 } = options
 
-  // Context börjar med befintliga värden + ny input
-  const context: Record<string, string> = { ...existingContext, ...initialInput }
+  // Initial input is the base; completed step outputs win on collision so a resume
+  // never lets the original input clobber a persisted step output (Codex review #8).
+  const context: Record<string, string> = mergeRunContext(initialInput, existingContext)
 
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
   // Alias med any-typ — Supabase-klienten saknar genererade DB-typer i detta projekt
@@ -63,10 +76,33 @@ export async function executeWorkflow(
   }
 
   // Spara förväntade bildantal per output_key — används i kvalitetskontrollen nedan.
-  // Fylls i under stegens körning när vi har tillgång till agent.config.max_images.
+  // #5 (H1.P2): seeda förväntade bildantal för ALLA steg i förväg (inte bara de som
+  // körs denna tick). Vid resume hoppas redan klara bildsteg över; utan detta skulle
+  // kvalitetsgrinden döma ett skippat max_images=1-steg mot FALLBACK_MAX (t.ex. 16)
+  // och underkänna en redan giltig körning. Read-only; förstakörningens värden är
+  // identiska med de loop:en nedan annars sätter.
   const trackedMaxImages: Record<string, number> = {}
+  {
+    const agentIds = [...new Set(sortedSteps.map(s => s.agent_id))]
+    if (agentIds.length > 0) {
+      const { data: agentCfgs, error: agentCfgErr } = await db.from('agents').select('id, config').in('id', agentIds)
+      // #5 (H1.P2): mirror computeCheckpoint — a transient read failure must NOT be
+      // swallowed. Empty trackedMaxImages would falsely fail a resumed max_images=1
+      // image step against FALLBACK_MAX. Throw so the drain marks the run pending and
+      // retries the tick instead of judging against the wrong limits.
+      if (agentCfgErr) {
+        throw new Error(`executeRunSteps: agent config hydration failed for run ${runId}: ${agentCfgErr.message}`)
+      }
+      const cfgById = new Map(((agentCfgs ?? []) as { id: string; config: unknown }[]).map(a => [a.id, a.config]))
+      for (const s of sortedSteps) {
+        const mi = (cfgById.get(s.agent_id) as { max_images?: number } | null)?.max_images
+        if (mi != null) trackedMaxImages[s.output_key] = mi
+      }
+    }
+  }
 
-  try {
+  // NOTE: no try/catch here — failures propagate to the caller, which owns status.
+  {
     for (const step of pendingSteps) {
       // Ladda agenten
       const { data: agent, error: agentErr } = await db
@@ -134,6 +170,10 @@ export async function executeWorkflow(
           model: agent.model,
           maxTokens: stepConfig?.max_tokens ?? 4000,
           temperature: Math.max(0.3, (stepConfig?.temperature ?? 0.7) - 0.2),
+          // #4 (H1.P2): the retry MUST carry the same image cap as the first attempt.
+          // Without this, runner.ts falls back to 16 (saga) / 5 (default) and a
+          // max_images=1 preview run can silently explode cost/runtime on a retry.
+          maxImages: stepConfig?.max_images,
           runId,
           cost: { projectId, agent: agent.name, operation: step.name },
         })
@@ -248,39 +288,97 @@ export async function executeWorkflow(
       try { JSON.parse(outputContent); outputType = 'json' } catch { /* text */ }
     }
 
-    await anyDb.from('outputs').insert({
-      run_id: runId,
-      project_id: projectId,
-      name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-      type: outputType,
-      content: outputContent ?? '',
-    })
+    // #1 (H1.P2): idempotent finalization. A crashed run can be reaped and re-claimed
+    // AFTER this output row was already written; computeCheckpoint then reports "all
+    // steps complete", pendingSteps is empty, and we'd reach here again. outputs.run_id
+    // is not unique, so without this guard the re-entry would insert a DUPLICATE
+    // deliverable (and, on the wrapper path, a duplicate approval). Create-once.
+    const { data: existingOutput, error: outputLookupErr } = await anyDb
+      .from('outputs').select('id').eq('run_id', runId).limit(1).maybeSingle()
+    // A failed lookup must NOT be read as "no output exists" — that would let a
+    // duplicate slip through, or let the caller mark the run done off a phantom miss.
+    if (outputLookupErr) {
+      throw new Error(`finalization: outputs lookup failed for run ${runId}: ${outputLookupErr.message}`)
+    }
+    if (!existingOutput) {
+      const { error: outputInsertErr } = await anyDb.from('outputs').insert({
+        run_id: runId,
+        project_id: projectId,
+        name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+        type: outputType,
+        content: outputContent ?? '',
+      })
+      // A silently-failed insert would let the drain mark the run done with no
+      // deliverable. Throw so the run is retried instead of finalized empty.
+      if (outputInsertErr) {
+        throw new Error(`finalization: outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
+      }
+    } else {
+      console.log(`[run ${runId}] Output finns redan — hoppar över dubblettinsert (idempotent finalization)`)
+    }
+
+    return { outputContent: outputContent ?? '', lastOutputKey, context }
+  }
+}
+
+/**
+ * executeWorkflow — wrapper for resume + manual runs.
+ *
+ * Runs the unified core, then on success sets runs.status='done' and creates the
+ * approval; on failure sets 'failed' and reports a bug. This preserves the
+ * pre-H1.P2 behavior for the resume/manual callers. The durable drainer does NOT
+ * use this wrapper — it calls executeRunSteps directly and owns status itself
+ * (approval-on-drain arrives with the policy gate in H1.P4).
+ *
+ * NOTE: the workflow lookup below uses .eq('id', runId) (matches workflow id
+ * against the run id) — a pre-existing bug that makes the approval email show
+ * "Okänt workflow". Left unchanged here to keep P2 behavior-preserving; fixed in
+ * H1.P5 (→ run.workflow_id).
+ */
+export async function executeWorkflow(
+  db: AdminClient | AnyDb,
+  runId: string,
+  projectId: string,
+  steps: WorkflowStep[],
+  options: ExecuteWorkflowOptions = {},
+) {
+  const anyDb: AnyDb = db
+  try {
+    const { outputContent, lastOutputKey, context } = await executeRunSteps(db, runId, projectId, steps, options)
 
     // ── Skapa approval ───────────────────────────────────────────────────
+    // #1 (H1.P2): idempotent — a re-entered run (e.g. resume of a previously
+    // completed run) must not create a second approval or send a duplicate email.
     if (outputContent) {
-      const { data: wf } = await db
-        .from('workflows')
-        .select('name, project_id, projects(name)')
-        .eq('id', runId)
-        .maybeSingle()
+      const { data: existingApproval } = await anyDb
+        .from('approvals').select('id').eq('run_id', runId).limit(1).maybeSingle()
+      if (existingApproval) {
+        console.log(`[run ${runId}] Approval finns redan — hoppar över dubblett (idempotent)`)
+      } else {
+        const { data: wf } = await db
+          .from('workflows')
+          .select('name, project_id, projects(name)')
+          .eq('id', runId)
+          .maybeSingle()
 
-      await anyDb.from('approvals').insert({
-        run_id: runId,
-        output_key: lastOutputKey ?? 'output',
-        content: outputContent,
-        status: 'pending',
-      })
-      console.log(`[run ${runId}] 📋 Approval request created`)
+        await anyDb.from('approvals').insert({
+          run_id: runId,
+          output_key: lastOutputKey ?? 'output',
+          content: outputContent,
+          status: 'pending',
+        })
+        console.log(`[run ${runId}] 📋 Approval request created`)
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-      const { subject, html } = getApprovalPendingEmail({
-        workflowName: wf?.name ?? 'Okänt workflow',
-        projectName: (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
-        runId,
-        outputPreview: outputContent,
-        platformUrl: appUrl,
-      })
-      void sendAdminNotification(subject, html)
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+        const { subject, html } = getApprovalPendingEmail({
+          workflowName: wf?.name ?? 'Okänt workflow',
+          projectName: (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
+          runId,
+          outputPreview: outputContent,
+          platformUrl: appUrl,
+        })
+        void sendAdminNotification(subject, html)
+      }
     }
 
     // ── Markera körning som klar ─────────────────────────────────────────

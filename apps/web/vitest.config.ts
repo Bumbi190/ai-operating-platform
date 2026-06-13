@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),
+      // Next's `server-only` guard has no runtime in vitest — stub it so
+      // server-only modules (e.g. lib/ai/checkpoint) can be unit-tested.
+      "server-only": fileURLToPath(new URL("./lib/qa/__stubs__/server-only.ts", import.meta.url)),
     },
   },
   // Unit tests don't exercise CSS; an inline empty PostCSS config stops Vite

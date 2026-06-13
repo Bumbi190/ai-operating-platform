@@ -6,8 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { saveFeedback } from '@/lib/ai/memory/feedback-store'
 import { ARTICLE_APPROVAL_KIND, publishApprovedArticle } from '@/lib/article/approval'
 
@@ -15,9 +15,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const db = createAdminClient()
   const { data, error } = await db
@@ -34,6 +33,7 @@ export async function GET(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+  if (!assertProjectAllowed(data.project_id, access.allowedProjectIds)) return projectForbidden()
   return NextResponse.json({ approval: data })
 }
 
@@ -41,9 +41,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = await req.json()
   const { action, reviewer_notes } = body
@@ -63,6 +62,10 @@ export async function PATCH(
     .select('id, project_id, output_key, content, run_id, kind')
     .eq('id', params.id)
     .single()
+
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // Ownership gate BEFORE any mutation or publish side effect.
+  if (!assertProjectAllowed(existing.project_id, access.allowedProjectIds)) return projectForbidden()
 
   const { data, error } = await db
     .from('approvals')

@@ -28,11 +28,19 @@ export const IMPOSSIBLE_PROJECT_ID = '00000000-0000-0000-0000-000000000000'
  * Returns [] (fail-closed) when userId is missing or on any error.
  */
 export async function getAllowedProjectIds(db: AnyDb, userId: string | null | undefined): Promise<string[]> {
-  if (!userId) return []
+  if (!userId) {
+    // [atlas-diag] TEMPORARY — remove after root-cause confirmed.
+    console.warn('[atlas-diag] getAllowedProjectIds: no userId → fail-closed empty allow-list')
+    return []
+  }
   try {
-    const { data } = await db.from('projects').select('id').eq('owner_id', userId)
+    const { data, error } = await db.from('projects').select('id').eq('owner_id', userId)
+    // [atlas-diag] TEMPORARY — distinguishes "owns nothing" from a swallowed query error.
+    if (error) console.error('[atlas-diag] getAllowedProjectIds query error:', error)
+    else console.log(`[atlas-diag] getAllowedProjectIds userId=${userId} → ${(data ?? []).length} project(s)`)
     return (data ?? []).map((r: { id: string }) => r.id)
-  } catch {
+  } catch (e) {
+    console.error('[atlas-diag] getAllowedProjectIds THREW → fail-closed empty allow-list:', e)
     return []
   }
 }

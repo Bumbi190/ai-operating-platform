@@ -51,7 +51,13 @@ async function buildLiveContext(db: ReturnType<typeof createAdminClient>, allowe
   // Cache is keyed per allow-list set so one tenant's snapshot never serves another.
   const cacheKey = [...allowedProjectIds].sort().join(',')
   const cached = _liveCtxCache.get(cacheKey)
-  if (cached && Date.now() - cached.at < LIVE_CTX_TTL_MS) return cached.text
+  if (cached && Date.now() - cached.at < LIVE_CTX_TTL_MS) {
+    // [atlas-diag] TEMPORARY — remove after root-cause confirmed.
+    console.log(`[atlas-diag] buildLiveContext CACHE_HIT key="${cacheKey}" allowedIds=${allowedProjectIds.length} cachedLen=${cached.text.length}`)
+    return cached.text
+  }
+  // [atlas-diag] TEMPORARY — remove after root-cause confirmed.
+  console.log(`[atlas-diag] buildLiveContext CACHE_MISS key="${cacheKey}" allowedIds=${allowedProjectIds.length}`)
   const k = (n: number) => `${Math.round(n)} kr`
   const [ctxR, patR, csR, oppR, actR, revR, opsR, dreamR] = await Promise.allSettled([
     gatherAtlasContext(db, allowedProjectIds),
@@ -63,6 +69,20 @@ async function buildLiveContext(db: ReturnType<typeof createAdminClient>, allowe
     getOperations(db, allowedProjectIds),
     dreamLiveSummary(db, allowedProjectIds),
   ])
+  // [atlas-diag] TEMPORARY — per-builder outcome + which slices rejected.
+  {
+    const named: [string, PromiseSettledResult<unknown>][] = [
+      ['gatherAtlasContext', ctxR], ['fetchOperatorPatterns', patR], ['contentScore', csR],
+      ['listOpportunities', oppR], ['agentActivity', actR], ['revenueIntel', revR],
+      ['getOperations', opsR], ['dreamLiveSummary', dreamR],
+    ]
+    const rejected = named.filter(([, r]) => r.status === 'rejected')
+    const businesses = ctxR.status === 'fulfilled' ? (ctxR.value as { businesses?: unknown[] }).businesses?.length ?? 0 : -1
+    console.log(`[atlas-diag] buildLiveContext builders: fulfilled=${named.length - rejected.length}/${named.length} businesses=${businesses} rejected=[${rejected.map(([n]) => n).join(',')}]`)
+    for (const [n, r] of rejected) {
+      console.error(`[atlas-diag] builder REJECTED ${n}:`, r.status === 'rejected' ? r.reason : '')
+    }
+  }
 
   let text = ''
   if (ctxR.status === 'fulfilled') {
@@ -108,6 +128,8 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
   if (dreamR.status === 'fulfilled' && dreamR.value) text += dreamR.value
 
   _liveCtxCache.set(cacheKey, { at: Date.now(), text })
+  // [atlas-diag] TEMPORARY — final assembled context size (0 ⇒ Atlas sees no snapshot).
+  console.log(`[atlas-diag] buildLiveContext DONE key="${cacheKey}" textLen=${text.length}`)
   return text
 }
 
@@ -564,6 +586,8 @@ export async function POST(request: Request) {
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
   const navIntent = !fastPath && !actionIntent && isNavIntent(lastUserText)
   const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+  // [atlas-diag] TEMPORARY — request-level snapshot decision inputs.
+  console.log(`[atlas-diag] chat POST userId=${userId} allowedIds=${allowedProjectIds.length} fastPath=${fastPath} mode=${mode ?? '-'} reqType=${reqType} msgLen=${lastUserText.length}`)
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -575,7 +599,13 @@ export async function POST(request: Request) {
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
-    try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    try {
+      systemPrompt += await buildLiveContext(db, allowedProjectIds)
+    } catch (e) {
+      // [atlas-diag] TEMPORARY — surface the previously-swallowed live-context error.
+      console.error('[atlas-diag] buildLiveContext THREW (live context dropped):', e)
+      /* icke-kritiskt */
+    }
     // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
     // delegation across turns doesn't require re-fetching (kills the fetch loop).
     try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }

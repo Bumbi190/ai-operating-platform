@@ -24,5 +24,5 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.error?.includes('hittades') ? 404 : 400 })
   }
-  return NextResponse.json({ run_id: result.runId, resuming_from_step: result.resumingFromStep }, { status: 202 })
+  return NextResponse.json({ run_id: result.runId, status: result.status ?? 'queued' }, { status: 202 })
 }

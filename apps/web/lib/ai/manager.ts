@@ -19,6 +19,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
 import { toJson } from '@/lib/supabase/json'
+import type { Json } from '@/lib/supabase/database.types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -377,21 +378,30 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   async retryFailedRun(runId: string): Promise<string | null> {
     const { data: run } = await this.db
       .from('runs')
-      .select('workflow_id, project_id, input')
+      .select('workflow_id, project_id, input, kind, steps_snapshot, workflows(steps)')
       .eq('id', runId)
       .single()
 
     if (!run) return null
 
+    const wf = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
+    const snapshot: Json | null = run.steps_snapshot ?? (wf as { steps?: Json } | null)?.steps ?? null
+
+    // H1.P3: the retry is a NEW run (preserves "fresh run" semantics) but created as a
+    // durable `pending` run carrying the steps snapshot — NOT `running`. The pg_cron
+    // drain claims + executes it under a lease, the same durability/lease flow as every
+    // other run. (Was `running` with no lease → an unrecoverable orphan since nothing
+    // executed it and the reaper only requeues runs that already hold a lease.)
     const { data: newRun } = await this.db
       .from('runs')
       .insert({
         workflow_id: run.workflow_id,
         project_id: run.project_id,
-        status: 'running',
+        kind: run.kind,
+        status: 'pending',
         input: run.input ?? {},
         context: {},
-        started_at: new Date().toISOString(),
+        steps_snapshot: snapshot,
       })
       .select('id')
       .single()

@@ -20,6 +20,7 @@
 import { NextResponse } from 'next/server'
 import { requireApiKey } from '@/lib/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { buildAgentRunInsert } from '@/lib/ai/run-create'
 
 export async function GET(request: Request) {
   const auth = requireApiKey(request)
@@ -87,13 +88,7 @@ export async function POST(request: Request) {
   // pg_cron-drainern (/api/runs/drain) claimar och kör den durabelt.
   const { data: run, error: runErr } = await db
     .from('runs')
-    .insert({
-      workflow_id: workflow.id,
-      project_id: workflow.project_id,
-      status: 'pending',
-      input,
-      context: {},
-    })
+    .insert(buildAgentRunInsert(workflow, input))
     .select('id')
     .single()
 

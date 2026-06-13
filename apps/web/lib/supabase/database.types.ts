@@ -2341,6 +2341,7 @@ export type Database = {
           project_id: string
           started_at: string | null
           status: string
+          steps_snapshot: Json | null
           workflow_id: string | null
         }
         Insert: {
@@ -2360,6 +2361,7 @@ export type Database = {
           project_id: string
           started_at?: string | null
           status?: string
+          steps_snapshot?: Json | null
           workflow_id?: string | null
         }
         Update: {
@@ -2379,6 +2381,7 @@ export type Database = {
           project_id?: string
           started_at?: string | null
           status?: string
+          steps_snapshot?: Json | null
           workflow_id?: string | null
         }
         Relationships: [

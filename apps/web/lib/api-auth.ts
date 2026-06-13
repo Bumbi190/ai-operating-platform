@@ -52,6 +52,38 @@ export function requireApiKey(request: Request): AuthResult {
 }
 
 /**
+ * Cron authentication — FAIL CLOSED.
+ *
+ * Replaces the old per-route guard `if (cronSecret && header !== secret)`, which
+ * was fail-OPEN: when CRON_SECRET was unset the guard was skipped and the route
+ * became publicly callable. Here a missing secret is a hard 500, and any header
+ * mismatch is a 401 — the route can never run unauthenticated.
+ *
+ * Usage:
+ *   const auth = requireCronAuth(request)
+ *   if (!auth.ok) return auth.response
+ */
+export function requireCronAuth(request: Request): AuthResult {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'CRON_SECRET is not configured on the server' },
+        { status: 500 },
+      ),
+    }
+  }
+  if (request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    }
+  }
+  return { ok: true }
+}
+
+/**
  * Tillåt antingen en inloggad app-användare ELLER en giltig API-nyckel.
  * Används för business-endpoints som anropas både från UI och från externa
  * integrationer (Stripe-webhooks, cron, agenter).

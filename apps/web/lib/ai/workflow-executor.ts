@@ -13,6 +13,7 @@ import { validateStepOutput } from '@/lib/ai/validators/output-validator'
 import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { reportBug } from '@/lib/bugs/report'
+import { mergeRunContext } from '@/lib/ai/checkpoint'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -34,17 +35,29 @@ export interface ExecuteWorkflowOptions {
   startFromOrder?: number
 }
 
-export async function executeWorkflow(
+/**
+ * executeRunSteps — THE single step-running core (H1.P2).
+ *
+ * Runs the workflow's steps with validation (+1 retry), image quality gate,
+ * run_logs, per-step context persistence, cost logging, and the final output row.
+ * Skips already-completed steps via `startFromOrder`/`existingContext`.
+ *
+ * Contract: THROWS on failure. Does NOT set runs.status and does NOT create
+ * approvals — the caller owns lifecycle. The durable drainer owns status; the
+ * `executeWorkflow` wrapper below adds status + approval for resume/manual.
+ */
+export async function executeRunSteps(
   db: AdminClient | AnyDb,
   runId: string,
   projectId: string,
   steps: WorkflowStep[],
   options: ExecuteWorkflowOptions = {},
-) {
+): Promise<{ outputContent: string; lastOutputKey: string | undefined; context: Record<string, string> }> {
   const { initialInput = {}, existingContext = {}, startFromOrder = 0 } = options
 
-  // Context börjar med befintliga värden + ny input
-  const context: Record<string, string> = { ...existingContext, ...initialInput }
+  // Initial input is the base; completed step outputs win on collision so a resume
+  // never lets the original input clobber a persisted step output (Codex review #8).
+  const context: Record<string, string> = mergeRunContext(initialInput, existingContext)
 
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
   // Alias med any-typ — Supabase-klienten saknar genererade DB-typer i detta projekt
@@ -66,7 +79,8 @@ export async function executeWorkflow(
   // Fylls i under stegens körning när vi har tillgång till agent.config.max_images.
   const trackedMaxImages: Record<string, number> = {}
 
-  try {
+  // NOTE: no try/catch here — failures propagate to the caller, which owns status.
+  {
     for (const step of pendingSteps) {
       // Ladda agenten
       const { data: agent, error: agentErr } = await db
@@ -255,6 +269,35 @@ export async function executeWorkflow(
       type: outputType,
       content: outputContent ?? '',
     })
+
+    return { outputContent: outputContent ?? '', lastOutputKey, context }
+  }
+}
+
+/**
+ * executeWorkflow — wrapper for resume + manual runs.
+ *
+ * Runs the unified core, then on success sets runs.status='done' and creates the
+ * approval; on failure sets 'failed' and reports a bug. This preserves the
+ * pre-H1.P2 behavior for the resume/manual callers. The durable drainer does NOT
+ * use this wrapper — it calls executeRunSteps directly and owns status itself
+ * (approval-on-drain arrives with the policy gate in H1.P4).
+ *
+ * NOTE: the workflow lookup below uses .eq('id', runId) (matches workflow id
+ * against the run id) — a pre-existing bug that makes the approval email show
+ * "Okänt workflow". Left unchanged here to keep P2 behavior-preserving; fixed in
+ * H1.P5 (→ run.workflow_id).
+ */
+export async function executeWorkflow(
+  db: AdminClient | AnyDb,
+  runId: string,
+  projectId: string,
+  steps: WorkflowStep[],
+  options: ExecuteWorkflowOptions = {},
+) {
+  const anyDb: AnyDb = db
+  try {
+    const { outputContent, lastOutputKey, context } = await executeRunSteps(db, runId, projectId, steps, options)
 
     // ── Skapa approval ───────────────────────────────────────────────────
     if (outputContent) {

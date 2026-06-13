@@ -10,6 +10,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
+import { executeRunSteps } from '@/lib/ai/workflow-executor'
+import { computeCheckpoint } from '@/lib/ai/checkpoint'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -18,7 +20,18 @@ export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
 
 const CLAIM_LIMIT   = 3     // håller invocationen inom maxDuration; fler ticks ger throughput
-const LEASE_SECONDS = 280   // < maxDuration → reaper tar över om vi spräcker
+// Codex review #2 (lease/reaper race): the lease must OUTLIVE the invocation.
+// Vercel hard-kills the function at maxDuration (300s), so a lease >= maxDuration
+// means lease_until only expires AFTER the function is already dead. The reaper
+// therefore only ever requeues genuinely-dead runs (which checkpointing resumes
+// safely) — never a still-running invocation. Was 280 (< maxDuration), which left
+// a ~20s window where a live run could be requeued and double-executed.
+const LEASE_SECONDS = 320   // > maxDuration (300) + margin
+
+// H1.P2: unified executor (validation + quality gate + checkpointed resume) on the
+// drain path. Flag-gated for instant rollback — unset H1_UNIFIED_EXECUTOR to fall
+// back to the legacy lightweight runSteps path within one deploy, no code change.
+const UNIFIED_EXECUTOR = process.env.H1_UNIFIED_EXECUTOR === '1'
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
@@ -41,10 +54,21 @@ export async function GET(request: Request) {
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
         await MARKETING_HANDLERS[kind](db, run as Run)
       } else {
-        // Legacy agent-step-workflow: kör stegen från workflows.steps.
+        // Agent-step-workflow: kör stegen från workflows.steps.
         const { data: wf } = await db.from('workflows').select('steps').eq('id', run.workflow_id).single()
         const steps = parseWorkflowSteps(wf?.steps)
-        await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
+        if (UNIFIED_EXECUTOR) {
+          // H1.P2: rich engine + checkpointed resume. Drain still owns status below.
+          const { startFromOrder, existingContext } = await computeCheckpoint(db, run, steps)
+          await executeRunSteps(db, run.id, run.project_id, steps, {
+            initialInput: (run.input ?? {}) as Record<string, string>,
+            existingContext,
+            startFromOrder,
+          })
+        } else {
+          // Legacy lightweight path (flag off) — unchanged behavior for rollback.
+          await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
+        }
       }
       await db.from('runs').update({
         status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,

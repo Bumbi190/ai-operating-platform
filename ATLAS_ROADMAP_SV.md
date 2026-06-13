@@ -1,83 +1,197 @@
-# Projekt Atlas — Roadmap
+# Omnira / Atlas — Roadmap (styrande dokument)
 
-Atlas är Omniras "Executive Chief of Staff"-lager. Det **ersätter inte** de
-underliggande systemen (agenter, arbetsflöden, kostnader, granskningar, minne) —
-det blir operativsystemslagret *ovanpå* dem, och det första operatören möter.
+> **Status:** Aktiv, styrande roadmap. Uppdaterad efter H1/P3 för att koda de låsta
+> roadmap-principerna. Detta dokument är arkitekturvaktens referens — nya idéer vägs
+> mot den låsta prioriteringsordningen nedan, inte tvärtom.
 
-Princip: **intelligens, minne, delegering, transparens** — inte visuella effekter.
+Omnira utvecklas mot ett **AI Operating System för företag**. Atlas är den centrala
+operativa ytan. Långsiktig utvecklingsbåge:
 
----
+**Reporting → Analysis → Recommendations → Workflow Creation → Workflow Execution → Autonomous Operations**
 
-## Fas 1 — Atlas Home + Kontext-hjärna  ✅ (byggt)
-
-Grunden: Atlas blir ingången och ser redan allt.
-
-- **Atlas-identitet** (`lib/atlas/identity.ts`) — system-prompten för en
-  Executive Chief of Staff + permanenta affärsprofiler (Familje-Stunden =
-  kvalitet före automation; GainPilot = leadsgenerering; The Prompt = AI-media).
-  Operatören behöver aldrig upprepa detta.
-- **Kontext-hjärna** (`lib/atlas/context.ts`) — en defensiv, läs-bara funktion
-  som bygger en live-ögonblicksbild från befintliga tabeller: kostnad idag/vecka/
-  månad (+ prognos + per leverantör), intäkt och kostnad per verksamhet,
-  kvalificerade leads, media publicerat denna vecka, väntande granskningar,
-  väntande godkännanden, fallerade körningar (24h), och den enskilt viktigaste
-  åtgärden just nu.
-- **Atlas Home** (`app/(platform)/atlas/page.tsx`) — tidsanpassad
-  chefshälsning, briefing-rader per verksamhet, AI-kostnadsrad, en rekommenderad
-  åtgärd, snabbåtgärder (prioriteringar, granskningar, intäkter, kostnader, prata
-  med Atlas), en plattforms-pulsrad och ett bevaknings-rutnät per verksamhet.
-- **Ingången** — roten + efter inloggning landar nu på `/atlas`; Atlas är det
-  översta, primära valet i sidofältet. Operationscentralen finns kvar som detaljvy.
+Atlas ersätter inte de underliggande systemen (agenter, workflows, kostnader,
+granskningar, minne) — det blir OS-lagret *ovanpå* dem, och det första operatören möter.
 
 ---
 
-## Fas 2 — Konverserande Atlas + transparens  (nästa)
+## Låst prioriteringsordning
 
-Gör Atlas till något du *pratar med*, med minne och full insyn.
+**Reliability → Governance → Memory → Intelligence → UX → Autonomy**
 
-1. **Ge chatten Atlas-identitet.** Peka `app/api/chat/route.ts` mot
-   `buildAtlasSystemPrompt()` och injicera den live-ögonblicksbilden varje tur,
-   så att Atlas svarar "hur mycket har vi spenderat / hur många leads / vad ska
-   jag fokusera på" direkt från riktig data.
-2. **Konversationsminne.** Återanvänd befintliga `conversations` /
-   `conversation_messages` + `platform_memory`. Atlas minns preferenser,
-   senaste beslut och väntande uppgifter mellan sessioner — inget upprepande.
-3. **Röst som känns levande.** Längre paus innan avbrott, live-transkribering,
-   korta konversationsbitar (aldrig monologer), spara + spela upp samtal, tillåt
-   avbrott.
-4. **Atlas Activity Center** (ny sida) — live-transparens över vad Atlas och
-   agenterna gör just nu: körande arbetsflöden, framsteg, senaste beslut,
-   väntande beslut. Hämtas från `runs`, `run_logs`, `agent_messages`,
-   `manager_tasks`. Operatören ska aldrig undra "hände något?".
-5. **Bädda in samtalet i Atlas Home** så att prata med Atlas blir standardvalet,
-   inte en separat sida.
+Allt nytt utvärderas mot denna ordning. En senare band får inte börja konsumera
+autonomi-budget innan tidigare band är verifierat.
 
----
+### Arkitekturvaktsregel (gäller varje förslag)
+Om ett förslag ligger utanför roadmapen ska det:
+1. flaggas som avvikelse,
+2. mappas mot påverkad del av roadmapen,
+3. redovisas med för- och nackdelar,
+4. kräva ett aktivt beslut innan implementation.
 
-## Fas 3 — Delegering + briefingar + verktygsintelligens
+Syftet är att undvika roadmap-drift där nya idéer successivt ersätter tidigare prioriteringar.
 
-Atlas agerar, inte bara rapporterar.
-
-1. **Delegeringssystem.** "Atlas, skapa en GainPilot-kampanj" → Atlas skissar en
-   plan, tilldelar agenter, spårar kedjan och rapporterar framsteg
-   (Research ✓ · Copy ✓ · Bild ⏳ · QA ⏳). Byggt på `manager_tasks` +
-   `agent_messages` + körmotorn, med delegeringskedjan synlig live.
-2. **Verktygsintelligens.** Atlas väljer automatiskt rätt verktyg/arbetsflöde
-   (publicering, analys, planering, godkännanden, kostnadsspårning) — operatören
-   behöver aldrig veta vilken agent eller vilket flöde som ska användas.
-3. **Chefsbriefingar.** Morgon / kväll / vecka / månad, med intäkter, kostnader,
-   tillväxt, risker, möjligheter och rekommendationer. Bygger vidare på befintliga
-   `morning_briefings` + briefing-motorn; schemaläggs via cron-systemet.
-4. **Atlas blir plattformen.** Allt annat (agenter, arbetsflöden, analys,
-   kostnader, godkännanden) lägger sig som stödjande infrastruktur under Atlas.
+### Cost Governance — hård grind
+Ingen ny **autonom exekvering** får implementeras innan Cost Governance är verifierad i
+preview + produktion. Detta inkluderar: Workflow Creation, Workflow Execution, Agent
+Chaining, Multi-Agent Systems, Operator, Specialistagenter, självskapande workflows.
+Atlas får **analysera och rekommendera** innan dess; **exekvering kräver governance.**
+(Skäl, verifierat i kod: kostnad loggas idag bara i efterhand i `cost_events`; ingen
+pre-flight-spärr, ingen kill switch, inget rekursionsskydd; `project_budgets` är endast
+`monthly_sek` utan enforcement. Med automatisk API-påfyllning saknas naturligt tak.)
 
 ---
 
-## Noteringar
+## Band 1 — Reliability (H1 Execution Unification)  — pågår
 
-- Atlas återanvänder det som finns (Managerns `buildContext`, `cost_events`,
-  `platform_memory`, briefing-komponenter) istället för att duplicera det.
-- Affärsprofilerna ligger nu i kod (`identity.ts`); Fas 2 kan flytta dem till
-  `projects.settings` så att de kan redigeras utan deploy.
-- Kontext-hjärnan är deterministisk och gratis att köra; AI används bara där det
-  tillför verklig reasoning (samtal, briefing-syntes), vilket håller kostnadssidan ärlig.
+Durabel, idempotent, återupptagbar körmotor som senare band ärver automatiskt.
+
+- **P1 ✅** Schema-grund: `runs.status` utökad, `workflows.side_effect_class`, klassificering (inert).
+- **P2 ✅** En executor + checkpointad drain (flag-gated). Idempotent finalisering (#1),
+  retry-maxImages (#4), kvalitetsmetadata för skippade steg (#5), checkpoint-felhantering (#8).
+- **P3 ✅** Durable resume via requeue→drain, lease-ägande, `runs.steps_snapshot`
+  (workflow-versionering), `manager.retryFailedRun` durabel.
+- **P4 ⏳** Policy-gate: läs `side_effect_class`, approval-on-drain. *Naturlig krok för
+  approval-trösklar i Band 2.*
+- **P5 ⏳** Cancel (`cancel_requested` inkopplad), fencing-token på drainens writes,
+  DB-enforced unik `outputs(run_id)`, workflow-lookup-fix.
+
+**Utträdeskriterium:** P4+P5 verifierade. Först därefter får Band 2 påbörjas.
+
+---
+
+## Band 2 — Governance (Cost & Safety)  — HÅRD GRIND
+
+Substratet som all framtida autonomi ärver. Bygger på `cost_events`, `cost_rates`,
+`project_budgets`, `side_effect_class` och cancel-mekanismen.
+
+### Default Deny Autonomy (grundprincip)
+- Atlas får **analysera, rekommendera och simulera** som standard.
+- **Exekvering kräver explicit policy, governance och godkännande.**
+- Nya autonoma funktioner är **avstängda som standard** tills de uttryckligen aktiveras
+  (fail-safe: frånvaro av beslut = ingen autonom exekvering). Detta speglas redan i koden
+  via `side_effect_class` default `approval_required` och flaggstyrda rollouts.
+
+- **Budget limits:** daily / weekly / monthly spend-limits per projekt (utöka
+  `project_budgets` bortom `monthly_sek`).
+- **Pre-flight enforcement:** kostnad kontrolleras *före* körning, inte bara loggas efteråt.
+- **Model limits & Image limits:** tak per modell och per bildoperation.
+- **Approval thresholds:** kostnad/risk över tröskel → `awaiting_approval` (via P4-gaten).
+- **Emergency kill switch:** global + per projekt; stoppar all exekvering omedelbart.
+- **Workflow recursion protection:** djup-/spawn-gräns så självskapande/kedjade workflows
+  inte kan loopa obegränsat.
+
+**Utträdeskriterium:** governance verifierad i preview + produktion. Detta är grinden
+som låser upp all autonom exekvering (Band 6).
+
+---
+
+## Band 3 — Memory (Organizational Memory)
+
+Atlas Memory som förstaklassobjekt. Konsolidera på befintliga `platform_memory`
+(confidence + evidence) och relationsdata snarare än många nya stores.
+
+- **Organizational / Company Knowledge** och **Project Knowledge** — kategorier i `platform_memory`.
+- **Knowledge Layer** — retrieval som förstaklass-kontextbyggare (halvt redan i `buildLiveContext`).
+- **Workflow History** — via `runs` / `run_logs` / `steps_snapshot`.
+- **KPI History** — tidsserie (Executive-briefingen efterfrågar den redan).
+- **Graphify / Obsidian-koncept i detta band, ej separat produkt:** Knowledge Graph,
+  Linked Context, Backlinks, Graph Navigation — modelleras på befintliga FK-relationer
+  (decisions→runs→workflows→outputs→opportunities). Billig "linked context" först;
+  tung grafvisualisering senare.
+
+---
+
+## Band 4 — Intelligence (Decision Intelligence)
+
+Atlas resonerar utifrån tidigare beslut, resultat och historisk data.
+
+- **Decision Registry** — utöka `atlas_actions` (handlingsregister) till *beslut* med
+  rationale, länkad run/workflow/output **och mätt utfall + kostnad**.
+- **Historical Outcomes** — koppla beslut → resultat → kostnad (auditability-loopen).
+- **Workflow Learning / Learned Recommendations** — rekommendationer som förbättras av
+  historiska utfall; bygger på Decision Registry + Memory.
+
+---
+
+## Band 5 — UX (framtida spår, ej nu)
+
+Låst riktning, implementeras efter Intelligence. (Atlas Home + konversation finns redan
+byggt; detta band är nästa UX-pass.)
+
+- Större bastext + större rubriker över hela Atlas; **Large Text Mode**; högre kontrast.
+- Mer centrerad layout, mindre tom yta; KPI och status närmare mitten; viktig info inom synfält.
+- **Executive Assistant som tydligt visuellt centrum.**
+- Kortare svar, naturligare svenska, mer konversationslik känsla.
+- **Navigation:** renare vänsternavigation, färre nivåer, projekt synliga direkt,
+  Atlas/Executive Assistant först. Hermes synlig som aktiv del av exekveringslagret
+  (marknadsförs inte, men användaren förstår att han är aktiv).
+
+---
+
+## Band 6 — Autonomy (Operator)  — gatad bakom Band 2
+
+Slås på först när Cost Governance är verifierad. Ärver durability (Band 1), governance
+(Band 2), memory (Band 3) och decision-logging (Band 4) automatiskt.
+
+- Operator O1–O5 (detaljerade faser i `OMNIRA_ATLAS_OPERATOR_DESIGN.md`).
+- Workflow Creation, Workflow Execution, Agent Chaining, Multi-Agent.
+- **Självskapande workflows** — endast med recursion protection (Band 2) aktiv.
+- **Specialistagenter (kandidater, gatade bakom Memory + Governance):** Atlas Executive,
+  Atlas Analyst, Atlas Growth, Atlas Operations, Atlas Finance, Atlas QA, Atlas SEO.
+  Börjar som **roller/lägen** (memory + tool-scope + prompt) av en Atlas-motor, inte fem
+  fristående tjänster; splittas till separata agenter först när en roll har distinkta
+  verktyg, kadens och autonomi-envelope.
+
+---
+
+## Långsiktiga designprinciper (styrande)
+
+Dessa gäller framtida design och vägs in i varje band. De omordnar inte den låsta
+prioriteringsordningen — de förtydligar bandinnehåll.
+
+1. **Atlas som central yta.** Verktyg, workflows och funktioner ska successivt flyttas
+   *bakom* Atlas istället för att vara separata system. Atlas blir den primära
+   operativa ytan och navigationspunkten; övriga vyer blir stödjande detaljvyer.
+2. **Graphify & Obsidian = Memory-komponenter (Band 3).** Knowledge Graph, Linked
+   Context, Backlinks och Graph Navigation planeras som del av Atlas Memory — inte som
+   separata produkter. Modelleras på befintliga FK-relationer; billig linked context
+   först, tung grafvisualisering senare.
+3. **Hermes = exekveringsmotorn bakom Atlas.** Fortsätter utvecklas som motorn, och ska
+   på sikt bli *synlig* i plattformen som en aktiv systemkomponent (marknadsförs inte,
+   men användaren förstår att han är aktiv del av exekveringslagret). UX-synlighet i Band 5.
+4. **UX-riktning (Band 5, ej nu):** större bastext och rubriker; bättre kontrast;
+   large-text mode; mer centrerad layout; mindre tom yta; Executive Assistant som
+   tydligt centrum; projekt lätt åtkomliga i navigationen; Hermes synlig som del av
+   systemet; Atlas som primär navigationspunkt.
+5. **Connected Systems (framtida modul).** En yta där Atlas visar anslutna system,
+   integrationer, AI-modeller, kunskapskällor, automationer och deras status. Dataskikt
+   hör till Band 3 (Memory/Knowledge sources), ytan till Band 5 (UX). Visibilitet, inte
+   autonom exekvering — passerar därför Cost Governance-grinden.
+6. **Cost Governance = fortsatt hård grind.** Med automatisk API-påfyllning är
+   kostnadskontroll, kill switches, budgettak och rekursionsskydd **obligatoriska** innan
+   någon Operator-funktionalitet aktiveras. (Se Band 2.)
+7. **Specialistagenter börjar som roller.** Implementeras initialt som roller/lägen
+   ovanpå en Atlas-motor (memory + tool-scope + prompt) innan någon uppdelning till
+   separata agenter övervägs. (Se Band 6.)
+
+---
+
+## Research-spike — Claude OS / Agent OS (efter H1/P3/P4/P5)
+
+Strategisk analys (ej produkt) av: Agent OS, Claude OS, Founder OS, "Dive Into Claude
+Code", Claude Code Subagents. Fråga: vilka 3–5 koncept ger högst strategisk avkastning
+för Omnira de kommande 6–12 månaderna? Resultatet matar designen av Band 3/4/6.
+
+---
+
+## Arbetssätt — Ultra Code för större epics
+
+För större Omnira-epics (execution engine, Atlas, approvals, workflows, migrations,
+säkerhet, autonomi): djup verifiering av faktisk kod/schema/beroenden före rekommendation;
+identifiera risker, blockerare och roadmap-konflikter; prioritera långsiktig arkitektur
+före kortsiktiga features; arkitektur föreslås före implementation; rollback-, test- och
+migrationspåverkan identifieras innan kod skrivs.
+
+> **Not:** `ATLAS_ROADMAP.md` (engelsk, 2026-06-02) och tidigare Fas 1–3-roadmapen är nu
+> ersatta av detta band-strukturerade dokument. Det built:a Atlas Home + kontext-hjärnan
+> lever vidare under Band 5 (UX) / Band 3 (Memory-retrieval).

@@ -80,6 +80,27 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // H1.P4 PR2 — run lifecycle transition. The approval status is now persisted; reflect the
+  // human decision on the originating run. Conditional on status='awaiting_approval' makes
+  // it idempotent and race-free: a second PATCH, or an approval whose run is not awaiting,
+  // updates zero rows. Non-blocking — a run-update miss never fails the saved approval.
+  // 'revised' deliberately leaves run status untouched in PR2.
+  if (existing.run_id && (action === 'approved' || action === 'rejected')) {
+    try {
+      if (action === 'approved') {
+        await db.from('runs')
+          .update({ status: 'done' })
+          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
+      } else {
+        await db.from('runs')
+          .update({ status: 'rejected', error: `approval_rejected: ${reviewer_notes ?? ''}`.slice(0, 500) })
+          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
+      }
+    } catch (runErr) {
+      console.error('[approvals] run-transition failed:', runErr)
+    }
+  }
+
   // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
   if (existing?.project_id) {
     try {

@@ -12,9 +12,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
 import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
+import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
+import { sendAdminNotification } from '@/lib/email/brevo'
+import { getApprovalPendingEmail } from '@/lib/email/templates'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -33,6 +36,12 @@ const LEASE_SECONDS = 320   // > maxDuration (300) + margin
 // back to the legacy lightweight runSteps path within one deploy, no code change.
 const UNIFIED_EXECUTOR = process.env.H1_UNIFIED_EXECUTOR === '1'
 
+// H1.P4 PR2: policy gate. Reads the per-run policy_class snapshot at drain completion
+// and routes the run to 'done' vs 'awaiting_approval'. Flag-gated (default OFF) for
+// instant rollback. Per PR2 scope: only the unified-executor agent-step path is gated
+// (decision B — no legacy fallback); marketing runs stay ungated (decision A).
+const POLICY_GATE = process.env.H1_POLICY_GATE === '1'
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
@@ -49,9 +58,16 @@ export async function GET(request: Request) {
   for (const run of runs) {
     try {
       const kind = run.kind
+      // PR2 gate state for this run. Defaults to today's behavior ('done'); only an
+      // agent-step run executed by the unified executor can flip to awaiting_approval.
+      let outcome: GateOutcome = 'done'
+      let outputContent: string | undefined
+      let lastOutputKey: string | undefined
+
       if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
+        // PR2 (decision A): marketing-runs gate:as INTE — outcome förblir 'done'.
         await MARKETING_HANDLERS[kind](db, run as Run)
       } else {
         // Agent-step-workflow: kör stegen från den immutabla snapshotten (H1.P3) om
@@ -66,20 +82,74 @@ export async function GET(request: Request) {
         if (UNIFIED_EXECUTOR) {
           // H1.P2: rich engine + checkpointed resume. Drain still owns status below.
           const { startFromOrder, existingContext } = await computeCheckpoint(db, run, steps)
-          await executeRunSteps(db, run.id, run.project_id, steps, {
+          const execResult = await executeRunSteps(db, run.id, run.project_id, steps, {
             initialInput: (run.input ?? {}) as Record<string, string>,
             existingContext,
             startFromOrder,
           })
+          outputContent = execResult.outputContent
+          lastOutputKey = execResult.lastOutputKey
+          // PR2 (decision B): the gate runs ONLY with the unified executor — no legacy
+          // fallback. decideGate reads PR1's immutable per-run snapshot (runs.policy_class):
+          // non_destructive → done; approval_required / NULL / unknown → awaiting_approval.
+          if (POLICY_GATE) outcome = decideGate(run.policy_class)
         } else {
-          // Legacy lightweight path (flag off) — unchanged behavior for rollback.
+          // Legacy lightweight path (flag off) — unchanged behavior for rollback. Ungated.
           await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
         }
       }
-      await db.from('runs').update({
-        status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
-      }).eq('id', run.id)
-      results.push({ run_id: run.id, status: 'done' })
+
+      if (outcome === 'awaiting_approval') {
+        // Idempotent approval (mirrors executeWorkflow's pattern): create only if none
+        // exists for this run. `content`/`output_key` are NOT NULL in the schema → coerce.
+        const { data: existingApproval } = await db
+          .from('approvals').select('id').eq('run_id', run.id).limit(1).maybeSingle()
+        if (!existingApproval) {
+          const { error: approvalErr } = await db.from('approvals').insert({
+            run_id:     run.id,
+            project_id: run.project_id,
+            output_key: lastOutputKey ?? 'output',
+            content:    outputContent ?? '',
+            status:     'pending',
+            kind:       'workflow_output',
+          })
+          // A swallowed insert error would strand the run in awaiting_approval with NO
+          // approval row — claim_runs only re-picks 'pending', so it would be unrecoverable.
+          // Throw so the run requeues/fails instead (mirrors executeRunSteps' outputs insert).
+          if (approvalErr) {
+            throw new Error(`policy-gate: approval insert failed for run ${run.id}: ${approvalErr.message}`)
+          }
+          // Per-run notification (decision C: no batching/throttling in PR2). Best-effort —
+          // never fails the drain. Uses run.workflow_id for a correct workflow name in the
+          // email, avoiding executeWorkflow's known .eq('id', runId) lookup bug.
+          try {
+            const { data: wf } = await db
+              .from('workflows').select('name, projects(name)').eq('id', run.workflow_id).maybeSingle()
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+            const { subject, html } = getApprovalPendingEmail({
+              workflowName:  wf?.name ?? 'Okänt workflow',
+              projectName:   (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
+              runId:         run.id,
+              outputPreview: outputContent ?? '',
+              platformUrl:   appUrl,
+            })
+            void sendAdminNotification(subject, html)
+          } catch (notifyErr) {
+            console.error(`[run ${run.id}] approval-pending notis misslyckades:`, notifyErr)
+          }
+        }
+        // Flippa run SIST — approval finns alltid före markeringen. Nollar lease så reapern
+        // (rör endast 'running' med utgången lease) aldrig tar i den vilande runen.
+        await db.from('runs').update({
+          status: 'awaiting_approval', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+        }).eq('id', run.id)
+        results.push({ run_id: run.id, status: 'awaiting_approval' })
+      } else {
+        await db.from('runs').update({
+          status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+        }).eq('id', run.id)
+        results.push({ run_id: run.id, status: 'done' })
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Okänt fel'
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.

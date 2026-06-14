@@ -1,53 +1,55 @@
 /**
- * Regression test for the article writer's JSON output handling.
+ * Regression test for the article writer's structured output.
  *
- * Production E2E failure (proven via chunk-7227 stack trace):
- *   route → generateArticle → writeArticle → JSON.parse(extractJsonObject(rawResponse))
- *   rawResponse = "The source article describes…"  (pure prose, no `{` anywhere)
- *   extractJsonObject returned the prose unchanged → JSON.parse threw
- *   `SyntaxError: Unexpected token 'T', "The source"... is not valid JSON`
+ * Production E2E proved (chunk-7227 trace + 400 error from the prefill attempt):
+ *  • Sonnet occasionally returns pure prose ("The source article describes…")
+ *    with no `{` anywhere — JSON.parse threw `Unexpected token 'T'`.
+ *  • claude-sonnet-4-6 rejects assistant-message prefill with 400
+ *    invalid_request_error, so prefill is NOT a valid mitigation.
  *
- * Root cause: Sonnet refused / deflected and produced prose-only output for
- * a specific news_item (the Claude-Fable-5-offline story). `extractJsonObject`
- * only strips around an existing `{...}`; if there is no `{` at all, it cannot
- * synthesize one.
+ * Fix shipped in writer.ts: forced tool use. The model MUST call the
+ * `submit_article` tool whose input_schema is the article shape. The SDK
+ * returns the tool input pre-parsed — JSON.parse never runs in our code,
+ * so the prose-vs-JSON failure mode is impossible at the protocol level.
  *
- * Fix shipped in writer.ts: Anthropic assistant prefill of `{`. The model
- * must continue from inside a JSON object — the no-`{` failure mode becomes
- * structurally impossible. After the call, we prepend `{` to the tail to
- * reconstruct the full JSON before parsing.
- *
- * This file asserts BOTH halves:
- *   1. writeArticle sends a `{ role:'assistant', content:'{' }` message
- *   2. A continuation-style mock response (no leading `{`) parses cleanly
+ * This file asserts:
+ *  1. The SDK call includes `tools: [submit_article]` with the right schema.
+ *  2. The SDK call includes `tool_choice: { type:'tool', name:'submit_article' }`.
+ *  3. The messages array ENDS with a user message (no assistant prefill — the
+ *     400-causing shape from a62ec4f is gone).
+ *  4. The draft is populated from the tool_use block's structured input.
+ *  5. If the model omits the tool_use block (degenerate case), writeArticle
+ *     throws a clear error.
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// What Sonnet returns AFTER the `{` prefill — i.e. just the continuation,
-// no opening brace. writer.ts is responsible for prepending it.
-const JSON_TAIL = `
-  "title": "Anthropic Files Confidential IPO",
-  "summary": "Could be the largest tech IPO since 2012.",
-  "body": "## Lede\\n\\nAnthropic filed confidential paperwork on Friday.\\n\\n## Analysis\\n\\nThis matters because…",
-  "category": "business",
-  "tags": ["anthropic", "ipo", "funding"],
-  "hero_image_prompt": "Editorial photo: empty boardroom at dusk, single printed S-1 on the table, single overhead light."
-}`
+interface CapturedCall {
+  messages: Array<{ role: string; content: unknown }>
+  tools: Array<{ name: string; input_schema: Record<string, unknown> }> | undefined
+  tool_choice: { type: string; name?: string } | undefined
+}
 
-// Capture the messages array the SDK is called with so we can prove the
-// prefill is wired through.
-const capturedMessages: Array<{ role: string; content: unknown }>[] = []
+let lastCall: CapturedCall | null = null
+let mockToolInput: Record<string, unknown> | null = null
+let omitToolUse = false
 
 vi.mock('@anthropic-ai/sdk', () => {
   const AnthropicCtor = vi.fn().mockImplementation(() => ({
     messages: {
-      create: vi.fn(async (params: { messages: Array<{ role: string; content: unknown }> }) => {
-        capturedMessages.push(params.messages)
-        return {
-          content: [{ type: 'text', text: JSON_TAIL }],
-          usage: { input_tokens: 250, output_tokens: 600 },
-        }
+      create: vi.fn(async (params: CapturedCall) => {
+        lastCall = params
+        const content = omitToolUse
+          ? [{ type: 'text', text: 'I cannot write this article.' }]
+          : [
+              {
+                type: 'tool_use',
+                id: 'toolu_01ABC',
+                name: 'submit_article',
+                input: mockToolInput,
+              },
+            ]
+        return { content, usage: { input_tokens: 250, output_tokens: 600 } }
       }),
     },
   }))
@@ -57,31 +59,64 @@ vi.mock('@anthropic-ai/sdk', () => {
 // Must come AFTER vi.mock.
 import { writeArticle } from '@/lib/article/writer'
 
-describe('writeArticle — assistant prefill defends against pure-prose responses', () => {
-  it('sends a `{`-prefill assistant message and parses the continuation cleanly', async () => {
-    const result = await writeArticle({
-      newsItem: {
-        id: '7712219e-259a-43ce-ac51-5bdae071ebf1',
-        title: 'Anthropic Confidentially Files for IPO',
-        summary: 'Largest tech IPO speculation builds.',
-        key_insight: null,
-        url: 'https://www.wired.com/story/anthropic-ipo-confidential',
-        source_name: 'Wired AI',
-        content_angle: null,
-      } as never,
-      groundingText: 'word '.repeat(200),
-      tier: 'standard',
-    })
+const VALID_TOOL_INPUT = {
+  title: 'Anthropic Files Confidential IPO',
+  summary: 'Could be the largest tech IPO since 2012.',
+  body: '## Lede\n\nAnthropic filed confidential paperwork on Friday.\n\n## Analysis\n\nThis matters because…',
+  category: 'business',
+  tags: ['anthropic', 'ipo', 'funding'],
+  hero_image_prompt: 'Editorial photo: empty boardroom at dusk, single printed S-1 on the table.',
+}
 
-    // 1. The SDK call included the assistant prefill — this is the structural
-    //    defense against the no-`{` refusal mode the production E2E hit.
-    const lastCall = capturedMessages[capturedMessages.length - 1]
-    expect(lastCall).toHaveLength(2)
-    expect(lastCall[0]).toEqual(expect.objectContaining({ role: 'user' }))
-    expect(lastCall[1]).toEqual({ role: 'assistant', content: '{' })
+function makeInput() {
+  return {
+    newsItem: {
+      id: '7712219e-259a-43ce-ac51-5bdae071ebf1',
+      title: 'Anthropic Confidentially Files for IPO',
+      summary: 'Largest tech IPO speculation builds.',
+      key_insight: null,
+      url: 'https://www.wired.com/story/anthropic-ipo-confidential',
+      source_name: 'Wired AI',
+      content_angle: null,
+    } as never,
+    groundingText: 'word '.repeat(200),
+    tier: 'standard' as const,
+  }
+}
 
-    // 2. The continuation-style response (no leading `{`) parsed cleanly after
-    //    writer.ts prepended `{`.
+describe('writeArticle — forced tool use (post-prefill, post-prose-fail)', () => {
+  beforeEach(() => {
+    lastCall = null
+    mockToolInput = { ...VALID_TOOL_INPUT }
+    omitToolUse = false
+  })
+
+  it('sends submit_article tool + forced tool_choice + user-only messages', async () => {
+    await writeArticle(makeInput())
+
+    expect(lastCall).not.toBeNull()
+    // 1. Tool registered with the expected name and schema shape.
+    expect(lastCall!.tools).toBeDefined()
+    expect(lastCall!.tools!.length).toBe(1)
+    expect(lastCall!.tools![0].name).toBe('submit_article')
+    expect(lastCall!.tools![0].input_schema.type).toBe('object')
+    const props = (lastCall!.tools![0].input_schema.properties as Record<string, unknown>) ?? {}
+    expect(Object.keys(props).sort()).toEqual(
+      ['body', 'category', 'hero_image_prompt', 'summary', 'tags', 'title'].sort(),
+    )
+
+    // 2. Tool choice is forced (the protocol-level guarantee).
+    expect(lastCall!.tool_choice).toEqual({ type: 'tool', name: 'submit_article' })
+
+    // 3. No assistant prefill. claude-sonnet-4-6 rejected that with 400 —
+    //    the last message MUST be a user message.
+    const last = lastCall!.messages[lastCall!.messages.length - 1]
+    expect(last.role).toBe('user')
+  })
+
+  it('extracts the tool_use input into a populated draft (no JSON.parse runs)', async () => {
+    const result = await writeArticle(makeInput())
+
     expect(result.draft.title).toBe('Anthropic Files Confidential IPO')
     expect(result.draft.summary).toContain('largest tech IPO since 2012')
     expect(result.draft.body).toContain('## Lede')
@@ -90,9 +125,18 @@ describe('writeArticle — assistant prefill defends against pure-prose response
     expect(tagSlugs).toEqual(expect.arrayContaining(['anthropic', 'ipo', 'funding']))
     expect(result.draft.hero_image_prompt).toContain('Editorial photo')
 
-    // 3. rawResponse is the reconstructed full JSON (prefill + tail) so callers
-    //    that want to log/debug see a well-formed object, not just the tail.
-    expect(result.rawResponse.startsWith('{')).toBe(true)
-    expect(result.rawResponse.endsWith('}')).toBe(true)
+    // rawResponse is now JSON.stringify of the tool input so callers that
+    // logged it before still get a well-formed object string.
+    expect(JSON.parse(result.rawResponse)).toMatchObject({
+      title: VALID_TOOL_INPUT.title,
+      category: 'business',
+    })
+  })
+
+  it('throws clearly when the model omits the tool_use block', async () => {
+    omitToolUse = true
+    await expect(writeArticle(makeInput())).rejects.toThrow(
+      /missing submit_article tool_use block/,
+    )
   })
 })

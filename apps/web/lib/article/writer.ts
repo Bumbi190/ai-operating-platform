@@ -1,16 +1,28 @@
 /**
  * lib/article/writer.ts
  *
- * The Article Writer core: ground → one Sonnet call → parse → ArticleDraft.
+ * The Article Writer core: ground → one Sonnet call → ArticleDraft.
  * Pure-ish: grounding can be supplied (resolveGrounding) or fetched by the caller.
+ *
+ * Structured-output strategy (post-incident, replaces a66de97/a62ec4f):
+ *   The model is forced to call a single tool, `submit_article`, whose
+ *   input_schema is the article shape. The Anthropic SDK returns the tool
+ *   input pre-parsed as an object — there is NO JSON.parse in this file, so
+ *   prose-only refusal responses (the production failure that hit the
+ *   Claude-Fable-5-offline news_item) cannot crash the writer.
+ *
+ *   Assistant-message prefill was tried and rejected: claude-sonnet-4-6
+ *   returned `400 invalid_request_error: "This model does not support
+ *   assistant message prefill. The conversation must end with a user
+ *   message."` Forced tool use is the supported equivalent.
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
 import { calculateCost } from '@/lib/ai/pricing'
-import { extractJsonObject } from '@/lib/ai/dream'
 import { ARTICLE_SYSTEM_PROMPT, buildUserPrompt } from './prompt'
 import { resolveGrounding } from './ground'
 import {
+  ARTICLE_CATEGORIES,
   isArticleCategory,
   TIER_WORD_BANDS,
   type ArticleDraft,
@@ -19,6 +31,7 @@ import {
 } from './types'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
+const SUBMIT_ARTICLE_TOOL = 'submit_article'
 
 function slugify(label: string): string {
   return label
@@ -40,16 +53,6 @@ interface RawModelOutput {
   category?: unknown
   tags?: unknown
   hero_image_prompt?: unknown
-}
-
-// Reuses the robust extractor from the dream pipeline (lib/ai/dream.ts), which
-// handles raw JSON, fenced JSON (with or without a closing fence — truncation-
-// safe), and stray prose before/after the object. The writer's prior naive
-// fence-strip-then-parse was hit by Sonnet occasionally prefixing its JSON with
-// a sentence like "The source article describes…", producing a 500 with V8's
-// classic `SyntaxError: Unexpected token 'T'`.
-function parseModelJson(raw: string): RawModelOutput {
-  return JSON.parse(extractJsonObject(raw)) as RawModelOutput
 }
 
 function normalizeTags(value: unknown): Array<{ slug: string; name: string }> {
@@ -97,19 +100,62 @@ export async function writeArticle(input: ArticleWriterInput): Promise<WriteArti
     model,
     max_tokens: maxTokens,
     system: ARTICLE_SYSTEM_PROMPT,
-    // Assistant prefill of `{` forces Sonnet's response to continue from
-    // inside a JSON object — structurally rules out the prose-only refusal
-    // mode that caused the production E2E to throw `Unexpected token 'T'`
-    // (proven via chunk-7227 trace; the bug was real prose with no `{`).
-    messages: [
-      { role: 'user', content: buildUserPrompt(input, grounding) },
-      { role: 'assistant', content: '{' },
+    messages: [{ role: 'user', content: buildUserPrompt(input, grounding) }],
+    tools: [
+      {
+        name: SUBMIT_ARTICLE_TOOL,
+        description:
+          'Submit the finished article in the structured shape required by the editor. ' +
+          'Call this tool exactly once with the article.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Original headline, <= 75 chars, concrete, no hype.',
+            },
+            summary: {
+              type: 'string',
+              description: 'Meta description / dek, <= 160 chars.',
+            },
+            body: {
+              type: 'string',
+              description: 'The article body in Markdown.',
+            },
+            category: {
+              type: 'string',
+              enum: [...ARTICLE_CATEGORIES],
+              description: 'Exactly one of the allowed category slugs.',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 3,
+              maxItems: 6,
+              description: '3 to 6 short topical labels.',
+            },
+            hero_image_prompt: {
+              type: 'string',
+              description: 'A text-to-image prompt for the hero image. Omit if no good prompt fits.',
+            },
+          },
+          required: ['title', 'summary', 'body', 'category', 'tags'],
+        },
+      },
     ],
+    tool_choice: { type: 'tool', name: SUBMIT_ARTICLE_TOOL },
   })
 
-  const tail = response.content[0]?.type === 'text' ? response.content[0].text : ''
-  const rawResponse = '{' + tail
-  const parsed = parseModelJson(rawResponse)
+  // The model is forced to call submit_article, so a tool_use block MUST be
+  // present. The SDK already parsed the tool input — no JSON.parse needed.
+  const toolUse = response.content.find((b) => b.type === 'tool_use') as
+    | { type: 'tool_use'; name: string; input: RawModelOutput }
+    | undefined
+  if (!toolUse) {
+    throw new Error('[article] model response missing submit_article tool_use block')
+  }
+  const parsed = toolUse.input
+  const rawResponse = JSON.stringify(parsed)
 
   const title = typeof parsed.title === 'string' ? parsed.title.trim() : ''
   const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : ''

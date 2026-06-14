@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { OSPage, ViewSelectionSync } from '@/components/platform/os'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { ReviewActions } from './ReviewActions'
+import { HeroImageActions } from './HeroImageActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,18 @@ export default async function ContentDetail({ params }: { params: { id: string }
         {row.summary && <p className="text-sm text-zinc-400 max-w-3xl">{row.summary}</p>}
       </header>
 
-      {row.status === 'pending_review' && <ReviewActions id={row.id} />}
+      {row.status === 'pending_review' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <HeroImageActions
+            id={row.id}
+            heroImageUrl={row.hero_image_url ?? null}
+            heroImagePrompt={row.hero_image_prompt ?? null}
+            heroImageStatus={row.hero_image_status ?? null}
+            heroImageQa={(row.hero_image_qa ?? null) as Record<string, unknown> | null}
+          />
+          <ReviewActions id={row.id} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* QA report */}

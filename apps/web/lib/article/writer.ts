@@ -7,6 +7,7 @@
 
 import { Anthropic } from '@anthropic-ai/sdk'
 import { calculateCost } from '@/lib/ai/pricing'
+import { extractJsonObject } from '@/lib/ai/dream'
 import { ARTICLE_SYSTEM_PROMPT, buildUserPrompt } from './prompt'
 import { resolveGrounding } from './ground'
 import {
@@ -41,9 +42,14 @@ interface RawModelOutput {
   hero_image_prompt?: unknown
 }
 
+// Reuses the robust extractor from the dream pipeline (lib/ai/dream.ts), which
+// handles raw JSON, fenced JSON (with or without a closing fence — truncation-
+// safe), and stray prose before/after the object. The writer's prior naive
+// fence-strip-then-parse was hit by Sonnet occasionally prefixing its JSON with
+// a sentence like "The source article describes…", producing a 500 with V8's
+// classic `SyntaxError: Unexpected token 'T'`.
 function parseModelJson(raw: string): RawModelOutput {
-  const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  return JSON.parse(clean) as RawModelOutput
+  return JSON.parse(extractJsonObject(raw)) as RawModelOutput
 }
 
 function normalizeTags(value: unknown): Array<{ slug: string; name: string }> {

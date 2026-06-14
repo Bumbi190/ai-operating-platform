@@ -106,6 +106,41 @@ export async function uploadSceneImage(
 }
 
 /**
+ * Upload a hero image for a website article from a remote URL to Supabase Storage.
+ * Sibling of uploadSceneImage — same bucket, same re-host pattern, same timestamped
+ * path for browser cache-busting. Path lives under `images/articles/` so the
+ * article and social-reel paths are visually distinguishable in the bucket.
+ *
+ * No new validation infrastructure: trusts fetch.ok and the storage client error
+ * exactly like uploadSceneImage does. There is ONE image-pipeline architecture.
+ */
+export async function uploadArticleHeroImage(
+  projectId: string,
+  articleId: string,
+  sourceUrl: string,
+): Promise<string> {
+  const db = createAdminClient()
+
+  const res = await fetch(sourceUrl)
+  if (!res.ok) throw new Error(`Failed to fetch image from ${sourceUrl}`)
+  const buffer = Buffer.from(await res.arrayBuffer())
+  const contentType = res.headers.get('content-type') ?? 'image/jpeg'
+  const ext = contentType.includes('png') ? 'png' : 'jpg'
+
+  const ts = Date.now()
+  const storagePath = `images/articles/${projectId}/${articleId}-hero-${ts}.${ext}`
+
+  const { error } = await db.storage
+    .from(BUCKET)
+    .upload(storagePath, buffer, { contentType })
+
+  if (error) throw new Error(`Article hero upload failed: ${error.message}`)
+
+  const { data: { publicUrl } } = db.storage.from(BUCKET).getPublicUrl(storagePath)
+  return publicUrl
+}
+
+/**
  * Upload a background music track (mp3) to Supabase Storage.
  * Returns the public URL.
  */

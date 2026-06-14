@@ -255,6 +255,66 @@ export type Database = {
           },
         ]
       }
+      atlas_actions: {
+        Row: {
+          action_type: string
+          actor: string
+          conversation_id: string | null
+          created_at: string
+          detail: Json | null
+          id: string
+          project_id: string | null
+          status: string | null
+          summary: string
+          target_id: string | null
+          target_kind: string | null
+          tool_name: string
+        }
+        Insert: {
+          action_type: string
+          actor?: string
+          conversation_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          id?: string
+          project_id?: string | null
+          status?: string | null
+          summary: string
+          target_id?: string | null
+          target_kind?: string | null
+          tool_name: string
+        }
+        Update: {
+          action_type?: string
+          actor?: string
+          conversation_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          id?: string
+          project_id?: string | null
+          status?: string | null
+          summary?: string
+          target_id?: string | null
+          target_kind?: string | null
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_actions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atlas_actions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bug_reports: {
         Row: {
           area: string | null
@@ -1501,7 +1561,7 @@ export type Database = {
           fetched_at: string | null
           id: string
           key_insight: string | null
-          project_id: string | null
+          project_id: string
           raw_output: Json | null
           run_id: string | null
           source_name: string | null
@@ -1518,7 +1578,7 @@ export type Database = {
           fetched_at?: string | null
           id?: string
           key_insight?: string | null
-          project_id?: string | null
+          project_id: string
           raw_output?: Json | null
           run_id?: string | null
           source_name?: string | null
@@ -1535,7 +1595,7 @@ export type Database = {
           fetched_at?: string | null
           id?: string
           key_insight?: string | null
-          project_id?: string | null
+          project_id?: string
           raw_output?: Json | null
           run_id?: string | null
           source_name?: string | null
@@ -1588,7 +1648,7 @@ export type Database = {
           news_item_id: string | null
           pipeline_failed_reason: string | null
           pipeline_next_retry_at: string | null
-          project_id: string | null
+          project_id: string
           publish_failed_reason: string | null
           published_at: string | null
           quality_score: Json | null
@@ -1638,7 +1698,7 @@ export type Database = {
           news_item_id?: string | null
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
-          project_id?: string | null
+          project_id: string
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null
@@ -1688,7 +1748,7 @@ export type Database = {
           news_item_id?: string | null
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
-          project_id?: string | null
+          project_id?: string
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null
@@ -2490,6 +2550,10 @@ export type Database = {
           destination_url: string | null
           external_id: string
           generated_by: string | null
+          hero_image_prompt: string | null
+          hero_image_qa: Json | null
+          hero_image_status: string | null
+          hero_image_url: string | null
           id: string
           meta: Json | null
           model: string | null
@@ -2522,6 +2586,10 @@ export type Database = {
           destination_url?: string | null
           external_id: string
           generated_by?: string | null
+          hero_image_prompt?: string | null
+          hero_image_qa?: Json | null
+          hero_image_status?: string | null
+          hero_image_url?: string | null
           id?: string
           meta?: Json | null
           model?: string | null
@@ -2554,6 +2622,10 @@ export type Database = {
           destination_url?: string | null
           external_id?: string
           generated_by?: string | null
+          hero_image_prompt?: string | null
+          hero_image_qa?: Json | null
+          hero_image_status?: string | null
+          hero_image_url?: string | null
           id?: string
           meta?: Json | null
           model?: string | null
@@ -2656,9 +2728,11 @@ export type Database = {
           last_error: string | null
           lease_until: string | null
           max_attempts: number
+          policy_class: string | null
           project_id: string
           started_at: string | null
           status: string
+          steps_snapshot: Json | null
           workflow_id: string | null
         }[]
         SetofOptions: {
@@ -2678,6 +2752,7 @@ export type Database = {
           schedule: string
         }[]
       }
+      omnira_applied_migrations: { Args: never; Returns: string[] }
     }
     Enums: {
       [_ in never]: never

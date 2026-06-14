@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const db = createAdminClient()
   const { data: row, error: loadErr } = await db
     .from('website_content')
-    .select('id, status, destination_key, payload')
+    .select('id, status, destination_key, payload, hero_image_url')
     .eq('id', params.id)
     .maybeSingle()
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 })
@@ -70,8 +70,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   // ── Approve — publish via the existing mechanism only ──────────────────────
+  // MVP Commit 5: thread the operator-managed hero_image_url column into the
+  // publish payload. The column is the live source of truth (set by Commit 3's
+  // generateHeroImage()); the payload jsonb captured at generation time does
+  // not yet have it. Sending null on first publish is correct (the destination
+  // CMS clears the field per its three-way semantics). Sending a URL on
+  // re-publish updates the destination row to point at the current Supabase
+  // hero. No other field is touched.
   const destinationKey = (row.destination_key as string) ?? 'the-prompt'
-  const payload: PublishPayload = { ...(row.payload as unknown as PublishPayload), published_at: nowIso }
+  const payload: PublishPayload = {
+    ...(row.payload as unknown as PublishPayload),
+    hero_image_url: (row.hero_image_url as string | null) ?? null,
+    published_at: nowIso,
+  }
 
   try {
     const result = await publishArticle(destinationKey, payload)

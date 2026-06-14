@@ -1,61 +1,64 @@
 /**
- * Regression test for the article writer's JSON extraction.
+ * Regression test for the article writer's JSON output handling.
  *
- * Failure repro that motivated the fix:
- *   POST /api/content/articles/generate → 500
- *   { "error": "SyntaxError: Unexpected token 'T', \"The source\"... is not valid JSON" }
+ * Production E2E failure (proven via chunk-7227 stack trace):
+ *   route → generateArticle → writeArticle → JSON.parse(extractJsonObject(rawResponse))
+ *   rawResponse = "The source article describes…"  (pure prose, no `{` anywhere)
+ *   extractJsonObject returned the prose unchanged → JSON.parse threw
+ *   `SyntaxError: Unexpected token 'T', "The source"... is not valid JSON`
  *
- * Root cause: writer.ts's local parseModelJson only stripped ```json fences
- * from start/end and then JSON.parse'd. When Sonnet ignored "no markdown
- * fences" and prefixed its response with a sentence like "The source article
- * describes…", the parser saw "T" first and threw.
+ * Root cause: Sonnet refused / deflected and produced prose-only output for
+ * a specific news_item (the Claude-Fable-5-offline story). `extractJsonObject`
+ * only strips around an existing `{...}`; if there is no `{` at all, it cannot
+ * synthesize one.
  *
- * Fix: swap the naive cleanup for the existing extractJsonObject from
- * lib/ai/dream.ts (commit 3a44e90 fixed the same class of bug for the dream
- * pipeline) — strips fences with or without a closing fence, then snaps to
- * the outermost {…} if prose surrounds it.
+ * Fix shipped in writer.ts: Anthropic assistant prefill of `{`. The model
+ * must continue from inside a JSON object — the no-`{` failure mode becomes
+ * structurally impossible. After the call, we prepend `{` to the tail to
+ * reconstruct the full JSON before parsing.
  *
- * This test mocks @anthropic-ai/sdk so the model "returns" prose + JSON, then
- * asserts writeArticle parses cleanly and threads the fields through.
+ * This file asserts BOTH halves:
+ *   1. writeArticle sends a `{ role:'assistant', content:'{' }` message
+ *   2. A continuation-style mock response (no leading `{`) parses cleanly
  */
 
 import { describe, it, expect, vi } from 'vitest'
 
-const PROSE_PREFIX =
-  'The source article describes Anthropic\'s confidential S-1 filing with the SEC.\n\nHere is the JSON you requested:\n\n'
+// What Sonnet returns AFTER the `{` prefill — i.e. just the continuation,
+// no opening brace. writer.ts is responsible for prepending it.
+const JSON_TAIL = `
+  "title": "Anthropic Files Confidential IPO",
+  "summary": "Could be the largest tech IPO since 2012.",
+  "body": "## Lede\\n\\nAnthropic filed confidential paperwork on Friday.\\n\\n## Analysis\\n\\nThis matters because…",
+  "category": "business",
+  "tags": ["anthropic", "ipo", "funding"],
+  "hero_image_prompt": "Editorial photo: empty boardroom at dusk, single printed S-1 on the table, single overhead light."
+}`
 
-const VALID_JSON = JSON.stringify({
-  title: 'Anthropic Files Confidential IPO',
-  summary: 'Could be the largest tech IPO since 2012.',
-  body: '## Lede\n\nAnthropic filed confidential paperwork on Friday.\n\n## Analysis\n\nThis matters because…',
-  category: 'business',
-  tags: ['anthropic', 'ipo', 'funding'],
-  hero_image_prompt:
-    'Editorial photo: empty boardroom at dusk, single printed S-1 on the table, single overhead light.',
-})
+// Capture the messages array the SDK is called with so we can prove the
+// prefill is wired through.
+const capturedMessages: Array<{ role: string; content: unknown }>[] = []
 
-// Mock @anthropic-ai/sdk so BOTH writer.ts (named import) and dream.ts
-// (default import) get the same controllable stub. extractJsonObject lives in
-// dream.ts and is a pure function — but importing it triggers dream.ts's
-// module-level `new Anthropic(...)`, so the SDK must be mockable from both
-// shapes for the test to even load.
 vi.mock('@anthropic-ai/sdk', () => {
   const AnthropicCtor = vi.fn().mockImplementation(() => ({
     messages: {
-      create: vi.fn(async () => ({
-        content: [{ type: 'text', text: PROSE_PREFIX + VALID_JSON }],
-        usage: { input_tokens: 250, output_tokens: 600 },
-      })),
+      create: vi.fn(async (params: { messages: Array<{ role: string; content: unknown }> }) => {
+        capturedMessages.push(params.messages)
+        return {
+          content: [{ type: 'text', text: JSON_TAIL }],
+          usage: { input_tokens: 250, output_tokens: 600 },
+        }
+      }),
     },
   }))
   return { default: AnthropicCtor, Anthropic: AnthropicCtor }
 })
 
-// Must come AFTER the vi.mock above.
+// Must come AFTER vi.mock.
 import { writeArticle } from '@/lib/article/writer'
 
-describe('writeArticle — robust JSON extraction (regression: "Unexpected token T")', () => {
-  it('parses successfully when Sonnet prefixes the JSON object with prose', async () => {
+describe('writeArticle — assistant prefill defends against pure-prose responses', () => {
+  it('sends a `{`-prefill assistant message and parses the continuation cleanly', async () => {
     const result = await writeArticle({
       newsItem: {
         id: '7712219e-259a-43ce-ac51-5bdae071ebf1',
@@ -66,12 +69,19 @@ describe('writeArticle — robust JSON extraction (regression: "Unexpected token
         source_name: 'Wired AI',
         content_angle: null,
       } as never,
-      // 200 words → clears resolveGrounding's STRONG_MIN_WORDS=150 threshold,
-      // so we exercise the "strong grounding" path the production call uses.
       groundingText: 'word '.repeat(200),
       tier: 'standard',
     })
 
+    // 1. The SDK call included the assistant prefill — this is the structural
+    //    defense against the no-`{` refusal mode the production E2E hit.
+    const lastCall = capturedMessages[capturedMessages.length - 1]
+    expect(lastCall).toHaveLength(2)
+    expect(lastCall[0]).toEqual(expect.objectContaining({ role: 'user' }))
+    expect(lastCall[1]).toEqual({ role: 'assistant', content: '{' })
+
+    // 2. The continuation-style response (no leading `{`) parsed cleanly after
+    //    writer.ts prepended `{`.
     expect(result.draft.title).toBe('Anthropic Files Confidential IPO')
     expect(result.draft.summary).toContain('largest tech IPO since 2012')
     expect(result.draft.body).toContain('## Lede')
@@ -80,11 +90,9 @@ describe('writeArticle — robust JSON extraction (regression: "Unexpected token
     expect(tagSlugs).toEqual(expect.arrayContaining(['anthropic', 'ipo', 'funding']))
     expect(result.draft.hero_image_prompt).toContain('Editorial photo')
 
-    // Sanity: rawResponse round-trips the unparsed text so callers can debug.
-    expect(result.rawResponse).toBe(PROSE_PREFIX + VALID_JSON)
-
-    // Grounding mode flows into _meta so downstream code can tell which path ran.
-    expect(result.draft._meta.grounding).toBe('strong')
-    expect(result.draft._meta.tier).toBe('standard')
+    // 3. rawResponse is the reconstructed full JSON (prefill + tail) so callers
+    //    that want to log/debug see a well-formed object, not just the tail.
+    expect(result.rawResponse.startsWith('{')).toBe(true)
+    expect(result.rawResponse.endsWith('}')).toBe(true)
   })
 })

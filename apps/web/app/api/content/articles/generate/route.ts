@@ -87,35 +87,8 @@ export async function POST(request: Request) {
       meta: generated.draft._meta,
     })
   } catch (e) {
-    // ── TEMPORARY INSTRUMENTATION (revert after the diagnosis) ──────────────
-    // The recurring `SyntaxError: Unexpected token 'T', "The source"...`
-    // persisted after lib/article/writer.ts swapped to extractJsonObject in
-    // commit a66de97. The route's prior response shape only included
-    // `${name}: ${message}`, so we cannot tell WHICH JSON.parse is throwing —
-    // ours, the Anthropic SDK's response.json(), Hermes', or something else.
-    // This block expands the failure payload (and stderr) with the constructor
-    // name, full stack, and (if a wrapped error chain exists) the cause chain.
-    // No success path is touched.
-    if (e instanceof Error) {
-      console.error('[debug:articles-generate] full error:', e)
-      if (e.cause) console.error('[debug:articles-generate] cause:', e.cause)
-    }
-    const causeChain: string[] = []
-    let cur: unknown = e instanceof Error ? e.cause : undefined
-    while (cur instanceof Error && causeChain.length < 5) {
-      causeChain.push(`${cur.name}: ${cur.message}`)
-      cur = (cur as { cause?: unknown }).cause
-    }
     return NextResponse.json(
-      {
-        ok: false,
-        error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
-        _debug: {
-          ctor: e?.constructor?.name ?? null,
-          stack: e instanceof Error ? e.stack : null,
-          causeChain: causeChain.length ? causeChain : null,
-        },
-      },
+      { ok: false, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) },
       { status: 500 },
     )
   }

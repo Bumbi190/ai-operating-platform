@@ -97,10 +97,18 @@ export async function writeArticle(input: ArticleWriterInput): Promise<WriteArti
     model,
     max_tokens: maxTokens,
     system: ARTICLE_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(input, grounding) }],
+    // Assistant prefill of `{` forces Sonnet's response to continue from
+    // inside a JSON object — structurally rules out the prose-only refusal
+    // mode that caused the production E2E to throw `Unexpected token 'T'`
+    // (proven via chunk-7227 trace; the bug was real prose with no `{`).
+    messages: [
+      { role: 'user', content: buildUserPrompt(input, grounding) },
+      { role: 'assistant', content: '{' },
+    ],
   })
 
-  const rawResponse = response.content[0]?.type === 'text' ? response.content[0].text : ''
+  const tail = response.content[0]?.type === 'text' ? response.content[0].text : ''
+  const rawResponse = '{' + tail
   const parsed = parseModelJson(rawResponse)
 
   const title = typeof parsed.title === 'string' ? parsed.title.trim() : ''

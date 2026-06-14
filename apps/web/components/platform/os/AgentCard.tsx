@@ -45,7 +45,8 @@ export function AgentCard({
   className?: string
 }) {
   const color = agent.color ?? '#818cf8'
-  const status = STATUS_TONE[agent.status]
+  // Defensive fallback: unknown agent status degrades gracefully instead of undefined.
+  const status = STATUS_TONE[agent.status] ?? { label: 'Okänd', tone: 'amber' as const }
   const isActive = agent.status === 'active' || agent.status === 'reasoning'
 
   return (

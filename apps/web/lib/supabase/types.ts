@@ -15,7 +15,18 @@ import type { Database } from './database.types'
 export type { Database }
 
 // ─── App-specific unions (NOT DB-generated) — kept verbatim ──────────────────
-export type RunStatus = 'pending' | 'running' | 'done' | 'failed'
+// Mirrors public.runs.status CHECK (see migration 20260617_h1p4_pr2_run_rejected_status):
+//   awaiting_approval = completed steps, blocked on human approval (H1.P4 gate, flag-gated)
+//   rejected          = approval rejected, terminal (business decision, NOT a tech failure)
+//   cancelled         = cooperative cancel (H1.P5)
+export type RunStatus =
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'failed'
+  | 'awaiting_approval'
+  | 'cancelled'
+  | 'rejected'
 export type OutputType = 'text' | 'pdf' | 'image' | 'json'
 export type WorkflowTrigger = 'manual' | 'cron' | 'webhook'
 export type LogRole = 'user' | 'assistant' | 'system' | 'tool'

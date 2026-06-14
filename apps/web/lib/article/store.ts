@@ -11,6 +11,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { toJson } from '@/lib/supabase/json'
+import type { Json } from '@/lib/supabase/database.types'
 import type { GeneratedArticle } from './index'
 
 /** The Prompt's Omnira project. Articles + reels share this project; A/B
@@ -56,6 +57,59 @@ export async function saveGeneratedArticle(
     throw new Error(`[website_content] System A project '${SYSTEM_A_PROJECT_SLUG}' not found`)
   }
 
+  // ── Hero image workflow state (MVP Phase 1) ────────────────────────────────
+  // Preservation rule: any NON-NULL hero_image_status means an operator workflow
+  // is in progress, complete, or has produced artifacts worth keeping (a ready
+  // image, a failed-attempt context, a QA report). Re-generation MUST NOT clobber
+  // that state, or a regenerated article would wipe a previously approved hero.
+  //
+  // Otherwise (new article — no existing row — OR existing row with NULL status),
+  // we INITIALIZE: clear url/qa, write the freshly generated prompt, and set
+  // status='pending' to signal the operator that a hero is now expected.
+  //
+  // Read-then-write is not atomic w.r.t. concurrent writers, but the only path
+  // that writes hero fields today is this function plus the operator endpoint
+  // (lands in Commit 4); article re-generation is single-threaded per
+  // external_id (gated by cron + manual trigger). Race acceptable for MVP.
+  const existingHeroQuery = await db
+    .from('website_content')
+    .select('hero_image_url, hero_image_prompt, hero_image_status, hero_image_qa')
+    .eq('external_id', payload.external_id)
+    .maybeSingle()
+  const existingHero = existingHeroQuery.data as
+    | {
+        hero_image_url: string | null
+        hero_image_prompt: string | null
+        hero_image_status: string | null
+        hero_image_qa: Json | null
+      }
+    | null
+
+  const draftHeroPrompt =
+    typeof draft.hero_image_prompt === 'string' && draft.hero_image_prompt.trim()
+      ? draft.hero_image_prompt
+      : null
+
+  const heroFields: {
+    hero_image_url: string | null
+    hero_image_prompt: string | null
+    hero_image_status: string
+    hero_image_qa: Json | null
+  } =
+    existingHero && existingHero.hero_image_status != null
+      ? {
+          hero_image_url:    existingHero.hero_image_url,
+          hero_image_prompt: existingHero.hero_image_prompt,
+          hero_image_status: existingHero.hero_image_status,
+          hero_image_qa:     existingHero.hero_image_qa,
+        }
+      : {
+          hero_image_url:    null,
+          hero_image_prompt: draftHeroPrompt,
+          hero_image_status: 'pending',
+          hero_image_qa:     null,
+        }
+
   const meta = draft._meta
 
   const row = {
@@ -76,6 +130,7 @@ export async function saveGeneratedArticle(
     status:        'pending_review' as const,  // never published here
     status_reason: 'Generated; awaiting Atlas review',
     updated_at:    new Date().toISOString(),
+    ...heroFields,
   }
 
   const { data, error } = await db

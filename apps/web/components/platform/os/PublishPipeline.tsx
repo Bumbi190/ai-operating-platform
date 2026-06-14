@@ -26,6 +26,9 @@ const STATUS_META = {
   published: { label: 'Published', tone: 'archived'as const, color: '#34d399' },
 }
 
+// Defensive fallback for any status outside the known set — degrade gracefully.
+const UNKNOWN_META = { label: 'Okänd', tone: 'passive' as const, color: 'rgba(255,255,255,0.5)' }
+
 function timeUntil(iso: string): string {
   const t = new Date(iso).getTime()
   const dSec = Math.floor((t - Date.now()) / 1000)
@@ -62,7 +65,7 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
 
       <div className="space-y-5">
         {items.map((item, i) => {
-          const meta = STATUS_META[item.status]
+          const meta = STATUS_META[item.status as keyof typeof STATUS_META] ?? UNKNOWN_META
           const isLive = item.status === 'rendering' || item.status === 'queued'
           return (
             <div key={item.id} className="relative animate-fade-in-up" style={{ animationDelay: `${i * 80}ms`, animationFillMode: 'both' }}>

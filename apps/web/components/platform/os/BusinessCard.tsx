@@ -36,7 +36,8 @@ function ago(iso: string | null): string | null {
 }
 
 export function BusinessCard({ business, delay = 0 }: { business: BusinessSnapshot; delay?: number }) {
-  const meta = STATUS_META[business.status]
+  // Defensive fallback: unknown business status degrades gracefully instead of undefined.
+  const meta = STATUS_META[business.status] ?? { label: 'Okänd', color: '#71717a', tone: 'zinc' as const }
   const health = businessHealth(business)
   const hasAttention = business.pendingApprovals > 0 || business.failedRuns > 0
   const lastActive = ago(business.lastActivityAt)

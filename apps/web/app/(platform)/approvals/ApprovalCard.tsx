@@ -48,6 +48,11 @@ const STATUS_META = {
   revised:  { label: 'Revidering',           tone: 'indigo',  color: '#60a5fa', icon: RefreshCw,   glow: '' },
 } as const
 
+// Defensive fallback: the approvals CHECK also allows 'returned'/'needs_input'
+// (marketing flow) — values not in the map above. Degrade gracefully instead of
+// dereferencing undefined.
+const UNKNOWN_META = { label: 'Okänd', tone: 'amber', color: '#a1a1aa', icon: Clock, glow: '' } as const
+
 export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; delay?: number }) {
   const [expanded, setExpanded] = useState(approval.status === 'pending')
   const [notes, setNotes] = useState(approval.reviewer_notes ?? '')
@@ -56,7 +61,7 @@ export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; dela
   const [evalLoading, setEvalLoading] = useState(false)
   const router = useRouter()
 
-  const meta = STATUS_META[approval.status]
+  const meta = STATUS_META[approval.status as keyof typeof STATUS_META] ?? UNKNOWN_META
   const isPending = approval.status === 'pending'
 
   // Atlas selection awareness — an expanded card IS the operator's selection.

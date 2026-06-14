@@ -38,7 +38,8 @@ export function WorkflowFlow({
       <div className="flex items-stretch gap-0 min-w-max py-3 px-1">
         {nodes.map((node, i) => {
           const Icon = node.icon
-          const style = STATUS_STYLES[node.status]
+          // Defensive fallback: unknown node status degrades to the neutral "queued" style.
+          const style = STATUS_STYLES[node.status] ?? STATUS_STYLES.queued
           const isLast = i === nodes.length - 1
           const isActiveNode = node.status === 'active'
           const nextNode = nodes[i + 1]

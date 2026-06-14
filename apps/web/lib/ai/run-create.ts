@@ -17,6 +17,7 @@ export interface WorkflowForRun {
   id: string
   project_id: string
   steps: Json | null
+  side_effect_class?: string | null
 }
 
 export interface AgentRunInsert {
@@ -26,6 +27,7 @@ export interface AgentRunInsert {
   input: Record<string, string>
   context: Record<string, never>
   steps_snapshot: Json | null
+  policy_class: string | null
 }
 
 /**
@@ -44,5 +46,8 @@ export function buildAgentRunInsert(
     input,
     context: {},
     steps_snapshot: workflow.steps ?? null,
+    // H1.P4 (PR1): snapshot the workflow's side-effect class at run creation so the
+    // PR2 policy gate decides against an immutable per-run value. INERT until PR2.
+    policy_class: workflow.side_effect_class ?? null,
   }
 }

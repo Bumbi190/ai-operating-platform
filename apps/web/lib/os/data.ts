@@ -100,7 +100,7 @@ export async function fetchDashboardSnapshot(
 
     admin
       .from('workflows')
-      .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at')
+      .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at, side_effect_class')
       .order('created_at', { ascending: true }),
 
     // Recent runs (with joins for the UI rows)

@@ -2338,6 +2338,7 @@ export type Database = {
           last_error: string | null
           lease_until: string | null
           max_attempts: number
+          policy_class: string | null
           project_id: string
           started_at: string | null
           status: string
@@ -2358,6 +2359,7 @@ export type Database = {
           last_error?: string | null
           lease_until?: string | null
           max_attempts?: number
+          policy_class?: string | null
           project_id: string
           started_at?: string | null
           status?: string
@@ -2378,6 +2380,7 @@ export type Database = {
           last_error?: string | null
           lease_until?: string | null
           max_attempts?: number
+          policy_class?: string | null
           project_id?: string
           started_at?: string | null
           status?: string
@@ -2594,6 +2597,7 @@ export type Database = {
           id: string
           name: string
           project_id: string
+          side_effect_class: string
           steps: Json
           trigger: string
         }
@@ -2605,6 +2609,7 @@ export type Database = {
           id?: string
           name: string
           project_id: string
+          side_effect_class?: string
           steps?: Json
           trigger?: string
         }
@@ -2616,6 +2621,7 @@ export type Database = {
           id?: string
           name?: string
           project_id?: string
+          side_effect_class?: string
           steps?: Json
           trigger?: string
         }

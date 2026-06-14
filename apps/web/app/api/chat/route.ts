@@ -943,7 +943,7 @@ async function executeTool(
 
     const { data: workflow } = await db
       .from('workflows')
-      .select('id, project_id, name, steps')
+      .select('id, project_id, name, steps, side_effect_class')
       .eq('id', workflow_id)
       .single()
 

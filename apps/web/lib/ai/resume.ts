@@ -35,7 +35,7 @@ export async function resumeRun(admin: SupabaseClient, runId: string): Promise<R
 
   const { data: run } = await db
     .from('runs')
-    .select('id, status, steps_snapshot, workflow_id, workflows(steps)')
+    .select('id, status, steps_snapshot, policy_class, workflow_id, workflows(steps, side_effect_class)')
     .eq('id', runId)
     .single()
 
@@ -48,6 +48,9 @@ export async function resumeRun(admin: SupabaseClient, runId: string): Promise<R
   // resumed execution uses immutable steps (a mid-run workflow edit can't change it).
   const wf = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
   const snapshot: Json | null = (run.steps_snapshot ?? wf?.steps ?? null) as Json | null
+  // H1.P4 (PR1): pin the policy class too, so a pre-PR1 run gets a class on resume and
+  // the PR2 gate decides against an immutable per-run value. INERT until PR2.
+  const policyClass: string | null = run.policy_class ?? wf?.side_effect_class ?? null
 
   // Conditional requeue: only flips failed → pending. A second concurrent resume sees
   // status already 'pending' and updates zero rows → no double execution.
@@ -62,6 +65,7 @@ export async function resumeRun(admin: SupabaseClient, runId: string): Promise<R
       claimed_at: null,
       lease_until: null,
       steps_snapshot: snapshot,
+      policy_class: policyClass,
     })
     .eq('id', runId)
     .eq('status', 'failed')

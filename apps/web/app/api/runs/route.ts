@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   // Verify workflow exists and belongs to the user
   const { data: workflow } = await anySupabase
     .from('workflows')
-    .select('id, project_id, name, steps')
+    .select('id, project_id, name, steps, side_effect_class')
     .eq('id', workflow_id)
     .single()
 

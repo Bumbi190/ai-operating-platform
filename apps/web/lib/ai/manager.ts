@@ -378,7 +378,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   async retryFailedRun(runId: string): Promise<string | null> {
     const { data: run } = await this.db
       .from('runs')
-      .select('workflow_id, project_id, input, kind, steps_snapshot, workflows(steps)')
+      .select('workflow_id, project_id, input, kind, steps_snapshot, policy_class, workflows(steps, side_effect_class)')
       .eq('id', runId)
       .single()
 
@@ -386,6 +386,8 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
 
     const wf = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
     const snapshot: Json | null = run.steps_snapshot ?? (wf as { steps?: Json } | null)?.steps ?? null
+    // H1.P4 (PR1): carry the policy class onto the new run (immutable per-run). INERT until PR2.
+    const policyClass: string | null = run.policy_class ?? (wf as { side_effect_class?: string } | null)?.side_effect_class ?? null
 
     // H1.P3: the retry is a NEW run (preserves "fresh run" semantics) but created as a
     // durable `pending` run carrying the steps snapshot — NOT `running`. The pg_cron
@@ -402,6 +404,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
         input: run.input ?? {},
         context: {},
         steps_snapshot: snapshot,
+        policy_class: policyClass,
       })
       .select('id')
       .single()

@@ -35,7 +35,7 @@ const stepsJson = [{ order: 0, name: 's0', agent_id: 'a', input_template: '', ou
 describe('resumeRun — durable requeue (#H1.P3)', () => {
   it('requeues a failed run to pending with a fresh attempt budget and cleared lease fields', async () => {
     const { client, updates } = fakeAdmin({
-      run: { id: 'r', status: 'failed', steps_snapshot: null, workflow_id: 'w', workflows: { steps: stepsJson } },
+      run: { id: 'r', status: 'failed', steps_snapshot: null, policy_class: null, workflow_id: 'w', workflows: { steps: stepsJson, side_effect_class: 'approval_required' } },
       updateRows: [{ id: 'r' }],
     })
     const res = await resumeRun(client, 'r')
@@ -54,6 +54,8 @@ describe('resumeRun — durable requeue (#H1.P3)', () => {
     expect('max_attempts' in updates[0]).toBe(false)
     // backfills the snapshot from the workflow when the run had none
     expect(updates[0].steps_snapshot).toEqual(stepsJson)
+    // H1.P4 (PR1): backfills policy_class from the workflow's side_effect_class
+    expect(updates[0].policy_class).toBe('approval_required')
   })
 
   it('rejects resuming a done run (no requeue, no execution)', async () => {
@@ -99,8 +101,11 @@ describe('resumeRun — durable requeue (#H1.P3)', () => {
 })
 
 describe('buildAgentRunInsert — snapshot at enqueue (#H1.P3)', () => {
-  it('captures the workflow steps as steps_snapshot and enqueues as pending', () => {
-    const payload = buildAgentRunInsert({ id: 'w', project_id: 'p', steps: stepsJson }, { topic: 'AI' })
+  it('captures steps_snapshot + policy_class and enqueues as pending', () => {
+    const payload = buildAgentRunInsert(
+      { id: 'w', project_id: 'p', steps: stepsJson, side_effect_class: 'non_destructive' },
+      { topic: 'AI' },
+    )
     expect(payload).toEqual({
       workflow_id: 'w',
       project_id: 'p',
@@ -108,12 +113,14 @@ describe('buildAgentRunInsert — snapshot at enqueue (#H1.P3)', () => {
       input: { topic: 'AI' },
       context: {},
       steps_snapshot: stepsJson,
+      policy_class: 'non_destructive',
     })
   })
 
-  it('stores null snapshot when the workflow has no steps', () => {
+  it('stores null snapshot + null policy_class when the workflow has neither', () => {
     const payload = buildAgentRunInsert({ id: 'w', project_id: 'p', steps: null }, {})
     expect(payload.steps_snapshot).toBeNull()
+    expect(payload.policy_class).toBeNull()
     expect(payload.status).toBe('pending')
   })
 })

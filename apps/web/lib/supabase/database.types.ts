@@ -2550,6 +2550,7 @@ export type Database = {
           destination_url: string | null
           external_id: string
           generated_by: string | null
+          hero_image_brief: Json | null
           hero_image_prompt: string | null
           hero_image_qa: Json | null
           hero_image_status: string | null
@@ -2586,6 +2587,7 @@ export type Database = {
           destination_url?: string | null
           external_id: string
           generated_by?: string | null
+          hero_image_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
           hero_image_status?: string | null
@@ -2622,6 +2624,7 @@ export type Database = {
           destination_url?: string | null
           external_id?: string
           generated_by?: string | null
+          hero_image_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
           hero_image_status?: string | null

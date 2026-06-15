@@ -23,6 +23,7 @@ type FakeOpts = {
   existingApproval?: boolean
   lookupErrorTables?: string[]      // tables whose select resolves to a DB error
   insertErrorTables?: string[]      // tables whose insert resolves to a DB error
+  uniqueViolationTables?: string[]  // tables whose insert resolves to a 23505 unique violation
 }
 
 /**
@@ -72,7 +73,11 @@ function makeFakeDb(opts: FakeOpts) {
       maybeSingle: () => Promise.resolve(resolve(state)),
       insert: (row: unknown) => {
         (inserts[table] ??= []).push(row)
-        const error = opts.insertErrorTables?.includes(table) ? { message: `simulated ${table} insert failure` } : null
+        const error = opts.uniqueViolationTables?.includes(table)
+          ? { code: '23505', message: `duplicate key value violates unique constraint on ${table}` }
+          : opts.insertErrorTables?.includes(table)
+            ? { message: `simulated ${table} insert failure` }
+            : null
         return Promise.resolve({ data: null, error })
       },
       update: (row: unknown) => { (updates[table] ??= []).push(row); return { eq: () => Promise.resolve({ data: null, error: null }) } },
@@ -101,23 +106,19 @@ describe('executeRunSteps — idempotent finalization (#1)', () => {
     expect(db._inserts.outputs).toHaveLength(1)
   })
 
-  it('skips the output insert when one already exists (crash + reaper re-entry)', async () => {
-    // Simulates: output was written, function died before drain set done, reaper
+  it('tolerates a 23505 unique-violation on re-entry (DB-enforced idempotency)', async () => {
+    // Simulates: output already written, function died before drain set done, reaper
     // requeued, re-claim sees all steps complete (startFromOrder past the last step).
-    const db = makeFakeDb({ agents: { a1: {} }, existingOutput: true })
-    await executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {
-      existingContext: { k0: 'already-done' },
-      startFromOrder: 1,
-    })
-    expect(db._inserts.outputs).toHaveLength(0)
-    expect(mockedRunStep).not.toHaveBeenCalled() // no steps re-run
-  })
-
-  it('throws (not "no output exists") when the existence lookup errors', async () => {
-    const db = makeFakeDb({ agents: { a1: {} }, lookupErrorTables: ['outputs'] })
+    // The re-insert now hits the outputs(run_id) partial unique index → 23505, the
+    // idempotent no-op: executeRunSteps must NOT throw and must not re-run steps.
+    const db = makeFakeDb({ agents: { a1: {} }, uniqueViolationTables: ['outputs'] })
     await expect(
-      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {}),
-    ).rejects.toThrow(/outputs lookup failed/)
+      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {
+        existingContext: { k0: 'already-done' },
+        startFromOrder: 1,
+      }),
+    ).resolves.toBeDefined()
+    expect(mockedRunStep).not.toHaveBeenCalled() // no steps re-run
   })
 
   it('throws when the output insert errors (so the run is not finalized empty)', async () => {

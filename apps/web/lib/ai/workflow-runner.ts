@@ -12,6 +12,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
+import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -65,12 +66,17 @@ export async function runSteps(
   }
 
   const lastKey = sortedSteps[sortedSteps.length - 1]?.output_key
-  await db.from('outputs').insert({
+  const { error: outputInsertErr } = await db.from('outputs').insert({
     run_id: runId, project_id: projectId,
     name: `Körning — ${new Date().toLocaleDateString('sv-SE')}`,
     type: 'text',
     content: lastKey ? context[lastKey] : '',
   })
+  // H1.P5: 23505 = output already exists for this run (idempotent re-entry). Any other
+  // error must surface so the run retries rather than finalizing with no deliverable.
+  if (outputInsertErr && !isDuplicateOutputError(outputInsertErr)) {
+    throw new Error(`outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
+  }
 }
 
 /**

@@ -14,6 +14,7 @@ import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { reportBug } from '@/lib/bugs/report'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
+import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -288,33 +289,21 @@ export async function executeRunSteps(
       try { JSON.parse(outputContent); outputType = 'json' } catch { /* text */ }
     }
 
-    // #1 (H1.P2): idempotent finalization. A crashed run can be reaped and re-claimed
-    // AFTER this output row was already written; computeCheckpoint then reports "all
-    // steps complete", pendingSteps is empty, and we'd reach here again. outputs.run_id
-    // is not unique, so without this guard the re-entry would insert a DUPLICATE
-    // deliverable (and, on the wrapper path, a duplicate approval). Create-once.
-    const { data: existingOutput, error: outputLookupErr } = await anyDb
-      .from('outputs').select('id').eq('run_id', runId).limit(1).maybeSingle()
-    // A failed lookup must NOT be read as "no output exists" — that would let a
-    // duplicate slip through, or let the caller mark the run done off a phantom miss.
-    if (outputLookupErr) {
-      throw new Error(`finalization: outputs lookup failed for run ${runId}: ${outputLookupErr.message}`)
-    }
-    if (!existingOutput) {
-      const { error: outputInsertErr } = await anyDb.from('outputs').insert({
-        run_id: runId,
-        project_id: projectId,
-        name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-        type: outputType,
-        content: outputContent ?? '',
-      })
-      // A silently-failed insert would let the drain mark the run done with no
-      // deliverable. Throw so the run is retried instead of finalized empty.
-      if (outputInsertErr) {
-        throw new Error(`finalization: outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
-      }
-    } else {
-      console.log(`[run ${runId}] Output finns redan — hoppar över dubblettinsert (idempotent finalization)`)
+    // #1 (H1.P2 → H1.P5 Commit 1): idempotent finalization, now DB-ENFORCED via the partial
+    // unique index on outputs(run_id). A re-entered run (reaper re-claim AFTER the deliverable
+    // was already written) cannot create a duplicate: we insert and treat a unique violation
+    // (SQLSTATE 23505) as the idempotent no-op — no read-then-write race window remains.
+    const { error: outputInsertErr } = await anyDb.from('outputs').insert({
+      run_id: runId,
+      project_id: projectId,
+      name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      type: outputType,
+      content: outputContent ?? '',
+    })
+    // 23505 → output already exists for this run (idempotent re-entry), fine. Any OTHER
+    // error must NOT be swallowed: throw so the run retries instead of finalizing empty.
+    if (outputInsertErr && !isDuplicateOutputError(outputInsertErr)) {
+      throw new Error(`finalization: outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
     }
 
     return { outputContent: outputContent ?? '', lastOutputKey, context }

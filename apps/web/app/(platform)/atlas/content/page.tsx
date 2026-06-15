@@ -14,6 +14,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { OSPage, ViewVisibleSync } from '@/components/platform/os'
 import { Newspaper, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { GenerateArticleDrawer, type NewsItemForPicker } from './GenerateArticleDrawer'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,6 +74,17 @@ export default async function ContentCenter() {
     [],
   )
 
+  // Picker data for the Generate Article drawer — most recent unworked news
+  // items. Same table the cron path resolves news_item_id from.
+  const newsItems = await safe<NewsItemForPicker[]>(
+    db.from('media_news_items')
+      .select('id, title, source_name, virality_score, created_at')
+      .eq('status', 'new')
+      .order('created_at', { ascending: false })
+      .limit(30),
+    [],
+  )
+
   const byStatus = (s: string) => rows.filter(r => r.status === s)
   const pendingCount = byStatus('pending_review').length
 
@@ -94,6 +106,9 @@ export default async function ContentCenter() {
             System A — Website Content · Atlas is the editorial system of record · website is destination-only
             {pendingCount > 0 && <span className="text-amber-400"> · {pendingCount} pending review</span>}
           </p>
+        </div>
+        <div className="ml-auto">
+          <GenerateArticleDrawer newsItems={newsItems} />
         </div>
       </header>
 

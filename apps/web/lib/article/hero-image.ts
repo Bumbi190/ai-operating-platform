@@ -35,6 +35,7 @@ import { withRetry } from '@/lib/media/retry'
 import { checkAutomationPaused } from '@/lib/media/safeguards'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logImageCost } from '@/lib/cost/track'
+import { runPhotoEditor, PHOTO_EDITOR_MODEL } from '@/lib/article/photo-editor'
 
 export type HeroImageResult =
   | { ok: true;  url: string; status: 'ready' }
@@ -44,9 +45,12 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
   const db = createAdminClient()
 
   // ── Load article row ──────────────────────────────────────────────────────
+  // payload jsonb is loaded so the Photo Editor Agent (Hero Image V2 shadow
+  // mode) can reach body, category, and tags — none of which are denormalized
+  // onto the website_content row.
   const { data: row, error: readError } = await db
     .from('website_content')
-    .select('id, project_id, title, summary, hero_image_prompt, hero_image_status')
+    .select('id, project_id, title, summary, hero_image_prompt, hero_image_status, payload')
     .eq('id', articleId)
     .maybeSingle()
 
@@ -63,6 +67,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     summary: string | null
     hero_image_prompt: string | null
     hero_image_status: string | null
+    payload: Record<string, unknown> | null
   }
 
   // ── Idempotency: refuse to re-fire if already in flight ───────────────────
@@ -92,6 +97,13 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     (article.summary && article.summary.trim()) ||
     headlineInput
 
+  // ── Shadow: Photo Editor Agent (Hero Image V2, Phase 1) ───────────────────
+  // Runs in PARALLEL with image generation. Editorial reasoning only — does
+  // NOT influence the rendered image. Brief failure is logged separately under
+  // [photo-editor] and never blocks image generation. Persists into the
+  // hero_editor_brief jsonb column with metadata { generated_at, model }.
+  const briefPromise = runEditorBriefShadow(db, article)
+
   // ── Generate + upload (with retry, mirroring step2's call pattern) ────────
   try {
     const ideogramUrl = await withRetry(
@@ -115,6 +127,10 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
         updated_at:        new Date().toISOString(),
       })
       .eq('id', articleId)
+
+    // Make sure the brief lands before the response so the operator sees it
+    // on /atlas/content/[id] on next reload. briefPromise never throws.
+    await briefPromise
 
     return { ok: true, url: publicUrl, status: 'ready' }
   } catch (err) {
@@ -141,6 +157,78 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
       },
     })
 
+    // Best-effort brief even when image generation failed — useful evidence
+    // during shadow eval. briefPromise never throws.
+    await briefPromise
+
     return { ok: false, url: null, status: 'failed', reason: msg }
+  }
+}
+
+/**
+ * Shadow-mode brief generation. Never throws — failures are logged separately
+ * under [photo-editor] so the shadow eval can quantify brief reliability vs
+ * image reliability independently.
+ */
+async function runEditorBriefShadow(
+  db: ReturnType<typeof createAdminClient>,
+  article: {
+    id: string
+    title: string | null
+    summary: string | null
+    payload: Record<string, unknown> | null
+  },
+): Promise<void> {
+  try {
+    const payload = article.payload ?? {}
+    const body =
+      typeof (payload as { body?: unknown }).body === 'string'
+        ? ((payload as { body: string }).body)
+        : null
+    const category =
+      typeof (payload as { category?: unknown }).category === 'string'
+        ? ((payload as { category: string }).category)
+        : typeof (payload as { category?: { slug?: unknown } }).category === 'object' &&
+          typeof (payload as { category: { slug?: unknown } }).category?.slug === 'string'
+        ? ((payload as { category: { slug: string } }).category.slug)
+        : null
+    const rawTags = (payload as { tags?: unknown }).tags
+    const tags: string[] = Array.isArray(rawTags)
+      ? rawTags
+          .map((t) =>
+            typeof t === 'string'
+              ? t
+              : t && typeof t === 'object' && typeof (t as { slug?: unknown }).slug === 'string'
+              ? (t as { slug: string }).slug
+              : t && typeof t === 'object' && typeof (t as { name?: unknown }).name === 'string'
+              ? (t as { name: string }).name
+              : '',
+          )
+          .filter(Boolean)
+      : []
+
+    const brief = await runPhotoEditor({
+      title: article.title ?? '',
+      summary: article.summary,
+      body,
+      category,
+      tags,
+    })
+
+    await db
+      .from('website_content')
+      .update({
+        hero_editor_brief: {
+          ...brief,
+          metadata: {
+            generated_at: new Date().toISOString(),
+            model: PHOTO_EDITOR_MODEL,
+          },
+        },
+      })
+      .eq('id', article.id)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[photo-editor] shadow brief failed for article=${article.id}: ${msg}`)
   }
 }

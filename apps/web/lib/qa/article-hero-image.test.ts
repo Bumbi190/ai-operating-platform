@@ -26,6 +26,17 @@ let ideogramShouldThrow: string | null = null
 let uploadShouldThrow: string | null = null
 let automationPause: { allowed: boolean; reason?: string } = { allowed: true }
 
+// Hero Image V2 (Commit C) shadow-mode capture surface.
+let editorCalls: Array<Record<string, unknown>> = []
+let editorShouldThrow: string | null = null
+let mockEditorBrief: Record<string, unknown> = {
+  story: 'Test story sentence.',
+  visual_metaphor: 'Test visual metaphor.',
+  shot: 'Test shot description anchored to a real subject.',
+  avoid: ['test cliche'],
+  editorial_style: 'Wired',
+}
+
 // ── Mocks (must come BEFORE the import of the module under test) ─────────────
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -84,6 +95,16 @@ vi.mock('@/lib/cost/track', () => ({
   logImageCost: async (count: number, provider: string, ctx: Record<string, unknown>) => {
     costCaptures.push({ count, provider, ctx })
   },
+  logLlmCost: async () => undefined,
+}))
+
+vi.mock('@/lib/article/photo-editor', () => ({
+  PHOTO_EDITOR_MODEL: 'claude-sonnet-4-6',
+  runPhotoEditor: async (input: Record<string, unknown>) => {
+    editorCalls.push(input)
+    if (editorShouldThrow) throw new Error(editorShouldThrow)
+    return mockEditorBrief
+  },
 }))
 
 // Must come AFTER all vi.mock calls so the mocks are what hero-image.ts loads.
@@ -98,13 +119,29 @@ function row(overrides: Record<string, unknown> = {}) {
     project_id: PROJECT_ID,
     title: 'AI agents now book your flights',
     summary: 'Travel-agent startups report bookings climbing 4x after agent integration.',
+    payload: {
+      body: 'Body excerpt for the photo editor agent to reason from.',
+      category: 'business',
+      tags: [{ slug: 'ai-agents', name: 'AI agents' }],
+    },
     hero_image_prompt: 'Editorial photo: empty travel agency office at dusk',
     hero_image_status: null,
     ...overrides,
   }
 }
 
-describe('generateHeroImage — MVP Commit 3', () => {
+// Hero Image V2 (Commit C): the row receives THREE updates on the happy path
+// — claim (generating), image finalize (ready), and the shadow brief. The
+// existing length assertions split the brief update out so the existing
+// behavior stays unambiguously assertable.
+function imageUpdates() {
+  return updateCaptures.filter((u) => !('hero_editor_brief' in u))
+}
+function briefUpdates() {
+  return updateCaptures.filter((u) => 'hero_editor_brief' in u)
+}
+
+describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   beforeEach(() => {
     storedRow = null
     updateCaptures = []
@@ -115,6 +152,15 @@ describe('generateHeroImage — MVP Commit 3', () => {
     ideogramShouldThrow = null
     uploadShouldThrow = null
     automationPause = { allowed: true }
+    editorCalls = []
+    editorShouldThrow = null
+    mockEditorBrief = {
+      story: 'Test story sentence.',
+      visual_metaphor: 'Test visual metaphor.',
+      shot: 'Test shot description anchored to a real subject.',
+      avoid: ['test cliche'],
+      editorial_style: 'Wired',
+    }
   })
 
   it('1. happy path: ready + url set, cost logged with articleId metadata, two updates (generating → ready)', async () => {
@@ -141,11 +187,12 @@ describe('generateHeroImage — MVP Commit 3', () => {
 
     expect(alertCaptures).toHaveLength(0)
 
-    // Two updates: claim (generating) then finalize (ready + url)
-    expect(updateCaptures).toHaveLength(2)
-    expect(updateCaptures[0].hero_image_status).toBe('generating')
-    expect(updateCaptures[1].hero_image_status).toBe('ready')
-    expect(updateCaptures[1].hero_image_url).toContain('media-assets/images/articles/')
+    // Two image updates: claim (generating) then finalize (ready + url)
+    const img = imageUpdates()
+    expect(img).toHaveLength(2)
+    expect(img[0].hero_image_status).toBe('generating')
+    expect(img[1].hero_image_status).toBe('ready')
+    expect(img[1].hero_image_url).toContain('media-assets/images/articles/')
   })
 
   it('2. idempotent: existing status=generating returns skipped, no Ideogram/upload/cost/alert', async () => {
@@ -213,10 +260,11 @@ describe('generateHeroImage — MVP Commit 3', () => {
     expect(alertCaptures[0].severity).toBe('warning')
     expect((alertCaptures[0].context as Record<string, unknown>).articleId).toBe(ARTICLE_ID)
 
-    // Two updates: claim (generating) then failure (failed)
-    expect(updateCaptures).toHaveLength(2)
-    expect(updateCaptures[1].hero_image_status).toBe('failed')
-    expect(updateCaptures[1]).not.toHaveProperty('hero_image_url')
+    // Two image updates: claim (generating) then failure (failed)
+    const img = imageUpdates()
+    expect(img).toHaveLength(2)
+    expect(img[1].hero_image_status).toBe('failed')
+    expect(img[1]).not.toHaveProperty('hero_image_url')
   })
 
   it('6. upload throws after Ideogram succeeds: status=failed, alert sent, cost NOT logged', async () => {
@@ -234,7 +282,8 @@ describe('generateHeroImage — MVP Commit 3', () => {
     // Cost is logged AFTER successful upload, so a failed upload should not log spend.
     expect(costCaptures).toHaveLength(0)
     expect(alertCaptures).toHaveLength(1)
-    expect(updateCaptures[1].hero_image_status).toBe('failed')
+    const img = imageUpdates()
+    expect(img[1].hero_image_status).toBe('failed')
   })
 
   it('7. prompt fallback hierarchy: prompt → summary → title', async () => {
@@ -286,5 +335,76 @@ describe('generateHeroImage — MVP Commit 3', () => {
     await generateHeroImage(ARTICLE_ID)
     expect(ideogramCalls[0].headline).toBe('AI news brief')
     expect(ideogramCalls[0].body).toBe('AI news brief')
+  })
+
+  // ── Hero Image V2 — shadow integration tests ──────────────────────────────
+
+  it('8. shadow: runPhotoEditor receives body/category/tags from payload', async () => {
+    storedRow = row()
+    await generateHeroImage(ARTICLE_ID)
+
+    expect(editorCalls).toHaveLength(1)
+    expect(editorCalls[0].title).toBe('AI agents now book your flights')
+    expect(editorCalls[0].summary).toContain('Travel-agent startups')
+    expect(editorCalls[0].body).toBe('Body excerpt for the photo editor agent to reason from.')
+    expect(editorCalls[0].category).toBe('business')
+    expect(editorCalls[0].tags).toEqual(['ai-agents'])
+  })
+
+  it('9. shadow: brief is persisted into hero_editor_brief with metadata { generated_at, model }', async () => {
+    storedRow = row()
+    await generateHeroImage(ARTICLE_ID)
+
+    const briefs = briefUpdates()
+    expect(briefs).toHaveLength(1)
+    const brief = briefs[0].hero_editor_brief as Record<string, unknown>
+    expect(brief.story).toBe('Test story sentence.')
+    expect(brief.visual_metaphor).toBe('Test visual metaphor.')
+    expect(brief.shot).toContain('anchored to a real subject')
+    expect(brief.avoid).toEqual(['test cliche'])
+    expect(brief.editorial_style).toBe('Wired')
+    const meta = brief.metadata as Record<string, unknown>
+    expect(typeof meta.generated_at).toBe('string')
+    expect(meta.model).toBe('claude-sonnet-4-6')
+  })
+
+  it('10. shadow: brief generation failure does NOT block image generation', async () => {
+    storedRow = row()
+    editorShouldThrow = 'Anthropic 503 on the editor brief'
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    // Image flow STILL succeeds end-to-end despite the brief failure.
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.status).toBe('ready')
+      expect(result.url).toContain('media-assets/images/articles/')
+    }
+    expect(ideogramCalls).toHaveLength(1)
+    expect(uploadCalls).toHaveLength(1)
+
+    // No brief update persisted — the only updates are the image flow's two.
+    expect(briefUpdates()).toHaveLength(0)
+    expect(imageUpdates()).toHaveLength(2)
+  })
+
+  it('11. shadow: brief is attempted even when image generation fails', async () => {
+    storedRow = row()
+    ideogramShouldThrow = 'Ideogram outage'
+    await generateHeroImage(ARTICLE_ID)
+
+    expect(editorCalls).toHaveLength(1)
+    expect(briefUpdates()).toHaveLength(1) // brief lands even though image failed
+    const img = imageUpdates()
+    expect(img[1].hero_image_status).toBe('failed')
+  })
+
+  it('12. shadow: paused automation skips both image AND editor brief', async () => {
+    storedRow = row()
+    automationPause = { allowed: false, reason: 'Automation paused' }
+    await generateHeroImage(ARTICLE_ID)
+
+    expect(ideogramCalls).toHaveLength(0)
+    expect(editorCalls).toHaveLength(0)
+    expect(briefUpdates()).toHaveLength(0)
   })
 })

@@ -232,33 +232,45 @@ async def fetch_competitors() -> CompetitorResult:
     result = CompetitorResult(fetched_at=datetime.now(timezone.utc).isoformat())
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-extensions",
+            ],
         )
-
-        pages = await asyncio.gather(*[context.new_page() for _ in range(4)])
-
-        # Block images/media for speed
-        for page in pages:
-            await page.route(
-                "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf,mp4,mp3}",
-                lambda route: route.abort(),
+        try:
+            context = await browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
             )
 
-        yt, tldr, rundown, bites = await asyncio.gather(
-            _fetch_youtube(pages[0]),
-            _fetch_tldr_ai(pages[1]),
-            _fetch_rundown(pages[2]),
-            _fetch_bens_bites(pages[3]),
-        )
+            pages = await asyncio.gather(*[context.new_page() for _ in range(4)])
 
-        await browser.close()
+            # Block images/media for speed
+            for page in pages:
+                await page.route(
+                    "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf,mp4,mp3}",
+                    lambda route: route.abort(),
+                )
+
+            yt, tldr, rundown, bites = await asyncio.gather(
+                _fetch_youtube(pages[0]),
+                _fetch_tldr_ai(pages[1]),
+                _fetch_rundown(pages[2]),
+                _fetch_bens_bites(pages[3]),
+            )
+        finally:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
     all_posts = yt + tldr + rundown + bites
     top_hooks, trending_topics, pattern_summary = _analyse_patterns(all_posts)

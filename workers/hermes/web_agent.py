@@ -17,6 +17,25 @@ SCREEN_WIDTH  = 1440
 SCREEN_HEIGHT = 900
 MODEL_ID      = "gemini-2.5-computer-use-preview-10-2025"
 
+# Keep screenshot bytes in conversation history for only the most recent N turns.
+# A long autonomous run can take 25–30 turns; holding every full-page PNG in RAM
+# simultaneously is the main per-run memory growth on a 512MB instance.
+KEEP_SCREENSHOTS = 3
+
+# Memory-lean Chromium launch flags for small containers (Render Free = 512MB).
+# --disable-dev-shm-usage is the critical one: without it Chromium uses /dev/shm
+# (often tiny in containers) and can crash or balloon. The rest trim baseline RSS.
+CHROMIUM_ARGS = [
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--mute-audio",
+    "--no-first-run",
+]
+
 
 class WebAgent:
     def __init__(self, api_key: str):
@@ -113,6 +132,32 @@ class WebAgent:
             )
         return responses, screenshot
 
+    # ── History pruning ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _prune_history(history: list, keep: int = KEEP_SCREENSHOTS) -> None:
+        """Bound memory: keep screenshot bytes only for the most recent `keep`
+        function-response turns. Older turns keep their textual response (url +
+        any data) but drop the heavy PNG blob, so history doesn't grow to hold
+        25–30 full screenshots in RAM at once. Best-effort: never raises into the
+        run loop, so a pruning hiccup can't break a request.
+        """
+        if keep <= 0:
+            return
+        fr_indices = [
+            i for i, c in enumerate(history)
+            if getattr(c, "role", None) == "user"
+            and any(getattr(p, "function_response", None) for p in (c.parts or []))
+        ]
+        for i in fr_indices[:-keep]:
+            for part in history[i].parts:
+                try:
+                    fr = getattr(part, "function_response", None)
+                    if fr is not None and getattr(fr, "parts", None):
+                        fr.parts = []  # drop screenshot blob, keep name/id/response
+                except Exception:
+                    pass
+
     # ── Main run loop ─────────────────────────────────────────────────────────
 
     async def run(self, prompt: str, max_turns: int = 25) -> str:
@@ -123,80 +168,92 @@ class WebAgent:
         final_response = "Agent finished without a final summary."
 
         async with async_playwright() as p:
-            self.browser = await p.chromium.launch(headless=True)
-            self.context = await self.browser.new_context(
-                viewport={"width": SCREEN_WIDTH, "height": SCREEN_HEIGHT},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
+            self.browser = await p.chromium.launch(
+                headless=True,
+                args=CHROMIUM_ARGS,
             )
-            self.page = await self.context.new_page()
-            await self.page.goto("https://www.google.com")
-
-            config = types.GenerateContentConfig(
-                tools=[types.Tool(
-                    computer_use=types.ComputerUse(
-                        environment=types.Environment.ENVIRONMENT_BROWSER
-                    )
-                )],
-                thinking_config=types.ThinkingConfig(include_thoughts=True),
-            )
-
-            initial_screenshot = await self.page.screenshot(type="png")
-            history = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part(text=prompt),
-                        types.Part.from_bytes(data=initial_screenshot, mime_type="image/png"),
-                    ],
+            try:
+                self.context = await self.browser.new_context(
+                    viewport={"width": SCREEN_WIDTH, "height": SCREEN_HEIGHT},
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/120.0.0.0 Safari/537.36"
+                    ),
                 )
-            ]
+                self.page = await self.context.new_page()
+                await self.page.goto("https://www.google.com")
 
-            for turn in range(max_turns):
-                try:
-                    response = await self.client.aio.models.generate_content(
-                        model=MODEL_ID,
-                        contents=history,
-                        config=config,
+                config = types.GenerateContentConfig(
+                    tools=[types.Tool(
+                        computer_use=types.ComputerUse(
+                            environment=types.Environment.ENVIRONMENT_BROWSER
+                        )
+                    )],
+                    thinking_config=types.ThinkingConfig(include_thoughts=True),
+                )
+
+                initial_screenshot = await self.page.screenshot(type="png")
+                history = [
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(text=prompt),
+                            types.Part.from_bytes(data=initial_screenshot, mime_type="image/png"),
+                        ],
                     )
-                except Exception as e:
-                    print(f"[hermes] API error on turn {turn + 1}: {e}")
-                    break
+                ]
 
-                if not response.candidates:
-                    break
+                for turn in range(max_turns):
+                    try:
+                        response = await self.client.aio.models.generate_content(
+                            model=MODEL_ID,
+                            contents=history,
+                            config=config,
+                        )
+                    except Exception as e:
+                        print(f"[hermes] API error on turn {turn + 1}: {e}")
+                        break
 
-                content = response.candidates[0].content
-                history.append(content)
+                    if not response.candidates:
+                        break
 
-                agent_text     = ""
-                function_calls = []
+                    content = response.candidates[0].content
+                    history.append(content)
 
-                for part in content.parts:
-                    if part.thought:
-                        pass  # internal reasoning, skip
-                    elif part.text:
-                        agent_text = part.text
-                    if part.function_call:
-                        function_calls.append(part.function_call)
+                    agent_text     = ""
+                    function_calls = []
 
-                if agent_text:
-                    final_response = agent_text
+                    for part in content.parts:
+                        if part.thought:
+                            pass  # internal reasoning, skip
+                        elif part.text:
+                            agent_text = part.text
+                        if part.function_call:
+                            function_calls.append(part.function_call)
 
-                if not function_calls:
-                    break  # task complete
+                    if agent_text:
+                        final_response = agent_text
 
-                results    = await self._execute(function_calls)
-                responses, _ = await self._state_snapshot(results)
+                    if not function_calls:
+                        break  # task complete
 
-                history.append(types.Content(
-                    role="user",
-                    parts=[types.Part(function_response=fr) for fr in responses],
-                ))
+                    results    = await self._execute(function_calls)
+                    responses, _ = await self._state_snapshot(results)
 
-            await self.browser.close()
+                    history.append(types.Content(
+                        role="user",
+                        parts=[types.Part(function_response=fr) for fr in responses],
+                    ))
+
+                    # Drop screenshot bytes from older turns to bound memory.
+                    self._prune_history(history)
+            finally:
+                # Guarantee the browser is torn down even if the loop raises,
+                # so a failed run can't leak a Chromium process and stack memory.
+                try:
+                    await self.browser.close()
+                except Exception:
+                    pass
 
         return final_response

@@ -183,40 +183,52 @@ async def fetch_trends() -> TrendsResult:
     result = TrendsResult(fetched_at=datetime.now(timezone.utc).isoformat())
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-extensions",
+            ],
         )
+        try:
+            context = await browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            )
 
-        # Block images/media for speed
-        async def block_media(route):
-            if route.request.resource_type in ("image", "media", "font"):
-                await route.abort()
-            else:
-                await route.continue_()
+            # Block images/media for speed
+            async def block_media(route):
+                if route.request.resource_type in ("image", "media", "font"):
+                    await route.abort()
+                else:
+                    await route.continue_()
 
-        # Google Trends + Reddit use Playwright; HN uses direct Firebase API
-        pages = await asyncio.gather(
-            context.new_page(),
-            context.new_page(),
-        )
+            # Google Trends + Reddit use Playwright; HN uses direct Firebase API
+            pages = await asyncio.gather(
+                context.new_page(),
+                context.new_page(),
+            )
 
-        for page in pages:
-            await page.route("**/*", block_media)
+            for page in pages:
+                await page.route("**/*", block_media)
 
-        # All three run in parallel — HN via API, no browser page needed
-        google_topics, reddit_topics, hn_topics = await asyncio.gather(
-            _fetch_google_trends(pages[0]),
-            _fetch_reddit_hot(pages[1]),
-            _fetch_hackernews_api(),   # ← Firebase API, no Playwright
-        )
-
-        await browser.close()
+            # All three run in parallel — HN via API, no browser page needed
+            google_topics, reddit_topics, hn_topics = await asyncio.gather(
+                _fetch_google_trends(pages[0]),
+                _fetch_reddit_hot(pages[1]),
+                _fetch_hackernews_api(),   # ← Firebase API, no Playwright
+            )
+        finally:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
     # Merge and deduplicate
     all_topics = google_topics + reddit_topics + hn_topics

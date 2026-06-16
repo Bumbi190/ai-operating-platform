@@ -70,65 +70,78 @@ async def read_article(url: str, timeout_ms: int = 15_000) -> ArticleResult:
     Uses a 15-second timeout by default — fast enough for news sites.
     """
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+        # Memory-lean flags for small containers (Render Free = 512MB).
+        # --disable-dev-shm-usage is critical: avoids /dev/shm exhaustion crashes.
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-extensions",
+            ],
         )
-        page = await context.new_page()
-
-        # Block images, fonts, media — we only need text
-        await page.route(
-            "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf,mp4,mp3}",
-            lambda route: route.abort(),
-        )
-
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        except Exception as e:
-            await browser.close()
-            return ArticleResult(url=url, title="", text="", word_count=0, success=False, error=str(e))
+            context = await browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            )
+            page = await context.new_page()
 
-        # Get page title
-        title = await page.title()
-        title = title.split(" | ")[0].split(" - ")[0].strip()
+            # Block images, fonts, media — we only need text
+            await page.route(
+                "**/*.{png,jpg,jpeg,gif,webp,svg,ico,woff,woff2,ttf,mp4,mp3}",
+                lambda route: route.abort(),
+            )
 
-        # Remove noise elements before extracting text
-        for selector in NOISE_SELECTORS:
             try:
-                elements = await page.query_selector_all(selector)
-                for el in elements:
-                    await el.evaluate("el => el.remove()")
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            except Exception as e:
+                return ArticleResult(url=url, title="", text="", word_count=0, success=False, error=str(e))
+
+            # Get page title
+            title = await page.title()
+            title = title.split(" | ")[0].split(" - ")[0].strip()
+
+            # Remove noise elements before extracting text
+            for selector in NOISE_SELECTORS:
+                try:
+                    elements = await page.query_selector_all(selector)
+                    for el in elements:
+                        await el.evaluate("el => el.remove()")
+                except Exception:
+                    pass
+
+            # Try each article selector in priority order
+            text = ""
+            for selector in ARTICLE_SELECTORS:
+                try:
+                    el = await page.query_selector(selector)
+                    if el:
+                        raw = await el.inner_text()
+                        raw = raw.strip()
+                        if len(raw) > 200:  # Ignore tiny matches
+                            text = raw
+                            break
+                except Exception:
+                    continue
+
+            # Fallback: grab body text
+            if not text:
+                try:
+                    text = await page.inner_text("body")
+                except Exception as e:
+                    return ArticleResult(url=url, title=title, text="", word_count=0, success=False, error=str(e))
+        finally:
+            # Always tear down the browser, even on early return or error.
+            try:
+                await browser.close()
             except Exception:
                 pass
-
-        # Try each article selector in priority order
-        text = ""
-        for selector in ARTICLE_SELECTORS:
-            try:
-                el = await page.query_selector(selector)
-                if el:
-                    raw = await el.inner_text()
-                    raw = raw.strip()
-                    if len(raw) > 200:  # Ignore tiny matches
-                        text = raw
-                        break
-            except Exception:
-                continue
-
-        # Fallback: grab body text
-        if not text:
-            try:
-                text = await page.inner_text("body")
-            except Exception as e:
-                await browser.close()
-                return ArticleResult(url=url, title=title, text="", word_count=0, success=False, error=str(e))
-
-        await browser.close()
 
     # Clean up the text
     text = _clean_text(text)

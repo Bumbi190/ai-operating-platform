@@ -9,6 +9,7 @@ Three endpoints:
 Authentication: Bearer token via HERMES_SECRET env var.
 """
 
+import asyncio
 import json
 import os
 from dotenv import load_dotenv
@@ -28,6 +29,16 @@ HERMES_SECRET  = os.getenv("HERMES_SECRET", "")
 
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is required")
+
+# ── Browser concurrency guard ───────────────────────────────────────────────────
+# This worker runs on a 512MB Render Free instance. Each browser-using request
+# launches a headless Chromium (~150–400MB). Two concurrent requests can exceed
+# 512MB and OOM the whole service. This semaphore serializes browser work so only
+# ONE Chromium is alive at a time; overlapping requests queue instead of stacking.
+# Callers (the Next.js app) already time out and degrade gracefully, so queuing is
+# safe. Override with HERMES_MAX_CONCURRENCY if you upgrade the instance.
+_MAX_CONCURRENCY = int(os.getenv("HERMES_MAX_CONCURRENCY", "1"))
+_BROWSER_SEM = asyncio.Semaphore(_MAX_CONCURRENCY)
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
 
@@ -151,8 +162,9 @@ async def scrape(payload: ScrapeRequest, request: Request):
     )
     prompt = SCRAPE_PROMPT_TEMPLATE.format(exclude_list=exclude_list)
 
-    agent  = WebAgent(api_key=GEMINI_API_KEY)
-    result = await agent.run(prompt, max_turns=payload.max_turns)
+    async with _BROWSER_SEM:
+        agent  = WebAgent(api_key=GEMINI_API_KEY)
+        result = await agent.run(prompt, max_turns=payload.max_turns)
 
     # Try to parse the JSON the agent returns
     try:
@@ -179,8 +191,9 @@ async def research(payload: ResearchRequest, request: Request):
         depth=payload.depth,
     )
 
-    agent  = WebAgent(api_key=GEMINI_API_KEY)
-    result = await agent.run(prompt, max_turns=payload.max_turns)
+    async with _BROWSER_SEM:
+        agent  = WebAgent(api_key=GEMINI_API_KEY)
+        result = await agent.run(prompt, max_turns=payload.max_turns)
 
     try:
         clean = result.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
@@ -202,7 +215,8 @@ async def read(payload: ReadRequest, request: Request):
     """
     require_auth(request)
 
-    result = await read_article(payload.url, timeout_ms=payload.timeout_ms)
+    async with _BROWSER_SEM:
+        result = await read_article(payload.url, timeout_ms=payload.timeout_ms)
 
     if not result.success:
         return {
@@ -236,7 +250,8 @@ async def competitors(request: Request):
     """
     require_auth(request)
 
-    result = await fetch_competitors()
+    async with _BROWSER_SEM:
+        result = await fetch_competitors()
 
     return {
         "fetched_at":      result.fetched_at,
@@ -266,7 +281,8 @@ async def trends(request: Request):
     """
     require_auth(request)
 
-    result = await fetch_trends()
+    async with _BROWSER_SEM:
+        result = await fetch_trends()
 
     return {
         "fetched_at": result.fetched_at,

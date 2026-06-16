@@ -14,6 +14,7 @@ import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
 import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
+import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -58,6 +59,16 @@ export async function GET(request: Request) {
 
   for (const run of runs) {
     try {
+      // H1.P5 Commit 3: if cancel was requested before/at claim, cancel directly and run
+      // no steps. Gated by H1_CANCEL; fenced on claim_id like every terminal write.
+      if (isCancelEnabled() && run.cancel_requested) {
+        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
+          status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+        })
+        results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
+        continue
+      }
+
       const kind = run.kind
       // PR2 gate state for this run. Defaults to today's behavior ('done'); only an
       // agent-step run executed by the unified executor can flip to awaiting_approval.
@@ -165,6 +176,14 @@ export async function GET(request: Request) {
         results.push({ run_id: run.id, status: 'done' })
       }
     } catch (e) {
+      // H1.P5 Commit 3: a cooperative cancel is NOT a failure. The executor already wrote
+      // status='cancelled' (fenced) before throwing — do not touch the run or mark failed;
+      // just skip its terminal write (which would otherwise overwrite 'cancelled').
+      if (isCancelledError(e)) {
+        console.warn(`[run ${run.id}] cooperative cancel at step boundary — run cancelled`)
+        results.push({ run_id: run.id, status: 'cancelled' })
+        continue
+      }
       // H1.P5 Commit 2: a fenced abort is NOT a failure. The executor threw because its
       // per-step write hit 0 rows (the run was reclaimed) — the new owner now owns the run.
       // Do not log an error or touch the run; just skip this zombie invocation.

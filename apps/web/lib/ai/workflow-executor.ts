@@ -16,6 +16,7 @@ import { reportBug } from '@/lib/bugs/report'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
+import { isCancelEnabled, isCancelRequested, cancelledError } from '@/lib/ai/cancel'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -113,6 +114,21 @@ export async function executeRunSteps(
   // NOTE: no try/catch here — failures propagate to the caller, which owns status.
   {
     for (const step of pendingSteps) {
+      // H1.P5 Commit 3: cooperative cancel check at the step boundary. Gated by H1_CANCEL,
+      // and only on the drain path (claimId present) — the legacy executeWorkflow wrapper
+      // passes no claimId so cooperative cancel is inert there. If cancel was requested,
+      // transition to 'cancelled' via a claim_id-fenced write and STOP (no more steps):
+      //   • fenced (0 rows) → run was reclaimed → throw fenced so the new owner handles it;
+      //   • not fenced      → we set 'cancelled' → throw cancelled so the drain skips its
+      //                       terminal write (it must not overwrite 'cancelled' with 'done').
+      if (claimId && isCancelEnabled() && await isCancelRequested(anyDb, runId)) {
+        const { fenced } = await fencedRunUpdate(anyDb, runId, claimId, {
+          status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+        })
+        if (fenced) throw fencedError(runId)
+        throw cancelledError(runId)
+      }
+
       // Ladda agenten
       const { data: agent, error: agentErr } = await db
         .from('agents')

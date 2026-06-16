@@ -117,6 +117,13 @@ describe('runPhotoEditor — Hero Image V2 Commit C', () => {
     expect(sys).toMatch(/What would a magazine editor/i)
   })
 
+  it('system prompt instructs framing for 16:10 with centered subject (Phase 2A)', async () => {
+    await runPhotoEditor(makeInput())
+    expect(lastCall!.system).toMatch(/FRAME for 16:10/i)
+    expect(lastCall!.system).toMatch(/CENTERED/i)
+    expect(lastCall!.system).toMatch(/homepage cards/i)
+  })
+
   it('system prompt maps categories to editorial styles', async () => {
     await runPhotoEditor(makeInput())
     const sys = lastCall!.system

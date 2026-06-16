@@ -6,10 +6,132 @@
  */
 
 import { logImageCost, logLlmCost } from '@/lib/cost/track'
+import {
+  ANTI_STOCK_BANLIST,
+  type EditorBrief,
+  type EditorialStyle,
+} from '@/lib/article/photo-editor'
 
 export interface IdeogramImage {
   url: string
   prompt: string
+}
+
+// ─── Hero Image V2: brief-driven article hero rendering ────────────────────
+// Sibling of generateNewsImage (kept unchanged for social reels). Phase 2A:
+// the photo editor agent's brief drives Ideogram directly — no Haiku photo-
+// director middle step, no hardcoded "AI news channel" vocabulary. Renders
+// at 16:10 to match The Prompt's homepage cards and full article page.
+
+export const ARTICLE_HERO_ASPECT = '16x10'
+
+/**
+ * Style reference strings appended to brief.shot so Ideogram leans into the
+ * editorial lineage the photo editor agent picked. Keys are exhaustive over
+ * the EDITORIAL_STYLES enum (asserted by tests).
+ */
+export const STYLE_REFERENCE_MAP: Record<EditorialStyle, string> = {
+  Bloomberg:
+    "Editorial photography in the style of Bloomberg Businessweek covers — bold single subject, restrained composition, strong directional light, magazine cover composition with room for headline type.",
+  'Financial Times':
+    "Editorial photography in the style of FT commissioned work — salmon-paper editorial restraint, environmental portrait or symbolic still-life, natural muted palette, magazine cover composition.",
+  Economist:
+    "Editorial photography in the style of The Economist covers — single dramatic subject, flat documentary light, conceptual restraint, deep negative space, magazine cover composition.",
+  'MIT Technology Review':
+    "Editorial photography in the style of MIT Tech Review — research-environment-as-character, real lab benches or workspaces, documentary tone, magazine cover composition.",
+  Wired:
+    "Editorial photography in the style of Wired commissioned editorial — high-concept single subject, saturated but disciplined palette, magazine cover composition.",
+  Reuters:
+    "Editorial photojournalism in the style of Reuters — documentary archive aesthetic, real location, decisive moment, news photography composition.",
+}
+
+/**
+ * Standing negative-prompt terms for ALL brief-driven hero renders. Mirrors
+ * ANTI_STOCK_BANLIST (the editor-side hard constraint) plus technical excludes
+ * Ideogram needs spelled out at render time.
+ */
+export const STANDING_RENDER_NEGATIVES: readonly string[] = [
+  ...ANTI_STOCK_BANLIST,
+  'text', 'watermark', 'logo', 'signage', 'captions',
+  'low quality', 'blurry', 'distorted', 'AI artifacts',
+  'cartoon', 'anime', 'illustration style',
+  'stock photo aesthetic', 'corporate stock photography',
+  'frontal face', 'direct eye contact',
+  'cinematic lighting', 'digital art', 'photorealistic',  // AI-prompt-language tells
+]
+
+export interface ArticleHeroRenderInput {
+  prompt: string
+  negative_prompt: string
+  aspect_ratio: string
+  style_type: string
+}
+
+export interface ArticleHeroRenderResult {
+  url: string
+  input: ArticleHeroRenderInput
+}
+
+/**
+ * Render an article hero from the photo editor agent's brief. No Haiku photo-
+ * director middle step — the brief.shot field is already a photographer's
+ * brief in editor language. We compose:
+ *   prompt          = brief.shot + STYLE_REFERENCE_MAP[brief.editorial_style] + framing hint
+ *   negative_prompt = STANDING_RENDER_NEGATIVES + brief.avoid
+ *
+ * The returned `input` is the EXACT request body sent to Ideogram — the
+ * caller persists it in website_content.hero_image_render_input so failures
+ * can be inspected without guessing what the composition was.
+ *
+ * Throws on Ideogram error (caller wraps with withRetry). Throws on unknown
+ * editorial_style (programming bug — STYLE_REFERENCE_MAP must stay exhaustive).
+ */
+export async function generateArticleHeroImage(
+  brief: EditorBrief,
+): Promise<ArticleHeroRenderResult> {
+  const styleRef = STYLE_REFERENCE_MAP[brief.editorial_style]
+  if (!styleRef) {
+    throw new Error(
+      `[article-hero] unknown editorial_style="${brief.editorial_style}" — STYLE_REFERENCE_MAP must cover every EDITORIAL_STYLES value`,
+    )
+  }
+
+  const prompt = [
+    brief.shot,
+    styleRef,
+    'centered subject, 16:10 framing, magazine cover composition with type space',
+  ].join(' — ')
+
+  const negative_prompt = [...STANDING_RENDER_NEGATIVES, ...brief.avoid].join(', ')
+
+  const input: ArticleHeroRenderInput = {
+    prompt,
+    negative_prompt,
+    aspect_ratio: ARTICLE_HERO_ASPECT,
+    style_type: 'REALISTIC',
+  }
+
+  const apiKey = process.env.IDEOGRAM_API_KEY
+  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+
+  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+    method: 'POST',
+    headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...input, rendering_speed: 'DEFAULT' }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Ideogram API error ${res.status} (article hero): ${err}`)
+  }
+
+  const data = (await res.json()) as { data: Array<{ url: string }> }
+  const url = data.data?.[0]?.url
+  if (!url) throw new Error('Ideogram returned no image URL for article hero')
+
+  void logImageCost(1, 'ideogram', { operation: 'Article Hero Image (brief)' })
+
+  return { url, input }
 }
 
 /**

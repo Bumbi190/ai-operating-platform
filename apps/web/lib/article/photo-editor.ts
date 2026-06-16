@@ -127,6 +127,8 @@ DEFAULT REACH FOR INSTEAD:
 
 THE "shot" FIELD must describe one specific physical scene a real photographer could capture — a real person silhouetted in a real environment, a printed document on a real desk, a building exterior at a specific time of day. Editor's language to a photographer, NOT AI-image-prompt language. Do not write "cinematic lighting" or "digital art" or "photorealistic" — those phrases mean you have defaulted to AI aesthetics. Write like you are commissioning a real photographer to shoot a real scene.
 
+FRAME for 16:10 with the primary subject CENTERED — the rendered image is used on The Prompt's homepage cards (which crop ~10% off the top and bottom) and on the full article page. Compose so the subject survives both crops.
+
 THE "avoid" FIELD must list story-specific clichés (additions to the standing banlist above), not generic warnings. Example for an AI-agents story: ["network-of-glowing-nodes visualizations", "any depiction of agents as humanoid robots"].`
 
 function buildUserPrompt(input: PhotoEditorInput): string {

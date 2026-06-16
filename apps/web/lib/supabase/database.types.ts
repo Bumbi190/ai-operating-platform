@@ -2553,6 +2553,8 @@ export type Database = {
           hero_editor_brief: Json | null
           hero_image_prompt: string | null
           hero_image_qa: Json | null
+          hero_image_render_input: Json | null
+          hero_image_source: string | null
           hero_image_status: string | null
           hero_image_url: string | null
           id: string
@@ -2590,6 +2592,8 @@ export type Database = {
           hero_editor_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
+          hero_image_render_input?: Json | null
+          hero_image_source?: string | null
           hero_image_status?: string | null
           hero_image_url?: string | null
           id?: string
@@ -2627,6 +2631,8 @@ export type Database = {
           hero_editor_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
+          hero_image_render_input?: Json | null
+          hero_image_source?: string | null
           hero_image_status?: string | null
           hero_image_url?: string | null
           id?: string

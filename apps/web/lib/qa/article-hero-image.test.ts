@@ -37,6 +37,17 @@ let mockEditorBrief: Record<string, unknown> = {
   editorial_style: 'Wired',
 }
 
+// Hero Image V2 Phase 2A — brief-driven renderer capture surface.
+let articleHeroCalls: Array<{ brief: Record<string, unknown> }> = []
+let articleHeroShouldThrow: string | null = null
+const ARTICLE_HERO_URL = 'https://ideogram.example/brief-driven-hero.png'
+const ARTICLE_HERO_INPUT = {
+  prompt: 'brief.shot — Economist style ref — centered subject',
+  negative_prompt: 'server racks, …',
+  aspect_ratio: '16x10',
+  style_type: 'REALISTIC',
+}
+
 // ── Mocks (must come BEFORE the import of the module under test) ─────────────
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -65,6 +76,11 @@ vi.mock('@/lib/media/ideogram', () => ({
     ideogramCalls.push({ headline, body })
     if (ideogramShouldThrow) throw new Error(ideogramShouldThrow)
     return 'https://ideogram.example/temp-hero.jpg'
+  },
+  generateArticleHeroImage: async (brief: Record<string, unknown>) => {
+    articleHeroCalls.push({ brief })
+    if (articleHeroShouldThrow) throw new Error(articleHeroShouldThrow)
+    return { url: ARTICLE_HERO_URL, input: ARTICLE_HERO_INPUT }
   },
 }))
 
@@ -161,6 +177,9 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       avoid: ['test cliche'],
       editorial_style: 'Wired',
     }
+    articleHeroCalls = []
+    articleHeroShouldThrow = null
+    delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
   })
 
   it('1. happy path: ready + url set, cost logged with articleId metadata, two updates (generating → ready)', async () => {
@@ -406,5 +425,103 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     expect(ideogramCalls).toHaveLength(0)
     expect(editorCalls).toHaveLength(0)
     expect(briefUpdates()).toHaveLength(0)
+  })
+
+  // ── Hero Image V2 Phase 2A — flag-driven brief→render ─────────────────────
+
+  it('13. Phase 2A: flag OFF preserves Phase 1 shadow behavior — writer path, no brief in render', async () => {
+    storedRow = row()
+    delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    // writer path used → generateNewsImage, NOT generateArticleHeroImage
+    expect(ideogramCalls).toHaveLength(1)
+    expect(articleHeroCalls).toHaveLength(0)
+    // brief still landed (shadow Phase 1)
+    expect(briefUpdates()).toHaveLength(1)
+    // image-result update marks source as fallback_writer; no render_input
+    const img = imageUpdates()
+    expect(img[1].hero_image_source).toBe('fallback_writer')
+    expect(img[1].hero_image_render_input).toBeNull()
+  })
+
+  it('14. Phase 2A: flag ON + brief OK → generateArticleHeroImage drives, source="brief", render_input persisted', async () => {
+    storedRow = row()
+    process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.url).toContain('media-assets/images/articles/')
+    }
+    // brief-driven path used — old generateNewsImage NEVER called
+    expect(articleHeroCalls).toHaveLength(1)
+    expect(ideogramCalls).toHaveLength(0)
+    // brief was persisted BEFORE the image (so on failure we still have it)
+    expect(briefUpdates()).toHaveLength(1)
+    // image update carries source='brief' and the render_input from the renderer
+    const img = imageUpdates()
+    expect(img[1].hero_image_source).toBe('brief')
+    expect(img[1].hero_image_render_input).toMatchObject({
+      prompt: expect.any(String),
+      negative_prompt: expect.any(String),
+      aspect_ratio: '16x10',
+      style_type: 'REALISTIC',
+    })
+    // Uploaded URL is the brief-driven Ideogram URL
+    expect(uploadCalls[0].sourceUrl).toBe(ARTICLE_HERO_URL)
+  })
+
+  it('15. Phase 2A: flag ON + brief throws → falls back to writer path, source="fallback_writer"', async () => {
+    storedRow = row()
+    process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
+    editorShouldThrow = 'Sonnet 503 on brief'
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    // brief failed → writer path used
+    expect(ideogramCalls).toHaveLength(1)
+    expect(articleHeroCalls).toHaveLength(0)
+    // brief was NOT persisted because runPhotoEditor threw before persistBrief
+    expect(briefUpdates()).toHaveLength(0)
+    const img = imageUpdates()
+    expect(img[1].hero_image_source).toBe('fallback_writer')
+    expect(img[1].hero_image_render_input).toBeNull()
+  })
+
+  it('16. Phase 2A: flag ON + brief OK + Ideogram throws → image fails but brief persists', async () => {
+    storedRow = row()
+    process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
+    articleHeroShouldThrow = 'Ideogram 503 on brief render'
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe('failed')
+    // Brief was persisted BEFORE the render call (Phase 2A guarantee).
+    expect(briefUpdates()).toHaveLength(1)
+    // Alert fired for the image failure.
+    expect(alertCaptures).toHaveLength(1)
+    // No source/render_input recorded because the image failure update path
+    // doesn't write those fields.
+    const img = imageUpdates()
+    expect(img[1].hero_image_status).toBe('failed')
+    expect(img[1]).not.toHaveProperty('hero_image_source')
+  })
+
+  it('17. Phase 2A: flag toggles are honored per call (env var read at call time)', async () => {
+    storedRow = row()
+    // First call: flag off → writer path
+    delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
+    await generateHeroImage(ARTICLE_ID)
+    expect(ideogramCalls).toHaveLength(1)
+    expect(articleHeroCalls).toHaveLength(0)
+
+    // Second call: flag on → brief path
+    storedRow = row({ hero_image_status: null })  // reset to pending so not skipped
+    process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
+    await generateHeroImage(ARTICLE_ID)
+    expect(ideogramCalls).toHaveLength(1)  // unchanged from before
+    expect(articleHeroCalls).toHaveLength(1)
   })
 })

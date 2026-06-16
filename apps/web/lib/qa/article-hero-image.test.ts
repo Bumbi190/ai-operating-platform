@@ -130,9 +130,11 @@ vi.mock('@/lib/article/photo-editor', () => ({
 // without rolling back the hero write.
 let syncCalls: string[] = []
 let mockSyncResult: { ok: boolean; status: string; reason?: string } = { ok: true, status: 'synced' }
+let mockSyncShouldThrow: string | null = null
 vi.mock('@/lib/publishing/sync', () => ({
   syncPublishedArticle: async (articleId: string) => {
     syncCalls.push(articleId)
+    if (mockSyncShouldThrow) throw new Error(mockSyncShouldThrow)
     return mockSyncResult
   },
 }))
@@ -195,6 +197,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     articleHeroShouldThrow = null
     syncCalls = []
     mockSyncResult = { ok: true, status: 'synced' }
+    mockSyncShouldThrow = null
     delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
   })
 
@@ -590,5 +593,33 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     ideogramShouldThrow = 'Ideogram 503'
     await generateHeroImage(ARTICLE_ID)
     expect(syncCalls).toHaveLength(0)
+  })
+
+  it('21. sync: an unexpected throw from syncPublishedArticle does NOT revert hero_image_status to failed', async () => {
+    // Regression guard. syncPublishedArticle is designed to return a result
+    // instead of throwing, but if it ever does (admin client init, refactor,
+    // etc.) the outer try/catch in hero-image.ts would otherwise overwrite
+    // hero_image_status='ready' with 'failed' — silently reverting a
+    // successful regen. The defensive try/catch around the sync call
+    // prevents this.
+    storedRow = row()
+    mockSyncShouldThrow = 'admin client init blew up'
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.status).toBe('ready')
+      expect(result.sync.ok).toBe(false)
+      if (!result.sync.ok) expect(result.sync.reason).toContain('sync threw')
+    }
+    // Crucially: the FINAL image-row write was 'ready', NOT a follow-up 'failed'.
+    const img = imageUpdates()
+    expect(img[img.length - 1].hero_image_status).toBe('ready')
+    expect(img.some((u) => u.hero_image_status === 'failed')).toBe(false)
+    // And no alert fired — this is a sync-layer warning, not a generation failure.
+    expect(alertCaptures).toHaveLength(0)
+    warn.mockRestore()
   })
 })

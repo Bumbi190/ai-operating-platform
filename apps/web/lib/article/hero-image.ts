@@ -191,9 +191,18 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
 
     // Push the new hero URL through to the destination (The Prompt) so
     // articles.hero_image_url stays in sync with website_content.hero_image_url.
-    // syncPublishedArticle never throws; a failure here keeps the new hero
-    // saved in Omnira and surfaces a warning in the result + server log.
-    const sync = await syncPublishedArticle(articleId)
+    // Defensive try/catch: syncPublishedArticle is *designed* to return a
+    // discriminated result rather than throw, but we wrap it anyway so any
+    // unexpected exception (e.g. admin client init) cannot reach the outer
+    // catch and revert hero_image_status from 'ready' to 'failed'. A
+    // successful hero regen must remain successful regardless of sync state.
+    let sync: SyncResult
+    try {
+      sync = await syncPublishedArticle(articleId)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      sync = { ok: false, status: 'failed', reason: `sync threw: ${msg}` }
+    }
     if (!sync.ok) {
       console.warn(`[publish-sync] hero regen succeeded but sync failed for article=${articleId}: ${sync.reason}`)
     }

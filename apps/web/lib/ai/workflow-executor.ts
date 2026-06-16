@@ -10,9 +10,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { validateStepOutput } from '@/lib/ai/validators/output-validator'
-import { sendAdminNotification } from '@/lib/email/brevo'
-import { getApprovalPendingEmail } from '@/lib/email/templates'
-import { reportBug } from '@/lib/bugs/report'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
@@ -53,8 +50,8 @@ export interface ExecuteWorkflowOptions {
  * Skips already-completed steps via `startFromOrder`/`existingContext`.
  *
  * Contract: THROWS on failure. Does NOT set runs.status and does NOT create
- * approvals — the caller owns lifecycle. The durable drainer owns status; the
- * `executeWorkflow` wrapper below adds status + approval for resume/manual.
+ * approvals — the caller owns lifecycle. The durable drainer (/api/runs/drain) owns
+ * status; it is the sole caller (H1.P5 Commit 4 removed the legacy executeWorkflow wrapper).
  */
 export async function executeRunSteps(
   db: AdminClient | AnyDb,
@@ -335,117 +332,5 @@ export async function executeRunSteps(
     }
 
     return { outputContent: outputContent ?? '', lastOutputKey, context }
-  }
-}
-
-/**
- * executeWorkflow — wrapper for resume + manual runs.
- *
- * Runs the unified core, then on success sets runs.status='done' and creates the
- * approval; on failure sets 'failed' and reports a bug. This preserves the
- * pre-H1.P2 behavior for the resume/manual callers. The durable drainer does NOT
- * use this wrapper — it calls executeRunSteps directly and owns status itself
- * (approval-on-drain arrives with the policy gate in H1.P4).
- *
- * NOTE: the workflow lookup below uses .eq('id', runId) (matches workflow id
- * against the run id) — a pre-existing bug that makes the approval email show
- * "Okänt workflow". Left unchanged here to keep P2 behavior-preserving; fixed in
- * H1.P5 (→ run.workflow_id).
- */
-export async function executeWorkflow(
-  db: AdminClient | AnyDb,
-  runId: string,
-  projectId: string,
-  steps: WorkflowStep[],
-  options: ExecuteWorkflowOptions = {},
-) {
-  const anyDb: AnyDb = db
-  try {
-    const { outputContent, lastOutputKey, context } = await executeRunSteps(db, runId, projectId, steps, options)
-
-    // ── Skapa approval ───────────────────────────────────────────────────
-    // #1 (H1.P2): idempotent — a re-entered run (e.g. resume of a previously
-    // completed run) must not create a second approval or send a duplicate email.
-    if (outputContent) {
-      const { data: existingApproval } = await anyDb
-        .from('approvals').select('id').eq('run_id', runId).limit(1).maybeSingle()
-      if (existingApproval) {
-        console.log(`[run ${runId}] Approval finns redan — hoppar över dubblett (idempotent)`)
-      } else {
-        const { data: wf } = await db
-          .from('workflows')
-          .select('name, project_id, projects(name)')
-          .eq('id', runId)
-          .maybeSingle()
-
-        await anyDb.from('approvals').insert({
-          run_id: runId,
-          output_key: lastOutputKey ?? 'output',
-          content: outputContent,
-          status: 'pending',
-        })
-        console.log(`[run ${runId}] 📋 Approval request created`)
-
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-        const { subject, html } = getApprovalPendingEmail({
-          workflowName: wf?.name ?? 'Okänt workflow',
-          projectName: (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
-          runId,
-          outputPreview: outputContent,
-          platformUrl: appUrl,
-        })
-        void sendAdminNotification(subject, html)
-      }
-    }
-
-    // ── Markera körning som klar ─────────────────────────────────────────
-    await anyDb.from('runs').update({
-      status: 'done',
-      finished_at: new Date().toISOString(),
-      context,
-    }).eq('id', runId)
-
-    console.log(`[run ${runId}] ✅ Done`)
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Okänt fel'
-    console.error(`[run ${runId}] ❌ Failed:`, message)
-
-    await anyDb.from('run_logs').insert({
-      run_id: runId,
-      role: 'system',
-      content: `❌ Körningsfel: ${message}`,
-    })
-
-    await anyDb.from('runs').update({
-      status: 'failed',
-      error: message,
-      finished_at: new Date().toISOString(),
-    }).eq('id', runId)
-
-    // Buggövervakning (severitetsstyrd): enstaka fel → bara panel; akut → mail.
-    // Räkna projektets misslyckade körningar senaste 24h så ≥3 blir akut.
-    let occurrences = 1
-    let projectName: string | null = null
-    try {
-      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const [{ count }, projRow] = await Promise.all([
-        anyDb.from('runs').select('id', { count: 'exact', head: true })
-          .eq('project_id', projectId).eq('status', 'failed').gte('created_at', since24h),
-        anyDb.from('projects').select('name').eq('id', projectId).maybeSingle(),
-      ])
-      occurrences = (count ?? 1) || 1
-      projectName = projRow?.data?.name ?? null
-    } catch { /* best-effort — räkning får aldrig blockera felhanteringen */ }
-
-    await reportBug({
-      projectId,
-      projectName,
-      source: 'system',
-      title: `Misslyckad körning: ${message.slice(0, 80)}`,
-      detail: message,
-      area: `runId ${runId}`,
-      occurrences,
-    })
   }
 }

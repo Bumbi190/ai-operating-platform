@@ -1,21 +1,19 @@
 /**
  * POST /api/runs/execute  { run_id }
  *
- * LEGACY / MANUELL synkron exekvering av en redan skapad körning. Kör workflowet
- * inline (await) och sätter done/failed innan svar. Används INTE längre av chatten
- * eller av de durabla start-vägarna — dessa skapar 'pending' och låter pg_cron-
- * drainern (/api/runs/drain) claima och köra durabelt. Behålls för manuell
- * felsökning / omkörning av en specifik run.
+ * Re-ENQUEUES an existing run for durable execution by the pg_cron drain
+ * (/api/runs/drain): pins the workflow steps snapshot + policy class and sets the
+ * run back to 'pending', returning 202. The drain claims and runs it under a lease —
+ * there is NO inline/synchronous execution anymore (H1.P5 Commit 4 removed the legacy
+ * executeWorkflow path). For manual re-run / debugging of a specific run.
  *
  * Skyddad med: Authorization: Bearer {CRON_SECRET}
  */
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { executeWorkflow } from '@/lib/ai/workflow-runner'
-import type { WorkflowStep } from '@/lib/supabase/types'
+import type { Json } from '@/lib/supabase/database.types'
 
-export const dynamic     = 'force-dynamic'
-export const maxDuration = 300   // workflows kan ta tid — egen invocation, blockerar inte chatten
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   const cronSecret = process.env.CRON_SECRET
@@ -27,22 +25,38 @@ export async function POST(request: Request) {
   const { run_id } = await request.json() as { run_id?: string }
   if (!run_id) return NextResponse.json({ error: 'run_id krävs' }, { status: 400 })
 
-  const db = createAdminClient()
+  // Supabase saknar genererade DB-typer i detta projekt — castar till any (resume.ts-mönster).
+  const db = createAdminClient() as any
   const { data: run } = await db
     .from('runs')
-    .select('id, project_id, input, workflows(steps)')
+    .select('id, steps_snapshot, policy_class, workflow_id, workflows(steps, side_effect_class)')
     .eq('id', run_id)
     .single()
 
   if (!run) return NextResponse.json({ error: 'Körning hittades inte' }, { status: 404 })
 
-  const wf = Array.isArray((run as any).workflows) ? (run as any).workflows[0] : (run as any).workflows
-  const steps = (wf?.steps as WorkflowStep[]) ?? []
+  // Pin the workflow snapshot + policy class at enqueue time (mirrors resume.ts /
+  // buildAgentRunInsert) so the drain executes immutable steps and never re-reads
+  // live workflows.steps mid-run.
+  const wf = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
+  const snapshot: Json | null = (run.steps_snapshot ?? wf?.steps ?? null) as Json | null
+  const policyClass: string | null = run.policy_class ?? wf?.side_effect_class ?? null
 
-  try {
-    await executeWorkflow(db, run.id, (run as any).project_id, steps, ((run as any).input as Record<string, string>) ?? {})
-    return NextResponse.json({ ok: true, run_id })
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : 'fel' }, { status: 500 })
-  }
+  const { error: updErr } = await db
+    .from('runs')
+    .update({
+      status: 'pending',
+      attempts: 0,            // fresh budget for a manual re-run (max_attempts unchanged)
+      error: null,
+      last_error: null,
+      finished_at: null,
+      claimed_at: null,
+      lease_until: null,
+      steps_snapshot: snapshot,
+      policy_class: policyClass,
+    })
+    .eq('id', run.id)
+
+  if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 })
+  return NextResponse.json({ run_id: run.id, status: 'pending' }, { status: 202 })
 }

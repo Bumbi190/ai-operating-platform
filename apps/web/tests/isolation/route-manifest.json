@@ -75,7 +75,7 @@
     { "path": "/media/pipeline/intro", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
 
     { "path": "/runs/drain", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "High", "verified": false, "note": "the durable drainer; must enforce per-project scope + kill switch in claim_runs (P8b)" },
-    { "path": "/runs/execute", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "via-run", "killSwitch": "yes", "risk": "High", "verified": false },
+    { "path": "/runs/execute", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "enqueue", "killSwitch": "yes", "risk": "High", "verified": true },
     { "path": "/media/cron/autonomous", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "none", "killSwitch": "yes", "risk": "High", "verified": false, "flag": "scope-missing-external" },
     { "path": "/media/cron/publish", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "none", "killSwitch": "yes", "risk": "High", "verified": false, "flag": "scope-missing-external", "note": "honors global pause today; must become per-project via drainer (P8b)" },
     { "path": "/media/cron/reply-comments", "class": "S", "auth": "Cron-secret", "serviceRole": true, "scope": "none", "killSwitch": "yes", "risk": "High", "verified": false, "flag": "scope-missing-external" },

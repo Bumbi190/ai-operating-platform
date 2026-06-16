@@ -5,8 +5,7 @@
  * sätter INTE run-status. Run-livscykeln (running → done/failed/retry) ägs av den
  * durable drainern (/api/runs/drain), så status alltid speglar verkligheten.
  *
- * `executeWorkflow` är en tunn wrapper som sätter done/failed — kvar för
- * bakåtkompatibilitet (t.ex. manuell /api/runs/execute).
+ * Behålls som flag-off-fallback (H1_UNIFIED_EXECUTOR=0) för drainern.
  */
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -76,27 +75,5 @@ export async function runSteps(
   // error must surface so the run retries rather than finalizing with no deliverable.
   if (outputInsertErr && !isDuplicateOutputError(outputInsertErr)) {
     throw new Error(`outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
-  }
-}
-
-/**
- * Bakåtkompatibel wrapper: kör steg + sätt done/failed. Används av manuell körning.
- * Den durable drainern använder `runSteps` direkt och äger statuslogiken.
- */
-export async function executeWorkflow(
-  db: AdminClient,
-  runId: string,
-  projectId: string,
-  steps: WorkflowStep[],
-  initialInput: Record<string, string>,
-): Promise<void> {
-  try {
-    await runSteps(db, runId, projectId, steps, initialInput)
-    await db.from('runs').update({ status: 'done', finished_at: new Date().toISOString() }).eq('id', runId)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Okänt fel'
-    await db.from('run_logs').insert({ run_id: runId, role: 'system', content: `❌ ${message}` })
-    await db.from('runs').update({ status: 'failed', error: message, finished_at: new Date().toISOString() }).eq('id', runId)
-    throw err
   }
 }

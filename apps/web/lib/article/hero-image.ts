@@ -46,6 +46,7 @@ import {
   type EditorBrief,
   type PhotoEditorInput,
 } from '@/lib/article/photo-editor'
+import { syncPublishedArticle, type SyncResult } from '@/lib/publishing/sync'
 
 /** Feature flag: when '1', the brief drives image generation (Phase 2). */
 function isBriefDrivenEnabled(): boolean {
@@ -56,7 +57,7 @@ function isBriefDrivenEnabled(): boolean {
 type HeroImageSource = 'brief' | 'fallback_writer'
 
 export type HeroImageResult =
-  | { ok: true;  url: string; status: 'ready' }
+  | { ok: true;  url: string; status: 'ready'; sync: SyncResult }
   | { ok: false; url: null;   status: 'failed' | 'skipped'; reason: string }
 
 export async function generateHeroImage(articleId: string): Promise<HeroImageResult> {
@@ -188,7 +189,16 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     // operator sees it on /atlas/content/[id] on next reload. Never throws.
     if (briefShadowPromise) await briefShadowPromise
 
-    return { ok: true, url: publicUrl, status: 'ready' }
+    // Push the new hero URL through to the destination (The Prompt) so
+    // articles.hero_image_url stays in sync with website_content.hero_image_url.
+    // syncPublishedArticle never throws; a failure here keeps the new hero
+    // saved in Omnira and surfaces a warning in the result + server log.
+    const sync = await syncPublishedArticle(articleId)
+    if (!sync.ok) {
+      console.warn(`[publish-sync] hero regen succeeded but sync failed for article=${articleId}: ${sync.reason}`)
+    }
+
+    return { ok: true, url: publicUrl, status: 'ready', sync }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
 

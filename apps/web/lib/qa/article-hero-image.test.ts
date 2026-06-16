@@ -123,6 +123,20 @@ vi.mock('@/lib/article/photo-editor', () => ({
   },
 }))
 
+// Post-regen sync to The Prompt — mocked so this suite stays focused on the
+// hero pipeline. The sync primitive itself has its own coverage in
+// publish-sync.test.ts. Here we only assert the integration: that the sync is
+// invoked on success and that its result is surfaced through HeroImageResult
+// without rolling back the hero write.
+let syncCalls: string[] = []
+let mockSyncResult: { ok: boolean; status: string; reason?: string } = { ok: true, status: 'synced' }
+vi.mock('@/lib/publishing/sync', () => ({
+  syncPublishedArticle: async (articleId: string) => {
+    syncCalls.push(articleId)
+    return mockSyncResult
+  },
+}))
+
 // Must come AFTER all vi.mock calls so the mocks are what hero-image.ts loads.
 import { generateHeroImage } from '@/lib/article/hero-image'
 
@@ -179,6 +193,8 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     }
     articleHeroCalls = []
     articleHeroShouldThrow = null
+    syncCalls = []
+    mockSyncResult = { ok: true, status: 'synced' }
     delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
   })
 
@@ -523,5 +539,56 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     await generateHeroImage(ARTICLE_ID)
     expect(ideogramCalls).toHaveLength(1)  // unchanged from before
     expect(articleHeroCalls).toHaveLength(1)
+  })
+
+  // ── Post-regen sync to The Prompt ─────────────────────────────────────────
+  // These pin the integration with lib/publishing/sync. The primitive itself
+  // is covered in publish-sync.test.ts; here we only assert that hero regen
+  // invokes it on success and that a sync failure surfaces a warning without
+  // rolling back the locally-saved hero.
+
+  it('18. sync: successful regen invokes syncPublishedArticle once, result attached to HeroImageResult', async () => {
+    storedRow = row()
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    expect(syncCalls).toEqual([ARTICLE_ID])
+    if (result.ok) {
+      expect(result.sync.ok).toBe(true)
+      expect(result.sync.status).toBe('synced')
+    }
+  })
+
+  it('19. sync: regen success + sync failure → hero stays saved, warning logged, ok still true', async () => {
+    storedRow = row()
+    mockSyncResult = { ok: false, status: 'failed', reason: 'PublishError: category_not_found' }
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const result = await generateHeroImage(ARTICLE_ID)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.status).toBe('ready')
+      expect(result.url).toContain('media-assets/images/articles/')
+      expect(result.sync.ok).toBe(false)
+      if (!result.sync.ok) expect(result.sync.reason).toContain('category_not_found')
+    }
+    // Hero write was not rolled back — the success-path UPDATE landed.
+    const img = imageUpdates()
+    expect(img[img.length - 1].hero_image_status).toBe('ready')
+    expect(img[img.length - 1].hero_image_url).toContain('media-assets/images/articles/')
+    // Warning logged under the [publish-sync] prefix.
+    const warned = warn.mock.calls.flat().some((arg) =>
+      typeof arg === 'string' && arg.includes('[publish-sync]') && arg.includes(ARTICLE_ID),
+    )
+    expect(warned).toBe(true)
+    warn.mockRestore()
+  })
+
+  it('20. sync: NOT invoked on failure paths (Ideogram throws → no sync call)', async () => {
+    storedRow = row()
+    ideogramShouldThrow = 'Ideogram 503'
+    await generateHeroImage(ARTICLE_ID)
+    expect(syncCalls).toHaveLength(0)
   })
 })

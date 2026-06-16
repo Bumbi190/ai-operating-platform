@@ -85,6 +85,16 @@ export async function PATCH(
   // it idempotent and race-free: a second PATCH, or an approval whose run is not awaiting,
   // updates zero rows. Non-blocking — a run-update miss never fails the saved approval.
   // 'revised' deliberately leaves run status untouched in PR2.
+  //
+  // H1.P5 Commit 2 — fencing rule (locked): this flip is EXEMPT from claim_id fencing.
+  //   • claim_id fencing  → writes from an EXECUTING run (drain terminal flips + the
+  //     executor's per-step write). See lib/ai/fencing.ts.
+  //   • status-guard      → approval lifecycle AFTER the run has LEFT running-state.
+  // An awaiting_approval run is at rest: the drain set it only after executeRunSteps fully
+  // returned, and the reaper touches status='running' ONLY — so no zombie executor can
+  // still write to it (and with fencing on, any stale invocation is already fenced before
+  // the awaiting_approval flip). The correct invariant here is therefore the status
+  // transition itself, not claim ownership.
   if (existing.run_id && (action === 'approved' || action === 'rejected')) {
     try {
       if (action === 'approved') {

@@ -13,6 +13,7 @@ import { runSteps } from '@/lib/ai/workflow-runner'
 import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
 import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
+import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -86,6 +87,7 @@ export async function GET(request: Request) {
             initialInput: (run.input ?? {}) as Record<string, string>,
             existingContext,
             startFromOrder,
+            claimId: run.claim_id,   // H1.P5 Commit 2: fence per-step writes on this claim
           })
           outputContent = execResult.outputContent
           lastOutputKey = execResult.lastOutputKey
@@ -140,17 +142,37 @@ export async function GET(request: Request) {
         }
         // Flippa run SIST — approval finns alltid före markeringen. Nollar lease så reapern
         // (rör endast 'running' med utgången lease) aldrig tar i den vilande runen.
-        await db.from('runs').update({
+        // H1.P5 Commit 2: fenced on claim_id. If reclaimed since we claimed it, this matches
+        // 0 rows → skip (the new owner re-runs and finalizes); we never double-flip.
+        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
           status: 'awaiting_approval', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
-        }).eq('id', run.id)
+        })
+        if (fenced) {
+          console.warn(`[run ${run.id}] fenced: reclaimed before awaiting_approval flip — skipping`)
+          results.push({ run_id: run.id, status: 'fenced' })
+          continue
+        }
         results.push({ run_id: run.id, status: 'awaiting_approval' })
       } else {
-        await db.from('runs').update({
+        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
           status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
-        }).eq('id', run.id)
+        })
+        if (fenced) {
+          console.warn(`[run ${run.id}] fenced: reclaimed before done flip — skipping`)
+          results.push({ run_id: run.id, status: 'fenced' })
+          continue
+        }
         results.push({ run_id: run.id, status: 'done' })
       }
     } catch (e) {
+      // H1.P5 Commit 2: a fenced abort is NOT a failure. The executor threw because its
+      // per-step write hit 0 rows (the run was reclaimed) — the new owner now owns the run.
+      // Do not log an error or touch the run; just skip this zombie invocation.
+      if (isFencedError(e)) {
+        console.warn(`[run ${run.id}] ${(e as Error).message} — aborting zombie invocation; new owner will finalize`)
+        results.push({ run_id: run.id, status: 'fenced' })
+        continue
+      }
       const msg = e instanceof Error ? e.message : 'Okänt fel'
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
@@ -159,7 +181,9 @@ export async function GET(request: Request) {
         { at: new Date().toISOString(), attempt: run.attempts, error: msg },
       ].slice(-10)
       await db.from('run_logs').insert({ run_id: run.id, role: 'system', content: `❌ ${msg}` })
-      await db.from('runs').update({
+      // Fence the failure flip too: if the run was reclaimed during error handling, the
+      // stale failure write matches 0 rows → skip (the new owner decides the outcome).
+      const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
         status:        willRetry ? 'pending' : 'failed',
         last_error:    msg,
         error:         willRetry ? null : msg,
@@ -167,7 +191,12 @@ export async function GET(request: Request) {
         finished_at:   willRetry ? null : new Date().toISOString(),
         claimed_at:    null,
         lease_until:   null,
-      }).eq('id', run.id)
+      })
+      if (fenced) {
+        console.warn(`[run ${run.id}] fenced: reclaimed before failure flip — skipping`)
+        results.push({ run_id: run.id, status: 'fenced' })
+        continue
+      }
       results.push({ run_id: run.id, status: willRetry ? 'requeued' : 'failed', error: msg })
     }
   }

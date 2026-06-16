@@ -15,6 +15,7 @@ import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { reportBug } from '@/lib/bugs/report'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
+import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -34,6 +35,13 @@ export interface ExecuteWorkflowOptions {
    * Sätt till den misslyckade stepens order vid resume.
    */
   startFromOrder?: number
+  /**
+   * H1.P5 Commit 2: the claim_id this invocation was handed by claim_runs. When set
+   * (drain path) and H1_FENCING is on, the per-step context write is fenced on it —
+   * a reclaimed (zombie) invocation's write hits 0 rows and the run ABORTS. Absent
+   * (legacy manual path that runs without a claim) → writes are unconditional.
+   */
+  claimId?: string
 }
 
 /**
@@ -54,7 +62,7 @@ export async function executeRunSteps(
   steps: WorkflowStep[],
   options: ExecuteWorkflowOptions = {},
 ): Promise<{ outputContent: string; lastOutputKey: string | undefined; context: Record<string, string> }> {
-  const { initialInput = {}, existingContext = {}, startFromOrder = 0 } = options
+  const { initialInput = {}, existingContext = {}, startFromOrder = 0, claimId } = options
 
   // Initial input is the base; completed step outputs win on collision so a resume
   // never lets the original input clobber a persisted step output (Codex review #8).
@@ -214,8 +222,12 @@ export async function executeRunSteps(
       // Ackumulera output i context
       context[step.output_key] = result.content
 
-      // Spara context till DB direkt — SSE-streamen och resume använder detta
-      await anyDb.from('runs').update({ context }).eq('id', runId)
+      // Spara context till DB direkt — SSE-streamen och resume använder detta.
+      // H1.P5 Commit 2: fenced on claim_id (when H1_FENCING on + claimId present). If the
+      // run was reclaimed mid-execution (token rotated by the reaper), this write matches
+      // 0 rows → ABORT the zombie invocation before any further LLM cost/writes.
+      const { fenced } = await fencedRunUpdate(anyDb, runId, claimId, { context })
+      if (fenced) throw fencedError(runId)
     }
 
     // ── Alla steg klara — kvalitetskontroll ──────────────────────────────

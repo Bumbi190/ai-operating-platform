@@ -65,53 +65,13 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Kunde inte starta om körningen' }, { status: 500 })
         }
 
-        // Kick off background execution (same as /api/runs POST)
-        const { createAdminClient } = await import('@/lib/supabase/admin')
-        const db = createAdminClient()
-        const { data: newRun } = await db
-          .from('runs')
-          .select('workflow_id, project_id, input, id')
-          .eq('id', newRunId)
-          .single()
-
-        if (newRun?.workflow_id) {
-          const { interpolate } = await import('@/lib/utils')
-          const { runStep } = await import('@/lib/ai/runner')
-          const { data: workflow } = await db
-            .from('workflows')
-            .select('steps')
-            .eq('id', newRun.workflow_id)
-            .single()
-
-          if (workflow?.steps) {
-            // Fire and forget — mirrors /api/runs logic
-            void (async () => {
-              const steps = (workflow.steps as any[]).sort((a, b) => a.order - b.order)
-              const input = newRun.input
-              // Json kan legalt vara t.ex. en sträng — spread av icke-objekt ger skräp.
-              // Cast oundviklig: Json-värden är inte bevisbart strängar (interpolate stringifierar).
-              const context: Record<string, string> =
-                input && typeof input === 'object' && !Array.isArray(input)
-                  ? { ...(input as Record<string, string>) }
-                  : {}
-              try {
-                for (const step of steps) {
-                  const { data: agent } = await db.from('agents').select('*').eq('id', step.agent_id).single()
-                  if (!agent) continue
-                  const userMessage = interpolate(step.input_template, context)
-                  const result = await runStep({ systemPrompt: agent.system_prompt, userMessage, model: agent.model })
-                  await db.from('run_logs').insert({ run_id: newRunId, step_order: step.order, step_name: step.name, role: 'assistant', content: result.content, tokens_in: result.tokensIn, tokens_out: result.tokensOut })
-                  context[step.output_key] = result.content
-                  await db.from('runs').update({ context }).eq('id', newRunId)
-                }
-                await db.from('runs').update({ status: 'done', finished_at: new Date().toISOString(), context }).eq('id', newRunId)
-              } catch (err) {
-                await db.from('runs').update({ status: 'failed', error: String(err), finished_at: new Date().toISOString() }).eq('id', newRunId)
-              }
-            })()
-          }
-        }
-
+        // H1.P5 Commit 2 (Z1): retryFailedRun already creates a DURABLE 'pending' run that
+        // the pg_cron drain claims + executes under a lease — the same claim/fencing model
+        // as every other run. The previous inline fire-and-forget loop here ran the SAME
+        // run a second time WITHOUT a claim, lease, or claim_id: a live double-execution
+        // and an unfenceable write-path. It was removed so ALL execution paths sit behind
+        // one claim/fencing model before H1_FENCING is enabled. (Mirrors /api/runs POST,
+        // which is likewise durable-only — its "same as /api/runs" comment was stale.)
         return NextResponse.json({ new_run_id: newRunId }, { status: 202 })
       }
 

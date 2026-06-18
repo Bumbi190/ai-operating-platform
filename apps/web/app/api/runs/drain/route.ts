@@ -20,6 +20,7 @@ import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
+import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -65,6 +66,19 @@ export async function GET(request: Request) {
         const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
           status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
+        // Atlas Memory M4 Commit 4 — episodic outcome: cancelled before steps ran.
+        // Emit only after fenced=false confirms this executor owns the terminal write.
+        // run.kind used directly — `kind` const is declared after this block.
+        if (!fenced) {
+          void recordMemoryEvent({
+            scope: 'project', eventType: 'outcome', projectId: run.project_id,
+            entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+            subject: 'Run outcome: cancelled',
+            content: `Run ${run.id.slice(0, 8)} cancelled (kind: ${run.kind ?? 'unknown'})`,
+            confidence: 0.40,
+            structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled', attempts: run.attempts ?? 1, error: null },
+          }, db)
+        }
         results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
         continue
       }
@@ -173,6 +187,16 @@ export async function GET(request: Request) {
           results.push({ run_id: run.id, status: 'fenced' })
           continue
         }
+        // Atlas Memory M4 Commit 4 — episodic outcome: run completed successfully.
+        // Emitted after fenced=false confirms ownership. Non-blocking void side-channel.
+        void recordMemoryEvent({
+          scope: 'project', eventType: 'outcome', projectId: run.project_id,
+          entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+          subject: 'Run outcome: done',
+          content: `Run ${run.id.slice(0, 8)} completed (kind: ${kind ?? 'unknown'})`,
+          confidence: 0.65,
+          structured: { runId: run.id, kind: kind ?? null, status: 'done', attempts: run.attempts ?? 1, error: null },
+        }, db)
         results.push({ run_id: run.id, status: 'done' })
       }
     } catch (e) {
@@ -181,6 +205,17 @@ export async function GET(request: Request) {
       // just skip its terminal write (which would otherwise overwrite 'cancelled').
       if (isCancelledError(e)) {
         console.warn(`[run ${run.id}] cooperative cancel at step boundary — run cancelled`)
+        // Atlas Memory M4 Commit 4 — episodic outcome: cancelled at step boundary.
+        // The executor already wrote status='cancelled' (fenced) before throwing CancelledError,
+        // so this executor owns the terminal write. No fenced check needed here.
+        void recordMemoryEvent({
+          scope: 'project', eventType: 'outcome', projectId: run.project_id,
+          entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+          subject: 'Run outcome: cancelled',
+          content: `Run ${run.id.slice(0, 8)} cancelled at step boundary (kind: ${run.kind ?? 'unknown'})`,
+          confidence: 0.40,
+          structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled', attempts: run.attempts ?? 1, error: null },
+        }, db)
         results.push({ run_id: run.id, status: 'cancelled' })
         continue
       }
@@ -215,6 +250,19 @@ export async function GET(request: Request) {
         console.warn(`[run ${run.id}] fenced: reclaimed before failure flip — skipping`)
         results.push({ run_id: run.id, status: 'fenced' })
         continue
+      }
+      // Atlas Memory M4 Commit 4 — episodic outcome: terminal failure only (not retries).
+      // willRetry runs are non-terminal — the run continues; emit would be premature.
+      // Emitted after fenced=false confirms this executor owns the failure write.
+      if (!willRetry) {
+        void recordMemoryEvent({
+          scope: 'project', eventType: 'outcome', projectId: run.project_id,
+          entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+          subject: 'Run outcome: failed',
+          content: `Run ${run.id.slice(0, 8)} failed: ${msg.slice(0, 200)} (kind: ${run.kind ?? 'unknown'})`,
+          confidence: 0.35,
+          structured: { runId: run.id, kind: run.kind ?? null, status: 'failed', attempts: run.attempts ?? 1, error: msg.slice(0, 300) },
+        }, db)
       }
       results.push({ run_id: run.id, status: willRetry ? 'requeued' : 'failed', error: msg })
     }

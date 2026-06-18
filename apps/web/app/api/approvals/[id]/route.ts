@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { saveFeedback } from '@/lib/ai/memory/feedback-store'
 import { ARTICLE_APPROVAL_KIND, publishApprovedArticle } from '@/lib/article/approval'
+import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 
 export async function GET(
   _req: NextRequest,
@@ -129,6 +130,35 @@ export async function PATCH(
       // Log but don't fail — approval already saved
       console.error('[approvals] feedback save failed:', feedbackErr)
     }
+
+    // Atlas Memory M4 Commit 4 — procedural feedback signal.
+    // event_type='feedback' → procedural → materializes in atlas.memories via consolidation.
+    // dedupeKey is entity-scoped ('feedback:${outputType}'), NOT approval-ID-scoped, so all
+    // feedback for the same output type consolidates to ONE atlas.memories row (bounded growth).
+    // sourceId=approvalId drives the idempotency index: network retries are safe (deduped).
+    // Re-review (same approval PATCH'd twice): first human decision wins — second is deduped.
+    // void = non-blocking side-channel; must never delay or fail the approval response.
+    const outputType = existing.output_key ?? 'unknown'
+    void recordMemoryEvent({
+      scope:      'project',
+      eventType:  'feedback',
+      projectId:  existing.project_id,
+      entityKind: 'output_type',
+      entityId:   outputType,
+      dedupeKey:  `feedback:${outputType}`,
+      source:     'approval',
+      sourceId:   params.id,
+      subject:    `Content feedback: ${outputType}`,
+      content:    `${action}: ${outputType} output${reviewer_notes ? ` — ${reviewer_notes.slice(0, 200)}` : ''}`,
+      confidence: action === 'rejected' ? 0.80 : action === 'approved' ? 0.70 : 0.50,
+      structured: {
+        outputType,
+        action,
+        runId:    existing.run_id ?? null,
+        kind:     existing.kind   ?? null,
+        hasNotes: !!reviewer_notes,
+      },
+    }, db)
   }
 
   // Publish-on-approve hook: only for article_publish approvals that were just approved.

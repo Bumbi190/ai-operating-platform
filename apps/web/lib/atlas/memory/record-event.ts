@@ -81,10 +81,19 @@ export async function recordMemoryEvent(
   input: RecordMemoryEventInput,
   db?: AnyDb,
 ): Promise<RecordMemoryEventResult> {
-  if (!isMemoryEnabled()) return { id: null, deduped: false, skipped: true }
+  // DIAG-A: env var value visible at call time (synchronous — always emitted before first await)
+  console.log(`[atlas-diag] ATLAS_MEMORY=${JSON.stringify(process.env.ATLAS_MEMORY)} source=${input.source} eventType=${input.eventType}`)
+
+  if (!isMemoryEnabled()) {
+    // DIAG-B: flag absent or wrong value — early return path (synchronous)
+    console.log(`[atlas-diag] SKIPPED — isMemoryEnabled()=false`)
+    return { id: null, deduped: false, skipped: true }
+  }
 
   try {
     const client: AnyDb = db ?? createAdminClient()
+    // DIAG-C: about to call rpc (synchronous — emitted before the await suspends)
+    console.log(`[atlas-diag] CALLING rpc atlas_record_event source=${input.source} sourceId=${input.sourceId ?? 'null'}`)
     const { data, error } = await client.rpc('atlas_record_event', {
       p_scope:       input.scope,
       p_event_type:  input.eventType,
@@ -106,6 +115,8 @@ export async function recordMemoryEvent(
       return { id: null, deduped: false, skipped: false }
     }
     const id = (data as string | null) ?? null
+    // DIAG-D: rpc returned (async — only reached if Lambda did not freeze after void+return)
+    console.log(`[atlas-diag] RPC RETURNED id=${id ?? 'null(deduped)'} source=${input.source}`)
     // The wrapper returns NULL only on an idempotent conflict (a successful insert,
     // including null-source_id events, returns the new id).
     return { id, deduped: id === null, skipped: false }

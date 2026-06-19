@@ -315,6 +315,33 @@ export type Database = {
           },
         ]
       }
+      atlas_signals: {
+        Row: {
+          content_id: string | null
+          id: string
+          kind: string
+          payload: Json
+          produced_at: string
+          version: string
+        }
+        Insert: {
+          content_id?: string | null
+          id?: string
+          kind: string
+          payload: Json
+          produced_at?: string
+          version: string
+        }
+        Update: {
+          content_id?: string | null
+          id?: string
+          kind?: string
+          payload?: Json
+          produced_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
       bug_reports: {
         Row: {
           area: string | null
@@ -2386,6 +2413,8 @@ export type Database = {
       runs: {
         Row: {
           attempts: number
+          cancel_requested: boolean
+          claim_id: string | null
           claimed_at: string | null
           context: Json
           created_at: string
@@ -2407,6 +2436,8 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          cancel_requested?: boolean
+          claim_id?: string | null
           claimed_at?: string | null
           context?: Json
           created_at?: string
@@ -2428,6 +2459,8 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          cancel_requested?: boolean
+          claim_id?: string | null
           claimed_at?: string | null
           context?: Json
           created_at?: string
@@ -2721,10 +2754,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      atlas_record_event: {
+        Args: {
+          p_confidence?: number
+          p_content: string
+          p_dedupe_key?: string
+          p_entity_id?: string
+          p_entity_kind?: string
+          p_event_type: string
+          p_occurred_at?: string
+          p_project_id?: string
+          p_scope: string
+          p_source: string
+          p_source_id?: string
+          p_structured?: Json
+          p_subject?: string
+        }
+        Returns: string
+      }
       claim_runs: {
         Args: { p_lease_seconds?: number; p_limit: number }
         Returns: {
           attempts: number
+          cancel_requested: boolean
+          claim_id: string | null
           claimed_at: string | null
           context: Json
           created_at: string

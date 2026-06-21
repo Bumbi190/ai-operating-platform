@@ -5,19 +5,16 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 /**
- * /auth/confirm — Supabase email callback (client-side)
+ * /auth/confirm — Magic Link / invite / email-verification callback (client-side)
  *
- * Handles three distinct flows that all land here with a ?code= param:
+ * Handles SIGNED_IN flows only (Magic Link, invite). Always redirects to /atlas.
  *
- *   1. Magic Link login        → type absent or 'magiclink' → redirect /atlas
- *   2. Password reset          → type='recovery'            → redirect /update-password
- *   3. Invite / email confirm  → type='invite' or 'signup'  → redirect /atlas
- *
- * Also handles implicit flow (tokens in hash fragment, no code).
- *
- * The server-side /auth/callback route handles the happy-path PKCE exchange first;
- * this page is the client-side fallback for when that fails, and the primary handler
- * for the hash-fragment implicit flow.
+ * Password recovery does NOT route here. resetPasswordForEmail() points directly
+ * to /update-password, which handles code exchange and shows the password form.
+ * This avoids ?type=recovery URL-param sniffing, which does not work in PKCE flow:
+ * Supabase appends only ?code=xxx to the redirect URL; the flow type is stored in
+ * the code-verifier cookie, readable only via the PASSWORD_RECOVERY auth event or
+ * the redirectType field returned by exchangeCodeForSession() — not via URL params.
  */
 export default function AuthConfirmPage() {
   const router = useRouter()
@@ -27,27 +24,17 @@ export default function AuthConfirmPage() {
   useEffect(() => {
     const supabase = createClient()
 
+    // Read code from URL query params (PKCE flow)
     const params = new URLSearchParams(window.location.search)
-    const code           = params.get('code')
-    const type           = params.get('type')   // set by Supabase on password-reset links
-    const supabaseError  = params.get('error')
-    const supabaseErrDesc = params.get('error_description')
+    const code = params.get('code')
+    const supabaseError = params.get('error')
+    const supabaseErrorDesc = params.get('error_description')
 
     // Supabase sent back an error (expired OTP, already used, etc.)
     if (supabaseError) {
-      setErrorMsg(supabaseErrDesc ?? supabaseError)
+      setErrorMsg(supabaseErrorDesc ?? supabaseError)
       setStatus('error')
       return
-    }
-
-    /**
-     * Determine where to redirect after a successful session.
-     * type='recovery' means the user clicked a password-reset link — send them
-     * to /update-password to set their new password.
-     * All other types (magic link, invite, email verification) go to /atlas.
-     */
-    function successRedirect(): string {
-      return type === 'recovery' ? '/update-password' : '/atlas'
     }
 
     async function tryLogin() {
@@ -55,7 +42,7 @@ export default function AuthConfirmPage() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          router.replace(successRedirect())
+          router.replace('/atlas')
           return
         }
         console.warn('[auth/confirm] Code exchange failed:', error.message)
@@ -64,16 +51,16 @@ export default function AuthConfirmPage() {
       // 2. Check if implicit flow already set a session via hash fragment
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        router.replace(successRedirect())
+        router.replace('/atlas')
         return
       }
 
       // 3. Listen for SIGNED_IN (handles hash fragment tokens asynchronously)
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         (event, session) => {
-          if ((event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') && session) {
+          if (event === 'SIGNED_IN' && session) {
             subscription.unsubscribe()
-            router.replace(successRedirect())
+            router.replace('/atlas')
           }
         },
       )
@@ -82,7 +69,7 @@ export default function AuthConfirmPage() {
       setTimeout(() => {
         subscription.unsubscribe()
         setErrorMsg(
-          'Länken verkar ha löpt ut eller redan använts. Begär en ny länk.',
+          'Inloggningslänken verkar ha löpt ut eller redan använts. Begär en ny länk.',
         )
         setStatus('error')
       }, 8000)

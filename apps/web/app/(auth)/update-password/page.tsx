@@ -7,37 +7,70 @@ import { createClient } from '@/lib/supabase/client'
 /**
  * /update-password — Set a new password after clicking a password-reset link.
  *
- * Supabase's reset flow:
- *   1. resetPasswordForEmail() → email with ?code=... → /auth/confirm
- *   2. /auth/confirm exchanges the code (PKCE), detects type=recovery, redirects here
- *   3. At this point the Supabase session is established (user is signed in)
- *   4. updateUser({ password }) sets the new password on the authenticated user
+ * Recovery flow (why this page is the redirect target, not /auth/confirm):
  *
- * Guard: if no session exists when this page loads, redirect to /login immediately.
- * This prevents the page from being accessible without a valid reset flow.
+ *   Supabase PKCE recovery emails redirect to `{redirectTo}?code=xxx`. There is NO
+ *   `?type=recovery` in the URL — the flow type is encoded in the code-verifier cookie
+ *   as `'verifier/recovery'` by the client SDK. Routing to /update-password directly
+ *   makes the intent unambiguous without URL-param or auth-event sniffing.
+ *
+ * Session establishment — race between auto-detect and manual exchange:
+ *
+ *   createBrowserClient() sets detectSessionInUrl=true. This means _initialize() may
+ *   auto-exchange the code and fire PASSWORD_RECOVERY via setTimeout(fn, 0) before our
+ *   useEffect runs. We handle both orderings:
+ *
+ *   A. Code in URL, auto-detect not yet done: exchangeCodeForSession() succeeds.
+ *   B. Code in URL, auto-detect already consumed it: exchangeCodeForSession() fails,
+ *      fall back to getSession() which finds the session auto-detect saved.
+ *   C. No code (direct navigation without reset flow): getSession() returns null →
+ *      redirect to /login.
+ *   D. No code, but session exists (logged-in user navigates here): show form.
+ *      updateUser() works on any authenticated session.
  */
 export default function UpdatePasswordPage() {
   const router = useRouter()
 
-  const [password, setPassword]         = useState('')
-  const [confirmPassword, setConfirm]   = useState('')
-  const [loading, setLoading]           = useState(false)
-  const [sessionChecked, setChecked]    = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [done, setDone]                 = useState(false)
+  const [password, setPassword]       = useState('')
+  const [confirmPassword, setConfirm] = useState('')
+  const [loading, setLoading]         = useState(false)
+  const [sessionReady, setReady]      = useState(false)
+  const [error, setError]             = useState<string | null>(null)
+  const [done, setDone]               = useState(false)
 
   const supabase = createClient()
 
-  // Guard: verify a session exists (set by /auth/confirm code exchange)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.replace('/login')
-      } else {
-        setChecked(true)
+    // Read code from the URL — may already be cleaned by auto-detect (case B).
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+
+    async function establishSession() {
+      if (code) {
+        // Cases A & B: attempt manual exchange.
+        // If auto-detect already consumed the code, this returns an error — that's fine.
+        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+        if (!exchangeErr) {
+          // Case A: manual exchange succeeded.
+          setReady(true)
+          return
+        }
+        // Case B: code already consumed by auto-detect. Fall through to getSession().
       }
-    })
-  }, [router, supabase])
+
+      // Cases B, C, D: check for an existing session.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        setReady(true)
+      } else {
+        // No session at all — guard against direct navigation.
+        router.replace('/login')
+      }
+    }
+
+    establishSession()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -62,12 +95,11 @@ export default function UpdatePasswordPage() {
     }
 
     setDone(true)
-    // Short delay so the user sees the confirmation before being redirected
     setTimeout(() => router.replace('/atlas'), 1500)
   }
 
-  // Still checking session
-  if (!sessionChecked) {
+  // ── Loading / session-check spinner ──────────────────────────────────────
+  if (!sessionReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />

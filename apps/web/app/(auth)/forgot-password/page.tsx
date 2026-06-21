@@ -17,9 +17,13 @@ export default function ForgotPasswordPage() {
     setError(null)
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      // Supabase will append ?code=... to this URL.
-      // /auth/confirm exchanges the code and detects type=recovery → /update-password.
-      redirectTo: `${window.location.origin}/auth/confirm`,
+      // Point directly at /update-password — no type-detection needed.
+      //
+      // Root cause of the original bug: Supabase PKCE recovery emails append only
+      // ?code=xxx to the redirectTo URL. There is no ?type=recovery in the URL; the
+      // flow type is encoded in the code-verifier cookie by the client SDK. Routing
+      // to /update-password makes the intent unambiguous without URL-param sniffing.
+      redirectTo: `${window.location.origin}/update-password`,
     })
 
     if (error) {

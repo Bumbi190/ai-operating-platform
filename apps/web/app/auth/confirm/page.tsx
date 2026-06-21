@@ -5,14 +5,19 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 /**
- * /auth/confirm — Supabase magic link callback (client-side)
+ * /auth/confirm — Supabase email callback (client-side)
  *
- * Supabase redirects here after email verification with either:
- *   ?code=xxx   (PKCE flow)
- *   #access_token=xxx  (implicit flow / hash fragment)
+ * Handles three distinct flows that all land here with a ?code= param:
  *
- * The browser Supabase client handles both automatically via onAuthStateChange
- * and has access to the PKCE code verifier stored in localStorage.
+ *   1. Magic Link login        → type absent or 'magiclink' → redirect /atlas
+ *   2. Password reset          → type='recovery'            → redirect /update-password
+ *   3. Invite / email confirm  → type='invite' or 'signup'  → redirect /atlas
+ *
+ * Also handles implicit flow (tokens in hash fragment, no code).
+ *
+ * The server-side /auth/callback route handles the happy-path PKCE exchange first;
+ * this page is the client-side fallback for when that fails, and the primary handler
+ * for the hash-fragment implicit flow.
  */
 export default function AuthConfirmPage() {
   const router = useRouter()
@@ -22,17 +27,27 @@ export default function AuthConfirmPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    // Read code from URL query params (PKCE flow)
     const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    const supabaseError = params.get('error')
-    const supabaseErrorDesc = params.get('error_description')
+    const code           = params.get('code')
+    const type           = params.get('type')   // set by Supabase on password-reset links
+    const supabaseError  = params.get('error')
+    const supabaseErrDesc = params.get('error_description')
 
     // Supabase sent back an error (expired OTP, already used, etc.)
     if (supabaseError) {
-      setErrorMsg(supabaseErrorDesc ?? supabaseError)
+      setErrorMsg(supabaseErrDesc ?? supabaseError)
       setStatus('error')
       return
+    }
+
+    /**
+     * Determine where to redirect after a successful session.
+     * type='recovery' means the user clicked a password-reset link — send them
+     * to /update-password to set their new password.
+     * All other types (magic link, invite, email verification) go to /atlas.
+     */
+    function successRedirect(): string {
+      return type === 'recovery' ? '/update-password' : '/atlas'
     }
 
     async function tryLogin() {
@@ -40,7 +55,7 @@ export default function AuthConfirmPage() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          router.replace('/atlas')
+          router.replace(successRedirect())
           return
         }
         console.warn('[auth/confirm] Code exchange failed:', error.message)
@@ -49,16 +64,16 @@ export default function AuthConfirmPage() {
       // 2. Check if implicit flow already set a session via hash fragment
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        router.replace('/atlas')
+        router.replace(successRedirect())
         return
       }
 
       // 3. Listen for SIGNED_IN (handles hash fragment tokens asynchronously)
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         (event, session) => {
-          if (event === 'SIGNED_IN' && session) {
+          if ((event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') && session) {
             subscription.unsubscribe()
-            router.replace('/atlas')
+            router.replace(successRedirect())
           }
         },
       )
@@ -67,7 +82,7 @@ export default function AuthConfirmPage() {
       setTimeout(() => {
         subscription.unsubscribe()
         setErrorMsg(
-          'Inloggningslänken verkar ha löpt ut eller redan använts. Begär en ny länk.',
+          'Länken verkar ha löpt ut eller redan använts. Begär en ny länk.',
         )
         setStatus('error')
       }, 8000)

@@ -1,7 +1,7 @@
 /**
  * lib/atlas/source-authority.ts — Atlas Signal Platform, source authority data.
  *
- * Authority data — NOT algorithm. Lives outside lib/atlas/score.ts on
+ * Authority data — NOT algorithm. Lives outside lib/atlas/impact-score.ts on
  * purpose: the engine should know nothing about WHERE authority values
  * come from. Today it's a const map; v2 will be a DB-backed table with
  * caching; v3 may combine multiple sources (DB + LLM-rated + citation

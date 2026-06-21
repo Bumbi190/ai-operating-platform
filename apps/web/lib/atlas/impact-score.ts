@@ -1,5 +1,12 @@
 /**
- * lib/atlas/score.ts — Atlas Score Engine v1.
+ * lib/atlas/impact-score.ts — Atlas Impact Score Engine v1.
+ *
+ * NOTE on naming: there is a sibling `lib/atlas/content-score.ts` that scores
+ * SOCIAL MEDIA POST PERFORMANCE (reach, engagement) for the in-app marketing
+ * pipeline. This file is a completely separate concern — it scores AI NEWS
+ * ARTICLES on the Atlas editorial side (source authority + source count).
+ * The kind written to `atlas_signals` is 'impact_score'; the filename mirrors
+ * that to avoid confusion.
  *
  * Functional core, imperative shell.
  *

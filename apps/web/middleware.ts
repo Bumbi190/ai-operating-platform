@@ -30,21 +30,20 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-
-  // /login is the primary auth page; authenticated users are bounced away from it.
-  const isLoginPage    = pathname.startsWith('/login')
-  // Pages that unauthenticated users must be able to reach (password reset flow).
-  // /update-password is also included: the page itself guards with getSession() and
-  // self-redirects to /login if no session — middleware should not intercept first.
-  const isPasswordPage = pathname.startsWith('/forgot-password') || pathname.startsWith('/update-password')
+  const isAuthRoute    = pathname.startsWith('/login')
   const isApiRoute     = pathname.startsWith('/api')
   const isAuthRoute2   = pathname.startsWith('/auth/')
   const isPublicPage   = ['/privacy', '/terms'].includes(pathname)
+  // Allow unauthenticated access to forgot/update-password pages.
+  // /update-password handles its own code exchange — the catch-all below must
+  // NOT intercept ?code= on this path, or it will send recovery codes to /auth/confirm.
+  const isPasswordPage = pathname.startsWith('/forgot-password') || pathname.startsWith('/update-password')
 
-  // Allow API routes, /auth/* routes, password-flow pages, and public legal pages through
+  // Allow API routes, /auth/* routes, password pages, and public legal pages through
   if (isApiRoute || isAuthRoute2 || isPasswordPage || isPublicPage) return supabaseResponse
 
-  // If Supabase redirected to root/any page with a ?code= param, forward to /auth/confirm
+  // If Supabase redirected to an unexpected page with a ?code= param, forward to /auth/confirm.
+  // (Does not apply to /update-password — handled above.)
   const code = request.nextUrl.searchParams.get('code')
   if (!user && code) {
     const url = request.nextUrl.clone()
@@ -54,14 +53,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect unauthenticated users to login
-  if (!user && !isLoginPage) {
+  if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
   // Redirect authenticated users away from login page
-  if (user && isLoginPage) {
+  if (user && isAuthRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)

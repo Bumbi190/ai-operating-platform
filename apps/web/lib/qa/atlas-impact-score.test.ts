@@ -1,5 +1,5 @@
 /**
- * Tests for lib/atlas/score.ts + lib/atlas/source-authority.ts.
+ * Tests for lib/atlas/impact-score.ts + lib/atlas/source-authority.ts.
  *
  * Score Engine v1 is a pure synchronous function. No mocks needed for
  * computeScore — we construct ScoreInput directly. The source-authority
@@ -27,7 +27,7 @@ import {
   SCORE_ENGINE_VERSION,
   type ScoreInput,
   type SourceObservation,
-} from '@/lib/atlas/score'
+} from '@/lib/atlas/impact-score'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function source(name: string, url = 'https://x.example'): SourceObservation {

@@ -16,6 +16,108 @@ Atlas Brief is the first product surface that exposes Atlas-derived intelligence
 
 ---
 
+## Existing Atlas systems — what was already there
+
+The `lib/atlas/` namespace and the database both contain pre-existing Atlas work that informs how the Signal Platform fits in. Before adding `atlas_signals`, four major systems were already in place:
+
+### `atlas.memory_events` + `atlas.memories` (Atlas Memory M4)
+
+Append-only event log in the `atlas.*` schema, accessed exclusively via the `atlas_record_event()` SECURITY DEFINER wrapper (never exposed to PostgREST). Flag-gated by `ATLAS_MEMORY`. Tracks raw observations Atlas absorbed: review approvals, drain results, dream pipeline outcomes, user feedback. Event taxonomy: `observation | decision | outcome | feedback | fact_assertion | reflection | correction`, mapped to memory classes `episodic | semantic | procedural | decision`. Has provenance fields (`source`, `source_id`, `dedupe_key`), event time vs ingestion time (`occurred_at` vs `ingested_at`), and a consolidation lifecycle (`consolidated_at` flips when a memory_event is promoted to `atlas.memories`).
+
+### `public.opportunities` + `lib/atlas/opportunities.ts` (Opportunity Engine, social media)
+
+Workflow-stateful detection results for social media content opportunities. `detectOpportunities()` reads `media_insights` + `media_scripts` (via `lib/atlas/content-score.ts`, which scores social-media reels) and produces `DetectedOpportunity[]`. `detectAndStoreOpportunities()` persists to `public.opportunities` with status `open`/`dismissed`/`actioned`. Includes decision memory ("Atlas does not nag about dismissed ideas"). Domain: social media analytics for Familje-Stunden and GainPilot — not editorial AI news.
+
+### `public.atlas_actions`
+
+Log of actions Atlas itself took: `actor`, `action_type`, `tool_name`, `target_kind`, `target_id`, `summary`, `detail`, `status`. Distinct from signals (observations of computation) — this is mutations Atlas performed.
+
+### `public.platform_memory`
+
+Project-scoped key-value semantic memory store: `category`, `key`, `value (jsonb)`, `confidence`, `evidence_count`, `last_seen_at`. The cumulative "what Atlas knows" about each project.
+
+### Where the Signal Platform fits
+
+```
+                  ┌──────────────────────────────────────────────┐
+                  │  ATLAS LAYERS (production)                    │
+                  ├──────────────────────────────────────────────┤
+                  │                                              │
+  observations →  │  atlas.memory_events  (M4: what happened)    │ ← absorbed by Atlas
+                  │  atlas.memories       (consolidated longterm)│
+                  │                                              │
+  facts learned → │  platform_memory      (per-project KV)       │
+                  │                                              │
+   what Atlas →   │  atlas_signals        (NEW: computed signals)│ ← the new layer
+   computed       │                                              │
+                  │                                              │
+  what Atlas →    │  atlas_actions        (mutations performed)  │
+   did            │                                              │
+                  │                                              │
+  human-curated → │  opportunities        (workflow surface)     │
+   workflow                                                       │
+                  └──────────────────────────────────────────────┘
+```
+
+The Signal Platform addresses a gap **none of the existing systems cover**: the analytical output layer. Memory absorbs observations; signals record what Atlas concluded from those observations. The two layers compose — a future Score Engine v2 can read memory events as input.
+
+---
+
+## Why signals are NOT memory events
+
+`atlas.memory_events` and `public.atlas_signals` are both append-only event logs with `kind`+`payload`-shaped rows. A future reader will reasonably ask "why two tables for the same shape?"
+
+The answer is a conceptual distinction:
+
+| | `atlas.memory_events` | `public.atlas_signals` |
+|---|---|---|
+| **Semantics** | "Atlas observed that X happened" | "Atlas computed that X is true" |
+| **Provenance** | Always traceable to a single source event | Always traceable to a producer algorithm + version |
+| **Truth lifecycle** | Frozen at observation time | Re-derivable any time inputs change |
+| **Confidence** | Discrete column (`confidence numeric`) | Embedded in payload; producer-defined |
+| **Dedup model** | `(source, source_id)` — same observation twice = dedup | None — same input may produce different output at different times (intentional: capture re-evaluations) |
+| **Time model** | `occurred_at` vs `ingested_at` — event time vs ingestion time | `produced_at` only — there is no "event time," the signal IS the artifact |
+| **Lifecycle** | `consolidated_at` — flips when promoted to long-term memory | None — signals are terminal artifacts |
+| **Versioning** | None per-row; schema-versioned | Per-row `version` — multiple producer versions coexist |
+| **Security model** | `atlas.*` schema + SECURITY DEFINER wrapper (no PostgREST) | `public.*` schema + RLS-deny (service role only) |
+
+**Concrete example:** A user approving an article is a `memory_event` (kind=`outcome`, source=`review`). The impact score Atlas later computes for that article is a `signal` (kind=`impact_score`, version=`score-engine-1.0.0`, content_id=that article). If we change the scoring formula, we write a new signal with a new version — the old signal stays for track record. If we change the approval event format, we migrate memory_events with consolidation logic. Different evolution patterns.
+
+**Producer-consumer coupling:**
+
+Memory events feed into signal producers when a producer needs historical context. Score Engine v2 might read `atlas.memory_events` to derive momentum dimensions. But the *output* always lands in `atlas_signals` because that's where consumers (Brief, score pages, future API) read from.
+
+If we later discover that the distinction is muddier than it appears, the two tables can be unified — `atlas_signals` can be promoted to `atlas.*` schema with a wrapper, and memory_events can have a `kind='computed_signal'` event type. Until then, separation is the simpler, more explicit design.
+
+---
+
+## Why opportunities table and opportunity signals are different concepts
+
+The Signal Platform ADR positions `kind='opportunity'` as a future signal type. The pre-existing `public.opportunities` table also tracks opportunities. **These are not duplicates — they address different needs and must coexist.**
+
+| | `public.opportunities` (existing) | Future `atlas_signals` with `kind='opportunity'` |
+|---|---|---|
+| **What it represents** | An opportunity the operator should consider acting on | An opportunity Atlas detected at a moment in time |
+| **State** | Workflow-stateful: `open` / `dismissed` / `actioned` | Stateless — append-only snapshot |
+| **Audience** | The operator (via Atlas UI / dashboard) | Brief assembly, analytics, public API |
+| **Decision memory** | Yes — "Atlas does not nag about dismissed titles" | No — the signal log records every detection independently |
+| **Identity** | `(project_id, type, title)` — idempotent on those fields | Per-row UUID; multiple signals for the same conceptual opportunity allowed over time |
+| **Update model** | UPDATE on status changes | Never updated; new detections write new rows |
+| **Schema** | Rich columns: title, rationale, evidence, status, confidence | Generic `payload jsonb` — any shape per producer version |
+
+**Concrete example:** An Opportunity Detector observes "topic X is engaging" on Tuesday. It writes:
+
+1. A new `atlas_signals` row: `kind='opportunity'`, `version='opportunity-detector-0.3.0'`, payload containing the detection inputs and confidence.
+2. If this opportunity is **new** (not in any `open` or `dismissed` opportunities row): a new `public.opportunities` row with status=`open`.
+
+On Wednesday the operator dismisses it. The `opportunities` row flips to `dismissed`. The `atlas_signals` row is untouched. On Thursday the detector fires again — it writes a new signal (track record), checks `opportunities`, sees the dismissal, and does NOT create a duplicate workflow row.
+
+The signal log shows "Atlas detected this 3 times over 5 days." The opportunities table shows "this is dismissed, leave it alone." Both are useful, neither subsumes the other.
+
+**For Phase 1 of the Signal Platform, no opportunity signals are produced.** This pattern is documented now so the future Opportunity Detector implementation follows it.
+
+---
+
 ## Three layers — clean separation
 
 ```
@@ -440,6 +542,10 @@ Each phase is independently shippable. Stop after any phase if needed.
 
 - **`/atlas/score/<slug>` ships in phase 3, before any email infrastructure.** Score-credibility checkpoint before we build the brief.
 
+- **The producer module is named `impact-score.ts`, not `score.ts`.** A sibling file `lib/atlas/content-score.ts` already exists and scores social-media post engagement — completely different concern. The name `impact-score.ts` mirrors the signal kind (`impact_score`) and prevents a confusing collision in a 25+ file namespace.
+
+- **Atlas Signal Platform coexists with — does not replace — `atlas.memory_events`, `public.opportunities`, `public.atlas_actions`, and `public.platform_memory`.** Each addresses a distinct concern; the Signal Platform fills the "computed analytical output" gap none of them cover. See "Existing Atlas systems" section above.
+
 ---
 
 ## What this architecture enables without rework
@@ -469,7 +575,7 @@ The structural moves that enable all of this: **generic signals table + nullable
 apps/web/  (Atlas backend)
 ├── lib/atlas/
 │   ├── signals.ts            # recordSignal / getLatestSignal / getLatestSignalsPerKindForContent (Phase 1) · querySignals (Phase 4)
-│   ├── score.ts              # computeScore — sync pure producer; v1 = 2 dimensions
+│   ├── impact-score.ts       # computeScore — sync pure producer of kind='impact_score'; v1 = 2 dimensions. Distinct from sibling content-score.ts (social-media analytics)
 │   ├── source-authority.ts   # loadAuthorityMap — outside engine, caller-side preload
 │   ├── brief.ts              # buildBriefForWeek — Brief data assembly (Phase 4)
 │   └── README.md             # → this ADR

@@ -29,15 +29,21 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api')
-  const isAuthRoute2 = request.nextUrl.pathname.startsWith('/auth/')
-  const isPublicPage = ['/privacy', '/terms'].includes(request.nextUrl.pathname)
+  const { pathname } = request.nextUrl
+  const isAuthRoute    = pathname.startsWith('/login')
+  const isApiRoute     = pathname.startsWith('/api')
+  const isAuthRoute2   = pathname.startsWith('/auth/')
+  const isPublicPage   = ['/privacy', '/terms'].includes(pathname)
+  // Allow unauthenticated access to forgot/update-password pages.
+  // /update-password handles its own code exchange — the catch-all below must
+  // NOT intercept ?code= on this path, or it will send recovery codes to /auth/confirm.
+  const isPasswordPage = pathname.startsWith('/forgot-password') || pathname.startsWith('/update-password')
 
-  // Allow API routes, /auth/* routes, and public legal pages through
-  if (isApiRoute || isAuthRoute2 || isPublicPage) return supabaseResponse
+  // Allow API routes, /auth/* routes, password pages, and public legal pages through
+  if (isApiRoute || isAuthRoute2 || isPasswordPage || isPublicPage) return supabaseResponse
 
-  // If Supabase redirected to root/any page with a ?code= param, forward to /auth/confirm
+  // If Supabase redirected to an unexpected page with a ?code= param, forward to /auth/confirm.
+  // (Does not apply to /update-password — handled above.)
   const code = request.nextUrl.searchParams.get('code')
   if (!user && code) {
     const url = request.nextUrl.clone()

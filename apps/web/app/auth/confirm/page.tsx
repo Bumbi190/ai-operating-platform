@@ -5,14 +5,16 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 /**
- * /auth/confirm — Supabase magic link callback (client-side)
+ * /auth/confirm — Magic Link / invite / email-verification callback (client-side)
  *
- * Supabase redirects here after email verification with either:
- *   ?code=xxx   (PKCE flow)
- *   #access_token=xxx  (implicit flow / hash fragment)
+ * Handles SIGNED_IN flows only (Magic Link, invite). Always redirects to /atlas.
  *
- * The browser Supabase client handles both automatically via onAuthStateChange
- * and has access to the PKCE code verifier stored in localStorage.
+ * Password recovery does NOT route here. resetPasswordForEmail() points directly
+ * to /update-password, which handles code exchange and shows the password form.
+ * This avoids ?type=recovery URL-param sniffing, which does not work in PKCE flow:
+ * Supabase appends only ?code=xxx to the redirect URL; the flow type is stored in
+ * the code-verifier cookie, readable only via the PASSWORD_RECOVERY auth event or
+ * the redirectType field returned by exchangeCodeForSession() — not via URL params.
  */
 export default function AuthConfirmPage() {
   const router = useRouter()

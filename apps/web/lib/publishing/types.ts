@@ -27,6 +27,13 @@ export interface ArticleSourceInput {
 /**
  * The single payload accepted by publish_article(jsonb).
  * PATCH semantics on update: only present keys change; explicit null clears.
+ *
+ * `atlas_signals` (added in v1.1 — Atlas Phase 2) uses REPLACE-on-write
+ * semantics on the destination side instead of field-by-field PATCH: when
+ * present, the full object replaces the destination column; when absent,
+ * the column is preserved untouched. It is a denormalized latest-per-kind
+ * cache for fast frontend rendering — NOT the authoritative signal history.
+ * Authoritative history lives in Omnira's public.atlas_signals table.
  */
 export interface PublishPayload {
   version: 1
@@ -40,6 +47,7 @@ export interface PublishPayload {
   tags?: ArticleTagInput[] | null
   source?: ArticleSourceInput | null
   published_at?: string | null
+  atlas_signals?: Record<string, unknown> | null
 }
 
 // ── Responses (output) ─────────────────────────────────────────────────────────

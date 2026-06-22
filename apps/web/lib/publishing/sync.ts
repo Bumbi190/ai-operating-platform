@@ -16,6 +16,16 @@
  * because the review route stamps the timestamp on the row, not the jsonb)
  * and external_id (defensive re-assertion from the row).
  *
+ * Atlas Signals overlay (Phase 2): also fetches the latest-per-kind signal
+ * map from Omnira's atlas_signals table and includes it as the
+ * `atlas_signals` payload key. This is a FAST-READ CACHE for the
+ * destination's frontend rendering — the authoritative signal history lives
+ * in atlas_signals on Omnira, not in the destination column. Signal-platform
+ * failures NEVER block publishing: a defensive try/catch around the signal
+ * fetch swallows errors, logs a warning, and lets sync continue without
+ * the atlas_signals key (which preserves whatever value the destination
+ * column already had — see the RPC's "else atlas_signals" branch).
+ *
  * Idempotent on the destination side: publish_article(jsonb) is PATCH and
  * keyed on external_id. Calling sync with no drift is a safe no-op.
  *
@@ -25,6 +35,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { publishArticle } from '@/lib/publishing/publish'
+import { getLatestSignalsPerKindForContent } from '@/lib/atlas/signals'
 import type { PublishPayload } from '@/lib/publishing/types'
 
 export type SyncResult =
@@ -79,6 +90,23 @@ export async function syncPublishedArticle(articleId: string): Promise<SyncResul
     return { ok: true, status: 'skipped', reason: 'missing_destination_key' }
   }
 
+  // Atlas Signals overlay (Phase 2) — latest-per-kind cache for destination
+  // rendering. Defensive try/catch: a signal-platform failure must NEVER
+  // block publishing. On any error we omit the atlas_signals key entirely,
+  // which makes the destination RPC preserve its existing column value
+  // (per the "else atlas_signals" branch in publish_article).
+  let atlasSignals: Record<string, unknown> = {}
+  try {
+    atlasSignals = await getLatestSignalsPerKindForContent(articleId)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn(
+      `[publish-sync] getLatestSignalsPerKindForContent failed for article=${articleId}: ${msg}. Continuing without atlas_signals overlay.`,
+    )
+    atlasSignals = {}
+  }
+  const hasSignals = Object.keys(atlasSignals).length > 0
+
   const frozen = (row.payload ?? {}) as Partial<PublishPayload>
   const syncPayload: PublishPayload = {
     ...frozen,
@@ -89,6 +117,11 @@ export async function syncPublishedArticle(articleId: string): Promise<SyncResul
     slug: row.slug,
     hero_image_url: row.hero_image_url,
     published_at: row.published_at,
+    // Include atlas_signals only when we actually have data. An empty {} would
+    // still trip the RPC's `payload ? 'atlas_signals'` check and overwrite the
+    // destination column with {} — by omitting the key we preserve whatever
+    // value the destination already holds.
+    ...(hasSignals ? { atlas_signals: atlasSignals } : {}),
   }
 
   try {

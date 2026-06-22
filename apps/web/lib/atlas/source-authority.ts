@@ -47,7 +47,9 @@ const SOURCE_AUTHORITY: Record<string, number> = {
 
   // Tier 2 — technology-specialist publications
   'mit technology review': 88,
+  'mit tech review':       88,  // alias — media_news_items naming convention
   'wired':                 85,
+  'wired ai':              85,  // alias — media_news_items naming convention
   'ars technica':          82,
   'the verge':             75,
   'techcrunch':            72,

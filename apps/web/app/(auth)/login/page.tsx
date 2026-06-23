@@ -1,10 +1,12 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const urlError = searchParams.get('error')
 
@@ -31,9 +33,11 @@ function LoginForm() {
       // Supabase returns "Invalid login credentials" for both wrong email and
       // wrong password — keep message generic to avoid leaking account existence.
       setError('Fel e-post eller lösenord.')
+      setLoading(false)
+      return
     }
-    // On success: Supabase sets the session cookie; middleware redirects to /dashboard.
-    setLoading(false)
+
+    router.push('/atlas')
   }
 
   // ── Fallback: Magic Link (OTP) ────────────────────────────────────────────

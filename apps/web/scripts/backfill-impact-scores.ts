@@ -25,7 +25,32 @@
  * backend uses (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY).
  */
 
-import 'dotenv/config'
+// Env loading — match Next.js precedence (.env.local > .env). `dotenv/config`
+// alone only loads `.env`, which is wrong for this project: NEXT_PUBLIC_SUPABASE_URL
+// and SUPABASE_SERVICE_ROLE_KEY live in apps/web/.env.local. Anchor on __dirname
+// so cwd doesn't matter.
+import { config as loadDotenv } from 'dotenv'
+import path from 'node:path'
+loadDotenv({ path: path.resolve(__dirname, '../.env.local') })
+loadDotenv({ path: path.resolve(__dirname, '../.env') })
+
+// WebSocket polyfill — required for @supabase/supabase-js on Node < 22 which
+// lacks a native WebSocket constructor. Supabase JS v2 instantiates a
+// RealtimeClient in the SupabaseClient constructor (regardless of whether the
+// caller uses realtime), and that constructor calls getWebSocketConstructor()
+// which throws if globalThis.WebSocket is undefined.
+//
+// We patch globalThis BEFORE the @supabase modules load (via admin.ts /
+// signals.ts / publishing/sync.ts transitive imports). Node 22+ already has
+// native WebSocket, so the conditional avoids overriding the runtime impl.
+// This keeps admin.ts untouched — production (Vercel, Node 22+) sees no
+// change in behavior; only this script and other Node-20-local scripts
+// benefit from the polyfill.
+import WS from 'ws'
+if (typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'undefined') {
+  ;(globalThis as unknown as { WebSocket: typeof WS }).WebSocket = WS
+}
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeScore, SCORE_ENGINE_VERSION, type ScoreInput, type SourceObservation } from '@/lib/atlas/impact-score'
 import { loadAuthorityMap } from '@/lib/atlas/source-authority'

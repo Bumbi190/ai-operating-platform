@@ -40,6 +40,9 @@ const CHECKS: Check[] = [
   { key: 'publish',        label: 'Publish',        jobs: ['omnira_publish_morning', 'omnira_publish_evening'], cadence: '08:00 + 18:00', type: 'daily', slotsUtc: ['08:00', '18:00'], graceMin: 90 },
   { key: 'youtube',        label: 'Publish YouTube',jobs: ['omnira_youtube_morning', 'omnira_youtube_evening'], cadence: '08:05 + 18:05', type: 'daily', slotsUtc: ['08:05', '18:05'], graceMin: 90 },
   { key: 'refresh_tokens', label: 'Refresh tokens', jobs: ['omnira_refresh_tokens'], cadence: 'veckovis (mån)', type: 'weekly', graceMin: 24 * 60 },
+  // Atlas Collectors (added 2026-06-23)
+  { key: 'stripe_revenue', label: 'Stripe Revenue', jobs: ['omnira_stripe_revenue'], cadence: 'dagligen 06:45', type: 'daily', slotsUtc: ['06:45'], graceMin: 90 },
+  { key: 'social_account', label: 'Social Account', jobs: ['omnira_social_account'], cadence: 'dagligen 06:50', type: 'daily', slotsUtc: ['06:50'], graceMin: 90 },
 ]
 
 function slotToday(hhmm: string): number {

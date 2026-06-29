@@ -96,6 +96,8 @@ describe('atlas-signals — recordSignal', () => {
       data: {
         id:          'sig-uuid-1',
         content_id:  'content-uuid-1',
+        project_id:  null,
+        source:      null,
         kind:        'impact_score',
         payload:     { value: 87, dimensions: [] },
         version:     'score-engine-1.0.0',
@@ -113,8 +115,13 @@ describe('atlas-signals — recordSignal', () => {
 
     expect(insertCalls).toHaveLength(1)
     expect(insertCalls[0].table).toBe('atlas_signals')
+    // INSERT shape: producer can omit projectId/source; signals.ts defaults
+    // both to null in the row (additive Collectors v1 schema evolution —
+    // see migration 20260623_150100_atlas_signals_evolution.sql).
     expect(insertCalls[0].payload).toEqual({
       content_id: 'content-uuid-1',
+      project_id: null,
+      source:     null,
       kind:       'impact_score',
       payload:    { value: 87, dimensions: [] },
       version:    'score-engine-1.0.0',
@@ -124,6 +131,8 @@ describe('atlas-signals — recordSignal', () => {
     expect(rec).toEqual({
       id:         'sig-uuid-1',
       contentId:  'content-uuid-1',
+      projectId:  null,
+      source:     null,
       kind:       'impact_score',
       payload:    { value: 87, dimensions: [] },
       version:    'score-engine-1.0.0',

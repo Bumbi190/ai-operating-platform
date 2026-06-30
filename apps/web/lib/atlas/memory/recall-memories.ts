@@ -80,6 +80,10 @@ export interface MemoryPack {
 
 // ── Tunables ─────────────────────────────────────────────────────────────────────
 
+// Effective-salience formula. MUST stay in sync with the ORDER BY in
+// supabase/migrations/20260617150200_atlas_recall_pin_focus_ranking.sql — the SQL
+// uses the same expression to rank+limit so pinned/focus rows survive the LIMIT;
+// this re-applies it to the returned base salience for final ranking (C3).
 const PINNED_SALIENCE = 1.0
 const FOCUS_BOOST = 0.15
 const DEFAULT_BUDGET_TOKENS = 1_200

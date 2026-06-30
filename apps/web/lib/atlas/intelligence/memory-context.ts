@@ -24,7 +24,12 @@
  * placed after live signals/view); this module only separates the channels.
  */
 
-import { recallMemories, type FocusRef, type MemoryPack } from '../memory/recall-memories'
+import {
+  recallMemories,
+  isRecallEnabled,
+  type FocusRef,
+  type MemoryPack,
+} from '../memory/recall-memories'
 import type { MemoryItem } from './types'
 
 export function isMemoryInjectEnabled(): boolean {
@@ -67,6 +72,39 @@ export function splitMemoryPack(pack: MemoryPack): MemoryContext {
   return { items, constraints }
 }
 
+// ── Injection gate (pure) ─────────────────────────────────────────────────────
+//
+// Realizes the staged-rollout flag semantics so a real shadow-eval is possible
+// (review C2). Three states:
+//   • recall OFF                 → nothing computed, nothing injected.
+//   • recall ON,  inject OFF     → pack computed and SHADOW-logged, but NOT injected.
+//   • recall ON,  inject ON      → pack computed and injected.
+// (inject ON without recall is a misconfiguration → treated as recall OFF: you
+//  cannot inject what was never recalled.)
+
+export interface InjectionGateResult {
+  /** What the consumer receives — empty unless injection is active. */
+  context: MemoryContext
+  /** True when a pack was computed but withheld from injection (shadow state). */
+  shadow: boolean
+  /** The computed context (for shadow logging); empty when nothing was recalled. */
+  computed: MemoryContext
+}
+
+export function applyInjectionGate(
+  pack: MemoryPack | null,
+  flags: { recallOn: boolean; injectOn: boolean },
+): InjectionGateResult {
+  if (!flags.recallOn || !pack) {
+    return { context: EMPTY_CONTEXT, shadow: false, computed: EMPTY_CONTEXT }
+  }
+  const computed = splitMemoryPack(pack)
+  if (!flags.injectOn) {
+    return { context: EMPTY_CONTEXT, shadow: true, computed } // shadow: log, don't inject
+  }
+  return { context: computed, shadow: false, computed }
+}
+
 // ── Imperative shell (I/O via recallMemories only) ────────────────────────────
 
 export interface MemoryContextRequest {
@@ -77,22 +115,43 @@ export interface MemoryContextRequest {
   focus?: FocusRef[]
 }
 
+function logShadow(req: MemoryContextRequest, ctx: MemoryContext): void {
+  const scope = req.projectIds?.length
+    ? req.projectIds.join(',')
+    : req.userId ?? 'global'
+  console.log(
+    `[atlas-memory][shadow] would inject items=${ctx.items.length} ` +
+      `constraints=${ctx.constraints.length} scope=${scope}`,
+  )
+}
+
 /**
- * Resolve the Memory dimension of a Context Request. Gated by ATLAS_MEMORY_INJECT
- * (default OFF → empty). Reaches Memory only through recallMemories(). Never throws
- * (recallMemories is non-throwing; an empty pack yields an empty context).
+ * Resolve the Memory dimension of a Context Request. Reaches Memory only through
+ * recallMemories(). Staged by two flags (review C2):
+ *   ATLAS_MEMORY_RECALL — compute the pack (enables shadow);
+ *   ATLAS_MEMORY_INJECT — actually inject it.
+ * With recall ON + inject OFF, the pack is computed and SHADOW-logged but returned
+ * empty, so operators can evaluate relevance from logs before enabling injection.
+ * Never throws (recallMemories is non-throwing).
  */
 export async function resolveMemoryContext(
   req: MemoryContextRequest,
 ): Promise<MemoryContext> {
-  if (!isMemoryInjectEnabled()) return EMPTY_CONTEXT
+  const recallOn = isRecallEnabled()
+  const injectOn = isMemoryInjectEnabled()
+
+  // No recall → no compute, no injection. (Also covers inject-ON-but-recall-OFF.)
+  if (!recallOn) return EMPTY_CONTEXT
 
   const pack = await recallMemories({
     userId: req.userId ?? null,
     projectIds: req.projectIds,
     focus: req.focus,
   })
-  return splitMemoryPack(pack)
+
+  const gate = applyInjectionGate(pack, { recallOn, injectOn })
+  if (gate.shadow) logShadow(req, gate.computed)
+  return gate.context
 }
 
 /**

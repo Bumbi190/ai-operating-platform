@@ -16,6 +16,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   splitMemoryPack,
+  applyInjectionGate,
   resolveMemoryContext,
   resolveMemoryItems,
   isMemoryInjectEnabled,
@@ -73,6 +74,41 @@ describe('splitMemoryPack — channel separation', () => {
 
   it('yields an empty context for an empty pack', () => {
     expect(splitMemoryPack(pack([]))).toEqual({ items: [], constraints: [] })
+  })
+})
+
+describe('applyInjectionGate — staged shadow/inject states (C2)', () => {
+  const p = pack([
+    item({ id: 'proc', memoryClass: 'procedural', summary: 'reels at 18:00' }),
+    item({ id: 'dec', memoryClass: 'decision', summary: 'never auto-publish' }),
+  ])
+
+  it('recall OFF → nothing computed, nothing injected', () => {
+    const g = applyInjectionGate(p, { recallOn: false, injectOn: false })
+    expect(g.context).toEqual({ items: [], constraints: [] })
+    expect(g.shadow).toBe(false)
+    expect(g.computed).toEqual({ items: [], constraints: [] })
+  })
+
+  it('recall ON, inject OFF → SHADOW: computed but not injected', () => {
+    const g = applyInjectionGate(p, { recallOn: true, injectOn: false })
+    expect(g.shadow).toBe(true)
+    expect(g.context).toEqual({ items: [], constraints: [] }) // withheld from injection
+    expect(g.computed.items.map((i) => i.id)).toEqual(['proc']) // computed for logging
+    expect(g.computed.constraints).toEqual(['never auto-publish'])
+  })
+
+  it('recall ON, inject ON → injected', () => {
+    const g = applyInjectionGate(p, { recallOn: true, injectOn: true })
+    expect(g.shadow).toBe(false)
+    expect(g.context.items.map((i) => i.id)).toEqual(['proc'])
+    expect(g.context.constraints).toEqual(['never auto-publish'])
+  })
+
+  it('null pack with recall ON → empty (defensive)', () => {
+    const g = applyInjectionGate(null, { recallOn: true, injectOn: true })
+    expect(g.context).toEqual({ items: [], constraints: [] })
+    expect(g.shadow).toBe(false)
   })
 })
 

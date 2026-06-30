@@ -20,6 +20,7 @@ import { createIntelligenceStore } from '../postgres-store'
 import type { IntelligenceStore } from '../store'
 import type { IntelligenceObject, BriefBody, MemoryItem } from '../types'
 import { resolveContextRequest } from '../context-request'
+import { resolveMemoryItems } from '../memory-context'
 import { buildBrief } from './brief-producer'
 
 const ALL_INTENTS = ['revenue', 'audience', 'content_performance', 'agent_activity'] as const
@@ -72,8 +73,13 @@ export async function runBriefProducer(
   )
   const signals = signalArrays.flat()
 
-  // ── 3. Recall memory ─────────────────────────────────────────────────────
-  const memoryRecall = args.memoryRecall ?? (async () => [])
+  // ── 3. Recall memory (via Context Request boundary — the only Memory path) ──
+  //   Default seam resolves Memory through recallMemories() behind
+  //   ATLAS_MEMORY_INJECT (default OFF → [] → unchanged behaviour). EI never
+  //   touches the DB directly; recall scope is the project being reasoned about.
+  const memoryRecall =
+    args.memoryRecall ??
+    ((pid: string | null) => resolveMemoryItems({ projectIds: pid ? [pid] : [] }))
   const memoryItems: MemoryItem[] = await memoryRecall(projectId).catch(() => [])
 
   // ── 4. Build the brief (pure core, zero I/O) ─────────────────────────────

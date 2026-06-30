@@ -169,6 +169,13 @@ export function assembleMemoryPack(rows: RecallRow[], opts: AssembleOptions): Me
 export interface RecallArgs {
   /** Owner whose allowed projects scope the recall (manager/agent identity). */
   userId: string | null
+  /**
+   * Explicit allowed project ids (EI/system scope). When provided, these bound
+   * recall directly and getAllowedProjectIds(userId) is skipped. Isolation is
+   * preserved — the wrapper still only returns world + these projects. World
+   * memories are always included.
+   */
+  projectIds?: string[]
   focus?: FocusRef[]
   episodicDays?: number
   limit?: number
@@ -189,7 +196,9 @@ export async function recallMemories(args: RecallArgs): Promise<MemoryPack> {
 
   try {
     const db: AnyDb = args.db ?? createAdminClient()
-    const allowedProjectIds = await getAllowedProjectIds(db, args.userId)
+    // Explicit project scope (EI/system) bypasses the user lookup; isolation is
+    // still enforced by the wrapper + the assembleMemoryPack belt.
+    const allowedProjectIds = args.projectIds ?? (await getAllowedProjectIds(db, args.userId))
     const focus = args.focus ?? []
 
     const { data, error } = await db.rpc('atlas_recall', {

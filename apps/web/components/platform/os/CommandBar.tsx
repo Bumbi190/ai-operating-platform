@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Search, Bell, Plus } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { OperatorModeSwitcher } from './OperatorMode'
 import { CommandPalette } from './CommandPalette'
 
@@ -56,12 +57,19 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
   }).toUpperCase()
   const initials = operator?.split('@')[0].slice(0, 2).toUpperCase() ?? '••'
 
+  // På /atlas är orben det primära gränssnittet — CommandBar distraherar.
+  // Visa en minimal variant utan klocka och breadcrumbs.
+  const isAtlas = pathname === '/atlas'
+
   return (
     <div
-      className="sticky top-0 z-bar backdrop-blur-md"
+      className={cn(
+        'sticky top-0 z-bar backdrop-blur-md transition-all duration-300',
+        isAtlas && 'opacity-0 pointer-events-none h-0 overflow-hidden',
+      )}
       style={{
         background: 'linear-gradient(180deg, rgba(5,7,20,0.88) 0%, rgba(5,7,20,0.60) 100%)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: isAtlas ? 'none' : '1px solid rgba(255,255,255,0.04)',
       }}
     >
       <div className="px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 h-12 flex items-center gap-3 lg:gap-4">

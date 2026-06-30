@@ -4,9 +4,10 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
-  VoiceAssistant, type ActivityEvent,
+  AtlasMiniOrb, type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -158,8 +159,8 @@ export default async function PlatformLayout({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
+    <AtlasRuntimeProvider projects={projects}>
     <OperatorModeProvider>
-      <VoiceAssistant />
       <div
         className="
           relative h-screen overflow-hidden
@@ -209,6 +210,10 @@ export default async function PlatformLayout({
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
       </div>
+
+      {/* Atlas permanent närvaro — fixed bottom-right, dold på /atlas */}
+      <AtlasMiniOrb />
     </OperatorModeProvider>
+    </AtlasRuntimeProvider>
   )
 }

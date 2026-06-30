@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
-  type ActivityEvent,
+  AtlasMiniOrb, type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
@@ -210,6 +210,9 @@ export default async function PlatformLayout({
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
       </div>
+
+      {/* Atlas permanent närvaro — fixed bottom-right, dold på /atlas */}
+      <AtlasMiniOrb />
     </OperatorModeProvider>
     </AtlasRuntimeProvider>
   )

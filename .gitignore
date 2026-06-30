@@ -40,3 +40,9 @@ handoff*.md
 
 .env.local
 .vercel
+
+# Build/dev noise — npm is canonical (package-lock.json); pnpm files are stray
+pnpm-lock.yaml
+pnpm-workspace.yaml
+__pycache__/
+**/.temp/

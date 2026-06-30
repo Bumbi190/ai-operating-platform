@@ -32,7 +32,17 @@ export async function POST(request: Request) {
     return Response.json({ error: 'OPENAI_API_KEY saknas' }, { status: 500 })
   }
 
-  const { text, voice = 'onyx' } = await request.json() as { text: string; voice?: string }
+  const {
+    text,
+    voice = 'onyx',
+    // hd=true ger bättre uttal för svenska — ~100-150ms extra latens men
+    // tydligt bättre prosodi och vokalljud. Standard för Atlas-röst.
+    hd    = true,
+    // 1.08 ger mer naturlig svenska-rytm. Neutral svenska tenderar annars
+    // att låta något segt i OpenAI-röster.
+    speed = 1.08,
+  } = await request.json() as { text: string; voice?: string; hd?: boolean; speed?: number }
+
   if (!text?.trim()) {
     return Response.json({ error: 'text krävs' }, { status: 400 })
   }
@@ -47,11 +57,11 @@ export async function POST(request: Request) {
       'Content-Type':  'application/json',
     },
     body: JSON.stringify({
-      model:           'tts-1',       // tts-1-hd for higher quality but slower
+      model:           hd ? 'tts-1-hd' : 'tts-1',
       voice,
       input:           trimmed,
       response_format: 'mp3',
-      speed:           1.0,
+      speed:           Math.max(0.25, Math.min(4.0, speed)),
     }),
     signal: AbortSignal.timeout(15_000),
   })

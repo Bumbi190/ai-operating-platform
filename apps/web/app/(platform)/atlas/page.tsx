@@ -1,10 +1,9 @@
 /**
- * Atlas Home — the primary entry point of Omnira.
+ * Atlas Home — voice-first entry point for Omnira.
  *
- * Not a dashboard: the operator opens Omnira and meets Atlas, their Executive
- * Chief of Staff. Atlas greets them, reports across all businesses from one
- * live snapshot, names the single highest-leverage action, and offers quick
- * actions into the supporting surfaces.
+ * Above the fold: Atlas orb, greeting, conversation.
+ * Below the fold: platform pulse, attention items, businesses.
+ * No big dashboard cards visible without scrolling.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -17,13 +16,11 @@ import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { collectAttentionItems } from '@/lib/os/attention'
 import { formatEta } from '@/lib/os/priority'
 import type { Project } from '@/lib/supabase/types'
-import { ExecutiveAssistant } from '../chat/ExecutiveAssistant'
-import { OSPage, OSLayer, AgenticButton } from '@/components/platform/os'
+import { AtlasVoiceHome } from './AtlasVoiceHome'
 import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
+import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
-import {
-  Sparkles, ArrowRight, ShieldCheck, TrendingUp, MessageSquare, AlertTriangle, Activity, Clock,
-} from 'lucide-react'
+import { AlertTriangle, ArrowRight, Clock } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,215 +28,203 @@ function fmtSEK(n: number): string {
   return new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' kr'
 }
 
-function greeting(d: Date): string {
-  const h = d.getHours()
-  if (h < 10) return 'God morgon'
-  if (h < 18) return 'God eftermiddag'
-  return 'God kväll'
-}
-
 export default async function AtlasHome() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const db = createAdminClient()
-  const ctx = await gatherAtlasContext(db)
+  const db        = createAdminClient()
+  const ctx       = await gatherAtlasContext(db)
   const bugDigest = await getMorningBugDigest(db)
-  const now = new Date()
-  const projects = ctx.businesses.map(b => ({ id: b.id, name: b.name, slug: b.slug }))
 
-  // Executive Brain — what happened, what it cost, what worked.
+  // Executive summary
   const exec = await atlasExecutiveSummary(db)
-  const lines = exec.whatHappened
 
-  // EN åtgärdsmotor (P0): samma signaler som Action Center, renderade här.
+  // Attention items
   const { data: projectsRaw } = await supabase
     .from('projects')
     .select('id, owner_id, name, slug, color, settings, created_at')
     .order('created_at', { ascending: true })
-  const attention = await collectAttentionItems(db, (projectsRaw ?? []) as Project[])
-  const topActions = [...attention.urgent, ...attention.important].slice(0, 6)
-
-  const quickActions = [
-    { label: 'Granska godkännanden', href: '/approvals', icon: ShieldCheck },
-    { label: 'Affärsöversikt',       href: '/revenue',   icon: TrendingUp },
-    { label: 'Aktivitet',            href: '/agent-activity', icon: Activity },
-    { label: 'Prata med Atlas',      href: '/chat',      icon: MessageSquare },
-  ]
+  const attention  = await collectAttentionItems(db, (projectsRaw ?? []) as Project[])
+  const topActions = [...attention.urgent, ...attention.important].slice(0, 5)
 
   return (
-    <OSPage className="animate-fade-in">
+    <div className="min-h-screen">
 
-      {/* ── ATLAS GREETING ───────────────────────────────────────────────── */}
-      <OSLayer layer="hero">
-        <div className="rounded-2xl border border-indigo-500/25 bg-gradient-to-b from-indigo-500/[0.07] to-transparent p-6 lg:p-8">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-indigo-300" />
-            </span>
-            <span className="eyebrow eyebrow-accent">Atlas · Executive Chief of Staff</span>
-          </div>
+      {/* ══ VOICE HERO — above the fold ═══════════════════════════════════ */}
+      <AtlasVoiceHome operatorName={OPERATOR_NAME} />
 
-          <h1 className="text-2xl 2xl:text-3xl font-bold tracking-tight">
-            {greeting(now)} {OPERATOR_NAME}.
-          </h1>
+      {/* ══ SECONDARY DATA — scroll to see ═══════════════════════════════ */}
+      <div className="relative z-10 px-4 lg:px-8 pb-16 space-y-6 max-w-3xl mx-auto">
 
-          <p className="text-sm text-zinc-400 mt-2">Jag har gått igenom läget över alla verksamheter.</p>
+        {/* Divider */}
+        <div className="flex items-center gap-4">
+          <div className="h-px flex-1 bg-white/[0.05]" />
+          <span className="text-[10px] uppercase tracking-[0.15em] text-zinc-700 font-mono">
+            Plattformsöversikt
+          </span>
+          <div className="h-px flex-1 bg-white/[0.05]" />
+        </div>
 
-          <div className="mt-5 space-y-1.5">
-            {lines.map((l, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className="mt-2 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                <p className="text-sm text-foreground/90">{l}</p>
+        {/* ── Platform Pulse ──────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <PulseStat label="Intäkt (mån)"     value={fmtSEK(ctx.totals.revenueMonthSek)} accent="emerald" />
+          <PulseStat label="AI-kostnad (mån)" value={fmtSEK(ctx.totals.costMonthSek)}    accent="indigo" />
+          <PulseStat
+            label="Väntar godkännande"
+            value={String(ctx.totals.pendingApprovals)}
+            accent={ctx.totals.pendingApprovals > 0 ? 'amber' : 'muted'}
+          />
+          <PulseStat
+            label="Fel senaste 24h"
+            value={String(ctx.totals.failedRuns24h)}
+            accent={ctx.totals.failedRuns24h > 0 ? 'red' : 'muted'}
+            icon={ctx.totals.failedRuns24h > 0 ? <AlertTriangle className="w-3 h-3" /> : undefined}
+          />
+        </div>
+
+        {/* ── Prioriterade åtgärder ────────────────────────────────────── */}
+        {topActions.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600 font-mono">
+              Kräver uppmärksamhet · {attention.actionable}
+            </p>
+            {topActions.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 hover:border-white/[0.10] transition-colors"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  a.severity === 'urgent'    ? 'bg-red-400' :
+                  a.severity === 'important' ? 'bg-amber-400' : 'bg-indigo-400'
+                }`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-zinc-200 truncate">{a.title}</p>
+                  <p className="text-[11px] text-zinc-600 truncate">
+                    {a.reason}
+                    {a.etaMin != null && (
+                      <span className="inline-flex items-center gap-1 ml-2 text-zinc-600">
+                        <Clock className="w-2.5 h-2.5" /> {formatEta(a.etaMin)}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                {a.agentic && (
+                  <AgenticButton
+                    endpoint={a.agentic.endpoint}
+                    body={a.agentic.body}
+                    label={a.agentic.label}
+                  />
+                )}
+                {a.action && (
+                  <Link
+                    href={a.action.href}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 shrink-0"
+                  >
+                    {a.action.label} <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
               </div>
             ))}
-            <div className="flex items-start gap-2.5">
-              <span className="mt-2 w-1.5 h-1.5 rounded-full bg-zinc-500 shrink-0" />
-              <p className="text-sm text-foreground/90">AI-kostnad idag: <span className="font-semibold">{fmtSEK(ctx.totals.costTodaySek)}</span> · prognos månad {fmtSEK(ctx.totals.forecastMonthSek)}.</p>
-            </div>
           </div>
+        )}
 
-          {/* Prioriterade åtgärder — EN motor (lib/os/attention), agentiska knappar inkluderade */}
-          {topActions.length > 0 && (
-            <div className="mt-6 space-y-2">
-              <p className="text-[11px] uppercase tracking-widest text-indigo-300/70">
-                Prioriterade åtgärder{attention.actionable > 0 ? ` · ${attention.actionable}` : ''}
+        {/* ── Nattens systemfynd ───────────────────────────────────────── */}
+        <NightlyFindings findings={bugDigest.findings} reports={bugDigest.reports} />
+
+        {/* ── Verksamheter ─────────────────────────────────────────────── */}
+        <div className="space-y-3">
+          <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600 font-mono">
+            Verksamheter
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {ctx.businesses.map((b) => (
+              <div
+                key={b.id}
+                className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3 hover:border-white/[0.10] transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: b.color }}
+                  />
+                  <h3 className="text-[13px] font-medium text-zinc-200 truncate">{b.name}</h3>
+                </div>
+                {b.focus && (
+                  <p className="text-[11px] text-zinc-600 leading-relaxed">{b.focus}</p>
+                )}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1">
+                  <BizMetric label="Intäkt (mån)"  value={fmtSEK(b.revenueMonthSek)} />
+                  <BizMetric label="Kostnad (mån)" value={fmtSEK(b.costMonthSek)} />
+                  <BizMetric label="Leads"         value={String(b.qualifiedLeads)} />
+                  <BizMetric label="Publicerat (v)" value={String(b.publishedThisWeek)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Briefing-kolumner ────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {([
+            { title: 'Vad funkade',          items: exec.whatWorked,     dot: 'bg-emerald-400' },
+            { title: 'Vad föll',             items: exec.whatFailed,     dot: 'bg-red-400'     },
+            { title: 'Kräver uppmärksamhet', items: exec.needsAttention, dot: 'bg-amber-400'   },
+          ] as const).map((col) => (
+            <div
+              key={col.title}
+              className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-2"
+            >
+              <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600 font-mono">
+                {col.title}
               </p>
-              {topActions.map((a) => (
-                <div key={a.id}
-                  className="flex items-center gap-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] px-3.5 py-2.5">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.severity === 'urgent' ? 'bg-red-400' : a.severity === 'important' ? 'bg-amber-400' : 'bg-indigo-400'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{a.title}</p>
-                    <p className="text-[11px] text-zinc-500 truncate">
-                      {a.reason}
-                      {a.etaMin != null && (
-                        <span className="inline-flex items-center gap-1 ml-2 text-zinc-400">
-                          <Clock className="w-2.5 h-2.5" /> {formatEta(a.etaMin)}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  {a.agentic && (
-                    <AgenticButton endpoint={a.agentic.endpoint} body={a.agentic.body} label={a.agentic.label} />
-                  )}
-                  {a.action && (
-                    <Link href={a.action.href}
-                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-indigo-300 hover:text-indigo-200 shrink-0">
-                      {a.action.label} <ArrowRight className="w-3 h-3" />
-                    </Link>
-                  )}
+              {col.items.slice(0, 4).map((t, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${col.dot}`} />
+                  <p className="text-[12px] text-zinc-400 leading-relaxed">{t}</p>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </OSLayer>
-
-      {/* ── DAGENS BRIEFING (Fas 5) ──────────────────────────────────────── */}
-      <OSLayer layer="operational" className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {([
-          { title: 'Vad funkade',          items: exec.whatWorked,     dot: 'bg-emerald-400' },
-          { title: 'Vad föll',             items: exec.whatFailed,     dot: 'bg-red-400' },
-          { title: 'Kräver uppmärksamhet', items: exec.needsAttention, dot: 'bg-amber-400' },
-        ] as const).map(col => (
-          <div key={col.title} className="rounded-xl border border-border bg-card p-4 space-y-2">
-            <p className="text-[11px] uppercase tracking-widest text-muted-foreground">{col.title}</p>
-            {col.items.slice(0, 4).map((t, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}`} />
-                <p className="text-[12px] text-foreground/85 leading-relaxed">{t}</p>
-              </div>
-            ))}
-          </div>
-        ))}
-      </OSLayer>
-
-      {/* ── NATTENS SYSTEMFYND (P0: f.d. MorningBugPopup, nu briefing-sektion) ── */}
-      <OSLayer layer="operational">
-        <NightlyFindings findings={bugDigest.findings} reports={bugDigest.reports} />
-      </OSLayer>
-
-      {/* ── TALK TO ATLAS (default action) ───────────────────────────────── */}
-      <OSLayer layer="operational">
-        <div className="rounded-2xl border border-border bg-card p-4 lg:p-5">
-          <ExecutiveAssistant projects={projects} operatorName={OPERATOR_NAME} />
-        </div>
-      </OSLayer>
-
-      {/* ── QUICK ACTIONS ────────────────────────────────────────────────── */}
-      <OSLayer layer="operational" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {quickActions.map(a => (
-          <Link key={a.href} href={a.href}
-            className="rounded-xl border border-border bg-card hover:bg-muted/40 transition-colors p-4 flex items-center gap-2.5">
-            <a.icon className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span className="text-sm font-medium">{a.label}</span>
-          </Link>
-        ))}
-      </OSLayer>
-
-      {/* ── PLATFORM PULSE ───────────────────────────────────────────────── */}
-      <OSLayer layer="operational" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Intäkt denna månad" value={fmtSEK(ctx.totals.revenueMonthSek)} accent="emerald" />
-        <Stat label="AI-kostnad denna månad" value={fmtSEK(ctx.totals.costMonthSek)} accent="indigo" />
-        <Stat label="Väntande godkännanden" value={String(ctx.totals.pendingApprovals)} accent={ctx.totals.pendingApprovals > 0 ? 'amber' : 'default'} />
-        <Stat label="Fallerade körningar (24h)" value={String(ctx.totals.failedRuns24h)} accent={ctx.totals.failedRuns24h > 0 ? 'red' : 'default'}
-              icon={ctx.totals.failedRuns24h > 0 ? <AlertTriangle className="w-3.5 h-3.5" /> : undefined} />
-      </OSLayer>
-
-      {/* ── BUSINESSES ───────────────────────────────────────────────────── */}
-      <OSLayer layer="intelligence" className="space-y-4">
-        <div>
-          <p className="eyebrow eyebrow-accent mb-1">Verksamheter</p>
-          <h2 className="text-base font-semibold tracking-tight">Vad Atlas bevakar</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {ctx.businesses.map(b => (
-            <div key={b.id} className="rounded-xl border border-border bg-card p-5 space-y-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
-                <h3 className="text-sm font-semibold truncate">{b.name}</h3>
-              </div>
-              {b.focus && <p className="text-[11px] text-muted-foreground leading-relaxed">{b.focus}</p>}
-              <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
-                <Metric label="Intäkt (mån)" value={fmtSEK(b.revenueMonthSek)} />
-                <Metric label="Kostnad (mån)" value={fmtSEK(b.costMonthSek)} />
-                <Metric label="Leads" value={String(b.qualifiedLeads)} />
-                <Metric label="Publicerat (v)" value={String(b.publishedThisWeek)} />
-              </div>
-            </div>
           ))}
         </div>
-      </OSLayer>
-    </OSPage>
-  )
-}
 
-function Stat({ label, value, accent = 'default', icon }: {
-  label: string; value: string; accent?: 'emerald' | 'indigo' | 'amber' | 'red' | 'default'; icon?: React.ReactNode
-}) {
-  const color =
-    accent === 'emerald' ? 'text-emerald-400' :
-    accent === 'indigo'  ? 'text-indigo-400' :
-    accent === 'amber'   ? 'text-amber-400' :
-    accent === 'red'     ? 'text-red-400' : 'text-foreground'
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-2">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <span className="text-xs">{label}</span>
-        {icon && <span className={color}>{icon}</span>}
       </div>
-      <div className={`text-2xl font-bold tracking-tight ${color}`}>{value}</div>
     </div>
   )
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+// ── Hjälpkomponenter ──────────────────────────────────────────────────────────
+
+function PulseStat({
+  label, value, accent = 'muted', icon,
+}: {
+  label: string
+  value: string
+  accent?: 'emerald' | 'indigo' | 'amber' | 'red' | 'muted'
+  icon?: React.ReactNode
+}) {
+  const color =
+    accent === 'emerald' ? 'text-emerald-400' :
+    accent === 'indigo'  ? 'text-indigo-400'  :
+    accent === 'amber'   ? 'text-amber-400'   :
+    accent === 'red'     ? 'text-red-400'     : 'text-zinc-300'
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-600 font-mono">{label}</span>
+        {icon && <span className={color}>{icon}</span>}
+      </div>
+      <div className={`text-xl font-bold tracking-tight font-mono ${color}`}>{value}</div>
+    </div>
+  )
+}
+
+function BizMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-0.5">
-      <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{label}</p>
-      <p className="text-sm font-semibold font-mono">{value}</p>
+      <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-700 font-mono">{label}</p>
+      <p className="text-[12px] font-semibold font-mono text-zinc-300">{value}</p>
     </div>
   )
 }

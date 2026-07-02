@@ -36,6 +36,9 @@ import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
 import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
+// CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
+// Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
+import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 
@@ -576,7 +579,14 @@ export async function POST(request: Request) {
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
-    try { systemPrompt += await buildLiveContext(db, allowedProjectIds) } catch { /* icke-kritiskt */ }
+    // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
+    // the exact strings appended below, nothing recomputed, zero behavior change.
+    let shadowLive = '', shadowAction = '', shadowView = ''
+    try {
+      const live = await buildLiveContext(db, allowedProjectIds)
+      shadowLive = live
+      systemPrompt += live
+    } catch { /* icke-kritiskt */ }
     // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
     // delegation across turns doesn't require re-fetching (kills the fetch loop).
     try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }
@@ -585,6 +595,7 @@ export async function POST(request: Request) {
     // to suppress a false-claim correction on truthful recall.
     try {
       const am = await buildActionMemory(db, allowedProjectIds)
+      shadowAction = am.text
       systemPrompt += am.text
       recentDelegationKnown = am.hasRecentDelegation
     } catch { /* icke-kritiskt */ }
@@ -594,7 +605,9 @@ export async function POST(request: Request) {
       try {
         const nv = normalizeView(view)
         if (nv) {
-          systemPrompt += renderViewBlock(nv)
+          const viewBlock = renderViewBlock(nv)
+          shadowView = viewBlock
+          systemPrompt += viewBlock
           // View → Record bridge (Foundation 2, flag-gated): auto-prefetch the
           // actual rows on screen so Atlas can reason about them directly.
           // Project-isolated and PII-free by construction (see view-records.ts).
@@ -605,6 +618,21 @@ export async function POST(request: Request) {
       } catch { /* icke-kritiskt */ }
     }
     if (voice) systemPrompt += VOICE_DIRECTIVE
+
+    // ── CL Commit 5 (Stage 0): context-shadow — INSTRUMENTATION ONLY ──────────
+    // Builds the assembler context in parallel and logs a structural+token diff
+    // ([ctx-shadow] JSON). Fire-and-forget: never awaited, never throws, and the
+    // assembled context is discarded — it cannot influence prompt, reasoning,
+    // tools, or output. Disable with ATLAS_CTX_ASSEMBLER unset/'off'.
+    if (isContextShadowEnabled()) {
+      void runContextShadow({
+        db,
+        allowedProjectIds,
+        voice: !!voice,
+        view: view ?? null,
+        legacy: { live: shadowLive, action: shadowAction, view: shadowView },
+      })
+    }
   }
 
   const activeTools = fastPath ? [] : TOOLS

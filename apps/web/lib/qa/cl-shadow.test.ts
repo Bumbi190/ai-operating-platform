@@ -114,6 +114,43 @@ describe('computeShadowDiff — structural mapping', () => {
   })
 })
 
+// ── Commit 5.1: reader fidelity vs. allocation policy, independently measurable ─
+
+describe('reader fidelity vs. allocation — separated concerns (Commit 5.1)', () => {
+  it('regression: reader fidelity stays identical-prefix even when voice allocation truncates ② (the false-negative this patch fixes)', async () => {
+    // ~1200+ chars ≈ >300 tokens — well over voice's ② budget (300 tokens, allocation.ts STATIC_POLICY_V1.voice.activeWork).
+    const ledger = '\n\n[SENASTE ÅTGÄRDER — …]\n' + '- Delegerade X till agent\n'.repeat(60)
+    const a = await assembleContext(baseReq({ modality: 'voice' }), { db: null, allowedProjectIds: ['p1'] }, {
+      now: NOW, cache: new VolatilityCache(45_000), readers: { activeWork: stub('activeWork', ledger) },
+    })
+    // Sanity: allocation really did shrink the block for this turn (policy working as designed).
+    expect(a.soft.activeWork!.text.length).toBeLessThan(ledger.length)
+
+    const d = computeShadowDiff({ live: '', action: ledger, view: '' }, a, 1)
+    expect(d.allocation.activeWork).toBe('truncated')
+    // Before Commit 5.1 this compared legacy to the ALREADY-TRUNCATED text and
+    // reported "divergent" here — a false negative. The reader never changed.
+    expect(d.fidelity.actionLedger).toBe('identical-prefix')
+  })
+
+  it('allocation.view reports zeroed-by-policy when the modality allocates the channel to zero (scheduled ③ = 0)', async () => {
+    const a = await assembleContext(baseReq({ modality: 'scheduled' }), { db: null, allowedProjectIds: ['p1'] }, {
+      now: NOW, cache: new VolatilityCache(45_000), readers: { view: stub('view', '\n\n[CURRENT VIEW]\nPage: Approvals') },
+    })
+    expect(a.soft.view).toBeNull() // policy-zeroed, composes as absent
+    const d = computeShadowDiff({ live: '', action: '', view: '' }, a, 1)
+    expect(d.allocation.view).toBe('zeroed-by-policy')
+  })
+
+  it('allocation.* reports absent when there is no raw block, within-budget when the raw block fits', async () => {
+    const small = '\n\n[CURRENT VIEW]\nPage: A'
+    const a = await assembled({ view: stub('view', small) })
+    const d = computeShadowDiff({ live: '', action: '', view: small }, a, 1)
+    expect(d.allocation.activeWork).toBe('absent')   // no activeWork reader registered
+    expect(d.allocation.view).toBe('within-budget')  // small text, chat budget not exceeded
+  })
+})
+
 // ── Containment (never throws, sink receives the diff, context never escapes) ─
 
 describe('runContextShadow — fire-and-forget containment', () => {

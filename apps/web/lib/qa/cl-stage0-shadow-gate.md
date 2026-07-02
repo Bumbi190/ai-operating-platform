@@ -2,7 +2,18 @@
 
 > Roadmap §4/§6: Stage 0 is **in_progress** until this checklist passes on runtime
 > evidence. Code gates already green (tsc 0 · build 51/51 · CL suites 82/82).
-> Versions under test: assembler `cl-v1.0-stage0` · allocation policy `v1`.
+> Versions under test: assembler `cl-v1.0-stage0.1` · allocation policy `v1`.
+>
+> **Commit 5.1 patch (instrumentation only):** the original `fidelity.actionLedger`
+> compared legacy against the already-allocated `soft.activeWork.text`, which
+> conflated reader fidelity with allocation policy — a voice turn's 300-token ②
+> budget against a ~910-token legacy ledger could never be a legacy-prefix, so
+> the diff reported a false `"divergent"` even though the reader was
+> byte-faithful. `fidelity.*` now compares legacy against `provenance.rawSoft`
+> (reader output BEFORE allocation); the NEW `allocation.*` field reports the
+> allocation step's own effect (`within-budget` / `truncated` /
+> `zeroed-by-policy` / `absent`), independent of legacy. Composition, readers,
+> and the allocation table are unchanged — only what gets compared to what.
 
 ## 1. Preconditions
 
@@ -26,15 +37,21 @@
 
 Structural
 - [ ] Exactly one line per P1–P5 turn; **zero** lines for P6 (fast path) and zero once the flag is unset.
-- [ ] `versions == { assembler: "cl-v1.0-stage0", allocationPolicy: "v1" }` on every line.
+- [ ] `versions == { assembler: "cl-v1.0-stage0.1", allocationPolicy: "v1" }` on every line.
 - [ ] `structural.assembled` ⊇ `["operational","activeWork"]`; includes `"view"` on P3.
 - [ ] `structural.legacyOnly == ["[BESLUT"]` — nothing else. (Expected until Stage 1; anything additional = a reader failed.)
 - [ ] `structural.assembledOnly == []`.
 - [ ] `blocksDropped == []` (①②③ run un-deadlined; anything here = reader contract breach).
 
-Fidelity
-- [ ] P3: `fidelity.view == "identical"` (byte-equal ③). P1/P2/P5: `"absent"`.
-- [ ] `fidelity.actionLedger ∈ {"identical-prefix","absent"}`; P4 must be `"identical-prefix"`. Any `"divergent"` → investigate before gate.
+Fidelity (legacy vs. RAW reader output, pre-allocation — Commit 5.1)
+- [ ] P3: `fidelity.view == "identical"` (byte-equal ③, pre-allocation). P1/P2/P5: `"absent"`.
+- [ ] `fidelity.actionLedger ∈ {"identical-prefix","absent"}`; P4 must be `"identical-prefix"`. Any `"divergent"` → investigate before gate (this is now purely a reader question — allocation cannot cause it).
+- [ ] P5 (voice): `fidelity.actionLedger` must still read `"identical-prefix"` even though ② is small on a voice turn — confirms the false-negative is gone.
+
+Allocation (the policy's own effect on the raw block — Commit 5.1, informational, not pass/fail against legacy)
+- [ ] P5 (voice): `allocation.activeWork == "truncated"` whenever the legacy ledger exceeds ~300 tokens — this is the policy working as designed, not a defect.
+- [ ] P1/P4 (chat): `allocation.activeWork ∈ {"within-budget","truncated"}` depending on ledger size; `"zeroed-by-policy"` would indicate a modality/policy mismatch — investigate.
+- [ ] P3: `allocation.view == "within-budget"` (chat ③ budget is 600 tokens; a view block rarely exceeds it).
 
 Tokens (plausibility, not equality)
 - [ ] `tokens.operational ≤ tokens.legacyLive` (legacy live includes the extra slices that fold in at Stage 1 — the gap is the Commit-7 work, note its size).

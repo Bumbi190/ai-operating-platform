@@ -73,8 +73,14 @@ const _stableBlockCache = new VolatilityCache<ContextBlock | null>(DEFAULT_TTL_M
  * exact composition logic that produced it. Bump on ANY change to
  * composition/order/cache/deadline wiring — policy numbers version
  * separately via STATIC_POLICY_VERSION.
+ *
+ * stage0 → stage0.1 (Commit 5.1, instrumentation-only): provenance now also
+ * carries `rawSoft` (reader output captured BEFORE allocation truncation),
+ * so the shadow diff can measure reader fidelity and allocation policy
+ * independently. Composition, order, caching, deadlines and the allocation
+ * table itself are byte-for-byte unchanged.
  */
-export const ASSEMBLER_VERSION = 'cl-v1.0-stage0'
+export const ASSEMBLER_VERSION = 'cl-v1.0-stage0.1'
 
 // ── AssembledContext (canonical §6.3) ─────────────────────────────────────────
 
@@ -104,6 +110,18 @@ export interface AssembledContext {
     cacheHits: ContextDimension[]
     /** Composition-logic version (see ASSEMBLER_VERSION) — keeps every recorded diff attributable. */
     assemblerVersion: string
+    /**
+     * Raw soft-block text PER DIMENSION, captured immediately after the
+     * readers return and BEFORE `truncateToBudget` runs (Commit 5.1).
+     * Instrumentation-only: never read by `renderAssembledContext`, never
+     * on the live path. Exists so the shadow diff can compare reader
+     * output to the legacy segments independently of allocation, instead
+     * of diffing legacy against the already-truncated `soft[dim].text`
+     * (which conflates "did the reader reproduce legacy content" with
+     * "did the allocation policy shrink it" — the Stage-0.1 false-negative
+     * fix). Optional so hand-built `AssembledContext` fixtures stay valid.
+     */
+    rawSoft?: Partial<Record<ContextDimension, string>>
   }
 }
 
@@ -177,6 +195,16 @@ export async function assembleContext(
     return [dim, await invokeReader(dim, reader, req, env, deadlines[dim], dropped)] as const
   }))
 
+  // Capture raw reader output BEFORE allocation (Commit 5.1, instrumentation
+  // only): `results` still holds each block exactly as its reader returned
+  // it — the truncation loop below builds NEW objects and never mutates
+  // `block`, so this snapshot is safe to take first and is unaffected by
+  // whatever the allocation policy does next.
+  const rawSoft: Partial<Record<ContextDimension, string>> = {}
+  for (const [dim, block] of results) {
+    if (block) rawSoft[dim] = block.text
+  }
+
   // Apply the static allocation (§6.4): mechanical, content-blind. A block
   // whose channel is allocated to zero (e.g. voice ④/⑤) composes as absent —
   // policy absence, not a drop; the policy version in provenance explains it.
@@ -207,6 +235,7 @@ export async function assembleContext(
       blocksDropped: dropped,
       cacheHits,
       assemblerVersion: ASSEMBLER_VERSION,
+      rawSoft,
     },
   }
 

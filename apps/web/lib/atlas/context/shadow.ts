@@ -1,5 +1,5 @@
 /**
- * lib/atlas/context/shadow.ts — Stage-0 shadow harness (CL Commit 5)
+ * lib/atlas/context/shadow.ts — Stage-0 shadow harness (CL Commit 5, patched Commit 5.1)
  *
  * INSTRUMENTATION, NOT BEHAVIOR. The route keeps serving the legacy context
  * exactly as before; this module builds the assembler context IN PARALLEL,
@@ -17,18 +17,42 @@
  *    failure logs `[ctx-shadow] error` and ends there.
  *  - No writes: the shadow only reads (through the same readers) and logs.
  *
+ * Commit 5.1 — separating reader fidelity from allocation policy:
+ * The original `fidelity.actionLedger` compared legacy against the
+ * ALREADY-ALLOCATED `soft.activeWork.text`. That conflates two independent
+ * concerns: did the reader reproduce legacy content, and did the (working-
+ * as-designed) allocation policy shrink it for this turn's modality? A
+ * voice turn allocates ② to 300 tokens against a ~910-token legacy ledger —
+ * the allocated text can never be a legacy-prefix, so the old diff reported
+ * a false `"divergent"` even though the reader was byte-faithful. `fidelity.*`
+ * below now compares legacy against `provenance.rawSoft` — the reader's
+ * output BEFORE `truncateToBudget` runs — so it measures reader fidelity
+ * only. The NEW `allocation.*` field measures the allocation step on its
+ * own (raw vs. allocated), independent of legacy. Composition, the reader
+ * implementations, and the allocation table are all unchanged; only what
+ * gets compared to what has changed.
+ *
  * Reading the diff (`[ctx-shadow]` JSON):
  *  - `structural.legacyOnly` lists legacy markers with no assembled
  *    counterpart. `[BESLUT]` is EXPECTED here until Stage 1 (constraints
  *    reader), as are the extra live slices ([AGENTER]/content/revenue/…)
  *    that fold into ① at cutover — the diff makes them visible so the
  *    Commit-7 review sees exactly what moves.
- *  - `fidelity.view` should read 'identical' whenever a view is present:
- *    ③ reuses normalizeView/renderViewBlock verbatim on the same envelope.
- *  - `fidelity.actionLedger` compares the [SENASTE ÅTGÄRDER] segment by
+ *  - `fidelity.view` / `fidelity.actionLedger` compare legacy against RAW
+ *    reader output (pre-allocation). `fidelity.view` should read
+ *    'identical' whenever a view is present: ③ reuses
+ *    normalizeView/renderViewBlock verbatim on the same envelope.
+ *    `fidelity.actionLedger` compares the [SENASTE ÅTGÄRDER] segment by
  *    prefix (② appends [PÅGÅENDE KÖRNINGAR], and the two paths query
  *    seconds apart, so byte-equality is not the invariant — presence and
- *    prefix fidelity are).
+ *    prefix fidelity are). Neither is affected by allocation any more.
+ *  - `allocation.view` / `allocation.activeWork` report whether THIS turn's
+ *    static policy (§6.4) truncated the raw block, zeroed it, or left it
+ *    within budget — a fact about the policy, not a comparison to legacy.
+ *    A `"divergent"` reader fidelity next to a `"truncated"` allocation on
+ *    the SAME line means the reader is fine and the policy did its job; a
+ *    `"divergent"` reader fidelity with `"within-budget"` allocation means
+ *    the reader actually changed and needs investigating.
  *  - Token counts use the shared M4 heuristic (`estimateTokens`).
  */
 
@@ -69,9 +93,22 @@ export interface ShadowDiff {
     /** Assembled blocks with no legacy counterpart (e.g. [PÅGÅENDE KÖRNINGAR] inside ②). */
     assembledOnly: string[]
   }
+  /** Reader fidelity: legacy segment vs. RAW reader output, BEFORE allocation (Commit 5.1). */
   fidelity: {
     view: 'identical' | 'divergent' | 'absent'
     actionLedger: 'identical-prefix' | 'divergent' | 'absent'
+  }
+  /**
+   * Allocation fidelity: the static policy's own effect on the raw block for
+   * THIS turn's modality (Commit 5.1). NOT a comparison to legacy — a
+   * mechanical fact about the (unchanged) allocation table. 'absent' = no
+   * raw block to allocate; 'zeroed-by-policy' = raw present, budget 0 for
+   * this modality; 'truncated' = raw exceeded budget; 'within-budget' = raw
+   * passed through unshortened.
+   */
+  allocation: {
+    view: 'within-budget' | 'truncated' | 'zeroed-by-policy' | 'absent'
+    activeWork: 'within-budget' | 'truncated' | 'zeroed-by-policy' | 'absent'
   }
   tokens: {
     legacyLive: number
@@ -109,15 +146,31 @@ export function computeShadowDiff(legacy: LegacySegments, assembled: AssembledCo
   const legacyDims = new Set(legacyFound.map(m => m.dimension).filter(Boolean))
   const assembledOnly = [...present].filter(d => !legacyDims.has(d))
 
-  const viewText = assembled.soft.view?.text ?? ''
-  const view: ShadowDiff['fidelity']['view'] =
-    !legacy.view && !viewText ? 'absent' : legacy.view === viewText ? 'identical' : 'divergent'
+  // RAW reader output (pre-allocation) — this is what reader fidelity
+  // compares against legacy. Falls back to '' when a fixture/older caller
+  // doesn't populate `rawSoft` (kept optional so it never throws).
+  const rawView = assembled.provenance.rawSoft?.view ?? ''
+  const rawActiveWork = assembled.provenance.rawSoft?.activeWork ?? ''
 
-  const awText = assembled.soft.activeWork?.text ?? ''
+  const view: ShadowDiff['fidelity']['view'] =
+    !legacy.view && !rawView ? 'absent' : legacy.view === rawView ? 'identical' : 'divergent'
+
   const actionLedger: ShadowDiff['fidelity']['actionLedger'] =
-    !legacy.action && !awText ? 'absent'
-    : legacy.action && awText.startsWith(legacy.action) ? 'identical-prefix'
+    !legacy.action && !rawActiveWork ? 'absent'
+    : legacy.action && rawActiveWork.startsWith(legacy.action) ? 'identical-prefix'
     : 'divergent'
+
+  // ALLOCATED text (post-truncation) — this is what actually reaches the
+  // model. Used only for the allocation-fidelity fact and token accounting,
+  // never for the legacy comparison above.
+  const viewText = assembled.soft.view?.text ?? ''
+  const awText = assembled.soft.activeWork?.text ?? ''
+
+  const allocationState = (raw: string, allocated: string): ShadowDiff['allocation']['view'] => {
+    if (!raw) return 'absent'
+    if (!allocated) return 'zeroed-by-policy'
+    return allocated.length < raw.length ? 'truncated' : 'within-budget'
+  }
 
   return {
     at: assembled.provenance.generatedAt,
@@ -133,6 +186,10 @@ export function computeShadowDiff(legacy: LegacySegments, assembled: AssembledCo
       assembledOnly,
     },
     fidelity: { view, actionLedger },
+    allocation: {
+      view: allocationState(rawView, viewText),
+      activeWork: allocationState(rawActiveWork, awText),
+    },
     tokens: {
       legacyLive: estimateTokens(legacy.live),
       legacyAction: estimateTokens(legacy.action),

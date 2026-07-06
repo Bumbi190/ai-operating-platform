@@ -15,6 +15,10 @@ import {
 } from 'lucide-react'
 import { getProjectMemorySummary } from '@/lib/ai/memory/memory-store'
 import { getRecentFeedback, getPatternStats } from '@/lib/ai/memory/feedback-store'
+import {
+  STAGE1_THE_PROMPT_SEED_ACTION,
+  isThePromptSeedProject,
+} from '@/lib/ai/memory/stage1-foundation'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,11 +67,12 @@ export default async function MemoryPage() {
   const db = createAdminClient()
   const { data: projects } = await db
     .from('projects')
-    .select('id, name')
+    .select('id, name, slug')
     .eq('owner_id', user.id)
     .limit(1)
 
   const project = projects?.[0]
+  const canSeedThePromptMemory = project ? isThePromptSeedProject(project) : false
 
   // If no project, show empty state
   if (!project) {
@@ -110,16 +115,18 @@ export default async function MemoryPage() {
             </p>
           </div>
         </div>
-        <form action={`/api/memory/patterns`} method="POST">
-          <input type="hidden" name="action" value="seed_brand" />
-          <input type="hidden" name="projectId" value={project.id} />
-          <button
-            type="submit"
-            className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-3 py-1.5 transition-colors"
-          >
-            Seed brand rules
-          </button>
-        </form>
+        {canSeedThePromptMemory && (
+          <form action={`/api/memory/patterns`} method="POST">
+            <input type="hidden" name="action" value={STAGE1_THE_PROMPT_SEED_ACTION} />
+            <input type="hidden" name="projectId" value={project.id} />
+            <button
+              type="submit"
+              className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-3 py-1.5 transition-colors"
+            >
+              Seed The Prompt rules
+            </button>
+          </form>
+        )}
       </div>
 
       {/* ── Stats row ── */}

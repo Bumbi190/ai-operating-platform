@@ -9,10 +9,10 @@
  *      Returns full ProjectMemorySummary for the dashboard
  *
  * DELETE /api/memory/patterns/:id
- *      Deletes a memory item (human correction)
+ *      Tombstones a memory item (human correction, audit-preserving)
  *
- * POST /api/memory/patterns/seed
- *      Seeds brand memory for a project (one-time setup)
+ * POST /api/memory/patterns
+ *      Seeds The Prompt brand memory for an explicitly matching project
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -20,11 +20,17 @@ import { createClient } from '@/lib/supabase/server'
 import {
   getMemory,
   getProjectMemorySummary,
-  deleteMemoryItem,
+  tombstoneMemoryItem,
   seedBrandMemory,
   MemoryCategory,
 } from '@/lib/ai/memory/memory-store'
 import { getPatternStats } from '@/lib/ai/memory/feedback-store'
+import {
+  STAGE1_THE_PROMPT_SEED_ACTION,
+  isThePromptSeedProject,
+  normalizeMemoryPatternPostFields,
+  validateMemoryPatternPostFields,
+} from '@/lib/ai/memory/stage1-foundation'
 
 const VALID_CATEGORIES: MemoryCategory[] = [
   'hook_patterns',
@@ -94,8 +100,29 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 })
   }
 
-  await deleteMemoryItem(id)
-  return NextResponse.json({ deleted: true })
+  const { data: memory } = await supabase
+    .from('platform_memory')
+    .select('id, project_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!memory) {
+    return NextResponse.json({ error: 'Memory item not found' }, { status: 404 })
+  }
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', memory.project_id)
+    .eq('owner_id', user.id)
+    .maybeSingle()
+
+  if (!project) {
+    return NextResponse.json({ error: 'Memory item not found' }, { status: 404 })
+  }
+
+  await tombstoneMemoryItem(id, user.id)
+  return NextResponse.json({ tombstoned: true, lifecycleState: 'tombstoned' })
 }
 
 export async function POST(req: NextRequest) {
@@ -103,28 +130,64 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const { action, projectId } = body
-
-  if (!projectId) {
-    return NextResponse.json({ error: 'projectId is required' }, { status: 400 })
+  const parsed = await readMemoryPatternPostFields(req)
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 })
   }
 
-  // Verify ownership
+  const validation = validateMemoryPatternPostFields(parsed)
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: validation.status })
+  }
+
+  const { projectId, action } = validation
+
+  // Verify ownership through the user-scoped client before any admin write.
   const { data: project } = await supabase
     .from('projects')
-    .select('id')
+    .select('id, name, slug')
     .eq('id', projectId)
+    .eq('owner_id', user.id)
     .single()
 
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
 
-  if (action === 'seed_brand') {
+  if (action === STAGE1_THE_PROMPT_SEED_ACTION) {
+    if (!isThePromptSeedProject(project)) {
+      return NextResponse.json(
+        { error: 'The Prompt seed can only run for an explicitly matching The Prompt project' },
+        { status: 400 }
+      )
+    }
+
     await seedBrandMemory(projectId)
     return NextResponse.json({ seeded: true })
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+}
+
+async function readMemoryPatternPostFields(req: NextRequest) {
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    try {
+      const body = await req.json()
+      return normalizeMemoryPatternPostFields(body)
+    } catch {
+      return { error: 'Invalid JSON' }
+    }
+  }
+
+  try {
+    const formData = await req.formData()
+    return normalizeMemoryPatternPostFields({
+      action: formData.get('action'),
+      projectId: formData.get('projectId'),
+    })
+  } catch {
+    return { error: 'Invalid request body' }
+  }
 }

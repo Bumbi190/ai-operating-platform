@@ -112,15 +112,109 @@ const MIGRATIONS = [
     sql: `
       CREATE TABLE IF NOT EXISTS evaluations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        approval_id UUID REFERENCES approvals(id) ON DELETE CASCADE,
-        evaluator_name TEXT NOT NULL,
-        score INTEGER CHECK (score >= 0 AND score <= 100),
-        approved BOOLEAN NOT NULL DEFAULT false,
-        issues JSONB DEFAULT '[]',
-        feedback TEXT,
-        raw_response TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        output_id UUID REFERENCES outputs(id) ON DELETE SET NULL,
+        script_id UUID,
+        content_type TEXT NOT NULL CHECK (content_type IN ('script','hook','caption','image_prompt','news','text')),
+        hook_strength NUMERIC(4,1),
+        slop_score NUMERIC(4,1),
+        brand_alignment NUMERIC(4,1),
+        specificity NUMERIC(4,1),
+        pacing_quality NUMERIC(4,1),
+        overall_score NUMERIC(4,1),
+        passed BOOLEAN NOT NULL DEFAULT false,
+        hard_fails TEXT[] NOT NULL DEFAULT '{}',
+        soft_fails TEXT[] NOT NULL DEFAULT '{}',
+        pass_signals TEXT[] NOT NULL DEFAULT '{}',
+        slop_phrases TEXT[] NOT NULL DEFAULT '{}',
+        issues JSONB NOT NULL DEFAULT '[]',
+        suggestion TEXT,
+        content_preview TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE INDEX IF NOT EXISTS idx_evaluations_project ON evaluations(project_id);
+      CREATE INDEX IF NOT EXISTS idx_evaluations_output ON evaluations(output_id);
+      CREATE INDEX IF NOT EXISTS idx_evaluations_script ON evaluations(script_id);
+      CREATE INDEX IF NOT EXISTS idx_evaluations_passed ON evaluations(passed);
+      CREATE INDEX IF NOT EXISTS idx_evaluations_created ON evaluations(created_at DESC);
+    `,
+  },
+  {
+    name: 'create_content_feedback',
+    sql: `
+      CREATE TABLE IF NOT EXISTS content_feedback (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        approval_id UUID,
+        evaluation_id UUID REFERENCES evaluations(id) ON DELETE SET NULL,
+        output_type TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK (decision IN ('approved','rejected','revised')),
+        rejection_reason TEXT,
+        revision_notes TEXT,
+        quality_patterns TEXT[] NOT NULL DEFAULT '{}',
+        content_excerpt TEXT,
+        eval_score_at_decision NUMERIC(4,1),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_content_feedback_project ON content_feedback(project_id);
+      CREATE INDEX IF NOT EXISTS idx_content_feedback_approval ON content_feedback(approval_id);
+      CREATE INDEX IF NOT EXISTS idx_content_feedback_decision ON content_feedback(decision);
+      CREATE INDEX IF NOT EXISTS idx_content_feedback_created ON content_feedback(created_at DESC);
+    `,
+  },
+  {
+    name: 'create_platform_memory',
+    sql: `
+      CREATE TABLE IF NOT EXISTS platform_memory (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        category TEXT NOT NULL CHECK (category IN (
+          'hook_patterns',
+          'avoided_phrases',
+          'brand_voice',
+          'content_patterns',
+          'rejection_triggers'
+        )),
+        key TEXT NOT NULL,
+        value JSONB NOT NULL,
+        confidence NUMERIC(3,2) NOT NULL DEFAULT 0.50 CHECK (confidence >= 0 AND confidence <= 1),
+        evidence_count INTEGER NOT NULL DEFAULT 1,
+        lifecycle_state TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_state IN ('active','inactive','corrected','tombstoned')),
+        correction_state TEXT,
+        tombstoned_at TIMESTAMPTZ,
+        tombstoned_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+        audit_events JSONB NOT NULL DEFAULT '[]',
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(project_id, category, key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_platform_memory_project ON platform_memory(project_id);
+      CREATE INDEX IF NOT EXISTS idx_platform_memory_category ON platform_memory(project_id, category);
+      CREATE INDEX IF NOT EXISTS idx_platform_memory_confidence ON platform_memory(confidence DESC);
+      CREATE INDEX IF NOT EXISTS idx_platform_memory_active ON platform_memory(project_id, lifecycle_state);
+
+      ALTER TABLE evaluations ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE content_feedback ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE platform_memory ENABLE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS "evaluations_owner" ON evaluations;
+      DROP POLICY IF EXISTS "content_feedback_owner" ON content_feedback;
+      DROP POLICY IF EXISTS "platform_memory_owner" ON platform_memory;
+
+      CREATE POLICY "evaluations_owner" ON evaluations
+        FOR ALL USING (
+          project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())
+        );
+
+      CREATE POLICY "content_feedback_owner" ON content_feedback
+        FOR ALL USING (
+          project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())
+        );
+
+      CREATE POLICY "platform_memory_owner" ON platform_memory
+        FOR ALL USING (
+          project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())
+        );
     `,
   },
   {

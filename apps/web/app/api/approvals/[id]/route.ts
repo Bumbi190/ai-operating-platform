@@ -56,10 +56,10 @@ export async function PATCH(
 
   const db = createAdminClient()
 
-  // Fetch the approval to get project_id, output_key, content for feedback
+  // Fetch the approval lineage to get project_id, output_key, content for feedback.
   const { data: existing } = await db
     .from('approvals')
-    .select('id, project_id, output_key, content, run_id')
+    .select('id, output_key, content, run_id, runs(project_id)')
     .eq('id', params.id)
     .single()
 
@@ -77,10 +77,15 @@ export async function PATCH(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
-  if (existing?.project_id) {
+  const approvalRun = (existing as any)?.runs
+  const projectId = Array.isArray(approvalRun)
+    ? approvalRun[0]?.project_id
+    : approvalRun?.project_id
+
+  if (projectId) {
     try {
       await saveFeedback({
-        projectId:       existing.project_id,
+        projectId,
         approvalId:      params.id,
         outputType:      existing.output_key ?? 'unknown',
         decision:        action as 'approved' | 'rejected' | 'revised',

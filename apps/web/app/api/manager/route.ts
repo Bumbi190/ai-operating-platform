@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getManager } from '@/lib/ai/manager'
+import { toCanonicalManagerEvaluationRecord } from '@/lib/ai/memory/stage1-foundation'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -52,17 +53,34 @@ export async function POST(req: NextRequest) {
         }
         const evaluation = await manager.evaluateOutput(approval_id)
 
-        // Persist evaluation to DB
+        // Persist evaluation to the canonical Stage 1 evaluations schema when
+        // the approval can be safely resolved to a project. Manager response
+        // behavior stays unchanged if persistence has to be deferred.
         const { createAdminClient } = await import('@/lib/supabase/admin')
         const db = createAdminClient()
-        await db.from('evaluations').insert({
-          approval_id,
-          evaluator_name: 'manager',
-          score: evaluation.score,
-          approved: evaluation.approved,
-          issues: evaluation.issues,
-          feedback: evaluation.feedback,
-        })
+        const { data: approval } = await db
+          .from('approvals')
+          .select('content, runs(project_id)')
+          .eq('id', approval_id)
+          .single()
+
+        const approvalRun = (approval as any)?.runs
+        const projectId = Array.isArray(approvalRun)
+          ? approvalRun[0]?.project_id
+          : approvalRun?.project_id
+        if (projectId) {
+          await db.from('evaluations').insert(
+            toCanonicalManagerEvaluationRecord(evaluation, {
+              projectId,
+              contentType: 'text',
+              contentPreview: approval?.content,
+            })
+          )
+        } else {
+          // TODO(Stage 2): decide whether manager-only evaluations without a
+          // project lineage need a separate evidence table.
+          console.warn(`[/api/manager] deferred evaluation persistence for approval ${approval_id}: project_id not resolved`)
+        }
 
         return NextResponse.json({ evaluation })
       }

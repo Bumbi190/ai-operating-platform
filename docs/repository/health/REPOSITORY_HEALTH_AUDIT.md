@@ -1,8 +1,8 @@
 # Repository Health Audit
 
-Repository: `/Users/andrehultgren/Developer/AI Operating Platform`  
-Date: 2026-07-06  
-Branch: `main`  
+Repository: `/Users/andrehultgren/Developer/AI Operating Platform`
+Date: 2026-07-06
+Branch: `main`
 Constraint honored: no files deleted, moved, staged, or committed.
 
 ## Executive Summary

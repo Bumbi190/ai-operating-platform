@@ -2083,36 +2083,51 @@ export type Database = {
       }
       platform_memory: {
         Row: {
+          audit_events: Json
           category: string
           confidence: number
+          correction_state: string | null
           created_at: string
           evidence_count: number
           id: string
           key: string
           last_seen_at: string
+          lifecycle_state: string
           project_id: string
+          tombstoned_at: string | null
+          tombstoned_by: string | null
           value: Json
         }
         Insert: {
+          audit_events?: Json
           category: string
           confidence?: number
+          correction_state?: string | null
           created_at?: string
           evidence_count?: number
           id?: string
           key: string
           last_seen_at?: string
+          lifecycle_state?: string
           project_id: string
+          tombstoned_at?: string | null
+          tombstoned_by?: string | null
           value: Json
         }
         Update: {
+          audit_events?: Json
           category?: string
           confidence?: number
+          correction_state?: string | null
           created_at?: string
           evidence_count?: number
           id?: string
           key?: string
           last_seen_at?: string
+          lifecycle_state?: string
           project_id?: string
+          tombstoned_at?: string | null
+          tombstoned_by?: string | null
           value?: Json
         }
         Relationships: [

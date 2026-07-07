@@ -1,7 +1,7 @@
 # Atlas Presence — Strategisk Roadmap
 
-**Branch:** feat/atlas-voice-ui  
-**Datum:** 2026-06-29  
+**Branch:** feat/atlas-voice-ui
+**Datum:** 2026-06-29
 **Status:** Review-dokument — ingen kod ännu
 
 ---

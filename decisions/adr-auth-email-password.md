@@ -1,8 +1,8 @@
 # ADR: Migrate Authentication from Magic Link to Email + Password
 
-**Status:** Accepted  
-**Date:** 2026-06-19  
-**Branch:** feat/email-password-auth  
+**Status:** Accepted
+**Date:** 2026-06-19
+**Branch:** feat/email-password-auth
 **Author:** André Hultgren
 
 ---

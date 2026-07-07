@@ -88,7 +88,7 @@ alla `/api/media/cron/*` (step1–4, publish, autonomous, insights, account-snap
 
 ### C.5 — CI-regel: route-class-manifest + drift
 
-- **Route-manifest** (deklarativ): varje `/api/*`-route måste ha en post `{path, class: U|S|W|A|X, auth, scoped_by}`. 
+- **Route-manifest** (deklarativ): varje `/api/*`-route måste ha en post `{path, class: U|S|W|A|X, auth, scoped_by}`.
 - **`route-drift`-CI-jobb:** failar om (a) en route saknas i manifestet, (b) en U/X-route deklarerar service-role utan guard/projekt-scope, (c) en S-route saknar `CRON_SECRET`-kontroll, (d) en route ändrat klass utan granskning. Detta gör route-ytan lika mätbar som tabell-ytan (`inventory-drift` i grundspecen).
 - Kompletterar de tidigare CI-grindarna (`security-isolation`, `inventory-drift`, lint mot rå `createAdminClient`/osäker `select('*')`).
 

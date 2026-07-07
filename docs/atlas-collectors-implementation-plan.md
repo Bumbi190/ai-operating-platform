@@ -1,7 +1,7 @@
 # Atlas Collectors v1 — Implementation Plan
 
-**Date:** 2026-06-23  
-**Branch:** `feat/atlas-collectors-v1`  
+**Date:** 2026-06-23
+**Branch:** `feat/atlas-collectors-v1`
 **Scope:** Phase 1 + Phase 2 (Phase 3 follows separately)
 
 ---

@@ -7,15 +7,16 @@
  *   getMemory()           — get all memory for a project by category
  *   getHighConfidence()   — only return patterns above confidence threshold
  *   getContextSummary()   — build a text summary for injecting into prompts
- *   deleteMemoryItem()    — let humans remove stale/wrong patterns
+ *   tombstoneMemoryItem() — let humans hide stale/wrong patterns without hard delete
  *
  * Design principles:
  *   - Lightweight: queries only what's asked for
- *   - Human-controllable: all patterns can be reviewed and deleted
+ *   - Human-controllable: all patterns can be reviewed and tombstoned
  *   - Prompt-injectable: getContextSummary() returns text ready for system prompts
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createMemoryLifecycleAuditEvent } from './stage1-foundation'
 import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export async function getMemory(
     .from('platform_memory')
     .select('*')
     .eq('project_id', projectId)
+    .eq('lifecycle_state', 'active')
     .gte('confidence', minConfidence)
     .order('confidence', { ascending: false })
 
@@ -90,6 +92,7 @@ export async function getHighConfidence(
     .from('platform_memory')
     .select('*')
     .eq('project_id', projectId)
+    .eq('lifecycle_state', 'active')
     .gte('confidence', threshold)
     .order('confidence', { ascending: false })
     .limit(limit)
@@ -187,11 +190,42 @@ export async function getProjectMemorySummary(projectId: string): Promise<Projec
 // ─── Write Operations ─────────────────────────────────────────────────────────
 
 /**
- * Delete a memory item (human override — removes stale/wrong patterns).
+ * Tombstone a memory item as a human correction.
+ *
+ * Stage 1 never performs silent physical hard delete. The row remains in
+ * platform_memory for auditability and is hidden from active memory reads by
+ * lifecycle_state.
  */
-export async function deleteMemoryItem(id: string): Promise<void> {
+export async function tombstoneMemoryItem(id: string, actorId: string): Promise<void> {
   const db = createAdminClient()
-  const { error } = await db.from('platform_memory').delete().eq('id', id)
+  const { data: existing, error: readError } = await db
+    .from('platform_memory')
+    .select('audit_events')
+    .eq('id', id)
+    .single()
+
+  if (readError) throw readError
+
+  const auditEvents = Array.isArray(existing.audit_events)
+    ? existing.audit_events
+    : []
+  const event = createMemoryLifecycleAuditEvent({
+    action: 'tombstoned',
+    actorId,
+  })
+
+  const { error } = await db
+    .from('platform_memory')
+    .update({
+      lifecycle_state: 'tombstoned',
+      correction_state: 'tombstoned',
+      tombstoned_at: event.at,
+      tombstoned_by: actorId,
+      audit_events: [...auditEvents, event],
+      last_seen_at: event.at,
+    })
+    .eq('id', id)
+
   if (error) throw error
 }
 

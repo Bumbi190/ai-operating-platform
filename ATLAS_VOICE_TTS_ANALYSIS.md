@@ -1,7 +1,7 @@
 # Atlas Voice — TTS & Röstupplevelse: Analys och Rekommendationer
 
-**Branch:** feat/atlas-voice-ui  
-**Datum:** 2026-06-29  
+**Branch:** feat/atlas-voice-ui
+**Datum:** 2026-06-29
 **Scope:** Endast UX/voice — inte backend, Memory, Brief eller Collectors
 
 ---
@@ -19,7 +19,7 @@ Användare talar
   → Audio-kö spelas upp i ordning
 ```
 
-**Befintlig TTS:** OpenAI `tts-1` / `onyx`-röst  
+**Befintlig TTS:** OpenAI `tts-1` / `onyx`-röst
 **Uppdaterat i denna branch:** `tts-1-hd`, `speed: 1.08`, `SILENCE_MS: 800ms`
 
 ---

@@ -167,7 +167,7 @@ There is no "Obsidian" in the code today, but the raw material exists: `MemoryGr
 
 **Placement:** inside the **Knowledge** instrument (§3) — the merge of `/memory` + `MemoryGraph`. Not a daily surface.
 
-**Purpose:** an Obsidian-style *linked-knowledge graph* over Omnira's long-term brain — decisions, learned patterns, recurring Dream findings, and the businesses they attach to, as interlinked notes. It is **the memory Atlas reasons over, made browsable.** Atlas writes to it continuously (every decision, every resolved Dream issue); the operator visits it occasionally to *trust and audit* — "what have we learned about The Prompt's best hooks?", "why did we decide X?". 
+**Purpose:** an Obsidian-style *linked-knowledge graph* over Omnira's long-term brain — decisions, learned patterns, recurring Dream findings, and the businesses they attach to, as interlinked notes. It is **the memory Atlas reasons over, made browsable.** Atlas writes to it continuously (every decision, every resolved Dream issue); the operator visits it occasionally to *trust and audit* — "what have we learned about The Prompt's best hooks?", "why did we decide X?".
 
 **Atlas integration:** deep-linkable like any instrument — "show me what we know about churn" opens the graph centered on that node. It is a reference/trust surface, explicitly *not* a place the operator is expected to maintain by hand.
 

@@ -57,16 +57,23 @@ export async function PATCH(
 
   const db = createAdminClient()
 
-  // Fetch the approval to get project_id, output_key, content, kind for feedback + publish hook
+  // Fetch the approval to get project_id, output_key, content, kind, and run lineage
+  // for feedback, Atlas memory, and the publish hook.
   const { data: existing } = await db
     .from('approvals')
-    .select('id, project_id, output_key, content, run_id, kind')
+    .select('id, project_id, output_key, content, run_id, kind, runs(project_id)')
     .eq('id', params.id)
     .single()
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const directProjectId = (existing as Record<string, unknown>)['project_id'] as string | null | undefined
+  const approvalRun = (existing as any)?.runs
+  const projectId = directProjectId ?? (Array.isArray(approvalRun)
+    ? approvalRun[0]?.project_id
+    : approvalRun?.project_id)
+
   // Ownership gate BEFORE any mutation or publish side effect.
-  if (!assertProjectAllowed(existing.project_id, access.allowedProjectIds)) return projectForbidden()
+  if (!projectId || !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
   const { data, error } = await db
     .from('approvals')
@@ -113,10 +120,10 @@ export async function PATCH(
   }
 
   // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
-  if (existing?.project_id) {
+  if (projectId) {
     try {
       await saveFeedback({
-        projectId:       existing.project_id,
+        projectId,
         approvalId:      params.id,
         outputType:      existing.output_key ?? 'unknown',
         decision:        action as 'approved' | 'rejected' | 'revised',
@@ -142,7 +149,7 @@ export async function PATCH(
     void recordMemoryEvent({
       scope:      'project',
       eventType:  'feedback',
-      projectId:  existing.project_id,
+      projectId,
       entityKind: 'output_type',
       entityId:   outputType,
       dedupeKey:  `feedback:${outputType}`,

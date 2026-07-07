@@ -40,7 +40,7 @@
 
 ## 3. Implementation-risker
 - **Tyst emit-förlust:** `recordMemoryEvent` är icke-kastande → ett fel i `public.atlas_record_event`-wrappern sväljs och minne skrivs tyst inte. **Mitigering:** logga insert-fel + `memory_health_v.events_total`-larm (platt = trasigt) + branch-verifiering. (Wrappern kräver bara `public` exponerat → identiskt branch/prod, ingen exponerings-drift.)
-- **Drain-emit på kritisk väg:** måste ligga **efter** terminal-write, fire-and-forget, aldrig blockera/kasta, idempotent på `run.id` (knyter till H1.P5-idempotens). 
+- **Drain-emit på kritisk väg:** måste ligga **efter** terminal-write, fire-and-forget, aldrig blockera/kasta, idempotent på `run.id` (knyter till H1.P5-idempotens).
 - **Salience-DRY:** samma uttryck i recall OCH arkiveringssvep → en enda `atlas.salience()`-funktion, aldrig två kopior.
 - **Class-härledning:** `memory_class` härleds ur `event_type` (en central mappning, ej emitter-satt) → testa mappningen; episodic får `consolidated_at` vid insert.
 - **Isoleringsläcka i recall:** service-role bypassar RLS → recall via `applyProjectScope` + isolations-enhetstest (annat projekt → 0 rader), i `isolation.test.ts`-stil. **Viktigaste guardrailen.**

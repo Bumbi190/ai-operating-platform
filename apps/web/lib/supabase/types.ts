@@ -30,6 +30,10 @@ export type RunStatus =
 export type OutputType = 'text' | 'pdf' | 'image' | 'json'
 export type WorkflowTrigger = 'manual' | 'cron' | 'webhook'
 export type LogRole = 'user' | 'assistant' | 'system' | 'tool'
+export type EvaluationContentType = 'script' | 'hook' | 'caption' | 'image_prompt' | 'news' | 'text'
+export type FeedbackDecision = 'approved' | 'rejected' | 'revised'
+export type MemoryCategory = 'hook_patterns' | 'avoided_phrases' | 'brand_voice' | 'content_patterns' | 'rejection_triggers'
+export type MemoryLifecycleState = 'active' | 'inactive' | 'corrected' | 'tombstoned'
 
 // ─── Marketing Engine (Familje-Stunden) — Fas 1 foundation ───────────────────
 export type MarketingWorkflowKind =
@@ -60,6 +64,9 @@ export type Run = Row<'runs'>
 export type RunLog = Row<'run_logs'>
 export type Output = Row<'outputs'>
 export type Memory = Row<'memories'>
+export type Evaluation = Row<'evaluations'>
+export type ContentFeedback = Row<'content_feedback'>
+export type PlatformMemory = Row<'platform_memory'>
 export type CampaignPlan = Row<'campaign_plans'>
 export type CampaignBrief = Row<'campaign_briefs'>
 export type DraftPost = Row<'draft_posts'>

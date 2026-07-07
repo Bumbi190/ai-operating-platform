@@ -1,8 +1,8 @@
 # Atlas Collectors — Architecture Review
-**Date:** 2026-06-23  
-**Author:** Principal Architect (Claude)  
-**Status:** Pre-implementation review — no code written  
-**Scope:** Atlas Signals audit + Collectors v1 design  
+**Date:** 2026-06-23
+**Author:** Principal Architect (Claude)
+**Status:** Pre-implementation review — no code written
+**Scope:** Atlas Signals audit + Collectors v1 design
 **Revision:** 2 — project lifecycle modes added (2026-06-23)
 
 ---
@@ -112,12 +112,12 @@ The engine is entirely pure/synchronous. It reads `source_authority` from a hard
 
 Two tables exist that follow the collector pattern — daily idempotent upsert snapshots:
 
-**`public.account_snapshots`** — social account-level metrics  
-Fields: project_id, platform (instagram/facebook/youtube), snapshot_date, followers, following, media_count, reach, profile_views, raw  
+**`public.account_snapshots`** — social account-level metrics
+Fields: project_id, platform (instagram/facebook/youtube), snapshot_date, followers, following, media_count, reach, profile_views, raw
 Collector: `GET /api/media/cron/account-snapshot` (exists, not scheduled in pg_cron)
 
-**`public.revenue_snapshots`** — Stripe subscription KPIs  
-Fields: project_id, snapshot_date, active_subscribers, new_subscribers, trialing, churned_this_month, mrr_sek, revenue_month_sek, raw  
+**`public.revenue_snapshots`** — Stripe subscription KPIs
+Fields: project_id, snapshot_date, active_subscribers, new_subscribers, trialing, churned_this_month, mrr_sek, revenue_month_sek, raw
 Collector: `GET /api/business/cron/stripe-snapshot` (exists, inactive until `STRIPE_RESTRICTED_KEY` set)
 
 **Critical gap:** Neither snapshot table emits into `atlas_signals`. Atlas reads them directly via `lib/atlas/revenue.ts` and `lib/atlas/social.ts`. This means:
@@ -353,7 +353,7 @@ Legend: 🟢 Active (The Prompt) · 🔵 Observer (Familje-Stunden) · ⚪ Hiber
 
 ### 3.1 Stripe Revenue Collector (Priority: P0)
 
-**Projects:** 🔵 Familje-Stunden (primary) · 🟢 The Prompt (if/when Stripe revenue is added)  
+**Projects:** 🔵 Familje-Stunden (primary) · 🟢 The Prompt (if/when Stripe revenue is added)
 **Mode constraint:** Observer — collect, analyze, do not act
 
 **Collector:** `StripeRevenueCollector` — upgrades existing `/api/business/cron/stripe-snapshot`
@@ -362,9 +362,9 @@ Signal kinds emitted:
 - `stripe.mrr_snapshot` — payload: `{ mrr_sek, active_subscribers, new_subscribers, trialing, churned_this_month, mrr_delta_sek, churn_rate_pct }`
 - `stripe.revenue_snapshot` — payload: `{ revenue_month_sek, invoices_paid }`
 
-**Route:** `GET /api/collectors/stripe/revenue` (replaces `/api/business/cron/stripe-snapshot`)  
-**Schedule:** Daily 07:00 UTC (after Stripe processes overnight)  
-**Rate limit:** Stripe restricts to 25 req/s; collector uses list-with-pagination (already implemented)  
+**Route:** `GET /api/collectors/stripe/revenue` (replaces `/api/business/cron/stripe-snapshot`)
+**Schedule:** Daily 07:00 UTC (after Stripe processes overnight)
+**Rate limit:** Stripe restricts to 25 req/s; collector uses list-with-pagination (already implemented)
 **Activation gate:** `STRIPE_RESTRICTED_KEY` env var (already in place)
 
 **What changes:** After storing into `revenue_snapshots`, emit two signals scoped to Familje-Stunden's `project_id`. The delta between today and yesterday's snapshot is computed and included in the payload — Atlas can then reason about "MRR is down 3% week-over-week" without reading two rows.
@@ -373,7 +373,7 @@ Signal kinds emitted:
 
 ### 3.2 Social Account Collector (Priority: P0)
 
-**Projects:** 🟢 The Prompt (Instagram, YouTube, Facebook) · 🔵 Familje-Stunden (Instagram, Facebook)  
+**Projects:** 🟢 The Prompt (Instagram, YouTube, Facebook) · 🔵 Familje-Stunden (Instagram, Facebook)
 **Mode constraint:** Observer for Familje-Stunden — collect growth data, no publishing decisions from it
 
 **Collector:** `SocialAccountCollector` — upgrades existing `/api/media/cron/account-snapshot`
@@ -383,15 +383,15 @@ Signal kinds emitted:
 
 The delta and growth rate require reading the previous snapshot. The collector fetches `account_snapshots` for the same project/platform from 7 days ago and computes the delta before emitting. Each project × platform combination produces a separate signal scoped by `project_id`.
 
-**Route:** `GET /api/collectors/social/account` (replaces `/api/media/cron/account-snapshot`)  
-**Schedule:** Daily 08:00 UTC (after morning content publishes)  
+**Route:** `GET /api/collectors/social/account` (replaces `/api/media/cron/account-snapshot`)
+**Schedule:** Daily 08:00 UTC (after morning content publishes)
 **CRITICAL:** Add to pg_cron — currently completely missing!
 
 **Why this matters for Observer:** Familje-Stunden's follower trajectory will be invisible to Atlas until this collector runs daily. 30 days of data enables growth trend analysis; 90 days enables seasonal pattern detection. Start now.
 
 ### 3.3 Social Post Insights Collector (Priority: P0)
 
-**Projects:** 🟢 The Prompt (primary — drives content scoring) · 🔵 Familje-Stunden (engagement intelligence)  
+**Projects:** 🟢 The Prompt (primary — drives content scoring) · 🔵 Familje-Stunden (engagement intelligence)
 **Mode constraint:** Observer for Familje-Stunden — insights feed analysis only, not publishing decisions
 
 **Collector:** `SocialInsightsCollector` — wraps existing `/api/media/cron/insights`
@@ -399,31 +399,31 @@ The delta and growth rate require reading the previous snapshot. The collector f
 Signal kinds emitted:
 - `social.weekly_performance` — payload: `{ posts, reach, engagement_rate, saves, shares, comments, likes, top_post_id, top_post_score, by_platform }`
 
-**Route:** `GET /api/collectors/social/insights`  
+**Route:** `GET /api/collectors/social/insights`
 **Schedule:** Daily 09:30 UTC
 
 **Active vs Observer difference:** For The Prompt, this signal feeds the Opportunity Engine which can generate recommendations like "publish more AI policy content." For Familje-Stunden, the same signal feeds analysis only — Atlas learns what resonates with the audience and stores that intelligence for when the project shifts to Active.
 
 ### 3.4 Supabase Platform Collector (Priority: P1)
 
-**Projects:** 🟢 The Prompt (platform health) · shared Omnira infrastructure  
+**Projects:** 🟢 The Prompt (platform health) · shared Omnira infrastructure
 **Mode constraint:** Infrastructure signal — no project mode restriction
 
 **Collector:** `SupabasePlatformCollector` — new
 
-Metrics target: Omnira's own Supabase project health.  
+Metrics target: Omnira's own Supabase project health.
 **Source:** Direct SQL query within the same DB (zero auth overhead, no external API).
 
 Signal kinds emitted:
 - `supabase.db_snapshot` — payload: `{ table_counts, db_size_bytes, active_connections, cache_hit_rate, slow_query_count }`
 
-**Route:** `GET /api/collectors/supabase/platform`  
-**Schedule:** Daily 06:00 UTC  
+**Route:** `GET /api/collectors/supabase/platform`
+**Schedule:** Daily 06:00 UTC
 **Complexity:** Low (SQL query, no external API).
 
 ### 3.5 Familje-Stunden Product Collector (Priority: P1)
 
-**Projects:** 🔵 Familje-Stunden  
+**Projects:** 🔵 Familje-Stunden
 **Mode constraint:** Observer — user/session metrics for intelligence only
 
 **Collector:** `FamiljeProductCollector` — new
@@ -434,21 +434,21 @@ Familje-Stunden is a live product with real users. These metrics are the biggest
 - Source: Familje-Stunden's Supabase (requires cross-project service role key stored in `platform_tokens`)
 - Signal kind: `product.familje_stunden.snapshot`
 
-**Route:** `GET /api/collectors/product/familje-stunden`  
-**Challenge:** Requires Familje-Stunden's service role key in Omnira's `platform_tokens` table. This is a one-time setup step, not an engineering problem. The same pattern is already used for Instagram/Facebook tokens.  
+**Route:** `GET /api/collectors/product/familje-stunden`
+**Challenge:** Requires Familje-Stunden's service role key in Omnira's `platform_tokens` table. This is a one-time setup step, not an engineering problem. The same pattern is already used for Instagram/Facebook tokens.
 **Note:** GainPilot product collector is explicitly excluded from v1 (Hibernate Mode).
 
 ### 3.6 Website Collector (Priority: P2)
 
-**Projects:** 🟢 The Prompt · 🔵 Familje-Stunden  
+**Projects:** 🟢 The Prompt · 🔵 Familje-Stunden
 **Mode constraint:** Observer for Familje-Stunden — traffic intelligence, no SEO execution
 
 Signal kinds:
 - `website.sitemap_snapshot` — page count, last modified, blog post frequency
 - `website.traffic_snapshot` — sessions, bounce rate, top pages (requires GA4 or similar)
 
-**Route:** `GET /api/collectors/website/[slug]`  
-**Source:** Google Search Console API or Ahrefs (requires key)  
+**Route:** `GET /api/collectors/website/[slug]`
+**Source:** Google Search Console API or Ahrefs (requires key)
 **Complexity:** Medium–High. Deprioritize until social/Stripe collectors are running cleanly.
 
 ### 3.7 Future Collectors
@@ -586,7 +586,7 @@ Priority: items that serve both The Prompt and Familje-Stunden simultaneously, a
 | 4 | **`StripeRevenueCollector`** — upgrade existing route, emit `stripe.mrr_snapshot` + `stripe.revenue_snapshot` | 🔵 Familje-Stunden | Observer |
 | 5 | **`SocialAccountCollector`** — upgrade + add to pg_cron, emit `social.account_snapshot` with 7-day delta | 🟢 The Prompt + 🔵 Familje-Stunden | Both |
 
-**Phase 1 output:**  
+**Phase 1 output:**
 Atlas has its first real external signals. The Stripe collector gives Familje-Stunden an MRR time series. The social account collector starts building follower history for both projects — history that has zero value if we delay starting it. Operations Center shows "collector: ok/error" per job.
 
 **Why these five:** Stripe addresses the single biggest intelligence gap for Familje-Stunden (null revenue metrics). Social account collector addresses the single biggest gap for The Prompt (unscheduled, no follower growth data). Schema and framework must precede both.
@@ -602,7 +602,7 @@ Atlas has its first real external signals. The Stripe collector gives Familje-St
 | 8 | **Heartbeat integration** — collector jobs in `cron_heartbeat` table, visible in Operations Center | All | Infrastructure |
 | 9 | **`FamiljeProductCollector`** — active users, DAU/WAU → `product.familje_stunden.snapshot` | 🔵 Familje-Stunden | Observer |
 
-**Phase 2 output:**  
+**Phase 2 output:**
 Familje-Stunden Observer Mode is now fully populated: MRR signal, follower signal, engagement signal, and in-app user signal are all running daily. Atlas has the raw material to build 30+ days of baseline history. The Prompt has engagement signal feeding the existing content score and opportunity pipeline. Omnira platform health is observable.
 
 **Observer discipline enforced:** All Familje-Stunden signals in Phase 2 are read-only inputs to Atlas analysis. No execution, no campaign triggers, no automation. Atlas watches.
@@ -621,7 +621,7 @@ From here, new capabilities target The Prompt's Active mode. Familje-Stunden ben
 | 13 | **Source Authority DB table** — replace hardcoded const map, enables curator-maintained authority scores | 🟢 The Prompt (editorial) | Active |
 | 14 | **Recommendations scaffold** — signal → opportunity → recommended action (The Prompt only) | 🟢 The Prompt | Active only |
 
-**Phase 3 output:**  
+**Phase 3 output:**
 Atlas graduates from Reporting to Recommendations for The Prompt. "Based on signals from the last 30 days, here are three things you should do this week" — backed by real signal evidence. Familje-Stunden continues accumulating history silently.
 
 **Active constraint enforced:** The Recommendations scaffold is gated to The Prompt's `project_id`. The same signal infrastructure runs for Familje-Stunden but no recommendation output is generated from it.
@@ -637,20 +637,20 @@ Atlas graduates from Reporting to Recommendations for The Prompt. "Based on sign
 | 17 | **Growth Agent scaffold** — signals → opportunities → Growth Agent → workflow proposals | 🟢 The Prompt | Active only |
 | 18 | **GainPilot reactivation review** — assess whether Hibernate Mode should end | ⚪ GainPilot | Decision point |
 
-**Phase 4 output:**  
+**Phase 4 output:**
 The Prompt has a Growth Agent that can propose and (with approval) execute workflows based on signal evidence. Familje-Stunden has 60–90 days of baseline history and is ready for Active mode when the business decision is made. GainPilot reactivation is a business decision driven by the outcomes of The Prompt proving ground.
 
 ---
 
 ### Mode Transition Criteria
 
-**Familje-Stunden: Observer → Active**  
-Trigger: business decision + ≥90 days of collector history across Stripe, social account, social insights, product.  
-Preconditions: Phase 1–2 collectors running cleanly for 3 months, baseline established.  
+**Familje-Stunden: Observer → Active**
+Trigger: business decision + ≥90 days of collector history across Stripe, social account, social insights, product.
+Preconditions: Phase 1–2 collectors running cleanly for 3 months, baseline established.
 What changes: Opportunity Engine and Recommendations scaffold enabled for Familje-Stunden.
 
-**GainPilot: Hibernate → Observer or Active**  
-Trigger: business decision to re-engage the product.  
+**GainPilot: Hibernate → Observer or Active**
+Trigger: business decision to re-engage the product.
 What changes: Add `GainpilotProductCollector`, connect social tokens if any, enable signal collection. No framework changes required — the infrastructure is already multi-project.
 
 ---
@@ -701,11 +701,11 @@ Atlas today across all projects: Reporting + early Analysis (content scores on T
 
 The Prompt's signal coverage after Phase 1–3 enables the full chain:
 
-- Signals → "Instagram follower growth rate dropped 40% this week (signal id: abc)"  
-- Analysis → "Content format change on June 15 correlates with engagement decline"  
-- Opportunity → "Return to hook-led short-form format — last seen performing at 3.2% engagement"  
-- Recommendation → "Publish 3 hook-led posts this week targeting AI policy topic"  
-- Execution → Growth Agent proposes a workflow; operator approves; Atlas schedules it  
+- Signals → "Instagram follower growth rate dropped 40% this week (signal id: abc)"
+- Analysis → "Content format change on June 15 correlates with engagement decline"
+- Opportunity → "Return to hook-led short-form format — last seen performing at 3.2% engagement"
+- Recommendation → "Publish 3 hook-led posts this week targeting AI policy topic"
+- Execution → Growth Agent proposes a workflow; operator approves; Atlas schedules it
 
 Without real signals, each of these steps would require the operator to provide the data manually.
 
@@ -762,29 +762,29 @@ These must happen before implementation begins — changing them later requires 
 
 ### Phase 1 (Week 1) — dual-benefit collectors
 
-4. **`StripeRevenueCollector`** — Familje-Stunden MRR/subscriber signal; the most critical Observer gap  
+4. **`StripeRevenueCollector`** — Familje-Stunden MRR/subscriber signal; the most critical Observer gap
 5. **`SocialAccountCollector`** + pg_cron registration — follower history for both The Prompt and Familje-Stunden; starts the historical clock today
 
 ### Phase 2 (Week 2) — coverage + Observer depth
 
-6. **`SocialInsightsCollector`** — engagement signal for both projects  
-7. **`SupabasePlatformCollector`** — platform health signal  
-8. **Heartbeat integration** — collectors visible in Operations Center  
-9. **`FamiljeProductCollector`** — in-app usage signal completes Observer coverage for Familje-Stunden  
+6. **`SocialInsightsCollector`** — engagement signal for both projects
+7. **`SupabasePlatformCollector`** — platform health signal
+8. **Heartbeat integration** — collectors visible in Operations Center
+9. **`FamiljeProductCollector`** — in-app usage signal completes Observer coverage for Familje-Stunden
 
 ### Phase 3 (Week 3–4) — Active pipeline for The Prompt
 
-10. **Opportunity Engine v2** — signal-backed opportunities (The Prompt only)  
-11. **Signal-driven Executive Summary** — trends from signals, not raw table reads  
-12. **Recommendations scaffold** — The Prompt only, gated by `atlas_mode = 'active'`  
-13. **Source Authority DB table** — replaces hardcoded const map  
+10. **Opportunity Engine v2** — signal-backed opportunities (The Prompt only)
+11. **Signal-driven Executive Summary** — trends from signals, not raw table reads
+12. **Recommendations scaffold** — The Prompt only, gated by `atlas_mode = 'active'`
+13. **Source Authority DB table** — replaces hardcoded const map
 
 ### Phase 4 (Month 2) — external intelligence + Growth Agent
 
-14. **`WebsiteCollector`** — traffic + sitemap for both projects  
-15. **Email/analytics collector** — Familje-Stunden campaign intelligence  
-16. **Growth Agent scaffold** — The Prompt only, execution-gated  
-17. **GainPilot reactivation review** — business decision point  
+14. **`WebsiteCollector`** — traffic + sitemap for both projects
+15. **Email/analytics collector** — Familje-Stunden campaign intelligence
+16. **Growth Agent scaffold** — The Prompt only, execution-gated
+17. **GainPilot reactivation review** — business decision point
 
 ### Why this order
 

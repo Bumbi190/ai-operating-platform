@@ -1,7 +1,7 @@
 # AtlasRuntime — Slutgiltigt Kontrakt
 
-**Branch:** feat/atlas-voice-ui  
-**Datum:** 2026-06-29  
+**Branch:** feat/atlas-voice-ui
+**Datum:** 2026-06-29
 **Status:** Redo för implementation
 
 ---
@@ -225,7 +225,7 @@ Allt annat (operatörsläge, framtida Memory-provider) är subsystem.
 Dessa är lösta i detta dokument, men markeras explicit:
 
 1. **Namn** — `useAtlas()` ✅
-2. **ExecutiveState** — tillståndsmaskin på SSE-events, inte inference ✅  
+2. **ExecutiveState** — tillståndsmaskin på SSE-events, inte inference ✅
 3. **Workspace** — rikare objekt med project/icon/status/priority ✅
 4. **Inga Memory/Brief-slots** — runtimans ansvar är avgränsat ✅
 5. **Provider-ordning** — `AtlasRuntimeProvider` ytterst ✅

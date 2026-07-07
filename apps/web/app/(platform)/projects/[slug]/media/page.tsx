@@ -1,7 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getProjectBySlug } from '@/lib/project/get-project'
+import { resolveMediaSettings, getNextCronFromSchedule } from '@/lib/project/media-settings'
 import {
   ExternalLink,
   Instagram,
@@ -21,6 +22,11 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import { BreakingButton } from './BreakingButton'
+
+// Live token/DB-status — måste alltid renderas färskt (annars cachas "Token saknas"
+// från innan tokenet fanns). Samma direktiv som övriga data-drivna sidor.
+export const dynamic = 'force-dynamic'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,10 +78,10 @@ function TokenBadge({ token }: { token: PlatformToken | null }) {
           {daysLeft !== null ? `${daysLeft}d` : 'Aktiv'}
         </span>
         {!isCritical && daysLeft !== null && (
-          <span className="text-[10px] text-zinc-600">kvar</span>
+          <span className="text-[10px] text-meta">kvar</span>
         )}
       </div>
-      <span className="text-[10px] text-zinc-600">
+      <span className="text-[10px] text-meta">
         Förnyades {formatDistanceToNow(new Date(token.refreshed_at), { locale: sv, addSuffix: true })}
       </span>
     </div>
@@ -136,28 +142,9 @@ function QualityBar({ score }: { score: number | null | undefined }) {
       <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color, boxShadow: `0 0 4px ${color}60` }} />
       </div>
-      <span className="text-[10px] text-zinc-500 tabular-nums w-5 text-right">{score.toFixed(1)}</span>
+      <span className="text-[10px] text-secondary tabular-nums w-5 text-right">{score.toFixed(1)}</span>
     </div>
   )
-}
-
-// ─── Next cron time ───────────────────────────────────────────────────────────
-
-function getNextCron() {
-  const now = new Date()
-  const slots = [
-    { hour: 7, minute: 20 },
-    { hour: 17, minute: 20 },
-  ]
-  for (const t of slots) {
-    const c = new Date(now)
-    c.setUTCHours(t.hour, t.minute, 0, 0)
-    if (c > now) return c
-  }
-  const t = new Date(now)
-  t.setUTCDate(t.getUTCDate() + 1)
-  t.setUTCHours(7, 20, 0, 0)
-  return t
 }
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
@@ -189,7 +176,7 @@ function StatCard({
           style={{ background: `${color}15`, border: `1px solid ${color}25` }}>
           <Icon className="w-3 h-3" style={{ color }} />
         </div>
-        <span className="text-[9.5px] font-semibold text-zinc-600 uppercase tracking-[0.15em]">{label}</span>
+        <span className="text-[9.5px] font-semibold text-meta uppercase tracking-[0.15em]">{label}</span>
       </div>
       {children}
     </div>
@@ -199,16 +186,19 @@ function StatCard({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default async function MediaDashboardPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-  const db = createAdminClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
+
+  const media = resolveMediaSettings(project)
+
+  // Projects without a media pipeline get a graceful empty state rather than
+  // another project's scaffolding.
+  if (!media.enabled) {
+    return <NoMediaPipeline projectName={project.name} slug={project.slug} />
+  }
+
+  const db = createAdminClient()
+  const platformLabel = media.platform.charAt(0).toUpperCase() + media.platform.slice(1)
 
   const now = new Date()
   const weekAgo  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString()
@@ -220,7 +210,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
       .eq('project_id', project.id)
       .order('generated_at', { ascending: false })
       .limit(30),
-    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', 'instagram').maybeSingle(),
+    db.from('platform_tokens').select('platform, expires_at, refreshed_at').eq('platform', media.platform).eq('project_id', project.id).maybeSingle(),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', weekAgo),
     db.from('media_scripts').select('id', { count: 'exact', head: true }).eq('project_id', project.id).eq('status', 'published').gte('published_at', monthAgo),
   ])
@@ -233,7 +223,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
   const published = scripts.filter(s => s.status === 'published')
   const inQueue   = scripts.filter(s => s.status !== 'published')
   const lastPost  = published[0]
-  const nextCron  = getNextCron()
+  const nextCron  = getNextCronFromSchedule(media.schedule, now)
 
   const avgQuality = published.length > 0
     ? published.reduce((sum, s) => sum + ((s.quality_score as any)?.overall ?? 0), 0) / published.length
@@ -256,35 +246,37 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         }} />
       </div>
 
-      <div className="relative z-10 p-7 max-w-[1100px] mx-auto space-y-6">
+      <div className="relative z-10 px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 pt-7 lg:pt-9 pb-20 lg:pb-24 space-y-6 lg:space-y-7">
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between animate-fade-in-up">
           <div>
             <Link
               href={`/projects/${params.slug}`}
-              className="inline-flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors mb-2"
+              className="inline-flex items-center gap-1.5 text-[11px] text-meta hover:text-zinc-400 transition-colors mb-2"
             >
               <ArrowLeft className="w-3 h-3" />
               {project.name}
             </Link>
 
             <div className="flex items-center gap-4">
-              {/* TP logo */}
+              {/* Project logo — initials + project color */}
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)',
+                  background: `linear-gradient(135deg, ${project.color}cc 0%, ${project.color}66 100%)`,
                   border: '1px solid rgba(255,255,255,0.1)',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                 }}
               >
-                <span className="text-white font-black text-sm leading-none">TP</span>
+                <span className="text-white font-black text-sm leading-none">{media.brandInitials}</span>
               </div>
 
               <div>
-                <h1 className="text-xl font-black text-zinc-100 tracking-tight">The Prompt</h1>
-                <p className="text-[11px] text-zinc-600 mt-0.5">AI news · daily reels · autonomous pipeline</p>
+                <h1 className="text-xl font-black text-zinc-100 tracking-tight">{project.name}</h1>
+                {media.tagline && (
+                  <p className="text-[11px] text-meta mt-0.5">{media.tagline}</p>
+                )}
               </div>
 
               {/* Live indicator */}
@@ -300,13 +292,14 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
           </div>
 
           <div className="flex items-center gap-2">
+            <BreakingButton projectId={project.id} />
             <Link href={`/projects/${params.slug}/scripts`}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
+              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-meta hover:text-zinc-400 transition-colors"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
               Scripts
             </Link>
             <Link href={`/projects/${params.slug}/news`}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-600 hover:text-zinc-400 transition-colors"
+              className="px-3 py-1.5 rounded-lg text-[11px] font-medium text-meta hover:text-zinc-400 transition-colors"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
               Nyheter
             </Link>
@@ -316,7 +309,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         {/* ── Status cards ──────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-          <StatCard label="Instagram Token" icon={ShieldCheck} color={tokenDaysLeft !== null && tokenDaysLeft < 10 ? '#f87171' : '#34d399'} delay={60}>
+          <StatCard label={`${platformLabel} Token`} icon={ShieldCheck} color={tokenDaysLeft !== null && tokenDaysLeft < 10 ? '#f87171' : '#34d399'} delay={60}>
             <TokenBadge token={igToken} />
           </StatCard>
 
@@ -326,33 +319,39 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
                 <span className="text-sm font-bold text-zinc-300">
                   {formatDistanceToNow(new Date(lastPost.published_at), { locale: sv, addSuffix: true })}
                 </span>
-                <span className="text-[10px] text-zinc-600">
+                <span className="text-[10px] text-meta">
                   {format(new Date(lastPost.published_at), 'HH:mm')} UTC
                 </span>
               </div>
             ) : (
-              <span className="text-sm text-zinc-600">Ingen ännu</span>
+              <span className="text-sm text-meta">Ingen ännu</span>
             )}
           </StatCard>
 
           <StatCard label="Denna vecka" icon={TrendingUp} color="#60a5fa" delay={140}>
             <div className="flex flex-col gap-0.5">
               <span className="text-3xl font-black text-zinc-200 tabular-nums leading-none">{weekCount}</span>
-              <span className="text-[10px] text-zinc-600">{monthCount} senaste 30 dagarna</span>
+              <span className="text-[10px] text-meta">{monthCount} senaste 30 dagarna</span>
               {avgQuality && (
-                <span className="text-[10px] text-zinc-700">⌀ kvalitet {avgQuality.toFixed(1)}/10</span>
+                <span className="text-[10px] text-faint">⌀ kvalitet {avgQuality.toFixed(1)}/10</span>
               )}
             </div>
           </StatCard>
 
           <StatCard label="Nästa körning" icon={Zap} color="#a78bfa" delay={180}>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-zinc-300">
-                {format(nextCron, 'HH:mm')} UTC
-              </span>
-              <span className="text-[10px] text-zinc-600">
-                om {formatDistanceToNow(nextCron, { locale: sv })}
-              </span>
+              {nextCron ? (
+                <>
+                  <span className="text-sm font-bold text-zinc-300">
+                    {format(nextCron, 'HH:mm')} UTC
+                  </span>
+                  <span className="text-[10px] text-meta">
+                    om {formatDistanceToNow(nextCron, { locale: sv })}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-meta">Inget schema</span>
+              )}
             </div>
           </StatCard>
         </div>
@@ -360,14 +359,14 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         {/* ── Published reels ───────────────────────────────────────────────── */}
         <section className="animate-fade-in-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2">
+            <h2 className="text-[10px] font-bold text-meta uppercase tracking-[0.2em] flex items-center gap-2">
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
               Publicerade reels
-              <span className="font-normal text-zinc-700">({published.length})</span>
+              <span className="font-normal text-faint">({published.length})</span>
             </h2>
             {avgQuality && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-700">Snitt kvalitet</span>
+                <span className="text-[10px] text-faint">Snitt kvalitet</span>
                 <span className="text-[10px] font-bold"
                   style={{ color: avgQuality >= 8 ? '#34d399' : avgQuality >= 6 ? '#fbbf24' : '#f87171' }}>
                   {avgQuality.toFixed(1)}/10
@@ -379,8 +378,8 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
           {published.length === 0 ? (
             <div className="rounded-2xl p-12 text-center"
               style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.06)' }}>
-              <Film className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-              <p className="text-sm text-zinc-600">Inga publicerade reels ännu</p>
+              <Film className="w-8 h-8 text-faint mx-auto mb-3" />
+              <p className="text-sm text-meta">Inga publicerade reels ännu</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -405,7 +404,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
 
                     <div className="flex items-center gap-4">
                       {/* Rank */}
-                      <span className="text-[11px] font-black text-zinc-700 w-6 text-center shrink-0">
+                      <span className="text-[11px] font-black text-faint w-6 text-center shrink-0">
                         {(i + 1).toString().padStart(2, '0')}
                       </span>
 
@@ -418,7 +417,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
                       ) : (
                         <div className="w-10 h-14 rounded-xl flex items-center justify-center shrink-0"
                           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <Film className="w-4 h-4 text-zinc-700" />
+                          <Film className="w-4 h-4 text-faint" />
                         </div>
                       )}
 
@@ -428,7 +427,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
                           {s.hook ?? '—'}
                         </p>
                         {news && (
-                          <p className="text-[10.5px] text-zinc-600 truncate">
+                          <p className="text-[10.5px] text-meta truncate">
                             {news.source_name ? `${news.source_name} · ` : ''}
                             {news.title}
                           </p>
@@ -439,7 +438,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
                       {/* Meta + links */}
                       <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
                         {s.published_at && (
-                          <span className="text-[10px] text-zinc-600 font-mono">
+                          <span className="text-[10px] text-meta font-mono">
                             {format(new Date(s.published_at), 'd MMM · HH:mm', { locale: sv })}
                           </span>
                         )}
@@ -473,10 +472,10 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         {/* ── Pipeline queue ────────────────────────────────────────────────── */}
         {inQueue.length > 0 && (
           <section className="animate-fade-in-up" style={{ animationDelay: '280ms', animationFillMode: 'both' }}>
-            <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 mb-3">
+            <h2 className="text-[10px] font-bold text-meta uppercase tracking-[0.2em] flex items-center gap-2 mb-3">
               <Activity className="w-3 h-3 text-amber-400" />
               Pipeline-kö
-              <span className="font-normal text-zinc-700">({inQueue.length})</span>
+              <span className="font-normal text-faint">({inQueue.length})</span>
             </h2>
             <div className="space-y-1.5">
               {inQueue.map((s) => (
@@ -484,9 +483,9 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
                   className="rounded-xl px-4 py-2.5 flex items-center gap-3"
                   style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <StatusChip status={s.status} videoStatus={s.video_status} />
-                  <p className="flex-1 text-[12px] text-zinc-500 truncate">{s.hook ?? '(hook saknas)'}</p>
+                  <p className="flex-1 text-[12px] text-secondary truncate">{s.hook ?? '(hook saknas)'}</p>
                   {s.generated_at && (
-                    <span className="text-[10px] text-zinc-700 shrink-0 font-mono">
+                    <span className="text-[10px] text-faint shrink-0 font-mono">
                       {formatDistanceToNow(new Date(s.generated_at), { locale: sv, addSuffix: true })}
                     </span>
                   )}
@@ -497,31 +496,29 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
         )}
 
         {/* ── Schedule ──────────────────────────────────────────────────────── */}
+        {media.schedule.length > 0 && (
         <section
           className="rounded-2xl p-5 animate-fade-in-up glass"
           style={{ animationDelay: '320ms', animationFillMode: 'both' }}
         >
-          <h2 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.2em] flex items-center gap-2 mb-4">
+          <h2 className="text-[10px] font-bold text-meta uppercase tracking-[0.2em] flex items-center gap-2 mb-4">
             <Calendar className="w-3 h-3" />
             Schema (UTC)
           </h2>
           <div className="grid grid-cols-2 gap-6">
-            {[
-              { label: 'Morgon', pipeline: '07:20', publish: '08:00' },
-              { label: 'Kväll',  pipeline: '17:20', publish: '18:00' },
-            ].map((slot) => (
+            {media.schedule.map((slot) => (
               <div key={slot.label} className="space-y-2">
                 <p className="text-xs font-semibold text-zinc-400">{slot.label}</p>
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2.5">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#818cf8' }} />
-                    <span className="text-[11px] text-zinc-600">
+                    <span className="text-[11px] text-meta">
                       <span className="font-mono text-zinc-400">{slot.pipeline}</span> Pipeline startar
                     </span>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#34d399', boxShadow: '0 0 4px rgba(52,211,153,0.5)' }} />
-                    <span className="text-[11px] text-zinc-600">
+                    <span className="text-[11px] text-meta">
                       <span className="font-mono text-zinc-400">{slot.publish}</span> Publicering
                     </span>
                   </div>
@@ -530,7 +527,50 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
             ))}
           </div>
         </section>
+        )}
 
+      </div>
+    </div>
+  )
+}
+
+// ─── Empty state: project has no media pipeline ─────────────────────────────────
+
+function NoMediaPipeline({ projectName, slug }: { projectName: string; slug: string }) {
+  return (
+    <div className="relative min-h-screen">
+      <div className="relative z-10 px-6 md:px-8 lg:px-10 pt-7 lg:pt-9 pb-20 space-y-6">
+        <Link
+          href={`/projects/${slug}`}
+          className="inline-flex items-center gap-1.5 text-[11px] text-meta hover:text-zinc-400 transition-colors"
+        >
+          <ArrowLeft className="w-3 h-3" />
+          {projectName}
+        </Link>
+
+        <div
+          className="rounded-2xl p-12 text-center max-w-xl mx-auto mt-12"
+          style={{ background: 'rgba(255,255,255,0.01)', border: '1px dashed rgba(255,255,255,0.08)' }}
+        >
+          <div
+            className="w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.16)' }}
+          >
+            <Film className="w-5 h-5 text-indigo-300" />
+          </div>
+          <h1 className="text-base font-bold text-zinc-200">Ingen mediapipeline för {projectName}</h1>
+          <p className="text-sm text-secondary mt-2 leading-relaxed">
+            Det här projektet har ingen mediapipeline konfigurerad. När en pipeline aktiveras
+            visas reels, publiceringsstatus, token-hälsa och schema här — isolerat till {projectName}.
+          </p>
+          <Link
+            href={`/projects/${slug}`}
+            className="inline-flex items-center gap-1.5 mt-6 px-3 py-1.5 rounded-lg text-[11px] font-medium text-zinc-300 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            Tillbaka till projektet
+          </Link>
+        </div>
       </div>
     </div>
   )

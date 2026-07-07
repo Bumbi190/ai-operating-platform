@@ -23,7 +23,7 @@ export interface PipelineAlertOptions {
   step:        string          // t.ex. 'news_hunt', 'instagram_publish'
   error:       string          // Felmeddelandet
   severity?:   AlertSeverity  // default: 'error'
-  context?:    Record<string, string | number | null>  // Extra info (scriptId, hook etc.)
+  context?:    Record<string, string | number | boolean | null>  // Extra info (scriptId, hook etc.)
 }
 
 // ─── Intern HTML-builder ──────────────────────────────────────────────────────
@@ -97,6 +97,84 @@ export async function sendPipelineAlert(opts: PipelineAlertOptions): Promise<voi
     console.error(`[alert] Kunde inte skicka alert-mail för ${opts.cronRoute}/${opts.step}:`, result?.error)
   } else {
     console.log(`[alert] Alert skickat: ${subject}`)
+  }
+}
+
+// ─── Lyckad körning — sammanfattningsrapport ───────────────────────────────────
+
+export interface RunReportOptions {
+  scriptId:      string
+  hook:          string
+  sourceName?:   string | null
+  sourceUrl?:    string | null
+  platforms:     string                 // t.ex. "Instagram & Facebook"
+  instagramUrl?: string | null
+  facebookUrl?:  string | null
+  qualityScore?: number | null
+  warnings?:     string[]               // t.ex. "Facebook hoppades över"
+}
+
+function buildRunReportHtml(o: RunReportOptions & { ranAt: string }): string {
+  const linkBtn = (label: string, url?: string | null) =>
+    url
+      ? `<a href="${url}" style="display:inline-block;margin:0 8px 8px 0;padding:10px 18px;background:#111;color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600">${label} →</a>`
+      : ''
+
+  const warnRows = (o.warnings && o.warnings.length > 0)
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:12px;margin-bottom:16px">
+         <p style="margin:0 0 4px;font-size:12px;color:#92400e;font-weight:700">⚠️ Varningar</p>
+         ${o.warnings.map(w => `<p style="margin:2px 0;font-size:12px;color:#92400e">• ${w}</p>`).join('')}
+       </div>`
+    : ''
+
+  return `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f9f9f9;padding:20px;margin:0">
+  <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e5e5e5;overflow:hidden">
+
+    <div style="background:#111;padding:16px 24px;border-bottom:3px solid #16a34a">
+      <p style="margin:0;font-size:11px;color:#666;letter-spacing:1px;text-transform:uppercase">The Prompt — Daglig publicering</p>
+      <h2 style="margin:4px 0 0;font-size:18px;color:#fff">✅ Publicerat på ${o.platforms}</h2>
+    </div>
+
+    <div style="padding:24px">
+      <p style="margin:0 0 4px;font-size:11px;color:#999;text-transform:uppercase;letter-spacing:1px">Hook</p>
+      <p style="margin:0 0 18px;font-size:16px;color:#111;font-weight:600;line-height:1.4">${o.hook}</p>
+
+      ${o.sourceName ? `<p style="margin:0 0 16px;font-size:13px;color:#666">Källa: ${o.sourceUrl ? `<a href="${o.sourceUrl}" style="color:#4f46e5">${o.sourceName}</a>` : o.sourceName}</p>` : ''}
+
+      ${typeof o.qualityScore === 'number' ? `<p style="margin:0 0 16px;font-size:13px;color:#666">Kvalitetspoäng: <strong>${o.qualityScore.toFixed(1)}/10</strong></p>` : ''}
+
+      ${warnRows}
+
+      <div style="margin:8px 0 4px">
+        ${linkBtn('📸 Instagram', o.instagramUrl)}
+        ${linkBtn('📘 Facebook', o.facebookUrl)}
+      </div>
+
+      <p style="margin:16px 0 0;font-size:11px;color:#bbb">Script-ID: ${o.scriptId} · ${o.ranAt}</p>
+    </div>
+
+    <div style="padding:12px 24px;background:#f9f9f9;border-top:1px solid #eee">
+      <p style="margin:0;font-size:11px;color:#bbb">AI Operating Platform &mdash; The Prompt Pipeline</p>
+    </div>
+  </div>
+</body></html>`
+}
+
+/**
+ * Skickar en sammanfattning efter en lyckad publicering.
+ * Non-blocking — kastar aldrig, loggar bara om mailet misslyckas.
+ */
+export async function sendRunReport(opts: RunReportOptions): Promise<void> {
+  const ranAt   = new Date().toISOString()
+  const shortHook = opts.hook.length > 60 ? opts.hook.slice(0, 57) + '…' : opts.hook
+  const subject = `✅ The Prompt publicerat: "${shortHook}"`
+  const html    = buildRunReportHtml({ ...opts, ranAt })
+
+  const result = await sendAdminNotification(subject, html)
+  if (!result?.success) {
+    console.error(`[alert] Kunde inte skicka körningsrapport för ${opts.scriptId}:`, result?.error)
+  } else {
+    console.log(`[alert] Körningsrapport skickad: ${subject}`)
   }
 }
 

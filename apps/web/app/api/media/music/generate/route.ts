@@ -65,6 +65,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 
+  const projectId = script.project_id
+  if (!projectId) {
+    return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'ELEVENLABS_API_KEY not configured' }, { status: 500 })
@@ -95,7 +100,7 @@ export async function POST(request: Request) {
     const audioBuffer = Buffer.from(await elevenRes.arrayBuffer())
 
     // ── Upload to Supabase storage ─────────────────────────────────────────
-    const musicUrl = await uploadMusic(script.project_id, scriptId, audioBuffer)
+    const musicUrl = await uploadMusic(projectId, scriptId, audioBuffer)
 
     // ── Persist URL to DB ──────────────────────────────────────────────────
     await db

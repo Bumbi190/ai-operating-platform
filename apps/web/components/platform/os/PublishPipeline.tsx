@@ -26,6 +26,9 @@ const STATUS_META = {
   published: { label: 'Published', tone: 'archived'as const, color: '#34d399' },
 }
 
+// Defensive fallback for any status outside the known set — degrade gracefully.
+const UNKNOWN_META = { label: 'Okänd', tone: 'passive' as const, color: 'rgba(255,255,255,0.5)' }
+
 function timeUntil(iso: string): string {
   const t = new Date(iso).getTime()
   const dSec = Math.floor((t - Date.now()) / 1000)
@@ -62,7 +65,7 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
 
       <div className="space-y-5">
         {items.map((item, i) => {
-          const meta = STATUS_META[item.status]
+          const meta = STATUS_META[item.status as keyof typeof STATUS_META] ?? UNKNOWN_META
           const isLive = item.status === 'rendering' || item.status === 'queued'
           return (
             <div key={item.id} className="relative animate-fade-in-up" style={{ animationDelay: `${i * 80}ms`, animationFillMode: 'both' }}>
@@ -93,8 +96,8 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
                   {isLive && <PulseDot tone={item.status === 'rendering' ? 'violet' : 'indigo'} size={4} />}
                   {item.project && (
                     <>
-                      <span className="text-zinc-700 text-[8px]">·</span>
-                      <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+                      <span className="text-faint text-[8px]">·</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-secondary">
                         <span className="w-1 h-1 rounded-full" style={{ background: item.projectColor ?? '#818cf8' }} />
                         {item.project}
                       </span>
@@ -120,7 +123,7 @@ export function PublishPipeline({ items, className }: PublishPipelineProps) {
                       {p}
                     </span>
                   ))}
-                  <span className="caption-mono text-[9.5px] text-zinc-600 inline-flex items-center gap-1 ml-1">
+                  <span className="caption-mono text-[9.5px] text-meta inline-flex items-center gap-1 ml-1">
                     <Clock className="w-2.5 h-2.5" />
                     {timeUntil(item.scheduledAt)}
                   </span>

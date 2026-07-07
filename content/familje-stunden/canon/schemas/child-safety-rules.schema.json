@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "familje-stunden/canon/child-safety-rules.schema.json",
+  "title": "Child Safety Rules",
+  "type": "object",
+  "required": ["canon_version", "brand", "veto", "rules", "enforcement"],
+  "properties": {
+    "canon_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "updated": { "type": "string", "format": "date" },
+    "brand": { "const": "familje-stunden" },
+    "audience": { "type": "string" },
+    "veto": { "const": true },
+    "note": { "type": "string" },
+    "severity_levels": { "type": "array", "items": { "type": "string", "enum": ["block", "warn"] } },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "scope", "method", "severity", "criterion", "message"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^CS-" },
+          "scope": { "type": "string", "enum": ["text", "image", "both"] },
+          "method": { "type": "string", "enum": ["deterministic", "vlm", "hybrid"] },
+          "severity": { "type": "string", "enum": ["block", "warn"] },
+          "criterion": { "type": "string" },
+          "patterns": { "type": "array", "items": { "type": "string" } },
+          "requires_phrase": { "type": "array", "items": { "type": "string" } },
+          "allowed_domains": { "type": "array", "items": { "type": "string" } },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "output_schema": { "type": "object" },
+    "enforcement": {
+      "type": "object",
+      "required": ["block_cannot_autoapprove", "warn_forces_review"],
+      "properties": {
+        "block_cannot_autoapprove": { "const": true },
+        "warn_forces_review": { "type": "boolean" },
+        "runs_parallel_with": { "type": "string" },
+        "precedence": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "familje-stunden/canon/character-reference.schema.json",
+  "title": "Character Reference",
+  "type": "object",
+  "required": ["canon_version", "brand", "characters", "duo_rules"],
+  "properties": {
+    "canon_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "updated": { "type": "string", "format": "date" },
+    "brand": { "const": "familje-stunden" },
+    "note": { "type": "string" },
+    "palette_method": { "type": "string" },
+    "characters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "species", "pronoun", "canonical_images", "palette", "must_have_features", "must_not", "count_rule"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "species": { "type": "string" },
+          "pronoun": { "type": "string" },
+          "home": { "type": "string" },
+          "role_in_duo": { "type": "string" },
+          "canonical_images": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["role", "storage_path", "status"],
+              "properties": {
+                "role": { "type": "string" },
+                "source_repo": { "type": "string" },
+                "storage_path": { "type": "string" },
+                "checksum": { "type": ["string", "null"] },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" },
+                "transparent": { "type": "boolean" },
+                "status": { "type": "string", "enum": ["pending_import", "imported"] }
+              }
+            }
+          },
+          "secondary_images": { "type": "array" },
+          "palette": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "hex", "delta_e_tol", "required", "status"],
+              "properties": {
+                "name": { "type": "string" },
+                "hex": { "type": ["string", "null"], "pattern": "^#[0-9a-fA-F]{6}$" },
+                "delta_e_tol": { "type": "number" },
+                "where": { "type": "string" },
+                "required": { "type": "boolean" },
+                "status": { "type": "string", "enum": ["sampled", "resolved_blue", "gap_sample", "conflict"] },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          "must_have_features": { "type": "array", "items": { "type": "string" } },
+          "must_not": { "type": "array", "items": { "type": "string" } },
+          "proportions": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "content_bbox_px": { "type": "object" },
+              "content_aspect_h_over_w": { "type": "number" },
+              "head_to_body_ratio": { "type": ["number", "null"] },
+              "landmarks": { "type": ["object", "null"] },
+              "status": { "type": "string", "enum": ["measured", "gap_measure"] },
+              "method": { "type": "string" }
+            }
+          },
+          "count_rule": { "type": "string" },
+          "vlm_criteria": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "duo_rules": {
+      "type": "object",
+      "required": ["allowed_characters", "forbidden", "max_total_main_characters"],
+      "properties": {
+        "default_frame": { "type": "string" },
+        "allowed_characters": { "type": "array", "items": { "type": "string" } },
+        "allowed_recurring_elements": { "type": "array", "items": { "type": "string" } },
+        "forbidden": { "type": "array", "items": { "type": "string" } },
+        "max_total_main_characters": { "type": "integer" }
+      }
+    },
+    "consistency_gates": {
+      "type": "object",
+      "properties": {
+        "palette_presence": { "type": "object" },
+        "proportions": { "type": "object" },
+        "rule_features": { "type": "object" },
+        "reference_similarity": {
+          "type": "object",
+          "properties": {
+            "method": { "type": "string" },
+            "description": { "type": "string" },
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "pass": { "type": "number" },
+                "warn": { "type": "number" },
+                "fail_below": { "type": "number" }
+              }
+            },
+            "enabled": { "type": "boolean" },
+            "blocked_by": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

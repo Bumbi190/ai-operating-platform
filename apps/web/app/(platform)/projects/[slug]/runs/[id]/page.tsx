@@ -9,18 +9,26 @@ import { sv } from 'date-fns/locale/sv'
 import { ChevronLeft, Clock, Hash, Calendar, Play, AlertTriangle } from 'lucide-react'
 import { WorkflowStepGraph } from '@/components/platform/WorkflowStepGraph'
 import { ResumeRunButton } from '@/components/platform/ResumeRunButton'
+import { OSPage, OSLayer, ViewSelectionSync } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function RunDetailPage({
   params,
 }: {
   params: { slug: string; id: string }
 }) {
+  // Scope the run lookup to the project in the URL so a run from another
+  // project can't be opened under this project's URL.
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
   const supabase = await createClient()
 
   const { data: run } = await (supabase as any)
     .from('runs')
     .select('*, workflows(name, id), projects(name, slug)')
     .eq('id', params.id)
+    .eq('project_id', project.id)
     .single()
 
   if (!run) notFound()
@@ -32,7 +40,6 @@ export default async function RunDetailPage({
     .order('created_at')
 
   const workflow = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
-  const project = Array.isArray(run.projects) ? run.projects[0] : run.projects
 
   const duration =
     run.started_at && run.finished_at
@@ -53,9 +60,12 @@ export default async function RunDetailPage({
   ).size
 
   return (
-    <div className="min-h-screen p-6 animate-fade-in">
+    <OSPage className="animate-fade-in">
+      {/* Atlas selection awareness — the open run IS the operator's selection. */}
+      <ViewSelectionSync refs={[{ domain: 'runs', id: run.id, label: workflow?.name ?? 'Körning' }]} />
+
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-zinc-600 mb-5">
+      <div className="flex items-center gap-1.5 text-xs text-meta mb-5">
         <Link
           href={`/projects/${params.slug}/runs`}
           className="hover:text-zinc-400 transition-colors flex items-center gap-1"
@@ -64,7 +74,7 @@ export default async function RunDetailPage({
           Körningar
         </Link>
         <span>/</span>
-        <span className="text-zinc-500 font-mono">{run.id.slice(0, 8)}…</span>
+        <span className="text-secondary font-mono">{run.id.slice(0, 8)}…</span>
       </div>
 
       {/* Header */}
@@ -75,7 +85,7 @@ export default async function RunDetailPage({
           </h1>
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             <RunStatusBadge status={run.status as RunStatus} />
-            <span className="text-xs text-zinc-600 flex items-center gap-1">
+            <span className="text-xs text-meta flex items-center gap-1">
               <Calendar className="w-3 h-3" />
               {formatDistanceToNow(new Date(run.created_at), {
                 addSuffix: true,
@@ -110,7 +120,7 @@ export default async function RunDetailPage({
           },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
-            <p className="text-[10px] text-zinc-600 flex items-center gap-1.5 mb-1.5 uppercase tracking-wider">
+            <p className="text-[10px] text-meta flex items-center gap-1.5 mb-1.5 uppercase tracking-wider">
               <Icon className="w-3 h-3" /> {label}
             </p>
             <p className="font-semibold text-sm text-zinc-200">{value}</p>
@@ -135,7 +145,7 @@ export default async function RunDetailPage({
       <div className="flex gap-5 items-start">
         {/* Log stream — main column */}
         <div className="flex-1 min-w-0">
-          <h2 className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-2">
+          <h2 className="text-[10px] font-semibold text-meta uppercase tracking-widest mb-2">
             Körningslogg
           </h2>
           <LogStream
@@ -163,13 +173,13 @@ export default async function RunDetailPage({
           {/* Input */}
           {run.input && Object.keys(run.input).length > 0 && (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-              <h2 className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest mb-3">
+              <h2 className="text-[10px] font-semibold text-meta uppercase tracking-widest mb-3">
                 Input
               </h2>
               <div className="space-y-2">
                 {Object.entries(run.input as Record<string, string>).map(([key, value]) => (
                   <div key={key}>
-                    <p className="text-[10px] text-zinc-600 font-mono mb-0.5">{key}</p>
+                    <p className="text-[10px] text-meta font-mono mb-0.5">{key}</p>
                     <p className="text-xs text-zinc-300">{value}</p>
                   </div>
                 ))}
@@ -181,7 +191,7 @@ export default async function RunDetailPage({
           {run.context && Object.keys(run.context).length > 0 && (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02]">
               <div className="px-4 pt-4 pb-2">
-                <h2 className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest">
+                <h2 className="text-[10px] font-semibold text-meta uppercase tracking-widest">
                   Resultat
                 </h2>
               </div>
@@ -189,10 +199,15 @@ export default async function RunDetailPage({
                 {Object.entries(run.context as Record<string, string>)
                   .filter(([key]) => key !== 'månad')
                   .map(([key, value]) => {
-                    let preview = value
+                    // run.context is typed Record<string,string> but values can be
+                    // boolean/number/object at runtime → normalize before string ops.
+                    const sval = typeof value === 'string'
+                      ? value
+                      : value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+                    let preview = sval
                     let isImage = false
                     try {
-                      const parsed = JSON.parse(value)
+                      const parsed = JSON.parse(sval)
                       if (parsed?.urls || parsed?.errors) {
                         const urlCount = parsed.urls?.length ?? 0
                         const errCount = parsed.errors?.length ?? 0
@@ -200,19 +215,19 @@ export default async function RunDetailPage({
                         isImage = true
                       }
                     } catch { /* not JSON */ }
-                    if (value.startsWith('data:image/')) { preview = 'Bild (base64)'; isImage = true }
+                    if (sval.startsWith('data:image/')) { preview = 'Bild (base64)'; isImage = true }
 
                     return (
                       <div key={key} className="p-4">
-                        <p className="text-[10px] font-mono text-zinc-600 mb-1.5 flex items-center gap-1.5">
+                        <p className="text-[10px] font-mono text-meta mb-1.5 flex items-center gap-1.5">
                           <span className="w-1 h-1 rounded-full bg-emerald-500" />
                           {key}
                         </p>
                         {isImage ? (
-                          <p className="text-xs text-zinc-500 italic">{preview}</p>
+                          <p className="text-xs text-secondary italic">{preview}</p>
                         ) : (
                           <pre className="text-xs text-zinc-300 whitespace-pre-wrap break-words leading-relaxed max-h-32 overflow-y-auto scrollbar-thin">
-                            {value.length > 500 ? value.slice(0, 500) + '…' : value}
+                            {sval.length > 500 ? sval.slice(0, 500) + '…' : sval}
                           </pre>
                         )}
                       </div>
@@ -223,6 +238,6 @@ export default async function RunDetailPage({
           )}
         </div>
       </div>
-    </div>
+    </OSPage>
   )
 }

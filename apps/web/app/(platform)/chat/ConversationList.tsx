@@ -49,7 +49,7 @@ export function ConversationList({ conversations }: { conversations: Conversatio
   const groupOrder = ['Idag', 'Igår', 'Denna vecka', 'Denna månad', 'Äldre']
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-3xl 3xl:max-w-4xl">
       {groupOrder.filter(g => groups[g]).map(groupLabel => (
         <div key={groupLabel}>
           <p className="text-xs font-medium text-muted-foreground mb-2 px-1">{groupLabel}</p>

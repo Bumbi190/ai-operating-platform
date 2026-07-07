@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
+import { jsonStringArray } from '@/lib/supabase/json'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60  // Lambda kickoff is fast; 60s is plenty
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     audioUrl:           script.audio_url,
     timingUrl:          script.timing_url,
     durationMs:         script.duration_ms ?? 60000,
-    images:             Array.isArray(script.images) ? script.images : [],
+    images:             jsonStringArray(script.images),
     accentColor:        '#6366f1',
     backgroundMusicUrl: undefined,  // fetched separately once DB schema is migrated
   })

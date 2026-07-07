@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { User, Key, Info, Zap, Database } from 'lucide-react'
+import { User, Key, Info, Zap, Database, Instagram } from 'lucide-react'
 import { SeedButton } from './SeedButton'
+import { TokenUpdater } from './TokenUpdater'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -9,13 +11,20 @@ export default async function SettingsPage() {
   const hasOpenAI = !!process.env.OPENAI_API_KEY
 
   return (
-    <div className="p-8 max-w-2xl mx-auto space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Inställningar</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Konto och plattformsinställningar
-        </p>
-      </div>
+    <OSPage density="spacious" className="animate-fade-in">
+      {/* Hero */}
+      <OSLayer layer="hero">
+        <div>
+          <p className="eyebrow eyebrow-accent mb-3">Operator · system configuration</p>
+          <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Inställningar</h1>
+          <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
+            Konto, integrationer och plattformsinställningar
+          </p>
+        </div>
+      </OSLayer>
+
+      {/* Operational systems — 3-col grid on lg+, 4-col on 3xl                */}
+      <OSLayer layer="operational" className="grid grid-cols-1 lg:grid-cols-2 3xl:grid-cols-3 gap-4 lg:gap-5">
 
       {/* Account */}
       <section className="rounded-xl border border-border bg-card overflow-hidden">
@@ -88,6 +97,17 @@ export default async function SettingsPage() {
         </div>
       </section>
 
+      {/* Social media tokens */}
+      <section className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+          <Instagram className="w-4 h-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Instagram / Facebook-token</h2>
+        </div>
+        <div className="p-5">
+          <TokenUpdater />
+        </div>
+      </section>
+
       {/* Platform info */}
       <section className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2">
@@ -111,7 +131,7 @@ export default async function SettingsPage() {
       </section>
 
       {/* Roadmap hint */}
-      <section className="rounded-xl border border-dashed border-border p-5 flex gap-3">
+      <section className="rounded-xl border border-dashed border-border p-5 flex gap-3 lg:col-span-2 3xl:col-span-3">
         <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
         <div className="space-y-1">
           <p className="text-sm font-medium">Kommande funktioner</p>
@@ -121,6 +141,7 @@ export default async function SettingsPage() {
           </p>
         </div>
       </section>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

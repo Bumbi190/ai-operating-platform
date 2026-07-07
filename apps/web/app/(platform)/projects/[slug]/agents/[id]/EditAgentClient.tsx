@@ -6,6 +6,7 @@ import { AgentForm, type AgentFormData } from '@/components/forms/AgentForm'
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 import type { Agent } from '@/lib/supabase/types'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 interface Props {
   agent: Agent
@@ -54,8 +55,8 @@ export default function EditAgentClient({ agent, slug }: Props) {
   const config = agent.config as { max_tokens?: number; temperature?: number }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto animate-fade-in">
-      <div className="flex items-start justify-between mb-8">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero" className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{agent.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">Redigera agent</p>
@@ -81,8 +82,10 @@ export default function EditAgentClient({ agent, slug }: Props) {
             <Trash2 className="w-4 h-4" />
           </Button>
         )}
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational">
+      <div className="max-w-3xl 3xl:max-w-4xl">
       <AgentForm
         initial={{
           name: agent.name,
@@ -97,6 +100,8 @@ export default function EditAgentClient({ agent, slug }: Props) {
         isLoading={loading}
         error={error}
       />
-    </div>
+      </div>
+      </OSLayer>
+    </OSPage>
   )
 }

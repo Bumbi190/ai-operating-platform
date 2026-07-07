@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { OSPage, OSLayer } from '@/components/platform/os'
 import type { Agent, WorkflowStep } from '@/lib/supabase/types'
 
 interface StepDraft extends Omit<WorkflowStep, 'order'> {
@@ -148,8 +149,8 @@ export default function EditWorkflowClient({ workflow, agents, slug }: Props) {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto animate-fade-in">
-      <div className="flex items-start justify-between mb-8">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero" className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{workflow.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">Redigera workflow</p>
@@ -190,9 +191,10 @@ export default function EditWorkflowClient({ workflow, agents, slug }: Props) {
             </Button>
           )}
         </div>
-      </div>
+      </OSLayer>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <OSLayer layer="operational">
+      <form onSubmit={handleSubmit} className="space-y-8 max-w-4xl 3xl:max-w-5xl">
         {/* Basic info */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -445,6 +447,7 @@ export default function EditWorkflowClient({ workflow, agents, slug }: Props) {
           </Button>
         </div>
       </form>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

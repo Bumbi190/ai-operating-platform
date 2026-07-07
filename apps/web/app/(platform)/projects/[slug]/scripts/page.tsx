@@ -10,6 +10,7 @@ import {
   Pencil, Shuffle, Send,
 } from 'lucide-react'
 import type { MediaScript } from '@/lib/media/types'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending_review: { label: 'Väntar granskning', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
@@ -19,10 +20,11 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 }
 
 const VIDEO_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  none:       { label: 'Ej renderad',       color: 'text-muted-foreground' },
-  rendering:  { label: '⏳ Renderar...',    color: 'text-amber-400' },
-  ready:      { label: '🎬 Video klar',     color: 'text-green-400' },
-  failed:     { label: '❌ Render fel',     color: 'text-red-400' },
+  none:               { label: 'Ej renderad',          color: 'text-muted-foreground' },
+  generating_images:  { label: '🖼️ Genererar bilder…', color: 'text-amber-400' },
+  rendering:          { label: '⏳ Renderar…',          color: 'text-amber-400' },
+  ready:              { label: '🎬 Video klar',         color: 'text-green-400' },
+  failed:             { label: '❌ Render fel',         color: 'text-red-400' },
 }
 
 // ─── Pipeline step indicator ─────────────────────────────────────────────────
@@ -194,7 +196,7 @@ function ScriptCard({ script, onUpdate }: {
   const [publishUrl, setPublishUrl]       = useState<string | null>(null)
 
   const statusCfg      = STATUS_LABELS[script.status]
-  const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none']
+  const videoStatusCfg = VIDEO_STATUS_LABELS[script.video_status ?? 'none'] ?? VIDEO_STATUS_LABELS.none
   const hasImages      = Array.isArray(script.images) && script.images.length > 0
   const hasVideo       = !!(liveVideoUrl ?? (script.video_status === 'ready' && script.video_url))
   const isRenderReady  = script.voice_status === 'ready' && hasImages
@@ -696,14 +698,14 @@ function ScriptCard({ script, onUpdate }: {
               <span className="inline-flex items-center gap-1 text-xs text-pink-400">
                 <Loader2 className="w-3 h-3 animate-spin" /> {publishLabel ?? 'Publicerar...'}
               </span>
-            ) : script.status !== 'published' ? (
+            ) : (
               <button
                 onClick={publishToInstagram}
                 className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 transition-colors"
               >
                 <Send className="w-3 h-3" /> Posta på Instagram
               </button>
-            ) : null
+            )
           )}
         </div>
       </div>
@@ -837,8 +839,9 @@ export default function ScriptsPage() {
   const filters = ['all', 'pending_review', 'approved', 'published', 'rejected']
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
+    <OSPage>
 
+      <OSLayer layer="operational" className="space-y-6 max-w-4xl 3xl:max-w-5xl">
       {/* ── ONE-CLICK DAILY VIDEO ─────────────────────────────────────────── */}
       <div className={`rounded-xl border overflow-hidden transition-all ${
         dailyRunning
@@ -986,6 +989,7 @@ export default function ScriptsPage() {
           ))}
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

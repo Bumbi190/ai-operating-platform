@@ -8,14 +8,14 @@
  *   - video_status = 'ready'       (render finished)
  *   - status       = 'approved'    (not yet published)
  *   - published_at IS NULL         (hasn't been published)
- *   - generated_at   within 3 hours  (fresh from today's cron run)
+ *   - generated_at   within 24 hours (covers both daily cron windows)
  *
  * Also handles scripts still in 'rendering' state — polls Lambda once more
  * to give straggler renders a final chance before skipping them.
  *
  * Instagram processing strategy:
- *   - First call: creates container, saves creation_id to DB, polls up to 50s
- *   - Subsequent calls: reuses saved creation_id, skips re-upload, polls up to 55s
+ *   - First call: creates container, saves creation_id to DB, polls up to 90s
+ *   - Subsequent calls: reuses saved creation_id, skips re-upload, polls up to 90s
  *   This avoids re-uploading the video each retry and gives Instagram more poll time.
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
@@ -23,11 +23,13 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { checkAutomationPaused, handlePublishFailure } from '@/lib/media/safeguards'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
-import { sendPipelineAlert } from '@/lib/media/alert'
+import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -40,11 +42,18 @@ export async function GET(request: Request) {
   // ── Auth ─────────────────────────────────────────────────────────────────────
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const db = createAdminClient()
+
+  // ── Global pauscheck ──────────────────────────────────────────────────────────
+  const pauseCheck = await checkAutomationPaused(db)
+  if (!pauseCheck.allowed) {
+    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
+    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  }
 
   // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
   // Prioritet: platform_tokens-tabellen → env-variabel
@@ -62,8 +71,10 @@ export async function GET(request: Request) {
     log('token', `Facebook token läst från Supabase.`)
   }
 
-  // Scripts created in the last 3 hours (today's pipeline runs)
-  const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+  // Scripts created in the last 24 hours — covers both cron windows (07:30 + 17:30 UTC)
+  // A 3-hour window was too tight: morning renders finishing after 08:00 UTC were
+  // missed by the 18:00 UTC publish cron (cutoff would be 15:00, missing 08:xx scripts).
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   // ── Check for stuck 'rendering' scripts and poll them one more time ───────────
   const { data: renderingScripts } = await db
@@ -100,7 +111,31 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── Find ready-but-unpublished scripts ────────────────────────────────────────
+  // ── Idempotens: släpp hängda 'publishing'-hävdningar (krasch före slut) ────────
+  // En körning som hävdade en rad men dog innan publicering/fel lämnar status
+  // 'publishing'. Återställ såna efter 15 min så de kan publiceras igen.
+  await db.from('media_scripts')
+    .update({ status: 'approved' })
+    .eq('status', 'publishing')
+    .lt('updated_at', new Date(Date.now() - 15 * 60_000).toISOString())
+
+  // ── Färskhetspolicy: arkivera klara videor äldre än FRESH_DAYS ────────────────
+  // The Prompt postar AI-nyheter — gammal news ska inte ut. Arkiverade rader
+  // lämnar publiceringskön men finns kvar (syns i Operations Center).
+  const FRESH_DAYS   = 4
+  const freshCutoff  = new Date(Date.now() - FRESH_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data: archived } = await db.from('media_scripts')
+    .update({ video_status: 'archived', publish_failed_reason: `Arkiverad: nyhet äldre än ${FRESH_DAYS} dagar — publiceras ej` })
+    .eq('status', 'approved')
+    .eq('video_status', 'ready')
+    .is('published_at', null)
+    .lt('generated_at', freshCutoff)
+    .select('id')
+  if (archived && archived.length > 0) log('freshness', `Arkiverade ${archived.length} inaktuella videor (>${FRESH_DAYS}d)`)
+
+  // ── Find ready-but-unpublished scripts (FIFO: äldsta FÄRSKA först) ─────────────
+  // FIFO så ingen video svälts ut. Färskhetsfönstret (FRESH_DAYS) gör att inget
+  // äldre än policyn någonsin kan väljas.
   const { data: scripts } = await db
     .from('media_scripts')
     .select(`
@@ -118,8 +153,8 @@ export async function GET(request: Request) {
     .eq('video_status', 'ready')
     .eq('status', 'approved')
     .is('published_at', null)
-    .gte('generated_at', cutoff)
-    .order('generated_at', { ascending: false })
+    .gte('generated_at', freshCutoff)
+    .order('generated_at', { ascending: true })
     .limit(1)
 
   if (!scripts || scripts.length === 0) {
@@ -131,9 +166,27 @@ export async function GET(request: Request) {
   }
 
   const script = scripts[0]
+
+  // ── Idempotens: hävda raden ATOMISKT (approved → publishing) ──────────────────
+  // Endast den körning som lyckas flippa status fortsätter. Två överlappande
+  // cron-/manuella körningar kan därför aldrig publicera samma video två gånger.
+  const { data: claim } = await db.from('media_scripts')
+    .update({ status: 'publishing' })
+    .eq('id', script.id)
+    .eq('status', 'approved')
+    .is('published_at', null)
+    .select('id')
+    .maybeSingle()
+  if (!claim) {
+    log('claim', `Script ${script.id} hävdades redan av annan körning — hoppar över`)
+    return NextResponse.json({ status: 'already_claimed', scriptId: script.id })
+  }
+
   log('publish', `Publishing script ${script.id}...`)
 
   if (!script.video_url) {
+    // Släpp hävdningen så den kan tas igen
+    await db.from('media_scripts').update({ status: 'approved' }).eq('id', script.id)
     return NextResponse.json({ status: 'no_video_url', scriptId: script.id })
   }
 
@@ -170,20 +223,42 @@ export async function GET(request: Request) {
       log('publish', `Reusing existing container: ${creationId}`)
     }
 
-    // Poll up to 55s (container already created, so we have more headroom)
-    await pollUntilReady(creationId, 55_000)
+    // Poll up to 90s (container already created, so we have more headroom)
+    // maxDuration=120 gives ~30s for setup+creation before polling begins
+    await pollUntilReady(creationId, 90_000)
     igResult = await publishContainer(creationId)
     log('publish', `Instagram OK: ${igResult.permalink}`)
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'
     log('publish', `Instagram failed: ${msg}`)
+
+    // Retry-cap: räkna upp och skicka till operatörsgranskning om gränsen nåtts
+    const { sentToReview, newRetryCount } = await handlePublishFailure(db, script.id, msg)
+    // Släpp hävdningen (publishing → approved) om den inte skickats till granskning,
+    // så nästa körning kan försöka igen. Vid granskning sätter handlern pending_review.
+    if (!sentToReview) {
+      await db.from('media_scripts').update({ status: 'approved' }).eq('id', script.id)
+    }
+    log('publish', `Retry ${newRetryCount}/${(await db.from('platform_config').select('max_retry_attempts').eq('id', 1).single()).data?.max_retry_attempts ?? 3}${sentToReview ? ' — SKICKAT TILL GRANSKNING' : ''}`)
+
     await sendPipelineAlert({
       cronRoute: 'cron/publish',
       step:      'instagram_publish',
       error:     msg,
-      context:   { scriptId: script.id, hook: script.hook ?? null },
+      context:   {
+        scriptId:     script.id,
+        hook:         script.hook ?? null,
+        retryCount:   newRetryCount,
+        sentToReview,
+      },
     })
-    return NextResponse.json({ status: 'instagram_failed', error: msg, scriptId: script.id }, { status: 500 })
+    return NextResponse.json({
+      status:       'instagram_failed',
+      error:        msg,
+      scriptId:     script.id,
+      retryCount:   newRetryCount,
+      sentToReview,
+    }, { status: 500 })
   }
 
   // ── Publish to Facebook (optional, non-fatal) ─────────────────────────────────
@@ -221,6 +296,24 @@ export async function GET(request: Request) {
 
   const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
   log('done', `Published on ${platforms}`)
+
+  // ── Skicka sammanfattnings-mail (lyckad körning) ──────────────────────────────
+  const warnings: string[] = []
+  if (hasFacebook && !fbResult) warnings.push('Facebook-publicering misslyckades (Instagram gick ut)')
+  if (!hasFacebook)             warnings.push('Facebook ej konfigurerat — endast Instagram')
+
+  await sendRunReport({
+    scriptId:     script.id,
+    hook:         script.hook ?? '(ingen hook)',
+    sourceName:   newsItem?.source_name ?? null,
+    sourceUrl:    newsItem?.url ?? null,
+    platforms,
+    instagramUrl: igResult.permalink ?? null,
+    facebookUrl:  fbResult?.url ?? null,
+    warnings,
+  })
+
+  await logRun({ workflow: 'Publish to Social', context: { scriptId: script.id, platforms, permalink: igResult.permalink ?? null } })
 
   return NextResponse.json({
     status:      'published',

@@ -16,14 +16,33 @@ import { generateNewsImages } from '@/lib/media/ideogram'
 import { uploadSceneImage } from '@/lib/media/storage'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
+import { logRun } from '@/lib/media/run-log'
+import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
 
+/**
+ * Watchdog: ser till att en hängande extern call (t.ex. Remotion Lambda vid
+ * versionsmismatch) kastar i tid så catch-blocket hinner köra INNAN Vercel
+ * dödar funktionen vid maxDuration. Utan denna räknas inga render_attempts
+ * upp och inget larm skickas (tyst 504-loop — hände 2026-06-10).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timade ut efter ${Math.round(ms / 1000)}s (watchdog)`)), ms)
+    }),
+  ])
+}
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -35,7 +54,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, media_news_items(title)')
+    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -64,37 +83,47 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ video_status: 'generating_images' }).eq('id', script.id)
 
   try {
-    // Get news title for image generation
-    const newsTitle = Array.isArray(script.media_news_items)
-      ? (script.media_news_items[0] as { title?: string })?.title ?? script.hook
-      : (script.media_news_items as { title?: string } | null)?.title ?? script.hook
+    const { script: scriptText, project_id: projectId, hook } = script
+    if (!scriptText || !projectId || !hook) throw new Error('Script saknar obligatoriskt fält: script, project_id eller hook')
 
-    // Generate 3 images (fewer than 5 to stay under 60s)
-    const rawImageUrls = await generateNewsImages(newsTitle, script.script, 3)
+    // Images are generated in step2 (parallel with voice). Only generate here as fallback.
+    let storedImageUrls: string[] = Array.isArray(script.images) && script.images.length > 0
+      ? script.images as string[]
+      : []
 
-    // Upload images
-    const storedImageUrls = await Promise.all(
-      rawImageUrls.map((url, i) => uploadSceneImage(script.project_id, script.id, i, url)),
-    )
+    if (storedImageUrls.length === 0) {
+      console.log(`[cron/step3] No images from step2 — generating now as fallback...`)
+      const newsTitle = Array.isArray(script.media_news_items)
+        ? (script.media_news_items[0] as { title?: string })?.title ?? hook
+        : (script.media_news_items as { title?: string } | null)?.title ?? hook
 
-    await db.from('media_scripts').update({
-      images:      storedImageUrls,
-      composition: 'SimpleNewsReel',
-      // Note: background music skipped (Pixabay blocked by Lambda)
-    }).eq('id', script.id)
+      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, scriptText, 8), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
+      storedImageUrls = await Promise.all(
+        rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
+      )
+      await db.from('media_scripts').update({
+        images:      storedImageUrls,
+        composition: 'SimpleNewsReel',
+      }).eq('id', script.id)
+    } else {
+      console.log(`[cron/step3] Using ${storedImageUrls.length} images from step2`)
+    }
 
     // Start Lambda render
-    const inputProps = await buildVideoInputProps({
-      hook:               script.hook,
+    const inputProps = await withTimeout(buildVideoInputProps({
+      hook:               hook,
       audioUrl:           script.audio_url!,
       timingUrl:          script.timing_url!,
       durationMs:         script.duration_ms ?? 60000,
       images:             storedImageUrls,
       accentColor:        '#6366f1',
       backgroundMusicUrl: undefined,
-    })
+    }), 8_000, 'buildVideoInputProps (timing-fetch)')
 
-    const { renderId, bucketName } = await startLambdaRender(script.id, inputProps, 'SimpleNewsReel')
+    const { renderId, bucketName } = await withRetry(
+      () => withTimeout(startLambdaRender(script.id, inputProps, 'SimpleNewsReel'), 20_000, 'Remotion Lambda render-start'),
+      { attempts: 2, label: 'Remotion Lambda render-start' },
+    )
 
     await db.from('media_scripts').update({
       video_status:  'rendering',
@@ -104,6 +133,9 @@ export async function GET(request: Request) {
 
     console.log(`[cron/step3] Render started: ${renderId} for script ${script.id}`)
 
+    // Logga "Render Video"-körningen så Atlas/Activity Center får ett run-id för render-starten.
+    await logRun({ workflow: 'Render Video', context: { scriptId: script.id, renderId, phase: 'started' } })
+
     return NextResponse.json({
       status:     'step3_done',
       scriptId:   script.id,
@@ -112,9 +144,22 @@ export async function GET(request: Request) {
       next:       'publish cron runs at 08:00 / 18:00 UTC',
     })
   } catch (err) {
-    await db.from('media_scripts').update({ video_status: 'none' }).eq('id', script.id)
     const msg = err instanceof Error ? err.message : 'unknown'
-    console.error(`[cron/step3] Failed: ${msg}`)
-    return NextResponse.json({ status: 'step3_failed', error: msg }, { status: 500 })
+    const attempts  = (script.render_attempts ?? 0) + 1
+    const escalated = attempts >= 3
+    await db.from('media_scripts').update({
+      video_status:           'failed',
+      render_attempts:        attempts,
+      pipeline_next_retry_at: escalated ? null : new Date(Date.now() + nextRetryDelayMs(attempts - 1)).toISOString(),
+      pipeline_failed_reason: msg,
+    }).eq('id', script.id)
+    console.error(`[cron/step3] Failed (försök ${attempts}/3): ${msg}`)
+    await logRun({ workflow: 'Render Video', status: 'failed', context: { scriptId: script.id, attempts }, error: msg })
+    await sendPipelineAlert({
+      cronRoute: 'cron/step3', step: 'render', error: msg,
+      severity:  escalated ? undefined : 'warning',
+      context:   { scriptId: script.id, attempts, max: 3, escalated, note: escalated ? 'Max försök nått — kräver åtgärd' : 'Återförsök schemalagt' },
+    })
+    return NextResponse.json({ status: 'step3_failed', error: msg, attempts, escalated }, { status: 500 })
   }
 }

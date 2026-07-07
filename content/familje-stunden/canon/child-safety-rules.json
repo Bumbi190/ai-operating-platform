@@ -1,0 +1,60 @@
+{
+  "$schema": "./schemas/child-safety-rules.schema.json",
+  "canon_version": "0.1.0",
+  "updated": "2026-06-05",
+  "brand": "familje-stunden",
+  "audience": "barn 3–9 år och deras föräldrar",
+  "veto": true,
+  "note": "Child Safety är en ortogonal vetogrind vid sidan av Brand QA. verdict='block' kan ALDRIG auto-godkännas eller överröstas av Brand-poäng; 'warn' tvingar till manuell review. method: deterministic (regex/regler), vlm (modellbedömning), hybrid (båda).",
+  "severity_levels": ["block", "warn"],
+  "rules": [
+    { "id": "CS-SCARY", "scope": "both", "method": "vlm", "severity": "block",
+      "criterion": "Innehåller text eller bild något skrämmande, hotfullt, våldsamt eller ångestframkallande för 3–9 år?",
+      "message": "Skrämmande/olämpligt innehåll för målgruppen" },
+
+    { "id": "CS-UNSAFE-ACT", "scope": "text", "method": "hybrid", "severity": "block",
+      "criterion": "Beskrivs en osäker aktivitet utan tydlig vuxennotis (svamp/växt att äta, vatten, eld, höjd, vassa verktyg)?",
+      "patterns": ["äta svamp", "äta bär", "simma själv", "tända eld", "elden", "klättra högt", "vass kniv"],
+      "requires_phrase": ["tillsammans med en vuxen", "fråga en vuxen", "med en vuxen"],
+      "message": "Osäker aktivitet saknar vuxenövervaknings-notis" },
+
+    { "id": "CS-IMG-UNSAFE", "scope": "image", "method": "vlm", "severity": "block",
+      "criterion": "Avbildas en osäker aktivitet (eld, djupt vatten, höjd, vassa föremål) utan vuxen?",
+      "message": "Osäker aktivitet avbildad utan vuxen" },
+
+    { "id": "CS-AGE-LANG", "scope": "text", "method": "vlm", "severity": "block",
+      "criterion": "Vuxenteman, svordomar, eller språk olämpligt för små barn?",
+      "message": "Åldersolämpligt språk eller tema" },
+
+    { "id": "CS-PII", "scope": "text", "method": "deterministic", "severity": "block",
+      "criterion": "Efterfrågas barns personuppgifter, eller länkas till okänd/extern domän?",
+      "patterns": ["namn och adress", "var bor du", "skicka ett foto"],
+      "allowed_domains": ["familje-stunden.se"],
+      "message": "Personuppgiftsinsamling eller okänd länk" },
+
+    { "id": "CS-CLAIMS", "scope": "text", "method": "hybrid", "severity": "warn",
+      "criterion": "Ogrundat utvecklings- eller hälsopåstående (t.ex. 'gör barn smartare')?",
+      "patterns": ["gör barn smartare", "ökar IQ", "garanterat", "botar"],
+      "message": "Ogrundat utvecklings-/hälsopåstående" },
+
+    { "id": "CS-IMG-STRANGER", "scope": "image", "method": "vlm", "severity": "warn",
+      "criterion": "Förekommer en främling/vuxen i osäker kontext, eller annan karaktär än Nova & Pling?",
+      "message": "Okänd person eller icke-kanonisk karaktär i bild" },
+
+    { "id": "CS-CHOKING", "scope": "both", "method": "hybrid", "severity": "warn",
+      "criterion": "Pyssel med smådelar/choking-risk utan vuxen-notis?",
+      "patterns": ["pärlor", "småbitar", "knappar", "smådelar"],
+      "requires_phrase": ["tillsammans med en vuxen", "med en vuxen"],
+      "message": "Smådelar/choking-risk utan vuxen-notis" }
+  ],
+  "output_schema": {
+    "verdict": "pass | warn | block",
+    "findings": [{ "rule_id": "string", "severity": "block | warn", "scope": "text | image | both", "evidence": "string" }]
+  },
+  "enforcement": {
+    "block_cannot_autoapprove": true,
+    "warn_forces_review": true,
+    "runs_parallel_with": "brand_qa",
+    "precedence": "child_safety block överrider alla andra grindar"
+  }
+}

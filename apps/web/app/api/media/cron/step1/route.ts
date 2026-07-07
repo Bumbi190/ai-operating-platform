@@ -14,13 +14,27 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
+import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
+import { logRun } from '@/lib/media/run-log'
+import { logLlmCost } from '@/lib/cost/track'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
+import { classifyTopic } from '@/lib/atlas/content-tags'
+import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
+import { toJson } from '@/lib/supabase/json'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+/** Race a promise against a timeout; resolve to `fallback` if it doesn't finish in time. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
+  ])
+}
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 2000): Promise<T> {
   for (let i = 0; i < attempts; i++) {
@@ -33,122 +47,245 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 20
   throw new Error('Max retries exceeded')
 }
 
-const NEWS_SYSTEM = `You are an AI media analyst. Given a news article or description, extract structured metadata for short-form video production.
-
-Return ONLY valid JSON (no markdown fences):
-{
-  "title": "Short punchy headline (max 10 words)",
-  "summary": "2-3 sentence summary of the key development",
-  "key_insight": "The single most surprising or important takeaway",
-  "virality_score": 85,
-  "target_audience": "intermediate",
-  "content_angle": "educational",
-  "source_url": "https://... or null",
-  "source_name": "Publication name or null"
-}
-virality_score: 0–100, target_audience: "beginners"|"intermediate"|"advanced", content_angle: "educational"|"controversial"|"inspiring"|"practical"`
-
-const SCRIPT_SYSTEM = `You are the lead scriptwriter for "The Prompt" — a daily AI insider news channel for developers and tech professionals.
-
-Voice: Victoria. Warm, fast, authoritative. TARGET FORMAT: 18–28 seconds. ~55–70 words.
-
-HOOK (0-3s): One sentence max 12 words. Breaking insider information feel.
-CORE (3-15s): 3-4 rapid-fire facts. Real companies, models, numbers.
-WHY IT MATTERS (15-25s): 1-2 sentences. Concrete implication.
-
-FORBIDDEN hooks: "AI is changing the world", "In today's video", anything vague or over 13 words.
-
-Return ONLY valid JSON (no markdown fences):
-{
-  "hook": "...",
-  "script": "Full voiceover script...",
-  "captions": ["Caption 1", "Caption 2"],
-  "hashtags": ["#AI", "#Tech"],
-  "cta": "One-line CTA",
-  "tone": "insider",
-  "estimated_duration": "~22 seconds",
-  "difficulty": "intermediate"
-}`
-
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const db     = createAdminClient()
   const claude = new Anthropic()
+  const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s
 
   const { searchParams } = new URL(request.url)
   const projectIdParam = searchParams.get('project_id')
 
-  // Find project
+  // Find project — AI-nyhetspipen tillhör The Prompt (ai-media-automation).
+  // Utan explicit project_id pinnar vi till The Prompt istället för att ta
+  // "första projektet" (vilket var Familje-Stunden och felattribuerade allt).
   let q = db.from('projects').select('id, slug')
   if (projectIdParam) q = q.eq('id', projectIdParam)
+  else q = q.eq('slug', 'ai-media-automation')
   const { data: project } = await (q as ReturnType<typeof db.from>).limit(1).single()
   if (!project) return NextResponse.json({ error: 'No project found' }, { status: 404 })
 
-  // Hunt news
+  // ── Load competitor intelligence (weekly cache) ───────────────────────────
+  // Stored in memories table as JSON text under key 'competitor_intelligence'.
+  // Re-fetched from Hermes if cache is older than 7 days.
+  let competitorHooks:   string[] | undefined
+  let competitorPattern: string   | undefined
+
+  if (isHermesConfigured()) {
+    // READ-ONLY — never fetches in step1 to protect the 60s Vercel budget.
+    // The /api/media/cron/competitors route refreshes this cache weekly.
+    const { data: cached } = await db
+      .from('memories')
+      .select('value')
+      .eq('project_id', project.id)
+      .eq('key', 'competitor_intelligence')
+      .limit(1)
+      .maybeSingle()
+
+    if (cached?.value) {
+      try {
+        const parsed      = JSON.parse(cached.value)
+        competitorHooks   = parsed?.top_hooks
+        competitorPattern = parsed?.pattern_summary
+        console.log('[cron/step1] Using cached competitor intelligence')
+      } catch { /* malformed — skip */ }
+    }
+  }
+
+  const SCRIPT_SYSTEM = buildScriptSystem(competitorHooks, competitorPattern)
+  // ── End competitor intelligence ───────────────────────────────────────────
+
+  // ── Fetch trends + hunt news in parallel ─────────────────────────────────
+  // Trends run alongside the news hunt — no extra time cost.
+  // If Hermes isn't configured, trends silently returns null.
+  let trendingTopics: string[] = []
   let hunterResult
-  try {
-    hunterResult = await runNewsHunter(db, project.id, 5)
-  } catch (err) {
-    return NextResponse.json({ status: 'hunt_failed', error: err instanceof Error ? err.message : err }, { status: 500 })
+
+  const [trendsResult, hunterRes] = await Promise.allSettled([
+    callHermesTrends(7_000),               // hard 7s cap (was 25s default)
+    runNewsHunter(db, project.id, 5, []),
+  ])
+
+  if (trendsResult.status === 'fulfilled' && trendsResult.value) {
+    trendingTopics = trendsResult.value.topics.map(t => t.topic)
+    console.log(`[cron/step1] Trends: ${trendingTopics.slice(0, 5).join(', ')}...`)
   }
-  if (!hunterResult.candidates.length) {
-    return NextResponse.json({ status: 'no_news' })
+
+  if (hunterRes.status === 'rejected') {
+    return NextResponse.json({ status: 'hunt_failed', error: String(hunterRes.reason) }, { status: 500 })
   }
 
-  const top = hunterResult.candidates[0]
-  const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
+  // NOTE: we used to re-run runNewsHunter a second time with trend context.
+  // That doubled the hunt cost and pushed step1 past Vercel's 60s limit (→ 504,
+  // script never saved). We now use the single parallel hunt result directly.
+  hunterResult = hunterRes.value
 
-  // Save news item
-  const { data: newsItem } = await db.from('media_news_items').insert({
-    project_id: project.id, title: top.story.title, summary: top.story.summary ?? null,
-    url: top.story.url, source_name: top.story.sourceLabel, virality_score: top.estimatedViralityScore,
-    content_angle: top.suggestedAngle, key_insight: top.editorialNote ?? null, status: 'approved',
-    raw_output: { title: top.story.title, summary: top.story.summary, key_insight: top.editorialNote, virality_score: top.estimatedViralityScore, target_audience: 'intermediate', content_angle: top.suggestedAngle, source_url: top.story.url, source_name: top.story.sourceLabel },
-  }).select('id').single()
+  // ── Hermes fallback ──────────────────────────────────────────────────────
+  // If the API hunt found nothing (or everything was low-virality), ask Hermes
+  // to autonomously browse news sites with Playwright + Gemini Computer Use.
+  // Hermes is optional — gracefully skipped if HERMES_URL is not set.
+  const VIRALITY_THRESHOLD = 60
+  const topCandidate       = hunterResult.candidates[0]
+  const shouldUseHermes    = isHermesConfigured() && (
+    !hunterResult.candidates.length ||
+    (topCandidate && topCandidate.estimatedViralityScore < VIRALITY_THRESHOLD)
+  )
 
-  // Analyze article
-  const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
-  const news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
+  let news: NewsHunterOutput
+  // newsItemId is captured directly from each insert — avoids the race condition
+  // of querying "most recent row" which could grab a concurrent insert's ID.
+  let newsItemId: string | null = null
+
+  if (shouldUseHermes) {
+    console.log('[cron/step1] Calling Hermes for web-scraped news...')
+    const { data: existingUrls } = await db
+      .from('media_news_items')
+      .select('url')
+      .not('url', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    const excludeUrls = (existingUrls ?? []).map(r => r.url).filter(Boolean) as string[]
+    // Time-boxed: callHermesScrape has a 3-min internal timeout — far over our 60s
+    // budget. Cap it externally at 18s and fall back to the API hunt if it stalls.
+    const hermesResult = await withTimeout(callHermesScrape(excludeUrls), 18_000, null)
+
+    if (hermesResult) {
+      console.log(`[cron/step1] Hermes found: "${hermesResult.title}" (virality: ${hermesResult.virality_score})`)
+      // Hermes already returns structured NewsHunterOutput-compatible data
+      news = {
+        title:           hermesResult.title,
+        summary:         hermesResult.summary,
+        key_insight:     hermesResult.key_insight,
+        virality_score:  hermesResult.virality_score,
+        target_audience: 'intermediate',
+        content_angle:   hermesResult.content_angle,
+        source_url:      hermesResult.url,
+        source_name:     hermesResult.source_name,
+      }
+
+      // Save news item from Hermes — capture ID directly to avoid race conditions
+      const { data: hermesNI } = await db.from('media_news_items').insert({
+        project_id: project.id,
+        title:          hermesResult.title,
+        summary:        hermesResult.summary,
+        url:            hermesResult.url,
+        source_name:    hermesResult.source_name,
+        virality_score: hermesResult.virality_score,
+        content_angle:  hermesResult.content_angle,
+        key_insight:    hermesResult.key_insight,
+        status:         'approved',
+        raw_output:     { ...hermesResult, source: 'hermes' },
+      }).select('id').single()
+      newsItemId = hermesNI?.id ?? null
+    } else {
+      // Hermes also failed — fall back to original hunt or give up
+      if (!hunterResult.candidates.length) {
+        return NextResponse.json({ status: 'no_news' })
+      }
+      // Use original hunt result even if low-virality
+      const top       = hunterResult.candidates[0]
+      const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
+      const newsRes   = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
+      news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
+      const { data: fallbackNI } = await db.from('media_news_items').insert({ project_id: project.id, title: top.story.title, summary: top.story.summary ?? null, url: top.story.url, source_name: top.story.sourceLabel, virality_score: top.estimatedViralityScore, content_angle: top.suggestedAngle, key_insight: top.editorialNote ?? null, status: 'approved', raw_output: { title: top.story.title, summary: top.story.summary, key_insight: top.editorialNote, virality_score: top.estimatedViralityScore, target_audience: 'intermediate', content_angle: top.suggestedAngle, source_url: top.story.url, source_name: top.story.sourceLabel } }).select('id').single()
+      newsItemId = fallbackNI?.id ?? null
+    }
+  } else {
+    // Standard path: use top result from API hunt
+    if (!hunterResult.candidates.length) {
+      return NextResponse.json({ status: 'no_news' })
+    }
+    const top         = hunterResult.candidates[0]
+    const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
+
+    // Save news item — capture ID directly to avoid race conditions
+    const { data: standardNI } = await db.from('media_news_items').insert({
+      project_id: project.id, title: top.story.title, summary: top.story.summary ?? null,
+      url: top.story.url, source_name: top.story.sourceLabel, virality_score: top.estimatedViralityScore,
+      content_angle: top.suggestedAngle, key_insight: top.editorialNote ?? null, status: 'approved',
+      raw_output: { title: top.story.title, summary: top.story.summary, key_insight: top.editorialNote, virality_score: top.estimatedViralityScore, target_audience: 'intermediate', content_angle: top.suggestedAngle, source_url: top.story.url, source_name: top.story.sourceLabel },
+    }).select('id').single()
+    newsItemId = standardNI?.id ?? null
+
+    // Analyze article
+    const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
+    void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
+    news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
+  }
+  // ── End Hermes fallback ───────────────────────────────────────────────────
+
+  // ── Hermes article read ───────────────────────────────────────────────────
+  // If Hermes is available and the story has a URL, fetch the full article text.
+  // This gives Claude real quotes, exact numbers and concrete details —
+  // far better than RSS summaries for writing punchy scripts.
+  let fullArticleText = ''
+  const articleUrl = news.source_url ?? null
+  // Only read the full article if Hermes is configured AND we still have budget
+  // left (skip when >30s elapsed). Bounded to 10s either way (was 30s).
+  if (isHermesConfigured() && articleUrl && Date.now() - t0 < 30_000) {
+    console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
+    const read = await withTimeout(callHermesRead(articleUrl), 10_000, null)
+    if (read?.success && read.word_count > 100) {
+      fullArticleText = read.text
+      console.log(`[cron/step1] Got ${read.word_count} words from article`)
+    }
+  }
+
+  // Build the script-writing context — prefer full article, fall back to summary
+  const scriptContext = fullArticleText
+    ? `Title: ${news.title}\nFull article text:\n${fullArticleText}\n\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
+    : `Title: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
+  // ── End article read ──────────────────────────────────────────────────────
 
   // Write script
   const scriptRes = await withRetry(() => claude.messages.create({
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-    messages: [{ role: 'user', content: `Write a short-form video script:\nTitle: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}` }],
+    messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
   }))
+  void logLlmCost('claude-sonnet-4-6', scriptRes.usage, { agent: 'Script Writer', operation: 'Generate Script' })
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
 
   // Quality gate
-  const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
+  const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
   const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
 
-  if (shouldRegenerate(qualityScore)) {
+  // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
+  // slightly weaker hook than to 504 and save nothing.
+  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
     const rewriteRes = await withRetry(() => claude.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-      messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY: ${news.title}\n${news.summary}\n${news.key_insight}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
+      messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
+    void logLlmCost('claude-sonnet-4-6', rewriteRes.usage, { agent: 'Script Writer', operation: 'Rewrite Script' })
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
   }
 
   // Save script — voice_status='none' signals step2 to pick it up
   const { data: scriptRow } = await db.from('media_scripts').insert({
-    project_id: project.id, news_item_id: newsItem?.id ?? null,
+    project_id: project.id, news_item_id: newsItemId,
     hook: script.hook, script: script.script, captions: script.captions,
     hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-    estimated_duration: script.estimated_duration, raw_output: script,
-    quality_score: qualityScore, status: 'approved',
+    estimated_duration: script.estimated_duration, raw_output: toJson(script),
+    quality_score: toJson(qualityScore), status: 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
+    topic: classifyTopic(script.hook, script.script), format: 'reel',
     generated_at: new Date().toISOString(),
   }).select('id').single()
 
   if (!scriptRow) return NextResponse.json({ error: 'Failed to save script' }, { status: 500 })
-  if (newsItem?.id) await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItem.id)
+  if (newsItemId) await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItemId)
 
   console.log(`[cron/step1] Done — scriptId: ${scriptRow.id}, hook: "${script.hook}", quality: ${qualityScore.overall.toFixed(1)}/10`)
+
+  const scriptRunId = await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
+  // Spårbarhet: stämpla run_id på scriptet → kedjan news → script → run kan följas bakåt.
+  if (scriptRunId) { try { await db.from('media_scripts').update({ run_id: scriptRunId }).eq('id', scriptRow.id) } catch { /* non-blocking */ } }
 
   return NextResponse.json({
     status: 'step1_done',

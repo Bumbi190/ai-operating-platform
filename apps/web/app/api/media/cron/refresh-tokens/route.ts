@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   // ── Auth ─────────────────────────────────────────────────────────────────────
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -56,19 +56,53 @@ export async function GET(request: Request) {
 
   const appId     = process.env.META_APP_ID
   const appSecret = process.env.META_APP_SECRET
+  const currentIg = await getToken('instagram')
 
-  if (!appId || !appSecret) {
+  if (!currentIg) {
+    const msg = 'Inget Instagram-token hittat (varken i Supabase eller INSTAGRAM_ACCESS_TOKEN). Sätt env-variabeln i Vercel.'
+    log(`⚠️  ${msg}`)
+    results.instagram = { status: 'skipped', reason: msg }
+  } else if (currentIg.accessToken.startsWith('IG')) {
+    // ── IGAA (Instagram Login) — förnya via Instagrams egen ig_refresh_token ──
+    // Kräver INGA app-credentials och är fristående från Facebook-webbsessionen,
+    // så token dör inte när FB-sessionen loggar ut. Detta är den robusta vägen.
+    log('IGAA-token upptäckt. Förnyar via graph.instagram.com/refresh_access_token...')
+    try {
+      const url = new URL('https://graph.instagram.com/refresh_access_token')
+      url.searchParams.set('grant_type',  'ig_refresh_token')
+      url.searchParams.set('access_token', currentIg.accessToken)
+
+      const res  = await fetch(url.toString())
+      const data = await res.json() as { access_token?: string; expires_in?: number; error?: { message: string } }
+
+      if (!res.ok || data.error || !data.access_token) {
+        throw new Error(data.error?.message ?? `Instagram API ${res.status}`)
+      }
+
+      const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined
+      await setToken('instagram', data.access_token, expiresAt)
+
+      const daysUntilExpiry = expiresAt
+        ? Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        : null
+      log(`✓ Instagram (IGAA) token förnyat. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
+      results.instagram = { status: 'refreshed', flow: 'ig_refresh_token', expiresAt: expiresAt?.toISOString() ?? null, daysUntilExpiry }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`✗ Instagram (IGAA) refresh misslyckades: ${msg}`)
+      await sendPipelineAlert({
+        cronRoute: 'cron/refresh-tokens',
+        step:      'instagram_token_refresh',
+        error:     msg,
+        context:   { flow: 'ig_refresh_token', tip: 'IGAA-token måste förnyas inom 60 dagar och vara minst 24h gammalt.' },
+      })
+      results.instagram = { status: 'failed', error: msg }
+    }
+  } else if (!appId || !appSecret) {
     const msg = 'META_APP_ID eller META_APP_SECRET saknas i env. Sätt dem i Vercel → Environment Variables.'
     log(`⚠️  ${msg}`)
     results.instagram = { status: 'skipped', reason: msg }
   } else {
-    const currentIg = await getToken('instagram')
-
-    if (!currentIg) {
-      const msg = 'Inget Instagram-token hittat (varken i Supabase eller INSTAGRAM_ACCESS_TOKEN). Sätt env-variabeln i Vercel.'
-      log(`⚠️  ${msg}`)
-      results.instagram = { status: 'skipped', reason: msg }
-    } else {
       log(`Nuvarande token hämtat från ${currentIg.source}. Förnyar via Meta fb_exchange_token...`)
 
       try {
@@ -129,7 +163,6 @@ export async function GET(request: Request) {
         })
         results.instagram = { status: 'failed', error: msg }
       }
-    }
   }
 
   // ── Facebook ──────────────────────────────────────────────────────────────────
@@ -145,6 +178,16 @@ export async function GET(request: Request) {
     status:   currentFb ? 'ok_no_refresh_needed' : 'missing',
     source:   currentFb?.source ?? null,
     expiresAt: currentFb?.expiresAt?.toISOString() ?? null,
+  }
+
+  // ── Spårbarhet: notera senaste lyckade IG-refresh i token_health ──────────────
+  if ((results.instagram as { status?: string } | undefined)?.status === 'refreshed') {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      await createAdminClient().from('token_health')
+        .update({ last_refreshed_at: new Date().toISOString() })
+        .eq('platform', 'instagram')
+    } catch { /* non-blocking */ }
   }
 
   // ── Sammanfattning ────────────────────────────────────────────────────────────

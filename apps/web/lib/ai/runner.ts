@@ -18,10 +18,11 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI, { toFile } from 'openai'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { isAnthropicModel, isOpenAIModel, isImageModel } from './models'
 import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
+import { logLlmCost, logImageCost } from '@/lib/cost/track'
 
 // ── Juni-referensbilder för konsekvent karaktärsstil ─────────────────────────
 // Alla referensbilder ligger i run-images/references/juni/ i Supabase Storage.
@@ -71,7 +72,7 @@ async function generateWithReference(
     try {
       console.log(`[ImageGen] ${label} — referens: ${refFilename}, försök ${attempt}`)
       const refFile = await toFile(refBuffer, 'reference.png', { type: 'image/png' })
-      const res = await openai.images.edit({
+      const res = await getOpenAI().images.edit({
         model: 'gpt-image-1',
         image: refFile,
         prompt: finalPrompt,
@@ -95,19 +96,28 @@ async function generateWithReference(
   return null
 }
 
-// Admin Supabase client for storage uploads (bypasses RLS)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+// Admin Supabase client for storage uploads (bypasses RLS).
+// Lazily initialized via lib/supabase/admin — module-scope createClient()
+// crashed `next build` ("supabaseUrl is required") during page-data
+// collection in environments without Supabase env vars.
+let _supabaseAdmin: ReturnType<typeof createAdminClient> | null = null
+function getSupabaseAdmin() {
+  _supabaseAdmin ??= createAdminClient()
+  return _supabaseAdmin
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazily initialized — `new OpenAI()` throws at construction if
+// OPENAI_API_KEY is missing, which crashed `next build` page-data
+// collection (same failure mode as the module-scope Supabase client).
+let _openai: OpenAI | null = null
+function getOpenAI() {
+  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 // ── Ideogram v3 — flat cartoon illustration model ────────────────────────────
 // Used for saga and activity illustrations where flat cartoon style is critical.
@@ -297,6 +307,12 @@ export interface RunStepInput {
    * Set to 1 in preview/test workflows to reduce cost.
    */
   maxImages?: number
+  /**
+   * Cost Intelligence — taggar kostnaden med projekt/agent/operation.
+   * projectId null = plattformsglobal. Skickas alltid (även null) så att
+   * icke-media-anrop inte felaktigt hamnar på media-projektet.
+   */
+  cost?: { projectId?: string | null; agent?: string; operation?: string }
 }
 
 export interface RunStepResult {
@@ -384,6 +400,13 @@ async function runAnthropicStep(
     outputTokens = response.usage.output_tokens
   }
 
+  void logLlmCost(model, { tokensIn: inputTokens, tokensOut: outputTokens }, {
+    projectId: input.cost?.projectId ?? null,
+    agent: input.cost?.agent,
+    operation: input.cost?.operation,
+    runId: input.runId,
+  })
+
   return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
 }
 
@@ -401,7 +424,7 @@ async function runOpenAIStep(
   let outputTokens = 0
 
   if (onChunk) {
-    const stream = await openai.chat.completions.create({
+    const stream = await getOpenAI().chat.completions.create({
       model,
       max_tokens: maxTokens,
       temperature,
@@ -420,7 +443,7 @@ async function runOpenAIStep(
       }
     }
   } else {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model,
       max_tokens: maxTokens,
       temperature,
@@ -433,6 +456,13 @@ async function runOpenAIStep(
     inputTokens = response.usage?.prompt_tokens ?? 0
     outputTokens = response.usage?.completion_tokens ?? 0
   }
+
+  void logLlmCost(model, { tokensIn: inputTokens, tokensOut: outputTokens }, {
+    projectId: input.cost?.projectId ?? null,
+    agent: input.cost?.agent,
+    operation: input.cost?.operation,
+    runId: input.runId,
+  })
 
   return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
 }
@@ -451,7 +481,7 @@ async function uploadToStorage(
 ): Promise<string | null> {
   try {
     const path = `runs/${runId}/${prefix}-${index}.png`
-    const { error } = await supabaseAdmin.storage
+    const { error } = await getSupabaseAdmin().storage
       .from('run-images')
       .upload(path, buffer, { contentType: 'image/png', upsert: true })
 
@@ -460,7 +490,7 @@ async function uploadToStorage(
       return null
     }
 
-    const { data } = supabaseAdmin.storage.from('run-images').getPublicUrl(path)
+    const { data } = getSupabaseAdmin().storage.from('run-images').getPublicUrl(path)
     return data.publicUrl
   } catch (err) {
     console.error('Storage upload exception:', err)
@@ -524,7 +554,7 @@ async function runImageStep(
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`[ImageGen] ${label} — försök ${attempt}`)
-        const res = await openai.images.generate({
+        const res = await getOpenAI().images.generate({
           model: 'gpt-image-1',
           prompt: finalPrompt,
           n: 1,
@@ -707,6 +737,18 @@ async function runImageStep(
   // Log summary
   console.log(`[ImageGen] Klart: ${urls.length} bilder OK, ${errors.length} fel`)
   if (errors.length) console.error('[ImageGen] Fel:', errors)
+
+  // Cost Intelligence — saga/activity körs primärt via Ideogram, omslag/färgläggning via gpt-image-1.
+  void logImageCost(
+    urls.length,
+    (isSagaMode || isActivityMode) ? 'ideogram' : 'openai',
+    {
+      projectId: input.cost?.projectId ?? null,
+      agent: input.cost?.agent ?? 'Image Director',
+      operation: input.cost?.operation ?? 'Generate Image',
+      runId: input.runId,
+    },
+  )
 
   return {
     content: JSON.stringify({ urls, errors: errors.length ? errors : undefined }),

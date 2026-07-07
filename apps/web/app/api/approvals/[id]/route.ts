@@ -6,17 +6,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { saveFeedback } from '@/lib/ai/memory/feedback-store'
+import { ARTICLE_APPROVAL_KIND, publishApprovedArticle } from '@/lib/article/approval'
+import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const db = createAdminClient()
   const { data, error } = await db
@@ -33,6 +34,7 @@ export async function GET(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+  if (!assertProjectAllowed(data.project_id, access.allowedProjectIds)) return projectForbidden()
   return NextResponse.json({ approval: data })
 }
 
@@ -40,9 +42,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = await req.json()
   const { action, reviewer_notes } = body
@@ -56,12 +57,23 @@ export async function PATCH(
 
   const db = createAdminClient()
 
-  // Fetch the approval lineage to get project_id, output_key, content for feedback.
+  // Fetch the approval to get project_id, output_key, content, kind, and run lineage
+  // for feedback, Atlas memory, and the publish hook.
   const { data: existing } = await db
     .from('approvals')
-    .select('id, output_key, content, run_id, runs(project_id)')
+    .select('id, project_id, output_key, content, run_id, kind, runs(project_id)')
     .eq('id', params.id)
     .single()
+
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const directProjectId = (existing as Record<string, unknown>)['project_id'] as string | null | undefined
+  const approvalRun = (existing as any)?.runs
+  const projectId = directProjectId ?? (Array.isArray(approvalRun)
+    ? approvalRun[0]?.project_id
+    : approvalRun?.project_id)
+
+  // Ownership gate BEFORE any mutation or publish side effect.
+  if (!projectId || !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
   const { data, error } = await db
     .from('approvals')
@@ -76,12 +88,38 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
-  const approvalRun = (existing as any)?.runs
-  const projectId = Array.isArray(approvalRun)
-    ? approvalRun[0]?.project_id
-    : approvalRun?.project_id
+  // H1.P4 PR2 — run lifecycle transition. The approval status is now persisted; reflect the
+  // human decision on the originating run. Conditional on status='awaiting_approval' makes
+  // it idempotent and race-free: a second PATCH, or an approval whose run is not awaiting,
+  // updates zero rows. Non-blocking — a run-update miss never fails the saved approval.
+  // 'revised' deliberately leaves run status untouched in PR2.
+  //
+  // H1.P5 Commit 2 — fencing rule (locked): this flip is EXEMPT from claim_id fencing.
+  //   • claim_id fencing  → writes from an EXECUTING run (drain terminal flips + the
+  //     executor's per-step write). See lib/ai/fencing.ts.
+  //   • status-guard      → approval lifecycle AFTER the run has LEFT running-state.
+  // An awaiting_approval run is at rest: the drain set it only after executeRunSteps fully
+  // returned, and the reaper touches status='running' ONLY — so no zombie executor can
+  // still write to it (and with fencing on, any stale invocation is already fenced before
+  // the awaiting_approval flip). The correct invariant here is therefore the status
+  // transition itself, not claim ownership.
+  if (existing.run_id && (action === 'approved' || action === 'rejected')) {
+    try {
+      if (action === 'approved') {
+        await db.from('runs')
+          .update({ status: 'done' })
+          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
+      } else {
+        await db.from('runs')
+          .update({ status: 'rejected', error: `approval_rejected: ${reviewer_notes ?? ''}`.slice(0, 500) })
+          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
+      }
+    } catch (runErr) {
+      console.error('[approvals] run-transition failed:', runErr)
+    }
+  }
 
+  // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
   if (projectId) {
     try {
       await saveFeedback({
@@ -99,7 +137,50 @@ export async function PATCH(
       // Log but don't fail — approval already saved
       console.error('[approvals] feedback save failed:', feedbackErr)
     }
+
+    // Atlas Memory M4 Commit 4 — procedural feedback signal.
+    // event_type='feedback' → procedural → materializes in atlas.memories via consolidation.
+    // dedupeKey is entity-scoped ('feedback:${outputType}'), NOT approval-ID-scoped, so all
+    // feedback for the same output type consolidates to ONE atlas.memories row (bounded growth).
+    // sourceId=approvalId drives the idempotency index: network retries are safe (deduped).
+    // Re-review (same approval PATCH'd twice): first human decision wins — second is deduped.
+    // void = non-blocking side-channel; must never delay or fail the approval response.
+    const outputType = existing.output_key ?? 'unknown'
+    void recordMemoryEvent({
+      scope:      'project',
+      eventType:  'feedback',
+      projectId,
+      entityKind: 'output_type',
+      entityId:   outputType,
+      dedupeKey:  `feedback:${outputType}`,
+      source:     'approval',
+      sourceId:   params.id,
+      subject:    `Content feedback: ${outputType}`,
+      content:    `${action}: ${outputType} output${reviewer_notes ? ` — ${reviewer_notes.slice(0, 200)}` : ''}`,
+      confidence: action === 'rejected' ? 0.80 : action === 'approved' ? 0.70 : 0.50,
+      structured: {
+        outputType,
+        action,
+        runId:    existing.run_id ?? null,
+        kind:     existing.kind   ?? null,
+        hasNotes: !!reviewer_notes,
+      },
+    }, db)
   }
 
-  return NextResponse.json({ approval: data })
+  // Publish-on-approve hook: only for article_publish approvals that were just approved.
+  // Guarded so all other approval kinds are completely unaffected. Idempotent (RPC keyed
+  // on external_id), non-blocking — the approval already saved; report publish outcome.
+  let published: unknown = undefined
+  let publishError: string | undefined
+  if (action === 'approved' && existing?.kind === ARTICLE_APPROVAL_KIND && typeof existing.content === 'string') {
+    try {
+      published = await publishApprovedArticle(existing.content)
+    } catch (pubErr) {
+      publishError = pubErr instanceof Error ? pubErr.message : String(pubErr)
+      console.error('[approvals] publish-on-approve failed:', publishError)
+    }
+  }
+
+  return NextResponse.json({ approval: data, published, publishError })
 }

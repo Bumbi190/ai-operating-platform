@@ -1,52 +1,6 @@
 {
   "crons": [
-    {
-      "path": "/api/media/news/cron",
-      "schedule": "30 6 * * *"
-    },
-    {
-      "path": "/api/media/cron/step1",
-      "schedule": "20 7 * * *"
-    },
-    {
-      "path": "/api/media/cron/step2",
-      "schedule": "25 7 * * *"
-    },
-    {
-      "path": "/api/media/cron/step3",
-      "schedule": "30 7 * * *"
-    },
-    {
-      "path": "/api/media/cron/step4",
-      "schedule": "45 7 * * *"
-    },
-    {
-      "path": "/api/media/cron/publish",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/media/cron/step1",
-      "schedule": "20 17 * * *"
-    },
-    {
-      "path": "/api/media/cron/step2",
-      "schedule": "25 17 * * *"
-    },
-    {
-      "path": "/api/media/cron/step3",
-      "schedule": "30 17 * * *"
-    },
-    {
-      "path": "/api/media/cron/step4",
-      "schedule": "45 17 * * *"
-    },
-    {
-      "path": "/api/media/cron/publish",
-      "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/media/cron/refresh-tokens",
-      "schedule": "0 6 1 * *"
-    }
+    { "path": "/api/media/cron/heartbeat", "schedule": "0 7 * * *" },
+    { "path": "/api/bugscanner/scan-all", "schedule": "0 5 * * *" }
   ]
 }

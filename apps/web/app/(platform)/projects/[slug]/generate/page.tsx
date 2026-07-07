@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { Sparkles, CheckCircle, Loader2, AlertCircle, Video, Cloud, Play, Download } from 'lucide-react'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -232,10 +233,10 @@ export default function GenerateVideoPage() {
   const charCount = text.length
 
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
+    <OSPage>
 
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <OSLayer layer="hero" className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center">
           <Video className="w-4.5 h-4.5 text-indigo-400" />
         </div>
@@ -245,8 +246,9 @@ export default function GenerateVideoPage() {
             Klistra in en artikel → manus + röst + bilder + molnrendering
           </p>
         </div>
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational" className="space-y-6 max-w-4xl 3xl:max-w-5xl">
       {/* Input */}
       <div className="space-y-3">
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -434,6 +436,7 @@ export default function GenerateVideoPage() {
           </p>
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

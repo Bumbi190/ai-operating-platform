@@ -4,28 +4,27 @@
  * Scores each generated script before image generation begins.
  * If score is below threshold, the pipeline auto-regenerates the script once.
  *
- * Scoring dimensions:
- * - hook_strength:          Does the first sentence stop scrolling? (0–10)
- * - information_density:    Facts per second — specific, real, named? (0–10)
- * - scroll_stop_probability: Would a 20-year-old stop mid-scroll? (0–10)
- * - hallucination_risk:     Does it add claims not in the source? (0–10, lower = worse)
- * - editorial_quality:      Bloomberg/WSJ standard — not LinkedIn, not hype? (0–10)
+ * Engagement-poäng (0–10): hook_strength, retention_score, visual_relevance,
+ * shareability, discussion_potential + faktasäkerhet hallucination_risk.
+ * overall = snitt av de 5 engagemangspoängen.
  *
- * Threshold: overall ≥ 7.0 to proceed. Hook strength ≥ 7 required.
+ * Tröskel: overall ≥ 8.0 OCH hook ≥ 8 OCH hallucination_risk ≥ 7 för att passera.
+ * Under det → auto-omskrivning (en gång).
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
 
 export interface QualityScore {
-  hook_strength: number
-  information_density: number
-  scroll_stop_probability: number
-  hallucination_risk: number        // 10 = no hallucination risk, 0 = very risky
-  editorial_quality: number
+  hook_strength: number          // Hook Score — stoppar de första <2s scrollen?
+  retention_score: number        // håller storyn kvar tittaren hela klippet?
+  visual_relevance: number       // kan storyn representeras av konkreta, story-specifika visuals?
+  shareability: number           // skulle någon faktiskt dela detta?
+  discussion_potential: number   // triggar det kommentarer/debatt?
+  hallucination_risk: number     // 10 = inga påhittade fakta, 0 = mycket riskabelt
   overall: number
   passed: boolean
-  verdict: string                   // one-sentence explanation
-  weak_spots: string[]              // specific things to fix
+  verdict: string                // one-sentence explanation
+  weak_spots: string[]           // specific things to fix
 }
 
 const QUALITY_SYSTEM = `You are the editorial quality director for "The Prompt" — a premium AI news channel.
@@ -37,49 +36,51 @@ Standard: Bloomberg QuickTake meets WSJ. If it sounds like LinkedIn or generic A
 The audience: 20–30 year old developers and tech professionals who consume 50+ pieces of content per day.
 The test: Would this stop doomscrolling within 1.5 seconds?
 
-Scoring criteria (0–10 each):
+Score 5 ENGAGEMENT dimensions + 1 factual-safety guard. Be HARSH — the bar is 8/10.
 
-hook_strength (0–10):
-- 9–10: Creates immediate tension/curiosity, sounds like insider info, specific company/number/event
-- 7–8: Good but could be sharper or more specific
-- 5–6: Generic, vague, or too safe
-- 0–4: "AI is changing the world" tier — automatic fail
+hook_strength (0–10) — Hook Score:
+- 9–10: Curiosity gap, stops the scroll in <2s, makes you NEED the next line
+- 7–8: Strong but a bit safe/generic
+- 0–6: Starts with a company/"announced", or "AI is changing the world" tier — fail
 
-information_density (0–10):
-- 9–10: Every sentence contains a specific fact (name, number, date, model, benchmark)
-- 7–8: Mostly specific, one vague sentence
-- 5–6: Too much setup, not enough signal
-- 0–4: Atmospheric with no real information
+retention_score (0–10) — does the story keep watching to the end?
+- 9–10: Clear why-it-matters → consequence → example → question arc, no dead air
+- 7–8: Mostly tight, one flat section
+- 0–6: Front-loaded or rambling, viewer drops off
 
-scroll_stop_probability (0–10):
-- 9–10: Someone mid-scroll would pause and watch
-- 7–8: Interesting to the target audience
-- 5–6: Might watch if already interested
-- 0–4: Skip immediately
+visual_relevance (0–10) — can this be shown with concrete, STORY-SPECIFIC visuals?
+- 9–10: Names real actors/actions that map to specific imagery (agents using software, robots working, hearings…)
+- 7–8: Mostly concrete, some generic moments
+- 0–6: Abstract — would only yield generic server rooms / random laptops
 
-hallucination_risk (0–10):
-- 10: Stays strictly within source material, uses hedging where appropriate
+shareability (0–10) — would someone send this to a friend?
+- 9–10: Surprising, status-worthy, "you have to see this"
+- 0–6: Forgettable
+
+discussion_potential (0–10) — does it trigger comments/debate?
+- 9–10: Ends on a real question, takes an angle people react to
+- 0–6: No opinion, no question, nothing to argue about
+
+hallucination_risk (0–10) — factual safety (10 = safest):
+- 10: Strictly within the source, hedges where appropriate
 - 7–9: Mostly grounded, minor extrapolation
-- 5–6: Some claims feel invented or overstated
-- 0–4: Makes up numbers/events not in source
+- 0–6: Invents numbers/events not in the source — BLOCKS publishing regardless of other scores
 
-editorial_quality (0–10):
-- 9–10: Could run on Bloomberg, sounds authoritative and human
-- 7–8: Good quality, minor polish needed
-- 5–6: Feels AI-generated or corporate
-- 0–4: LinkedIn hype or generic AI content
+overall = average of the 5 engagement scores (NOT hallucination_risk).
+passed = overall ≥ 8.0 AND hallucination_risk ≥ 7.
 
 Return ONLY valid JSON:
 {
-  "hook_strength": 7,
-  "information_density": 8,
-  "scroll_stop_probability": 7,
+  "hook_strength": 8,
+  "retention_score": 8,
+  "visual_relevance": 8,
+  "shareability": 8,
+  "discussion_potential": 8,
   "hallucination_risk": 9,
-  "editorial_quality": 8,
-  "overall": 7.8,
+  "overall": 8.0,
   "passed": true,
-  "verdict": "Strong hook with good specificity, slightly safe in the consequence section.",
-  "weak_spots": ["Consequence section is too vague — add a concrete implication"]
+  "verdict": "Curiosity-gap hook, strong arc; example could be more specific.",
+  "weak_spots": ["Make the example name a concrete company/number"]
 }`
 
 export async function scoreScript(
@@ -114,20 +115,14 @@ ${sourceContext.slice(0, 600)}`,
   } catch {
     // Fallback if JSON parse fails — don't block the pipeline
     return {
-      hook_strength: 7,
-      information_density: 7,
-      scroll_stop_probability: 7,
-      hallucination_risk: 8,
-      editorial_quality: 7,
-      overall: 7.2,
-      passed: true,
-      verdict: 'Quality check parse error — proceeding with caution.',
-      weak_spots: [],
+      hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
+      discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,
+      verdict: 'Quality check parse error — proceeding with caution.', weak_spots: [],
     }
   }
 }
 
-/** Returns true if the script should be regenerated */
+/** Returns true if the script should be regenerated. Bar: overall ≥ 8, hook ≥ 8, faktasäkert. */
 export function shouldRegenerate(score: QualityScore): boolean {
-  return score.overall < 7.0 || score.hook_strength < 7
+  return score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
 }

@@ -31,6 +31,7 @@ import { generateSceneImages, generateNewsImages } from '@/lib/media/ideogram'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
+import { toJson } from '@/lib/supabase/json'
 import { Anthropic } from '@anthropic-ai/sdk'
 
 // Pipeline modes:
@@ -214,7 +215,7 @@ export async function POST(request: Request) {
             content_angle: news.content_angle,
             virality_score: news.virality_score ?? 0,
             status: 'approved',  // skip manual approval
-            raw_output: news,
+            raw_output: toJson(news),
           })
           .select('id')
           .single()
@@ -302,8 +303,8 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
             cta: script.cta,
             tone: script.tone,
             estimated_duration: script.estimated_duration,
-            raw_output: script,
-            quality_score: qualityScore,
+            raw_output: toJson(script),
+            quality_score: toJson(qualityScore),
             status: 'approved',   // skip manual approval
             voice_status: 'none',
             video_status: 'none',

@@ -5,9 +5,133 @@
  * Each image corresponds to a ~12–15 second scene in the video.
  */
 
+import { logImageCost, logLlmCost } from '@/lib/cost/track'
+import {
+  ANTI_STOCK_BANLIST,
+  type EditorBrief,
+  type EditorialStyle,
+} from '@/lib/article/photo-editor'
+
 export interface IdeogramImage {
   url: string
   prompt: string
+}
+
+// ─── Hero Image V2: brief-driven article hero rendering ────────────────────
+// Sibling of generateNewsImage (kept unchanged for social reels). Phase 2A:
+// the photo editor agent's brief drives Ideogram directly — no Haiku photo-
+// director middle step, no hardcoded "AI news channel" vocabulary. Renders
+// at 16:10 to match The Prompt's homepage cards and full article page.
+
+export const ARTICLE_HERO_ASPECT = '16x10'
+
+/**
+ * Style reference strings appended to brief.shot so Ideogram leans into the
+ * editorial lineage the photo editor agent picked. Keys are exhaustive over
+ * the EDITORIAL_STYLES enum (asserted by tests).
+ */
+export const STYLE_REFERENCE_MAP: Record<EditorialStyle, string> = {
+  Bloomberg:
+    "Editorial photography in the style of Bloomberg Businessweek covers — bold single subject, restrained composition, strong directional light, magazine cover composition with room for headline type.",
+  'Financial Times':
+    "Editorial photography in the style of FT commissioned work — salmon-paper editorial restraint, environmental portrait or symbolic still-life, natural muted palette, magazine cover composition.",
+  Economist:
+    "Editorial photography in the style of The Economist covers — single dramatic subject, flat documentary light, conceptual restraint, deep negative space, magazine cover composition.",
+  'MIT Technology Review':
+    "Editorial photography in the style of MIT Tech Review — research-environment-as-character, real lab benches or workspaces, documentary tone, magazine cover composition.",
+  Wired:
+    "Editorial photography in the style of Wired commissioned editorial — high-concept single subject, saturated but disciplined palette, magazine cover composition.",
+  Reuters:
+    "Editorial photojournalism in the style of Reuters — documentary archive aesthetic, real location, decisive moment, news photography composition.",
+}
+
+/**
+ * Standing negative-prompt terms for ALL brief-driven hero renders. Mirrors
+ * ANTI_STOCK_BANLIST (the editor-side hard constraint) plus technical excludes
+ * Ideogram needs spelled out at render time.
+ */
+export const STANDING_RENDER_NEGATIVES: readonly string[] = [
+  ...ANTI_STOCK_BANLIST,
+  'text', 'watermark', 'logo', 'signage', 'captions',
+  'low quality', 'blurry', 'distorted', 'AI artifacts',
+  'cartoon', 'anime', 'illustration style',
+  'stock photo aesthetic', 'corporate stock photography',
+  'frontal face', 'direct eye contact',
+  'cinematic lighting', 'digital art', 'photorealistic',  // AI-prompt-language tells
+]
+
+export interface ArticleHeroRenderInput {
+  prompt: string
+  negative_prompt: string
+  aspect_ratio: string
+  style_type: string
+}
+
+export interface ArticleHeroRenderResult {
+  url: string
+  input: ArticleHeroRenderInput
+}
+
+/**
+ * Render an article hero from the photo editor agent's brief. No Haiku photo-
+ * director middle step — the brief.shot field is already a photographer's
+ * brief in editor language. We compose:
+ *   prompt          = brief.shot + STYLE_REFERENCE_MAP[brief.editorial_style] + framing hint
+ *   negative_prompt = STANDING_RENDER_NEGATIVES + brief.avoid
+ *
+ * The returned `input` is the EXACT request body sent to Ideogram — the
+ * caller persists it in website_content.hero_image_render_input so failures
+ * can be inspected without guessing what the composition was.
+ *
+ * Throws on Ideogram error (caller wraps with withRetry). Throws on unknown
+ * editorial_style (programming bug — STYLE_REFERENCE_MAP must stay exhaustive).
+ */
+export async function generateArticleHeroImage(
+  brief: EditorBrief,
+): Promise<ArticleHeroRenderResult> {
+  const styleRef = STYLE_REFERENCE_MAP[brief.editorial_style]
+  if (!styleRef) {
+    throw new Error(
+      `[article-hero] unknown editorial_style="${brief.editorial_style}" — STYLE_REFERENCE_MAP must cover every EDITORIAL_STYLES value`,
+    )
+  }
+
+  const prompt = [
+    brief.shot,
+    styleRef,
+    'centered subject, 16:10 framing, magazine cover composition with type space',
+  ].join(' — ')
+
+  const negative_prompt = [...STANDING_RENDER_NEGATIVES, ...brief.avoid].join(', ')
+
+  const input: ArticleHeroRenderInput = {
+    prompt,
+    negative_prompt,
+    aspect_ratio: ARTICLE_HERO_ASPECT,
+    style_type: 'REALISTIC',
+  }
+
+  const apiKey = process.env.IDEOGRAM_API_KEY
+  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+
+  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+    method: 'POST',
+    headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...input, rendering_speed: 'DEFAULT' }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Ideogram API error ${res.status} (article hero): ${err}`)
+  }
+
+  const data = (await res.json()) as { data: Array<{ url: string }> }
+  const url = data.data?.[0]?.url
+  if (!url) throw new Error('Ideogram returned no image URL for article hero')
+
+  void logImageCost(1, 'ideogram', { operation: 'Article Hero Image (brief)' })
+
+  return { url, input }
 }
 
 /**
@@ -44,6 +168,7 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
 
   const url = data.data?.[0]?.url
   if (!url) throw new Error('Ideogram returned no image URL')
+  void logImageCost(1, 'ideogram', { operation: 'Scene Image' })
   return url
 }
 
@@ -110,6 +235,7 @@ Output ONLY the final prompt string. No explanation.`,
   })
 
   const visualPrompt = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
+  void logLlmCost('claude-haiku-4-5-20251001', res.usage, { agent: 'Image Director', operation: 'Plan News Image' })
 
   // Step 2: Generate with REALISTIC mode — photojournalism aesthetic
   const apiKey = process.env.IDEOGRAM_API_KEY
@@ -138,6 +264,7 @@ Output ONLY the final prompt string. No explanation.`,
   const data = await ideogramRes.json() as { data: Array<{ url: string }> }
   const url = data.data?.[0]?.url
   if (!url) throw new Error('Ideogram returned no image URL')
+  void logImageCost(1, 'ideogram', { operation: 'News Image' })
   return url
 }
 
@@ -227,6 +354,7 @@ Hardware close-ups (always available as scene variety):
 - Circuit board traces: warm golden sidelighting, extreme shallow depth of field
 
 CRITICAL RULES:
+- SHOW THE ACTION, not generic "tech". If the story is about AI agents → someone (from behind) operating software / a robotic arm working / a screen of abstract UI blocks (no readable text). Robotics → a robot physically doing the task. Regulation → hearing chamber, podium, flags, courtroom. A job being replaced → the empty human workspace left behind. Do NOT default to generic server rooms, random laptops or generic coding screens UNLESS the story is literally about infrastructure or coding.
 - Each scene: completely different environment and composition — no repeating datacenter
 - Ground EVERY scene in a specific entity or beat from this exact story
 - People welcome but NO visible faces — from behind, silhouette, hands only
@@ -247,6 +375,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
   })
 
   const planText = planRes.content[0].type === 'text' ? planRes.content[0].text.trim() : '[]'
+  void logLlmCost('claude-haiku-4-5-20251001', planRes.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
   const planMatch = planText.match(/\[[\s\S]*\]/)
   const scenes = planMatch ? JSON.parse(planMatch[0]) as SceneIntent[] : []
 
@@ -265,7 +394,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 
   console.log(`🎬 Scene plan ready. Generating ${scenes.length} story-driven images in parallel...`)
 
-  return Promise.all(
+  const urls = await Promise.all(
     scenes.map(async (scene, i) => {
       // Build final Ideogram prompt from scene intent
       const prompt = [
@@ -289,7 +418,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
           prompt,
           aspect_ratio: '9x16',
           style_type: 'REALISTIC',
-          rendering_speed: 'DEFAULT',
+          rendering_speed: 'TURBO',
           negative_prompt: negativePrompt,
         }),
       })
@@ -305,6 +434,8 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
       return url
     }),
   )
+  void logImageCost(urls.length, 'ideogram', { operation: 'Scene Image' })
+  return urls
 }
 
 /**
@@ -323,7 +454,7 @@ export async function generateSceneImages(
 
   const systemPrompt = `You are the editorial photography director for a premium AI documentary short-form series — think Bloomberg QuickTake, Wired Magazine, BBC Click, and Apple product films.
 
-Given a video script, generate EXACTLY 5 scene image prompts for VERTICAL (9:16) mobile format.
+Given a video script, generate EXACTLY 8 scene image prompts for VERTICAL (9:16) mobile format. More scenes = a fresh visual every few seconds (retention). Each must be DISTINCT and map to a different moment in the script.
 
 ═══ CORE VISUAL BRIEF ═══
 Target aesthetic: photorealistic editorial photography, cinematic and believable
@@ -350,23 +481,29 @@ EACH PROMPT MUST:
 "film photography: [specific interior scene], [time of day], [mood and color grade]"
 "overhead bird's-eye: [flat lay of specific objects], [surface material], [light quality]"
 
+═══ SHOW THE STORY, NOT GENERIC "TECH" ═══
+Each image must DIRECTLY represent what the script talks about — the actual action/actor — not a mood. AVOID the lazy defaults: generic server rooms, random laptops, generic coding screens, generic office workers. We show people-free scenes (faces/hands render badly), but the SCENE itself must be the story.
+
 ═══ CONCRETE EXAMPLES OF GOOD PROMPTS ═══
-- "extreme macro close-up of silicon wafer surface, industrial blue-LED lighting from left, ultra-sharp micro-detail, black background, vertical orientation"
-- "dark server room corridor, twin rows of rack hardware, emergency red LED strips on ceiling, deep one-point perspective, cool blue ambient light"
-- "late-night desk: open laptop with terminal window, coffee mug with steam, scattered papers, cold monitor light on dark surface, shallow depth of field"
-- "macro photography of copper circuit board traces, warm golden sidelighting, extreme shallow depth of field, black background, vertical crop"
-- "looking up through glass atrium ceiling at geometric steel beams, overcast sky above, dramatic vertical composition, architectural photography"
-- "close-up of old analog clock face, dramatic side-lighting casting long shadows, dark moody background, film photography grain"
-- "industrial fiber optic cable cross-section, circular glowing points of light against pure black, scientific macro photography"
+- AI agents doing tasks → "a large screen showing an abstract calendar/scheduling interface with colored blocks (no readable text), glowing softly in a dim room, shallow depth of field, vertical"
+- AI browsing/using software → "monitor displaying stacked abstract browser windows and dashboards (no legible text), reflected in a glass desk, cold blue light, vertical composition"
+- Robotics doing real work → "an industrial robotic arm mid-motion gripping a part on a factory line, sparks and motion blur, dramatic side light, vertical"
+- Regulation / hearings → "an empty government hearing chamber, rows of microphones, national flags, polished wood podium, dramatic overhead light, vertical"
+- Negotiation / power shift → "a long boardroom table with two facing rows of empty chairs, single document in the center, tense low light, vertical"
+- A job being replaced → "an empty office workstation at night, chair pushed back, a time clock on the wall, cold monitor glow, melancholic mood, vertical"
+- Money / markets → "a stock-ticker wall of abstract green/red bars (no readable numbers), motion blur, trading-floor scale, vertical"
+- Hardware/scale (use sparingly) → "extreme macro of a GPU heatsink, warm golden sidelight, ultra-shallow depth of field, black background, vertical"
 
 ═══ NARRATIVE MATCHING ═══
-Read the script carefully. Each scene should illustrate the SPECIFIC IDEA being discussed at that moment — not just look generically "tech."
-- Script talks about memory? → physical notebook, filing cabinet drawers, stacked index cards
-- Script talks about speed? → motion-blurred fiber, spinning hard drive internals
-- Script talks about reasoning? → annotated printed diagram, chalkboard with logic notation
-- Script talks about data? → physical punch cards, magnetic tape reels, printed spreadsheets
+Read the script. Identify the SPECIFIC actor/action in each section and show THAT:
+- Script about AI agents → screens with software/booking/browser UI in action (no readable text)
+- Script about robots → a robot physically performing the task being described
+- Script about regulation/policy → hearing chambers, podiums, flags, courtrooms
+- Script about jobs/automation → the empty human workspace being left behind
+- Script about a specific company → their real physical environment/product
+- Only when nothing concrete fits → fall back to a tasteful macro of relevant hardware
 
-Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
+Return ONLY valid JSON — a flat array of 8 objects, no markdown fences:
 [
   { "scene": 1, "prompt": "...", "rationale": "one sentence on why this visual matches this narrative moment" },
   ...
@@ -377,7 +514,7 @@ Return ONLY valid JSON — a flat array of 5 objects, no markdown fences:
 Script:
 ${script}
 
-Generate 5 cinematic scene prompts for this video.`
+Generate 8 cinematic scene prompts for this video.`
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -387,6 +524,7 @@ Generate 5 cinematic scene prompts for this video.`
   })
 
   const text = response.content[0].type === 'text' ? response.content[0].text : ''
+  void logLlmCost('claude-sonnet-4-6', response.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
 
   // Parse JSON (strip markdown fences if present)
   const jsonMatch = text.match(/\[[\s\S]*\]/)

@@ -17,6 +17,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
+import { applyProjectScope } from '@/lib/atlas/isolation'
+import { toJson } from '@/lib/supabase/json'
+import type { Json } from '@/lib/supabase/database.types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -48,13 +51,6 @@ export interface DailyPlan {
   concerns: string[]
   opportunities: string[]
   summary: string
-}
-
-export interface EvaluationResult {
-  score: number          // 0–100
-  approved: boolean
-  issues: string[]
-  feedback: string
 }
 
 export interface ManagerTask {
@@ -96,51 +92,58 @@ export class ManagerAgent {
   // ── Context builder ─────────────────────────────────────────────────────────
   // Assembles a rich operational snapshot for LLM reasoning.
 
-  private async buildContext(projectId?: string): Promise<string> {
+  private async buildContext(projectId?: string, allowedProjectIds?: string[]): Promise<string> {
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
+    // ISOLATION: scope every project-native read to the caller's allowed
+    // projects. `undefined` = no scoping (daily-plan/cron callers stay global);
+    // a provided array (even empty → impossible id → zero rows) scopes.
+
     // Parallel DB fetches
     const [runsRes, agentsRes, approvalsRes, costsRes, tasksRes, projectsRes] =
       await Promise.allSettled([
-        this.db
+        applyProjectScope(this.db
           .from('runs')
           .select('id, status, error, created_at, finished_at, workflows(name), project_id')
           .gte('created_at', weekAgo)
           .order('created_at', { ascending: false })
-          .limit(30),
+          .limit(30), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('agents')
           .select('id, name, model, project_id')
-          .limit(30),
+          .limit(30), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('approvals')
           .select('id, output_key, status, created_at, runs(workflows(name))')
           .in('status', ['pending'])
           .order('created_at', { ascending: false })
-          .limit(10),
+          .limit(10), allowedProjectIds),
 
+        // run_logs has no project_id (indirect scope via run_id) — DEFERRED.
+        // Token totals here remain global; safe for single-owner, must be
+        // run_id-scoped before multi-tenant. Tracked in the isolation checklist.
         this.db
           .from('run_logs')
           .select('tokens_in, tokens_out, runs(agents(name, model), workflows(name))')
           .gte('created_at', monthStart)
           .not('tokens_in', 'is', null),
 
-        this.db
+        applyProjectScope(this.db
           .from('manager_tasks')
           .select('*')
           .in('status', ['pending', 'in_progress'])
           .order('created_at', { ascending: false })
-          .limit(15),
+          .limit(15), allowedProjectIds),
 
-        this.db
+        applyProjectScope(this.db
           .from('projects')
           .select('id, name, slug')
-          .limit(10),
+          .limit(10), allowedProjectIds, 'id'),
       ])
 
     // Safely unwrap results
@@ -221,8 +224,8 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
    * Conversational interface — answers questions, gives recommendations,
    * provides project updates. Used by /chat command center.
    */
-  async chat(message: string, projectId?: string): Promise<string> {
-    const context = await this.buildContext(projectId)
+  async chat(message: string, projectId?: string, allowedProjectIds: string[] = []): Promise<string> {
+    const context = await this.buildContext(projectId, allowedProjectIds)
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -304,53 +307,6 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   }
 
   /**
-   * Evaluates an approval's content for quality.
-   * Returns structured score + feedback for human review aid.
-   */
-  async evaluateOutput(approvalId: string): Promise<EvaluationResult> {
-    const { data: approval } = await this.db
-      .from('approvals')
-      .select('*, runs(workflows(name))')
-      .eq('id', approvalId)
-      .single()
-
-    if (!approval) throw new Error(`Approval ${approvalId} not found`)
-
-    const workflowName = (approval.runs as any)?.workflows?.name ?? 'Unknown'
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      system: MANAGER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Evaluate this AI-generated output from workflow "${workflowName}".
-
-CONTENT (first 3000 chars):
-${(approval.content ?? '').slice(0, 3000)}
-
-Return ONLY valid JSON:
-{
-  "score": 0-100,
-  "approved": true|false,
-  "issues": ["issue if any"],
-  "feedback": "Concise quality assessment"
-}`,
-        },
-      ],
-    })
-
-    const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
-    try {
-      const match = text.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0]) as EvaluationResult
-    } catch { /* fall through */ }
-
-    return { score: 0, approved: false, issues: ['Evaluation parse error'], feedback: 'Could not evaluate output.' }
-  }
-
-  /**
    * Breaks a high-level goal into manager_tasks and persists them.
    */
   async planTasks(goal: string, projectId: string): Promise<ManagerTask[]> {
@@ -422,21 +378,33 @@ Return ONLY valid JSON:
   async retryFailedRun(runId: string): Promise<string | null> {
     const { data: run } = await this.db
       .from('runs')
-      .select('workflow_id, project_id, input')
+      .select('workflow_id, project_id, input, kind, steps_snapshot, policy_class, workflows(steps, side_effect_class)')
       .eq('id', runId)
       .single()
 
     if (!run) return null
 
+    const wf = Array.isArray(run.workflows) ? run.workflows[0] : run.workflows
+    const snapshot: Json | null = run.steps_snapshot ?? (wf as { steps?: Json } | null)?.steps ?? null
+    // H1.P4 (PR1): carry the policy class onto the new run (immutable per-run). INERT until PR2.
+    const policyClass: string | null = run.policy_class ?? (wf as { side_effect_class?: string } | null)?.side_effect_class ?? null
+
+    // H1.P3: the retry is a NEW run (preserves "fresh run" semantics) but created as a
+    // durable `pending` run carrying the steps snapshot — NOT `running`. The pg_cron
+    // drain claims + executes it under a lease, the same durability/lease flow as every
+    // other run. (Was `running` with no lease → an unrecoverable orphan since nothing
+    // executed it and the reaper only requeues runs that already hold a lease.)
     const { data: newRun } = await this.db
       .from('runs')
       .insert({
         workflow_id: run.workflow_id,
         project_id: run.project_id,
-        status: 'running',
+        kind: run.kind,
+        status: 'pending',
         input: run.input ?? {},
         context: {},
-        started_at: new Date().toISOString(),
+        steps_snapshot: snapshot,
+        policy_class: policyClass,
       })
       .select('id')
       .single()
@@ -445,36 +413,40 @@ Return ONLY valid JSON:
   }
 
   async logMessage(msg: AgentMessage): Promise<void> {
-    await this.db.from('agent_messages').insert(msg).catch(() => {
+    try {
+      await this.db.from('agent_messages').insert({ ...msg, metadata: msg.metadata ? toJson(msg.metadata) : undefined })
+    } catch {
       // Table might not exist yet — fail silently until migration runs
-    })
+    }
   }
 
   async getRecentMessages(limit = 30): Promise<unknown[]> {
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
-      .catch(() => ({ data: null }))
-    return data ?? []
+    try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      return data ?? []
+    } catch {
+      return []
+    }
   }
 
   async getTodaysPlan(): Promise<DailyPlan | null> {
     const today = new Date().toISOString().slice(0, 10)
-    const { data } = await this.db
-      .from('agent_messages')
-      .select('content')
-      .eq('from_agent', 'manager')
-      .eq('message_type', 'daily_plan')
-      .gte('created_at', today + 'T00:00:00Z')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .catch(() => ({ data: null }))
-
-    if (!data?.content) return null
     try {
+      const { data } = await this.db
+        .from('agent_messages')
+        .select('content')
+        .eq('from_agent', 'manager')
+        .eq('message_type', 'daily_plan')
+        .gte('created_at', today + 'T00:00:00Z')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!data?.content) return null
       return JSON.parse(data.content) as DailyPlan
     } catch {
       return null

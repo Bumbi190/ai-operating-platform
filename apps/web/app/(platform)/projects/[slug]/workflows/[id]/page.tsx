@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import EditWorkflowClient from './EditWorkflowClient'
-import type { Agent, WorkflowStep } from '@/lib/supabase/types'
+import type { Agent } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
+import { ViewSelectionSync } from '@/components/platform/os'
 
 export default async function EditWorkflowPage({
   params,
@@ -34,15 +36,19 @@ export default async function EditWorkflowPage({
     .order('name')
 
   return (
-    <EditWorkflowClient
-      workflow={{
-        id: workflow.id,
-        name: workflow.name,
-        description: workflow.description ?? '',
-        steps: (workflow.steps as WorkflowStep[]) ?? [],
-      }}
-      agents={(agents ?? []) as Agent[]}
-      slug={params.slug}
-    />
+    <>
+      {/* Atlas selection awareness — the open workflow IS the operator's selection. */}
+      <ViewSelectionSync refs={[{ domain: 'workflows', id: workflow.id, label: workflow.name }]} />
+      <EditWorkflowClient
+        workflow={{
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description ?? '',
+          steps: parseWorkflowSteps(workflow.steps),
+        }}
+        agents={(agents ?? []) as Agent[]}
+        slug={params.slug}
+      />
+    </>
   )
 }

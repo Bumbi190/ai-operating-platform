@@ -11,7 +11,8 @@ interface MobileRailToggleProps {
 }
 
 /**
- * MobileRailToggle · on <lg screens, turns the activity rail into a
+ * MobileRailToggle · P0: universell aktivitets-peek (alla skärmstorlekar) —
+ * flytande knapp som öppnar railen som panel. Tidigare endast <lg; railen var
  * dismissible bottom sheet with a floating indicator button.
  *
  * Restraint: invisible on desktop. On mobile the indicator sits in the
@@ -43,7 +44,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
         type="button"
         aria-label="Open live activity"
         onClick={() => setOpen(true)}
-        className="lg:hidden fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2 press ease-os"
+        className="fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2 press ease-os"
         style={{
           background: 'linear-gradient(180deg, rgba(99,102,241,0.40) 0%, rgba(79,70,229,0.55) 100%)',
           border: '1px solid rgba(99,102,241,0.55)',
@@ -67,7 +68,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
         <div
           aria-hidden
           onClick={() => setOpen(false)}
-          className="lg:hidden fixed inset-0 z-[55] animate-fade-in"
+          className="fixed inset-0 z-[55] animate-fade-in"
           style={{
             background: 'rgba(3,5,22,0.65)',
             backdropFilter: 'blur(10px)',
@@ -79,7 +80,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
       {/* Bottom sheet */}
       {open && (
         <aside
-          className="lg:hidden fixed inset-x-0 bottom-0 z-[56] animate-fade-in-up"
+          className="fixed inset-x-0 bottom-0 lg:inset-x-auto lg:inset-y-0 lg:right-0 lg:w-[360px] z-[56] animate-fade-in-up"
           style={{
             background: 'linear-gradient(180deg, rgba(7,11,28,0.95) 0%, rgba(5,8,22,0.98) 100%)',
             borderTop: '1px solid rgba(255,255,255,0.05)',
@@ -102,7 +103,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close"
-            className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white transition-colors ease-os"
+            className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center text-secondary hover:text-white transition-colors ease-os"
             style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
           >
             <X className="w-3.5 h-3.5" />

@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { ApprovalCard } from './ApprovalCard'
-import { Panel, SectionHeader, PulseDot, HeroStat } from '@/components/platform/os'
+import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,13 +15,7 @@ interface ApprovalRow {
   reviewer_notes: string | null
   created_at: string
   reviewed_at: string | null
-  runs: {
-    id: string
-    status: string
-    created_at: string
-    workflows: { name: string } | null
-    agents: { name: string } | null
-  } | null
+  runs: null  // Not fetched — ApprovalCard handles this with fallbacks
 }
 
 export default async function ApprovalsPage() {
@@ -31,20 +25,17 @@ export default async function ApprovalsPage() {
 
   const db = createAdminClient()
 
-  const { data: approvals } = await db
+  const { data: approvals, error: approvalsError } = await db
     .from('approvals')
-    .select(`
-      id, output_key, content, status, reviewer_notes, created_at, reviewed_at,
-      runs (
-        id, status, created_at,
-        workflows ( name ),
-        agents ( name )
-      )
-    `)
+    .select('id, output_key, content, status, reviewer_notes, created_at, reviewed_at')
     .order('created_at', { ascending: false })
-    .limit(50) as { data: ApprovalRow[] | null }
+    .limit(50)
 
-  const all = approvals ?? []
+  if (approvalsError) {
+    console.error('[approvals/page] Query error:', approvalsError.message)
+  }
+
+  const all = (approvals ?? []) as ApprovalRow[]
   const counts = {
     pending:  all.filter(a => a.status === 'pending').length,
     approved: all.filter(a => a.status === 'approved').length,
@@ -57,16 +48,23 @@ export default async function ApprovalsPage() {
     return new Date(a.reviewed_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
   }).length
 
-  return (
-    <div className="px-7 lg:px-10 py-7 max-w-[1400px] mx-auto space-y-8 pb-24">
+  // Atlas view awareness — publish the approval rows on screen.
+  const visibleRefs = all.slice(0, 12).map(a => ({
+    domain: 'approvals', id: a.id, label: `${a.output_key} (${a.status})`,
+  }))
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="grid grid-cols-12 gap-6 items-end animate-fade-in-up">
-        <div className="col-span-12 lg:col-span-7">
+  return (
+    <OSPage>
+      <ViewVisibleSync refs={visibleRefs} />
+
+      {/* ── HERO LAYER ──────────────────────────────────────────────────── */}
+      <OSLayer layer="hero">
+      <header className="grid grid-cols-12 gap-5 lg:gap-7 items-end animate-fade-in-up">
+        <div className="col-span-12 lg:col-span-7 3xl:col-span-8">
           <div className="flex items-center gap-2 mb-3">
             <PulseDot tone="amber" size={6} />
             <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-300">
-              Executive Review Channel
+              Exekutiv granskningskanal
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -82,43 +80,47 @@ export default async function ApprovalsPage() {
             </div>
             <div>
               <h1 className="text-[36px] font-black tracking-tight leading-[1.05] text-gradient-aurora">
-                Approval Center
+                Granskningscenter
               </h1>
               <p className="text-[12.5px] text-zinc-400 mt-1.5 max-w-xl leading-relaxed">
-                AI-graded outputs queued for executive judgment · approve, revise, or reject autonomous decisions
+                AI-betygsatta utdata köade för exekutiv bedömning · godkänn, revidera eller avvisa autonoma beslut
               </p>
             </div>
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-3">
+        <div className="col-span-12 lg:col-span-5 3xl:col-span-4 grid grid-cols-2 gap-3">
           <HeroStat
-            label="Awaiting Review"
+            label="Väntar på granskning"
             value={counts.pending}
             color="#fbbf24"
             glow={counts.pending > 0}
-            caption={counts.pending > 0 ? 'Needs operator decision' : 'Inbox clear'}
+            caption={counts.pending > 0 ? 'Kräver operatörsbeslut' : 'Inkorg tom'}
             delay={60}
           />
           <HeroStat
-            label="Decided Today"
+            label="Beslutat idag"
             value={reviewedToday}
             color="#34d399"
-            caption={`${counts.approved} approved · ${counts.rejected} rejected`}
+            caption={`${counts.approved} godkänd · ${counts.rejected} avvisad`}
             delay={120}
           />
         </div>
       </header>
+      </OSLayer>
 
-      {/* ── Stat row ───────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile label="Pending"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
-        <StatTile label="Approved"   value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
-        <StatTile label="Rejected"   value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
-        <StatTile label="Revisions"  value={counts.revised}  color="#60a5fa" icon={<RefreshCw    className="w-3.5 h-3.5" />} />
+      {/* ── OPERATIONAL · stat tiles, full width ────────────────────────── */}
+      <OSLayer layer="operational">
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 2xl:gap-5">
+        <StatTile label="Väntande"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
+        <StatTile label="Godkänd"    value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
+        <StatTile label="Avvisad"    value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
+        <StatTile label="Revideringar" value={counts.revised} color="#60a5fa" icon={<RefreshCw   className="w-3.5 h-3.5" />} />
       </section>
+      </OSLayer>
 
-      {/* ── Body ───────────────────────────────────────────────────────────── */}
+      {/* ── INTELLIGENCE · the actual approval queue ───────────────────── */}
+      <OSLayer layer="intelligence">
       {all.length === 0 ? (
         <Panel className="p-16 text-center">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 chrome-edge"
@@ -126,9 +128,9 @@ export default async function ApprovalsPage() {
           >
             <ShieldCheck className="w-6 h-6 text-indigo-300" />
           </div>
-          <p className="text-[14px] text-zinc-300 font-medium">Inbox clear</p>
-          <p className="text-[11.5px] text-zinc-600 mt-1.5 max-w-sm mx-auto">
-            Trigger a workflow — autonomous outputs that fail the AI evaluator land here for executive review.
+          <p className="text-[14px] text-zinc-300 font-medium">Inkorg tom</p>
+          <p className="text-[11.5px] text-meta mt-1.5 max-w-sm mx-auto">
+            Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning.
           </p>
         </Panel>
       ) : (
@@ -136,12 +138,12 @@ export default async function ApprovalsPage() {
           {counts.pending > 0 && (
             <section>
               <SectionHeader
-                eyebrow="Priority Queue"
-                title="Awaiting Decision"
-                caption={`${counts.pending} ${counts.pending === 1 ? 'output' : 'outputs'} flagged for human judgment`}
+                eyebrow="Prioritetskö"
+                title="Inväntar beslut"
+                caption={`${counts.pending} utdata${counts.pending === 1 ? '' : ''} flaggad${counts.pending === 1 ? '' : 'e'} för mänsklig bedömning`}
                 right={
                   <span className="inline-flex items-center gap-2 text-[10.5px] text-amber-300 font-semibold uppercase tracking-[0.2em]">
-                    <Sparkles className="w-3 h-3" /> AI-scored
+                    <Sparkles className="w-3 h-3" /> AI-poängsatt
                   </span>
                 }
               />
@@ -156,9 +158,9 @@ export default async function ApprovalsPage() {
           {all.some(a => a.status !== 'pending') && (
             <section>
               <SectionHeader
-                eyebrow="Archive"
-                title="Decided"
-                caption="Outputs the operator has reviewed"
+                eyebrow="Arkiv"
+                title="Beslutat"
+                caption="Utdata som operatören har granskat"
               />
               <div className="space-y-3">
                 {all.filter(a => a.status !== 'pending').map((a, i) => (
@@ -169,7 +171,8 @@ export default async function ApprovalsPage() {
           )}
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }
 
@@ -183,7 +186,7 @@ function StatTile({
         style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.5 }}
       />
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-zinc-500">{label}</span>
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-secondary">{label}</span>
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center chrome-edge"
           style={{ background: `${color}1a`, border: `1px solid ${color}33` }}

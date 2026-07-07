@@ -28,5 +28,21 @@ Thumbs.db
 # Supabase
 supabase/.branches
 supabase/.temp
+
+# Handoff-filer — innehåller ibland konfidentiell info, lagras aldrig i repo
+HANDOFF*.md
+handoff*.md
 .vercel
 .env*
+
+.env.local
+.vercel
+
+.env.local
+.vercel
+
+# Build/dev noise — npm is canonical (package-lock.json); pnpm files are stray
+pnpm-lock.yaml
+pnpm-workspace.yaml
+__pycache__/
+**/.temp/

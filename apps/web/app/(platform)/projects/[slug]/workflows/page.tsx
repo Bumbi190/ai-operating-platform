@@ -2,18 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { GitBranch, Plus, Play } from 'lucide-react'
+import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function WorkflowsPage({ params }: { params: { slug: string } }) {
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
+  const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const { data: workflows } = await supabase
     .from('workflows')
     .select('*, runs(id, status, created_at)')
@@ -21,8 +17,10 @@ export default async function WorkflowsPage({ params }: { params: { slug: string
     .order('created_at')
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <OSPage className="animate-fade-in">
+      {/* Atlas view awareness — publish the workflows on screen. */}
+      <ViewVisibleSync refs={(workflows ?? []).slice(0, 12).map((w) => ({ domain: 'workflows', id: w.id, label: w.name }))} />
+      <OSLayer layer="hero" className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Workflows</h1>
           <p className="text-sm text-muted-foreground mt-1">{project.name}</p>
@@ -34,10 +32,11 @@ export default async function WorkflowsPage({ params }: { params: { slug: string
           <Plus className="w-4 h-4" />
           Nytt workflow
         </Link>
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational">
       {workflows && workflows.length > 0 ? (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 3xl:grid-cols-3 gap-4 lg:gap-5">
           {workflows.map((workflow) => {
             const stepCount = Array.isArray(workflow.steps) ? workflow.steps.length : 0
             const lastRun = workflow.runs?.[0]
@@ -95,6 +94,7 @@ export default async function WorkflowsPage({ params }: { params: { slug: string
           </Link>
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

@@ -21,7 +21,7 @@
 import { NextResponse } from 'next/server'
 import { requireApiKey } from '@/lib/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { WorkflowStep } from '@/lib/supabase/types'
+import { parseWorkflowSteps } from '@/lib/supabase/json'
 
 export async function GET(request: Request) {
   const auth = requireApiKey(request)
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   }
 
   const result = (workflows ?? []).map((w) => {
-    const steps = (w.steps as WorkflowStep[]) ?? []
+    const steps = parseWorkflowSteps(w.steps)
     const project = Array.isArray(w.projects) ? w.projects[0] : w.projects
 
     // Extract {{variable}} names from step input templates

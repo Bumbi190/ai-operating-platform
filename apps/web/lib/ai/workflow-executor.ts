@@ -10,8 +10,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { validateStepOutput } from '@/lib/ai/validators/output-validator'
-import { sendAdminNotification } from '@/lib/email/brevo'
-import { getApprovalPendingEmail, getBugReportEmail } from '@/lib/email/templates'
+import { mergeRunContext } from '@/lib/ai/checkpoint'
+import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
+import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
+import { isCancelEnabled, isCancelRequested, cancelledError } from '@/lib/ai/cancel'
 import type { WorkflowStep } from '@/lib/supabase/types'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
@@ -31,19 +33,38 @@ export interface ExecuteWorkflowOptions {
    * Sätt till den misslyckade stepens order vid resume.
    */
   startFromOrder?: number
+  /**
+   * H1.P5 Commit 2: the claim_id this invocation was handed by claim_runs. When set
+   * (drain path) and H1_FENCING is on, the per-step context write is fenced on it —
+   * a reclaimed (zombie) invocation's write hits 0 rows and the run ABORTS. Absent
+   * (legacy manual path that runs without a claim) → writes are unconditional.
+   */
+  claimId?: string
 }
 
-export async function executeWorkflow(
+/**
+ * executeRunSteps — THE single step-running core (H1.P2).
+ *
+ * Runs the workflow's steps with validation (+1 retry), image quality gate,
+ * run_logs, per-step context persistence, cost logging, and the final output row.
+ * Skips already-completed steps via `startFromOrder`/`existingContext`.
+ *
+ * Contract: THROWS on failure. Does NOT set runs.status and does NOT create
+ * approvals — the caller owns lifecycle. The durable drainer (/api/runs/drain) owns
+ * status; it is the sole caller (H1.P5 Commit 4 removed the legacy executeWorkflow wrapper).
+ */
+export async function executeRunSteps(
   db: AdminClient | AnyDb,
   runId: string,
   projectId: string,
   steps: WorkflowStep[],
   options: ExecuteWorkflowOptions = {},
-) {
-  const { initialInput = {}, existingContext = {}, startFromOrder = 0 } = options
+): Promise<{ outputContent: string; lastOutputKey: string | undefined; context: Record<string, string> }> {
+  const { initialInput = {}, existingContext = {}, startFromOrder = 0, claimId } = options
 
-  // Context börjar med befintliga värden + ny input
-  const context: Record<string, string> = { ...existingContext, ...initialInput }
+  // Initial input is the base; completed step outputs win on collision so a resume
+  // never lets the original input clobber a persisted step output (Codex review #8).
+  const context: Record<string, string> = mergeRunContext(initialInput, existingContext)
 
   const sortedSteps = [...steps].sort((a, b) => a.order - b.order)
   // Alias med any-typ — Supabase-klienten saknar genererade DB-typer i detta projekt
@@ -62,11 +83,49 @@ export async function executeWorkflow(
   }
 
   // Spara förväntade bildantal per output_key — används i kvalitetskontrollen nedan.
-  // Fylls i under stegens körning när vi har tillgång till agent.config.max_images.
+  // #5 (H1.P2): seeda förväntade bildantal för ALLA steg i förväg (inte bara de som
+  // körs denna tick). Vid resume hoppas redan klara bildsteg över; utan detta skulle
+  // kvalitetsgrinden döma ett skippat max_images=1-steg mot FALLBACK_MAX (t.ex. 16)
+  // och underkänna en redan giltig körning. Read-only; förstakörningens värden är
+  // identiska med de loop:en nedan annars sätter.
   const trackedMaxImages: Record<string, number> = {}
+  {
+    const agentIds = [...new Set(sortedSteps.map(s => s.agent_id))]
+    if (agentIds.length > 0) {
+      const { data: agentCfgs, error: agentCfgErr } = await db.from('agents').select('id, config').in('id', agentIds)
+      // #5 (H1.P2): mirror computeCheckpoint — a transient read failure must NOT be
+      // swallowed. Empty trackedMaxImages would falsely fail a resumed max_images=1
+      // image step against FALLBACK_MAX. Throw so the drain marks the run pending and
+      // retries the tick instead of judging against the wrong limits.
+      if (agentCfgErr) {
+        throw new Error(`executeRunSteps: agent config hydration failed for run ${runId}: ${agentCfgErr.message}`)
+      }
+      const cfgById = new Map(((agentCfgs ?? []) as { id: string; config: unknown }[]).map(a => [a.id, a.config]))
+      for (const s of sortedSteps) {
+        const mi = (cfgById.get(s.agent_id) as { max_images?: number } | null)?.max_images
+        if (mi != null) trackedMaxImages[s.output_key] = mi
+      }
+    }
+  }
 
-  try {
+  // NOTE: no try/catch here — failures propagate to the caller, which owns status.
+  {
     for (const step of pendingSteps) {
+      // H1.P5 Commit 3: cooperative cancel check at the step boundary. Gated by H1_CANCEL,
+      // and only on the drain path (claimId present) — the legacy executeWorkflow wrapper
+      // passes no claimId so cooperative cancel is inert there. If cancel was requested,
+      // transition to 'cancelled' via a claim_id-fenced write and STOP (no more steps):
+      //   • fenced (0 rows) → run was reclaimed → throw fenced so the new owner handles it;
+      //   • not fenced      → we set 'cancelled' → throw cancelled so the drain skips its
+      //                       terminal write (it must not overwrite 'cancelled' with 'done').
+      if (claimId && isCancelEnabled() && await isCancelRequested(anyDb, runId)) {
+        const { fenced } = await fencedRunUpdate(anyDb, runId, claimId, {
+          status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+        })
+        if (fenced) throw fencedError(runId)
+        throw cancelledError(runId)
+      }
+
       // Ladda agenten
       const { data: agent, error: agentErr } = await db
         .from('agents')
@@ -106,6 +165,7 @@ export async function executeWorkflow(
         temperature: stepConfig?.temperature ?? 0.7,
         maxImages: stepConfig?.max_images,
         runId,
+        cost: { projectId, agent: agent.name, operation: step.name },
       })
 
       // ── Validera output ──────────────────────────────────────────────────
@@ -132,7 +192,12 @@ export async function executeWorkflow(
           model: agent.model,
           maxTokens: stepConfig?.max_tokens ?? 4000,
           temperature: Math.max(0.3, (stepConfig?.temperature ?? 0.7) - 0.2),
+          // #4 (H1.P2): the retry MUST carry the same image cap as the first attempt.
+          // Without this, runner.ts falls back to 16 (saga) / 5 (default) and a
+          // max_images=1 preview run can silently explode cost/runtime on a retry.
+          maxImages: stepConfig?.max_images,
           runId,
+          cost: { projectId, agent: agent.name, operation: step.name },
         })
 
         const retryValidation = validateStepOutput(step.output_key, result.content)
@@ -170,8 +235,12 @@ export async function executeWorkflow(
       // Ackumulera output i context
       context[step.output_key] = result.content
 
-      // Spara context till DB direkt — SSE-streamen och resume använder detta
-      await anyDb.from('runs').update({ context }).eq('id', runId)
+      // Spara context till DB direkt — SSE-streamen och resume använder detta.
+      // H1.P5 Commit 2: fenced on claim_id (when H1_FENCING on + claimId present). If the
+      // run was reclaimed mid-execution (token rotated by the reaper), this write matches
+      // 0 rows → ABORT the zombie invocation before any further LLM cost/writes.
+      const { fenced } = await fencedRunUpdate(anyDb, runId, claimId, { context })
+      if (fenced) throw fencedError(runId)
     }
 
     // ── Alla steg klara — kvalitetskontroll ──────────────────────────────
@@ -245,74 +314,23 @@ export async function executeWorkflow(
       try { JSON.parse(outputContent); outputType = 'json' } catch { /* text */ }
     }
 
-    await anyDb.from('outputs').insert({
+    // #1 (H1.P2 → H1.P5 Commit 1): idempotent finalization, now DB-ENFORCED via the partial
+    // unique index on outputs(run_id). A re-entered run (reaper re-claim AFTER the deliverable
+    // was already written) cannot create a duplicate: we insert and treat a unique violation
+    // (SQLSTATE 23505) as the idempotent no-op — no read-then-write race window remains.
+    const { error: outputInsertErr } = await anyDb.from('outputs').insert({
       run_id: runId,
       project_id: projectId,
       name: `Körning — ${new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
       type: outputType,
       content: outputContent ?? '',
     })
-
-    // ── Skapa approval ───────────────────────────────────────────────────
-    if (outputContent) {
-      const { data: wf } = await db
-        .from('workflows')
-        .select('name, project_id, projects(name)')
-        .eq('id', runId)
-        .maybeSingle()
-
-      await anyDb.from('approvals').insert({
-        run_id: runId,
-        output_key: lastOutputKey ?? 'output',
-        content: outputContent,
-        status: 'pending',
-      })
-      console.log(`[run ${runId}] 📋 Approval request created`)
-
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-      const { subject, html } = getApprovalPendingEmail({
-        workflowName: wf?.name ?? 'Okänt workflow',
-        projectName: (wf?.projects as { name?: string } | null)?.name ?? 'Okänt projekt',
-        runId,
-        outputPreview: outputContent,
-        platformUrl: appUrl,
-      })
-      void sendAdminNotification(subject, html)
+    // 23505 → output already exists for this run (idempotent re-entry), fine. Any OTHER
+    // error must NOT be swallowed: throw so the run retries instead of finalizing empty.
+    if (outputInsertErr && !isDuplicateOutputError(outputInsertErr)) {
+      throw new Error(`finalization: outputs insert failed for run ${runId}: ${outputInsertErr.message}`)
     }
 
-    // ── Markera körning som klar ─────────────────────────────────────────
-    await anyDb.from('runs').update({
-      status: 'done',
-      finished_at: new Date().toISOString(),
-      context,
-    }).eq('id', runId)
-
-    console.log(`[run ${runId}] ✅ Done`)
-
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Okänt fel'
-    console.error(`[run ${runId}] ❌ Failed:`, message)
-
-    await anyDb.from('run_logs').insert({
-      run_id: runId,
-      role: 'system',
-      content: `❌ Körningsfel: ${message}`,
-    })
-
-    await anyDb.from('runs').update({
-      status: 'failed',
-      error: message,
-      finished_at: new Date().toISOString(),
-    }).eq('id', runId)
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-    const { subject, html } = getBugReportEmail({
-      project: 'AI Operating Platform',
-      errorCount: 1,
-      errors: [{ message, count: 1, lastSeen: new Date().toLocaleString('sv-SE') }],
-      runFailures: 1,
-      platformUrl: appUrl,
-    })
-    void sendAdminNotification(subject, html)
+    return { outputContent: outputContent ?? '', lastOutputKey, context }
   }
 }

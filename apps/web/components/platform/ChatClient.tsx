@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   Send, Bot, User, Play, CheckCircle2, Loader2, AlertCircle, Zap,
@@ -10,6 +10,9 @@ import {
 import type Anthropic from '@anthropic-ai/sdk'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { AtlasActionChips } from '@/components/platform/os/AtlasActionChips'
+import type { ResolvedLink } from '@/lib/nav/registry'
+import { buildChatRequestBody } from '@/lib/atlas/view-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,13 +36,19 @@ interface SystemMessage {
   content: string
 }
 
-type ChatMessage = TextMessage | ToolCallMessage | SystemMessage
+interface LinksMessage {
+  role: 'assistant'
+  type: 'links'
+  links: ResolvedLink[]
+}
+
+type ChatMessage = TextMessage | ToolCallMessage | SystemMessage | LinksMessage
 
 interface SavedMessage {
   role: string
   content: string | null
   tool_data: unknown
-  created_at: string
+  created_at: string | null
 }
 
 interface Props {
@@ -50,10 +59,10 @@ interface Props {
 }
 
 const SUGGESTED_PROMPTS = [
-  'Visa mina workflows',
-  'Kör Familje-Stunden Månadspaket för Juli 2026',
-  'Hur mår systemet idag?',
-  'Vad borde vi fokusera på?',
+  'Vad behöver min uppmärksamhet idag?',
+  'Visa verksamheternas resultat',
+  'Vad bör vi fokusera på härnäst?',
+  'Granska väntande godkännanden',
 ]
 
 // ─── ChatClient ───────────────────────────────────────────────────────────────
@@ -65,35 +74,42 @@ export function ChatClient({
   savedMessages = [],
 }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
 
-  // Convert saved DB messages to UI format
+  // Convert saved DB messages to UI format. Saved navigation rows (content null,
+  // tool_data.kind === 'links') rehydrate as chips; everything else is text.
   const initialMessages: ChatMessage[] = savedMessages.length > 0
     ? savedMessages
         .filter(m => m.role === 'user' || m.role === 'assistant')
-        .map(m => ({
-          role: m.role as 'user' | 'assistant',
-          type: 'text' as const,
-          content: m.content ?? '',
-        }))
+        .map((m): ChatMessage | null => {
+          const td = m.tool_data as { kind?: string; links?: ResolvedLink[] } | null
+          if (m.role === 'assistant' && td?.kind === 'links' && Array.isArray(td.links)) {
+            return { role: 'assistant', type: 'links', links: td.links }
+          }
+          if (!m.content) return null
+          return { role: m.role as 'user' | 'assistant', type: 'text', content: m.content }
+        })
+        .filter((m): m is ChatMessage => m !== null)
     : [
         {
           role: 'assistant' as const,
           type: 'text' as const,
-          content: 'Hej! Jag är din AI-assistent för AI Ops Platform. Jag kan lista dina workflows, köra dem och visa resultaten — skriv bara vad du vill göra! 🚀',
+          content: 'Hej! Jag är din Executive Assistant. Jag har koll på dina verksamheter och kan brief­a läget, köra arbetsflöden, granska godkännanden och peka ut vad som bör prioriteras. Vad vill du veta?',
         },
       ]
 
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<'fast_path' | 'atlas' | null>(null)   // routing-verifiering
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Track API message history for Claude (text only)
   const apiMessages = useRef<Anthropic.MessageParam[]>(
     savedMessages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content ?? '' }))
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && !!m.content)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content as string }))
   )
 
   useEffect(() => {
@@ -118,10 +134,10 @@ export function ChatClient({
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(buildChatRequestBody({
           messages: apiMessages.current,
           conversation_id: conversationId,
-        }),
+        })),
       })
 
       if (!res.ok || !res.body) throw new Error('Anslutning misslyckades')
@@ -178,6 +194,37 @@ export function ChatClient({
               })
             }
 
+            // Atlas navigation layer — deep-link chips beneath the answer.
+            if (event.event === 'links' && Array.isArray(event.links) && event.links.length) {
+              setMessages(prev => [
+                ...prev,
+                { role: 'assistant', type: 'links', links: event.links as ResolvedLink[] } as LinksMessage,
+              ])
+            }
+
+            // Atlas navigation layer — direct navigation (after operator confirmation).
+            if (event.event === 'navigate' && event.href) {
+              const href = event.href as string
+              const targetPath = href.split('?')[0]
+              if (targetPath === pathname) {
+                // Same page already in view — router.push would be a silent
+                // no-op. Surface a clickable chip + a short note instead, so the
+                // operator gets a real affordance rather than "nothing happened".
+                const link: ResolvedLink = {
+                  id: (event.id as ResolvedLink['id']) ?? 'atlas',
+                  label: (event.label as string) ?? 'Öppna vyn',
+                  href,
+                }
+                setMessages(prev => [
+                  ...prev,
+                  { role: 'system', type: 'system', content: 'Du är redan på den här vyn.' } as SystemMessage,
+                  { role: 'assistant', type: 'links', links: [link] } as LinksMessage,
+                ])
+              } else {
+                router.push(href)
+              }
+            }
+
             if (event.event === 'done') {
               if (assistantText) {
                 apiMessages.current = [...apiMessages.current, { role: 'assistant', content: assistantText }]
@@ -186,6 +233,12 @@ export function ChatClient({
               if (apiMessages.current.filter(m => m.role === 'user').length === 1) {
                 router.refresh()
               }
+            }
+
+            if (event.event === 'timing') {
+              setMode(event.reqType ?? null)
+              // eslint-disable-next-line no-console
+              console.log(`[chat-mode] ${event.reqType} · första token ${event.firstTokenMs}ms · totalt ${event.serverTotalMs}ms`)
             }
 
             if (event.event === 'error') {
@@ -210,7 +263,7 @@ export function ChatClient({
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [input, loading, conversationId, router])
+  }, [input, loading, conversationId, router, pathname])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -218,6 +271,18 @@ export function ChatClient({
       handleSubmit()
     }
   }
+
+  // Auto-skicka en fråga som kommer via ?send= (från Executive Assistant-launchern).
+  const autoSentRef = useRef(false)
+  useEffect(() => {
+    if (autoSentRef.current || savedMessages.length > 0) return
+    const send = new URLSearchParams(window.location.search).get('send')
+    if (send) {
+      autoSentRef.current = true
+      window.history.replaceState({}, '', window.location.pathname)
+      handleSubmit(undefined, send)
+    }
+  }, [handleSubmit, savedMessages.length])
 
   return (
     <div className="flex flex-col h-screen">
@@ -260,11 +325,28 @@ export function ChatClient({
         </button>
       </div>
 
+      {/* Routing-badge — verifierar FAST PATH vs EXECUTIVE */}
+      {mode && (
+        <div className="px-4 pt-1 flex justify-end">
+          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${mode === 'fast_path' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10'}`}>
+            {mode === 'fast_path' ? '⚡ FAST PATH' : '🧠 EXECUTIVE'}
+          </span>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-4">
         {messages.map((msg, i) => {
           if (msg.type === 'tool_call') {
             return <ToolCallCard key={i} msg={msg} />
+          }
+
+          if (msg.type === 'links') {
+            return (
+              <div key={i} className="flex justify-start pl-10">
+                <AtlasActionChips links={msg.links} />
+              </div>
+            )
           }
 
           if (msg.type === 'system') {

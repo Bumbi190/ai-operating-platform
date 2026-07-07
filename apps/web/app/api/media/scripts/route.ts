@@ -1,20 +1,22 @@
 /**
  * GET  /api/media/scripts?project_id=&status=
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
   const status = searchParams.get('status')
+
+  if (projectId && !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
   const db = createAdminClient()
   let query = db
@@ -23,7 +25,9 @@ export async function GET(request: Request) {
     .order('generated_at', { ascending: false })
     .limit(50)
 
-  if (projectId) query = query.eq('project_id', projectId)
+  query = projectId
+    ? query.eq('project_id', projectId)
+    : query.in('project_id', scopeProjectFilter(access.allowedProjectIds))
   if (status) query = query.eq('status', status)
 
   const { data, error } = await query

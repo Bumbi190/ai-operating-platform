@@ -1,0 +1,56 @@
+
+> ai-ops-platform@0.1.0 build
+> npm run build --workspace=apps/web
+
+
+> web@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.29
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+   Downloading swc package @next/swc-darwin-arm64...
+npm error code ENOWORKSPACES
+npm error This command does not support workspaces.
+npm error A complete log of this run can be found in: /Users/andrehultgren/.npm/_logs/2026-06-05T04_53_29_911Z-debug-0.log
+
+> Build error occurred
+Error: Cannot find module 'nanoid/non-secure'
+Require stack:
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/input.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/fromJSON.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/postcss.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack/plugins/font-stylesheet-gathering-plugin.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack-config.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack-build/impl.js
+- /Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/compiled/jest-worker/processChild.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1455:15)
+    at /Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/server/require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1065:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1070:22)
+    at Module._load (node:internal/modules/cjs/loader:1241:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1555:12)
+    at mod.require (/Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at Object.<anonymous> (/Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/input.js:3:18) {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/input.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/fromJSON.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/postcss/lib/postcss.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack/plugins/font-stylesheet-gathering-plugin.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack-config.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/build/webpack-build/impl.js',
+    '/Users/andrehultgren/Documents/AI Operating Platform/node_modules/next/dist/compiled/jest-worker/processChild.js'
+  ]
+}
+npm error Lifecycle script `build` failed with error:
+npm error code 1
+npm error path /Users/andrehultgren/Documents/AI Operating Platform/apps/web
+npm error workspace web@0.1.0
+npm error location /Users/andrehultgren/Documents/AI Operating Platform/apps/web
+npm error command failed
+npm error command sh -c next build

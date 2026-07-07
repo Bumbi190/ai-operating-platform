@@ -7,7 +7,7 @@ import {
   Zap, CheckCircle2, XCircle, Clock,
   Bot, Play, Send, Loader2,
   Terminal, Eye, GitBranch, Plus,
-  TrendingUp, Settings, Cpu,
+  TrendingUp, Settings, Cpu, Mic, MicOff, Volume2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDistanceToNow } from 'date-fns'
@@ -102,7 +102,7 @@ const STATUS = {
   done:    { dot: 'bg-emerald-400',               label: 'Klar',    text: 'text-emerald-400' },
   running: { dot: 'bg-blue-400 animate-pulse',    label: 'Kör',     text: 'text-blue-400'    },
   failed:  { dot: 'bg-red-400',                   label: 'Fel',     text: 'text-red-400'     },
-  pending: { dot: 'bg-zinc-600',                  label: 'Väntar',  text: 'text-zinc-500'    },
+  pending: { dot: 'bg-zinc-600',                  label: 'Väntar',  text: 'text-secondary'    },
 } as const
 
 const ROLE_COLOR: Record<string, string> = {
@@ -158,6 +158,13 @@ export function MissionControlClient({
   const [chatBusy, setChatBusy]       = useState(false)
   const chatBottomRef = useRef<HTMLDivElement>(null)
 
+  // Voice state
+  const [voiceMode, setVoiceMode]       = useState(false)   // auto-play responses
+  const [isListening, setIsListening]   = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const recognitionRef = useRef<any>(null)
+  const audioRef       = useRef<HTMLAudioElement | null>(null)
+
   // Clock
   const [clock, setClock] = useState(() =>
     new Date().toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -183,6 +190,70 @@ export function MissionControlClient({
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => { logBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs])
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatDisplay])
+
+  // ── Voice: speak agent response via Victoria (ElevenLabs) ──────────────────
+  async function speakText(text: string) {
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        URL.revokeObjectURL(audioRef.current.src)
+      }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.play()
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Voice: start/stop microphone listening ─────────────────────────────────
+  function toggleListening() {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Din webbläsare stöder inte röstigenkänning. Använd Chrome eller Safari.')
+      return
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      setVoiceTranscript('')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang            = 'sv-SE'
+    recognition.continuous      = false
+    recognition.interimResults  = true
+
+    recognition.onstart = () => setIsListening(true)
+
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript)
+        .join('')
+      setVoiceTranscript(transcript)
+      // Final result → send
+      if (e.results[e.results.length - 1].isFinal) {
+        setIsListening(false)
+        setVoiceTranscript('')
+        if (transcript.trim()) sendMessage(transcript.trim())
+      }
+    }
+
+    recognition.onerror = () => { setIsListening(false); setVoiceTranscript('') }
+    recognition.onend   = () => { setIsListening(false); setVoiceTranscript('') }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
 
   // ── SSE for selected run ───────────────────────────────────────────────────
   const loadRun = useCallback((runId: string, status: string) => {
@@ -301,6 +372,9 @@ export function MissionControlClient({
       setChatDisplay(prev => prev.map(m => m.id === assistantId ? { ...m, isStreaming: false } : m))
       setChatHistory(prev => [...prev, { role: 'assistant', content: assistantText }])
 
+      // Auto-play response with Victoria's voice if voice mode is on
+      if (voiceMode && assistantText) speakText(assistantText)
+
     } catch (err) {
       setChatDisplay(prev =>
         prev.map(m => m.id === assistantId
@@ -319,8 +393,12 @@ export function MissionControlClient({
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  // Manager is a bespoke 3-column operator console that lives inside the new
+  // OS shell's main column (the parent is already `overflow-y-auto` and sized
+  // to viewport minus the command bar). We fill the canvas with min-height
+  // instead of nesting another `h-screen` viewport-locked scroller.
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#060a10] text-zinc-300">
+    <div className="min-h-[calc(100vh-3rem)] flex flex-col bg-[#060a10] text-zinc-300">
 
       {/* ═══════ TOP STATUS BAR ═════════════════════════════════════════════ */}
       <header className="h-11 flex items-center gap-3 px-4 border-b border-white/[0.06] bg-black/40 shrink-0">
@@ -351,7 +429,7 @@ export function MissionControlClient({
             </span>
           </div>
         ) : (
-          <span className="text-[10px] font-mono text-zinc-700 shrink-0">INAKTIV</span>
+          <span className="text-[10px] font-mono text-faint shrink-0">INAKTIV</span>
         )}
 
         <div className="flex-1" />
@@ -367,170 +445,13 @@ export function MissionControlClient({
               {approvalCount} ATT GRANSKA
             </Link>
           )}
-          <span className="text-zinc-600">{totalCostStr} / MÅN</span>
-          <span className="text-zinc-500 tabular-nums">{clock}</span>
+          <span className="text-meta">{totalCostStr} / MÅN</span>
+          <span className="text-secondary tabular-nums">{clock}</span>
         </div>
       </header>
 
       {/* ═══════ 3-COLUMN BODY ══════════════════════════════════════════════ */}
       <div className="flex-1 flex overflow-hidden">
-
-        {/* ═══ LEFT PANEL — Projects & Agents ════════════════════════════════ */}
-        <aside className="w-64 border-r border-white/[0.06] flex flex-col bg-black/20 shrink-0">
-
-          {/* Section: Projects */}
-          <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
-            <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">
-              Projekt
-            </span>
-            <Link
-              href="/projects/new"
-              className="w-4 h-4 flex items-center justify-center text-zinc-700 hover:text-zinc-400 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            {projects.map(project => {
-              const projectAgents = agentsByProject[project.id] ?? []
-              const hasActiveRun = runs.some(r => r.project_id === project.id && r.status === 'running')
-
-              return (
-                <div key={project.id} className="border-b border-white/[0.04]">
-                  {/* Project header */}
-                  <Link
-                    href={`/projects/${project.slug}`}
-                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.03] transition-colors group"
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: project.color }}
-                    />
-                    <span className="flex-1 text-xs font-medium text-zinc-200 truncate">
-                      {project.name}
-                    </span>
-                    {hasActiveRun && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
-                    )}
-                  </Link>
-
-                  {/* Agents */}
-                  <div className="pl-5 pb-1.5 space-y-0.5">
-                    {projectAgents.length === 0 ? (
-                      <Link
-                        href={`/projects/${project.slug}/agents/new`}
-                        className="flex items-center gap-1.5 px-3 py-1 text-[10px] text-zinc-700 hover:text-zinc-500 transition-colors"
-                      >
-                        <Plus className="w-2.5 h-2.5" /> Lägg till agent
-                      </Link>
-                    ) : (
-                      projectAgents.map(agent => {
-                        const agentActive = runs.some(r => r.project_id === agent.project_id && r.status === 'running')
-                        const shortModel = agent.model.replace('claude-', '').replace('gpt-', '').split('-').slice(0, 2).join('-')
-                        return (
-                          <Link
-                            key={agent.id}
-                            href={`/projects/${project.slug}`}
-                            className="flex items-center gap-2 px-3 py-1 hover:bg-white/[0.03] transition-colors rounded group"
-                          >
-                            <span className={cn(
-                              'w-1.5 h-1.5 rounded-full shrink-0',
-                              agentActive ? 'bg-blue-400 animate-pulse' : 'bg-zinc-700',
-                            )} />
-                            <Bot className="w-3 h-3 text-zinc-600 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400 truncate block transition-colors">
-                                {agent.name}
-                              </span>
-                              <span className="text-[9px] text-zinc-700 font-mono truncate block">
-                                {shortModel}
-                              </span>
-                            </div>
-                          </Link>
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-
-            {projects.length === 0 && (
-              <div className="px-3 py-6 text-center">
-                <p className="text-[10px] text-zinc-700 mb-2">Inga projekt</p>
-                <Link href="/projects/new" className="text-[10px] text-indigo-500 hover:text-indigo-400 transition-colors">
-                  Skapa ditt första projekt →
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Section: Recent Runs */}
-          <div className="border-t border-white/[0.06]">
-            <div className="px-3 py-2 flex items-center justify-between border-b border-white/[0.04]">
-              <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">
-                Senaste körningar
-              </span>
-            </div>
-            <div className="max-h-52 overflow-y-auto scrollbar-thin">
-              {runs.slice(0, 10).map(run => {
-                const cfg = STATUS[run.status as keyof typeof STATUS] ?? STATUS.pending
-                const isSelected = run.id === selectedRunId
-                const workflow = run.workflows as any
-                return (
-                  <button
-                    key={run.id}
-                    onClick={() => selectRun(run.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-white/[0.03] transition-colors',
-                      isSelected && 'bg-indigo-500/[0.07] border-l-2 border-indigo-500 pl-[10px]',
-                    )}
-                  >
-                    <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', cfg.dot)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] text-zinc-300 truncate font-medium">
-                        {workflow?.name ?? 'Körning'}
-                      </p>
-                      <p className="text-[9px] text-zinc-600 font-mono">
-                        {formatDistanceToNow(new Date(run.created_at), { addSuffix: true, locale: sv })}
-                      </p>
-                    </div>
-                  </button>
-                )
-              })}
-              {runs.length === 0 && (
-                <div className="px-3 py-4 text-center text-[10px] text-zinc-700">
-                  Inga körningar ännu
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section: Quick Nav */}
-          <div className="border-t border-white/[0.06] p-2 space-y-0.5 shrink-0">
-            {[
-              { href: '/approvals', Icon: ShieldCheck, label: 'Godkännanden', badge: approvalCount > 0 ? approvalCount : 0 },
-              { href: '/dashboard', Icon: Activity, label: 'Dashboard' },
-              { href: '/planning', Icon: TrendingUp, label: 'Planering' },
-              { href: '/settings', Icon: Settings, label: 'Inställningar' },
-            ].map(({ href, Icon, label, badge }) => (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-[11px] text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.04] transition-colors"
-              >
-                <Icon className="w-3 h-3 shrink-0" />
-                <span>{label}</span>
-                {badge ? (
-                  <span className="ml-auto text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-mono">
-                    {badge}
-                  </span>
-                ) : null}
-              </Link>
-            ))}
-          </div>
-        </aside>
 
         {/* ═══ CENTER PANEL — Run Monitor ═════════════════════════════════════ */}
         <main className="flex-1 flex flex-col overflow-hidden bg-[#060a10]">
@@ -549,7 +470,7 @@ export function MissionControlClient({
                   'flex items-center gap-1.5 px-4 py-2.5 text-[11px] border-b-2 transition-colors',
                   centerTab === id
                     ? 'border-indigo-500 text-indigo-300'
-                    : 'border-transparent text-zinc-600 hover:text-zinc-400',
+                    : 'border-transparent text-meta hover:text-zinc-400',
                 )}
               >
                 <Icon className="w-3 h-3" />
@@ -564,7 +485,7 @@ export function MissionControlClient({
 
             {/* Selected run label */}
             {selectedRun && (
-              <div className="flex items-center gap-2 px-4 text-[10px] font-mono text-zinc-700">
+              <div className="flex items-center gap-2 px-4 text-[10px] font-mono text-faint">
                 <span className={cn('w-1.5 h-1.5 rounded-full', STATUS[logStatus as keyof typeof STATUS]?.dot ?? 'bg-zinc-600')} />
                 {(selectedRun.workflows as any)?.name ?? 'Körning'} · {selectedRun.id.slice(0, 8)}
               </div>
@@ -577,7 +498,7 @@ export function MissionControlClient({
               {/* Running now */}
               {runningRuns.length > 0 && (
                 <section>
-                  <p className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600 mb-2 px-0.5">
+                  <p className="text-[9px] font-bold tracking-[0.2em] uppercase text-meta mb-2 px-0.5">
                     Aktiva just nu
                   </p>
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -590,14 +511,14 @@ export function MissionControlClient({
 
               {/* Recent */}
               <section>
-                <p className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600 mb-2 px-0.5">
+                <p className="text-[9px] font-bold tracking-[0.2em] uppercase text-meta mb-2 px-0.5">
                   Senaste körningar
                 </p>
                 {runs.filter(r => r.status !== 'running').length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Play className="w-10 h-10 text-zinc-800 mb-3" />
-                    <p className="text-sm text-zinc-600">Inga körningar ännu</p>
-                    <p className="text-xs text-zinc-700 mt-1">Kör ett workflow från ett projekt för att komma igång</p>
+                    <p className="text-sm text-meta">Inga körningar ännu</p>
+                    <p className="text-xs text-faint mt-1">Kör ett workflow från ett projekt för att komma igång</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -617,7 +538,7 @@ export function MissionControlClient({
               <div className="flex items-center justify-between mb-4 px-0.5">
                 <div>
                   <p className="text-xs font-semibold text-zinc-300">Agent Status</p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5 font-mono">
+                  <p className="text-[10px] text-meta mt-0.5 font-mono">
                     {agents.filter(a => runs.some(r => r.project_id === a.project_id && r.status === 'running')).length} aktiva
                     <span className="mx-1.5 text-zinc-800">·</span>
                     {agents.length} totalt
@@ -625,7 +546,7 @@ export function MissionControlClient({
                 </div>
                 <Link
                   href="/projects"
-                  className="text-[10px] text-zinc-700 hover:text-zinc-400 transition-colors font-mono"
+                  className="text-[10px] text-faint hover:text-zinc-400 transition-colors font-mono"
                 >
                   Alla projekt →
                 </Link>
@@ -634,8 +555,8 @@ export function MissionControlClient({
               {agents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Bot className="w-10 h-10 text-zinc-800 mb-3" />
-                  <p className="text-sm text-zinc-600">Inga agenter ännu</p>
-                  <p className="text-xs text-zinc-700 mt-1">Skapa agenter från ett projekt</p>
+                  <p className="text-sm text-meta">Inga agenter ännu</p>
+                  <p className="text-xs text-faint mt-1">Skapa agenter från ett projekt</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -662,7 +583,7 @@ export function MissionControlClient({
                   <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
                   <span className="w-2.5 h-2.5 rounded-full bg-green-500/50" />
                 </div>
-                <span className="flex-1 text-[10px] font-mono text-zinc-600 truncate">
+                <span className="flex-1 text-[10px] font-mono text-meta truncate">
                   {selectedRun
                     ? `${(selectedRun.workflows as any)?.name ?? 'körning'} · ${selectedRun.id}`
                     : 'ingen körning vald — klicka på en körning'}
@@ -677,12 +598,12 @@ export function MissionControlClient({
                   {logStatus === 'done'    && <span className="text-emerald-400">✓ KLAR</span>}
                   {logStatus === 'failed'  && <span className="text-red-400">✗ FEL</span>}
                   {totalTokens > 0 && (
-                    <span className="text-zinc-700">{totalTokens.toLocaleString()} tokens</span>
+                    <span className="text-faint">{totalTokens.toLocaleString()} tokens</span>
                   )}
                   {selectedRun && (
                     <Link
                       href={`/projects/${(selectedRun.projects as any)?.slug}/runs/${selectedRun.id}`}
-                      className="flex items-center gap-1 text-zinc-700 hover:text-zinc-400 transition-colors"
+                      className="flex items-center gap-1 text-faint hover:text-zinc-400 transition-colors"
                     >
                       <Eye className="w-3 h-3" /> Fullskärm
                     </Link>
@@ -693,7 +614,7 @@ export function MissionControlClient({
               {/* Log lines */}
               <div className="flex-1 overflow-y-auto scrollbar-thin p-4 font-mono text-[11px] space-y-1.5">
                 {logs.length === 0 && !logConnected && (
-                  <div className="flex items-center gap-2.5 text-zinc-700 py-4">
+                  <div className="flex items-center gap-2.5 text-faint py-4">
                     <span className="w-3 h-3 rounded-full border border-zinc-700 animate-pulse" />
                     {selectedRunId ? 'Laddar logg...' : 'Välj en körning från listan till vänster'}
                   </div>
@@ -705,7 +626,7 @@ export function MissionControlClient({
                     {log.role === 'user' && log.step_name && (
                       <div className="flex items-center gap-3 my-4 first:mt-0">
                         <div className="h-px flex-1 bg-white/[0.05]" />
-                        <span className="text-zinc-600 text-[10px] font-sans shrink-0">
+                        <span className="text-meta text-[10px] font-sans shrink-0">
                           {log.step_order}. {log.step_name}
                         </span>
                         <div className="h-px flex-1 bg-white/[0.05]" />
@@ -713,7 +634,7 @@ export function MissionControlClient({
                     )}
 
                     <div className="flex gap-3 leading-relaxed">
-                      <span className={cn('w-12 text-right shrink-0 mt-0.5', ROLE_COLOR[log.role] ?? 'text-zinc-600')}>
+                      <span className={cn('w-12 text-right shrink-0 mt-0.5', ROLE_COLOR[log.role] ?? 'text-meta')}>
                         [{log.role === 'assistant' ? 'out' : log.role === 'user' ? 'in' : log.role}]
                       </span>
                       <div className="flex-1 min-w-0">
@@ -721,7 +642,7 @@ export function MissionControlClient({
                           {sanitizeLog(log.content)}
                         </pre>
                         {(log.tokens_in != null || log.duration_ms != null) && (
-                          <div className="flex gap-2 text-zinc-700 font-sans mt-0.5 text-[9px]">
+                          <div className="flex gap-2 text-faint font-sans mt-0.5 text-[9px]">
                             {log.duration_ms != null && <span>{(log.duration_ms / 1000).toFixed(1)}s</span>}
                             {(log.tokens_in != null || log.tokens_out != null) && (
                               <span>{(log.tokens_in ?? 0) + (log.tokens_out ?? 0)} tokens</span>
@@ -774,8 +695,8 @@ export function MissionControlClient({
               <div className="py-8 text-center space-y-3">
                 <Brain className="w-10 h-10 text-indigo-400/10 mx-auto" />
                 <div>
-                  <p className="text-xs text-zinc-600">Chatta med Manager Agent</p>
-                  <p className="text-[10px] text-zinc-700 mt-1">
+                  <p className="text-xs text-meta">Chatta med Manager Agent</p>
+                  <p className="text-[10px] text-faint mt-1">
                     Fråga om status, planer eller be om åtgärder
                   </p>
                 </div>
@@ -799,7 +720,7 @@ export function MissionControlClient({
                     : 'bg-white/[0.05] text-zinc-300 rounded-bl-none',
                 )}>
                   {msg.isStreaming && !msg.content ? (
-                    <span className="flex items-center gap-1.5 text-zinc-600">
+                    <span className="flex items-center gap-1.5 text-meta">
                       <Loader2 className="w-3 h-3 animate-spin" />
                       Tänker...
                     </span>
@@ -819,7 +740,7 @@ export function MissionControlClient({
                 key={q}
                 onClick={() => sendMessage(q)}
                 disabled={chatBusy}
-                className="text-[9px] text-zinc-700 hover:text-zinc-400 bg-white/[0.04] hover:bg-white/[0.07] px-2 py-1 rounded-full whitespace-nowrap transition-colors disabled:opacity-40 shrink-0 font-mono"
+                className="text-[9px] text-faint hover:text-zinc-400 bg-white/[0.04] hover:bg-white/[0.07] px-2 py-1 rounded-full whitespace-nowrap transition-colors disabled:opacity-40 shrink-0 font-mono"
               >
                 {q}
               </button>
@@ -828,14 +749,60 @@ export function MissionControlClient({
 
           {/* Chat input */}
           <form onSubmit={handleChatSubmit} className="px-3 pb-3 pt-1 shrink-0">
+            {/* Voice transcript preview */}
+            {isListening && (
+              <div className="mb-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />
+                <span className="text-[10px] text-red-300 italic truncate flex-1">
+                  {voiceTranscript || 'Lyssnar...'}
+                </span>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <input
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
-                placeholder="Fråga Manager Agent..."
-                disabled={chatBusy}
-                className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-[11px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50 transition-colors"
+                placeholder={isListening ? 'Lyssnar...' : 'Fråga Manager Agent...'}
+                disabled={chatBusy || isListening}
+                className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-lg px-3 py-2 text-[11px] text-zinc-300 placeholder:text-faint focus:outline-none focus:border-indigo-500/40 disabled:opacity-50 transition-colors"
               />
+
+              {/* Mic button */}
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={chatBusy}
+                title={isListening ? 'Stoppa inspelning' : 'Tala med Manager Agent (fn)'}
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors shrink-0 self-end',
+                  isListening
+                    ? 'bg-red-500/80 hover:bg-red-500 animate-pulse'
+                    : 'bg-white/[0.07] hover:bg-white/[0.12]',
+                )}
+              >
+                {isListening
+                  ? <MicOff className="w-3.5 h-3.5 text-white" />
+                  : <Mic className="w-3.5 h-3.5 text-zinc-400" />
+                }
+              </button>
+
+              {/* Voice mode toggle (auto-play responses) */}
+              <button
+                type="button"
+                onClick={() => setVoiceMode(v => !v)}
+                title={voiceMode ? 'Stäng av Victorias röst' : 'Aktivera Victorias röst på svar'}
+                className={cn(
+                  'w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 self-end',
+                  voiceMode
+                    ? 'bg-indigo-600/60 hover:bg-indigo-600/80 text-indigo-300'
+                    : 'bg-white/[0.07] hover:bg-white/[0.12] text-meta',
+                )}
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Send button */}
               <button
                 type="submit"
                 disabled={chatBusy || !chatInput.trim()}
@@ -853,10 +820,10 @@ export function MissionControlClient({
           {tasks.length > 0 && (
             <div className="border-t border-white/[0.06] shrink-0">
               <div className="px-4 py-2 flex items-center justify-between">
-                <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">
+                <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-meta">
                   Uppgifter
                 </span>
-                <span className="text-[9px] font-mono text-zinc-700">
+                <span className="text-[9px] font-mono text-faint">
                   {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length} aktiva
                 </span>
               </div>
@@ -870,7 +837,7 @@ export function MissionControlClient({
                       task.priority === 'critical' || task.priority === 'high' ? 'bg-amber-500' :
                       'bg-zinc-700',
                     )} />
-                    <p className="text-[10px] text-zinc-600 leading-snug">{task.title}</p>
+                    <p className="text-[10px] text-meta leading-snug">{task.title}</p>
                   </div>
                 ))}
               </div>
@@ -881,21 +848,21 @@ export function MissionControlClient({
           {agentMessages.length > 0 && (
             <div className="border-t border-white/[0.06] shrink-0">
               <div className="px-4 py-2">
-                <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">
+                <span className="text-[9px] font-bold tracking-[0.2em] uppercase text-meta">
                   Agentmeddelanden
                 </span>
               </div>
               <div className="px-3 pb-3 space-y-1.5 max-h-28 overflow-y-auto scrollbar-thin">
                 {agentMessages.slice(0, 4).map(msg => (
                   <div key={msg.id} className="flex items-start gap-2">
-                    <Zap className="w-2.5 h-2.5 text-zinc-700 shrink-0 mt-0.5" />
+                    <Zap className="w-2.5 h-2.5 text-faint shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 text-[9px] text-zinc-700 font-mono mb-0.5">
+                      <div className="flex items-center gap-1 text-[9px] text-faint font-mono mb-0.5">
                         <span>{msg.from_agent}</span>
                         <span>→</span>
                         <span>{msg.to_agent}</span>
                       </div>
-                      <p className="text-[10px] text-zinc-600 truncate">
+                      <p className="text-[10px] text-meta truncate">
                         {msg.content.replace(/[\n\r]+/g, ' ').slice(0, 60)}
                       </p>
                     </div>
@@ -946,7 +913,7 @@ function RunCard({
         <span className={cn('text-[10px] font-mono shrink-0', cfg.text)}>{cfg.label}</span>
       </div>
 
-      <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-zinc-600 flex-wrap">
+      <div className="mt-2 flex items-center gap-3 text-[10px] font-mono text-meta flex-wrap">
         {project && (
           <span className="flex items-center gap-1">
             <span className="w-1 h-1 rounded-full" style={{ backgroundColor: project.color }} />
@@ -1011,7 +978,7 @@ function AgentCard({
             ? 'bg-blue-500/15 border border-blue-500/25'
             : 'bg-white/[0.05] border border-white/[0.07]',
         )}>
-          <Bot className={cn('w-4 h-4', isActive ? 'text-blue-400' : 'text-zinc-500')} />
+          <Bot className={cn('w-4 h-4', isActive ? 'text-blue-400' : 'text-secondary')} />
           {isActive && (
             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-400 animate-pulse border border-[#060a10]" />
           )}
@@ -1022,15 +989,15 @@ function AgentCard({
             <span className="text-xs font-semibold text-zinc-200 truncate">{agent.name}</span>
             <span className={cn(
               'text-[9px] font-mono shrink-0',
-              isActive ? 'text-blue-400' : 'text-zinc-700',
+              isActive ? 'text-blue-400' : 'text-faint',
             )}>
               {isActive ? 'AKTIV' : 'INAKTIV'}
             </span>
           </div>
           {/* Model badge */}
           <div className="flex items-center gap-1">
-            <Cpu className="w-2.5 h-2.5 text-zinc-700 shrink-0" />
-            <span className="text-[9px] font-mono text-zinc-600 bg-white/[0.04] px-1.5 py-0.5 rounded">
+            <Cpu className="w-2.5 h-2.5 text-faint shrink-0" />
+            <span className="text-[9px] font-mono text-meta bg-white/[0.04] px-1.5 py-0.5 rounded">
               {modelLabel}
             </span>
           </div>
@@ -1041,7 +1008,7 @@ function AgentCard({
       {project && (
         <div className="mt-2.5 flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
-          <span className="text-[10px] text-zinc-600 truncate">{project.name}</span>
+          <span className="text-[10px] text-meta truncate">{project.name}</span>
         </div>
       )}
 
@@ -1056,7 +1023,7 @@ function AgentCard({
             <span className="text-blue-400">Kör nu…</span>
           ) : (
             <>
-              <span className="text-zinc-700">
+              <span className="text-faint">
                 {formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true, locale: sv })}
               </span>
               {duration != null && (

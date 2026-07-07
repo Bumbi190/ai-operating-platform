@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   Activity, ShieldCheck, GitBranch, Database, Send, AlertTriangle,
-  Brain, Cpu, Sparkles, Film, FileText, Zap, Filter,
+  Brain, Cpu, Sparkles, Film, FileText, Zap, Filter, ChevronRight,
 } from 'lucide-react'
 
 export type ActivityEventType =
@@ -25,9 +27,12 @@ export interface ActivityEvent {
   title: string
   detail?: string
   project?: string
+  projectSlug?: string
   projectColor?: string
   timestamp: string
   intense?: boolean
+  /** valfri åtgärd — gör feeden handlingsinriktad ([ Granska ], [ Öppna ] …) */
+  action?: { label: string; href: string }
 }
 
 // Restrained icon palette — mostly monochrome with subtle warm/cool accents.
@@ -42,6 +47,12 @@ const TYPE_META: Record<ActivityEventType, { icon: any; color: string; label: st
   api:      { icon: Cpu,           color: '#60a5fa', label: 'API' },
   decision: { icon: Sparkles,      color: '#e8c89a', label: 'Decision' },
   script:   { icon: FileText,      color: '#a5b4fc', label: 'Script' },
+}
+
+function clock(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('sv-SE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Stockholm' }).format(new Date(iso))
+  } catch { return '' }
 }
 
 function relative(iso: string, nowMs: number) {
@@ -59,8 +70,23 @@ function relative(iso: string, nowMs: number) {
  * Linear-quiet design — monochrome with restrained color accents on icons.
  */
 export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[] }) {
-  const [events] = useState<ActivityEvent[]>(initial)
+  const [allEvents] = useState<ActivityEvent[]>(initial)
   const [now, setNow] = useState(() => Date.now())
+  const pathname = usePathname()
+
+  // Scope to the active project when inside /projects/[slug]/*. On global and
+  // Atlas surfaces the rail stays cross-project (Atlas sees everything).
+  const activeSlug = useMemo(() => {
+    const m = pathname?.match(/^\/projects\/([^/]+)/)
+    return m ? m[1] : null
+  }, [pathname])
+
+  const events = useMemo(() => {
+    if (!activeSlug) return allEvents
+    // Keep this project's events; drop events that belong to a *different*
+    // project. Project-less system events are hidden inside a project view.
+    return allEvents.filter((e) => e.projectSlug === activeSlug)
+  }, [allEvents, activeSlug])
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 5_000)
@@ -69,30 +95,29 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
 
   return (
     <div className="relative h-full flex flex-col rail-border-gradient">
-      {/* Header */}
+      {/* Header — quieter, smaller, less chrome.                              */}
       <div
-        className="shrink-0 px-5 pt-5 pb-4"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+        className="shrink-0 px-4 pt-4 pb-3"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <div className="flex items-center justify-between mb-2">
-          <p className="eyebrow !text-[10px] !tracking-[0.22em] !text-white/55">
-            Live Activity
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="eyebrow !text-[9px] !tracking-[0.22em] !text-white/60 inline-flex items-center gap-1.5">
+            <Sparkles className="w-2.5 h-2.5" style={{ color: '#d4a574' }} /> AI-briefing
           </p>
           <button
-            className="w-6 h-6 rounded-md flex items-center justify-center text-zinc-600 hover:text-zinc-300 transition-colors"
-            style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}
-            title="Filter"
+            className="w-5 h-5 rounded-md flex items-center justify-center text-faint hover:text-zinc-400 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.035)' }}
+            title="Filtrera"
           >
-            <Filter className="w-3 h-3" />
+            <Filter className="w-2.5 h-2.5" />
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="relative inline-flex w-1.5 h-1.5">
-            <span className="absolute inset-0 rounded-full bg-emerald-400" style={{ boxShadow: '0 0 6px #34d399' }} />
-            <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+        <div className="flex items-center gap-1.5">
+          <span className="relative inline-flex w-1 h-1">
+            <span className="absolute inset-0 rounded-full bg-emerald-400/80" />
           </span>
-          <span className="text-[10.5px] text-zinc-500">
-            Streaming · {events.length} events
+          <span className="text-[10px] text-meta">
+            Senaste händelserna i dina verksamheter
           </span>
         </div>
       </div>
@@ -110,11 +135,11 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
             >
               <Activity className="w-3.5 h-3.5 text-indigo-300" />
             </div>
-            <p className="text-[11.5px] text-zinc-400 font-medium">Listening for events</p>
-            <p className="text-[10px] text-zinc-600 mt-1">No platform activity yet</p>
+            <p className="text-[11.5px] text-zinc-400 font-medium">Inget att rapportera än</p>
+            <p className="text-[10px] text-meta mt-1">Här dyker uppdateringar upp så fort något händer</p>
           </div>
         ) : (
-          <div className="px-2 py-2">
+          <div className="px-1.5 py-1.5">
             {events.map((e, i) => {
               const meta = TYPE_META[e.type]
               const Icon = meta.icon
@@ -122,61 +147,61 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
                 <div
                   key={e.id}
                   className={cn(
-                    'relative flex items-start gap-3 px-3 py-3 rounded-xl hover:bg-white/[0.025] transition-all ease-os group cursor-pointer animate-fade-in-up',
+                    'relative flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/[0.02] transition-colors ease-os group cursor-pointer animate-fade-in-up',
                   )}
-                  style={{ animationDelay: `${i * 35}ms`, animationFillMode: 'both' }}
+                  style={{ animationDelay: `${i * 25}ms`, animationFillMode: 'both' }}
                 >
-                  {/* Icon — restrained monochrome */}
+                  {/* Icon — quieter, smaller, no halo unless intense          */}
                   <div className="shrink-0 mt-0.5 relative">
                     <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center"
+                      className="w-6 h-6 rounded-md flex items-center justify-center"
                       style={{
-                        background: 'rgba(255,255,255,0.025)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        boxShadow: e.intense ? `inset 0 0 0 1px ${meta.color}33` : 'none',
+                        background: 'rgba(255,255,255,0.018)',
+                        border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
-                      <Icon className="w-3 h-3" style={{ color: meta.color, opacity: 0.85 }} />
+                      <Icon className="w-2.5 h-2.5" style={{ color: meta.color, opacity: 0.7 }} />
                     </div>
                     {e.intense && (
                       <span
-                        className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-                        style={{ background: meta.color, boxShadow: `0 0 6px ${meta.color}` }}
+                        className="absolute -top-0 -right-0 w-1 h-1 rounded-full"
+                        style={{ background: meta.color }}
                       />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* meta line */}
+                    {/* tid + verksamhet — människovänlig topprad                */}
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span
-                        className="eyebrow !text-[8.5px] !tracking-[0.18em]"
-                        style={{ color: `${meta.color}cc` }}
-                      >
-                        {meta.label}
-                      </span>
+                      <span className="caption-mono text-[9px] text-secondary">{clock(e.timestamp)}</span>
                       {e.project && (
                         <>
-                          <span className="text-zinc-700 text-[8px]">·</span>
-                          <span className="inline-flex items-center gap-1 text-[9.5px] text-zinc-500">
+                          <span className="text-zinc-800 text-[8px]">·</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium" style={{ color: e.projectColor ?? '#a5b4fc' }}>
                             <span className="w-1 h-1 rounded-full" style={{ background: e.projectColor ?? '#818cf8' }} />
                             {e.project}
                           </span>
                         </>
                       )}
                     </div>
-                    {/* title */}
+                    {/* mening — affärsspråk                                     */}
                     <p className="text-[11.5px] text-zinc-200 leading-snug tracking-tight">
                       {e.title}
                     </p>
                     {e.detail && (
-                      <p className="text-[10px] text-zinc-500 mt-0.5 leading-snug line-clamp-2">
+                      <p className="text-[10px] text-secondary mt-0.5 leading-snug line-clamp-1">
                         {e.detail}
                       </p>
                     )}
-                    <p className="caption-mono text-[9.5px] text-zinc-600 mt-1.5">
-                      {relative(e.timestamp, now)}
-                    </p>
+                    {e.action && (
+                      <Link
+                        href={e.action.href}
+                        className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-zinc-300 hover:text-white transition-colors press"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                      >
+                        {e.action.label} <ChevronRight className="w-2.5 h-2.5" />
+                      </Link>
+                    )}
                   </div>
                 </div>
               )
@@ -185,14 +210,14 @@ export function ActivityRail({ events: initial = [] }: { events?: ActivityEvent[
         )}
       </div>
 
-      {/* Footer status */}
+      {/* Footer status — minimal ambient ribbon                            */}
       <div
-        className="shrink-0 px-5 py-3 flex items-center justify-between caption-mono text-[9.5px]"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+        className="shrink-0 px-4 py-2.5 flex items-center justify-between caption-mono text-[9px]"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
       >
-        <span className="text-zinc-600">Channel · primary</span>
-        <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-          <Zap className="w-2.5 h-2.5" /> Connected
+        <span className="text-faint">Omnira</span>
+        <span className="flex items-center gap-1 text-emerald-500/70">
+          <Zap className="w-2 h-2" /> uppdateras live
         </span>
       </div>
     </div>

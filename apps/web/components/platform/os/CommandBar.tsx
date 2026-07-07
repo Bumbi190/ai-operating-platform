@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Search, Bell, Plus } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { OperatorModeSwitcher } from './OperatorMode'
+import { CommandPalette } from './CommandPalette'
 
 interface CommandBarProps {
   operator?: string
+  projects?: { name: string; slug: string }[]
 }
 
 /**
@@ -16,13 +19,26 @@ interface CommandBarProps {
  *
  * Sticky above the page content. Acts as the OS title bar.
  */
-export function CommandBar({ operator }: CommandBarProps) {
+export function CommandBar({ operator, projects = [] }: CommandBarProps) {
   const pathname = usePathname()
   const [now, setNow] = useState(() => new Date())
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
+  }, [])
+
+  // Global ⌘K / Ctrl+K → open the command palette.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const segments = pathname
@@ -41,15 +57,22 @@ export function CommandBar({ operator }: CommandBarProps) {
   }).toUpperCase()
   const initials = operator?.split('@')[0].slice(0, 2).toUpperCase() ?? '••'
 
+  // På /atlas är orben det primära gränssnittet — CommandBar distraherar.
+  // Visa en minimal variant utan klocka och breadcrumbs.
+  const isAtlas = pathname === '/atlas'
+
   return (
     <div
-      className="sticky top-0 z-bar backdrop-blur-md"
+      className={cn(
+        'sticky top-0 z-bar backdrop-blur-md transition-all duration-300',
+        isAtlas && 'opacity-0 pointer-events-none h-0 overflow-hidden',
+      )}
       style={{
         background: 'linear-gradient(180deg, rgba(5,7,20,0.88) 0%, rgba(5,7,20,0.60) 100%)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: isAtlas ? 'none' : '1px solid rgba(255,255,255,0.04)',
       }}
     >
-      <div className="px-7 lg:px-10 h-12 flex items-center gap-3 lg:gap-4">
+      <div className="px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 h-12 flex items-center gap-3 lg:gap-4">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 min-w-0 max-w-[40%] lg:max-w-none">
           {segments.length === 0 ? (
@@ -59,13 +82,13 @@ export function CommandBar({ operator }: CommandBarProps) {
               <span className="eyebrow hidden md:inline">Omnira</span>
               {segments.map((seg, i) => (
                 <span key={seg.href} className="flex items-center gap-1.5 min-w-0">
-                  <ChevronRight className="w-3 h-3 text-zinc-700 shrink-0 hidden md:inline" />
+                  <ChevronRight className="w-3 h-3 text-faint shrink-0 hidden md:inline" />
                   <Link
                     href={seg.href}
                     className={
                       i === segments.length - 1
                         ? 'text-[12px] text-white/90 font-medium capitalize truncate tracking-tight'
-                        : 'text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors capitalize truncate tracking-tight hidden md:inline'
+                        : 'text-[12px] text-secondary hover:text-zinc-300 transition-colors capitalize truncate tracking-tight hidden md:inline'
                     }
                   >
                     {seg.label}
@@ -78,7 +101,8 @@ export function CommandBar({ operator }: CommandBarProps) {
 
         {/* Center · command search */}
         <button
-          className="hidden md:flex items-center gap-2 h-7 px-2.5 rounded-md text-[11px] text-zinc-500 transition-all ease-os hover:text-zinc-200 press"
+          onClick={() => setPaletteOpen(true)}
+          className="hidden md:flex items-center gap-2 h-7 px-2.5 rounded-md text-[11px] text-secondary transition-all ease-os hover:text-zinc-200 press"
           style={{
             background: 'rgba(255,255,255,0.025)',
             border: '1px solid rgba(255,255,255,0.06)',
@@ -100,17 +124,17 @@ export function CommandBar({ operator }: CommandBarProps) {
         {/* Right cluster */}
         <div className="flex items-center gap-2.5 lg:gap-3 shrink-0 ml-auto lg:ml-0">
           <div className="hidden sm:flex items-baseline gap-2 caption-mono">
-            <span className="text-[10px] text-zinc-600">{dateLabel}</span>
+            <span className="text-[10px] text-meta">{dateLabel}</span>
             <span className="text-[12px] text-white/85 tabular-nums">
-              {hh}:{mm}<span className="text-zinc-700">:{ss}</span>
+              {hh}:{mm}<span className="text-faint">:{ss}</span>
             </span>
-            <span className="text-[9.5px] text-zinc-600">CET</span>
+            <span className="text-[9.5px] text-meta">CET</span>
           </div>
 
           <span className="hidden sm:block h-4 w-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
 
           <button
-            className="relative w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white transition-colors ease-os press"
+            className="relative w-7 h-7 rounded-md flex items-center justify-center text-secondary hover:text-white transition-colors ease-os press"
             style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
             aria-label="Notifications"
           >
@@ -143,13 +167,15 @@ export function CommandBar({ operator }: CommandBarProps) {
               >
                 <span className="text-[8.5px] font-bold text-white">{initials}</span>
               </div>
-              <span className="eyebrow !text-[9px] !text-zinc-500 !tracking-[0.18em] hidden xl:inline">
+              <span className="eyebrow !text-[9px] !text-secondary !tracking-[0.18em] hidden xl:inline">
                 Operator
               </span>
             </div>
           )}
         </div>
       </div>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} />
     </div>
   )
 }

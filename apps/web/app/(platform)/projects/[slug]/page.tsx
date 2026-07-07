@@ -7,23 +7,20 @@ import type { RunStatus } from '@/lib/supabase/types'
 import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus, Radio } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function ProjectPage({
   params,
 }: {
   params: { slug: string }
 }) {
-  const supabase = await createClient()
   const { slug } = params
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('slug', slug)
-    .single()
-
+  const project = await getProjectBySlug(slug)
   if (!project) notFound()
 
+  const supabase = await createClient()
   const [
     { data: agents, count: agentCount },
     { data: workflows, count: workflowCount },
@@ -48,9 +45,9 @@ export default async function ProjectPage({
   ]
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+    <OSPage className="animate-fade-in">
+      {/* HERO */}
+      <OSLayer layer="hero" className="flex items-center gap-3">
         <span
           className="w-4 h-4 rounded-full shrink-0 mt-0.5"
           style={{ backgroundColor: project.color }}
@@ -59,10 +56,11 @@ export default async function ProjectPage({
           <h1 className="text-2xl font-bold">{project.name}</h1>
           <p className="text-sm text-muted-foreground font-mono">{project.slug}</p>
         </div>
-      </div>
+      </OSLayer>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* OPERATIONAL · quick stats + actions */}
+      <OSLayer layer="operational" className="space-y-5 lg:space-y-6">
+      <div className="grid grid-cols-3 lg:grid-cols-3 3xl:grid-cols-4 gap-4 lg:gap-5">
         {stats.map((stat) => {
           const Icon = stat.icon
           return (
@@ -113,8 +111,10 @@ export default async function ProjectPage({
           Media Pipeline
         </Link>
       </div>
+      </OSLayer>
 
-      {/* Recent runs */}
+      {/* INTELLIGENCE · recent runs + dream cycle */}
+      <OSLayer layer="intelligence" className="space-y-5 lg:space-y-6">
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
@@ -178,6 +178,7 @@ export default async function ProjectPage({
 
       {/* Dream Cycle */}
       <DreamStatus slug={slug} />
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

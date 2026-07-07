@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
-// Root redirects to dashboard (middleware handles auth)
+// Root redirects to Atlas — the primary entry point (middleware handles auth)
 export default function RootPage() {
-  redirect('/dashboard')
+  redirect('/atlas')
 }

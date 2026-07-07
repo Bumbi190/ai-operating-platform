@@ -49,14 +49,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 
+  const projectId = script.project_id
+  if (!projectId) {
+    return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+
   try {
     // Generate voiceover with word-level timing
     const result = await generateVoiceover(text, voice ?? 'victoria')
 
     // Upload audio + timing to Supabase Storage
     const [audioUrl, timingUrl] = await Promise.all([
-      uploadAudio(script.project_id, script_id, result.audioBuffer),
-      uploadTimingData(script.project_id, script_id, {
+      uploadAudio(projectId, script_id, result.audioBuffer),
+      uploadTimingData(projectId, script_id, {
         words: result.words,
         durationMs: result.durationMs,
       }),

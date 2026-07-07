@@ -100,7 +100,7 @@ export async function fetchDashboardSnapshot(
 
     admin
       .from('workflows')
-      .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at')
+      .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at, side_effect_class')
       .order('created_at', { ascending: true }),
 
     // Recent runs (with joins for the UI rows)
@@ -332,9 +332,14 @@ export function classifyRunStatus(s: RunStatus): {
   label: string
 } {
   switch (s) {
-    case 'running': return { tier: 'live',     label: 'Executing' }
-    case 'pending': return { tier: 'passive',  label: 'Pending' }
-    case 'done':    return { tier: 'archived', label: 'Complete' }
-    case 'failed':  return { tier: 'critical', label: 'Failed' }
+    case 'running':           return { tier: 'live',     label: 'Executing' }
+    case 'pending':           return { tier: 'passive',  label: 'Pending' }
+    case 'awaiting_approval': return { tier: 'passive',  label: 'Väntar godkännande' }
+    case 'done':              return { tier: 'archived', label: 'Complete' }
+    case 'cancelled':         return { tier: 'archived', label: 'Avbruten' }
+    case 'failed':            return { tier: 'critical', label: 'Failed' }
+    case 'rejected':          return { tier: 'critical', label: 'Avvisad' }
+    // Defensive default: any future/unknown status degrades gracefully.
+    default:                  return { tier: 'passive',  label: 'Okänd' }
   }
 }

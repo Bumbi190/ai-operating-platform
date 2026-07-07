@@ -1,0 +1,187 @@
+{
+  "version": "d2-v1",
+  "agent": "character_consistency",
+  "stage": "D2_deterministic",
+  "projectId": "familje-stunden",
+  "canon_version": "0.1.0",
+  "trust_level": "canonical",
+  "count": {
+    "source": "composition_manifest",
+    "detected": 2,
+    "expected": 2,
+    "duplicates": [],
+    "foreign_characters": [],
+    "band": "pass"
+  },
+  "per_character": [
+    {
+      "id": "nova",
+      "palette": {
+        "colors": [
+          {
+            "name": "rosa_signatur",
+            "required": true,
+            "signature": true,
+            "found": true,
+            "min_delta_e": 0.1854,
+            "band": "pass"
+          },
+          {
+            "name": "trojo_turkos",
+            "required": true,
+            "signature": true,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          },
+          {
+            "name": "har_brunt",
+            "required": true,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          },
+          {
+            "name": "hud_varm",
+            "required": false,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0.7637,
+            "band": "pass"
+          },
+          {
+            "name": "bok_bla",
+            "required": false,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 1.5394,
+            "band": "pass"
+          },
+          {
+            "name": "kontur_mork",
+            "required": false,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          }
+        ],
+        "missing_required": [],
+        "missing_signature": [],
+        "foreign_dominant": [],
+        "band": "pass"
+      },
+      "must_have": {
+        "band": "pass",
+        "via": "provenance",
+        "provenance_distance": 0
+      },
+      "must_not": {
+        "deterministic_hits": [],
+        "deferred_semantic": [
+          "robot- eller maskindrag",
+          "byta hårfärg eller frisyr",
+          "framställas som vuxen",
+          "skrämmande/negativt uttryck",
+          "annat färgschema än kanon",
+          "byta kanon-utseende"
+        ],
+        "band": "pass"
+      },
+      "d2_band": "pass"
+    },
+    {
+      "id": "pling",
+      "palette": {
+        "colors": [
+          {
+            "name": "kropp_bla_primar",
+            "required": true,
+            "signature": true,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          },
+          {
+            "name": "kropp_bla_mid",
+            "required": false,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0.0547,
+            "band": "pass"
+          },
+          {
+            "name": "kropp_bla_skugga",
+            "required": false,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          },
+          {
+            "name": "ansiktsskarm_navy",
+            "required": true,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          },
+          {
+            "name": "ogon_ljusbla",
+            "required": true,
+            "signature": false,
+            "found": true,
+            "min_delta_e": 0.2559,
+            "band": "pass"
+          },
+          {
+            "name": "antenn_rosa",
+            "required": true,
+            "signature": true,
+            "found": true,
+            "min_delta_e": 1.5278,
+            "band": "pass"
+          },
+          {
+            "name": "hjarta_gult",
+            "required": true,
+            "signature": true,
+            "found": true,
+            "min_delta_e": 0,
+            "band": "pass"
+          }
+        ],
+        "missing_required": [],
+        "missing_signature": [],
+        "foreign_dominant": [],
+        "band": "pass"
+      },
+      "must_have": {
+        "band": "pass",
+        "via": "provenance",
+        "provenance_distance": 0
+      },
+      "must_not": {
+        "deterministic_hits": [],
+        "deferred_semantic": [
+          "människa/flicka",
+          "byta kroppsfärg",
+          "sakna hjärtknapp eller antenn",
+          "skrämmande/negativt uttryck",
+          "byta kanon-utseende"
+        ],
+        "band": "pass"
+      },
+      "d2_band": "pass"
+    }
+  ],
+  "d2_overall": {
+    "band": "pass",
+    "short_circuited": false
+  },
+  "next_stages": {
+    "similarity_required": false,
+    "vlm_required": false
+  }
+}

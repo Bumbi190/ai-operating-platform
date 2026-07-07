@@ -11,6 +11,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { jsonStringArray } from '@/lib/supabase/json'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +39,7 @@ export async function GET(
     { status: 400 },
   )
 
-  const images: string[] = Array.isArray(script.images) ? script.images : []
+  const images: string[] = jsonStringArray(script.images)
 
   const renderInput = {
     scriptId: script.id,

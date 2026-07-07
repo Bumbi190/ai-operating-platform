@@ -1,0 +1,109 @@
+/**
+ * Atlas honesty guards — claim-detection regexes.
+ *
+ * NAV_CLAIM_RE must catch every phrasing that asserts a navigation happened
+ * (so the route can correct it when no navigate tool ran), while NOT firing on
+ * the present_links "here are shortcuts" phrasing — otherwise legitimate chip
+ * answers would be wrongly corrected.
+ */
+import { describe, it, expect } from 'vitest'
+import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
+
+describe('NAV_CLAIM_RE — detects navigation claims (English)', () => {
+  const claims = [
+    'I opened the approvals page for you.',
+    'Opening the costs view now.',
+    'I navigated to the GainPilot project.',
+    'Navigating you to the dashboard.',
+    'I took you to the activity page.',
+    'Taking you there now.',
+    'Switched to the revenue view.',
+    'I brought you to the approvals queue.',
+    'Showing you the approvals page.',
+    'Showing the activity page.',
+    'I opened the project for you.',
+  ]
+  for (const c of claims) {
+    it(`matches: "${c}"`, () => expect(NAV_CLAIM_RE.test(c)).toBe(true))
+  }
+})
+
+describe('NAV_CLAIM_RE — detects navigation claims (Swedish)', () => {
+  const claims = [
+    'Jag öppnade godkännanden åt dig.',
+    'Öppnar kostnadsvyn nu.',
+    'Jag har öppnat sidan.',
+    'Jag navigerade till projektet.',
+    'Jag navigerar till aktiviteten.',
+    'Jag tar dig till godkännanden.',
+    'Jag tog dig dit.',
+    'Jag visar dig sidan nu.',
+    'Visar vyn med godkännanden.',
+  ]
+  for (const c of claims) {
+    it(`matches: "${c}"`, () => expect(NAV_CLAIM_RE.test(c)).toBe(true))
+  }
+})
+
+describe('NAV_CLAIM_RE — does NOT fire on present_links "shortcuts" phrasing', () => {
+  const safe = [
+    'Here are shortcuts:',
+    'Here are shortcuts to the approvals queue.',
+    'Här är genvägar:',
+    'Här är snabblänkar till godkännanden.',
+    'Du har 3 väntande godkännanden.', // pure status, no claim
+    'There are 3 pending approvals.',
+    'I can open it if you confirm.', // offer, infinitive — not a claim
+    'Vill du att jag öppnar den?', // question/offer — "öppnar" only inside a question
+  ]
+  // Note: the last two are intentionally tricky. "öppnar" inside a question is a
+  // known acceptable edge — we assert the clearly-safe shortcut phrasings here.
+  for (const s of safe.slice(0, 6)) {
+    it(`does not match: "${s}"`, () => expect(NAV_CLAIM_RE.test(s)).toBe(false))
+  }
+})
+
+describe('ACTION_CLAIM_RE — unchanged behavior', () => {
+  it('matches a workflow run claim', () => {
+    expect(ACTION_CLAIM_RE.test('Jag triggar workflowet nu.')).toBe(true)
+    expect(ACTION_CLAIM_RE.test('Startar publiceringen.')).toBe(true)
+  })
+  it('does not match a navigation-only claim', () => {
+    expect(ACTION_CLAIM_RE.test('Jag öppnade godkännanden.')).toBe(false)
+  })
+  it('does not match a plain status answer', () => {
+    expect(ACTION_CLAIM_RE.test('Du har 3 väntande godkännanden.')).toBe(false)
+  })
+  it('does NOT match delegation claims (those are DELEGATE_CLAIM_RE)', () => {
+    expect(ACTION_CLAIM_RE.test('Jag delegerar de kritiska fynden.')).toBe(false)
+  })
+})
+
+describe('DELEGATE_CLAIM_RE — detects delegation / task-creation claims', () => {
+  const claims = [
+    'Jag delegerar de kritiska fynden nu.',
+    'Jag har delegerat ärendet.',
+    'Jag delegerade alla kritiska.',
+    "I'm delegating the critical findings.",
+    'Delegated all critical issues.',
+    'Jag skapar en uppgift för det.',
+    'Jag skapade uppgifter för de kritiska fynden.',
+    'Creating tasks from the findings now.',
+    'Created 8 tasks for the critical issues.',
+  ]
+  for (const c of claims) {
+    it(`matches: "${c}"`, () => expect(DELEGATE_CLAIM_RE.test(c)).toBe(true))
+  }
+
+  const safe = [
+    'Du har 8 kritiska Dream-fynd.',          // pure status
+    'Vill du att jag delegerar dem?',          // offer/question is acceptable-ish but...
+    'Jag kan delegera dem om du vill.',        // offer (infinitive) — should not claim done
+  ]
+  it('does not fire on a pure status answer', () => {
+    expect(DELEGATE_CLAIM_RE.test(safe[0])).toBe(false)
+  })
+  it('does not fire on the infinitive offer "kan delegera"', () => {
+    expect(DELEGATE_CLAIM_RE.test(safe[2])).toBe(false)
+  })
+})

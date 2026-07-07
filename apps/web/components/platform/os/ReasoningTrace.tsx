@@ -49,14 +49,14 @@ export function ReasoningTrace({ steps }: { steps: ReasoningStep[] }) {
                   {meta.label}
                 </span>
                 {step.confidence != null && (
-                  <span className="text-[9px] text-zinc-600 font-mono">
+                  <span className="text-[9px] text-meta font-mono">
                     · {step.confidence}% conf
                   </span>
                 )}
               </div>
               <p className="text-[12px] text-zinc-200 leading-snug">{step.title}</p>
               {step.detail && (
-                <p className="text-[10.5px] text-zinc-500 mt-1 leading-relaxed">{step.detail}</p>
+                <p className="text-[10.5px] text-secondary mt-1 leading-relaxed">{step.detail}</p>
               )}
             </div>
           </div>
@@ -88,7 +88,7 @@ export function ScoreBar({
       <div className="flex items-center justify-between text-[10.5px]">
         <span className="text-zinc-400 font-medium">{label}</span>
         <span className="num font-bold" style={{ color }}>
-          {score}<span className="text-zinc-600 font-normal">/{max}</span>
+          {score}<span className="text-meta font-normal">/{max}</span>
         </span>
       </div>
       <div className="progress-track">
@@ -102,7 +102,7 @@ export function ScoreBar({
         />
       </div>
       {description && (
-        <p className="text-[10px] text-zinc-600 leading-relaxed">{description}</p>
+        <p className="text-[10px] text-meta leading-relaxed">{description}</p>
       )}
     </div>
   )

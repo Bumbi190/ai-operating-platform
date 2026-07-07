@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface StreamingTextProps {
-  text: string
+  text?: string
   /** ms per character */
   speed?: number
   /** ms before starting */
@@ -40,7 +40,7 @@ export function StreamingText({
   const [phase, setPhase] = useState<'typing' | 'holding' | 'erasing'>('typing')
   const [idx, setIdx] = useState(0)
 
-  const sequence = cycle ?? [text]
+  const sequence = cycle ?? [text ?? '']
   const current = sequence[idx % sequence.length]
 
   useEffect(() => {

@@ -53,27 +53,27 @@ export function SystemReadyBanner({
         </span>
       </span>
 
-      <span className="text-zinc-700 caption-mono text-[10px]">|</span>
+      <span className="text-faint caption-mono text-[10px]">|</span>
 
       <span className="caption-mono text-[10.5px] text-zinc-400 shrink-0">
-        <span className="text-zinc-600">SYS</span>{' '}
+        <span className="text-meta">SYS</span>{' '}
         <span className="text-white/85">
-          {systemsOnline ?? '—'}<span className="text-zinc-700">/{systemsTotal ?? '—'}</span>
+          {systemsOnline ?? '—'}<span className="text-faint">/{systemsTotal ?? '—'}</span>
         </span>
-        {' '}<span className="text-zinc-600">online</span>
+        {' '}<span className="text-meta">online</span>
       </span>
 
-      <span className="text-zinc-700 caption-mono text-[10px] hidden md:inline">|</span>
+      <span className="text-faint caption-mono text-[10px] hidden md:inline">|</span>
 
-      <span className="caption-mono text-[10.5px] text-zinc-500 hidden md:inline truncate">
-        <span className="text-zinc-600">Bus</span> <span className="text-emerald-400/80">nominal</span>
-        <span className="text-zinc-700"> · </span>
-        <span className="text-zinc-600">Mem</span> <span className="text-indigo-300/80">sync</span>
-        <span className="text-zinc-700"> · </span>
-        <span className="text-zinc-600">Telemetry</span> <span className="text-cyan-300/80">streaming</span>
+      <span className="caption-mono text-[10.5px] text-secondary hidden md:inline truncate">
+        <span className="text-meta">Bus</span> <span className="text-emerald-400/80">nominal</span>
+        <span className="text-faint"> · </span>
+        <span className="text-meta">Mem</span> <span className="text-indigo-300/80">sync</span>
+        <span className="text-faint"> · </span>
+        <span className="text-meta">Telemetry</span> <span className="text-cyan-300/80">streaming</span>
       </span>
 
-      <span className="ml-auto caption-mono text-[10px] text-zinc-600 shrink-0">
+      <span className="ml-auto caption-mono text-[10px] text-meta shrink-0">
         Boot · {bootLabel}
       </span>
     </div>

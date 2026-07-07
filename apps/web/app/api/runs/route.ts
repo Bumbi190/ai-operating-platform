@@ -12,10 +12,8 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import { executeWorkflow } from '@/lib/ai/workflow-executor'
-import type { WorkflowStep } from '@/lib/supabase/types'
+import { buildAgentRunInsert } from '@/lib/ai/run-create'
 
 export async function POST(request: Request) {
   // Auth check uses the user's session
@@ -41,7 +39,7 @@ export async function POST(request: Request) {
   // Verify workflow exists and belongs to the user
   const { data: workflow } = await anySupabase
     .from('workflows')
-    .select('id, project_id, name, steps')
+    .select('id, project_id, name, steps, side_effect_class')
     .eq('id', workflow_id)
     .single()
 
@@ -50,16 +48,11 @@ export async function POST(request: Request) {
   }
 
   // Create run record
+  // DURABLE: skapa körningen som 'pending'. Ingen inline-körning (inget fire-and-forget).
+  // pg_cron-drainern (/api/runs/drain) claimar och kör den durabelt.
   const { data: run, error: runErr } = await anySupabase
     .from('runs')
-    .insert({
-      workflow_id: workflow.id,
-      project_id: workflow.project_id,
-      status: 'running',
-      input,
-      context: {},
-      started_at: new Date().toISOString(),
-    })
+    .insert(buildAgentRunInsert(workflow, input))
     .select('id')
     .single()
 
@@ -68,11 +61,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Kunde inte skapa körning' }, { status: 500 })
   }
 
-  // Starta körning i bakgrunden med admin-klienten (oberoende av request-lifecycle)
-  const admin = createAdminClient()
-  void executeWorkflow(admin, run.id, workflow.project_id, (workflow.steps as WorkflowStep[]) ?? [], {
-    initialInput: input,
-  })
-
-  return NextResponse.json({ run_id: run.id }, { status: 202 })
+  return NextResponse.json({ run_id: run.id, status: 'pending' }, { status: 202 })
 }

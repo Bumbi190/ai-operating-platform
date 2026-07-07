@@ -1,0 +1,38 @@
+{
+  "canon_version": "0.1.0",
+  "updated": "2026-06-05",
+  "brand": "familje-stunden",
+  "status": "draft",
+  "note": "Governance-manifest för Canon Foundation. Pinnar version, ägarskap och checksums. Agenter ska logga vilken canon_version de använde.",
+  "owner": "Andre Hultgren",
+  "manifests": [
+    { "file": "character-reference.json", "schema": "schemas/character-reference.schema.json", "derived_from": ["../characters/nova-v2.md", "../characters/pling-v2.md", "../characters/character-rules.md"], "checksum": null },
+    { "file": "theme-canon.json",         "schema": "schemas/theme-canon.schema.json",         "derived_from": ["../themes/index.json", "../../../apps/web/lib/marketing/kb/marketing-canon.ts", "../themes/*.md"], "checksum": null },
+    { "file": "child-safety-rules.json",  "schema": "schemas/child-safety-rules.schema.json",  "derived_from": ["../_meta/brand-rules.md", "../marketing-bible.md"], "checksum": null },
+    { "file": "cca-params.json",          "schema": "schemas/cca-params.schema.json",          "derived_from": ["character-reference.json", "CCA-D2 build manifest"], "checksum": null }
+  ],
+  "binary_assets": {
+    "bucket": "familje-stunden",
+    "status": "pending_import",
+    "items": [
+      { "storage_path": "characters/nova/canonical-front.png",  "source_repo": "familje-stunden-v2/public/images/nova_clean.png",  "checksum": null },
+      { "storage_path": "characters/pling/canonical-front.png", "source_repo": "familje-stunden-v2/public/images/pling_clean.png", "checksum": null }
+    ]
+  },
+  "decisions_log": [
+    { "date": "2026-06-05", "id": "D1", "decision": "Primära kanonbilder = nova_clean.png / pling_clean.png" },
+    { "date": "2026-06-05", "id": "D2", "decision": "Novas bok = blå (kanon). nova-v2.md ska korrigeras (gul/orange -> blå)." },
+    { "date": "2026-06-05", "id": "D3", "decision": "theme-canon.json = enda sanningskällan; övriga månadskonfigurationer härleds/synkas." },
+    { "date": "2026-06-05", "id": "D4", "decision": "Juni status=blocked, publishable=false tills temat fastställs." },
+    { "date": "2026-06-05", "id": "D5", "decision": "Character Consistency inkluderar reference_similarity-score utöver färg/proportion/regler." }
+  ],
+  "open_gaps": [
+    "G2: hex samplade (klart), men ΔE-toleranser bör valideras mot scenbilder",
+    "G3: proportions.head_to_body_ratio + landmarks ej uppmätta (gap_measure)",
+    "G4: characters/index.json roll 'rymdkapten' ska rättas till människoflicka/robot",
+    "G5: nova-v2.md bokfärg ska uppdateras till blå",
+    "G9: activities[] tomma för 9 av 11 publicerbara månader (activity_canon_complete=false)",
+    "similarity: embedding-modell ej vald (Fas 2/3)",
+    "G13: färgnamn 'trojo_turkos' i character-reference.json är stavfel (bör bli 'troja_turkos') — städas i canon-patch; cca-params.json matchar nuvarande namn"
+  ]
+}

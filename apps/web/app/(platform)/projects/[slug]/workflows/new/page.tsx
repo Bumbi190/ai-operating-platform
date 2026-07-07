@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Agent, WorkflowStep } from '@/lib/supabase/types'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 interface StepDraft extends Omit<WorkflowStep, 'order'> {
   id: string // local key for React
@@ -139,15 +140,17 @@ export default function NewWorkflowPage({
   const agentMap = Object.fromEntries(agents.map((a) => [a.id, a]))
 
   return (
-    <div className="p-8 max-w-3xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Nytt workflow</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero">
+        <p className="eyebrow eyebrow-accent mb-3">System · workflow composition</p>
+        <h1 className="text-3xl 2xl:text-4xl font-bold tracking-tight">Nytt workflow</h1>
+        <p className="text-sm 2xl:text-base text-zinc-400 mt-2 max-w-2xl">
           En sekvens av agentsteg där varje steg kan använda utdata från föregående
         </p>
-      </div>
+      </OSLayer>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <OSLayer layer="operational">
+      <form onSubmit={handleSubmit} className="space-y-8 max-w-4xl 3xl:max-w-5xl">
         {/* Basic info */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -426,6 +429,7 @@ export default function NewWorkflowPage({
           </Button>
         </div>
       </form>
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

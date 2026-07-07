@@ -1,0 +1,297 @@
+/**
+ * Atlas Operations Center — ETT operativt snapshot över hela verksamheten.
+ *
+ * Bygger ENBART på befintliga tabeller (media_scripts, media_insights, runs,
+ * leads, cost_events, projects). Ingen ny datamodell, ingen dashboard-duplicering.
+ * Detta är datalagret bakom /atlas/operations OCH bakom Atlas svar på frågor som
+ * "Hur går det idag?", "Vad väntar på publicering?", "Finns några fel?".
+ *
+ * Allt är defensivt: saknad/avvikande data degraderar till 0/null i stället för
+ * att krascha. Read-only.
+ */
+
+import { revenueIntel } from './revenue'
+import { applyProjectScope } from './isolation'
+
+type AnyDb = any
+
+const PROMPT_SLUG   = 'ai-media-automation'
+const FAMILJE_SLUG  = 'familje-stunden'
+const GAINPILOT_SLUG = 'gainpilot'
+
+export interface PromptOps {
+  publishedToday: number
+  waitingRender: number   // voiceover klar, render ej startad
+  rendering: number       // render pågår
+  waitingPublish: number  // video klar, ej publicerad (FÄRSK, ≤4 dagar)
+  archived: number        // arkiverad pga färskhetspolicy (>4 dagar gammal news)
+  retrying: number        // steg som väntar på auto-omförsök (self-healing)
+  pipelineErrors: number  // steg som nått max försök → kräver operatör
+  failed24h: number
+  views: { instagram: number; youtube: number; facebook: number }
+  latestPublished: {
+    hook: string
+    at: string | null
+    instagram: string | null
+    youtube: string | null
+    facebook: string | null
+  } | null
+}
+
+export interface FamiljeOps {
+  activeSubscribers: number | null  // null = Stripe-snapshot saknas ännu
+  mrrSek: number | null
+  newSubscribers: number | null
+  trialing: number | null
+  churnRatePct: number | null
+  leads: number
+  socialPosts: number
+  failed24h: number
+}
+
+export interface GainpilotOps {
+  betaUsers: number | null    // placeholder — ingen datakälla ännu
+  activeUsers: number | null  // placeholder — ingen datakälla ännu
+  leads: number
+  failed24h: number
+}
+
+export interface SystemHealth {
+  costTodaySek: number
+  costMonthSek: number
+  activeWorkflows: number   // körningar som pågår nu
+  stuckWorkflows: number    // pågår men lease utgången / hängda
+  failedWorkflows: number   // misslyckade senaste 24h
+  lastError: { message: string; workflow: string | null; at: string } | null
+}
+
+export interface TokenHealthRow {
+  platform: string
+  status: string            // ok | warning | expired | error | unknown
+  daysLeft: number | null
+  expiresAt: string | null
+  lastVerifiedAt: string | null
+  lastRefreshedAt: string | null
+  lastError: string | null
+}
+
+export interface HeartbeatRow {
+  jobname: string
+  label: string
+  cadence: string
+  status: string         // ok | late | endpoint_failing | dead | pending_first_run | unknown
+  detail: string | null
+  lastFiredAt: string | null
+  checkedAt: string | null
+}
+
+export interface OperationsSnapshot {
+  generatedAt: string
+  prompt: PromptOps
+  familje: FamiljeOps
+  gainpilot: GainpilotOps
+  system: SystemHealth
+  tokens: TokenHealthRow[]
+  heartbeat: HeartbeatRow[]
+}
+
+function startOfTodayIso(): string {
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString()
+}
+function startOfMonthIso(): string {
+  const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString()
+}
+function isToday(iso: string | null): boolean {
+  if (!iso) return false
+  const d = new Date(iso); const n = new Date()
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
+}
+function wfName(r: any): string | null {
+  const w = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
+  return w?.name ?? null
+}
+
+export async function getOperations(db: AnyDb, allowedProjectIds?: string[]): Promise<OperationsSnapshot> {
+  const safe = async <T>(p: Promise<{ data: T | null }>, fb: T): Promise<T> => {
+    try { const { data } = await p; return data ?? fb } catch { return fb }
+  }
+
+  const since24h   = new Date(Date.now() - 24 * 3600_000).toISOString()
+  const monthStart = startOfMonthIso()
+  const todayStart = startOfTodayIso()
+  const nowMs      = Date.now()
+  // ISOLATION: scope project-native reads (undefined = no scope, legacy callers).
+  // token_health + cron_heartbeat are infra tables with no project_id → global.
+
+  const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows, heartbeatRows] = await Promise.all([
+    safe<any[]>(applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), []),
+    safe<any[]>(applyProjectScope(db.from('media_scripts').select('project_id, status, voice_status, video_status, published_at, hook, instagram_url, youtube_url, facebook_url, voice_attempts, render_attempts, pipeline_failed_reason, updated_at'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('media_insights').select('project_id, platform, views, reach, impressions'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('runs').select('project_id, status, error, last_error, created_at, finished_at, workflows(name)').gte('created_at', since24h).order('created_at', { ascending: false }), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), []),
+    safe<any[]>(applyProjectScope(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), allowedProjectIds), []),
+    safe<any[]>(db.from('token_health').select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at, last_error'), []),
+    safe<any[]>(db.from('cron_heartbeat').select('jobname, label, cadence, status, detail, last_fired_at, checked_at'), []),
+  ])
+
+  const idBySlug = new Map<string, string>()
+  for (const p of projects) idBySlug.set(p.slug, p.id)
+  const promptId    = idBySlug.get(PROMPT_SLUG)
+  const familjeId   = idBySlug.get(FAMILJE_SLUG)
+  const gainpilotId = idBySlug.get(GAINPILOT_SLUG)
+
+  const failed24hFor = (pid?: string) =>
+    runs24h.filter(r => r.status === 'failed' && (!pid || r.project_id === pid)).length
+  const leadsFor = (pid?: string) =>
+    leads.filter(l => !pid || l.project_id === pid).length
+
+  // ── THE PROMPT ──────────────────────────────────────────────────────────────
+  const promptScripts = scripts.filter(s => s.project_id === promptId)
+  const isReadyVideo  = (s: any) => String(s.video_status) === 'ready'
+  const isPublished   = (s: any) => String(s.status) === 'published'
+
+  const promptViews = { instagram: 0, youtube: 0, facebook: 0 }
+  for (const i of insights.filter(x => x.project_id === promptId)) {
+    const v = Number(i.views ?? 0) || Number(i.reach ?? 0) || Number(i.impressions ?? 0) || 0
+    const plat = String(i.platform ?? '').toLowerCase()
+    if (plat.includes('insta')) promptViews.instagram += v
+    else if (plat.includes('you')) promptViews.youtube += v
+    else if (plat.includes('face')) promptViews.facebook += v
+  }
+
+  const latestPubScript = promptScripts
+    .filter(isPublished)
+    .slice()
+    .sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime())[0] ?? null
+
+  const prompt: PromptOps = {
+    publishedToday: promptScripts.filter(s => isPublished(s) && isToday(s.published_at)).length,
+    waitingRender:  promptScripts.filter(s => String(s.voice_status) === 'ready' && ['none', 'generating_images'].includes(String(s.video_status)) && !isPublished(s)).length,
+    rendering:      promptScripts.filter(s => String(s.video_status) === 'rendering').length,
+    waitingPublish: promptScripts.filter(s => isReadyVideo(s) && !isPublished(s)).length,
+    archived:       promptScripts.filter(s => String(s.video_status) === 'archived').length,
+    retrying:       promptScripts.filter(s =>
+                      (String(s.voice_status) === 'failed' && (s.voice_attempts ?? 0) < 3) ||
+                      (String(s.video_status) === 'failed' && (s.render_attempts ?? 0) < 3)).length,
+    pipelineErrors: promptScripts.filter(s =>
+                      (String(s.voice_status) === 'failed' && (s.voice_attempts ?? 0) >= 3) ||
+                      (String(s.video_status) === 'failed' && (s.render_attempts ?? 0) >= 3)).length,
+    failed24h:      failed24hFor(promptId),
+    views:          promptViews,
+    latestPublished: latestPubScript ? {
+      hook: latestPubScript.hook ?? 'Publicerad video',
+      at:   latestPubScript.published_at ?? null,
+      instagram: latestPubScript.instagram_url ?? null,
+      youtube:   latestPubScript.youtube_url ?? null,
+      facebook:  latestPubScript.facebook_url ?? null,
+    } : null,
+  }
+
+  // ── FAMILJE-STUNDEN (intäkt från Stripe-snapshot) ───────────────────────────
+  const rev = familjeId ? await revenueIntel(db, familjeId, allowedProjectIds) : null
+  const familje: FamiljeOps = {
+    activeSubscribers: rev?.hasData ? rev.activeSubscribers : null,
+    mrrSek:            rev?.hasData ? rev.mrrSek : null,
+    newSubscribers:    rev?.hasData ? rev.newSubscribers : null,
+    trialing:          rev?.hasData ? rev.trialing : null,
+    churnRatePct:      rev?.hasData ? rev.churnRatePct : null,
+    leads:       leadsFor(familjeId),
+    socialPosts: scripts.filter(s => s.project_id === familjeId && isPublished(s)).length,
+    failed24h:   failed24hFor(familjeId),
+  }
+
+  // ── GAINPILOT ───────────────────────────────────────────────────────────────
+  const gainpilot: GainpilotOps = {
+    betaUsers:   null,  // placeholder — ingen datakälla ännu
+    activeUsers: null,  // placeholder — ingen datakälla ännu
+    leads:       leadsFor(gainpilotId),
+    failed24h:   failed24hFor(gainpilotId),
+  }
+
+  // ── ATLAS SYSTEM HEALTH ─────────────────────────────────────────────────────
+  const costMonthSek = costMonthRows.reduce((a, r) => a + (Number(r.cost_sek ?? 0) || 0), 0)
+  const costTodaySek = costMonthRows
+    .filter(r => r.created_at && r.created_at >= todayStart)
+    .reduce((a, r) => a + (Number(r.cost_sek ?? 0) || 0), 0)
+
+  const stuck = runningRuns.filter(r => {
+    if (r.lease_until) return new Date(r.lease_until).getTime() < nowMs
+    return r.started_at ? (nowMs - new Date(r.started_at).getTime()) > 2 * 3600_000 : false
+  }).length
+
+  const lastErrRun = runs24h.find(r => r.status === 'failed' && (r.error || r.last_error))
+  const system: SystemHealth = {
+    costTodaySek,
+    costMonthSek,
+    activeWorkflows: runningRuns.length,
+    stuckWorkflows:  stuck,
+    failedWorkflows: failed24hFor(),
+    lastError: lastErrRun ? {
+      message:  String(lastErrRun.error ?? lastErrRun.last_error).slice(0, 200),
+      workflow: wfName(lastErrRun),
+      at:       lastErrRun.finished_at ?? lastErrRun.created_at,
+    } : null,
+  }
+
+  // ── INTEGRATIONER & TOKENS ──────────────────────────────────────────────────
+  const order = ['instagram', 'facebook', 'youtube']
+  const tokens: TokenHealthRow[] = (tokenRows as any[])
+    .map(t => ({
+      platform: t.platform,
+      status: t.status ?? 'unknown',
+      daysLeft: t.days_left ?? null,
+      expiresAt: t.expires_at ?? null,
+      lastVerifiedAt: t.last_verified_at ?? null,
+      lastRefreshedAt: t.last_refreshed_at ?? null,
+      lastError: t.last_error ?? null,
+    }))
+    .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform))
+
+  // ── AUTOMATION / HEARTBEAT ──────────────────────────────────────────────────
+  const heartbeat: HeartbeatRow[] = (heartbeatRows as any[]).map(h => ({
+    jobname: h.jobname, label: h.label ?? h.jobname, cadence: h.cadence ?? '',
+    status: h.status ?? 'unknown', detail: h.detail ?? null,
+    lastFiredAt: h.last_fired_at ?? null, checkedAt: h.checked_at ?? null,
+  }))
+
+  return { generatedAt: new Date().toISOString(), prompt, familje, gainpilot, system, tokens, heartbeat }
+}
+
+/**
+ * Kompakt textsammanfattning för Atlas live-kontext (chat/röst), så Atlas kan
+ * svara "Hur går det idag?", "Vad väntar på publicering?", "Finns några fel?",
+ * "Vilket projekt går bäst?" direkt — utan att fråga databasen per tur.
+ */
+export function operationsSummary(o: OperationsSnapshot): string {
+  const p = o.prompt
+  const viewsTotal = p.views.instagram + p.views.youtube + p.views.facebook
+  const lines: string[] = []
+  lines.push(`\n\nOPERATIONS (live):`)
+  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade: ${p.archived}, återförsöker: ${p.retrying}, fastnade fel (kräver åtgärd): ${p.pipelineErrors}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
+  if (p.latestPublished) lines.push(`Senast publicerat: "${(p.latestPublished.hook ?? '').slice(0, 60)}".`)
+  const f = o.familje
+  const famRev = f.activeSubscribers === null
+    ? 'intäkt: Stripe-snapshot saknas ännu'
+    : `${f.activeSubscribers} aktiva prenumeranter, MRR ${Math.round(f.mrrSek ?? 0)} kr, ${f.newSubscribers ?? 0} nya, ${f.trialing ?? 0} trial, churn ${f.churnRatePct ?? 0}%`
+  lines.push(`Familje-Stunden — ${famRev}; leads: ${f.leads}, sociala poster: ${f.socialPosts}, fel 24h: ${f.failed24h}.`)
+  lines.push(`GainPilot — beta: ${o.gainpilot.betaUsers ?? 'ingen data'}, aktiva: ${o.gainpilot.activeUsers ?? 'ingen data'}, leads: ${o.gainpilot.leads}, fel 24h: ${o.gainpilot.failed24h}.`)
+  lines.push(`System — kostnad idag ${Math.round(o.system.costTodaySek)} kr, denna månad ${Math.round(o.system.costMonthSek)} kr. Aktiva workflows: ${o.system.activeWorkflows}, hängda: ${o.system.stuckWorkflows}, misslyckade 24h: ${o.system.failedWorkflows}.`)
+  if (o.system.lastError) lines.push(`Senaste fel: ${o.system.lastError.workflow ?? 'okänt'} — ${o.system.lastError.message.slice(0, 100)}.`)
+  if (o.tokens.length) {
+    const tok = o.tokens.map(t => {
+      const d = t.daysLeft !== null ? `${t.daysLeft}d kvar` : (t.status === 'ok' ? 'giltigt' : t.status)
+      return `${t.platform}: ${t.status}${t.status === 'ok' || t.status === 'warning' ? ` (${d})` : ''}`
+    }).join(', ')
+    lines.push(`Tokens — ${tok}.`)
+  }
+  if (o.heartbeat.length) {
+    const problems = o.heartbeat.filter(h => ['late', 'dead', 'endpoint_failing'].includes(h.status))
+    if (problems.length === 0) {
+      lines.push(`Automation — alla kritiska cron-jobb körde i tid.`)
+    } else {
+      lines.push(`Automation — PROBLEM: ${problems.map(h => `${h.label} (${h.status}: ${h.detail ?? ''})`).join('; ')}.`)
+    }
+  }
+  return lines.join('\n')
+}

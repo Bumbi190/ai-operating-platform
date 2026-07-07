@@ -1,9 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import { FileOutput } from 'lucide-react'
 import Link from 'next/link'
 import { OutputCard } from './OutputCard'
+import { OSPage, OSLayer } from '@/components/platform/os'
+import { getProjectBySlug } from '@/lib/project/get-project'
 
 export default async function OutputsPage({
   params,
@@ -15,14 +16,7 @@ export default async function OutputsPage({
   const { slug } = await params
   const { all } = await searchParams
 
-  const supabase = await createClient()
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, name, slug')
-    .eq('slug', slug)
-    .single()
-
+  const project = await getProjectBySlug(slug)
   if (!project) notFound()
 
   const db = createAdminClient()
@@ -56,8 +50,8 @@ export default async function OutputsPage({
   })
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-end justify-between gap-4">
+    <OSPage className="animate-fade-in">
+      <OSLayer layer="hero" className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Utdata</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -87,8 +81,9 @@ export default async function OutputsPage({
             </Link>
           )}
         </div>
-      </div>
+      </OSLayer>
 
+      <OSLayer layer="operational">
       {!runs || runs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-16 text-center">
           <FileOutput className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -100,15 +95,16 @@ export default async function OutputsPage({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-3 lg:gap-4">
           {runs.map((run) => (
             <OutputCard
               key={run.id}
-              run={run}
+              run={{ ...run, context: run.context as unknown as Record<string, string> | null }}
             />
           ))}
         </div>
       )}
-    </div>
+      </OSLayer>
+    </OSPage>
   )
 }

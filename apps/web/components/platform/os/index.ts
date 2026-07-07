@@ -9,9 +9,19 @@ export { HeroStat } from './HeroStat'
 export { Instrument, InstrumentCluster } from './Instrument'
 export { DotMatrix, NowBadge } from './DotMatrix'
 export { Stage, SectionHeader } from './Stage'
+export { OSPage, OSLayer, OSGrid } from './OSPage'
 
 // Bars & chrome
 export { CommandBar } from './CommandBar'
+export { CommandPalette } from './CommandPalette'
+export { AtlasActionChips } from './AtlasActionChips'
+
+// Business command center
+export { DashboardHero } from './DashboardHero'
+export { BusinessCard } from './BusinessCard'
+export { QuickAdd } from './QuickAdd'
+export { ProactiveNudge } from './ProactiveNudge'
+export { AgenticButton } from './AgenticButton'
 
 // Mission systems
 export { AgentCard, type AgentSnapshot } from './AgentCard'
@@ -51,3 +61,13 @@ export {
 
 // Mobile companion
 export { MobileRailToggle } from './MobileRailToggle'
+
+// Atlas voice UI
+export { AtlasOrb, type OrbPhase } from './AtlasOrb'
+export { AtlasMiniOrb } from './AtlasMiniOrb'
+
+// Global voice assistant
+export { VoiceAssistant } from './VoiceAssistant'
+
+// Atlas view-awareness page wiring (selection / visible)
+export { ViewVisibleSync, ViewSelectionSync } from './ViewSync'

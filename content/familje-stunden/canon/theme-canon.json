@@ -1,0 +1,136 @@
+{
+  "$schema": "./schemas/theme-canon.schema.json",
+  "canon_version": "0.1.0",
+  "updated": "2026-06-05",
+  "brand": "familje-stunden",
+  "source_of_truth": true,
+  "note": "Enda sanningskällan för månadsteman + aktivitetskanon (beslut 2026-06-05). Familje-sajtens månadskonfig (familje-stunden-v2/src/config/months/*) och marketing-canon.ts ska härledas/synkas från denna fil. status: blocked|draft|defined. publishable styr om automation/publicering får använda månaden. activity_canon_complete=false => 'aktivitet finns denna månad' kan ej valideras förrän activities[] fyllts.",
+  "cta_default": { "url": "https://familje-stunden.se/prova-gratis", "price_sek": 59, "allowed_prices_sek": [0, 59, 129, 199] },
+  "months": [
+    {
+      "slug": "januari", "month_number": 1, "display_name": "Vinterexpedition", "emoji": "❄️",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Snöflingor, is, vinterdjur, vinterstjärnbilder (Orion, Stora björn).",
+      "symbols": ["snöflingor", "is", "vinterdjur", "stjärnbilder"],
+      "must_not": ["jul", "skrämmande vintermörker", "The Prompt"],
+      "key_visual": { "storage_path": "covers/januari.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "februari", "month_number": 2, "display_name": "Kärleksmånad", "emoji": "❤️",
+      "status": "defined", "publishable": true, "activity_canon_complete": true,
+      "produced_title": "En känsla i magen / Känslomånaden",
+      "focus": "Känslor och vänskap; hjärtpyssel.",
+      "symbols": ["hjärtan", "vänskap", "känslor"],
+      "must_not": ["vuxna kärleksteman", "skrämmande", "The Prompt"],
+      "key_visual": { "storage_path": "covers/februari.png", "checksum": null },
+      "activities": [
+        { "id": "feb-farglaggning",  "type": "farglaggning",  "title": "Hjärtfärgläggning", "exists": true, "asset_ref": "activities/februari/farglaggning.pdf" },
+        { "id": "feb-klipp-klistra", "type": "klipp-klistra", "title": "Klipp & klistra", "exists": true, "asset_ref": "activities/februari/klipp-och-klistra.pdf" },
+        { "id": "feb-diplom",        "type": "diplom",        "title": "Diplom", "exists": true, "asset_ref": "activities/februari/diplom.pdf" },
+        { "id": "feb-klistermarken", "type": "klistermarken", "title": "Klistermärken", "exists": true, "asset_ref": "activities/februari/klistermarken.pdf" },
+        { "id": "feb-broschyr",      "type": "broschyr",      "title": "Broschyr", "exists": true, "asset_ref": "activities/februari/broschyr.pdf" }
+      ]
+    },
+    {
+      "slug": "mars", "month_number": 3, "display_name": "Vårens första steg", "emoji": "🌱",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Knoppar, fåglar, vårtecken; plantera frön.",
+      "symbols": ["knoppar", "fåglar", "vårtecken", "frön"],
+      "must_not": ["The Prompt"],
+      "key_visual": { "storage_path": "covers/mars.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "april", "month_number": 4, "display_name": "Experimentmånad", "emoji": "🧪",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Vattnets former, väderstation, naturvetenskap.",
+      "symbols": ["experiment", "vatten", "väder"],
+      "must_not": ["farliga experiment utan vuxen", "The Prompt"],
+      "key_visual": { "storage_path": "covers/april.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "maj", "month_number": 5, "display_name": "Blomsteräventyr", "emoji": "🌸",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Fjärilar, bin, blommor; pressade blommor.",
+      "symbols": ["fjärilar", "bin", "blommor"],
+      "must_not": ["The Prompt"],
+      "key_visual": { "storage_path": "covers/maj.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "juni", "month_number": 6, "display_name": null, "emoji": null,
+      "status": "blocked", "publishable": false, "activity_canon_complete": false,
+      "focus": null,
+      "symbols": [],
+      "must_not": [],
+      "key_visual": { "storage_path": "covers/juni.png", "checksum": null },
+      "activities": [],
+      "note": "BLOCKERAD (beslut 2026-06-05): temat ej fastställt. Ingen automation eller publicering får använda juni förrän status=defined."
+    },
+    {
+      "slug": "juli", "month_number": 7, "display_name": "Sagosommar", "emoji": "📖",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Sagor från olika kulturer; skapa egna berättelser.",
+      "symbols": ["sagor", "berättelser", "sommar"],
+      "must_not": ["The Prompt"],
+      "key_visual": { "storage_path": "covers/juli.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "augusti", "month_number": 8, "display_name": "Skolstart & Bokstavsäventyr", "emoji": "🤓",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Bokstavsjakt, siffer-memory, skoltema.",
+      "symbols": ["bokstäver", "siffror", "skolstart"],
+      "must_not": ["skolstress/press", "The Prompt"],
+      "key_visual": { "storage_path": "covers/augusti.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "september", "month_number": 9, "display_name": "Skördemånaden", "emoji": "🍂",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Äpplen, svampar, pumpor; skördefest.",
+      "symbols": ["äpplen", "svampar", "pumpor", "skörd"],
+      "must_not": ["äta okänd svamp utan vuxen", "The Prompt"],
+      "key_visual": { "storage_path": "covers/september.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "oktober", "month_number": 10, "display_name": "Löv- & skuggmånaden", "emoji": "🍁",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Ljus, löv, skuggteater, höstlykta.",
+      "symbols": ["löv", "skuggor", "ljus", "höst"],
+      "must_not": ["skrämmande halloween/skräck", "The Prompt"],
+      "key_visual": { "storage_path": "covers/oktober.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "november", "month_number": 11, "display_name": "Rymdmånaden", "emoji": "🚀",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Planeter, stjärnor, galaxer; rymdpyssel.",
+      "symbols": ["planeter", "stjärnor", "galaxer", "rymd"],
+      "must_not": ["The Prompt"],
+      "key_visual": { "storage_path": "covers/november.png", "checksum": null },
+      "activities": []
+    },
+    {
+      "slug": "december", "month_number": 12, "display_name": "Julmånaden", "emoji": "🎄",
+      "status": "defined", "publishable": true, "activity_canon_complete": false,
+      "focus": "Galaktisk jul; tomtar, snö, traditioner.",
+      "symbols": ["jul", "tomtar", "snö", "traditioner"],
+      "must_not": ["The Prompt"],
+      "key_visual": { "storage_path": "covers/december.png", "checksum": null },
+      "activities": []
+    }
+  ],
+  "activity_validation": {
+    "rules": [
+      { "id": "TV-DEFINED",   "rule": "months[current].status === 'defined' && publishable === true", "severity": "block" },
+      { "id": "TV-EXISTS",    "rule": "refererad aktivitet finns i months[current].activities[] med exists=true", "severity": "block", "requires": "activity_canon_complete=true" },
+      { "id": "TV-SYMBOL",    "rule": "minst en symbol ur months[current].symbols förekommer i copy", "severity": "warn" },
+      { "id": "TV-CROSSTHEME","rule": "inga symboler/ord från andra månaders teman (helord-matchning)", "severity": "block" },
+      { "id": "TV-CTA",       "rule": "cta.url och price_sek matchar cta_default / allowed_prices_sek", "severity": "block" }
+    ]
+  }
+}

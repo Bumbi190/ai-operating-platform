@@ -17,6 +17,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createMemoryLifecycleAuditEvent } from './stage1-foundation'
+import { toJson } from '@/lib/supabase/json'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -249,7 +250,7 @@ export async function upsertMemoryItem(
       project_id:     projectId,
       category:       item.category,
       key:            item.key,
-      value:          item.value,
+      value:          toJson(item.value),
       confidence:     item.confidence ?? 0.8,
       evidence_count: 1,
       last_seen_at:   new Date().toISOString(),

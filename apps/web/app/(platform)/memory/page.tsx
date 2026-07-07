@@ -19,6 +19,7 @@ import {
   STAGE1_THE_PROMPT_SEED_ACTION,
   isThePromptSeedProject,
 } from '@/lib/ai/memory/stage1-foundation'
+import { OSPage, OSLayer } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,9 +43,9 @@ function ConfidenceBar({ value }: { value: number }) {
 
 function DecisionBadge({ decision }: { decision: string }) {
   const cfg = {
-    approved: { label: 'Approved',  color: 'text-green-400 bg-green-400/10 border-green-400/20', icon: CheckCircle2 },
-    rejected: { label: 'Rejected',  color: 'text-red-400 bg-red-400/10 border-red-400/20',       icon: XCircle },
-    revised:  { label: 'Revised',   color: 'text-blue-400 bg-blue-400/10 border-blue-400/20',    icon: RefreshCw },
+    approved: { label: 'Godkänd',   color: 'text-green-400 bg-green-400/10 border-green-400/20', icon: CheckCircle2 },
+    rejected: { label: 'Avvisad',   color: 'text-red-400 bg-red-400/10 border-red-400/20',       icon: XCircle },
+    revised:  { label: 'Reviderad', color: 'text-blue-400 bg-blue-400/10 border-blue-400/20',    icon: RefreshCw },
   }[decision] ?? { label: decision, color: 'text-muted-foreground', icon: CheckCircle2 }
 
   const Icon = cfg.icon
@@ -77,13 +78,13 @@ export default async function MemoryPage() {
   // If no project, show empty state
   if (!project) {
     return (
-      <div className="p-8 max-w-4xl mx-auto">
+      <OSPage>
         <div className="rounded-xl border border-dashed border-border p-12 text-center">
           <Brain className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No project found</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Create a project to start building memory</p>
+          <p className="text-sm text-muted-foreground">Inget projekt hittades</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Skapa ett projekt för att börja bygga minne</p>
         </div>
-      </div>
+      </OSPage>
     )
   }
 
@@ -100,18 +101,18 @@ export default async function MemoryPage() {
   const revisedCount  = recentFeedback.filter(f => f.decision === 'revised').length
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-fade-in">
+    <OSPage className="animate-fade-in">
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between">
+      {/* ── HERO ── */}
+      <OSLayer layer="hero" className="flex items-start justify-between gap-6">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0 mt-0.5">
             <Brain className="w-5 h-5 text-violet-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Platform Memory</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Plattformminne</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Operational knowledge built from human feedback · {project.name}
+              Operationell kunskap byggd från mänsklig feedback · {project.name}
             </p>
           </div>
         </div>
@@ -127,54 +128,55 @@ export default async function MemoryPage() {
             </button>
           </form>
         )}
-      </div>
+      </OSLayer>
 
-      {/* ── Stats row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ── OPERATIONAL · stats cluster ── */}
+      <OSLayer layer="operational" className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
         <StatCard
           icon={Brain}
           iconColor="text-violet-400"
           bg="bg-violet-400/10 border-violet-400/20"
-          label="Memory items"
+          label="Minnesposter"
           value={memorySummary.totalItems}
         />
         <StatCard
           icon={CheckCircle2}
           iconColor="text-green-400"
           bg="bg-green-400/10 border-green-400/20"
-          label="Approvals"
+          label="Godkännanden"
           value={approvedCount}
         />
         <StatCard
           icon={XCircle}
           iconColor="text-red-400"
           bg="bg-red-400/10 border-red-400/20"
-          label="Rejections"
+          label="Avvisningar"
           value={rejectedCount}
         />
         <StatCard
           icon={RefreshCw}
           iconColor="text-blue-400"
           bg="bg-blue-400/10 border-blue-400/20"
-          label="Revisions"
+          label="Revideringar"
           value={revisedCount}
         />
-      </div>
+      </OSLayer>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ── INTELLIGENCE · patterns + behaviors ── */}
+      <OSLayer layer="intelligence" className="grid grid-cols-1 lg:grid-cols-2 3xl:grid-cols-3 gap-4 lg:gap-5">
 
         {/* ── Rejection triggers ── */}
         <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-red-400" />
-            <h2 className="text-sm font-semibold">Rejection Triggers</h2>
+            <h2 className="text-sm font-semibold">Avvisningsutlösare</h2>
             <span className="text-[10px] text-muted-foreground ml-auto">
-              {memorySummary.byCategory.rejection_triggers} patterns
+              {memorySummary.byCategory.rejection_triggers} mönster
             </span>
           </div>
           {memorySummary.topRejectionTriggers.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
-              No patterns yet — reject some content to build memory
+              Inga mönster ännu — avvisa innehåll för att bygga minne
             </p>
           ) : (
             <div className="space-y-3">
@@ -182,7 +184,7 @@ export default async function MemoryPage() {
                 <div key={item.id}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium font-mono text-red-300/80">{item.key}</span>
-                    <span className="text-[10px] text-muted-foreground">{item.evidenceCount} events</span>
+                    <span className="text-[10px] text-muted-foreground">{item.evidenceCount} händelser</span>
                   </div>
                   <ConfidenceBar value={item.confidence} />
                   {typeof item.value.note === 'string' && (
@@ -198,14 +200,14 @@ export default async function MemoryPage() {
         <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2">
             <TrendingDown className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-semibold">Avoided Phrases</h2>
+            <h2 className="text-sm font-semibold">Undvikna fraser</h2>
             <span className="text-[10px] text-muted-foreground ml-auto">
-              {memorySummary.byCategory.avoided_phrases} patterns
+              {memorySummary.byCategory.avoided_phrases} mönster
             </span>
           </div>
           {memorySummary.topAvoidedPhrases.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
-              No avoided phrases yet — revise some content to build memory
+              Inga undvikna fraser ännu — revidera innehåll för att bygga minne
             </p>
           ) : (
             <div className="space-y-3">
@@ -213,7 +215,7 @@ export default async function MemoryPage() {
                 <div key={item.id}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium font-mono text-amber-300/80">"{item.key}"</span>
-                    <span className="text-[10px] text-muted-foreground">{item.evidenceCount} events</span>
+                    <span className="text-[10px] text-muted-foreground">{item.evidenceCount} händelser</span>
                   </div>
                   <ConfidenceBar value={item.confidence} />
                   {typeof item.value.note === 'string' && (
@@ -229,12 +231,12 @@ export default async function MemoryPage() {
         <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-indigo-400" />
-            <h2 className="text-sm font-semibold">Pattern Frequency</h2>
-            <span className="text-[10px] text-muted-foreground ml-auto">from feedback</span>
+            <h2 className="text-sm font-semibold">Mönsterfrekvens</h2>
+            <span className="text-[10px] text-muted-foreground ml-auto">från feedback</span>
           </div>
           {patternStats.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
-              No patterns detected yet
+              Inga mönster detekterade ännu
             </p>
           ) : (
             <div className="space-y-2">
@@ -268,12 +270,12 @@ export default async function MemoryPage() {
         <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Lightbulb className="w-4 h-4 text-yellow-400" />
-            <h2 className="text-sm font-semibold">High-Confidence Patterns</h2>
+            <h2 className="text-sm font-semibold">Högkonfidenta mönster</h2>
             <span className="text-[10px] text-muted-foreground ml-auto">≥ 65%</span>
           </div>
           {memorySummary.highConfidenceItems.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
-              Patterns grow stronger with more feedback — keep reviewing
+              Mönster stärks med mer feedback — fortsätt granska
             </p>
           ) : (
             <div className="space-y-3">
@@ -300,18 +302,18 @@ export default async function MemoryPage() {
             </div>
           )}
         </section>
-      </div>
+      </OSLayer>
 
-      {/* ── Recent feedback log ── */}
-      <section className="space-y-3">
+      {/* ── FOOTER · recent feedback log archive ── */}
+      <OSLayer layer="footer" className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-          Recent Feedback Log
+          Senaste feedbacklogg
         </h2>
         {recentFeedback.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Brain className="w-6 h-6 text-muted-foreground/20 mx-auto mb-2" />
             <p className="text-xs text-muted-foreground/60">
-              No feedback yet. Approve or reject content in the Approvals page to start building memory.
+              Ingen feedback ännu. Godkänn eller avvisa innehåll på granskningssidan för att börja bygga minne.
             </p>
           </div>
         ) : (
@@ -352,7 +354,7 @@ export default async function MemoryPage() {
                   )}
                 </div>
                 <span className="text-[10px] text-muted-foreground/40 shrink-0">
-                  {new Date(fb.createdAt).toLocaleDateString('en', {
+                  {new Date(fb.createdAt).toLocaleDateString('sv-SE', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
                   })}
                 </span>
@@ -360,9 +362,9 @@ export default async function MemoryPage() {
             ))}
           </div>
         )}
-      </section>
+      </OSLayer>
 
-    </div>
+    </OSPage>
   )
 }
 

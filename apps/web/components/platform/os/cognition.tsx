@@ -56,8 +56,8 @@ export function AgentThinking({
           </span>
           {confidence != null && (
             <>
-              <span className="text-zinc-700 text-[8px]">·</span>
-              <span className="caption-mono text-[9.5px] text-zinc-500">
+              <span className="text-faint text-[8px]">·</span>
+              <span className="caption-mono text-[9.5px] text-secondary">
                 {confidence}% conf
               </span>
             </>
@@ -181,7 +181,7 @@ export function Recommendation({
             <span className="eyebrow eyebrow-gold !text-[9px]">Recommendation</span>
             {prediction && (
               <>
-                <span className="text-zinc-700 text-[8px]">·</span>
+                <span className="text-faint text-[8px]">·</span>
                 <span className="caption-mono text-[9.5px] text-emerald-300/85">
                   {prediction}
                 </span>
@@ -192,7 +192,7 @@ export function Recommendation({
             {title}
           </p>
           {rationale && (
-            <p className="text-[10.5px] text-zinc-500 mt-1.5 leading-relaxed line-clamp-2">
+            <p className="text-[10.5px] text-secondary mt-1.5 leading-relaxed line-clamp-2">
               {rationale}
             </p>
           )}
@@ -223,7 +223,7 @@ export function Recommendation({
                     </button>
               )}
               {confidence != null && (
-                <span className="caption-mono text-[9.5px] text-zinc-500 inline-flex items-center gap-1.5">
+                <span className="caption-mono text-[9.5px] text-secondary inline-flex items-center gap-1.5">
                   <Target className="w-2.5 h-2.5" />
                   Model · {confidence}%
                 </span>
@@ -281,8 +281,8 @@ export function MemoryRecall({
           </span>
           {weight != null && (
             <>
-              <span className="text-zinc-700 text-[8px]">·</span>
-              <span className="caption-mono text-[8.5px] text-zinc-500">w{weight}</span>
+              <span className="text-faint text-[8px]">·</span>
+              <span className="caption-mono text-[8.5px] text-secondary">w{weight}</span>
             </>
           )}
         </div>
@@ -326,7 +326,7 @@ export function AutonomousWarning({ title, detail, action, className }: Autonomo
       <div className="flex-1 min-w-0">
         <p className="eyebrow eyebrow-gold !text-[9px] mb-1">System notice</p>
         <p className="text-[12px] text-white/90 leading-snug tracking-tight">{title}</p>
-        {detail && <p className="text-[10.5px] text-zinc-500 mt-1 leading-relaxed">{detail}</p>}
+        {detail && <p className="text-[10.5px] text-secondary mt-1 leading-relaxed">{detail}</p>}
       </div>
       {action && (
         <a
@@ -354,7 +354,7 @@ export function OrchestrationReasoning({
   return (
     <div className={cn('flex items-start gap-2.5', className)}>
       <Sparkles className="w-3 h-3 text-indigo-300 mt-0.5 shrink-0" />
-      <p className="text-[10.5px] text-zinc-500 italic leading-relaxed">
+      <p className="text-[10.5px] text-secondary italic leading-relaxed">
         {rationale}
       </p>
     </div>

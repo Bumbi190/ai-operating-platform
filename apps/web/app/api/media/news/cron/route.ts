@@ -15,6 +15,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
+import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   // Verify cron secret
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -40,6 +41,11 @@ export async function GET(request: Request) {
 
   if (projectIdFilter) {
     projectsQuery = projectsQuery.eq('id', projectIdFilter)
+  } else {
+    // AI-nyhetsjägaren körs bara för The Prompt (ai-media-automation).
+    // Familje-Stunden (barninnehåll) och GainPilot (B2B-leads) är andra affärer
+    // och ska inte få AI-nyhetsvideor.
+    projectsQuery = projectsQuery.eq('slug', 'ai-media-automation')
   }
 
   const { data: projects } = await projectsQuery
@@ -142,6 +148,22 @@ export async function GET(request: Request) {
       const msg = err instanceof Error ? err.message : 'unknown error'
       console.error(`[news/cron] Failed for ${project.slug}:`, msg)
       results.push({ project: project.slug, status: 'error', error: msg })
+    }
+  }
+
+  const savedCount = results.filter(r => r.status === 'saved').length
+  const hadError   = results.some(r => r.status === 'error')
+  const fetchRunId = await logRun({
+    workflow: 'Fetch AI News',
+    status:   hadError ? 'failed' : 'done',
+    context:  { storiesSaved: savedCount },
+  })
+  // Spårbarhet: stämpla fetch-runens id på de news-items den skapade (fyller run_id
+  // som tidigare var null → hela kedjan kan följas bakåt). Non-blocking.
+  if (fetchRunId) {
+    const savedIds = results.map(r => r.newsItemId).filter((id): id is string => typeof id === 'string')
+    if (savedIds.length) {
+      try { await db.from('media_news_items').update({ run_id: fetchRunId }).in('id', savedIds) } catch { /* non-blocking */ }
     }
   }
 

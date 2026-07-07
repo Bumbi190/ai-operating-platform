@@ -277,7 +277,7 @@ async function fetchReddit(subreddit: string): Promise<RawStory[]> {
     if (!res.ok) return []
 
     const data = await res.json() as {
-      data: { children: Array<{ data: { id: string; title: string; url: string; selftext: string; score: number; created_utc: number; is_self: boolean; permalink: string } }> }
+      data: { children: Array<{ data: { id: string; title: string; url: string; selftext: string; score: number; created_utc: number; is_self: boolean; stickied?: boolean; permalink: string } }> }
     }
 
     return data.data.children
@@ -404,6 +404,7 @@ export function scoreAndRank(stories: RawStory[]): ScoredStory[] {
 export async function claudeEditorialPick(
   stories: ScoredStory[],
   maxCandidates = 3,
+  trendingTopics: string[] = [],   // Optional: trending topics from Hermes to guide selection
 ): Promise<{ candidates: HunterCandidate[]; summary: string }> {
   const claude = new Anthropic()
 
@@ -419,6 +420,14 @@ export async function claudeEditorialPick(
     )
     .join('\n\n')
 
+  // Build trend context block if we have trending topics
+  const trendBlock = trendingTopics.length > 0
+    ? `\n\nCURRENT TRENDING TOPICS (from Google Trends, Reddit & HackerNews right now):
+${trendingTopics.slice(0, 12).map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+IMPORTANT: If any news story relates to or expands on one of these trending topics, strongly prefer it. Stories that match what people are actively searching for will get significantly more reach.`
+    : ''
+
   const systemPrompt = `You are the editorial director of "The Prompt" — a premium AI news channel on Instagram and TikTok.
 
 Brand voice: Bloomberg QuickTake meets Wired Magazine. Factual, fast-paced, retention-optimized. NOT hype.
@@ -426,11 +435,12 @@ Brand voice: Bloomberg QuickTake meets Wired Magazine. Factual, fast-paced, rete
 Your job: Given a ranked list of AI news stories, pick the ${maxCandidates} BEST for short-form video.
 
 Selection criteria (in order of importance):
-1. GENUINE NEWS VALUE — something actually happened, not speculation or roundup
-2. BROAD APPEAL — interesting to smart non-experts, not just ML researchers
-3. FRESHNESS — breaking or same-day is ideal
-4. VISUAL POTENTIAL — can we make a compelling 60-second video from this?
-5. UNIQUENESS — avoid "another AI chatbot" stories unless truly landmark
+1. TREND ALIGNMENT — if a story matches current trending searches/discussions, it gets higher reach
+2. GENUINE NEWS VALUE — something actually happened, not speculation or roundup
+3. BROAD APPEAL — interesting to smart non-experts, not just ML researchers
+4. FRESHNESS — breaking or same-day is ideal
+5. VISUAL POTENTIAL — can we make a compelling 60-second video from this?
+6. UNIQUENESS — avoid "another AI chatbot" stories unless truly landmark
 
 AVOID:
 - Lists ("Top 10 AI tools"), roundups, opinion pieces without news hook
@@ -458,7 +468,7 @@ Return ONLY valid JSON (no markdown fences):
     system: systemPrompt,
     messages: [{
       role: 'user',
-      content: `Today's AI news candidates:\n\n${storiesList}\n\nPick the ${maxCandidates} best for short-form video.`,
+      content: `Today's AI news candidates:\n\n${storiesList}${trendBlock}\n\nPick the ${maxCandidates} best for short-form video.`,
     }],
   })
 
@@ -497,6 +507,7 @@ export async function runNewsHunter(
   db: SupabaseClient,
   projectId: string,
   maxCandidates = 3,
+  trendingTopics: string[] = [],   // Optional: from Hermes /trends
 ): Promise<HunterResult> {
   const fetchedAt = new Date().toISOString()
 
@@ -509,8 +520,8 @@ export async function runNewsHunter(
   // 3. Score and rank
   const scored = scoreAndRank(fresh)
 
-  // 4. Claude picks the best
-  const { candidates, summary } = await claudeEditorialPick(scored, maxCandidates)
+  // 4. Claude picks the best — with optional trend context
+  const { candidates, summary } = await claudeEditorialPick(scored, maxCandidates, trendingTopics)
 
   return {
     fetchedAt,

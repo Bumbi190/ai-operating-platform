@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getManager } from '@/lib/ai/manager'
 import { toCanonicalManagerEvaluationRecord } from '@/lib/ai/memory/stage1-foundation'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -51,36 +52,42 @@ export async function POST(req: NextRequest) {
         if (!approval_id) {
           return NextResponse.json({ error: 'approval_id krävs' }, { status: 400 })
         }
-        const evaluation = await manager.evaluateOutput(approval_id)
-
-        // Persist evaluation to the canonical Stage 1 evaluations schema when
-        // the approval can be safely resolved to a project. Manager response
-        // behavior stays unchanged if persistence has to be deferred.
+        // Ownership gate BEFORE the LLM call and any admin-side effect
+        // (mirrors the PATCH /api/approvals/[id] gate). The Manager and this
+        // route use the service-role client, which bypasses RLS, so the route
+        // must enforce the same project boundary RLS gives the UI. Missing,
+        // lineage-less, and foreign approvals all return the SAME 404 so an
+        // authenticated caller cannot probe whether another user's approval
+        // UUID exists (fail closed).
         const { createAdminClient } = await import('@/lib/supabase/admin')
         const db = createAdminClient()
         const { data: approval } = await db
           .from('approvals')
-          .select('content, runs(project_id)')
+          .select('id, project_id, content, runs(project_id)')
           .eq('id', approval_id)
           .single()
 
         const approvalRun = (approval as any)?.runs
-        const projectId = Array.isArray(approvalRun)
+        const projectId = approval?.project_id ?? (Array.isArray(approvalRun)
           ? approvalRun[0]?.project_id
-          : approvalRun?.project_id
-        if (projectId) {
-          await db.from('evaluations').insert(
-            toCanonicalManagerEvaluationRecord(evaluation, {
-              projectId,
-              contentType: 'text',
-              contentPreview: approval?.content,
-            })
-          )
-        } else {
-          // TODO(Stage 2): decide whether manager-only evaluations without a
-          // project lineage need a separate evidence table.
-          console.warn(`[/api/manager] deferred evaluation persistence for approval ${approval_id}: project_id not resolved`)
+          : approvalRun?.project_id)
+
+        const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+        if (!approval || !projectId || !assertProjectAllowed(projectId, allowedProjectIds)) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
+
+        const evaluation = await manager.evaluateOutput(approval_id)
+
+        // Persist evaluation to the canonical Stage 1 evaluations schema.
+        // projectId is guaranteed by the ownership gate above.
+        await db.from('evaluations').insert(
+          toCanonicalManagerEvaluationRecord(evaluation, {
+            projectId,
+            contentType: 'text',
+            contentPreview: approval.content,
+          })
+        )
 
         return NextResponse.json({ evaluation })
       }

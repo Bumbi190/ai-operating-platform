@@ -73,6 +73,93 @@ test('memory correction path tombstones with auditability instead of hard delete
   assert.doesNotMatch(store, /\.delete\(\)/)
 })
 
+test('manager evaluate contract is typed and route-compatible', () => {
+  const manager = read('apps/web/lib/ai/manager.ts')
+  const route = read('apps/web/app/api/manager/route.ts')
+  const helper = read('apps/web/lib/ai/memory/stage1-foundation.ts')
+
+  // Real typed return contract on the Manager class.
+  assert.match(manager, /export interface EvaluationResult \{/)
+  assert.match(manager, /async evaluateOutput\(approvalId: string\): Promise<EvaluationResult>/)
+
+  // The EvaluationResult shape satisfies ManagerEvaluationInput (route passes
+  // the result straight into toCanonicalManagerEvaluationRecord).
+  const evaluationResult = manager.match(/export interface EvaluationResult \{[\s\S]*?\n\}/)?.[0] ?? ''
+  assert.match(evaluationResult, /score: number/)
+  assert.match(evaluationResult, /approved: boolean/)
+  assert.match(evaluationResult, /issues: string\[\]/)
+  assert.match(evaluationResult, /feedback: string/)
+  assert.match(helper, /export interface ManagerEvaluationInput \{/)
+
+  // Route still calls the restored contract and persists canonically.
+  assert.match(route, /manager\.evaluateOutput\(approval_id\)/)
+  assert.match(route, /toCanonicalManagerEvaluationRecord\(evaluation/)
+})
+
+test('evaluate action authorizes project ownership before LLM call and persistence', () => {
+  const route = read('apps/web/app/api/manager/route.ts')
+
+  // The route resolves the caller's allow-list and gates on it.
+  assert.match(route, /getAllowedProjectIds/)
+  assert.match(route, /assertProjectAllowed\(projectId, allowedProjectIds\)/)
+
+  // Missing, lineage-less, and foreign approvals share ONE fail-closed 404 —
+  // existence of another user's approval must not be leakable.
+  assert.match(route, /!approval \|\| !projectId \|\| !assertProjectAllowed/)
+  assert.match(route, /\{ error: 'Not found' \}, \{ status: 404 \}/)
+
+  // Ordering invariant: ownership gate BEFORE the LLM call, LLM call BEFORE
+  // canonical persistence. No admin-side effect can precede authorization.
+  const gateAt = route.indexOf('assertProjectAllowed(projectId, allowedProjectIds)')
+  const llmAt = route.indexOf('manager.evaluateOutput(approval_id)')
+  const persistAt = route.indexOf("from('evaluations')")
+  assert.ok(gateAt > -1 && llmAt > -1 && persistAt > -1)
+  assert.ok(gateAt < llmAt, 'ownership gate must precede the LLM evaluation call')
+  assert.ok(llmAt < persistAt, 'persistence must follow the gated evaluation')
+
+  // The gate uses the shared fail-closed isolation boundary, not an ad-hoc check.
+  const isolation = read('apps/web/lib/atlas/isolation.ts')
+  assert.match(isolation, /if \(!userId\) return \[\]/)
+  assert.match(isolation, /allowedIds\.includes\(id\)/)
+})
+
+test('tombstoning preserves existing audit events and appends the tombstone event', () => {
+  const store = read('apps/web/lib/ai/memory/memory-store.ts')
+
+  // Existing events are read first, kept, and the new event is appended.
+  assert.match(store, /\.select\('audit_events'\)/)
+  assert.match(store, /Array\.isArray\(existing\.audit_events\)/)
+  assert.match(store, /audit_events: \[\.\.\.auditEvents, event\]/)
+  assert.match(store, /createMemoryLifecycleAuditEvent/)
+  assert.match(store, /tombstoned_by: actorId/)
+  // No physical delete anywhere in the store.
+  assert.doesNotMatch(store, /\.delete\(\)/)
+})
+
+test('generated Supabase types expose Stage 1 platform_memory lifecycle columns', () => {
+  const types = read('apps/web/lib/supabase/database.types.ts')
+  const block = types.match(/platform_memory: \{[\s\S]*?Relationships/)?.[0] ?? ''
+
+  assert.match(block, /audit_events: Json/)
+  assert.match(block, /lifecycle_state: string/)
+  assert.match(block, /correction_state: string \| null/)
+  assert.match(block, /tombstoned_at: string \| null/)
+  assert.match(block, /tombstoned_by: string \| null/)
+  // Database-defaulted columns stay optional in Insert.
+  assert.match(block, /audit_events\?: Json/)
+  assert.match(block, /lifecycle_state\?: string/)
+})
+
+test('no Stage 2 retrieval or embedding behavior in the memory module', () => {
+  const memoryFiles = listFiles('apps/web/lib/ai/memory')
+    .filter(file => !file.endsWith('.test.mjs'))
+  for (const file of memoryFiles) {
+    const source = read(file)
+    assert.doesNotMatch(source, /embedding/i, `${file} must not contain embeddings (Stage 2)`)
+    assert.doesNotMatch(source, /pgvector/i, `${file} must not contain pgvector (Stage 2)`)
+  }
+})
+
 test('normal Stage 1 migrations do not contain DROP TABLE', () => {
   const migrationFiles = listFiles('supabase/migrations').filter(file => file.endsWith('.sql'))
 

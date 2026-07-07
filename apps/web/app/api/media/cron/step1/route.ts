@@ -12,7 +12,7 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runNewsHunter } from '@/lib/media/news-hunter'
+import { runNewsHunter, type HunterCandidate } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
@@ -45,6 +45,92 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 20
     }
   }
   throw new Error('Max retries exceeded')
+}
+
+type SaveNewsItemResult =
+  | { status: 'saved'; id: string }
+  | { status: 'duplicate'; message: string }
+  | { status: 'error'; message: string }
+
+function isDuplicateNewsUrlError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const err = error as { code?: string; message?: string; details?: string; hint?: string }
+  const text = `${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`.toLowerCase()
+  return err.code === '23505' && (
+    text.includes('unique_project_news_url') ||
+    text.includes('media_news_items') ||
+    text.includes('duplicate key')
+  )
+}
+
+async function saveNewsItem(db: ReturnType<typeof createAdminClient>, row: Record<string, unknown>): Promise<SaveNewsItemResult> {
+  const { data, error } = await (db.from('media_news_items') as any).insert(row).select('id').single()
+
+  if (error) {
+    if (isDuplicateNewsUrlError(error)) {
+      return { status: 'duplicate', message: error.message }
+    }
+    return { status: 'error', message: error.message }
+  }
+
+  if (!data?.id) {
+    return { status: 'error', message: 'media_news_items insert returned no id' }
+  }
+
+  return { status: 'saved', id: data.id }
+}
+
+async function saveFirstHunterCandidate(
+  db: ReturnType<typeof createAdminClient>,
+  projectId: string,
+  candidates: HunterCandidate[],
+): Promise<
+  | { status: 'saved'; newsItemId: string; candidate: HunterCandidate; duplicateCount: number }
+  | { status: 'duplicates_only'; duplicateCount: number }
+  | { status: 'no_candidates'; duplicateCount: number }
+  | { status: 'error'; message: string; duplicateCount: number }
+> {
+  let duplicateCount = 0
+
+  for (const candidate of candidates) {
+    const top = candidate
+    const save = await saveNewsItem(db, {
+      project_id: projectId,
+      title: top.story.title,
+      summary: top.story.summary ?? null,
+      url: top.story.url,
+      source_name: top.story.sourceLabel,
+      virality_score: top.estimatedViralityScore,
+      content_angle: top.suggestedAngle,
+      key_insight: top.editorialNote ?? null,
+      status: 'approved',
+      raw_output: {
+        title: top.story.title,
+        summary: top.story.summary,
+        key_insight: top.editorialNote,
+        virality_score: top.estimatedViralityScore,
+        target_audience: 'intermediate',
+        content_angle: top.suggestedAngle,
+        source_url: top.story.url,
+        source_name: top.story.sourceLabel,
+      },
+    })
+
+    if (save.status === 'saved') {
+      return { status: 'saved', newsItemId: save.id, candidate: top, duplicateCount }
+    }
+    if (save.status === 'duplicate') {
+      duplicateCount += 1
+      console.log(`[cron/step1] Skipping duplicate news URL: ${top.story.url}`)
+      continue
+    }
+    return { status: 'error', message: save.message, duplicateCount }
+  }
+
+  return {
+    status: candidates.length > 0 && duplicateCount === candidates.length ? 'duplicates_only' : 'no_candidates',
+    duplicateCount,
+  }
 }
 
 export async function GET(request: Request) {
@@ -136,10 +222,11 @@ export async function GET(request: Request) {
     (topCandidate && topCandidate.estimatedViralityScore < VIRALITY_THRESHOLD)
   )
 
-  let news: NewsHunterOutput
+  let news: NewsHunterOutput | null = null
   // newsItemId is captured directly from each insert — avoids the race condition
   // of querying "most recent row" which could grab a concurrent insert's ID.
   let newsItemId: string | null = null
+  let duplicateCount = 0
 
   if (shouldUseHermes) {
     console.log('[cron/step1] Calling Hermes for web-scraped news...')
@@ -157,20 +244,8 @@ export async function GET(request: Request) {
 
     if (hermesResult) {
       console.log(`[cron/step1] Hermes found: "${hermesResult.title}" (virality: ${hermesResult.virality_score})`)
-      // Hermes already returns structured NewsHunterOutput-compatible data
-      news = {
-        title:           hermesResult.title,
-        summary:         hermesResult.summary,
-        key_insight:     hermesResult.key_insight,
-        virality_score:  hermesResult.virality_score,
-        target_audience: 'intermediate',
-        content_angle:   hermesResult.content_angle,
-        source_url:      hermesResult.url,
-        source_name:     hermesResult.source_name,
-      }
-
       // Save news item from Hermes — capture ID directly to avoid race conditions
-      const { data: hermesNI } = await db.from('media_news_items').insert({
+      const hermesSave = await saveNewsItem(db, {
         project_id: project.id,
         title:          hermesResult.title,
         summary:        hermesResult.summary,
@@ -181,44 +256,79 @@ export async function GET(request: Request) {
         key_insight:    hermesResult.key_insight,
         status:         'approved',
         raw_output:     { ...hermesResult, source: 'hermes' },
-      }).select('id').single()
-      newsItemId = hermesNI?.id ?? null
-    } else {
-      // Hermes also failed — fall back to original hunt or give up
-      if (!hunterResult.candidates.length) {
-        return NextResponse.json({ status: 'no_news' })
+      })
+
+      if (hermesSave.status === 'saved') {
+        // Hermes already returns structured NewsHunterOutput-compatible data.
+        news = {
+          title:           hermesResult.title,
+          summary:         hermesResult.summary,
+          key_insight:     hermesResult.key_insight,
+          virality_score:  hermesResult.virality_score,
+          target_audience: 'intermediate',
+          content_angle:   hermesResult.content_angle,
+          source_url:      hermesResult.url,
+          source_name:     hermesResult.source_name,
+        }
+        newsItemId = hermesSave.id
+      } else if (hermesSave.status === 'duplicate') {
+        duplicateCount += 1
+        console.log(`[cron/step1] Hermes returned duplicate news URL: ${hermesResult.url}`)
+      } else {
+        return NextResponse.json({ status: 'news_persistence_failed', error: hermesSave.message }, { status: 500 })
       }
-      // Use original hunt result even if low-virality
-      const top       = hunterResult.candidates[0]
+    }
+
+    // Hermes failed, stalled, or returned a duplicate. Fall back to API candidates.
+    if (!news) {
+      const candidateSave = await saveFirstHunterCandidate(db, project.id, hunterResult.candidates)
+      duplicateCount += candidateSave.duplicateCount
+
+      if (candidateSave.status === 'error') {
+        return NextResponse.json({ status: 'news_persistence_failed', error: candidateSave.message }, { status: 500 })
+      }
+      if (candidateSave.status !== 'saved') {
+        return NextResponse.json({
+          status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
+          duplicateCount,
+        })
+      }
+
+      const top = candidateSave.candidate
       const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
       const newsRes   = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
+      void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
       news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
-      const { data: fallbackNI } = await db.from('media_news_items').insert({ project_id: project.id, title: top.story.title, summary: top.story.summary ?? null, url: top.story.url, source_name: top.story.sourceLabel, virality_score: top.estimatedViralityScore, content_angle: top.suggestedAngle, key_insight: top.editorialNote ?? null, status: 'approved', raw_output: { title: top.story.title, summary: top.story.summary, key_insight: top.editorialNote, virality_score: top.estimatedViralityScore, target_audience: 'intermediate', content_angle: top.suggestedAngle, source_url: top.story.url, source_name: top.story.sourceLabel } }).select('id').single()
-      newsItemId = fallbackNI?.id ?? null
+      newsItemId = candidateSave.newsItemId
     }
   } else {
-    // Standard path: use top result from API hunt
-    if (!hunterResult.candidates.length) {
-      return NextResponse.json({ status: 'no_news' })
+    // Standard path: use the first API candidate that actually persists.
+    const candidateSave = await saveFirstHunterCandidate(db, project.id, hunterResult.candidates)
+    duplicateCount += candidateSave.duplicateCount
+
+    if (candidateSave.status === 'error') {
+      return NextResponse.json({ status: 'news_persistence_failed', error: candidateSave.message }, { status: 500 })
     }
-    const top         = hunterResult.candidates[0]
+    if (candidateSave.status !== 'saved') {
+      return NextResponse.json({
+        status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
+        duplicateCount,
+      })
+    }
+
+    const top = candidateSave.candidate
     const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
-
-    // Save news item — capture ID directly to avoid race conditions
-    const { data: standardNI } = await db.from('media_news_items').insert({
-      project_id: project.id, title: top.story.title, summary: top.story.summary ?? null,
-      url: top.story.url, source_name: top.story.sourceLabel, virality_score: top.estimatedViralityScore,
-      content_angle: top.suggestedAngle, key_insight: top.editorialNote ?? null, status: 'approved',
-      raw_output: { title: top.story.title, summary: top.story.summary, key_insight: top.editorialNote, virality_score: top.estimatedViralityScore, target_audience: 'intermediate', content_angle: top.suggestedAngle, source_url: top.story.url, source_name: top.story.sourceLabel },
-    }).select('id').single()
-    newsItemId = standardNI?.id ?? null
-
     // Analyze article
     const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
     void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
     news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
+    newsItemId = candidateSave.newsItemId
   }
   // ── End Hermes fallback ───────────────────────────────────────────────────
+
+  if (!news || !newsItemId) {
+    return NextResponse.json({ status: 'no_news' })
+  }
 
   // ── Hermes article read ───────────────────────────────────────────────────
   // If Hermes is available and the story has a URL, fetch the full article text.

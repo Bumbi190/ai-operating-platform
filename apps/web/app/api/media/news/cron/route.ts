@@ -20,6 +20,17 @@ import { logRun } from '@/lib/media/run-log'
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
 
+function isDuplicateNewsUrlError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const err = error as { code?: string; message?: string; details?: string; hint?: string }
+  const text = `${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`.toLowerCase()
+  return err.code === '23505' && (
+    text.includes('unique_project_news_url') ||
+    text.includes('media_news_items') ||
+    text.includes('duplicate key')
+  )
+}
+
 export async function GET(request: Request) {
   // Verify cron secret
   const authHeader = request.headers.get('authorization')
@@ -68,7 +79,7 @@ export async function GET(request: Request) {
 
       // Save top candidate as 'new' (needs human approval before pipeline runs)
       const top = result.candidates[0]
-      const { data: savedItem } = await db.from('media_news_items').insert({
+      const { data: savedItem, error: saveError } = await db.from('media_news_items').insert({
         project_id:     project.id,
         title:          top.story.title,
         summary:        top.story.summary || null,
@@ -89,6 +100,36 @@ export async function GET(request: Request) {
           source_name:     top.story.sourceLabel,
         },
       }).select('id').single()
+
+      if (saveError || !savedItem?.id) {
+        if (isDuplicateNewsUrlError(saveError)) {
+          results.push({
+            project:      project.slug,
+            status:       'duplicate_existing_story',
+            reason:       'duplicate_url',
+            title:        top.story.title,
+            url:          top.story.url,
+            totalFetched: result.totalFetched,
+            afterDedup:   result.afterDedup,
+            summary:      result.claudeSummary,
+          })
+          continue
+        }
+
+        const msg = saveError?.message ?? 'media_news_items insert returned no id'
+        console.error(`[news/cron] Failed to save news item for ${project.slug}:`, msg)
+        results.push({
+          project:      project.slug,
+          status:       'error',
+          error:        msg,
+          title:        top.story.title,
+          url:          top.story.url,
+          totalFetched: result.totalFetched,
+          afterDedup:   result.afterDedup,
+          summary:      result.claudeSummary,
+        })
+        continue
+      }
 
       const resultEntry: Record<string, unknown> = {
         project:      project.slug,
@@ -151,7 +192,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const savedCount = results.filter(r => r.status === 'saved').length
+  const savedCount = results.filter(r => r.status === 'saved' && typeof r.newsItemId === 'string').length
   const hadError   = results.some(r => r.status === 'error')
   const fetchRunId = await logRun({
     workflow: 'Fetch AI News',
@@ -170,5 +211,5 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ranAt: new Date().toISOString(),
     projects: results,
-  })
+  }, { status: hadError ? 500 : 200 })
 }

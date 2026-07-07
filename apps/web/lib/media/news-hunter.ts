@@ -346,13 +346,12 @@ export async function deduplicateAgainstDB(
   db: SupabaseClient,
   projectId: string,
 ): Promise<RawStory[]> {
-  // Fetch recently seen URLs (last 14 days)
-  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString()
+  // Match the database contract: media_news_items has an all-time unique
+  // constraint on (project_id, url), so dedupe must not be time-windowed.
   const { data: existingItems } = await db
     .from('media_news_items')
     .select('url, title')
     .eq('project_id', projectId)
-    .gte('created_at', since)
 
   const seenUrls = new Set((existingItems ?? []).map(i => i.url?.toLowerCase()))
   const seenTitles = new Set(

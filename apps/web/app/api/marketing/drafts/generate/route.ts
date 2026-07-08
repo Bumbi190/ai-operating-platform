@@ -6,14 +6,13 @@
  *
  * Body: { brief_id }   ⛔ Endast Familje-Stunden.
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as { brief_id?: string }
   const briefId = (body.brief_id ?? '').trim()
@@ -23,6 +22,13 @@ export async function POST(request: Request) {
   const { data: brief } = await db.from('campaign_briefs').select('id, project_id').eq('id', briefId).maybeSingle()
   const b = brief as { id?: string; project_id?: string } | null
   if (!b?.id) return NextResponse.json({ error: 'brief hittades inte' }, { status: 404 })
+
+  // ISOLATION (C-1): only act on a brief whose project the caller owns. Foreign
+  // briefs return the same 404 as missing ones (no existence probing) and no
+  // status mutation / drafter run is queued for another tenant.
+  if (!assertProjectAllowed(b.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'brief hittades inte' }, { status: 404 })
+  }
 
   await db.from('campaign_briefs').update({ status: 'drafting' }).eq('id', b.id)
   const { data: run, error } = await (db.from('runs') as any).insert({

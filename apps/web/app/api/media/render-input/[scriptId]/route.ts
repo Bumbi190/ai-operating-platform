@@ -9,10 +9,10 @@
  * Otherwise images is an empty array (falls back to gradient background).
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { jsonStringArray } from '@/lib/supabase/json'
 import { NextResponse } from 'next/server'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +20,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ scriptId: string }> },
 ) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { scriptId } = await params
   const db = createAdminClient()
@@ -33,7 +32,11 @@ export async function GET(
     .eq('id', scriptId)
     .single()
 
-  if (!script) return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+  // ISOLATION (C-1): only expose a script that belongs to one of the caller's
+  // projects. Missing and foreign scripts both return 404 (no existence probing).
+  if (!script || !assertProjectAllowed(script.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+  }
   if (!script.audio_url) return NextResponse.json(
     { error: 'Voice not generated yet — run POST /api/media/voice first' },
     { status: 400 },

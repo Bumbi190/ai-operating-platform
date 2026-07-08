@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getManager } from '@/lib/ai/manager'
 import { toCanonicalManagerEvaluationRecord } from '@/lib/ai/memory/stage1-foundation'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -27,11 +28,21 @@ export async function POST(req: NextRequest) {
 
   const manager = getManager()
 
+  // ISOLATION (C-1): the Manager runs on the service-role client (RLS-bypassing),
+  // so each action must enforce the same project boundary RLS gives the UI. The
+  // allow-list mirrors `projects.owner_id = auth.uid()`; an empty list denies all.
+  const adminDb = createAdminClient()
+  const allowedProjectIds = await getAllowedProjectIds(adminDb, user.id)
+
   try {
     switch (action) {
       // ── Generate / refresh daily plan ──────────────────────────────────────
       case 'daily_plan': {
         const { project_id, force } = body as { project_id?: string; force?: boolean }
+        // A specified project must be owned; unspecified stays global (cron/owner use).
+        if (project_id && !assertProjectAllowed(project_id, allowedProjectIds)) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        }
         const plan = await manager.generateDailyPlan(project_id, force ?? false)
         return NextResponse.json({ plan })
       }
@@ -42,7 +53,10 @@ export async function POST(req: NextRequest) {
         if (!message?.trim()) {
           return NextResponse.json({ error: 'message krävs' }, { status: 400 })
         }
-        const response = await manager.chat(message, project_id)
+        // Scope exactly like /api/chat: a raw project_id is only honored if owned,
+        // and the manager's context reads are bounded by allowedProjectIds.
+        const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
+        const response = await manager.chat(message, scopedProjectId, allowedProjectIds)
         return NextResponse.json({ response })
       }
 
@@ -98,6 +112,10 @@ export async function POST(req: NextRequest) {
         if (!goal?.trim() || !project_id) {
           return NextResponse.json({ error: 'goal och project_id krävs' }, { status: 400 })
         }
+        // ISOLATION (C-1): only plan tasks into a project the caller owns.
+        if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        }
         const tasks = await manager.planTasks(goal, project_id)
         return NextResponse.json({ tasks })
       }
@@ -107,6 +125,12 @@ export async function POST(req: NextRequest) {
         const { run_id } = body as { run_id: string }
         if (!run_id) {
           return NextResponse.json({ error: 'run_id krävs' }, { status: 400 })
+        }
+        // ISOLATION (C-1): retryFailedRun enforces no ownership internally — the run
+        // must belong to one of the caller's projects. Missing/foreign both 404.
+        const { data: runRow } = await adminDb.from('runs').select('project_id').eq('id', run_id).single()
+        if (!runRow || !assertProjectAllowed(runRow.project_id, allowedProjectIds)) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
         const newRunId = await manager.retryFailedRun(run_id)
         if (!newRunId) {
@@ -128,6 +152,12 @@ export async function POST(req: NextRequest) {
         const { task_id, status, result } = body as { task_id: string; status?: string; result?: string }
         if (!task_id) {
           return NextResponse.json({ error: 'task_id krävs' }, { status: 400 })
+        }
+        // ISOLATION (C-1): updateTask enforces no ownership internally — the task
+        // must belong to one of the caller's projects. Missing/foreign both 404.
+        const { data: taskRow } = await adminDb.from('manager_tasks').select('project_id').eq('id', task_id).single()
+        if (!taskRow || !assertProjectAllowed(taskRow.project_id, allowedProjectIds)) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
         await manager.updateTask(task_id, { status: status as any, result })
         return NextResponse.json({ ok: true })

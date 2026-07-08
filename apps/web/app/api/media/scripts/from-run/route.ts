@@ -6,18 +6,17 @@
  *
  * Body: { run_id: string, project_id: string, news_item_id?: string }
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import type { ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { run_id, project_id, news_item_id } = await request.json() as {
     run_id: string
@@ -29,15 +28,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'run_id and project_id are required' }, { status: 400 })
   }
 
+  // ISOLATION (C-1): the caller-supplied target project must be owned by the caller,
+  // otherwise a media_scripts row could be written into another tenant's project.
+  if (!assertProjectAllowed(project_id, access.allowedProjectIds)) return projectForbidden()
+
   const db = createAdminClient()
 
   const { data: run } = await db
     .from('runs')
-    .select('id, status, context')
+    .select('id, project_id, status, context')
     .eq('id', run_id)
     .single()
 
   if (!run) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+  // ISOLATION (C-1): the source run must also belong to one of the caller's projects.
+  if (!assertProjectAllowed(run.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+  }
   if (run.status !== 'done') {
     return NextResponse.json({ error: `Run not done (status: ${run.status})` }, { status: 400 })
   }

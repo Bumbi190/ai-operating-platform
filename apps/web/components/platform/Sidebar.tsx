@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Sparkles,
   Megaphone,
+  Network,
 } from 'lucide-react'
 
 interface Project {
@@ -46,9 +47,10 @@ interface SidebarProps {
   recentConversations?: RecentConversation[]
 }
 
-// P0: 14 → 9 poster. /manager, /planning och /atlas/operations är DOLDA
-// (nås via URL/Atlas, inte via nav). /dashboard, /action-center, /atlas/actions
-// och /atlas/activity är redirects och har därför ingen nav-post.
+// P0: 14 → 9 poster; Intelligence Graph-epicen adderade en 10:e (medvetet).
+// /manager, /planning och /atlas/operations är DOLDA (nås via URL/Atlas, inte
+// via nav). /dashboard, /action-center, /atlas/actions och /atlas/activity är
+// redirects och har därför ingen nav-post.
 // Marknadsgranskning + Content Center flyttar till projektscope i P2.
 const globalNav = [
   { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
@@ -59,6 +61,7 @@ const globalNav = [
   { href: '/chat',           label: 'Chat',              icon: MessageSquare },
   { href: '/approvals',      label: 'Granskningar',      icon: ShieldCheck },
   { href: '/memory',         label: 'Minne',             icon: Lightbulb },
+  { href: '/intelligence/graph', label: 'Intelligence Graph', icon: Network },
 ]
 
 const projectNav = [

@@ -36,6 +36,7 @@ export type DestinationId =
   | 'actions'
   | 'planning'
   | 'settings'
+  | 'intelligence_graph'
   | 'project_home'
 
 type ProjectMode = 'none' | 'query' | 'path'
@@ -84,6 +85,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   actions: '/atlas',
   planning: '/planning',
   settings: '/settings',
+  intelligence_graph: '/intelligence/graph',
   project_home: '/projects', // path mode → /projects/<slug>
 }
 
@@ -145,6 +147,11 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
   },
   planning: { id: 'planning', label: 'Planning', keywords: ['planning', 'planering', 'plan', 'week'], projectMode: 'none' },
   settings: { id: 'settings', label: 'Settings', keywords: ['settings', 'inställningar', 'config'], projectMode: 'none' },
+  intelligence_graph: {
+    id: 'intelligence_graph', label: 'Intelligence Graph',
+    keywords: ['intelligence', 'graph', 'graf', 'system map', 'arkitektur', 'architecture', 'karta', 'live operations'],
+    projectMode: 'none',
+  },
   project_home: {
     id: 'project_home', label: 'Project',
     keywords: ['project', 'projekt'],

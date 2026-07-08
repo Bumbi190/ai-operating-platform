@@ -48,7 +48,13 @@ function LoginForm() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
+        // SECURITY: never auto-provision an account from a magic-link request.
+        // Only existing users may receive a login link; unknown emails are rejected
+        // by GoTrue ("Signups not allowed for otp") instead of silently creating a user.
+        shouldCreateUser: false,
+      },
     })
 
     if (error) {

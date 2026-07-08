@@ -12,13 +12,17 @@
  * postning och insights funkar utan att man rör Vercel-env eller pillar med tokens.
  */
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { setToken, type Platform } from '@/lib/media/token-store'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 
 export const dynamic = 'force-dynamic'
 
 const FB_GRAPH = 'https://graph.facebook.com/v21.0'
+
+// This route always writes to the default social project via setToken (no project
+// param is passed), so ownership is gated against that project's slug.
+const DEFAULT_SOCIAL_PROJECT_SLUG = 'ai-media-automation'
 
 /**
  * Växlar ett kortlivat FB user-token → långlivat user-token → icke-utgående page-token,
@@ -90,9 +94,8 @@ async function onboardFacebookToken(inputToken: string) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   let body: { platform?: string; token?: string; expires_days?: number }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Ogiltig JSON' }, { status: 400 }) }
@@ -106,6 +109,16 @@ export async function POST(request: Request) {
   if (!token || token.length < 50) {
     return NextResponse.json({ error: 'Tokenet ser för kort ut — klistra in hela värdet' }, { status: 400 })
   }
+
+  // ISOLATION (C-1): storing a platform OAuth token is a high-value write. This
+  // route always targets the default social project (ai-media-automation) via
+  // setToken, so only that project's owner may replace its tokens. Gate BEFORE
+  // any token exchange or DB write.
+  const gateDb = createAdminClient()
+  const { data: proj } = await gateDb.from('projects').select('id').eq('slug', DEFAULT_SOCIAL_PROJECT_SLUG).maybeSingle()
+  const projectId = (proj as { id?: string } | null)?.id
+  if (!projectId) return NextResponse.json({ error: `Projekt ${DEFAULT_SOCIAL_PROJECT_SLUG} saknas` }, { status: 404 })
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
   try {
     if (platform === 'facebook') {

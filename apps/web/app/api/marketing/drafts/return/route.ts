@@ -7,14 +7,13 @@
  *
  * Body: { draft_id, note? }   ⛔ Endast Familje-Stunden.
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as { draft_id?: string; note?: string }
   const draftId = (body.draft_id ?? '').trim()
@@ -24,6 +23,12 @@ export async function POST(request: Request) {
   const { data: draft } = await db.from('draft_posts').select('id, project_id, brief_id').eq('id', draftId).maybeSingle()
   const d = draft as { id?: string; project_id?: string; brief_id?: string } | null
   if (!d?.id) return NextResponse.json({ error: 'Utkast hittades inte' }, { status: 404 })
+
+  // ISOLATION (C-1): only return a draft the caller owns. Foreign drafts return the
+  // same 404 as missing (no existence probing) — no status flip or requeued run.
+  if (!assertProjectAllowed(d.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Utkast hittades inte' }, { status: 404 })
+  }
 
   await db.from('draft_posts').update({ status: 'returned', updated_at: new Date().toISOString() }).eq('id', d.id)
   const { data: run, error } = await (db.from('runs') as any).insert({

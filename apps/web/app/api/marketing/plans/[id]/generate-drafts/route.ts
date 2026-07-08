@@ -9,14 +9,13 @@
  * de som inte redan har ett utkast, status 'planned'/'needs_input').
  * ⛔ Endast Familje-Stunden. Inget fire-and-forget (allt går via runs/drain).
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as { all?: boolean }
   const planId = params.id
@@ -29,6 +28,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .maybeSingle()
   const p = plan as { id?: string; project_id?: string; plan_key?: string } | null
   if (!p?.id) return NextResponse.json({ error: 'Plan hittades inte' }, { status: 404 })
+
+  // ISOLATION (C-1): only fan out drafter runs for a plan the caller owns. Foreign
+  // plans return the same 404 as missing (no existence probing) — no cross-tenant
+  // brief mutation or run queue.
+  if (!assertProjectAllowed(p.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Plan hittades inte' }, { status: 404 })
+  }
 
   // Briefs att köa: alla, eller bara de som inte redan draftats.
   let q = db.from('campaign_briefs').select('id, status').eq('plan_id', p.id)

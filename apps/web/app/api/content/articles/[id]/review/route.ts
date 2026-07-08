@@ -20,6 +20,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { publishArticle } from '@/lib/publishing/publish'
 import { PublishError, type PublishPayload } from '@/lib/publishing/types'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -48,6 +49,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .maybeSingle()
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 })
   if (!row) return NextResponse.json({ error: 'content not found' }, { status: 404 })
+  // ISOLATION (C-1): the content must belong to one of the caller's projects
+  // BEFORE any reject write or approve→publish. This route uses the service-role
+  // client (RLS-bypassing); approve publishes publicly, so a foreign id must not
+  // reach it. Foreign rows return the same 404 as missing (no existence probing).
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (!assertProjectAllowed(row.project_id, allowedProjectIds)) {
+    return NextResponse.json({ error: 'content not found' }, { status: 404 })
+  }
   if (row.status !== 'pending_review') {
     return NextResponse.json({ error: `not reviewable (status=${row.status})` }, { status: 409 })
   }

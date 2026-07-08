@@ -46,3 +46,10 @@ pnpm-lock.yaml
 pnpm-workspace.yaml
 __pycache__/
 **/.temp/
+
+# Omnira Intelligence Graph — local artifacts (never committed; see docs/intelligence-graph.md)
+graphify-out/
+apps/web/data/intelligence/
+
+# Nested git worktrees (e.g. .worktrees/omnira-intelligence-graph) — never tracked
+.worktrees/

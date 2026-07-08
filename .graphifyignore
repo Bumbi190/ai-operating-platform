@@ -1,0 +1,68 @@
+# .graphifyignore — Omnira Intelligence Graph
+# Same syntax as .gitignore. Merged with .gitignore (this file wins on conflict).
+# Goal: index source code, routes, APIs, workers, migrations and code-relevant
+# architecture docs ONLY. Never secrets, builds, media or private exports.
+
+# ── Secrets & credentials (defense in depth — .gitignore already excludes most)
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+**/secrets/
+**/credentials/
+HANDOFF*.md
+handoff*.md
+.vercel/
+.agents/
+
+# ── Dependencies / builds / caches
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+__pycache__/
+**/.temp/
+*.tsbuildinfo
+build.log
+package-lock.json
+skills-lock.json
+
+# ── Graphify's own output (never index itself)
+graphify-out/
+.graphifyignore
+
+# ── Git internals & worktrees
+.git/
+.worktrees/
+
+# ── Media, binaries and generated artifacts
+apps/web/public/
+apps/remotion/public/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.mp3
+*.mp4
+*.wav
+*.mov
+*.pdf
+*.docx
+*.xlsx
+*.zip
+*.log
+
+# ── Non-code content (books/marketing/site content — not architecture)
+content/
+brand/
+
+# ── Supabase local state
+supabase/.branches/
+supabase/.temp/

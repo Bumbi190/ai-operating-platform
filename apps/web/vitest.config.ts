@@ -15,6 +15,6 @@ export default defineConfig({
   css: { postcss: {} },
   test: {
     environment: "node",
-    include: ["lib/qa/**/*.test.ts", "lib/nav/**/*.test.ts"],
+    include: ["lib/qa/**/*.test.ts", "lib/nav/**/*.test.ts", "lib/intelligence/**/*.test.ts"],
   },
 });

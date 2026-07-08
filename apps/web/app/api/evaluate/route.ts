@@ -15,19 +15,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { evaluate, toDbRecord, ContentType } from '@/lib/ai/evaluator/content-evaluator'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 
 const VALID_CONTENT_TYPES: ContentType[] = ['script', 'hook', 'caption', 'image_prompt', 'news', 'text']
 
 export async function POST(req: NextRequest) {
-  // Auth
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  // Auth + project boundary
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   let body: {
     content?: string
@@ -56,6 +54,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   }
+  // ISOLATION (C-1): if a project is targeted, it must be one the caller owns
+  // BEFORE we evaluate or store anything for it. (projectId omitted → evaluate-only,
+  // never stored.) Replaces the previous implicit RLS `projects` lookup with an
+  // explicit owner assertion.
+  if (projectId && !assertProjectAllowed(projectId, access.allowedProjectIds)) {
+    return projectForbidden()
+  }
+
   // Run evaluation (always — projectId is only needed for DB storage)
   const result = await evaluate({
     content,
@@ -63,36 +69,28 @@ export async function POST(req: NextRequest) {
     deepScore,
   })
 
-  // Store in DB only if projectId is provided and verified
+  // Store in DB only if an owned projectId is provided
   if (projectId) {
-    const { data: project } = await supabase
-      .from('projects')
+    const db = createAdminClient()
+    const record = toDbRecord(result, {
+      projectId,
+      contentType: contentType as ContentType,
+      outputId,
+      scriptId,
+    })
+
+    const { data: stored, error } = await db
+      .from('evaluations')
+      .insert(record)
       .select('id')
-      .eq('id', projectId)
       .single()
 
-    if (project) {
-      const db = createAdminClient()
-      const record = toDbRecord(result, {
-        projectId,
-        contentType: contentType as ContentType,
-        outputId,
-        scriptId,
-      })
-
-      const { data: stored, error } = await db
-        .from('evaluations')
-        .insert(record)
-        .select('id')
-        .single()
-
-      if (!error && stored) {
-        return NextResponse.json({ result, id: stored.id, stored: true })
-      }
+    if (!error && stored) {
+      return NextResponse.json({ result, id: stored.id, stored: true })
     }
   }
 
-  // Return result without storage (projectId missing or project not found)
+  // Return result without storage (projectId missing or insert failed)
   return NextResponse.json({ result, id: null, stored: false })
 }
 
@@ -104,9 +102,8 @@ export async function POST(req: NextRequest) {
  * Retrieves stored evaluation(s).
  */
 export async function GET(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { searchParams } = new URL(req.url)
   const outputId = searchParams.get('outputId')
@@ -118,6 +115,11 @@ export async function GET(req: NextRequest) {
   let query = db
     .from('evaluations')
     .select('*')
+    // ISOLATION (C-1): every branch (outputId/scriptId/projectId) is bounded to the
+    // caller's owned projects, so a foreign projectId — or an output/script that
+    // belongs to another tenant — yields zero rows. Empty allow-list → impossible
+    // id → no rows (fail closed).
+    .in('project_id', scopeProjectFilter(access.allowedProjectIds))
     .order('created_at', { ascending: false })
     .limit(limit)
 

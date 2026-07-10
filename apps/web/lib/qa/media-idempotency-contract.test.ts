@@ -94,12 +94,24 @@ describe('media pipeline idempotency contract', () => {
     const cronPublish = read('apps/web/app/api/media/cron/publish/route.ts')
     const manualPublish = read('apps/web/app/api/media/publish/instagram/route.ts')
     const canonical = read('apps/web/lib/media/instagram-publication.ts')
+    // step4 must never import or invoke any Instagram provider helper.
     expect(step4).not.toContain('createReelContainer')
     expect(step4).not.toContain('buildInstagramCaption')
+    expect(step4).not.toContain("@/lib/media/instagram")
     expect(step4).toContain("status:   'render_ready'")
+    // Both publish routes go through the canonical ledger publisher and never
+    // call the provider directly.
     expect(cronPublish).toContain('publishInstagramWithLedger')
+    expect(cronPublish).not.toContain('createReelContainer')
+    expect(cronPublish).not.toContain('publishContainer')
     expect(manualPublish).toContain('publishInstagramWithLedger')
+    expect(manualPublish).not.toContain('createReelContainer')
+    expect(manualPublish).not.toContain('publishContainer')
+    // The canonical publisher is the only module that both claims the ledger
+    // and talks to the provider. The runtime ordering guarantee (claim before
+    // any provider interaction) is proven behaviorally in
+    // media-instagram-publication.test.ts, not by source-position heuristics.
     expect(canonical).toContain('claimPublicationChannel')
-    expect(canonical.indexOf('claimPublicationChannel')).toBeLessThan(canonical.indexOf('createReelContainer'))
+    expect(canonical).toContain('createReelContainer')
   })
 })

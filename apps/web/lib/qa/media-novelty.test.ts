@@ -380,8 +380,17 @@ describe('media novelty deterministic safeguards', () => {
       url: 'https://openai.com/news/gpt-5?utm_campaign=social',
     })
     expect(result.status).toBe('duplicate_blocked')
-    expect(db.rows[0].status).toBe('pending_novelty_review')
-    expect(db.updates.find((u: any) => u.table === 'media_news_items' && u.patch.status)?.patch.status).toBe('duplicate_blocked')
+    expect(db.rows[0].status).toBe('duplicate_blocked')
+    const dupUpdate = db.updates.find((u: any) => u.table === 'media_news_items' && u.patch.status)?.patch
+    expect(dupUpdate.status).toBe('duplicate_blocked')
+    expect(dupUpdate.novelty_verdict).toBe('duplicate')
+    expect(dupUpdate.novelty_confidence).toBe(1)
+    expect(dupUpdate.novelty_policy_outcome).toBe('duplicate_blocked')
+    expect(dupUpdate.novelty_workflow_run_id).toBe('run-1')
+    expect(dupUpdate.novelty_reviewer).toBe('Editorial Duplicate & Freshness Reviewer')
+    expect(dupUpdate.novelty_input_evidence).toBeTruthy()
+    expect(db.runs['run-1'].status).toBe('done')
+    expect(db.runs['run-1'].context).toBeTruthy()
   })
 
   it('16. novelty-passed candidate still requires editorial approval', async () => {
@@ -402,11 +411,16 @@ describe('media novelty deterministic safeguards', () => {
     })
 
     expect(result.status).toBe('novelty_passed')
-    expect(db.rows[0].status).toBe('pending_novelty_review')
+    expect(db.rows[0].status).toBe('pending_editorial_review')
     const newsUpdate = db.updates.find((u: any) => u.table === 'media_news_items' && u.patch.status)?.patch
     expect(newsUpdate.status).toBe('pending_editorial_review')
     expect(newsUpdate.novelty_policy_outcome).toBe('novelty_passed')
     expect(newsUpdate.novelty_workflow_run_id).toBe('run-1')
+    expect(newsUpdate.novelty_verdict).toBe('new')
+    expect(newsUpdate.novelty_confidence).toBe(0.92)
+    expect(newsUpdate.novelty_reviewer).toBe('Editorial Duplicate & Freshness Reviewer')
+    expect(newsUpdate.novelty_input_evidence).toBeTruthy()
+    expect(db.runs['run-1'].status).toBe('done')
   })
 
   it('16a. retrying the same completed candidate returns one news row and creates no second run', async () => {

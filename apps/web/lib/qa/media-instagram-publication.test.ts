@@ -74,8 +74,8 @@ describe('ledger-controlled Instagram publication', () => {
       caption: 'caption',
     })
 
-    expect(db.updates.find(update => update.patch.provider_attempt_id && !update.patch.provider_container_id)).toBeTruthy()
-    expect(db.updates.find(update => update.patch.provider_container_id === 'container-1')).toBeTruthy()
+    expect(db.updates.find((update: any) => update.patch.provider_attempt_id && !update.patch.provider_container_id)).toBeTruthy()
+    expect(db.updates.find((update: any) => update.patch.provider_container_id === 'container-1')).toBeTruthy()
     expect(instagram.pollUntilReady).toHaveBeenCalledWith('container-1', undefined)
     expect(instagram.publishContainer).toHaveBeenCalledWith('container-1')
   })
@@ -96,6 +96,110 @@ describe('ledger-controlled Instagram publication', () => {
       expect.objectContaining({ patch: expect.objectContaining({ state: 'unknown_external_outcome' }) }),
     ]))
     expect(instagram.publishContainer).not.toHaveBeenCalled()
+  })
+
+  it('claims the ledger before any provider interaction (runtime call order)', async () => {
+    const db = makeDb([{ status: 'claimed', ledger_id: 'ledger-1' }])
+    instagram.createReelContainer.mockImplementation(async () => {
+      db.calls.push('provider:createReelContainer')
+      return 'container-1'
+    })
+    instagram.pollUntilReady.mockImplementation(async () => {
+      db.calls.push('provider:pollUntilReady')
+    })
+    instagram.publishContainer.mockImplementation(async () => {
+      db.calls.push('provider:publishContainer')
+      return { mediaId: 'media-1', permalink: 'https://instagram.example/p/media-1' }
+    })
+
+    await publishInstagramWithLedger(db, {
+      projectId: 'project-1',
+      scriptId: 'script-1',
+      mediaAssetId: 'https://cdn.example/video.mp4',
+      caption: 'caption',
+    })
+
+    const claimIndex = db.calls.indexOf('rpc:claim_media_publication:instagram')
+    const firstProviderIndex = db.calls.findIndex((call: string) => call.startsWith('provider:'))
+    expect(claimIndex).toBeGreaterThanOrEqual(0)
+    expect(firstProviderIndex).toBeGreaterThan(claimIndex)
+    // The provider attempt is persisted in the ledger before the provider call.
+    const attemptIndex = db.calls.findIndex((call: string) => call.includes('provider_attempt_id'))
+    expect(attemptIndex).toBeGreaterThan(claimIndex)
+    expect(attemptIndex).toBeLessThan(firstProviderIndex)
+  })
+
+  it('does not touch the provider when the claim is blocked', async () => {
+    const db = makeDb([{ status: 'blocked', ledger_id: 'ledger-1', reason: 'not eligible' }])
+
+    const result = await publishInstagramWithLedger(db, {
+      projectId: 'project-1',
+      scriptId: 'script-1',
+      mediaAssetId: 'https://cdn.example/video.mp4',
+      caption: 'caption',
+    })
+
+    expect(result.status).toBe('not_claimed')
+    expect(instagram.createReelContainer).not.toHaveBeenCalled()
+    expect(instagram.pollUntilReady).not.toHaveBeenCalled()
+    expect(instagram.publishContainer).not.toHaveBeenCalled()
+    expect(db.updates).toHaveLength(0)
+  })
+
+  it('does not touch the provider when the channel is already published', async () => {
+    const db = makeDb([{
+      status: 'already_published',
+      ledger_id: 'ledger-1',
+      external_publication_id: 'media-1',
+    }])
+
+    const result = await publishInstagramWithLedger(db, {
+      projectId: 'project-1',
+      scriptId: 'script-1',
+      mediaAssetId: 'https://cdn.example/video.mp4',
+      caption: 'caption',
+    })
+
+    expect(result.status).toBe('already_published')
+    expect(result.status === 'already_published' && result.result.mediaId).toBe('media-1')
+    expect(instagram.createReelContainer).not.toHaveBeenCalled()
+    expect(instagram.pollUntilReady).not.toHaveBeenCalled()
+    expect(instagram.publishContainer).not.toHaveBeenCalled()
+    expect(db.updates).toHaveLength(0)
+  })
+
+  it('does not touch the provider while another claim is in progress', async () => {
+    const db = makeDb([{ status: 'in_progress', ledger_id: 'ledger-1' }])
+
+    const result = await publishInstagramWithLedger(db, {
+      projectId: 'project-1',
+      scriptId: 'script-1',
+      mediaAssetId: 'https://cdn.example/video.mp4',
+      caption: 'caption',
+    })
+
+    expect(result.status).toBe('not_claimed')
+    expect(instagram.createReelContainer).not.toHaveBeenCalled()
+    expect(instagram.pollUntilReady).not.toHaveBeenCalled()
+    expect(instagram.publishContainer).not.toHaveBeenCalled()
+    expect(db.updates).toHaveLength(0)
+  })
+
+  it('requires reconciliation (no provider retry) when the external outcome is unknown and no id was recovered', async () => {
+    const db = makeDb([{ status: 'reconciliation_required', ledger_id: 'ledger-1' }])
+
+    const result = await publishInstagramWithLedger(db, {
+      projectId: 'project-1',
+      scriptId: 'script-1',
+      mediaAssetId: 'https://cdn.example/video.mp4',
+      caption: 'caption',
+    })
+
+    expect(result.status).toBe('reconciliation_required')
+    expect(instagram.createReelContainer).not.toHaveBeenCalled()
+    expect(instagram.pollUntilReady).not.toHaveBeenCalled()
+    expect(instagram.publishContainer).not.toHaveBeenCalled()
+    expect(db.updates).toHaveLength(0)
   })
 
   it('does not create another provider attempt while reconciliation is required', async () => {

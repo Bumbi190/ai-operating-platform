@@ -972,6 +972,30 @@ begin
     return;
   end if;
 
+  -- Defense in depth (fail closed): a retryable_failed row that carries
+  -- persisted provider upload-session evidence (provider_attempt_id) but no
+  -- reliable external publication id may already have produced a provider-side
+  -- upload whose response was lost. Such a row must never be handed back as an
+  -- actionable retry claim — it transitions to reconciliation_required instead.
+  -- Channels whose provider-attempt semantics differ are preserved: Instagram's
+  -- legitimate retryable failures always carry a persisted provider_container_id
+  -- (container-reusing retries are safe and remain reclaimable), and Facebook
+  -- rows never persist a provider_attempt_id.
+  if row.state = 'retryable_failed'
+     and row.provider_attempt_id is not null
+     and row.provider_container_id is null
+     and row.external_publication_id is null then
+    update public.media_publication_ledger
+    set state = 'reconciliation_required',
+        error_state = 'Retryable failure carried persisted provider upload-session evidence without an external id; external outcome must be reconciled before retry.',
+        last_reconciliation_at = now(),
+        updated_at = now()
+    where id = row.id
+    returning * into row;
+    return query select 'reconciliation_required'::text, row.id, row.external_publication_id, row.provider_attempt_id, row.provider_container_id, row.provider_upload_url, 'provider upload-session evidence exists without an external id; reconcile before retry'::text;
+    return;
+  end if;
+
   if row.state = 'publishing' and coalesce(row.stale_after, row.claimed_at + p_stale_after) > now() then
     return query select 'in_progress'::text, row.id, row.external_publication_id, row.provider_attempt_id, row.provider_container_id, row.provider_upload_url, null::text;
     return;

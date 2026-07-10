@@ -27,7 +27,7 @@ import { checkAutomationPaused, handlePublishFailure } from '@/lib/media/safegua
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { buildInstagramCaption } from '@/lib/media/instagram'
 import { publishInstagramWithLedger } from '@/lib/media/instagram-publication'
-import { postReelToFacebook } from '@/lib/media/facebook'
+import { postReelToFacebook, isFacebookAmbiguousOutcomeError } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
 import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
@@ -346,6 +346,10 @@ export async function GET(request: Request) {
       log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
       if (fbResult?.postId) {
         await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbMsg, fbResult.postId)
+      } else if (isFacebookAmbiguousOutcomeError(fbErr)) {
+        // The post was dispatched but no definitive response was read — the
+        // reel may exist on Facebook. Fail closed: never auto-retry.
+        await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbMsg)
       } else {
         await markPublicationFailed(db, fbClaim.ledgerId, fbMsg)
       }

@@ -41,6 +41,25 @@ export interface FacebookPublishResult {
 }
 
 /**
+ * Thrown when the Facebook video post was dispatched but no definitive provider
+ * response could be read — the post may exist on Facebook even though we have
+ * no post id. Callers must treat this as an unknown external outcome (fail
+ * closed), never as a retryable failure.
+ */
+export class FacebookAmbiguousOutcomeError extends Error {
+  readonly ambiguousExternalOutcome = true as const
+  constructor(message: string) {
+    super(message)
+    this.name = 'FacebookAmbiguousOutcomeError'
+  }
+}
+
+export function isFacebookAmbiguousOutcomeError(err: unknown): err is FacebookAmbiguousOutcomeError {
+  return typeof err === 'object' && err !== null
+    && (err as { ambiguousExternalOutcome?: unknown }).ambiguousExternalOutcome === true
+}
+
+/**
  * Post a video to a Facebook Page.
  * Accepts either a User token or a Page token — always resolves to the correct Page token.
  */
@@ -64,9 +83,39 @@ export async function postReelToFacebook(
     access_token: pageToken,
   })
 
-  const res  = await fetch(`${BASE}/${pageId}/videos`, { method: 'POST', body: params })
-  const data = await res.json() as { id?: string; error?: { message: string } }
+  // Provider-side-effect boundary: this POST is the side effect. Everything
+  // above (env checks, page-token resolution) is read-only and stays retryable.
+  let res: Response
+  try {
+    res = await fetch(`${BASE}/${pageId}/videos`, { method: 'POST', body: params })
+  } catch (err) {
+    // The request may have reached Facebook before the connection failed — the
+    // video post cannot be ruled out.
+    throw new FacebookAmbiguousOutcomeError(
+      `Facebook video post dispatched but no response was received; external outcome unknown: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
 
+  let data: { id?: string; error?: { message: string } }
+  try {
+    data = await res.json() as { id?: string; error?: { message: string } }
+  } catch (err) {
+    if (res.ok) {
+      // Facebook accepted the post but the success body was lost/truncated.
+      throw new FacebookAmbiguousOutcomeError(
+        `Facebook responded ${res.status} but the response body could not be parsed; external outcome unknown: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+    // Definitive provider error status — no post was created; retryable.
+    throw new Error(`Facebook video post failed (${res.status})`)
+  }
+
+  if (res.ok && !data.id) {
+    // A success status without a post id — success cannot be ruled out.
+    throw new FacebookAmbiguousOutcomeError(
+      `Facebook responded ${res.status} without a post id; external outcome unknown`,
+    )
+  }
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? `Facebook video post failed (${res.status})`)
   }

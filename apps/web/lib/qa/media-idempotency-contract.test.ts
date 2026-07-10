@@ -50,6 +50,40 @@ describe('media pipeline idempotency contract', () => {
     expect(migration).toContain('provider attempt started without a persisted container id')
   })
 
+  it('12b. retryable_failed rows with persisted upload-session evidence are never actionable retry claims', () => {
+    const migration = read('supabase/migrations/20260707190359_media_semantic_duplicate_guard.sql')
+    // The defense-in-depth branch exists…
+    expect(migration).toContain("row.state = 'retryable_failed'")
+    expect(migration).toContain('provider upload-session evidence exists without an external id; reconcile before retry')
+    // …with the exact fail-closed predicate (evidence present, no external id,
+    // container-carrying Instagram retries stay reclaimable)…
+    const guard = migration.indexOf("if row.state = 'retryable_failed'")
+    expect(guard).toBeGreaterThan(-1)
+    const guardBlock = migration.slice(guard, migration.indexOf('end if;', guard))
+    expect(guardBlock).toContain('row.provider_attempt_id is not null')
+    expect(guardBlock).toContain('row.provider_container_id is null')
+    expect(guardBlock).toContain('row.external_publication_id is null')
+    expect(guardBlock).toContain("state = 'reconciliation_required'")
+    // …and it runs before the final reclaim update can hand back a retry.
+    const reclaim = migration.indexOf("retry_count = case when row.state = 'retryable_failed'")
+    expect(reclaim).toBeGreaterThan(guard)
+    // Runtime behavior of the claim function is verified against real
+    // PostgreSQL in supabase/tests/claim_media_publication_guard.test.sql;
+    // the route-level fail-closed behavior is proven in
+    // lib/qa/media-youtube-publication.test.ts.
+  })
+
+  it('12c. publish routes classify ambiguous Facebook outcomes as unknown, not retryable', () => {
+    const facebook = read('apps/web/lib/media/facebook.ts')
+    const cronPublish = read('apps/web/app/api/media/cron/publish/route.ts')
+    const manualPublish = read('apps/web/app/api/media/publish/instagram/route.ts')
+    expect(facebook).toContain('FacebookAmbiguousOutcomeError')
+    expect(cronPublish).toContain('isFacebookAmbiguousOutcomeError')
+    expect(manualPublish).toContain('isFacebookAmbiguousOutcomeError')
+    // Behavioral coverage of the classification itself lives in
+    // lib/qa/media-facebook-outcome.test.ts.
+  })
+
   it('13. candidate intake is a project-scoped deterministic RPC with a unique database guard', () => {
     const novelty = read('apps/web/lib/media/novelty.ts')
     const migration = read('supabase/migrations/20260707190359_media_semantic_duplicate_guard.sql')

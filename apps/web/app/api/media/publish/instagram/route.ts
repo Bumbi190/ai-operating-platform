@@ -19,7 +19,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildInstagramCaption } from '@/lib/media/instagram'
 import { publishInstagramWithLedger } from '@/lib/media/instagram-publication'
-import { postReelToFacebook } from '@/lib/media/facebook'
+import { postReelToFacebook, isFacebookAmbiguousOutcomeError } from '@/lib/media/facebook'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 import {
@@ -182,6 +182,10 @@ export async function POST(request: Request) {
             // Facebook failure is non-fatal — Instagram already succeeded
             if (fbResult?.postId) {
               await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr), fbResult.postId)
+            } else if (isFacebookAmbiguousOutcomeError(fbErr)) {
+              // The post was dispatched but no definitive response was read —
+              // the reel may exist on Facebook. Fail closed: never auto-retry.
+              await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr))
             } else {
               await markPublicationFailed(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr))
             }

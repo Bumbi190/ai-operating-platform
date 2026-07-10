@@ -89,16 +89,30 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
   })
 
   let externalVideoId: string | null = null
+  // Fail-closed provider-side-effect boundary. Becomes true only once:
+  //   1. YouTube has registered the resumable upload session, AND
+  //   2. the session evidence (provider_attempt_id/provider_upload_url) has been
+  //      durably persisted to the publication ledger, AND
+  //   3. execution is about to cross into the video-upload side effect
+  //      (uploadShort awaits onUploadSession immediately before sending the body).
+  // Any error thrown after this point — connection reset, response timeout,
+  // truncated/invalid body, JSON parse failure, process error after the body was
+  // sent — cannot rule out that YouTube completed the upload, so it must never
+  // be classified as retryable.
+  let uploadSideEffectPossible = false
   try {
     const { videoId, url } = await uploadShort({
       videoUrl: script.video_url!,
       title,
       description,
       tags,
-      onUploadSession: uploadUrl => markPublicationProviderAttempt(db, claim.ledgerId, {
-        providerAttemptId: uploadUrl,
-        providerUploadUrl: uploadUrl,
-      }),
+      onUploadSession: async uploadUrl => {
+        await markPublicationProviderAttempt(db, claim.ledgerId, {
+          providerAttemptId: uploadUrl,
+          providerUploadUrl: uploadUrl,
+        })
+        uploadSideEffectPossible = true
+      },
     })
     externalVideoId = videoId
 
@@ -121,10 +135,24 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
     return url
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     if (externalVideoId) {
-      await markPublicationUnknownExternalOutcome(db, claim.ledgerId, error instanceof Error ? error.message : String(error), externalVideoId)
+      // External video id is known — preserve reconciliation with the id.
+      await markPublicationUnknownExternalOutcome(db, claim.ledgerId, message, externalVideoId)
+    } else if (uploadSideEffectPossible) {
+      // The upload session was registered and persisted, and the upload body may
+      // have reached YouTube — external success cannot be ruled out. Fail closed:
+      // this row must never be automatically uploaded again.
+      await markPublicationUnknownExternalOutcome(
+        db,
+        claim.ledgerId,
+        `YouTube upload outcome unknown after registered upload session (fail closed): ${message}`,
+      )
     } else {
-      await markPublicationFailed(db, claim.ledgerId, error instanceof Error ? error.message : String(error))
+      // Strictly before the provider-side-effect boundary (token refresh, video
+      // fetch, session init, missing Location header, session persistence) — no
+      // upload can have occurred, so the row stays retryable.
+      await markPublicationFailed(db, claim.ledgerId, message)
     }
     throw error
   }

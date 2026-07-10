@@ -26,6 +26,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
+import {
+  claimPublicationChannel,
+  markPublicationFailed,
+  markPublicationProviderAttempt,
+  markPublicationPublished,
+  markPublicationUnknownExternalOutcome,
+} from '@/lib/media/publication-ledger'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -35,6 +43,7 @@ const MAX_PER_RUN  = 3    // tak per körning för att hålla oss inom maxDurati
 
 type ScriptRow = {
   id: string
+  project_id: string
   hook: string | null
   cta: string | null
   hashtags: unknown
@@ -48,9 +57,28 @@ function log(msg: string) {
 }
 
 async function uploadOne(db: ReturnType<typeof createAdminClient>, script: ScriptRow) {
+  await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId: script.id, stage: 'youtube' })
+
   const newsItem = Array.isArray(script.media_news_items)
     ? script.media_news_items[0]
     : script.media_news_items
+
+  const claim = await claimPublicationChannel(db, {
+    projectId: script.project_id,
+    newsItemId: (newsItem as { id?: string } | null)?.id ?? null,
+    scriptId: script.id,
+    mediaAssetId: script.video_url!,
+    channel: 'youtube',
+    scheduledTime: new Date().toISOString(),
+  })
+  if (claim.status === 'already_published') {
+    return claim.externalPublicationId
+      ? `https://www.youtube.com/shorts/${claim.externalPublicationId}`
+      : 'already_published'
+  }
+  if (claim.status !== 'claimed' && claim.status !== 'retry_claimed' && claim.status !== 'stale_claim_recovered') {
+    return `not_claimed:${claim.status}`
+  }
 
   const { title, description, tags } = buildYouTubeMeta({
     hook:       script.hook ?? 'AI news update',
@@ -60,14 +88,46 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     sourceUrl:  (newsItem as { url?: string } | null)?.url ?? null,
   })
 
-  const { videoId, url } = await uploadShort({ videoUrl: script.video_url!, title, description, tags })
+  let externalVideoId: string | null = null
+  try {
+    const { videoId, url } = await uploadShort({
+      videoUrl: script.video_url!,
+      title,
+      description,
+      tags,
+      onUploadSession: uploadUrl => markPublicationProviderAttempt(db, claim.ledgerId, {
+        providerAttemptId: uploadUrl,
+        providerUploadUrl: uploadUrl,
+      }),
+    })
+    externalVideoId = videoId
 
-  await db.from('media_scripts')
-    .update({ youtube_video_id: videoId, youtube_url: url })
-    .eq('id', script.id)
+    const { error: scriptUpdateError } = await db.from('media_scripts')
+      .update({ youtube_video_id: videoId, youtube_url: url })
+      .eq('id', script.id)
+    if (scriptUpdateError) throw new Error(`youtube script update failed: ${scriptUpdateError.message}`)
 
-  await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
-  return url
+    try {
+      await markPublicationPublished(db, claim.ledgerId, videoId)
+    } catch (ledgerErr) {
+      await markPublicationUnknownExternalOutcome(
+        db,
+        claim.ledgerId,
+        ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+        videoId,
+      )
+      throw ledgerErr
+    }
+    await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
+    return url
+  } catch (error) {
+    if (externalVideoId) {
+      await markPublicationUnknownExternalOutcome(db, claim.ledgerId, error instanceof Error ? error.message : String(error), externalVideoId)
+    } else {
+      await markPublicationFailed(db, claim.ledgerId, error instanceof Error ? error.message : String(error))
+    }
+    throw error
+  }
 }
 
 export async function GET(request: Request) {
@@ -90,7 +150,7 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( id, url, source_name )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
 

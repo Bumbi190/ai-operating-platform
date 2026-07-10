@@ -8,7 +8,6 @@
  *   1. Polls Lambda until render is complete → saves video_url
  *      - On failure: retries up to 3 times (new Lambda render each time)
  *      - After 3 failures: sends alert email via Brevo
- *   2. Creates Instagram media container → saves instagram_creation_id
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
@@ -16,10 +15,10 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress, startLambdaRender } from '@/lib/media/lambda-render'
-import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagram'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -49,25 +48,21 @@ export async function GET(request: Request) {
     .from('media_scripts')
     .select(`
       id,
+      project_id,
       hook,
-      cta,
-      hashtags,
       video_url,
       video_status,
       render_id,
       render_bucket,
-      instagram_creation_id,
       retry_count,
       composition,
       audio_url,
       timing_url,
       duration_ms,
-      images,
-      media_news_items ( url, source_name )
+      images
     `)
     .eq('status', 'approved')
     .is('published_at', null)
-    .is('instagram_creation_id', null)
     .order('generated_at', { ascending: false })
     .limit(1)
 
@@ -82,8 +77,17 @@ export async function GET(request: Request) {
   const { data: script } = await query.single()
 
   if (!script) {
-    log('Nothing to do — no pending renders without IG container')
+    log('Nothing to do — no pending renders')
     return NextResponse.json({ status: 'nothing_to_do' })
+  }
+  try {
+    await assertMediaProductionEligible(db, { projectId: script.project_id as string, scriptId: script.id as string, stage: 'render' })
+  } catch (guardError) {
+    return NextResponse.json({
+      status: 'not_render_eligible',
+      scriptId: script.id,
+      error: guardError instanceof Error ? guardError.message : 'not eligible',
+    }, { status: 409 })
   }
 
   log(`Processing script ${script.id} (video_status: ${script.video_status}, retries: ${script.retry_count ?? 0})`)
@@ -203,37 +207,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'no_video_url', scriptId: script.id })
   }
 
-  // ── Step 2: Create Instagram container ───────────────────────────────────────
-  const newsItem = Array.isArray(script.media_news_items)
-    ? script.media_news_items[0]
-    : script.media_news_items
+  await logRun({ workflow: 'Render Video', context: { scriptId: script.id, videoUrl } })
 
-  const caption = buildInstagramCaption({
-    hook:       script.hook ?? '',
-    cta:        script.cta ?? undefined,
-    hashtags:   Array.isArray(script.hashtags) ? script.hashtags as string[] : [],
-    sourceUrl:  (newsItem as { url?: string } | null)?.url ?? undefined,
-    sourceName: (newsItem as { source_name?: string } | null)?.source_name ?? undefined,
+  return NextResponse.json({
+    status:   'render_ready',
+    scriptId: script.id,
+    videoUrl,
+    next:     'publish cron owns ledger-controlled social publication',
   })
-
-  try {
-    const creationId = await createReelContainer(videoUrl, caption)
-    await db.from('media_scripts')
-      .update({ instagram_creation_id: creationId })
-      .eq('id', script.id)
-    log(`Instagram container created: ${creationId}`)
-
-    await logRun({ workflow: 'Render Video', context: { scriptId: script.id, creationId } })
-
-    return NextResponse.json({
-      status:     'step4_done',
-      scriptId:   script.id,
-      creationId,
-      next:       'publish cron runs at 08:00 / 18:00 UTC — Instagram will be ready by then',
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown'
-    log(`Failed to create IG container: ${msg}`)
-    return NextResponse.json({ status: 'ig_container_failed', error: msg, scriptId: script.id }, { status: 500 })
-  }
 }

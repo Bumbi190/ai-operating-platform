@@ -19,6 +19,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/supabase/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 180  // 3 parallel Ideogram calls can take up to 2min
@@ -99,6 +101,8 @@ export async function POST(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { id } = await params
   const { what = 'script' } = await request.json() as { what?: 'script' | 'image' | 'both' }
@@ -119,6 +123,13 @@ export async function POST(
   const projectId = script.project_id
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+  try {
+    await assertMediaProductionEligible(db, { projectId, scriptId: id, stage: what === 'image' ? 'images' : 'script' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return NextResponse.json(res.body, { status: res.status })
   }
 
   const updates: Database['public']['Tables']['media_scripts']['Update'] = {}

@@ -13,20 +13,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter, type HunterCandidate } from '@/lib/media/news-hunter'
-import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
-import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
-import { Anthropic } from '@anthropic-ai/sdk'
-import { logRun } from '@/lib/media/run-log'
-import { logLlmCost } from '@/lib/cost/track'
-import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
-import { classifyTopic } from '@/lib/atlas/content-tags'
-import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
-import { toJson } from '@/lib/supabase/json'
+import { callHermesScrape, callHermesTrends, isHermesConfigured } from '@/lib/media/hermes'
+import { persistCandidateWithNoveltyReview } from '@/lib/media/novelty'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
-
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 /** Race a promise against a timeout; resolve to `fallback` if it doesn't finish in time. */
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -36,19 +27,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   ])
 }
 
-async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelayMs = 2000): Promise<T> {
-  for (let i = 0; i < attempts; i++) {
-    try { return await fn() } catch (err) {
-      const msg = err instanceof Error ? err.message : ''
-      if ((!msg.includes('overloaded') && !msg.includes('529')) || i === attempts - 1) throw err
-      await sleep(baseDelayMs * Math.pow(2, i))
-    }
-  }
-  throw new Error('Max retries exceeded')
-}
-
 type SaveNewsItemResult =
-  | { status: 'saved'; id: string }
+  | { status: 'awaiting_editorial_review'; id: string }
+  | { status: 'blocked'; outcome: string; id: string; message: string }
   | { status: 'duplicate'; message: string }
   | { status: 'error'; message: string }
 
@@ -58,26 +39,37 @@ function isDuplicateNewsUrlError(error: unknown): boolean {
   const text = `${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`.toLowerCase()
   return err.code === '23505' && (
     text.includes('unique_project_news_url') ||
+    text.includes('unique_project_active_news_url') ||
+    text.includes('unique_project_active_canonical_news_url') ||
     text.includes('media_news_items') ||
     text.includes('duplicate key')
   )
 }
 
 async function saveNewsItem(db: ReturnType<typeof createAdminClient>, row: Record<string, unknown>): Promise<SaveNewsItemResult> {
-  const { data, error } = await (db.from('media_news_items') as any).insert(row).select('id').single()
-
-  if (error) {
-    if (isDuplicateNewsUrlError(error)) {
-      return { status: 'duplicate', message: error.message }
+  try {
+    const result = await persistCandidateWithNoveltyReview(db, {
+      project_id: row.project_id as string,
+      run_id: row.run_id as string | null | undefined,
+      title: row.title as string,
+      summary: row.summary as string | null | undefined,
+      url: row.url as string | null | undefined,
+      source_name: row.source_name as string | null | undefined,
+      virality_score: row.virality_score as number | null | undefined,
+      content_angle: row.content_angle as string | null | undefined,
+      target_audience: row.target_audience as string | null | undefined,
+      key_insight: row.key_insight as string | null | undefined,
+      raw_output: row.raw_output as Record<string, unknown> | null | undefined,
+    })
+    if (result.status === 'novelty_passed') return { status: 'awaiting_editorial_review', id: result.newsItemId }
+    return { status: 'blocked', outcome: result.status, id: result.newsItemId, message: result.verdict.reasoning }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'media_news_items insert failed'
+    if (isDuplicateNewsUrlError(error) || message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {
+      return { status: 'duplicate', message }
     }
-    return { status: 'error', message: error.message }
+    return { status: 'error', message }
   }
-
-  if (!data?.id) {
-    return { status: 'error', message: 'media_news_items insert returned no id' }
-  }
-
-  return { status: 'saved', id: data.id }
 }
 
 async function saveFirstHunterCandidate(
@@ -85,7 +77,7 @@ async function saveFirstHunterCandidate(
   projectId: string,
   candidates: HunterCandidate[],
 ): Promise<
-  | { status: 'saved'; newsItemId: string; candidate: HunterCandidate; duplicateCount: number }
+  | { status: 'awaiting_editorial_review'; newsItemId: string; candidate: HunterCandidate; duplicateCount: number }
   | { status: 'duplicates_only'; duplicateCount: number }
   | { status: 'no_candidates'; duplicateCount: number }
   | { status: 'error'; message: string; duplicateCount: number }
@@ -103,7 +95,6 @@ async function saveFirstHunterCandidate(
       virality_score: top.estimatedViralityScore,
       content_angle: top.suggestedAngle,
       key_insight: top.editorialNote ?? null,
-      status: 'approved',
       raw_output: {
         title: top.story.title,
         summary: top.story.summary,
@@ -116,8 +107,13 @@ async function saveFirstHunterCandidate(
       },
     })
 
-    if (save.status === 'saved') {
-      return { status: 'saved', newsItemId: save.id, candidate: top, duplicateCount }
+    if (save.status === 'awaiting_editorial_review') {
+      return { status: 'awaiting_editorial_review', newsItemId: save.id, candidate: top, duplicateCount }
+    }
+    if (save.status === 'blocked') {
+      duplicateCount += 1
+      console.log(`[cron/step1] Novelty reviewer blocked candidate: ${save.outcome} (${top.story.url})`)
+      continue
     }
     if (save.status === 'duplicate') {
       duplicateCount += 1
@@ -140,9 +136,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const db     = createAdminClient()
-  const claude = new Anthropic()
-  const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s
+  const db = createAdminClient()
 
   const { searchParams } = new URL(request.url)
   const projectIdParam = searchParams.get('project_id')
@@ -155,36 +149,6 @@ export async function GET(request: Request) {
   else q = q.eq('slug', 'ai-media-automation')
   const { data: project } = await (q as ReturnType<typeof db.from>).limit(1).single()
   if (!project) return NextResponse.json({ error: 'No project found' }, { status: 404 })
-
-  // ── Load competitor intelligence (weekly cache) ───────────────────────────
-  // Stored in memories table as JSON text under key 'competitor_intelligence'.
-  // Re-fetched from Hermes if cache is older than 7 days.
-  let competitorHooks:   string[] | undefined
-  let competitorPattern: string   | undefined
-
-  if (isHermesConfigured()) {
-    // READ-ONLY — never fetches in step1 to protect the 60s Vercel budget.
-    // The /api/media/cron/competitors route refreshes this cache weekly.
-    const { data: cached } = await db
-      .from('memories')
-      .select('value')
-      .eq('project_id', project.id)
-      .eq('key', 'competitor_intelligence')
-      .limit(1)
-      .maybeSingle()
-
-    if (cached?.value) {
-      try {
-        const parsed      = JSON.parse(cached.value)
-        competitorHooks   = parsed?.top_hooks
-        competitorPattern = parsed?.pattern_summary
-        console.log('[cron/step1] Using cached competitor intelligence')
-      } catch { /* malformed — skip */ }
-    }
-  }
-
-  const SCRIPT_SYSTEM = buildScriptSystem(competitorHooks, competitorPattern)
-  // ── End competitor intelligence ───────────────────────────────────────────
 
   // ── Fetch trends + hunt news in parallel ─────────────────────────────────
   // Trends run alongside the news hunt — no extra time cost.
@@ -222,10 +186,6 @@ export async function GET(request: Request) {
     (topCandidate && topCandidate.estimatedViralityScore < VIRALITY_THRESHOLD)
   )
 
-  let news: NewsHunterOutput | null = null
-  // newsItemId is captured directly from each insert — avoids the race condition
-  // of querying "most recent row" which could grab a concurrent insert's ID.
-  let newsItemId: string | null = null
   let duplicateCount = 0
 
   if (shouldUseHermes) {
@@ -254,23 +214,15 @@ export async function GET(request: Request) {
         virality_score: hermesResult.virality_score,
         content_angle:  hermesResult.content_angle,
         key_insight:    hermesResult.key_insight,
-        status:         'approved',
         raw_output:     { ...hermesResult, source: 'hermes' },
       })
 
-      if (hermesSave.status === 'saved') {
-        // Hermes already returns structured NewsHunterOutput-compatible data.
-        news = {
-          title:           hermesResult.title,
-          summary:         hermesResult.summary,
-          key_insight:     hermesResult.key_insight,
-          virality_score:  hermesResult.virality_score,
-          target_audience: 'intermediate',
-          content_angle:   hermesResult.content_angle,
-          source_url:      hermesResult.url,
-          source_name:     hermesResult.source_name,
-        }
-        newsItemId = hermesSave.id
+      if (hermesSave.status === 'awaiting_editorial_review') {
+        return NextResponse.json({
+          status: 'awaiting_editorial_review',
+          newsItemId: hermesSave.id,
+          message: 'Novelty passed. Editorial approval is required before script generation.',
+        })
       } else if (hermesSave.status === 'duplicate') {
         duplicateCount += 1
         console.log(`[cron/step1] Hermes returned duplicate news URL: ${hermesResult.url}`)
@@ -280,27 +232,24 @@ export async function GET(request: Request) {
     }
 
     // Hermes failed, stalled, or returned a duplicate. Fall back to API candidates.
-    if (!news) {
-      const candidateSave = await saveFirstHunterCandidate(db, project.id, hunterResult.candidates)
-      duplicateCount += candidateSave.duplicateCount
+    const candidateSave = await saveFirstHunterCandidate(db, project.id, hunterResult.candidates)
+    duplicateCount += candidateSave.duplicateCount
 
-      if (candidateSave.status === 'error') {
-        return NextResponse.json({ status: 'news_persistence_failed', error: candidateSave.message }, { status: 500 })
-      }
-      if (candidateSave.status !== 'saved') {
-        return NextResponse.json({
-          status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
-          duplicateCount,
-        })
-      }
-
-      const top = candidateSave.candidate
-      const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
-      const newsRes   = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
-      void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
-      news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
-      newsItemId = candidateSave.newsItemId
+    if (candidateSave.status === 'error') {
+      return NextResponse.json({ status: 'news_persistence_failed', error: candidateSave.message }, { status: 500 })
     }
+    if (candidateSave.status === 'awaiting_editorial_review') {
+      return NextResponse.json({
+        status: 'awaiting_editorial_review',
+        newsItemId: candidateSave.newsItemId,
+        duplicateCount,
+        message: 'Novelty passed. Editorial approval is required before script generation.',
+      })
+    }
+    return NextResponse.json({
+      status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
+      duplicateCount,
+    })
   } else {
     // Standard path: use the first API candidate that actually persists.
     const candidateSave = await saveFirstHunterCandidate(db, project.id, hunterResult.candidates)
@@ -309,99 +258,18 @@ export async function GET(request: Request) {
     if (candidateSave.status === 'error') {
       return NextResponse.json({ status: 'news_persistence_failed', error: candidateSave.message }, { status: 500 })
     }
-    if (candidateSave.status !== 'saved') {
+    if (candidateSave.status === 'awaiting_editorial_review') {
       return NextResponse.json({
-        status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
+        status: 'awaiting_editorial_review',
+        newsItemId: candidateSave.newsItemId,
         duplicateCount,
+        message: 'Novelty passed. Editorial approval is required before script generation.',
       })
     }
-
-    const top = candidateSave.candidate
-    const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
-    // Analyze article
-    const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
-    void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
-    news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
-    newsItemId = candidateSave.newsItemId
+    return NextResponse.json({
+      status: duplicateCount > 0 ? 'duplicate_existing_story' : 'no_news',
+      duplicateCount,
+    })
   }
-  // ── End Hermes fallback ───────────────────────────────────────────────────
-
-  if (!news || !newsItemId) {
-    return NextResponse.json({ status: 'no_news' })
-  }
-
-  // ── Hermes article read ───────────────────────────────────────────────────
-  // If Hermes is available and the story has a URL, fetch the full article text.
-  // This gives Claude real quotes, exact numbers and concrete details —
-  // far better than RSS summaries for writing punchy scripts.
-  let fullArticleText = ''
-  const articleUrl = news.source_url ?? null
-  // Only read the full article if Hermes is configured AND we still have budget
-  // left (skip when >30s elapsed). Bounded to 10s either way (was 30s).
-  if (isHermesConfigured() && articleUrl && Date.now() - t0 < 30_000) {
-    console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
-    const read = await withTimeout(callHermesRead(articleUrl), 10_000, null)
-    if (read?.success && read.word_count > 100) {
-      fullArticleText = read.text
-      console.log(`[cron/step1] Got ${read.word_count} words from article`)
-    }
-  }
-
-  // Build the script-writing context — prefer full article, fall back to summary
-  const scriptContext = fullArticleText
-    ? `Title: ${news.title}\nFull article text:\n${fullArticleText}\n\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
-    : `Title: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nVirality: ${news.virality_score}/100\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}`
-  // ── End article read ──────────────────────────────────────────────────────
-
-  // Write script
-  const scriptRes = await withRetry(() => claude.messages.create({
-    model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-    messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
-  }))
-  void logLlmCost('claude-sonnet-4-6', scriptRes.usage, { agent: 'Script Writer', operation: 'Generate Script' })
-  let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
-
-  // Quality gate
-  const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
-
-  // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
-  // slightly weaker hook than to 504 and save nothing.
-  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
-    const rewriteRes = await withRetry(() => claude.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
-      messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
-    }))
-    void logLlmCost('claude-sonnet-4-6', rewriteRes.usage, { agent: 'Script Writer', operation: 'Rewrite Script' })
-    script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
-  }
-
-  // Save script — voice_status='none' signals step2 to pick it up
-  const { data: scriptRow } = await db.from('media_scripts').insert({
-    project_id: project.id, news_item_id: newsItemId,
-    hook: script.hook, script: script.script, captions: script.captions,
-    hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-    estimated_duration: script.estimated_duration, raw_output: toJson(script),
-    quality_score: toJson(qualityScore), status: 'approved',
-    voice_status: 'none', video_status: 'none', version: 1,
-    topic: classifyTopic(script.hook, script.script), format: 'reel',
-    generated_at: new Date().toISOString(),
-  }).select('id').single()
-
-  if (!scriptRow) return NextResponse.json({ error: 'Failed to save script' }, { status: 500 })
-  if (newsItemId) await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItemId)
-
-  console.log(`[cron/step1] Done — scriptId: ${scriptRow.id}, hook: "${script.hook}", quality: ${qualityScore.overall.toFixed(1)}/10`)
-
-  const scriptRunId = await logRun({ workflow: 'Generate Script', context: { scriptId: scriptRow.id, hook: script.hook } })
-  // Spårbarhet: stämpla run_id på scriptet → kedjan news → script → run kan följas bakåt.
-  if (scriptRunId) { try { await db.from('media_scripts').update({ run_id: scriptRunId }).eq('id', scriptRow.id) } catch { /* non-blocking */ } }
-
-  return NextResponse.json({
-    status: 'step1_done',
-    scriptId: scriptRow.id,
-    hook: script.hook,
-    quality: qualityScore.overall,
-    next: 'step2 will run in 5 min',
-  })
+  return NextResponse.json({ status: 'no_news', duplicateCount })
 }

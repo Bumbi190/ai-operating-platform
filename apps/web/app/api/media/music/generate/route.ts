@@ -19,6 +19,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -48,6 +50,8 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { scriptId } = await request.json() as { scriptId: string }
   if (!scriptId) return NextResponse.json({ error: 'scriptId required' }, { status: 400 })
@@ -57,7 +61,7 @@ export async function POST(request: Request) {
   // ── Load script to get tone ──────────────────────────────────────────────
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, tone')
+    .select('id, project_id, tone, background_music_url')
     .eq('id', scriptId)
     .single()
 
@@ -68,6 +72,13 @@ export async function POST(request: Request) {
   const projectId = script.project_id
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+  try {
+    await assertMediaProductionEligible(db, { projectId, scriptId, stage: 'music' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return NextResponse.json(res.body, { status: res.status })
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY

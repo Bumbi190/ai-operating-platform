@@ -59,6 +59,7 @@ export interface YouTubeUploadOptions {
   title:       string       // max ~100 tecken
   description: string
   tags?:       string[]
+  onUploadSession?: (uploadUrl: string) => Promise<void> | void
 }
 
 /**
@@ -108,6 +109,7 @@ export async function uploadShort(opts: YouTubeUploadOptions): Promise<{ videoId
   }
   const uploadUrl = initRes.headers.get('location')
   if (!uploadUrl) throw new Error('YouTube gav ingen upload-URL (Location-header saknas)')
+  await opts.onUploadSession?.(uploadUrl)
 
   // 2. Ladda upp videons bytes
   const upRes = await fetch(uploadUrl, {

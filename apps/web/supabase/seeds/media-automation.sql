@@ -9,6 +9,7 @@ DECLARE
   v_project_id  uuid;
   v_news_agent  uuid;
   v_script_agent uuid;
+  v_reviewer_agent uuid;
 BEGIN
 
 -- 1. Get project ID
@@ -105,7 +106,32 @@ Rules:
 )
 RETURNING id INTO v_script_agent;
 
--- 4. Create "Fetch AI News" workflow (1 step)
+-- 4. Create Editorial Duplicate & Freshness Reviewer agent
+INSERT INTO agents (id, project_id, name, description, system_prompt, model, config, skill_ids)
+VALUES (
+  gen_random_uuid(),
+  v_project_id,
+  'Editorial Duplicate & Freshness Reviewer',
+  'Reviews candidate AI news for semantic duplicates, freshness, and material updates before media production.',
+  'You are the Editorial Duplicate & Freshness Reviewer for "The Prompt" media pipeline.
+
+Authority:
+- You run after News Hunter selects a candidate and before script, voice, image, render, schedule, or publishing work may begin.
+- You are project-scoped. Review only evidence supplied for this project.
+- Fail closed: if evidence is insufficient or output is uncertain, route to human review.
+
+Compare the candidate against previously published news, scheduled publications, approved but unpublished items, scripts currently being generated, rendered media waiting for publication, recently rejected duplicate items, and the same event reported by other sources.
+
+Reason about the underlying event, not just URL or title. Consider canonical URL, normalized title, named entities, companies/products, event/action type, dates, central factual claim, semantic similarity, existing scripts/summaries, and publication state.
+
+Return ONLY valid JSON. Allowed verdicts: "new", "duplicate", "material_update", "uncertain". Include confidence, matchedItemIds, reasoning, and newFacts for material_update.',
+  'claude-haiku-4-5-20251001',
+  '{"max_tokens": 900, "temperature": 0.1}'::jsonb,
+  '{}'::text[]
+)
+RETURNING id INTO v_reviewer_agent;
+
+-- 5. Create "Fetch AI News" workflow (1 step)
 INSERT INTO workflows (project_id, name, description, steps, trigger, active)
 VALUES (
   v_project_id,
@@ -127,7 +153,27 @@ Content: {{content}}',
   true
 );
 
--- 5. Create "Generate Script" workflow (1 step)
+-- 6. Create "Editorial Duplicate Review" workflow (1 step)
+INSERT INTO workflows (project_id, name, description, steps, trigger, active, side_effect_class)
+VALUES (
+  v_project_id,
+  'Editorial Duplicate Review',
+  'Durable semantic duplicate/freshness review before editorial approval and media production.',
+  jsonb_build_array(
+    jsonb_build_object(
+      'order', 1,
+      'name', 'Review Novelty',
+      'agent_id', v_reviewer_agent::text,
+      'input_template', 'Review this candidate against supplied same-project evidence. Candidate: {{candidate_json}} Prior evidence: {{prior_items_json}}',
+      'output_key', 'novelty_verdict'
+    )
+  ),
+  'manual',
+  true,
+  'approval_gate'
+);
+
+-- 7. Create "Generate Script" workflow (1 step)
 INSERT INTO workflows (project_id, name, description, steps, trigger, active)
 VALUES (
   v_project_id,
@@ -151,5 +197,5 @@ Content angle: {{content_angle}}',
   true
 );
 
-RAISE NOTICE 'Done! Created News Hunter (%), Script Writer (%), and 2 workflows.', v_news_agent, v_script_agent;
+RAISE NOTICE 'Done! Created News Hunter (%), Script Writer (%), Reviewer (%), and 3 workflows.', v_news_agent, v_script_agent, v_reviewer_agent;
 END $$;

@@ -9,10 +9,16 @@ import { NewsHunter } from '@/components/platform/NewsHunter'
 import { OSPage, OSLayer } from '@/components/platform/os'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  new:      { label: 'Ny',         color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-  approved: { label: 'Godkänd',    color: 'text-green-400 bg-green-400/10 border-green-400/20' },
-  rejected: { label: 'Avslagen',   color: 'text-red-400 bg-red-400/10 border-red-400/20' },
-  scripted: { label: 'Manusad',    color: 'text-purple-400 bg-purple-400/10 border-purple-400/20' },
+  new:                       { label: 'Ny',              color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+  pending_novelty_review:    { label: 'Nyhetsgranskas',  color: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
+  novelty_passed:            { label: 'Nyhet OK',        color: 'text-cyan-300 bg-cyan-400/10 border-cyan-400/20' },
+  pending_editorial_review:  { label: 'Redaktionell granskning', color: 'text-amber-300 bg-amber-400/10 border-amber-400/20' },
+  approved:                  { label: 'Godkänd',         color: 'text-green-400 bg-green-400/10 border-green-400/20' },
+  rejected:                  { label: 'Avslagen',        color: 'text-red-400 bg-red-400/10 border-red-400/20' },
+  scripted:                  { label: 'Manusad',         color: 'text-purple-400 bg-purple-400/10 border-purple-400/20' },
+  duplicate_blocked:         { label: 'Dubblett stoppad', color: 'text-slate-300 bg-slate-400/10 border-slate-400/20' },
+  material_update_pending:   { label: 'Uppdatering',     color: 'text-cyan-300 bg-cyan-400/10 border-cyan-400/20' },
+  uncertain_requires_review: { label: 'Kräver granskning', color: 'text-orange-300 bg-orange-400/10 border-orange-400/20' },
 }
 
 const ANGLE_ICONS: Record<string, string> = {
@@ -73,7 +79,7 @@ export default function NewsPage() {
     load()
   }
 
-  const filters = ['all', 'new', 'approved', 'scripted', 'rejected']
+  const filters = ['all', 'pending_novelty_review', 'pending_editorial_review', 'approved', 'material_update_pending', 'uncertain_requires_review', 'duplicate_blocked', 'scripted', 'rejected']
 
   return (
     <OSPage>

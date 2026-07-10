@@ -2,8 +2,18 @@
 // AI Media Automation — shared types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type NewsStatus = 'new' | 'approved' | 'rejected' | 'scripted'
-export type ScriptStatus = 'pending_review' | 'approved' | 'rejected' | 'published'
+export type NewsStatus =
+  | 'new'
+  | 'pending_novelty_review'
+  | 'novelty_passed'
+  | 'pending_editorial_review'
+  | 'approved'
+  | 'rejected'
+  | 'scripted'
+  | 'duplicate_blocked'
+  | 'material_update_pending'
+  | 'uncertain_requires_review'
+export type ScriptStatus = 'pending_review' | 'approved' | 'rejected' | 'publishing' | 'published'
 export type VoiceStatus = 'none' | 'generating' | 'ready' | 'failed'
 export type ContentAngle = 'educational' | 'controversial' | 'inspiring' | 'practical'
 export type TargetAudience = 'beginners' | 'intermediate' | 'advanced'

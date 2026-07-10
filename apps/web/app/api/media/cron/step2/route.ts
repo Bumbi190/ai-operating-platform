@@ -18,6 +18,7 @@ import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -34,39 +35,45 @@ export async function GET(request: Request) {
   // Also support ?scriptId=xxx for manual testing (bypasses time window)
   const { searchParams } = new URL(request.url)
   const scriptIdParam = searchParams.get('scriptId')
-
-  let query = db
-    .from('media_scripts')
-    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
-    .eq('status', 'approved')
-    .order('generated_at', { ascending: false })
-    .limit(1)
-
-  if (scriptIdParam) {
-    // Manual override — find by ID regardless of age
-    query = query.eq('id', scriptIdParam)
-  } else {
-    // Automatic cron — only look at last 60 min, voice not yet generated
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-    query = query
-      .or('voice_status.eq.none,voice_status.is.null')
-      .gte('generated_at', cutoff)
+  let projectIdParam = searchParams.get('project_id')
+  if (!projectIdParam && scriptIdParam) {
+    const { data: scriptProject } = await db.from('media_scripts').select('project_id').eq('id', scriptIdParam).single()
+    projectIdParam = scriptProject?.project_id ?? null
+  }
+  if (!projectIdParam && !scriptIdParam) {
+    const { data: project } = await db.from('projects').select('id').eq('slug', 'ai-media-automation').single()
+    projectIdParam = project?.id ?? null
   }
 
-  const { data: script } = await query.single()
+  const { data: claimed, error: claimError } = await (db as any)
+    .rpc('claim_media_script_for_voice', { p_project_id: projectIdParam, p_script_id: scriptIdParam })
+  if (claimError) {
+    return NextResponse.json({ status: 'claim_error', error: claimError.message }, { status: 500 })
+  }
+  const claim = Array.isArray(claimed) ? claimed[0] : claimed
+  if (!claim || claim.status === 'nothing_eligible') {
+    return NextResponse.json({ status: 'nothing_to_do', reason: claim?.reason ?? 'No script claim available for voice' })
+  }
+  if (claim.status !== 'claimed' && claim.status !== 'stale_claim_recovered') {
+    return NextResponse.json({ status: 'voice_not_claimed', claim }, { status: claim.status === 'project_mismatch' ? 403 : 409 })
+  }
+
+  const { data: script } = await db
+    .from('media_scripts')
+    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
+    .eq('id', claim.script_id)
+    .single()
 
   if (!script) {
-    return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for voice in last 15 min' })
+    return NextResponse.json({ status: 'nothing_to_do', reason: 'Claimed script was not found' })
   }
 
   console.log(`[cron/step2] Generating voice for script ${script.id}`)
 
-  // Mark as generating to prevent double-processing
-  await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', script.id)
-
   try {
     const { script: scriptText, project_id: projectId, hook } = script
     if (!scriptText || !projectId || !hook) throw new Error('Script saknar obligatoriskt fält: script, project_id eller hook')
+    await assertMediaProductionEligible(db, { projectId, scriptId: script.id, stage: 'voice' })
 
     // Get news title for image generation
     const newsTitle = Array.isArray(script.media_news_items)

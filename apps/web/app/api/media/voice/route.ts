@@ -16,6 +16,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { generateVoiceover, type VoiceName } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData } from '@/lib/media/storage'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -25,6 +27,8 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { script_id, text, voice } = await request.json() as {
     script_id: string
@@ -52,6 +56,14 @@ export async function POST(request: Request) {
   const projectId = script.project_id
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
+  }
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+
+  try {
+    await assertMediaProductionEligible(db, { projectId, scriptId: script_id, stage: 'voice' })
+  } catch (error) {
+    const res = eligibilityResponse(error)
+    return NextResponse.json(res.body, { status: res.status })
   }
 
   try {

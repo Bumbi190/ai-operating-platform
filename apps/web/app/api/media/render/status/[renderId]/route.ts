@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,9 @@ export async function GET(
     const result = await getLambdaRenderProgress(renderId, bucketName)
 
     if (result.done && result.videoUrl) {
+      const { data: script } = await db.from('media_scripts').select('id, project_id').eq('id', scriptId).single()
+      if (!script) return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+      await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId, stage: 'render' })
       // Render complete — persist to DB
       await db
         .from('media_scripts')

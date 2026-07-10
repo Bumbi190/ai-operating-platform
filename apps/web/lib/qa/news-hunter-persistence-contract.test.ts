@@ -180,8 +180,7 @@ describe('News Hunter persistence contract', () => {
 
     expect(json.projects).toHaveLength(1)
     expect(json.projects[0]).toMatchObject({
-      status: 'duplicate_existing_story',
-      reason: 'duplicate_url',
+      status: 'duplicate_race_prevented',
     })
     expect(json.projects[0].newsItemId).toBeUndefined()
     expect(mocks.logRun).toHaveBeenCalledWith(expect.objectContaining({

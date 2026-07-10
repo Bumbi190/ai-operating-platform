@@ -18,6 +18,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
 import { jsonStringArray } from '@/lib/supabase/json'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60  // Lambda kickoff is fast; 60s is plenty
@@ -26,6 +28,8 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { scriptId, composition = 'SimpleNewsReel' } = await request.json() as {
     scriptId: string
@@ -47,6 +51,13 @@ export async function POST(request: Request) {
   if (scriptError || !script) {
     console.error('[render/start] script lookup failed:', scriptError?.message)
     return NextResponse.json({ error: scriptError?.message ?? 'Script not found' }, { status: 404 })
+  }
+  if (!assertProjectAllowed(script.project_id, access.allowedProjectIds)) return projectForbidden()
+  try {
+    await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId, stage: 'render' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return NextResponse.json(res.body, { status: res.status })
   }
   if (!script.audio_url || !script.timing_url) {
     return NextResponse.json({ error: 'Voice not ready yet' }, { status: 400 })

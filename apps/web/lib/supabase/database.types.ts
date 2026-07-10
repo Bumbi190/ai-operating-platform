@@ -1583,11 +1583,32 @@ export type Database = {
       }
       media_news_items: {
         Row: {
+          candidate_idempotency_key: string | null
+          candidate_identity: string | null
+          candidate_published_at: string | null
+          candidate_source_id: string | null
+          canonical_url: string | null
           content_angle: string | null
           created_at: string | null
+          editorial_approved_at: string | null
+          editorial_approved_by: Json | null
+          event_fingerprint: string | null
           fetched_at: string | null
           id: string
           key_insight: string | null
+          normalized_title: string | null
+          novelty_claim_id: string | null
+          novelty_claimed_at: string | null
+          novelty_confidence: number | null
+          novelty_input_evidence: Json | null
+          novelty_matched_item_ids: string[]
+          novelty_new_facts: Json
+          novelty_policy_outcome: string | null
+          novelty_reasoning: string | null
+          novelty_reviewed_at: string | null
+          novelty_reviewer: string | null
+          novelty_verdict: string | null
+          novelty_workflow_run_id: string | null
           project_id: string
           raw_output: Json | null
           run_id: string | null
@@ -1597,14 +1618,36 @@ export type Database = {
           target_audience: string | null
           title: string
           url: string | null
+          superseded_by_news_item_id: string | null
           virality_score: number | null
         }
         Insert: {
+          candidate_idempotency_key?: string | null
+          candidate_identity?: string | null
+          candidate_published_at?: string | null
+          candidate_source_id?: string | null
+          canonical_url?: string | null
           content_angle?: string | null
           created_at?: string | null
+          editorial_approved_at?: string | null
+          editorial_approved_by?: Json | null
+          event_fingerprint?: string | null
           fetched_at?: string | null
           id?: string
           key_insight?: string | null
+          normalized_title?: string | null
+          novelty_claim_id?: string | null
+          novelty_claimed_at?: string | null
+          novelty_confidence?: number | null
+          novelty_input_evidence?: Json | null
+          novelty_matched_item_ids?: string[]
+          novelty_new_facts?: Json
+          novelty_policy_outcome?: string | null
+          novelty_reasoning?: string | null
+          novelty_reviewed_at?: string | null
+          novelty_reviewer?: string | null
+          novelty_verdict?: string | null
+          novelty_workflow_run_id?: string | null
           project_id: string
           raw_output?: Json | null
           run_id?: string | null
@@ -1614,14 +1657,36 @@ export type Database = {
           target_audience?: string | null
           title: string
           url?: string | null
+          superseded_by_news_item_id?: string | null
           virality_score?: number | null
         }
         Update: {
+          candidate_idempotency_key?: string | null
+          candidate_identity?: string | null
+          candidate_published_at?: string | null
+          candidate_source_id?: string | null
+          canonical_url?: string | null
           content_angle?: string | null
           created_at?: string | null
+          editorial_approved_at?: string | null
+          editorial_approved_by?: Json | null
+          event_fingerprint?: string | null
           fetched_at?: string | null
           id?: string
           key_insight?: string | null
+          normalized_title?: string | null
+          novelty_claim_id?: string | null
+          novelty_claimed_at?: string | null
+          novelty_confidence?: number | null
+          novelty_input_evidence?: Json | null
+          novelty_matched_item_ids?: string[]
+          novelty_new_facts?: Json
+          novelty_policy_outcome?: string | null
+          novelty_reasoning?: string | null
+          novelty_reviewed_at?: string | null
+          novelty_reviewer?: string | null
+          novelty_verdict?: string | null
+          novelty_workflow_run_id?: string | null
           project_id?: string
           raw_output?: Json | null
           run_id?: string | null
@@ -1631,6 +1696,7 @@ export type Database = {
           target_audience?: string | null
           title?: string
           url?: string | null
+          superseded_by_news_item_id?: string | null
           virality_score?: number | null
         }
         Relationships: [
@@ -1649,6 +1715,120 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      media_duplicate_guard_migration_audit: {
+        Row: {
+          affected_id: string | null
+          audit_type: string
+          created_at: string
+          details: Json
+          id: string
+          kept_id: string | null
+          project_id: string | null
+          reason: string
+          table_name: string
+        }
+        Insert: {
+          affected_id?: string | null
+          audit_type: string
+          created_at?: string
+          details?: Json
+          id?: string
+          kept_id?: string | null
+          project_id?: string | null
+          reason: string
+          table_name: string
+        }
+        Update: {
+          affected_id?: string | null
+          audit_type?: string
+          created_at?: string
+          details?: Json
+          id?: string
+          kept_id?: string | null
+          project_id?: string | null
+          reason?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
+      media_publication_ledger: {
+        Row: {
+          channel: string
+          claim_id: string | null
+          claimed_at: string | null
+          created_at: string
+          error_state: string | null
+          external_publication_id: string | null
+          id: string
+          idempotency_key: string
+          last_reconciliation_at: string | null
+          max_retries: number
+          media_asset_id: string
+          news_item_id: string | null
+          project_id: string
+          provider_attempt_id: string | null
+          provider_container_id: string | null
+          provider_upload_url: string | null
+          published_time: string | null
+          retry_count: number
+          scheduled_time: string | null
+          script_id: string
+          stale_after: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          claim_id?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          error_state?: string | null
+          external_publication_id?: string | null
+          id?: string
+          idempotency_key: string
+          last_reconciliation_at?: string | null
+          max_retries?: number
+          media_asset_id: string
+          news_item_id?: string | null
+          project_id: string
+          provider_attempt_id?: string | null
+          provider_container_id?: string | null
+          provider_upload_url?: string | null
+          published_time?: string | null
+          retry_count?: number
+          scheduled_time?: string | null
+          script_id: string
+          stale_after?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          claim_id?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          error_state?: string | null
+          external_publication_id?: string | null
+          id?: string
+          idempotency_key?: string
+          last_reconciliation_at?: string | null
+          max_retries?: number
+          media_asset_id?: string
+          news_item_id?: string | null
+          project_id?: string
+          provider_attempt_id?: string | null
+          provider_container_id?: string | null
+          provider_upload_url?: string | null
+          published_time?: string | null
+          retry_count?: number
+          scheduled_time?: string | null
+          script_id?: string
+          stale_after?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       media_scripts: {
         Row: {
@@ -1676,12 +1856,15 @@ export type Database = {
           pipeline_failed_reason: string | null
           pipeline_next_retry_at: string | null
           project_id: string
+          production_claimed_by_run_id: string | null
           publish_failed_reason: string | null
           published_at: string | null
           quality_score: Json | null
           raw_output: Json | null
           render_attempts: number
           render_bucket: string | null
+          render_claim_id: string | null
+          render_claimed_at: string | null
           render_id: string | null
           render_input_props: Json | null
           retry_count: number
@@ -1697,6 +1880,8 @@ export type Database = {
           video_status: string | null
           video_url: string | null
           voice_attempts: number
+          voice_claim_id: string | null
+          voice_claimed_at: string | null
           voice_status: string | null
           youtube_url: string | null
           youtube_video_id: string | null
@@ -1726,12 +1911,15 @@ export type Database = {
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
           project_id: string
+          production_claimed_by_run_id?: string | null
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null
           raw_output?: Json | null
           render_attempts?: number
           render_bucket?: string | null
+          render_claim_id?: string | null
+          render_claimed_at?: string | null
           render_id?: string | null
           render_input_props?: Json | null
           retry_count?: number
@@ -1747,6 +1935,8 @@ export type Database = {
           video_status?: string | null
           video_url?: string | null
           voice_attempts?: number
+          voice_claim_id?: string | null
+          voice_claimed_at?: string | null
           voice_status?: string | null
           youtube_url?: string | null
           youtube_video_id?: string | null
@@ -1776,12 +1966,15 @@ export type Database = {
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
           project_id?: string
+          production_claimed_by_run_id?: string | null
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null
           raw_output?: Json | null
           render_attempts?: number
           render_bucket?: string | null
+          render_claim_id?: string | null
+          render_claimed_at?: string | null
           render_id?: string | null
           render_input_props?: Json | null
           retry_count?: number
@@ -1797,6 +1990,8 @@ export type Database = {
           video_status?: string | null
           video_url?: string | null
           voice_attempts?: number
+          voice_claim_id?: string | null
+          voice_claimed_at?: string | null
           voice_status?: string | null
           youtube_url?: string | null
           youtube_video_id?: string | null
@@ -2786,6 +2981,95 @@ export type Database = {
           p_subject?: string
         }
         Returns: string
+      }
+      claim_media_publication: {
+        Args: {
+          p_project_id: string
+          p_news_item_id: string | null
+          p_script_id: string
+          p_media_asset_id: string
+          p_channel: string
+          p_scheduled_time: string | null
+          p_idempotency_key: string
+          p_stale_after?: string
+        }
+        Returns: {
+          status: string
+          ledger_id: string | null
+          external_publication_id: string | null
+          provider_attempt_id: string | null
+          provider_container_id: string | null
+          provider_upload_url: string | null
+          reason: string | null
+        }[]
+      }
+      claim_media_news_candidate: {
+        Args: {
+          p_project_id: string
+          p_run_id: string | null
+          p_title: string
+          p_summary: string | null
+          p_url: string | null
+          p_source_name: string | null
+          p_virality_score: number | null
+          p_content_angle: string | null
+          p_target_audience: string | null
+          p_key_insight: string | null
+          p_raw_output: Json | null
+          p_canonical_url: string | null
+          p_normalized_title: string | null
+          p_event_fingerprint: string | null
+          p_candidate_idempotency_key: string
+          p_candidate_identity: string
+          p_candidate_source_id: string | null
+          p_candidate_published_at: string | null
+          p_stale_after?: string
+        }
+        Returns: {
+          news_item_id: string
+          status: string
+          novelty_claim_id: string | null
+          novelty_claim_acquired: boolean
+          novelty_verdict: string | null
+          novelty_confidence: number | null
+          novelty_matched_item_ids: string[]
+          novelty_reasoning: string | null
+          novelty_new_facts: Json
+          novelty_policy_outcome: string | null
+          novelty_workflow_run_id: string | null
+        }[]
+      }
+      claim_media_script_for_render: {
+        Args: {
+          p_project_id: string
+          p_script_id?: string | null
+          p_stale_after?: string
+          p_claimed_by_run_id?: string | null
+        }
+        Returns: {
+          status: string
+          script_id: string | null
+          project_id: string | null
+          reason: string | null
+        }[]
+      }
+      claim_media_script_for_voice: {
+        Args: {
+          p_project_id: string
+          p_script_id?: string | null
+          p_stale_after?: string
+          p_claimed_by_run_id?: string | null
+        }
+        Returns: {
+          status: string
+          script_id: string | null
+          project_id: string | null
+          reason: string | null
+        }[]
+      }
+      claim_pending_novelty_review: {
+        Args: { p_project_id: string; p_limit?: number }
+        Returns: Database["public"]["Tables"]["media_news_items"]["Row"][]
       }
       claim_runs: {
         Args: { p_lease_seconds?: number; p_limit: number }

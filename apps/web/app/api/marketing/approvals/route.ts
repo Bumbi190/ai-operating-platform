@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { getMarketingReview } from '@/lib/marketing/review'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,14 @@ export async function POST(request: Request) {
     .eq('id', draftId).maybeSingle()
   const draft = draftRow as { id?: string; project_id?: string; brief_id?: string; draft_key?: string; status?: string; draft_payload?: any } | null
   if (!draft?.id) return NextResponse.json({ error: 'Utkast hittades inte' }, { status: 404 })
+
+  // ISOLATION (C-1): the draft must belong to one of the caller's projects BEFORE
+  // any approve/reject/return/edit write or queued run. Service-role client bypasses
+  // RLS; foreign drafts return the same 404 as missing (no existence probing).
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (!assertProjectAllowed(draft.project_id, allowedProjectIds)) {
+    return NextResponse.json({ error: 'Utkast hittades inte' }, { status: 404 })
+  }
 
   const { data: rep } = await db.from('guard_reports').select('id, verdict, score_breakdown, violations').eq('draft_id', draft.id).maybeSingle()
   const guard = rep as { id?: string; verdict?: string; score_breakdown?: any; violations?: any[] } | null

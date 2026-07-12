@@ -7,9 +7,10 @@
  * Detta är "Fixa nu" som faktiskt utför arbetet, inte bara länkar.
  */
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resumeRun } from '@/lib/ai/resume'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -17,12 +18,19 @@ export const maxDuration = 60
 const MAX_BATCH = 5
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   let body: { project_id?: string } = {}
   try { body = await request.json() } catch { /* tomt body ok */ }
+
+  // ISOLATION (C-1): a named project must be owned. Without a project_id this
+  // route otherwise resumes EVERY tenant's failed runs — so the no-project path
+  // is scoped to the caller's own projects (empty allow-list → impossible id →
+  // zero runs, never a cross-tenant bulk resume).
+  if (body.project_id && !assertProjectAllowed(body.project_id, access.allowedProjectIds)) {
+    return projectForbidden()
+  }
 
   const admin = createAdminClient()
   const since7dISO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -33,7 +41,9 @@ export async function POST(request: Request) {
     .gte('created_at', since7dISO)
     .order('created_at', { ascending: false })
     .limit(MAX_BATCH)
-  if (body.project_id) q = q.eq('project_id', body.project_id)
+  q = body.project_id
+    ? q.eq('project_id', body.project_id)
+    : q.in('project_id', scopeProjectFilter(access.allowedProjectIds))
 
   const { data: failed, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

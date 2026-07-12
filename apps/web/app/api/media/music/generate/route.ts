@@ -16,10 +16,9 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
-import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
@@ -47,9 +46,6 @@ function getMusicPrompt(tone?: string | null): string {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
 
@@ -73,7 +69,12 @@ export async function POST(request: Request) {
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
   }
-  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+  // ISOLATION (C-1): the script must belong to one of the caller's projects
+  // BEFORE eligibility probing, the paid ElevenLabs generation, and the DB
+  // write. Foreign scripts return the same 404 as missing (no existence probing).
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+  }
   try {
     await assertMediaProductionEligible(db, { projectId, scriptId, stage: 'music' })
   } catch (guardError) {

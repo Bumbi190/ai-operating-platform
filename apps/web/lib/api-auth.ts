@@ -10,7 +10,20 @@
  */
 
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
+
+/**
+ * Constant-time string comparison for secrets. Avoids the early-exit timing
+ * side-channel of `a !== b`. Length is compared first (a token's length is not
+ * secret-sensitive and timingSafeEqual throws on unequal-length buffers).
+ */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8')
+  const bb = Buffer.from(b, 'utf8')
+  if (ab.length !== bb.length) return false
+  return crypto.timingSafeEqual(ab, bb)
+}
 
 interface AuthOk {
   ok: true
@@ -38,7 +51,7 @@ export function requireApiKey(request: Request): AuthResult {
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.replace(/^Bearer\s+/i, '').trim()
 
-  if (!token || token !== apiKey) {
+  if (!token || !timingSafeEqualStr(token, apiKey)) {
     return {
       ok: false,
       response: NextResponse.json(

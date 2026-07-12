@@ -977,6 +977,13 @@ async function executeTool(
 
     if (!workflow) throw new Error('Workflow hittades inte')
 
+    // ISOLATION (H-2): en modell-/operatörsangiven workflow_id får bara triggas om
+    // dess projekt ligger i anroparens allow-list. Utan detta kunde ett annat projekts
+    // workflow köas. Samma mönster som save_workflow nedan.
+    if (!assertProjectAllowed(workflow.project_id, allowedProjectIds)) {
+      throw new Error('Du har inte åtkomst till det workflowets projekt.')
+    }
+
     // DURABLE: skapa som 'pending'. INGET fire-and-forget. pg_cron-drainern claimar
     // och kör den durabelt — Atlas rapporterar "köad", aldrig falskt "startad".
     const { data: run } = await db
@@ -1051,11 +1058,17 @@ async function executeTool(
 
     const { data: run } = await db
       .from('runs')
-      .select('id, status, context, error, started_at, finished_at')
+      .select('id, project_id, status, context, error, started_at, finished_at')
       .eq('id', run_id)
       .single()
 
     if (!run) throw new Error('Körning hittades inte')
+
+    // ISOLATION (H-2): en modell-/operatörsangiven run_id får bara läsas om
+    // körningens projekt ligger i anroparens allow-list. Samma mönster som ovan.
+    if (!assertProjectAllowed(run.project_id, allowedProjectIds)) {
+      throw new Error('Du har inte åtkomst till den körningens projekt.')
+    }
 
     const context = (run.context as Record<string, string>) ?? {}
     const duration =

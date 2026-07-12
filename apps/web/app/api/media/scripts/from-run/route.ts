@@ -6,7 +6,6 @@
  *
  * Body: { run_id: string, project_id: string, news_item_id?: string }
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import type { ScriptWriterOutput } from '@/lib/media/types'
@@ -18,9 +17,6 @@ import { transitionNewsItemStatus } from '@/lib/media/news-state'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
 
@@ -36,6 +32,8 @@ export async function POST(request: Request) {
   if (!news_item_id) {
     return NextResponse.json({ error: 'news_item_id is required for media script creation' }, { status: 400 })
   }
+  // ISOLATION (C-1): the caller-supplied target project must be owned by the caller,
+  // otherwise a media_scripts row could be written into another tenant's project.
   if (!assertProjectAllowed(project_id, access.allowedProjectIds)) return projectForbidden()
 
   const db = createAdminClient()
@@ -47,7 +45,14 @@ export async function POST(request: Request) {
     .single()
 
   if (!run) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
-  if (run.project_id !== project_id) return NextResponse.json({ error: 'Run does not belong to project' }, { status: 403 })
+  // ISOLATION (C-1): the source run must belong to one of the caller's projects
+  // (404, no existence probing) AND to the caller-specified target project.
+  if (!assertProjectAllowed(run.project_id, access.allowedProjectIds)) {
+    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+  }
+  if (run.project_id !== project_id) {
+    return NextResponse.json({ error: 'Run does not belong to project' }, { status: 403 })
+  }
   if (run.status !== 'done') {
     return NextResponse.json({ error: `Run not done (status: ${run.status})` }, { status: 400 })
   }
@@ -115,7 +120,7 @@ export async function POST(request: Request) {
       projectId: project_id,
       newsItemId: news_item_id,
       toStatus: 'scripted',
-      actor: { id: user.id, kind: 'user' },
+      actor: { id: access.userId, kind: 'user' },
       reason: `Script created from completed run ${run_id}`,
     })
   } catch (transitionError) {

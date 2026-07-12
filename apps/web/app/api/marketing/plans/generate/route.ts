@@ -7,16 +7,15 @@
  *
  * Body: { target_month: "YYYY-MM" }   ⛔ Endast Familje-Stunden.
  */
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 
 const FAMILJE_SLUG = 'familje-stunden'
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as { target_month?: string }
   const targetMonth = (body.target_month ?? '').trim()
@@ -28,6 +27,10 @@ export async function POST(request: Request) {
   const { data: project } = await db.from('projects').select('id').eq('slug', FAMILJE_SLUG).maybeSingle()
   const projectId = (project as { id?: string } | null)?.id
   if (!projectId) return NextResponse.json({ error: `Projekt ${FAMILJE_SLUG} saknas` }, { status: 404 })
+
+  // ISOLATION (C-1): only queue a planner run for this project if the caller owns
+  // it. Service-role client bypasses RLS, so the boundary is enforced here.
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
   const { data: run, error } = await (db.from('runs') as any).insert({
     project_id: projectId,

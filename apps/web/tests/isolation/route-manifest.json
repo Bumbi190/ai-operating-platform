@@ -111,7 +111,10 @@
 
     { "path": "/v1/runs", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
     { "path": "/v1/runs/[id]", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "none", "killSwitch": "na", "risk": "Medium", "verified": false, "flag": "scope-confirm" },
-    { "path": "/v1/workflows", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": false }
+    { "path": "/v1/workflows", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": false },
+
+    { "path": "/intelligence/graph/system", "class": "U", "auth": "User", "serviceRole": false, "scope": "none", "killSwitch": "na", "risk": "Low", "verified": false, "flag": "static-code-graph-no-project-data" },
+    { "path": "/intelligence/graph/operations", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": false }
   ],
 
   "cleanup": [

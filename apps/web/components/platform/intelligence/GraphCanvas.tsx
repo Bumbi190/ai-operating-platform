@@ -20,10 +20,9 @@ import {
   getEdgeReadability,
   getGraphZoomLevel,
   getNodeSemanticVisibility,
-  getScreenStableLabelScale,
   getSemanticZoomPolicy,
-  getTerritoryLabelTypography,
   keepNodesVisible,
+  selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
   type GraphViewBox,
   type GraphZoomLevel,
@@ -193,8 +192,6 @@ export function GraphCanvas({
     [nodes, edges, zoomLevel],
   )
   const summaryByParent = useMemo(() => new Map(summaries.map(summary => [summary.parentId, summary])), [summaries])
-  const labelScale = getScreenStableLabelScale(view.w, viewport.width)
-  const territoryLabelTypography = getTerritoryLabelTypography(view.w, viewport.width)
   const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
   const reservedBoxes = useMemo(() => inspectorBottomInset > 0 ? [{
     minX: view.x,
@@ -202,6 +199,27 @@ export function GraphCanvas({
     maxX: view.x + view.w,
     maxY: view.y + view.h,
   }] : [], [inspectorBottomInset, view])
+  const visibleTerritories = useMemo(
+    () => territories.filter(territory => !isolatedIds
+      || nodes.some(node => node.projectId === territory.id && isolatedIds.has(node.id))),
+    [territories, isolatedIds, nodes],
+  )
+  const territoryLabelPlacements = useMemo(() => selectTerritoryLabelPlacements({
+    territories: visibleTerritories,
+    layout,
+    view,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+    reservedBoxes,
+  }), [visibleTerritories, layout, view, viewport, reservedBoxes])
+  const territoryLabelById = useMemo(
+    () => new Map(territoryLabelPlacements.map(label => [label.id, label])),
+    [territoryLabelPlacements],
+  )
+  const territoryLabelBoxes = useMemo(
+    () => territoryLabelPlacements.map(label => label.bounds),
+    [territoryLabelPlacements],
+  )
   const visibleLabels = useMemo(() => new Map(
     selectVisibleNodeLabels({
       nodes,
@@ -218,8 +236,9 @@ export function GraphCanvas({
       neighborIds: semanticNeighborIds,
       structurallyVisibleIds,
       reservedBoxes,
+      occupiedBoxes: territoryLabelBoxes,
     }).map(label => [label.id, label]),
-  ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes])
+  ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes])
 
   const fit = useCallback(() => {
     setView(fitGraphBounds(graphBounds, viewport))
@@ -424,8 +443,10 @@ export function GraphCanvas({
         </marker>
       </defs>
 
-      <g className={styles.territories} aria-hidden="true">
-        {territories.filter(territory => !isolatedIds || nodes.some(node => node.projectId === territory.id && isolatedIds.has(node.id))).map(territory => (
+      <g className={styles.territories}>
+        {visibleTerritories.map(territory => {
+          const label = territoryLabelById.get(territory.id)
+          return (
           <g key={territory.id}>
             <ellipse
               cx={territory.cx}
@@ -439,19 +460,25 @@ export function GraphCanvas({
               strokeWidth={1}
               strokeDasharray="3 8"
               vectorEffect="non-scaling-stroke"
+              aria-hidden="true"
             />
-            <text
-              x={territory.cx - territory.rx + 14 * labelScale}
-              y={territory.cy - territory.ry + 17 * labelScale}
+            {label && <text
+              x={label.x}
+              y={label.y}
+              textAnchor={label.textAnchor}
               className={styles.territoryLabel}
-              fontSize={territoryLabelTypography.fontSize}
-              fontWeight={territoryLabelTypography.fontWeight}
-              style={{ strokeWidth: territoryLabelTypography.haloWidth }}
+              fontSize={label.fontSize}
+              fontWeight={label.fontWeight}
+              style={{ strokeWidth: label.haloWidth }}
+              role="img"
+              aria-label={`${label.fullText} territory`}
             >
-              {truncate(territory.label, 34)} · territory
-            </text>
+              <title>{`${label.fullText} · territory`}</title>
+              {label.text}
+            </text>}
           </g>
-        ))}
+          )
+        })}
       </g>
 
       <g aria-hidden="true">
@@ -730,8 +757,4 @@ function documentPath(radius: number): string {
   const width = radius * 0.9
   const fold = radius * 0.32
   return `M${-width} ${-radius} H${width - fold} L${width} ${-radius + fold} V${radius} H${-width} Z`
-}
-
-function truncate(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }

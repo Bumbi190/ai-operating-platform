@@ -214,3 +214,31 @@ Rendered server-side component tests verify the non-flattening graph group, sema
 Phase 2 is **COMPLETE WITH DOCUMENTED LIMITATIONS** for the verified retained graph contracts. Phase 3 may begin only as a separate approved phase after this implementation receives authenticated visual validation and the Phase 3 runtime truth prerequisites are explicitly approved. Phase 3 must not infer realtime, stale state, correlation, causation, incidents, tools, Atlas, or Manager from this presentation layer.
 
 No Phase 3 code was started.
+
+## Phase 2.1 mobile label and viewport correction
+
+The supplied authenticated Chrome DevTools mobile-emulation review approved Phase 2 mobile functionality: responsive layout, reachable controls, Live Operations, node selection, bottom-sheet inspector scrolling and close behavior, drilldown/isolate access, absence of obvious horizontal page scrolling, and the disabled Execution Replay state. The same review identified two narrow-viewport visual defects: portfolio project/territory labels could overlap, and long selected-node labels could clip at the left or right graph edge.
+
+This correction keeps the retained Phase 2 SVG renderer, semantic levels, eligibility policy, priority source, finite budgets, camera behavior, bottom sheet, interaction contracts, and data contracts unchanged.
+
+### Corrections
+
+- Territory captions now use the existing screen-stable typography with deterministic top/bottom and left/center/right candidates. Visible territories are processed in stable ID order, reject node and earlier territory collisions, reserve their final boxes for the existing node-label pass, and remain associated with their sourced `projectId` territory.
+- Narrow territory captions use restrained deterministic ellipsis and omit the redundant visual `territory` suffix to preserve identity without increasing density. The complete sourced territory name remains available through the SVG accessible label and title.
+- Selected, focused, hovered, attention, and project labels retain the existing twelve candidates and priority order. Narrow canvases use conservative per-line limits and a more conservative text-width estimate; the truth-preserving fallback now clamps or flips the final anchor inside the usable SVG viewport instead of accepting a clipped default anchor.
+- The usable label viewport is reduced by edge-aligned reserved overlays. The existing 48 percent mobile bottom-sheet reservation therefore constrains both territory and node-label placement, while territory collision boxes affect occupancy without incorrectly shrinking the viewport.
+- Lower-priority labels continue to be rejected before overlap. No new node label becomes eligible, no label budget changes, no aggregation/layout rule changes, and no additional graph entity is introduced.
+
+### Focused coverage and results
+
+Focused coverage now verifies deterministic non-overlapping territory captions at a representative 390-pixel width, compact territory truncation with complete accessible names, left- and right-edge containment for long selected labels at 360 pixels, mobile bottom-sheet reserved-area avoidance, stable screen-space typography, unchanged priority behavior, unchanged finite budgets, Replay remaining disabled, and rendered territory accessibility.
+
+Complete Intelligence Graph suite: **PASS - 11 files, 80 tests**.
+
+Typecheck (`npx tsc --noEmit --incremental false --pretty false`) remains blocked only by the pre-existing unrelated `apps/web/lib/media/lambda-render.ts` errors: missing `@remotion/lambda/client` and two `region` accesses on `unknown`. No Intelligence Graph file produced a TypeScript error.
+
+Production build (`npm run build`) passed the local migration guard and reached Next.js compilation, then stopped on the same unrelated missing `@remotion/lambda/client` import. No Intelligence Graph compile error was reported before that blocker.
+
+### Validation status and remaining limitation
+
+The approved mobile bottom-sheet implementation was preserved and is covered by the existing interaction/component contracts plus the new reserved-region label test. A new authenticated Vercel Preview review is still required to confirm the corrected territory and long-name rendering at 390 x 844, 360 x 800, 768 x 1024, and 844 x 390. Real-device validation, including Pixel-class font rendering and browser chrome, also remains outstanding. Final mobile visual validation is therefore **PENDING NEW PREVIEW REVIEW**.

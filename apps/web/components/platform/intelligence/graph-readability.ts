@@ -36,7 +36,21 @@ export interface GraphLabelPlacement {
   lineHeight: number
   statusLineHeight: number
   textAnchor: 'start' | 'middle' | 'end'
+  bounds: GraphBounds
   leaderLine?: { x1: number; y1: number; x2: number; y2: number }
+}
+
+export interface GraphTerritoryLabelPlacement {
+  id: string
+  text: string
+  fullText: string
+  x: number
+  y: number
+  textAnchor: 'start' | 'middle' | 'end'
+  fontSize: number
+  fontWeight: number
+  haloWidth: number
+  bounds: GraphBounds
 }
 
 export const GRAPH_LABEL_TYPOGRAPHY = {
@@ -70,6 +84,16 @@ interface LabelSelectionOptions {
   searchResultId?: string | null
   neighborIds?: ReadonlySet<string>
   structurallyVisibleIds?: ReadonlySet<string>
+  reservedBoxes?: readonly GraphBounds[]
+  occupiedBoxes?: readonly GraphBounds[]
+}
+
+interface TerritoryLabelSelectionOptions {
+  territories: readonly ProjectTerritory[]
+  layout: ReadonlyMap<string, PositionedNode>
+  view: GraphViewBox
+  viewportWidth?: number
+  viewportHeight?: number
   reservedBoxes?: readonly GraphBounds[]
 }
 
@@ -220,9 +244,10 @@ export function getLabelPriority(
   return getStaticLabelPriority(node)
 }
 
-export function formatGraphLabel(value: string, tier: GraphLabelTier): readonly string[] {
+export function formatGraphLabel(value: string, tier: GraphLabelTier, maxCharacters?: number): readonly string[] {
   const withoutTechnicalSuffix = value.replace(/\s*[·_-]\s*[a-f\d]{6,}$/i, '').trim() || value.trim()
-  const max = tier === 'project' ? 34 : tier === 'community' ? 32 : tier === 'interaction' ? 36 : 28
+  const defaultMax = tier === 'project' ? 34 : tier === 'community' ? 32 : tier === 'interaction' ? 36 : 28
+  const max = Math.max(12, Math.min(defaultMax, maxCharacters ?? defaultMax))
   if (withoutTechnicalSuffix.length <= max) return [withoutTechnicalSuffix]
 
   const firstBreak = withoutTechnicalSuffix.lastIndexOf(' ', max)
@@ -233,6 +258,82 @@ export function formatGraphLabel(value: string, tier: GraphLabelTier): readonly 
     ? remainder
     : `${remainder.slice(0, Math.max(1, max - 1)).trimEnd()}…`
   return [first, second]
+}
+
+export function formatTerritoryLabel(value: string, viewportWidth: number): string {
+  const max = viewportWidth < 480 ? 18 : viewportWidth < 768 ? 26 : 34
+  const name = truncateWithEllipsis(value.trim(), max)
+  return viewportWidth < 768 ? name : `${name} · territory`
+}
+
+export function selectTerritoryLabelPlacements({
+  territories,
+  layout,
+  view,
+  viewportWidth = WORLD_WIDTH,
+  viewportHeight = 800,
+  reservedBoxes = [],
+}: TerritoryLabelSelectionOptions): GraphTerritoryLabelPlacement[] {
+  if (viewportWidth <= 0 || viewportHeight <= 0) return []
+  const scale = getScreenStableLabelScale(view.w, viewportWidth)
+  const typography = getTerritoryLabelTypography(view.w, viewportWidth)
+  const edgePadding = 8 * scale
+  const viewportBox = usableViewportBox(view, edgePadding, reservedBoxes)
+  const occupied: Box[] = [...reservedBoxes]
+  const nodeObstacles = [...layout.values()].map(position => ({
+    minX: position.x - position.r - 2 * scale,
+    minY: position.y - position.r - 2 * scale,
+    maxX: position.x + position.r + 2 * scale,
+    maxY: position.y + position.r + 2 * scale,
+  }))
+  const visible: GraphTerritoryLabelPlacement[] = []
+
+  for (const territory of [...territories].sort((a, b) => a.id.localeCompare(b.id))) {
+    const territoryBox: Box = {
+      minX: territory.cx - territory.rx,
+      minY: territory.cy - territory.ry,
+      maxX: territory.cx + territory.rx,
+      maxY: territory.cy + territory.ry,
+    }
+    if (!boxesIntersect(territoryBox, viewportBox)) continue
+
+    const text = formatTerritoryLabel(territory.label, viewportWidth)
+    const width = Math.max(48 * scale, text.length * typography.fontSize * 0.7)
+    const height = typography.fontSize * 1.2
+    const anchors = territoryLabelAnchors(territory, scale, typography.fontSize)
+    const candidates = anchors.map(anchor => ({
+      anchor,
+      box: absoluteLabelBox(anchor.x, anchor.y, anchor.textAnchor, width, height, typography.fontSize),
+    })).filter(candidate => boxInside(viewportBox, candidate.box))
+    const selected = candidates.find(candidate => (
+      !nodeObstacles.some(obstacle => boxesOverlap(obstacle, candidate.box, 2 * scale))
+      && !occupied.some(existing => boxesOverlap(existing, candidate.box, 4 * scale))
+    )) ?? candidates
+      .map((candidate, index) => ({
+        ...candidate,
+        index,
+        conflicts: nodeObstacles.filter(obstacle => boxesOverlap(obstacle, candidate.box, 2 * scale)).length
+          + occupied.filter(existing => boxesOverlap(existing, candidate.box, 4 * scale)).length * 2,
+      }))
+      .sort((a, b) => a.conflicts - b.conflicts || a.index - b.index)[0]
+
+    if (!selected) continue
+    visible.push({
+      id: territory.id,
+      text,
+      fullText: territory.label,
+      x: selected.anchor.x,
+      y: selected.anchor.y,
+      textAnchor: selected.anchor.textAnchor,
+      fontSize: typography.fontSize,
+      fontWeight: typography.fontWeight,
+      haloWidth: typography.haloWidth,
+      bounds: selected.box,
+    })
+    occupied.push(selected.box)
+  }
+
+  return visible
 }
 
 export function selectVisibleNodeLabels({
@@ -250,6 +351,7 @@ export function selectVisibleNodeLabels({
   neighborIds = new Set<string>(),
   structurallyVisibleIds,
   reservedBoxes = [],
+  occupiedBoxes = [],
 }: LabelSelectionOptions): GraphLabelPlacement[] {
   const scale = getScreenStableLabelScale(view.w, viewportWidth)
   const interaction = { selectedId, hoverId, focusId, searchResultId }
@@ -271,13 +373,8 @@ export function selectVisibleNodeLabels({
   const persistentCount = candidates.filter(candidate => candidate.forced || candidate.attention || candidate.node.kind === 'project').length
   const budget = getLabelBudget(level, nodes.length, persistentCount, { width: viewportWidth, height: viewportHeight })
   const edgePadding = 8 * scale
-  const viewportBox: Box = {
-    minX: view.x + edgePadding,
-    minY: view.y + edgePadding,
-    maxX: view.x + view.w - edgePadding,
-    maxY: view.y + view.h - edgePadding,
-  }
-  const occupied: Box[] = [...reservedBoxes]
+  const viewportBox = usableViewportBox(view, edgePadding, reservedBoxes)
+  const occupied: Box[] = [...reservedBoxes, ...occupiedBoxes]
   const nodeObstacles = candidates.map(candidate => ({
     id: candidate.node.id,
     box: {
@@ -312,9 +409,9 @@ export function selectVisibleNodeLabels({
     const haloWidth = GRAPH_LABEL_TYPOGRAPHY.haloScreenWidth[
       tier === 'interaction' || tier === 'project' ? 'strong' : 'default'
     ] * scale
-    const lines = formatGraphLabel(node.label, tier)
+    const lines = formatGraphLabel(node.label, tier, responsiveLabelLimit(tier, viewportWidth))
     const textLength = Math.max(...lines.map(line => line.length))
-    const width = Math.max(32 * scale, textLength * fontSize * 0.57)
+    const width = Math.max(32 * scale, textLength * fontSize * 0.62)
     const height = lines.length * lineHeight + (attention && node.status ? statusLineHeight : 0)
     const anchors = labelAnchors(position, scale, fontSize, forced || attention)
     let selectedPlacement: GraphLabelPlacement | null = null
@@ -325,7 +422,7 @@ export function selectVisibleNodeLabels({
       const crossesViewport = !boxInside(viewportBox, box)
       const crossesNode = nodeObstacles.some(obstacle => obstacle.id !== node.id && boxesOverlap(obstacle.box, box, 2 * scale))
       if (crossesViewport || crossesNode || occupied.some(existing => boxesOverlap(existing, box, 3 * scale))) continue
-      selectedPlacement = createPlacement(candidate, tier, lines, fontSize, statusFontSize, fontWeight, haloWidth, lineHeight, statusLineHeight, anchor)
+      selectedPlacement = createPlacement(candidate, tier, lines, fontSize, statusFontSize, fontWeight, haloWidth, lineHeight, statusLineHeight, anchor, box)
       selectedBox = box
       break
     }
@@ -333,10 +430,19 @@ export function selectVisibleNodeLabels({
     // Selected, project, and attention labels are truth-preserving. Twelve
     // routed candidates normally keep them collision-free; this deterministic
     // fallback is used only when every local position is exhausted.
-    if (!selectedPlacement && persistent) {
-      const anchor = anchors.find(value => boxInside(viewportBox, labelBox(position, value, width, height, fontSize))) ?? anchors[0]
-      selectedPlacement = createPlacement(candidate, tier, lines, fontSize, statusFontSize, fontWeight, haloWidth, lineHeight, statusLineHeight, anchor)
-      selectedBox = labelBox(position, anchor, width, height, fontSize)
+    if (!selectedPlacement && persistent && boxesIntersect(nodeObstacles.find(obstacle => obstacle.id === node.id)!.box, viewportBox)) {
+      const fallback = anchors.map((anchor, index) => {
+        const clamped = clampLabelAnchor(position, anchor, width, height, fontSize, viewportBox)
+        const box = labelBox(position, clamped, width, height, fontSize)
+        const nodeConflicts = nodeObstacles.filter(obstacle => obstacle.id !== node.id && boxesOverlap(obstacle.box, box, 2 * scale)).length
+        const labelConflicts = occupied.filter(existing => boxesOverlap(existing, box, 3 * scale)).length
+        return { anchor: clamped, box, index, conflicts: nodeConflicts + labelConflicts * 2 }
+      }).filter(value => boxInside(viewportBox, value.box))
+        .sort((a, b) => a.conflicts - b.conflicts || a.index - b.index)[0]
+      if (fallback) {
+        selectedPlacement = createPlacement(candidate, tier, lines, fontSize, statusFontSize, fontWeight, haloWidth, lineHeight, statusLineHeight, fallback.anchor, fallback.box)
+        selectedBox = fallback.box
+      }
     }
 
     if (selectedPlacement && selectedBox) {
@@ -487,13 +593,94 @@ function createPlacement(
   lineHeight: number,
   statusLineHeight: number,
   anchor: LabelAnchor,
+  bounds: Box,
 ): GraphLabelPlacement {
   const leaderLine = anchor.leader ? leaderLineFor(candidate.position, anchor) : undefined
   return {
     id: candidate.node.id, priority: candidate.priority, tier, lines, fontSize, statusFontSize,
     fontWeight, haloWidth, x: anchor.x, y: anchor.y, lineHeight, statusLineHeight,
-    textAnchor: anchor.textAnchor, leaderLine,
+    textAnchor: anchor.textAnchor, bounds, leaderLine,
   }
+}
+
+function responsiveLabelLimit(tier: GraphLabelTier, viewportWidth: number): number | undefined {
+  if (viewportWidth >= 480) return undefined
+  const mobileMaximum: Record<GraphLabelTier, number> = {
+    interaction: 30,
+    project: 28,
+    community: 26,
+    workflow: 24,
+    ordinary: 22,
+  }
+  return mobileMaximum[tier]
+}
+
+function territoryLabelAnchors(
+  territory: ProjectTerritory,
+  scale: number,
+  fontSize: number,
+): Array<{ x: number; y: number; textAnchor: 'start' | 'middle' | 'end' }> {
+  const inset = 14 * scale
+  const top = territory.cy - territory.ry + fontSize + 4 * scale
+  const bottom = territory.cy + territory.ry - 8 * scale
+  const left = territory.cx - territory.rx + inset
+  const right = territory.cx + territory.rx - inset
+  return [
+    { x: left, y: top, textAnchor: 'start' },
+    { x: territory.cx, y: top, textAnchor: 'middle' },
+    { x: right, y: top, textAnchor: 'end' },
+    { x: left, y: bottom, textAnchor: 'start' },
+    { x: territory.cx, y: bottom, textAnchor: 'middle' },
+    { x: right, y: bottom, textAnchor: 'end' },
+  ]
+}
+
+function clampLabelAnchor(
+  position: PositionedNode,
+  anchor: LabelAnchor,
+  width: number,
+  height: number,
+  fontSize: number,
+  viewport: Box,
+): LabelAnchor {
+  const box = labelBox(position, anchor, width, height, fontSize)
+  const dx = box.minX < viewport.minX
+    ? viewport.minX - box.minX
+    : box.maxX > viewport.maxX ? viewport.maxX - box.maxX : 0
+  const dy = box.minY < viewport.minY
+    ? viewport.minY - box.minY
+    : box.maxY > viewport.maxY ? viewport.maxY - box.maxY : 0
+  return { ...anchor, x: anchor.x + dx, y: anchor.y + dy, leader: anchor.leader || dx !== 0 || dy !== 0 }
+}
+
+function usableViewportBox(view: GraphViewBox, edgePadding: number, reservedBoxes: readonly GraphBounds[]): Box {
+  const box: Box = {
+    minX: view.x + edgePadding,
+    minY: view.y + edgePadding,
+    maxX: view.x + view.w - edgePadding,
+    maxY: view.y + view.h - edgePadding,
+  }
+  for (const reserved of reservedBoxes) {
+    const spansWidth = reserved.minX <= box.minX && reserved.maxX >= box.maxX
+    const spansHeight = reserved.minY <= box.minY && reserved.maxY >= box.maxY
+    if (spansWidth && reserved.maxY >= box.maxY) box.maxY = Math.min(box.maxY, reserved.minY - edgePadding)
+    else if (spansWidth && reserved.minY <= box.minY) box.minY = Math.max(box.minY, reserved.maxY + edgePadding)
+    else if (spansHeight && reserved.maxX >= box.maxX) box.maxX = Math.min(box.maxX, reserved.minX - edgePadding)
+    else if (spansHeight && reserved.minX <= box.minX) box.minX = Math.max(box.minX, reserved.maxX + edgePadding)
+  }
+  return box
+}
+
+function absoluteLabelBox(
+  x: number,
+  y: number,
+  textAnchor: 'start' | 'middle' | 'end',
+  width: number,
+  height: number,
+  fontSize: number,
+): Box {
+  const minX = textAnchor === 'middle' ? x - width / 2 : textAnchor === 'end' ? x - width : x
+  return { minX, minY: y - fontSize, maxX: minX + width, maxY: y - fontSize + height }
 }
 
 function labelAnchors(position: PositionedNode, scale: number, fontSize: number, important: boolean): LabelAnchor[] {
@@ -541,6 +728,14 @@ function boxInside(container: Box, box: Box): boolean {
 
 function boxesOverlap(a: Box, b: Box, gap: number): boolean {
   return a.minX < b.maxX + gap && a.maxX + gap > b.minX && a.minY < b.maxY + gap && a.maxY + gap > b.minY
+}
+
+function boxesIntersect(a: Box, b: Box): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY
+}
+
+function truncateWithEllipsis(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1)).trimEnd()}…`
 }
 
 function includeBox(bounds: GraphBounds, box: Box) {

@@ -6,6 +6,7 @@ import {
   calculateGraphBounds,
   fitGraphBounds,
   formatGraphLabel,
+  formatTerritoryLabel,
   getEdgeReadability,
   getGraphZoomLevel,
   getLabelBudget,
@@ -15,6 +16,7 @@ import {
   getSemanticZoomPolicy,
   getTerritoryLabelTypography,
   keepNodesVisible,
+  selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
 } from './graph-readability'
 import { getEdgeVisual, getStaticLabelPriority, type ProjectTerritory } from './graph-visuals'
@@ -77,6 +79,75 @@ describe('Phase 2 canonical semantic zoom and readability', () => {
     expect(lines[1].endsWith('…')).toBe(true)
   })
 
+  it('routes one deterministic, compact label per visible territory on a narrow viewport', () => {
+    const territories: ProjectTerritory[] = [
+      { id: 'alpha', label: 'Alpha Intelligence Operations Territory', color: '#112233', cx: 210, cy: 210, rx: 185, ry: 125 },
+      { id: 'beta', label: 'Beta Customer Experience Territory', color: '#334455', cx: 390, cy: 250, rx: 185, ry: 125 },
+    ]
+    const layout = new Map([
+      ['project:alpha', position('project:alpha', 210, 210, 30)],
+      ['project:beta', position('project:beta', 390, 250, 30)],
+    ])
+    const options = {
+      territories,
+      layout,
+      view: { x: 0, y: 0, w: 600, h: 500 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+    }
+    const placements = selectTerritoryLabelPlacements(options)
+
+    expect(placements).toHaveLength(2)
+    expect(selectTerritoryLabelPlacements(options)).toEqual(placements)
+    expect(placements.every(label => label.text.length <= 18)).toBe(true)
+    expect(placements.map(label => label.fullText)).toEqual(territories.map(territory => territory.label))
+    expect(boxesOverlap(placements[0].bounds, placements[1].bounds)).toBe(false)
+    expect(formatTerritoryLabel(territories[0].label, 390)).toBe('Alpha Intelligenc…')
+  })
+
+  it('keeps long selected labels within both narrow viewport edges', () => {
+    const selected = node('run', 'selected', {
+      label: 'Extremely wide selected workflow execution label that must remain readable',
+    })
+    const camera = { x: 0, y: 0, w: 600, h: 400 }
+    const edge = 8 * camera.w / 360
+
+    for (const x of [12, 588]) {
+      const [label] = selectVisibleNodeLabels({
+        nodes: [selected],
+        layout: new Map([[selected.id, position(selected.id, x, 160)]]),
+        view: camera,
+        viewportWidth: 360,
+        viewportHeight: 800,
+        mode: 'operations',
+        level: 'detail',
+        selectedId: selected.id,
+      })
+      expect(label.bounds.minX).toBeGreaterThanOrEqual(edge)
+      expect(label.bounds.maxX).toBeLessThanOrEqual(camera.w - edge)
+      expect(label.lines).toHaveLength(2)
+      expect(label.lines.every(line => line.length <= 30)).toBe(true)
+    }
+  })
+
+  it('keeps a selected label above the reserved mobile bottom-sheet region', () => {
+    const selected = node('run', 'selected', { label: 'Selected node with a long readable mobile label' })
+    const reserved = { minX: 0, minY: 240, maxX: 600, maxY: 400 }
+    const [label] = selectVisibleNodeLabels({
+      nodes: [selected],
+      layout: new Map([[selected.id, position(selected.id, 300, 210)]]),
+      view: { x: 0, y: 0, w: 600, h: 400 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+      mode: 'operations',
+      level: 'detail',
+      selectedId: selected.id,
+      reservedBoxes: [reserved],
+    })
+
+    expect(label.bounds.maxY).toBeLessThan(reserved.minY)
+  })
+
   it('keeps selected labels visible and rejects colliding ordinary labels deterministically', () => {
     const nodes = [node('run', 'selected'), node('run', 'ordinary-a'), node('run', 'ordinary-b')]
     const layout = new Map(nodes.map(value => [value.id, position(value.id, 300, 240)]))
@@ -128,10 +199,11 @@ describe('Phase 2 canonical semantic zoom and readability', () => {
 
   it('keeps typography screen-stable and role-scaled at every camera level', () => {
     const hovered = node('run', 'hovered')
-    const layout = new Map([[hovered.id, position(hovered.id, 100, 100)]])
     for (const width of [1200, 900, 600, 300, 80]) {
+      const camera = view(width)
+      const layout = new Map([[hovered.id, position(hovered.id, camera.w / 2, camera.h / 2)]])
       const [label] = selectVisibleNodeLabels({
-        nodes: [hovered], layout, view: view(width), viewportWidth: 960, viewportHeight: 640,
+        nodes: [hovered], layout, view: camera, viewportWidth: 960, viewportHeight: 640,
         hoverId: hovered.id, level: width === 80 ? 'execution' : getGraphZoomLevel(width),
       })
       expect(label.fontSize * 960 / width).toBeCloseTo(15, 6)
@@ -184,3 +256,10 @@ describe('Phase 2 canonical semantic zoom and readability', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })
+
+function boxesOverlap(
+  a: { minX: number; minY: number; maxX: number; maxY: number },
+  b: { minX: number; minY: number; maxX: number; maxY: number },
+): boolean {
+  return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY
+}

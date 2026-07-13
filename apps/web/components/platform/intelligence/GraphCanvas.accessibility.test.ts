@@ -43,6 +43,8 @@ describe('GraphCanvas rendered accessibility semantics', () => {
     expect(nodeButton).toContain('aria-label="project: Alpha project"')
     expect(nodeButton).toContain('aria-pressed="true"')
     expect(markup).toContain('<title>Alpha project · project</title>')
+    expect(markup).toContain('aria-label="Alpha project territory"')
+    expect(markup).toContain('<title>Alpha project · territory</title>')
   })
 
   it('keeps critical operational truth discoverable at portfolio level without exposing every run', () => {

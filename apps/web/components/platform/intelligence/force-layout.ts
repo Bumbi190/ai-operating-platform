@@ -70,12 +70,19 @@ export function computeLayout(
   const radii = new Float64Array(n)
 
   const groupIds = [...new Set(nodes.flatMap(node => node.group === undefined ? [] : [node.group]))].sort((a, b) => a - b)
+  const groupSizes = new Map<number, number>()
+  for (const node of nodes) {
+    if (node.group !== undefined) groupSizes.set(node.group, (groupSizes.get(node.group) ?? 0) + 1)
+  }
   const groupAnchors = new Map<number, { x: number; y: number }>()
-  const groupPhase = groupIds.length > 1 ? (hash(groupIds.join('|')) % 360) * (Math.PI / 180) : 0
+  // Two-project portfolios use the wide axis; larger sets retain a seeded phase.
+  const groupPhase = groupIds.length === 2
+    ? 0
+    : groupIds.length > 1 ? (hash(groupIds.join('|')) % 360) * (Math.PI / 180) : 0
   for (let i = 0; i < groupIds.length; i++) {
     const angle = groupIds.length === 1 ? 0 : groupPhase + (i / groupIds.length) * Math.PI * 2
-    const radiusX = groupIds.length === 1 ? 0 : width * 0.29
-    const radiusY = groupIds.length === 1 ? 0 : height * 0.27
+    const radiusX = groupIds.length === 1 ? 0 : width * 0.31
+    const radiusY = groupIds.length === 1 ? 0 : height * 0.26
     groupAnchors.set(groupIds[i], {
       x: width / 2 + Math.cos(angle) * radiusX,
       y: height / 2 + Math.sin(angle) * radiusY,
@@ -89,7 +96,8 @@ export function computeLayout(
     const h = hash(node.id)
     const angle = ((h % 3600) / 3600) * Math.PI * 2
     const anchor = node.group === undefined ? undefined : groupAnchors.get(node.group)
-    const localRadius = 26 + ((h >> 8) % 1000) / 1000 * 84
+    const densityRadius = node.group === undefined ? 0 : Math.min(62, Math.sqrt(groupSizes.get(node.group) ?? 1) * 9)
+    const localRadius = 34 + densityRadius + ((h >> 8) % 1000) / 1000 * 76
     if (node.role === 'atlas') {
       xs[i] = width / 2
       ys[i] = height / 2
@@ -115,10 +123,10 @@ export function computeLayout(
   }
 
   const repulsion = 1800
-  const springLength = 90
+  const springLength = 98
   const springK = 0.04
   const centerK = 0.012
-  const groupK = 0.015
+  const groupK = 0.012
 
   // Group centroids (recomputed every 10 ticks)
   const groups = new Map<number, { x: number; y: number; count: number }>()
@@ -136,8 +144,12 @@ export function computeLayout(
         if (d2 > 250_000) continue // >500px apart — negligible
         const f = repulsion / d2
         const d = Math.sqrt(d2)
-        const minDistance = radii[i] + radii[j] + 10
-        const collision = d < minDistance ? (minDistance - d) * 0.09 : 0
+        const sameGroup = nodes[i].group !== undefined && nodes[i].group === nodes[j].group
+        const semanticPadding = nodes[i].role === 'project' || nodes[j].role === 'project'
+          ? 24
+          : sameGroup ? 18 : 14
+        const minDistance = radii[i] + radii[j] + semanticPadding
+        const collision = d < minDistance ? (minDistance - d) * 0.12 : 0
         const fx = (dx / d) * (f + collision)
         const fy = (dy / d) * (f + collision)
         vx[i] += fx; vy[i] += fy
@@ -179,7 +191,7 @@ export function computeLayout(
         }
         const anchor = groupAnchors.get(g)
         if (anchor) {
-          const anchorK = nodes[i].role === 'project' ? 0.055 : 0.018
+          const anchorK = nodes[i].role === 'project' ? 0.065 : 0.014
           vx[i] += (anchor.x - xs[i]) * anchorK
           vy[i] += (anchor.y - ys[i]) * anchorK
         }

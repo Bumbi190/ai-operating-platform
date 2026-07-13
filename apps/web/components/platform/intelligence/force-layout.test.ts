@@ -45,4 +45,32 @@ describe('Phase 1 deterministic layout foundation', () => {
     expect(atlas.x).toBeCloseTo(600, 0)
     expect(atlas.y).toBeCloseTo(400, 0)
   })
+
+  it('keeps dense project clusters deterministically spread with semantic padding', () => {
+    const denseNodes = [
+      { id: 'dense:project', weight: 20, radius: 33, group: 7, role: 'project' as const },
+      ...Array.from({ length: 28 }, (_, index) => ({
+        id: `dense:detail:${index}`,
+        weight: 2,
+        radius: 14,
+        group: 7,
+        role: 'detail' as const,
+      })),
+    ]
+    const denseEdges = denseNodes.slice(1).map(node => ({ source: 'dense:project', target: node.id }))
+    const first = computeLayout(denseNodes, denseEdges)
+    const second = computeLayout(denseNodes, denseEdges)
+    const xSpread = Math.max(...first.map(node => node.x)) - Math.min(...first.map(node => node.x))
+    const ySpread = Math.max(...first.map(node => node.y)) - Math.min(...first.map(node => node.y))
+    let minimumDistance = Infinity
+    for (let i = 0; i < first.length; i++) {
+      for (let j = i + 1; j < first.length; j++) {
+        minimumDistance = Math.min(minimumDistance, Math.hypot(first[i].x - first[j].x, first[i].y - first[j].y))
+      }
+    }
+
+    expect(first).toEqual(second)
+    expect(Math.max(xSpread, ySpread)).toBeGreaterThan(220)
+    expect(minimumDistance).toBeGreaterThan(24)
+  })
 })

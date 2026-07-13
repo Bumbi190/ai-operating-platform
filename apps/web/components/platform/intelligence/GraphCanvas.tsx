@@ -11,7 +11,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
-import { computeLayout, type PositionedNode } from './force-layout'
+import { computeLayout } from './force-layout'
+import {
+  calculateGraphBounds,
+  fitGraphBounds,
+  getEdgeReadability,
+  getGraphZoomLevel,
+  getScreenStableLabelScale,
+  keepNodesVisible,
+  selectVisibleNodeLabels,
+} from './graph-readability'
 import {
   GRAPH_VISUAL_TOKENS,
   buildProjectTerritories,
@@ -60,10 +69,13 @@ export function GraphCanvas({
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [view, setView] = useState<ViewBox>({ x: 0, y: 0, w: WORLD_W, h: WORLD_H })
+  const [viewport, setViewport] = useState({ width: WORLD_W, height: WORLD_H })
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; view: ViewBox } | null>(null)
   const movedRef = useRef(false)
+  const autoFitRef = useRef(true)
+  const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
 
   const layout = useMemo(() => {
     const positioned = computeLayout(
@@ -83,6 +95,7 @@ export function GraphCanvas({
   }, [nodes, edges])
 
   const territories = useMemo(() => buildProjectTerritories(nodes, layout), [nodes, layout])
+  const graphBounds = useMemo(() => calculateGraphBounds(layout, territories), [layout, territories])
 
   const highlighted = useMemo(() => {
     const focus = selectedId ?? hoverId ?? focusId
@@ -99,37 +112,75 @@ export function GraphCanvas({
     return { ids, edgeIds }
   }, [selectedId, hoverId, focusId, edges])
 
-  const fit = useCallback(() => {
-    if (layout.size === 0) {
-      setView({ x: 0, y: 0, w: WORLD_W, h: WORLD_H })
-      return
+  const selectedNeighborhood = useMemo(() => {
+    if (!selectedId) return new Set<string>()
+    const ids = new Set<string>([selectedId])
+    for (const edge of edges) {
+      if (edge.source === selectedId || edge.target === selectedId) {
+        ids.add(edge.source)
+        ids.add(edge.target)
+      }
     }
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
-    for (const position of layout.values()) {
-      minX = Math.min(minX, position.x - position.r)
-      minY = Math.min(minY, position.y - position.r)
-      maxX = Math.max(maxX, position.x + position.r)
-      maxY = Math.max(maxY, position.y + position.r)
-    }
-    for (const territory of territories) {
-      minX = Math.min(minX, territory.cx - territory.rx)
-      minY = Math.min(minY, territory.cy - territory.ry - 18)
-      maxX = Math.max(maxX, territory.cx + territory.rx)
-      maxY = Math.max(maxY, territory.cy + territory.ry)
-    }
-    const pad = 46
-    setView({
-      x: minX - pad,
-      y: minY - pad,
-      w: Math.max(200, maxX - minX + pad * 2),
-      h: Math.max(150, maxY - minY + pad * 2),
-    })
-  }, [layout, territories])
+    return ids
+  }, [selectedId, edges])
 
-  useEffect(() => { fit() }, [fit, fitSignal])
+  const attentionNodeIds = useMemo(() => new Set(
+    nodes.filter(node => getStatusVisual(node)?.attention).map(node => node.id),
+  ), [nodes])
+
+  const zoomLevel = getGraphZoomLevel(view.w)
+  const labelScale = getScreenStableLabelScale(view.w)
+  const visibleLabels = useMemo(() => new Map(
+    selectVisibleNodeLabels({
+      nodes,
+      layout,
+      viewWidth: view.w,
+      selectedId,
+      hoverId,
+      focusId,
+      neighborIds: selectedNeighborhood,
+    }).map(label => [label.id, label]),
+  ), [nodes, layout, view.w, selectedId, hoverId, focusId, selectedNeighborhood])
+
+  const fit = useCallback(() => {
+    setView(fitGraphBounds(graphBounds, viewport))
+  }, [graphBounds, viewport])
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const updateViewport = () => {
+      const rect = svg.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        setViewport(current => current.width === rect.width && current.height === rect.height
+          ? current
+          : { width: rect.width, height: rect.height })
+      }
+    }
+    updateViewport()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateViewport)
+    observer.observe(svg)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    autoFitRef.current = true
+    fit()
+  // A new graph or explicit fit/reset gets a complete, aspect-aware fit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSignal, graphBounds])
+
+  useEffect(() => {
+    const key = `${viewport.width}x${viewport.height}`
+    if (handledViewportRef.current === key) return
+    handledViewportRef.current = key
+    if (selectedNeighborhood.size > 0) {
+      setView(current => keepNodesVisible(current, layout, selectedNeighborhood))
+    } else if (autoFitRef.current) {
+      fit()
+    }
+  }, [viewport, selectedNeighborhood, layout, fit])
 
   const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -138,6 +189,7 @@ export function GraphCanvas({
     const px = (event.clientX - rect.left) / rect.width
     const py = (event.clientY - rect.top) / rect.height
     const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12
+    autoFitRef.current = false
     setView(current => {
       const w = Math.min(WORLD_W * 3, Math.max(80, current.w * factor))
       const h = Math.min(WORLD_H * 3, Math.max(53, current.h * factor))
@@ -160,6 +212,7 @@ export function GraphCanvas({
     const drag = dragRef.current
     const svg = svgRef.current
     if (!drag || !svg) return
+    autoFitRef.current = false
     const rect = svg.getBoundingClientRect()
     const dx = ((event.clientX - drag.startX) / rect.width) * drag.view.w
     const dy = ((event.clientY - drag.startY) / rect.height) * drag.view.h
@@ -219,19 +272,21 @@ export function GraphCanvas({
               rx={territory.rx}
               ry={territory.ry}
               fill={territory.color}
-              fillOpacity={0.035}
+              fillOpacity={0.022}
               stroke={territory.color}
-              strokeOpacity={0.22}
+              strokeOpacity={0.14}
               strokeWidth={1}
-              strokeDasharray="2 7"
+              strokeDasharray="3 8"
+              vectorEffect="non-scaling-stroke"
             />
             <text
-              x={territory.cx - territory.rx + 16}
-              y={territory.cy - territory.ry + 18}
+              x={territory.cx - territory.rx + 14 * labelScale}
+              y={territory.cy - territory.ry + 17 * labelScale}
               className={styles.territoryLabel}
-              fontSize={9}
+              fontSize={9 * labelScale}
+              style={{ strokeWidth: 3 * labelScale }}
             >
-              {truncate(territory.label, 34)} · project territory
+              {truncate(territory.label, 34)} · territory
             </text>
           </g>
         ))}
@@ -244,10 +299,19 @@ export function GraphCanvas({
           if (!source || !target) return null
           const visual = getEdgeVisual(edgeValue)
           const isHot = highlighted?.edgeIds.has(edgeValue.id) ?? false
+          const readability = getEdgeReadability({
+            edge: edgeValue,
+            visual,
+            zoomLevel,
+            highlighted: isHot,
+            attentionPath: attentionNodeIds.has(edgeValue.source) || attentionNodeIds.has(edgeValue.target),
+            hasInteraction: highlighted !== null,
+          })
+          if (!readability.visible) return null
           const bundled = typeof edgeValue.metadata?.bundledEdges === 'number' ? edgeValue.metadata.bundledEdges : 1
           const bundledWidth = Math.min(2.2, Math.log2(1 + bundled) * 0.28)
           const stroke = isHot ? GRAPH_VISUAL_TOKENS.edge.selected : visual.stroke
-          const marker = visual.directional
+          const marker = readability.showMarker
             ? visual.attention === 'approval'
               ? 'url(#ig-arrow-approval)'
               : isHot ? 'url(#ig-arrow-hot)' : 'url(#ig-arrow)'
@@ -260,7 +324,7 @@ export function GraphCanvas({
               x2={target.x}
               y2={target.y}
               stroke={stroke}
-              strokeOpacity={isHot ? 0.92 : dim ? Math.min(0.12, visual.opacity) : visual.opacity}
+              strokeOpacity={readability.opacity}
               strokeWidth={visual.width + bundledWidth + (isHot ? 0.7 : 0)}
               strokeDasharray={visual.dash}
               markerEnd={marker}
@@ -280,13 +344,7 @@ export function GraphCanvas({
           const isSelected = node.id === selectedId
           const isFocused = node.id === focusId
           const isHot = highlighted?.ids.has(node.id) ?? !dim
-          const showLabel = isSelected
-            || node.id === hoverId
-            || isFocused
-            || Boolean(status?.attention)
-            || view.w < 700
-            || node.kind === 'community'
-            || node.kind === 'project'
+          const label = visibleLabels.get(node.id)
           return (
             <g
               key={node.id}
@@ -326,18 +384,22 @@ export function GraphCanvas({
               {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
               <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
               {status && <StatusBadge radius={position.r} status={status} />}
-              {showLabel && (
+              {label && (
                 <text
-                  y={position.r + 14}
-                  textAnchor="middle"
+                  x={label.x}
+                  y={label.y}
+                  textAnchor={label.textAnchor}
                   className={styles.label}
-                  fontSize={node.kind === 'community' || node.kind === 'project' ? 11 : 9.5}
+                  fontSize={label.fontSize}
                   fill={isSelected ? 'var(--ig-label-strong)' : 'var(--ig-label)'}
                   pointerEvents="none"
+                  style={{ strokeWidth: 3 * labelScale }}
                 >
-                  <tspan x={0}>{truncate(node.label, node.kind === 'community' ? 42 : 30)}</tspan>
+                  <tspan x={label.x}>{truncate(node.label, node.kind === 'project' ? 34 : 30)}</tspan>
                   {status?.attention && node.status && (
-                    <tspan x={0} dy={11} fontSize={8} fill={status.stroke}>{node.status.replaceAll('_', ' ')}</tspan>
+                    <tspan x={label.x} dy={label.statusLineHeight} fontSize={label.statusFontSize} fill={status.stroke}>
+                      {node.status.replaceAll('_', ' ')}
+                    </tspan>
                   )}
                 </text>
               )}

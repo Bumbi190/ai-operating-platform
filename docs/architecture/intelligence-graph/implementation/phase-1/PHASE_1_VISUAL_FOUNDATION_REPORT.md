@@ -173,10 +173,64 @@ No test account or authenticated browser state was available. The protected grap
 - **Automatic Graphify updates:** no freshness contract exists and automation remains out of scope.
 - **Authenticated visual regression coverage:** requires an approved test identity/session and suitable fixture data.
 
+## Phase 1.1 authenticated visual correction
+
+Authenticated review of the Phase 1 Vercel Preview found that Live Operations remained too dense for approval: too many simultaneous labels, extensive label overlap inside dense territories, label text that grew excessively with camera zoom, prominent unselected edges, insufficient separation in the Familje-Stunden cluster, excessive low-level detail at overview, incomplete fit bounds near the lower edge (including GainPilot), and inadequate camera preservation when the inspector reduced canvas width. The same review confirmed that no deployed System Map artifact exists.
+
+Phase 1.1 applies a deliberately small readability layer over the retained SVG renderer. It does not implement the full five-level semantic-zoom, drilldown, aggregation, or advanced spatial-indexed collision engine assigned to canonical Phase 2.
+
+### Corrections
+
+- Added a pure, deterministic graph-readability policy for three practical camera bands: overview, medium, and close.
+- Added priority-based label selection, a bounded label budget, four local label anchors, and collision rejection for lower-priority labels.
+- Added inverse viewBox label scaling with conservative clamps so node and territory text remains approximately stable in screen space.
+- Added zoom-aware edge fading, removal of low-value overview edge detail, marker suppression outside close/focused views, and strong selected-neighborhood emphasis.
+- Increased dense-cluster semantic collision padding and seeded local cluster radius while retaining the fixed-iteration deterministic solver.
+- Biased two-project portfolios onto the wide axis, strengthened project anchors, and retained stable output.
+- Reduced territory fill, border contrast, and excess padding while keeping sourced `projectId` grouping intact.
+- Added graph-bound calculation that includes territory ellipses and territory-label extents, plus aspect-aware fit padding.
+- Added resize observation. An explicit fit/reset includes every visible territory; inspector-driven canvas resizing minimally pans to preserve the selected node and immediate neighborhood without restarting layout or changing zoom.
+- Replaced the System Map unavailable copy with a truthful product message explaining that no distributed artifact exists, the graph is not broken, and Graphify generation/delivery is handled separately. No artifact or local-only operator command was added.
+
+### Label policy
+
+- **Overview:** project hubs and territory labels remain visible; selected, focused, hovered, approval/failure attention labels remain available; at most two ordinary workflow labels are admitted by deterministic structural priority; normal agent, run, task, output, and other detail labels are suppressed.
+- **Medium:** project hubs, workflows, attention states, interaction labels, selected neighbors, and verified running agents become eligible under a conservative budget and collision checks.
+- **Close:** more verified node labels become eligible, but a finite density budget and collision checks still prevent rendering every label. Selected-node and immediate-neighborhood labels retain priority.
+- Priority is deterministic and uses only current graph identity/state: selected/focused/hovered, project, workflow, approval/failure attention, agent, then low-level detail. Degree is used only as a deterministic tie-breaker within the same verified role.
+- Labels attempt below, above, right, and left anchors before a lower-priority collision is hidden. Full Phase 2 automatic offsets, leader lines, and spatial indexing remain deferred.
+
+### Edge policy
+
+Unselected overview edges now render at very low opacity, and low-value associations such as `TRACKS`, `PRODUCED`, `method`, `references`, and `indirect_call` are omitted from overview presentation while remaining present in graph data. Medium zoom keeps a subdued structural trace. Close zoom restores restrained relation detail. Selected, focused, or hovered neighborhood edges remain clear; unrelated edges in inspector/focus mode fade to near-background. Approval and attention paths remain visible. Directionality and relation semantics are unchanged, and no edge animation was added.
+
+### Layout and viewport behavior
+
+Dense groups receive larger deterministic seed radii and stronger semantic collision padding, while project hubs retain the strongest group anchors. For two-project portfolios, stable anchors use the horizontal axis to make better use of the desktop viewport. Territory padding was reduced after node separation improved, avoiding unnecessarily large empty fields.
+
+Fit/reset now calculates one bound across node radii, territory extents, and territory labels, expands it to the actual SVG aspect ratio, and applies 64 world units of safety padding. Resize observation reacts to inspector width changes. If a node is selected, the camera keeps its current zoom and pans only enough to keep the selected neighborhood inside safe margins; otherwise an auto-fit view remains fully fitted. Hover and ordinary status changes do not restart layout or cause camera movement.
+
+### Phase 1.1 tests and checks
+
+The focused suite now includes `graph-readability.test.ts` and an expanded dense-layout test. It verifies deterministic label priority, overview suppression, selected/hovered visibility, screen-stable label scaling, edge fading and overview suppression, viewport bounds including territory-label padding, inspector-resize neighborhood preservation, deterministic dense-cluster spacing, Replay remaining disabled, and that label selection never fabricates an entity.
+
+Focused result: **PASS - 7 files, 58 tests**.
+
+`npm run typecheck --workspace=apps/web` remains blocked only by the pre-existing `apps/web/lib/media/lambda-render.ts:54` `VideoInputProps` error. `npm run build --workspace=apps/web` compiles the application successfully, then fails during static generation of `/forgot-password` and `/update-password` because the local build process lacks the required Supabase URL/API key. No build, migration, auth, or environment guard was weakened.
+
+### Remaining Phase 1.1 limitations
+
+- This is basic label LOD and collision rejection, not the complete canonical semantic-zoom/collision system.
+- Labels can still collide when multiple mandatory project, selected, or critical attention labels occupy the same small area; mandatory truth is retained instead of silently hidden.
+- Node aggregation, run clusters, dynamic device-specific budgets, list view, advanced leader lines, and full inspector/control avoidance remain later-phase work.
+- The layout remains deterministic, fixed-iteration, main-thread, and quadratic in node count.
+- Authenticated post-correction visual review on the Vercel Preview is still required before visual approval.
+- System Map remains a truthful empty state until a reproducible, secure deployed Graphify artifact exists.
+
 ## Known limitations and risks
 
 - Quiet ellipse territories can overlap when verified project clusters are densely connected; advanced territory/collision behavior belongs to Phase 2.
-- Label visibility remains intentionally conservative and may collide in dense views; semantic zoom and advanced label collision are deferred.
+- Phase 1.1 substantially reduces label density and rejects lower-priority collisions, but mandatory labels can still collide in constrained views; full semantic zoom and advanced collision handling are deferred.
 - The deterministic solver remains main-thread and quadratic in node-pair repulsion. Phase 1 makes no claim that later performance budgets are complete.
 - System Map may show no project territories until its source gains verified membership.
 - Atlas and Manager canonical hierarchy is reserved, tested, and documented but not visible in current runtime data.

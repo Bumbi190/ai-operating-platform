@@ -250,10 +250,10 @@ export function buildProjectTerritories(
       maxY = Math.max(maxY, position.y + position.r)
     }
 
-    const padX = 54
-    const padY = 46
-    const width = Math.max(150, maxX - minX + padX * 2)
-    const height = Math.max(120, maxY - minY + padY * 2)
+    const padX = 44
+    const padY = 38
+    const width = Math.max(140, maxX - minX + padX * 2)
+    const height = Math.max(110, maxY - minY + padY * 2)
     return [{
       id: projectId,
       label: hub?.label ?? `Project ${projectId.slice(0, 8)}`,

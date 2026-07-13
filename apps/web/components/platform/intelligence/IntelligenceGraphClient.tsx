@@ -382,7 +382,9 @@ export function IntelligenceGraphClient() {
           {unavailable && !loading && !error && (
             <StateMessage
               title={mode === 'system' ? 'Ingen System Map-artifact ännu' : 'Ingen driftdata'}
-              body={data?.hint ?? 'Ingen data tillgänglig ännu.'}
+              body={mode === 'system'
+                ? 'Ingen distribuerad System Map-artifact är tillgänglig för den här versionen. Grafen är inte trasig; Graphify-generering och leverans hanteras separat.'
+                : data?.hint ?? 'Ingen data tillgänglig ännu.'}
             />
           )}
 

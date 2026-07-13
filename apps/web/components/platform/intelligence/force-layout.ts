@@ -17,6 +17,10 @@ export interface LayoutNode {
   weight: number
   /** Optional cluster hint — nodes sharing a group gravitate together. */
   group?: number
+  /** Semantic radius supplied by the graph visual contract. */
+  radius?: number
+  /** Stronger anchors for sourced structural roles; unsupported roles are never fabricated here. */
+  role?: 'atlas' | 'manager' | 'project' | 'detail'
 }
 
 export interface LayoutEdge {
@@ -65,17 +69,50 @@ export function computeLayout(
   const vy = new Float64Array(n)
   const radii = new Float64Array(n)
 
-  // Seeded ring + group-angle start
+  const groupIds = [...new Set(nodes.flatMap(node => node.group === undefined ? [] : [node.group]))].sort((a, b) => a - b)
+  const groupSizes = new Map<number, number>()
+  for (const node of nodes) {
+    if (node.group !== undefined) groupSizes.set(node.group, (groupSizes.get(node.group) ?? 0) + 1)
+  }
+  const groupAnchors = new Map<number, { x: number; y: number }>()
+  // Two-project portfolios use the wide axis; larger sets retain a seeded phase.
+  const groupPhase = groupIds.length === 2
+    ? 0
+    : groupIds.length > 1 ? (hash(groupIds.join('|')) % 360) * (Math.PI / 180) : 0
+  for (let i = 0; i < groupIds.length; i++) {
+    const angle = groupIds.length === 1 ? 0 : groupPhase + (i / groupIds.length) * Math.PI * 2
+    const radiusX = groupIds.length === 1 ? 0 : width * 0.31
+    const radiusY = groupIds.length === 1 ? 0 : height * 0.26
+    groupAnchors.set(groupIds[i], {
+      x: width / 2 + Math.cos(angle) * radiusX,
+      y: height / 2 + Math.sin(angle) * radiusY,
+    })
+  }
+
+  // Seeded positions around deterministic group anchors.
   for (let i = 0; i < n; i++) {
     const node = nodes[i]
     index.set(node.id, i)
     const h = hash(node.id)
-    const groupAngle = node.group !== undefined ? (hash(`g${node.group}`) % 360) * (Math.PI / 180) : 0
-    const angle = ((h % 3600) / 3600) * Math.PI * 2 * 0.35 + groupAngle
-    const rad = 0.25 * Math.min(width, height) * (0.5 + ((h >> 8) % 1000) / 2000)
-    xs[i] = width / 2 + Math.cos(angle) * rad
-    ys[i] = height / 2 + Math.sin(angle) * rad
-    radii[i] = nodeRadius(node.weight)
+    const angle = ((h % 3600) / 3600) * Math.PI * 2
+    const anchor = node.group === undefined ? undefined : groupAnchors.get(node.group)
+    const densityRadius = node.group === undefined ? 0 : Math.min(62, Math.sqrt(groupSizes.get(node.group) ?? 1) * 9)
+    const localRadius = 34 + densityRadius + ((h >> 8) % 1000) / 1000 * 76
+    if (node.role === 'atlas') {
+      xs[i] = width / 2
+      ys[i] = height / 2
+    } else if (node.role === 'manager') {
+      xs[i] = width / 2 + 82
+      ys[i] = height / 2 - 18
+    } else if (anchor) {
+      xs[i] = anchor.x + Math.cos(angle) * localRadius
+      ys[i] = anchor.y + Math.sin(angle) * localRadius
+    } else {
+      const radial = 0.22 * Math.min(width, height) * (0.55 + ((h >> 8) % 1000) / 1800)
+      xs[i] = width / 2 + Math.cos(angle) * radial
+      ys[i] = height / 2 + Math.sin(angle) * radial
+    }
+    radii[i] = node.radius ?? nodeRadius(node.weight)
   }
 
   const links: Array<[number, number]> = []
@@ -86,10 +123,10 @@ export function computeLayout(
   }
 
   const repulsion = 1800
-  const springLength = 90
+  const springLength = 98
   const springK = 0.04
   const centerK = 0.012
-  const groupK = 0.015
+  const groupK = 0.012
 
   // Group centroids (recomputed every 10 ticks)
   const groups = new Map<number, { x: number; y: number; count: number }>()
@@ -107,8 +144,14 @@ export function computeLayout(
         if (d2 > 250_000) continue // >500px apart — negligible
         const f = repulsion / d2
         const d = Math.sqrt(d2)
-        const fx = (dx / d) * f
-        const fy = (dy / d) * f
+        const sameGroup = nodes[i].group !== undefined && nodes[i].group === nodes[j].group
+        const semanticPadding = nodes[i].role === 'project' || nodes[j].role === 'project'
+          ? 24
+          : sameGroup ? 18 : 14
+        const minDistance = radii[i] + radii[j] + semanticPadding
+        const collision = d < minDistance ? (minDistance - d) * 0.12 : 0
+        const fx = (dx / d) * (f + collision)
+        const fy = (dy / d) * (f + collision)
         vx[i] += fx; vy[i] += fy
         vx[j] -= fx; vy[j] -= fy
       }
@@ -119,7 +162,8 @@ export function computeLayout(
       const dx = xs[b] - xs[a]
       const dy = ys[b] - ys[a]
       const d = Math.max(1, Math.sqrt(dx * dx + dy * dy))
-      const f = springK * (d - springLength)
+      const desired = springLength + (radii[a] + radii[b]) * 0.45
+      const f = springK * (d - desired)
       const fx = (dx / d) * f
       const fy = (dy / d) * f
       vx[a] += fx; vy[a] += fy
@@ -145,10 +189,24 @@ export function computeLayout(
           vx[i] += (entry.x / entry.count - xs[i]) * groupK
           vy[i] += (entry.y / entry.count - ys[i]) * groupK
         }
+        const anchor = groupAnchors.get(g)
+        if (anchor) {
+          const anchorK = nodes[i].role === 'project' ? 0.065 : 0.014
+          vx[i] += (anchor.x - xs[i]) * anchorK
+          vy[i] += (anchor.y - ys[i]) * anchorK
+        }
       }
-      // Center gravity
-      vx[i] += (width / 2 - xs[i]) * centerK
-      vy[i] += (height / 2 - ys[i]) * centerK
+      if (nodes[i].role === 'atlas') {
+        vx[i] += (width / 2 - xs[i]) * 0.18
+        vy[i] += (height / 2 - ys[i]) * 0.18
+      } else if (nodes[i].role === 'manager') {
+        vx[i] += (width / 2 + 82 - xs[i]) * 0.08
+        vy[i] += (height / 2 - 18 - ys[i]) * 0.08
+      } else {
+        // Gentle global gravity keeps ungrouped detail inside the world.
+        vx[i] += (width / 2 - xs[i]) * centerK
+        vy[i] += (height / 2 - ys[i]) * centerK
+      }
     }
 
     // Integrate with velocity clamp + cooling
@@ -158,6 +216,8 @@ export function computeLayout(
       if (v > maxV) { vx[i] = (vx[i] / v) * maxV; vy[i] = (vy[i] / v) * maxV }
       xs[i] += vx[i]
       ys[i] += vy[i]
+      xs[i] = Math.min(width - radii[i] - 12, Math.max(radii[i] + 12, xs[i]))
+      ys[i] = Math.min(height - radii[i] - 12, Math.max(radii[i] + 12, ys[i]))
       vx[i] *= 0.55
       vy[i] *= 0.55
     }

@@ -366,7 +366,7 @@ export function IntelligenceGraphClient() {
 
       {/* ── Canvas + inspector ── */}
       <div className="relative flex min-h-0 flex-1 gap-3">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-white/[0.06] bg-[radial-gradient(ellipse_at_center,rgba(30,34,54,0.5),rgba(8,10,16,0.9))]">
+        <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border border-white/[0.06] bg-[var(--omnira-bg)]">
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
               <div className="flex items-center gap-2 text-sm text-slate-300">
@@ -403,6 +403,7 @@ export function IntelligenceGraphClient() {
               onSelect={setSelected}
               onOpen={drillIn}
               fitSignal={fitSignal}
+              mode={mode === 'operations' ? 'operations' : 'system'}
             />
           )}
         </div>

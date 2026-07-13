@@ -4,7 +4,7 @@ Date: 2026-07-13
 Branch: `feat/omnira-intelligence-graph-phase-2`
 Worktree: `/Volumes/2T_SSD_AI/Projects/Omnira/.worktrees/omnira-intelligence-graph-phase-2`
 Starting commit: `0c50ee7c51de7f1080732b234cabeb868dcd0edf`
-Decision: **COMPLETE WITH DOCUMENTED LIMITATIONS**
+Decision: **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**
 
 ## Scope and authority
 
@@ -181,11 +181,11 @@ The migration guard passed/skipped correctly for local build. Next.js then stopp
 
 `git diff --check` passes.
 
-## Authenticated visual-validation status
+## Historical in-session browser-control limitation (superseded)
 
-**NOT COMPLETED IN THIS SESSION.** The available in-app browser-control runtime was not callable, so an authenticated local interaction pass could not be performed without changing browser surfaces or weakening authentication. No authentication bypass, fake account, synthetic production event, deployment, or unsupported screenshot is claimed.
+During the initial implementation session, the available browser-control runtime was not callable, so that session did not claim an authenticated interaction pass, authentication bypass, fake account, synthetic production event, deployment, or unsupported screenshot. This historical limitation was subsequently superseded by completed authenticated desktop Preview review and manual Chrome DevTools mobile-emulation review. Automated Chrome/Computer Use validation remains unavailable because its control runtime was not exposed.
 
-Rendered server-side component tests verify the non-flattening graph group, semantic policy attributes, node buttons, selected state, critical run preservation at portfolio level, and distinct mode names. A real authenticated browser pass remains required before founder visual approval or release.
+Rendered server-side component tests continue to verify the non-flattening graph group, semantic policy attributes, node buttons, selected state, critical run preservation at portfolio level, and distinct mode names. The completed manual Preview reviews provide the final visual and interaction decision recorded below.
 
 ## Deferred requirements and runtime dependencies
 
@@ -206,12 +206,12 @@ Rendered server-side component tests verify the non-flattening graph group, sema
 - System Map semantic levels are constrained by the current Graphify responses: overview communities and community-detail nodes; verified project membership is unavailable.
 - Operations drilldown is limited to entities and relations already present in the scoped snapshot; it does not call a new detail API.
 - URL refresh restoration is implemented, but native browser Forward/Back `popstate` synchronization is not.
-- Mobile bottom-sheet behavior and real Fullscreen API behavior are covered by code/tests but not authenticated visual/device validation in this session.
+- Authenticated desktop and Chrome DevTools mobile-emulation reviews are complete; physical Pixel-class device validation remains outstanding.
 - The build/typecheck blockers outside Intelligence Graph remain unresolved because dependencies and unrelated epic changes were prohibited.
 
 ## Phase 3 readiness recommendation
 
-Phase 2 is **COMPLETE WITH DOCUMENTED LIMITATIONS** for the verified retained graph contracts. Phase 3 may begin only as a separate approved phase after this implementation receives authenticated visual validation and the Phase 3 runtime truth prerequisites are explicitly approved. Phase 3 must not infer realtime, stale state, correlation, causation, incidents, tools, Atlas, or Manager from this presentation layer.
+Phase 2 is **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS** for the verified retained graph contracts. Phase 3 may begin only as a separate approved phase after its runtime truth prerequisites and scope are explicitly approved. Phase 3 must not infer realtime, stale state, correlation, causation, incidents, tools, Atlas, or Manager from this presentation layer.
 
 No Phase 3 code was started.
 
@@ -239,6 +239,26 @@ Typecheck (`npx tsc --noEmit --incremental false --pretty false`) remains blocke
 
 Production build (`npm run build`) passed the local migration guard and reached Next.js compilation, then stopped on the same unrelated missing `@remotion/lambda/client` import. No Intelligence Graph compile error was reported before that blocker.
 
-### Validation status and remaining limitation
+## Final authenticated and mobile visual approval
 
-The approved mobile bottom-sheet implementation was preserved and is covered by the existing interaction/component contracts plus the new reserved-region label test. A new authenticated Vercel Preview review is still required to confirm the corrected territory and long-name rendering at 390 x 844, 360 x 800, 768 x 1024, and 844 x 390. Real-device validation, including Pixel-class font rendering and browser chrome, also remains outstanding. Final mobile visual validation is therefore **PENDING NEW PREVIEW REVIEW**.
+Authenticated desktop Preview review is complete. It confirmed progressive operation of all five semantic zoom levels, scoped search with truthful no-result behavior, filters, drilldown, isolate, breadcrumbs, inspector behavior, fullscreen context preservation, manually exercised browser navigation without a blocking defect, keyboard node navigation when a graph node has focus, and the disabled Execution Replay state.
+
+Manual Chrome DevTools mobile-emulation review is complete. It confirmed responsive graph layout, reachable mobile controls, usable Live Operations, node selection, the scrollable and closable bottom-sheet inspector, reachable `Fördjupa` and `Isolera scope` actions, usable remaining graph space, and no obvious accidental horizontal page scrolling. The Phase 2.1 territory-label collision and long selected-node viewport corrections were visually confirmed: project and territory identity remain readable, labels remain inside the usable viewport at the left and right edges, and mobile label eligibility and budgets remain unchanged.
+
+Mobile functionality is approved. Mobile visual finish is approved. Bottom-sheet behavior, territory-label collision correction, and long-label clipping correction are confirmed. Execution Replay remained disabled, and no fabricated runtime behavior was introduced.
+
+Founder decision: **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**.
+
+### Documented remaining limitations
+
+- Physical Pixel-class device validation has not yet been completed.
+- Automated Chrome/Computer Use validation was unavailable because the control runtime was not exposed.
+- Automated native browser `popstate` regression coverage remains absent.
+- Pixel-perfect camera restoration across every Back/Forward sequence is not claimed.
+- Main-thread collision and layout performance remains unprofiled at larger future scale.
+- Mandatory labels may still overlap in exceptionally constrained saturated views.
+- Atlas, Manager, tools, incidents, realtime truth, freeze/stale states, Replay, and Graphify delivery remain later-phase dependencies or scope.
+
+### Delivery state
+
+The Phase 2 implementation commits are pushed on `feat/omnira-intelligence-graph-phase-2`. No Phase 2 pull request has been opened, no merge to `main` has occurred, no production deployment has occurred, and Phase 3 has not started.

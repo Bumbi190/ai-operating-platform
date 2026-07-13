@@ -5,10 +5,12 @@ import type { PositionedNode } from './force-layout'
 import {
   calculateGraphBounds,
   fitGraphBounds,
+  getLabelBudget,
   getEdgeReadability,
   getGraphZoomLevel,
   getLabelPriority,
   getScreenStableLabelScale,
+  getTerritoryLabelTypography,
   keepNodesVisible,
   selectVisibleNodeLabels,
 } from './graph-readability'
@@ -110,12 +112,89 @@ describe('Phase 1.1 graph readability policy', () => {
     expect(ids).not.toContain('unrelated-output')
   })
 
-  it('keeps label size approximately stable in screen space', () => {
-    const overviewScale = getScreenStableLabelScale(1200)
-    const closeScale = getScreenStableLabelScale(600)
-    expect(overviewScale / 1200).toBeCloseTo(closeScale / 600, 6)
-    expect(getScreenStableLabelScale(30)).toBe(0.1)
-    expect(getScreenStableLabelScale(5000)).toBe(3)
+  it('keeps eligible labels legible with a deterministic role and interaction hierarchy', () => {
+    const nodes = [
+      node('project', 'project'),
+      node('workflow', 'workflow'),
+      node('run', 'ordinary'),
+      node('agent', 'hovered'),
+    ]
+    const layout = new Map(nodes.map((value, index) => [value.id, position(value.id, 80 + index * 220, 160)]))
+    const viewWidth = 360
+    const viewportWidth = 960
+    const labels = new Map(selectVisibleNodeLabels({
+      nodes,
+      layout,
+      viewWidth,
+      viewportWidth,
+      hoverId: 'hovered',
+    }).map(label => [label.id, label]))
+    const cssPixels = (id: string) => labels.get(id)!.fontSize * viewportWidth / viewWidth
+
+    expect(cssPixels('ordinary')).toBeCloseTo(11.5, 6)
+    expect(cssPixels('workflow')).toBeCloseTo(12.5, 6)
+    expect(cssPixels('project')).toBeCloseTo(13.5, 6)
+    expect(cssPixels('hovered')).toBeCloseTo(15, 6)
+    expect(cssPixels('hovered')).toBeGreaterThan(cssPixels('project'))
+    expect(cssPixels('project')).toBeGreaterThan(cssPixels('workflow'))
+    expect(cssPixels('workflow')).toBeGreaterThan(cssPixels('ordinary'))
+    expect(getTerritoryLabelTypography(viewWidth, viewportWidth).fontSize * viewportWidth / viewWidth).toBeCloseTo(13.5, 6)
+  })
+
+  it('keeps interaction label sizing stable across overview, medium, close, and extreme close views', () => {
+    const hovered = node('run', 'hovered')
+    const layout = new Map([[hovered.id, position(hovered.id, 100, 100)]])
+    const viewportWidth = 960
+
+    for (const viewWidth of [1200, 600, 240, 80]) {
+      const [label] = selectVisibleNodeLabels({
+        nodes: [hovered],
+        layout,
+        viewWidth,
+        viewportWidth,
+        hoverId: hovered.id,
+      })
+      expect(label.fontSize * viewportWidth / viewWidth).toBeCloseTo(15, 6)
+    }
+
+    expect(getScreenStableLabelScale(1200, viewportWidth)).toBeCloseTo(1.25, 6)
+    expect(getScreenStableLabelScale(80, viewportWidth)).toBeCloseTo(1 / 12, 6)
+  })
+
+  it('keeps a selected label prominent and externally placed beside a large node', () => {
+    const selected = node('run', 'selected')
+    const project = node('project', 'project')
+    const selectedRadius = 56
+    const viewWidth = 600
+    const viewportWidth = 900
+    const layout = new Map([
+      [selected.id, position(selected.id, 120, 180, selectedRadius)],
+      [project.id, position(project.id, 500, 180, 34)],
+    ])
+    const labels = new Map(selectVisibleNodeLabels({
+      nodes: [selected, project],
+      layout,
+      viewWidth,
+      viewportWidth,
+      selectedId: selected.id,
+      neighborIds: new Set([selected.id]),
+    }).map(label => [label.id, label]))
+    const selectedLabel = labels.get(selected.id)!
+    const projectLabel = labels.get(project.id)!
+
+    expect(selectedLabel.fontSize * viewportWidth / viewWidth).toBeCloseTo(15, 6)
+    expect(projectLabel.fontSize * viewportWidth / viewWidth).toBeCloseTo(13.5, 6)
+    expect(selectedLabel.fontSize).toBeGreaterThan(projectLabel.fontSize)
+    expect(selectedLabel.y - selectedLabel.fontSize).toBeGreaterThan(selectedRadius)
+  })
+
+  it('retains the Phase 1.1 finite collision budgets exactly', () => {
+    expect(getLabelBudget('overview', 80, 0)).toBe(8)
+    expect(getLabelBudget('medium', 80, 0)).toBe(30)
+    expect(getLabelBudget('close', 80, 0)).toBe(52)
+    expect(getLabelBudget('medium', 121, 0)).toBe(20)
+    expect(getLabelBudget('close', 121, 0)).toBe(34)
+    expect(getLabelBudget('overview', 80, 12)).toBe(12)
   })
 
   it('strongly fades unrelated edges and suppresses low-value overview detail', () => {

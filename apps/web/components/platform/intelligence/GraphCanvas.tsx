@@ -18,6 +18,7 @@ import {
   getEdgeReadability,
   getGraphZoomLevel,
   getScreenStableLabelScale,
+  getTerritoryLabelTypography,
   keepNodesVisible,
   selectVisibleNodeLabels,
 } from './graph-readability'
@@ -129,18 +130,20 @@ export function GraphCanvas({
   ), [nodes])
 
   const zoomLevel = getGraphZoomLevel(view.w)
-  const labelScale = getScreenStableLabelScale(view.w)
+  const labelScale = getScreenStableLabelScale(view.w, viewport.width)
+  const territoryLabelTypography = getTerritoryLabelTypography(view.w, viewport.width)
   const visibleLabels = useMemo(() => new Map(
     selectVisibleNodeLabels({
       nodes,
       layout,
       viewWidth: view.w,
+      viewportWidth: viewport.width,
       selectedId,
       hoverId,
       focusId,
       neighborIds: selectedNeighborhood,
     }).map(label => [label.id, label]),
-  ), [nodes, layout, view.w, selectedId, hoverId, focusId, selectedNeighborhood])
+  ), [nodes, layout, view.w, viewport.width, selectedId, hoverId, focusId, selectedNeighborhood])
 
   const fit = useCallback(() => {
     setView(fitGraphBounds(graphBounds, viewport))
@@ -283,8 +286,9 @@ export function GraphCanvas({
               x={territory.cx - territory.rx + 14 * labelScale}
               y={territory.cy - territory.ry + 17 * labelScale}
               className={styles.territoryLabel}
-              fontSize={9 * labelScale}
-              style={{ strokeWidth: 3 * labelScale }}
+              fontSize={territoryLabelTypography.fontSize}
+              fontWeight={territoryLabelTypography.fontWeight}
+              style={{ strokeWidth: territoryLabelTypography.haloWidth }}
             >
               {truncate(territory.label, 34)} · territory
             </text>
@@ -391,9 +395,12 @@ export function GraphCanvas({
                   textAnchor={label.textAnchor}
                   className={styles.label}
                   fontSize={label.fontSize}
-                  fill={isSelected ? 'var(--ig-label-strong)' : 'var(--ig-label)'}
+                  fontWeight={label.fontWeight}
+                  fill={label.tier === 'interaction' || label.tier === 'project'
+                    ? 'var(--ig-label-strong)'
+                    : 'var(--ig-label)'}
                   pointerEvents="none"
-                  style={{ strokeWidth: 3 * labelScale }}
+                  style={{ strokeWidth: label.haloWidth }}
                 >
                   <tspan x={label.x}>{truncate(node.label, node.kind === 'project' ? 34 : 30)}</tspan>
                   {status?.attention && node.status && (

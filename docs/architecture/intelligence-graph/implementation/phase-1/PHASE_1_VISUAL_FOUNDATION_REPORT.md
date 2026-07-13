@@ -227,6 +227,20 @@ Focused result: **PASS - 7 files, 58 tests**.
 - Authenticated post-correction visual review on the Vercel Preview is still required before visual approval.
 - System Map remains a truthful empty state until a reproducible, secure deployed Graphify artifact exists.
 
+## Phase 1.2 label legibility calibration
+
+Authenticated visual review of Phase 1.1 confirmed that density, collisions, edge noise, viewport fitting, inspector focus, GainPilot clipping, and the System Map empty state improved, but also found that the labels still admitted by the suppression policy were too small. Selected-node labels were especially disproportionate beside large nodes, and project/territory names lacked sufficient prominence.
+
+The centralized label contract now targets screen-stable CSS-pixel typography using the actual rendered canvas width: project and territory labels are 13.5 px, workflows 12.5 px, ordinary eligible labels 11.5 px, and selected/focused/hovered labels 15 px. Interaction labels use a restrained external offset with a 5 px visual gap from the node; project and interaction labels also receive stronger weight and the existing strong text color. Compact attention-status lines remain subordinate to the primary label and inspector title.
+
+The existing canvas-colored text halo is retained as the contrast mechanism and calibrated to 2.4 px for ordinary/context labels and 3 px for project, territory, and interaction labels. Explicit stroke-first paint order, rounded joins/caps, and 94% stroke opacity improve separation from nodes, edges, glow, and territory atmosphere without adding opaque tooltip-style boxes.
+
+Phase 1.1 suppression behavior is unchanged: no new label class is eligible, overview still suppresses ordinary detail and admits at most two ordinary workflows, deterministic priority is unchanged, selected-neighborhood filtering is unchanged, and the overview/medium/close budgets remain exactly 8, 30/20, and 52/34 before persistent critical labels. Collision rejection still uses the same four anchors and priority order; the larger measured text boxes may conservatively reject a lower-priority label rather than introduce clutter.
+
+Focused validation: **PASS - 7 files, 61 tests**. Coverage includes minimum eligible-label sizes, selected-label prominence and external placement, project/territory hierarchy, stable sizing across overview through extreme-close views, unchanged overview suppression, unchanged finite collision budgets, and Replay remaining disabled.
+
+Remaining limitations are unchanged in scope: this is still the Phase 1 three-band label LOD rather than the canonical five-level Phase 2 engine; mandatory labels can still collide in constrained views; long-name wrapping, advanced offsets/leader lines, dynamic device-density budgets, and authenticated post-calibration visual approval remain deferred. No Graphify artifact was generated and System Map remains truthful when none is distributed.
+
 ## Known limitations and risks
 
 - Quiet ellipse territories can overlap when verified project clusters are densely connected; advanced territory/collision behavior belongs to Phase 2.

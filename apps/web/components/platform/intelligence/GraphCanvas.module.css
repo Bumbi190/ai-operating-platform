@@ -22,8 +22,10 @@
 
 .label,
 .territoryLabel {
-  paint-order: stroke;
+  paint-order: stroke fill;
   stroke: var(--ig-canvas);
+  stroke-opacity: 0.94;
+  stroke-linecap: round;
   stroke-linejoin: round;
   letter-spacing: 0.01em;
 }

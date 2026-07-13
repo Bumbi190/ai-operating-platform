@@ -7,13 +7,43 @@ export type GraphZoomLevel = 'overview' | 'medium' | 'close'
 export interface GraphLabelPlacement {
   id: string
   priority: number
+  tier: GraphLabelTier
   fontSize: number
   statusFontSize: number
+  fontWeight: number
+  haloWidth: number
   x: number
   y: number
   statusLineHeight: number
   textAnchor: 'start' | 'middle' | 'end'
 }
+
+export type GraphLabelTier = 'interaction' | 'project' | 'workflow' | 'ordinary'
+
+export const GRAPH_LABEL_TYPOGRAPHY = {
+  screenFontSize: {
+    territory: 13.5,
+    project: 13.5,
+    workflow: 12.5,
+    ordinary: 11.5,
+    interaction: 15,
+  },
+  statusScreenFontSize: {
+    default: 10.5,
+    interaction: 12,
+  },
+  fontWeight: {
+    territory: 650,
+    project: 650,
+    workflow: 600,
+    ordinary: 500,
+    interaction: 650,
+  },
+  haloScreenWidth: {
+    default: 2.4,
+    strong: 3,
+  },
+} as const
 
 export interface GraphBounds {
   minX: number
@@ -33,6 +63,7 @@ interface LabelSelectionOptions {
   nodes: IntelligenceGraphNode[]
   layout: ReadonlyMap<string, PositionedNode>
   viewWidth: number
+  viewportWidth?: number
   selectedId?: string | null
   hoverId?: string | null
   focusId?: string | null
@@ -70,9 +101,24 @@ export function getGraphZoomLevel(viewWidth: number): GraphZoomLevel {
   return 'close'
 }
 
-/** Inverse viewBox scaling keeps SVG labels approximately stable in screen space. */
-export function getScreenStableLabelScale(viewWidth: number): number {
-  return Math.min(3, Math.max(0.1, viewWidth / WORLD_WIDTH))
+/** Converts CSS-pixel typography targets to SVG user units for the current camera and canvas. */
+export function getScreenStableLabelScale(viewWidth: number, viewportWidth = WORLD_WIDTH): number {
+  return Math.max(1, viewWidth) / Math.max(1, viewportWidth)
+}
+
+export function getLabelBudget(zoomLevel: GraphZoomLevel, nodeCount: number, persistentCount: number): number {
+  if (zoomLevel === 'overview') return Math.max(persistentCount, 8)
+  if (zoomLevel === 'medium') return Math.max(persistentCount, nodeCount > 120 ? 20 : 30)
+  return Math.max(persistentCount, nodeCount > 120 ? 34 : 52)
+}
+
+export function getTerritoryLabelTypography(viewWidth: number, viewportWidth = WORLD_WIDTH) {
+  const scale = getScreenStableLabelScale(viewWidth, viewportWidth)
+  return {
+    fontSize: GRAPH_LABEL_TYPOGRAPHY.screenFontSize.territory * scale,
+    fontWeight: GRAPH_LABEL_TYPOGRAPHY.fontWeight.territory,
+    haloWidth: GRAPH_LABEL_TYPOGRAPHY.haloScreenWidth.strong * scale,
+  }
 }
 
 export function getLabelPriority(
@@ -95,13 +141,14 @@ export function selectVisibleNodeLabels({
   nodes,
   layout,
   viewWidth,
+  viewportWidth = WORLD_WIDTH,
   selectedId,
   hoverId,
   focusId,
   neighborIds = new Set<string>(),
 }: LabelSelectionOptions): GraphLabelPlacement[] {
   const zoomLevel = getGraphZoomLevel(viewWidth)
-  const scale = getScreenStableLabelScale(viewWidth)
+  const scale = getScreenStableLabelScale(viewWidth, viewportWidth)
   const interaction = { selectedId, hoverId, focusId }
   const candidates = nodes
     .map(node => ({
@@ -118,11 +165,7 @@ export function selectVisibleNodeLabels({
       || a.node.id.localeCompare(b.node.id))
 
   const persistentCount = candidates.filter(candidate => candidate.forced || candidate.attention || candidate.node.kind === 'project').length
-  const budget = zoomLevel === 'overview'
-    ? Math.max(persistentCount, 8)
-    : zoomLevel === 'medium'
-      ? Math.max(persistentCount, nodes.length > 120 ? 20 : 30)
-      : Math.max(persistentCount, nodes.length > 120 ? 34 : 52)
+  const budget = getLabelBudget(zoomLevel, nodes.length, persistentCount)
   const occupied: Box[] = []
   const visible: GraphLabelPlacement[] = []
   let overviewWorkflows = 0
@@ -148,14 +191,26 @@ export function selectVisibleNodeLabels({
     const persistent = forced || attention || node.kind === 'project'
     if (!persistent && visible.length >= budget) continue
 
-    const baseFontSize = node.kind === 'project' ? 11 : node.kind === 'workflow' ? 10 : 9.25
-    const fontSize = baseFontSize * scale
-    const statusFontSize = 7.75 * scale
-    const statusLineHeight = 10 * scale
+    const tier: GraphLabelTier = forced
+      ? 'interaction'
+      : node.kind === 'project'
+        ? 'project'
+        : node.kind === 'workflow'
+          ? 'workflow'
+          : 'ordinary'
+    const fontSize = GRAPH_LABEL_TYPOGRAPHY.screenFontSize[tier] * scale
+    const statusFontSize = GRAPH_LABEL_TYPOGRAPHY.statusScreenFontSize[
+      tier === 'interaction' ? 'interaction' : 'default'
+    ] * scale
+    const statusLineHeight = (tier === 'interaction' ? 15 : 13.5) * scale
+    const fontWeight = GRAPH_LABEL_TYPOGRAPHY.fontWeight[tier]
+    const haloWidth = GRAPH_LABEL_TYPOGRAPHY.haloScreenWidth[
+      tier === 'interaction' || tier === 'project' ? 'strong' : 'default'
+    ] * scale
     const textLength = Math.min(node.label.length, node.kind === 'project' ? 34 : 30)
     const width = Math.max(32 * scale, textLength * fontSize * 0.57)
     const height = fontSize * 1.25 + (attention && node.status ? statusLineHeight : 0)
-    const anchors = labelAnchors(position, scale)
+    const anchors = labelAnchors(position, scale, fontSize, forced)
     let selectedPlacement: GraphLabelPlacement | null = null
     let selectedBox: Box | null = null
 
@@ -165,8 +220,11 @@ export function selectVisibleNodeLabels({
         selectedPlacement = {
           id: node.id,
           priority: candidate.priority,
+          tier,
           fontSize,
           statusFontSize,
+          fontWeight,
+          haloWidth,
           x: anchor.x,
           y: anchor.y,
           statusLineHeight,
@@ -183,8 +241,11 @@ export function selectVisibleNodeLabels({
       selectedPlacement = {
         id: node.id,
         priority: candidate.priority,
+        tier,
         fontSize,
         statusFontSize,
+        fontWeight,
+        haloWidth,
         x: anchor.x,
         y: anchor.y,
         statusLineHeight,
@@ -316,12 +377,13 @@ export function keepNodesVisible(
   return { ...view, x, y }
 }
 
-function labelAnchors(position: PositionedNode, scale: number) {
+function labelAnchors(position: PositionedNode, scale: number, fontSize: number, interaction: boolean) {
+  const gap = (interaction ? 5 : 3.5) * scale
   return [
-    { x: 0, y: position.r + 13 * scale, textAnchor: 'middle' as const },
-    { x: 0, y: -position.r - 7 * scale, textAnchor: 'middle' as const },
-    { x: position.r + 8 * scale, y: 3 * scale, textAnchor: 'start' as const },
-    { x: -position.r - 8 * scale, y: 3 * scale, textAnchor: 'end' as const },
+    { x: 0, y: position.r + fontSize + gap, textAnchor: 'middle' as const },
+    { x: 0, y: -position.r - gap, textAnchor: 'middle' as const },
+    { x: position.r + gap + 3 * scale, y: fontSize * 0.35, textAnchor: 'start' as const },
+    { x: -position.r - gap - 3 * scale, y: fontSize * 0.35, textAnchor: 'end' as const },
   ]
 }
 

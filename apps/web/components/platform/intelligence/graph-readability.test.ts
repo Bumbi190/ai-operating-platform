@@ -9,6 +9,7 @@ import {
   formatTerritoryLabel,
   getEdgeReadability,
   getGraphZoomLevel,
+  graphCameraPreservationKey,
   getLabelBudget,
   getLabelPriority,
   getNodeSemanticVisibility,
@@ -16,6 +17,7 @@ import {
   getSemanticZoomPolicy,
   getTerritoryLabelTypography,
   keepNodesVisible,
+  preserveSelectedNeighborhoodCamera,
   selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
 } from './graph-readability'
@@ -246,6 +248,60 @@ describe('Phase 2 canonical semantic zoom and readability', () => {
     expect(adjusted.x).toBeGreaterThan(0)
     const mobileAdjusted = keepNodesVisible({ x: 0, y: 0, w: 900, h: 600 }, layout, new Set(['bottom']), { bottom: 280 })
     expect(mobileAdjusted.y).toBeGreaterThan(adjusted.y)
+  })
+
+  it('triggers camera preservation for inspector, selection, and neighborhood changes', () => {
+    const viewport = { width: 390, height: 844 }
+    const initial = graphCameraPreservationKey(viewport, false, 'run:a', new Set(['run:a']))
+    const opened = graphCameraPreservationKey(viewport, true, 'run:a', new Set(['run:a']))
+    const selected = graphCameraPreservationKey(viewport, true, 'run:b', new Set(['run:a', 'run:b']))
+    const neighborhood = graphCameraPreservationKey(viewport, true, 'run:b', new Set(['run:a', 'run:b', 'agent:b']))
+
+    expect(new Set([initial, opened, selected, neighborhood])).toHaveLength(4)
+  })
+
+  it('minimally pans a selected mobile neighborhood above the open bottom sheet', () => {
+    const camera = { x: 0, y: 0, w: 900, h: 600 }
+    const selected = position('selected', 450, 540, 20)
+    const neighbor = position('neighbor', 500, 500, 18)
+    const layout = new Map([[selected.id, selected], [neighbor.id, neighbor]])
+    const adjusted = preserveSelectedNeighborhoodCamera(
+      camera,
+      layout,
+      new Set([selected.id, neighbor.id]),
+      selected.id,
+      { width: 390, height: 844 },
+      true,
+    )
+
+    expect(adjusted.w).toBe(camera.w)
+    expect(adjusted.h).toBe(camera.h)
+    expect(adjusted.y).toBeGreaterThan(camera.y)
+    expect(selected.y + selected.r).toBeLessThanOrEqual(adjusted.y + camera.h * 0.52 - 72)
+    expect(layout.get(selected.id)).toEqual(selected)
+  })
+
+  it('updates mobile preservation when selection changes while the sheet stays open', () => {
+    const camera = { x: 0, y: 0, w: 900, h: 600 }
+    const layout = new Map([
+      ['top', position('top', 450, 80, 20)],
+      ['bottom', position('bottom', 450, 540, 20)],
+    ])
+    const top = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['top']), 'top', { width: 390, height: 844 }, true)
+    const bottom = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['bottom']), 'bottom', { width: 390, height: 844 }, true)
+
+    expect(bottom.y).toBeGreaterThan(top.y)
+  })
+
+  it('does not reset camera on sheet close or reserve mobile space on desktop', () => {
+    const camera = { x: 0, y: 0, w: 900, h: 600 }
+    const layout = new Map([['selected', position('selected', 450, 500, 20)]])
+    const opened = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['selected']), 'selected', { width: 390, height: 844 }, true)
+    const closed = preserveSelectedNeighborhoodCamera(opened, layout, new Set(['selected']), 'selected', { width: 390, height: 844 }, false)
+    const desktop = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['selected']), 'selected', { width: 768, height: 1024 }, true)
+
+    expect(closed).toEqual(opened)
+    expect(desktop).toEqual(camera)
   })
 
   it('keeps Replay disabled and reduced-motion styling present', () => {

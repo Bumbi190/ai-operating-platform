@@ -25,12 +25,16 @@ import type {
 import { GraphCanvas, nodeColor, type GraphCameraCommand } from './GraphCanvas'
 import type { GraphViewBox, GraphZoomLevel } from './graph-readability'
 import {
+  beginCrossCommunitySearch,
+  buildGraphBreadcrumbs,
   buildDrilldownScope,
   computeGraphFilterState,
+  resolveGraphNavigationIntent,
   searchScopedNodes,
+  type GraphNavigationIntent,
   type GraphScope,
 } from './graph-navigation'
-import { parseGraphUrlState, resolveScopedUrlNode, serializeGraphUrlState } from './graph-url-state'
+import { parseGraphUrlState, serializeGraphUrlState } from './graph-url-state'
 import { NodeInspector } from './NodeInspector'
 
 type Mode = 'system' | 'operations' | 'replay'
@@ -65,6 +69,12 @@ interface NavigationSnapshot {
   isolateScope: GraphScope | null
   selectedId: string | null
   camera: GraphViewBox
+}
+
+interface PendingNavigationResolution {
+  intent: GraphNavigationIntent
+  focusSelected: boolean
+  markSearchResult: boolean
 }
 
 const RUN_STATUS_FILTERS = [
@@ -118,11 +128,20 @@ export function IntelligenceGraphClient() {
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searchPending, setSearchPending] = useState(false)
   const [urlHydrated, setUrlHydrated] = useState(false)
+  const [navigationPending, setNavigationPending] = useState(false)
   const searchAbort = useRef<AbortController | null>(null)
-  /** Node id to select once the next payload lands (search → community drilldown). */
-  const pendingSelect = useRef<string | null>(null)
-  const pendingIsolateId = useRef<string | null>(null)
-  const pendingDrillId = useRef<string | null>(null)
+  const pendingNavigation = useRef<PendingNavigationResolution | null>(null)
+
+  const queuePendingNavigation = useCallback((pending: PendingNavigationResolution) => {
+    pendingNavigation.current = pending
+    setNavigationPending(true)
+  }, [])
+
+  const cancelPendingNavigation = useCallback(() => {
+    pendingNavigation.current = null
+    pendingRestore.current = null
+    setNavigationPending(false)
+  }, [])
 
   const url = useMemo(() => {
     if (mode === 'system') {
@@ -154,10 +173,9 @@ export function IntelligenceGraphClient() {
         setData(payload)
         const restore = pendingRestore.current
         if (restore) {
-          pendingSelect.current = restore.selectedId
           setCameraCommand({ nonce: Date.now(), type: 'restore', view: restore.camera })
           pendingRestore.current = null
-        } else {
+        } else if (!pendingNavigation.current) {
           setSelected(null)
           setSearchResultId(null)
           setFitSignal(x => x + 1)
@@ -279,51 +297,86 @@ export function IntelligenceGraphClient() {
       if (selected) setSelected(null)
       return
     }
-    setDrillScope(previous.drillScope)
-    setIsolateScope(previous.isolateScope)
+    const intent: GraphNavigationIntent = {
+      selectedId: previous.selectedId,
+      drillId: previous.drillScope?.rootId ?? null,
+      isolateId: previous.isolateScope?.rootId ?? null,
+    }
     if (previous.communityId !== communityId) {
       pendingRestore.current = previous
+      queuePendingNavigation({ intent, focusSelected: false, markSearchResult: false })
+      setSelected(null)
+      setSearchResultId(null)
+      setDrillScope(null)
+      setIsolateScope(null)
       setCommunityId(previous.communityId)
       return
     }
-    setSelected(previous.selectedId ? allNodes.find(node => node.id === previous.selectedId) ?? null : null)
+    const resolved = resolveGraphNavigationIntent(allNodes, allEdges, intent)
+    setSelected(resolved.selected)
+    setDrillScope(resolved.drillScope)
+    setIsolateScope(resolved.isolateScope)
+    setSearchResultId(null)
     setCameraCommand({ nonce: Date.now(), type: 'restore', view: previous.camera })
-  }, [allNodes, communityId, exitIsolate, isolateScope, selected])
+  }, [allEdges, allNodes, communityId, exitIsolate, isolateScope, queuePendingNavigation, selected])
 
   const openSearchHit = useCallback((hit: SearchHit) => {
     setQuery('')
     setHits([])
-    setSearchResultId(hit.id)
-    if (typeof hit.community === 'number') {
-      // Selection resolves once the community payload lands.
+    const transition = beginCrossCommunitySearch(communityId, hit)
+    if (transition) {
+      // Cross-community search leaves the old transient scopes before the new
+      // authorized payload resolves, so stale ids cannot empty the next graph.
       navigationHistory.current.push(snapshotNavigation())
-      pendingSelect.current = hit.id
-      setCommunityId(hit.community)
+      queuePendingNavigation({
+        intent: transition.intent,
+        focusSelected: true,
+        markSearchResult: true,
+      })
+      setSelected(transition.nextSelectionId)
+      setSearchResultId(null)
+      setDrillScope(transition.nextDrillScope)
+      setIsolateScope(transition.nextIsolateScope)
+      setCommunityId(transition.targetCommunityId)
       return
     }
-    // No community to drill into — select directly if the node is in view,
-    // and never leave a stale pending selection behind (L1).
-    pendingSelect.current = null
+
+    cancelPendingNavigation()
     const inView = data?.nodes?.find(n => n.id === hit.id)
     if (inView) {
+      const outsideTransientScope = Boolean(
+        (drillScope && !drillScope.nodeIds.has(inView.id))
+        || (isolateScope && !isolateScope.nodeIds.has(inView.id)),
+      )
+      if (outsideTransientScope) {
+        navigationHistory.current.push(snapshotNavigation())
+        setDrillScope(null)
+        setIsolateScope(null)
+      }
       setSelected(inView)
+      setSearchResultId(inView.id)
       setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [inView.id] })
+    } else {
+      // The result went stale between search and selection; retain the current
+      // truthful graph context and never manufacture a selected node.
+      setSearchResultId(null)
     }
-  }, [data, snapshotNavigation])
+  }, [cancelPendingNavigation, communityId, data, drillScope, isolateScope, queuePendingNavigation, snapshotNavigation])
   useEffect(() => {
-    if (!pendingSelect.current || !data?.nodes) return
-    const found = resolveScopedUrlNode(data.nodes, pendingSelect.current ?? undefined)
-    if (found) {
-      setSelected(found)
-      setSearchResultId(found.id)
-      const requestedScope = buildDrilldownScope(found, data.nodes, data.edges ?? [])
-      if (requestedScope && pendingIsolateId.current === found.id) setIsolateScope(requestedScope)
-      if (requestedScope && pendingDrillId.current === found.id) setDrillScope(requestedScope)
+    const pending = pendingNavigation.current
+    if (!pending || !data) return
+    const scopedNodes = data.nodes ?? []
+    const resolved = resolveGraphNavigationIntent(scopedNodes, data.edges ?? [], pending.intent)
+    setSelected(resolved.selected)
+    setDrillScope(resolved.drillScope)
+    setIsolateScope(resolved.isolateScope)
+    setSearchResultId(pending.markSearchResult ? resolved.selected?.id ?? null : null)
+    if (pending.focusSelected && resolved.selected) {
+      setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [resolved.selected.id] })
     }
-    // One resolution attempt per payload — hit or miss, the intent is consumed (L1).
-    pendingSelect.current = null
-    pendingIsolateId.current = null
-    pendingDrillId.current = null
+    // One independent resolution attempt per identifier and payload.
+    pendingNavigation.current = null
+    setNavigationPending(false)
   }, [data])
 
   useEffect(() => {
@@ -333,14 +386,22 @@ export function IntelligenceGraphClient() {
     setMode(state.mode)
     if (state.projectId) setProjectFilter(state.projectId)
     if (state.communityId !== undefined) setCommunityId(state.communityId)
-    pendingSelect.current = state.selectedId ?? state.isolateId ?? state.drillId ?? null
-    pendingIsolateId.current = state.isolateId ?? null
-    pendingDrillId.current = state.drillId ?? null
+    if (state.selectedId || state.drillId || state.isolateId) {
+      queuePendingNavigation({
+        intent: {
+          selectedId: state.selectedId ?? null,
+          drillId: state.drillId ?? null,
+          isolateId: state.isolateId ?? null,
+        },
+        focusSelected: false,
+        markSearchResult: false,
+      })
+    }
     setUrlHydrated(true)
-  }, [])
+  }, [queuePendingNavigation])
 
   useEffect(() => {
-    if (!urlHydrated || typeof window === 'undefined') return
+    if (!urlHydrated || navigationPending || typeof window === 'undefined') return
     const query = serializeGraphUrlState({
       mode: mode === 'operations' ? 'operations' : 'system',
       ...(mode === 'operations' && projectFilter !== 'all' ? { projectId: projectFilter } : {}),
@@ -350,7 +411,7 @@ export function IntelligenceGraphClient() {
       ...(isolateScope ? { isolateId: isolateScope.rootId } : {}),
     })
     window.history.replaceState(null, '', `${window.location.pathname}?${query}`)
-  }, [urlHydrated, mode, projectFilter, communityId, selected, drillScope, isolateScope])
+  }, [urlHydrated, navigationPending, mode, projectFilter, communityId, selected, drillScope, isolateScope])
 
   useEffect(() => {
     const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === rootRef.current)
@@ -372,13 +433,15 @@ export function IntelligenceGraphClient() {
   }, [])
 
   const resetView = useCallback(() => {
+    cancelPendingNavigation()
     setSelected(null)
     setSearchResultId(null)
     setDrillScope(null)
     setFitSignal(x => x + 1)
-  }, [])
+  }, [cancelPendingNavigation])
 
   const resetAll = useCallback(() => {
+    cancelPendingNavigation()
     clearFilters()
     setQuery('')
     setHits([])
@@ -390,7 +453,7 @@ export function IntelligenceGraphClient() {
     if (mode === 'system') setCommunityId(null)
     else setProjectFilter('all')
     setFitSignal(x => x + 1)
-  }, [clearFilters, mode])
+  }, [cancelPendingNavigation, clearFilters, mode])
 
   const handleEscape = useCallback(() => {
     if (isolateScope) exitIsolate()
@@ -409,6 +472,7 @@ export function IntelligenceGraphClient() {
   }, [])
 
   const switchMode = useCallback((next: Mode) => {
+    cancelPendingNavigation()
     setMode(next)
     setCommunityId(null)
     setDrillScope(null)
@@ -417,15 +481,12 @@ export function IntelligenceGraphClient() {
     setSearchResultId(null)
     setQuery('')
     navigationHistory.current = []
-  }, [])
+  }, [cancelPendingNavigation])
 
-  const breadcrumbs = useMemo(() => {
-    const values = ['Global']
-    if (mode === 'system' && communityId !== null) values.push(`Community ${communityId}`)
-    if (drillScope && !values.includes(drillScope.label)) values.push(drillScope.label)
-    if (isolateScope) values.push(`Isolated: ${isolateScope.label}`)
-    return values
-  }, [communityId, drillScope, isolateScope, mode])
+  const breadcrumbs = useMemo(
+    () => buildGraphBreadcrumbs(mode === 'operations' ? 'operations' : 'system', communityId, drillScope, isolateScope),
+    [communityId, drillScope, isolateScope, mode],
+  )
 
   const unavailable = data && data.available === false
 

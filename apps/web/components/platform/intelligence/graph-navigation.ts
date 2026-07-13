@@ -12,6 +12,26 @@ export interface GraphScope {
   projectId?: string
 }
 
+export interface GraphNavigationIntent {
+  selectedId?: string | null
+  drillId?: string | null
+  isolateId?: string | null
+}
+
+export interface ResolvedGraphNavigation {
+  selected: IntelligenceGraphNode | null
+  drillScope: GraphScope | null
+  isolateScope: GraphScope | null
+}
+
+export interface CrossCommunitySearchTransition {
+  targetCommunityId: number
+  intent: GraphNavigationIntent
+  nextSelectionId: null
+  nextDrillScope: null
+  nextIsolateScope: null
+}
+
 export interface DenseViewSummary {
   id: string
   category: 'runs'
@@ -94,6 +114,55 @@ export function buildDrilldownScope(
     label: root.label,
     projectId,
     nodeIds: ids,
+  }
+}
+
+/**
+ * Resolves every navigation root independently against one authenticated graph
+ * payload. A stale selection must not erase a valid isolate (and vice versa),
+ * and no identifier can borrow another identifier's resolved node.
+ */
+export function resolveGraphNavigationIntent(
+  nodes: readonly IntelligenceGraphNode[],
+  edges: readonly IntelligenceGraphEdge[],
+  intent: GraphNavigationIntent,
+): ResolvedGraphNavigation {
+  const nodeById = new Map(nodes.map(node => [node.id, node]))
+  const selected = intent.selectedId ? nodeById.get(intent.selectedId) ?? null : null
+  const drillRoot = intent.drillId ? nodeById.get(intent.drillId) ?? null : null
+  const isolateRoot = intent.isolateId ? nodeById.get(intent.isolateId) ?? null : null
+
+  return {
+    selected,
+    drillScope: drillRoot ? buildDrilldownScope(drillRoot, nodes, edges) : null,
+    isolateScope: isolateRoot ? buildDrilldownScope(isolateRoot, nodes, edges) : null,
+  }
+}
+
+export function buildGraphBreadcrumbs(
+  mode: 'system' | 'operations',
+  communityId: number | null,
+  drillScope: GraphScope | null,
+  isolateScope: GraphScope | null,
+): string[] {
+  const values = ['Global']
+  if (mode === 'system' && communityId !== null) values.push(`Community ${communityId}`)
+  if (drillScope && !values.includes(drillScope.label)) values.push(drillScope.label)
+  if (isolateScope) values.push(`Isolated: ${isolateScope.label}`)
+  return values
+}
+
+export function beginCrossCommunitySearch(
+  currentCommunityId: number | null,
+  hit: { id: string; community?: number },
+): CrossCommunitySearchTransition | null {
+  if (typeof hit.community !== 'number' || hit.community === currentCommunityId) return null
+  return {
+    targetCommunityId: hit.community,
+    intent: { selectedId: hit.id },
+    nextSelectionId: null,
+    nextDrillScope: null,
+    nextIsolateScope: null,
   }
 }
 

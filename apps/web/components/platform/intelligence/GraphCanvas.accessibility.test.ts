@@ -13,13 +13,14 @@ const nodes: IntelligenceGraphNode[] = [{
   metadata: {},
 }]
 
-function renderGraph(mode: 'system' | 'operations', selectedId: string | null = null): string {
+function renderGraph(mode: 'system' | 'operations', selectedId: string | null = null, inspectorOpen = false): string {
   return renderToStaticMarkup(createElement(GraphCanvas, {
     nodes,
     edges: [],
     selectedId,
     onSelect: () => {},
     mode,
+    inspectorOpen,
   }))
 }
 
@@ -72,5 +73,14 @@ describe('GraphCanvas rendered accessibility semantics', () => {
     expect(system).toContain('aria-label="System Map intelligence graph"')
     expect(operations).toContain('aria-label="Live Operations snapshot graph"')
     expect(system).not.toBe(operations)
+  })
+
+  it('keeps the deterministic rendered layout stable when the inspector opens and closes', () => {
+    const closed = renderGraph('operations', nodes[0].id, false)
+    const opened = renderGraph('operations', nodes[0].id, true)
+    const nodeTransform = /transform="translate\(([^)]+)\)"/
+
+    expect(closed.match(nodeTransform)?.[1]).toBe(opened.match(nodeTransform)?.[1])
+    expect(opened).toContain('aria-pressed="true"')
   })
 })

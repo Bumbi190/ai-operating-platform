@@ -21,7 +21,8 @@ import {
   getGraphZoomLevel,
   getNodeSemanticVisibility,
   getSemanticZoomPolicy,
-  keepNodesVisible,
+  graphCameraPreservationKey,
+  preserveSelectedNeighborhoodCamera,
   selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
   type GraphViewBox,
@@ -113,6 +114,7 @@ export function GraphCanvas({
   const movedRef = useRef(false)
   const autoFitRef = useRef(true)
   const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
+  const handledCameraContextRef = useRef(`${WORLD_W}x${WORLD_H}:closed::`)
 
   const layout = useMemo(() => {
     const positioned = computeLayout(
@@ -293,17 +295,25 @@ export function GraphCanvas({
   useEffect(() => { onZoomLevelChange?.(zoomLevel) }, [zoomLevel, onZoomLevelChange])
 
   useEffect(() => {
-    const key = `${viewport.width}x${viewport.height}`
-    if (handledViewportRef.current === key) return
-    handledViewportRef.current = key
-    if (selectedNeighborhood.size > 0) {
-      setView(current => keepNodesVisible(current, layout, selectedNeighborhood, {
-        bottom: inspectorOpen && viewport.width < 768 ? current.h * 0.48 : 0,
-      }))
-    } else if (autoFitRef.current) {
+    const viewportKey = `${viewport.width}x${viewport.height}`
+    const contextKey = graphCameraPreservationKey(viewport, inspectorOpen, selectedId, selectedNeighborhood)
+    if (handledCameraContextRef.current === contextKey) return
+    const viewportChanged = handledViewportRef.current !== viewportKey
+    handledViewportRef.current = viewportKey
+    handledCameraContextRef.current = contextKey
+    if (selectedNeighborhood.size > 0 && (viewportChanged || viewport.width < 768)) {
+      setView(current => preserveSelectedNeighborhoodCamera(
+        current,
+        layout,
+        selectedNeighborhood,
+        selectedId,
+        viewport,
+        inspectorOpen,
+      ))
+    } else if (selectedNeighborhood.size === 0 && viewportChanged && autoFitRef.current) {
       fit()
     }
-  }, [viewport, selectedNeighborhood, layout, fit, inspectorOpen])
+  }, [viewport, selectedId, selectedNeighborhood, layout, fit, inspectorOpen])
 
   const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
     const svg = svgRef.current

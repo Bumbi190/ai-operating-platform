@@ -28,7 +28,7 @@ Authority was applied in the required order: canonical book, verified Phase 0 fi
 - Added safe URL state for view, authorized project hint, community, selection, drilldown, and isolate; URL identifiers resolve only against the authenticated scoped payload.
 - Added real browser Fullscreen API entry/exit while preserving React selection, scope, filters, and camera state.
 - Added semantic arrow-key node navigation, Enter/Space behavior, Escape, `+`/`-`, `0`, `/`, `F`, and `I` controls.
-- Replaced the narrow mobile side overlay with a bottom-sheet inspector and reserved its canvas region for camera/label placement.
+- Replaced the narrow mobile side overlay with a bottom-sheet inspector, reserved its canvas region for labels, and now reacts to inspector/selection changes with minimal camera preservation.
 - Preserved the non-flattening labeled SVG group, node buttons, selected state, visible focus, non-color status, screen-stable labels, and reduced-motion CSS contract.
 
 ## Semantic zoom model
@@ -98,7 +98,7 @@ URL state contains navigation identifiers only. It contains no payloads, secrets
 
 Fullscreen uses `requestFullscreen` and `exitFullscreen` on the complete graph experience, so mode tabs, search, filters, fit/reset, isolate controls, inspector, and exit remain reachable. Fullscreen state changes do not clear selection, filters, navigation scope, or camera. Browser denial is handled without changing context.
 
-Fit graph includes nodes, project territories, and territory-label extents. Fit node and fit scope use deterministic layout positions. Desktop inspector resize preserves the selected neighborhood at the same zoom where possible. The mobile bottom-sheet inspector reserves 48 percent of the canvas height; label placement and camera panning avoid that region. Resize does not restart layout.
+Fit graph includes nodes, project territories, and territory-label extents. Fit node and fit scope use deterministic layout positions. Desktop inspector resize preserves the selected neighborhood at the same zoom where possible. The mobile bottom-sheet inspector reserves 48 percent of the canvas height. Inspector-state, selected-node, and selected-neighborhood changes now trigger minimal camera preservation so the selected context remains in the usable region without changing zoom or restarting layout. Closing the sheet does not reset the camera when the context is already visible.
 
 ## Accessibility
 
@@ -185,7 +185,7 @@ The migration guard passed/skipped correctly for local build. Next.js then stopp
 
 During the initial implementation session, the available browser-control runtime was not callable, so that session did not claim an authenticated interaction pass, authentication bypass, fake account, synthetic production event, deployment, or unsupported screenshot. This historical limitation was subsequently superseded by completed authenticated desktop Preview review and manual Chrome DevTools mobile-emulation review. Automated Chrome/Computer Use validation remains unavailable because its control runtime was not exposed.
 
-Rendered server-side component tests continue to verify the non-flattening graph group, semantic policy attributes, node buttons, selected state, critical run preservation at portfolio level, and distinct mode names. The completed manual Preview reviews provide the final visual and interaction decision recorded below.
+Rendered server-side component tests continue to verify the non-flattening graph group, semantic policy attributes, node buttons, selected state, critical run preservation at portfolio level, distinct mode names, and stable deterministic layout when the inspector opens or closes. The completed manual Preview reviews provide the final visual and interaction decision recorded below.
 
 ## Deferred requirements and runtime dependencies
 
@@ -233,11 +233,20 @@ This correction keeps the retained Phase 2 SVG renderer, semantic levels, eligib
 
 Focused coverage now verifies deterministic non-overlapping territory captions at a representative 390-pixel width, compact territory truncation with complete accessible names, left- and right-edge containment for long selected labels at 360 pixels, mobile bottom-sheet reserved-area avoidance, stable screen-space typography, unchanged priority behavior, unchanged finite budgets, Replay remaining disabled, and rendered territory accessibility.
 
-Complete Intelligence Graph suite: **PASS - 11 files, 80 tests**.
+Complete Intelligence Graph suite: **PASS - 12 files, 91 tests**.
 
 Typecheck (`npx tsc --noEmit --incremental false --pretty false`) remains blocked only by the pre-existing unrelated `apps/web/lib/media/lambda-render.ts` errors: missing `@remotion/lambda/client` and two `region` accesses on `unknown`. No Intelligence Graph file produced a TypeScript error.
 
 Production build (`npm run build`) passed the local migration guard and reached Next.js compilation, then stopped on the same unrelated missing `@remotion/lambda/client` import. No Intelligence Graph compile error was reported before that blocker.
+
+## PR #49 review corrections
+
+- URL hydration now resolves selected, drill, and isolate identifiers independently against the same authorized scoped payload. Each valid root survives a stale sibling identifier, while missing or unavailable identifiers fail closed.
+- Cross-community System Map search snapshots the current internal navigation context, clears the previous community's transient drill/isolate scopes before switching payloads, resolves only the intended destination selection, and lets internal Back restore the previous community and its valid context.
+- Mobile inspector-state, selected-node, and selected-neighborhood changes now trigger camera preservation. The selected node and useful neighborhood are minimally panned above the reserved bottom-sheet region while zoom and deterministic layout remain unchanged; closing the sheet avoids an unnecessary reset. Desktop behavior remains viewport-resize driven.
+- Production-helper behavioral coverage exercises combined URL restoration, stale and unavailable identifiers, the community A to community B search transition with breadcrumb and internal Back restoration, stale search results, bottom-sheet opening, selection changes, close behavior, desktop behavior, and stable rendered layout.
+- Complete focused Intelligence Graph suite: **PASS - 12 files, 91 tests**.
+- Refresh restoration is supported and internal graph Back remains authoritative. Full native browser `popstate`/Forward synchronization is still deferred, and pixel-perfect browser-history camera restoration is not claimed.
 
 ## Final authenticated and mobile visual approval
 
@@ -261,4 +270,4 @@ Founder decision: **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**.
 
 ### Delivery state
 
-The Phase 2 implementation commits are pushed on `feat/omnira-intelligence-graph-phase-2`. No Phase 2 pull request has been opened, no merge to `main` has occurred, no production deployment has occurred, and Phase 3 has not started.
+The Phase 2 implementation commits are pushed on `feat/omnira-intelligence-graph-phase-2`. Draft PR #49 is open. It is not Ready for Review and is not merged. No production deployment has occurred, and Phase 3 has not started.

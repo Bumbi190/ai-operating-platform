@@ -564,6 +564,37 @@ export function keepNodesVisible(
   return { ...view, x, y }
 }
 
+export function graphCameraPreservationKey(
+  viewport: { width: number; height: number },
+  inspectorOpen: boolean,
+  selectedId: string | null,
+  nodeIds: ReadonlySet<string>,
+): string {
+  return `${viewport.width}x${viewport.height}:${inspectorOpen ? 'open' : 'closed'}:${selectedId ?? ''}:${[...nodeIds].sort().join(',')}`
+}
+
+/**
+ * Preserves the current zoom and minimally pans the selected neighborhood into
+ * the usable canvas. Mobile reserves the bottom-sheet region; desktop keeps
+ * the complete canvas available.
+ */
+export function preserveSelectedNeighborhoodCamera(
+  view: GraphViewBox,
+  layout: ReadonlyMap<string, PositionedNode>,
+  nodeIds: ReadonlySet<string>,
+  selectedId: string | null,
+  viewport: { width: number; height: number },
+  inspectorOpen: boolean,
+): GraphViewBox {
+  const insets = {
+    bottom: inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0,
+  }
+  const neighborhoodView = keepNodesVisible(view, layout, nodeIds, insets)
+  return selectedId
+    ? keepNodesVisible(neighborhoodView, layout, new Set([selectedId]), insets)
+    : neighborhoodView
+}
+
 function isLabelEligible(
   node: IntelligenceGraphNode,
   level: GraphZoomLevel,

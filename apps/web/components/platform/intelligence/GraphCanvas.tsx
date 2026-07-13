@@ -14,14 +14,21 @@ import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelli
 import { computeLayout } from './force-layout'
 import {
   calculateGraphBounds,
+  canonicalKindOrder,
   fitGraphBounds,
+  fitNodeIds,
   getEdgeReadability,
   getGraphZoomLevel,
+  getNodeSemanticVisibility,
   getScreenStableLabelScale,
+  getSemanticZoomPolicy,
   getTerritoryLabelTypography,
   keepNodesVisible,
   selectVisibleNodeLabels,
+  type GraphViewBox,
+  type GraphZoomLevel,
 } from './graph-readability'
+import { buildDenseViewSummaries } from './graph-navigation'
 import {
   GRAPH_VISUAL_TOKENS,
   buildProjectTerritories,
@@ -48,14 +55,31 @@ export interface GraphCanvasProps {
   onOpen?: (node: IntelligenceGraphNode) => void
   fitSignal?: number
   mode?: 'system' | 'operations'
+  semanticContext?: 'auto' | 'detail' | 'execution'
+  dimmedIds?: ReadonlySet<string>
+  dimmedEdgeIds?: ReadonlySet<string>
+  isolatedIds?: ReadonlySet<string> | null
+  inspectorOpen?: boolean
+  searchResultId?: string | null
+  cameraCommand?: GraphCameraCommand | null
+  onCameraChange?: (view: GraphViewBox) => void
+  onZoomLevelChange?: (level: GraphZoomLevel) => void
+  onSearchRequest?: () => void
+  onIsolate?: (node: IntelligenceGraphNode) => void
+  onEscape?: () => void
   appearance?: GraphAppearance
   className?: string
 }
 
+export interface GraphCameraCommand {
+  nonce: number
+  type: 'fit-graph' | 'fit-node' | 'fit-scope' | 'restore'
+  nodeIds?: readonly string[]
+  view?: GraphViewBox
+}
+
 const WORLD_W = 1200
 const WORLD_H = 800
-
-interface ViewBox { x: number; y: number; w: number; h: number }
 
 export function GraphCanvas({
   nodes,
@@ -65,15 +89,28 @@ export function GraphCanvas({
   onOpen,
   fitSignal = 0,
   mode = 'system',
+  semanticContext = 'auto',
+  dimmedIds = new Set<string>(),
+  dimmedEdgeIds = new Set<string>(),
+  isolatedIds = null,
+  inspectorOpen = false,
+  searchResultId = null,
+  cameraCommand = null,
+  onCameraChange,
+  onZoomLevelChange,
+  onSearchRequest,
+  onIsolate,
+  onEscape,
   appearance = 'dark',
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const [view, setView] = useState<ViewBox>({ x: 0, y: 0, w: WORLD_W, h: WORLD_H })
+  const nodeRefs = useRef(new Map<string, SVGGElement>())
+  const [view, setView] = useState<GraphViewBox>({ x: 0, y: 0, w: WORLD_W, h: WORLD_H })
   const [viewport, setViewport] = useState({ width: WORLD_W, height: WORLD_H })
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
-  const dragRef = useRef<{ startX: number; startY: number; view: ViewBox } | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; view: GraphViewBox } | null>(null)
   const movedRef = useRef(false)
   const autoFitRef = useRef(true)
   const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
@@ -129,21 +166,60 @@ export function GraphCanvas({
     nodes.filter(node => getStatusVisual(node)?.attention).map(node => node.id),
   ), [nodes])
 
-  const zoomLevel = getGraphZoomLevel(view.w)
+  const semanticNeighborIds = isolatedIds ?? selectedNeighborhood
+  const zoomLevel = semanticContext === 'execution'
+    ? getGraphZoomLevel(view.w, true)
+    : semanticContext === 'detail'
+      ? 'detail'
+      : getGraphZoomLevel(view.w)
+  const semanticPolicy = getSemanticZoomPolicy(zoomLevel)
+  const semanticVisibility = useMemo(() => new Map(nodes.map(node => [
+    node.id,
+    getNodeSemanticVisibility(node, {
+      level: zoomLevel,
+      mode,
+      selectedId,
+      focusId,
+      searchResultId,
+      neighborIds: semanticNeighborIds,
+    }),
+  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds])
+  const structurallyVisibleIds = useMemo(() => new Set(
+    nodes.filter(node => semanticVisibility.get(node.id) !== 'hidden'
+      && (!isolatedIds || isolatedIds.has(node.id))).map(node => node.id),
+  ), [nodes, semanticVisibility, isolatedIds])
+  const summaries = useMemo(
+    () => buildDenseViewSummaries(nodes, edges, zoomLevel),
+    [nodes, edges, zoomLevel],
+  )
+  const summaryByParent = useMemo(() => new Map(summaries.map(summary => [summary.parentId, summary])), [summaries])
   const labelScale = getScreenStableLabelScale(view.w, viewport.width)
   const territoryLabelTypography = getTerritoryLabelTypography(view.w, viewport.width)
+  const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
+  const reservedBoxes = useMemo(() => inspectorBottomInset > 0 ? [{
+    minX: view.x,
+    minY: view.y + view.h - inspectorBottomInset,
+    maxX: view.x + view.w,
+    maxY: view.y + view.h,
+  }] : [], [inspectorBottomInset, view])
   const visibleLabels = useMemo(() => new Map(
     selectVisibleNodeLabels({
       nodes,
       layout,
-      viewWidth: view.w,
+      view,
       viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
+      mode,
+      level: zoomLevel,
       selectedId,
       hoverId,
       focusId,
-      neighborIds: selectedNeighborhood,
+      searchResultId,
+      neighborIds: semanticNeighborIds,
+      structurallyVisibleIds,
+      reservedBoxes,
     }).map(label => [label.id, label]),
-  ), [nodes, layout, view.w, viewport.width, selectedId, hoverId, focusId, selectedNeighborhood])
+  ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes])
 
   const fit = useCallback(() => {
     setView(fitGraphBounds(graphBounds, viewport))
@@ -175,15 +251,40 @@ export function GraphCanvas({
   }, [fitSignal, graphBounds])
 
   useEffect(() => {
+    if (!cameraCommand) return
+    if (cameraCommand.type === 'restore' && cameraCommand.view) {
+      autoFitRef.current = false
+      setView(cameraCommand.view)
+      return
+    }
+    if (cameraCommand.type === 'fit-graph') {
+      autoFitRef.current = true
+      fit()
+      return
+    }
+    const ids = new Set(cameraCommand.nodeIds ?? [])
+    const next = fitNodeIds(layout, ids, viewport)
+    if (next) {
+      autoFitRef.current = false
+      setView(next)
+    }
+  }, [cameraCommand, fit, layout, viewport])
+
+  useEffect(() => { onCameraChange?.(view) }, [view, onCameraChange])
+  useEffect(() => { onZoomLevelChange?.(zoomLevel) }, [zoomLevel, onZoomLevelChange])
+
+  useEffect(() => {
     const key = `${viewport.width}x${viewport.height}`
     if (handledViewportRef.current === key) return
     handledViewportRef.current = key
     if (selectedNeighborhood.size > 0) {
-      setView(current => keepNodesVisible(current, layout, selectedNeighborhood))
+      setView(current => keepNodesVisible(current, layout, selectedNeighborhood, {
+        bottom: inspectorOpen && viewport.width < 768 ? current.h * 0.48 : 0,
+      }))
     } else if (autoFitRef.current) {
       fit()
     }
-  }, [viewport, selectedNeighborhood, layout, fit])
+  }, [viewport, selectedNeighborhood, layout, fit, inspectorOpen])
 
   const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -228,6 +329,55 @@ export function GraphCanvas({
     if (!movedRef.current) onSelect(null)
   }, [onSelect])
 
+  const changeZoom = useCallback((factor: number) => {
+    autoFitRef.current = false
+    setView(current => {
+      const w = Math.min(WORLD_W * 3, Math.max(80, current.w * factor))
+      const h = Math.min(WORLD_H * 3, Math.max(53, current.h * factor))
+      return { x: current.x + (current.w - w) / 2, y: current.y + (current.h - h) / 2, w, h }
+    })
+  }, [])
+
+  const focusDirectionalNode = useCallback((fromId: string, key: string) => {
+    const from = layout.get(fromId)
+    if (!from) return
+    const candidates = nodes.flatMap(node => {
+      if (node.id === fromId || !structurallyVisibleIds.has(node.id)) return []
+      const position = layout.get(node.id)
+      if (!position) return []
+      const dx = position.x - from.x
+      const dy = position.y - from.y
+      const inDirection = key === 'ArrowRight' ? dx > 0 && Math.abs(dy) <= Math.abs(dx) * 1.8
+        : key === 'ArrowLeft' ? dx < 0 && Math.abs(dy) <= Math.abs(dx) * 1.8
+          : key === 'ArrowDown' ? dy > 0 && Math.abs(dx) <= Math.abs(dy) * 1.8
+            : dy < 0 && Math.abs(dx) <= Math.abs(dy) * 1.8
+      if (!inDirection) return []
+      return [{
+        id: node.id,
+        distance: Math.hypot(dx, dy),
+        semanticOrder: canonicalKindOrder(node.kind),
+      }]
+    }).sort((a, b) => a.distance - b.distance || a.semanticOrder - b.semanticOrder || a.id.localeCompare(b.id))
+    if (candidates[0]) nodeRefs.current.get(candidates[0].id)?.focus()
+  }, [layout, nodes, structurallyVisibleIds])
+
+  const handleCanvasKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
+    if (event.key === '+' || event.key === '=') { event.preventDefault(); changeZoom(1 / 1.16) }
+    else if (event.key === '-') { event.preventDefault(); changeZoom(1.16) }
+    else if (event.key === '0') { event.preventDefault(); fit() }
+    else if (event.key === '/') { event.preventDefault(); onSearchRequest?.() }
+    else if (event.key === 'Escape') {
+      event.preventDefault()
+      if (onEscape) onEscape()
+      else onSelect(null)
+    }
+    else if (event.key.toLowerCase() === 'f' && selectedNeighborhood.size > 0) {
+      event.preventDefault()
+      const next = fitNodeIds(layout, selectedNeighborhood, viewport)
+      if (next) setView(next)
+    }
+  }, [changeZoom, fit, layout, onEscape, onSearchRequest, onSelect, selectedNeighborhood, viewport])
+
   const theme = GRAPH_VISUAL_TOKENS.appearance[appearance]
   const cssVariables = {
     '--ig-canvas': theme.canvas,
@@ -251,8 +401,16 @@ export function GraphCanvas({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
       onClick={backgroundClick}
+      onKeyDown={handleCanvasKeyDown}
       role="group"
       aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
+      data-semantic-zoom={zoomLevel}
+      data-semantic-meaning={semanticPolicy.meaning}
+      data-structural-detail={semanticPolicy.structuralDetail}
+      data-label-detail={semanticPolicy.labelDetail}
+      data-edge-detail={semanticPolicy.edgeDetail}
+      data-interaction-detail={semanticPolicy.interactionDetail}
+      data-inspector-detail={semanticPolicy.inspectorDetail}
     >
       <defs>
         <marker id="ig-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -267,7 +425,7 @@ export function GraphCanvas({
       </defs>
 
       <g className={styles.territories} aria-hidden="true">
-        {territories.map(territory => (
+        {territories.filter(territory => !isolatedIds || nodes.some(node => node.projectId === territory.id && isolatedIds.has(node.id))).map(territory => (
           <g key={territory.id}>
             <ellipse
               cx={territory.cx}
@@ -300,7 +458,7 @@ export function GraphCanvas({
         {edges.map(edgeValue => {
           const source = layout.get(edgeValue.source)
           const target = layout.get(edgeValue.target)
-          if (!source || !target) return null
+          if (!source || !target || !structurallyVisibleIds.has(edgeValue.source) || !structurallyVisibleIds.has(edgeValue.target)) return null
           const visual = getEdgeVisual(edgeValue)
           const isHot = highlighted?.edgeIds.has(edgeValue.id) ?? false
           const readability = getEdgeReadability({
@@ -312,6 +470,7 @@ export function GraphCanvas({
             hasInteraction: highlighted !== null,
           })
           if (!readability.visible) return null
+          const filterDimmed = dimmedEdgeIds.has(edgeValue.id) && !isHot && !attentionNodeIds.has(edgeValue.source) && !attentionNodeIds.has(edgeValue.target)
           const bundled = typeof edgeValue.metadata?.bundledEdges === 'number' ? edgeValue.metadata.bundledEdges : 1
           const bundledWidth = Math.min(2.2, Math.log2(1 + bundled) * 0.28)
           const stroke = isHot ? GRAPH_VISUAL_TOKENS.edge.selected : visual.stroke
@@ -328,7 +487,7 @@ export function GraphCanvas({
               x2={target.x}
               y2={target.y}
               stroke={stroke}
-              strokeOpacity={readability.opacity}
+              strokeOpacity={filterDimmed ? Math.min(0.012, readability.opacity) : readability.opacity}
               strokeWidth={visual.width + bundledWidth + (isHot ? 0.7 : 0)}
               strokeDasharray={visual.dash}
               markerEnd={marker}
@@ -341,29 +500,49 @@ export function GraphCanvas({
       <g>
         {nodes.map(node => {
           const position = layout.get(node.id)
-          if (!position) return null
+          if (!position || !structurallyVisibleIds.has(node.id)) return null
           const visual = getNodeVisual(node)
           const status = getStatusVisual(node)
           const fill = node.kind === 'project' ? projectAccent(node) : nodeColor(node)
           const isSelected = node.id === selectedId
           const isFocused = node.id === focusId
-          const isHot = highlighted?.ids.has(node.id) ?? !dim
+          const semanticState = semanticVisibility.get(node.id)
+          const filterDimmed = dimmedIds.has(node.id) && !status?.attention && !isSelected
+          const isHot = (highlighted?.ids.has(node.id) ?? !dim) && !filterDimmed
           const label = visibleLabels.get(node.id)
+          const summary = summaryByParent.get(node.id)
           return (
             <g
               key={node.id}
+              ref={element => {
+                if (element) nodeRefs.current.set(node.id, element)
+                else nodeRefs.current.delete(node.id)
+              }}
               transform={`translate(${position.x},${position.y})`}
-              opacity={isHot ? 1 : 0.22}
+              opacity={isHot ? (semanticState === 'dimmed' ? 0.42 : 1) : filterDimmed ? 0.12 : 0.22}
               className={cn(styles.node, 'cursor-pointer focus:outline-none')}
               tabIndex={0}
               role="button"
               aria-label={`${node.kind}: ${node.label}${node.status ? ` (${node.status})` : ''}`}
               aria-pressed={isSelected}
               onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
+                if (event.key.startsWith('Arrow')) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  focusDirectionalNode(node.id, event.key)
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (isSelected) onOpen?.(node)
+                  else onSelect(node)
+                } else if (event.key === ' ') {
                   event.preventDefault()
                   event.stopPropagation()
                   onSelect(node)
+                } else if (event.key.toLowerCase() === 'i' && onIsolate) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onIsolate(node)
                 }
               }}
               onFocus={() => setFocusId(node.id)}
@@ -388,27 +567,48 @@ export function GraphCanvas({
               {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
               <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
               {status && <StatusBadge radius={position.r} status={status} />}
+              {summary && (
+                <g className={styles.summaryBadge} transform={`translate(${position.r + 8},${position.r + 8})`} aria-hidden="true">
+                  <rect x={-4} y={-8} width={Math.max(25, summary.label.length * 4.8)} height={16} rx={8} />
+                  <text x={4} y={3.5} fontSize={8.5}>{summary.label}</text>
+                </g>
+              )}
               {label && (
-                <text
-                  x={label.x}
-                  y={label.y}
-                  textAnchor={label.textAnchor}
-                  className={styles.label}
-                  fontSize={label.fontSize}
-                  fontWeight={label.fontWeight}
-                  fill={label.tier === 'interaction' || label.tier === 'project'
-                    ? 'var(--ig-label-strong)'
-                    : 'var(--ig-label)'}
-                  pointerEvents="none"
-                  style={{ strokeWidth: label.haloWidth }}
-                >
-                  <tspan x={label.x}>{truncate(node.label, node.kind === 'project' ? 34 : 30)}</tspan>
-                  {status?.attention && node.status && (
-                    <tspan x={label.x} dy={label.statusLineHeight} fontSize={label.statusFontSize} fill={status.stroke}>
-                      {node.status.replaceAll('_', ' ')}
-                    </tspan>
+                <>
+                  {label.leaderLine && (
+                    <line
+                      className={styles.leaderLine}
+                      x1={label.leaderLine.x1}
+                      y1={label.leaderLine.y1}
+                      x2={label.leaderLine.x2}
+                      y2={label.leaderLine.y2}
+                      vectorEffect="non-scaling-stroke"
+                      aria-hidden="true"
+                    />
                   )}
-                </text>
+                  <text
+                    x={label.x}
+                    y={label.y}
+                    textAnchor={label.textAnchor}
+                    className={styles.label}
+                    fontSize={label.fontSize}
+                    fontWeight={label.fontWeight}
+                    fill={label.tier === 'interaction' || label.tier === 'project'
+                      ? 'var(--ig-label-strong)'
+                      : 'var(--ig-label)'}
+                    pointerEvents="none"
+                    style={{ strokeWidth: label.haloWidth }}
+                  >
+                    {label.lines.map((line, index) => (
+                      <tspan key={`${line}:${index}`} x={label.x} dy={index === 0 ? 0 : label.lineHeight}>{line}</tspan>
+                    ))}
+                    {status?.attention && node.status && (
+                      <tspan x={label.x} dy={label.statusLineHeight} fontSize={label.statusFontSize} fill={status.stroke}>
+                        {node.status.replaceAll('_', ' ')}
+                      </tspan>
+                    )}
+                  </text>
+                </>
               )}
             </g>
           )

@@ -41,6 +41,26 @@
   pointer-events: none;
 }
 
+.leaderLine {
+  pointer-events: none;
+  stroke: var(--ig-label-muted);
+  stroke-width: 0.8;
+  stroke-opacity: 0.5;
+}
+
+.summaryBadge rect {
+  fill: var(--ig-canvas);
+  fill-opacity: 0.92;
+  stroke: var(--ig-label-muted);
+  stroke-opacity: 0.5;
+  stroke-width: 0.8;
+}
+
+.summaryBadge text {
+  fill: var(--ig-label);
+  letter-spacing: 0.02em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .node,
   .identity,

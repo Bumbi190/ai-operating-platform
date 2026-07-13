@@ -15,14 +15,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2, Maximize2, RotateCcw, Search } from 'lucide-react'
+import { ArrowLeft, Crosshair, Loader2, Maximize2, Minimize2, RotateCcw, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
   IntelligenceGraphEdge,
   IntelligenceGraphMeta,
   IntelligenceGraphNode,
 } from '@/lib/intelligence/graph-contract'
-import { GraphCanvas, nodeColor } from './GraphCanvas'
+import { GraphCanvas, nodeColor, type GraphCameraCommand } from './GraphCanvas'
+import type { GraphViewBox, GraphZoomLevel } from './graph-readability'
+import {
+  buildDrilldownScope,
+  computeGraphFilterState,
+  searchScopedNodes,
+  type GraphScope,
+} from './graph-navigation'
+import { parseGraphUrlState, resolveScopedUrlNode, serializeGraphUrlState } from './graph-url-state'
 import { NodeInspector } from './NodeInspector'
 
 type Mode = 'system' | 'operations' | 'replay'
@@ -47,6 +55,16 @@ interface SearchHit {
   kind: string
   community?: number
   sourceFile?: string
+  projectId?: string
+  status?: string
+}
+
+interface NavigationSnapshot {
+  communityId: number | null
+  drillScope: GraphScope | null
+  isolateScope: GraphScope | null
+  selectedId: string | null
+  camera: GraphViewBox
 }
 
 const RUN_STATUS_FILTERS = [
@@ -63,6 +81,13 @@ const TIME_FILTERS = [
 ] as const
 
 export function IntelligenceGraphClient() {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<GraphViewBox>({ x: 0, y: 0, w: 1200, h: 800 })
+  const navigationHistory = useRef<NavigationSnapshot[]>([])
+  const pendingRestore = useRef<NavigationSnapshot | null>(null)
+  const isolateCamera = useRef<GraphViewBox | null>(null)
+  const initialUrlRead = useRef(false)
   const [mode, setMode] = useState<Mode>('system')
 
   // System Map state
@@ -81,13 +106,23 @@ export function IntelligenceGraphClient() {
   const [fitSignal, setFitSignal] = useState(0)
   const [kindFilter, setKindFilter] = useState<Set<string>>(new Set())
   const [relationFilter, setRelationFilter] = useState<Set<string>>(new Set())
+  const [drillScope, setDrillScope] = useState<GraphScope | null>(null)
+  const [isolateScope, setIsolateScope] = useState<GraphScope | null>(null)
+  const [cameraCommand, setCameraCommand] = useState<GraphCameraCommand | null>(null)
+  const [zoomLevel, setZoomLevel] = useState<GraphZoomLevel>('portfolio')
+  const [fullscreen, setFullscreen] = useState(false)
+  const [searchResultId, setSearchResultId] = useState<string | null>(null)
 
   // Search
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
+  const [searchPending, setSearchPending] = useState(false)
+  const [urlHydrated, setUrlHydrated] = useState(false)
   const searchAbort = useRef<AbortController | null>(null)
   /** Node id to select once the next payload lands (search → community drilldown). */
   const pendingSelect = useRef<string | null>(null)
+  const pendingIsolateId = useRef<string | null>(null)
+  const pendingDrillId = useRef<string | null>(null)
 
   const url = useMemo(() => {
     if (mode === 'system') {
@@ -117,8 +152,16 @@ export function IntelligenceGraphClient() {
       })
       .then(payload => {
         setData(payload)
-        setSelected(null)
-        setFitSignal(x => x + 1)
+        const restore = pendingRestore.current
+        if (restore) {
+          pendingSelect.current = restore.selectedId
+          setCameraCommand({ nonce: Date.now(), type: 'restore', view: restore.camera })
+          pendingRestore.current = null
+        } else {
+          setSelected(null)
+          setSearchResultId(null)
+          setFitSignal(x => x + 1)
+        }
       })
       .catch(err => {
         if (controller.signal.aborted) return
@@ -130,15 +173,17 @@ export function IntelligenceGraphClient() {
 
   // ── Search (System Map only) ──
   useEffect(() => {
-    if (mode !== 'system' || query.trim().length < 2) { setHits([]); return }
+    if (mode !== 'system' || query.trim().length < 2) { setHits([]); setSearchPending(false); return }
     searchAbort.current?.abort()
     const controller = new AbortController()
     searchAbort.current = controller
+    setSearchPending(true)
     const t = setTimeout(() => {
       fetch(`/api/intelligence/graph/system?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal })
         .then(res => (res.ok ? res.json() : { hits: [] }))
         .then(payload => setHits(payload.hits ?? []))
         .catch(() => {})
+        .finally(() => { if (!controller.signal.aborted) setSearchPending(false) })
     }, 200)
     return () => { clearTimeout(t); controller.abort() }
   }, [query, mode])
@@ -147,24 +192,27 @@ export function IntelligenceGraphClient() {
   const allNodes = useMemo(() => data?.nodes ?? [], [data])
   const allEdges = useMemo(() => data?.edges ?? [], [data])
 
-  const nodes = useMemo(() => {
-    return allNodes.filter(n => {
-      if (kindFilter.size > 0 && !kindFilter.has(n.kind)) return false
-      if (mode === 'operations' && statusFilter.size > 0 && n.kind === 'run') {
-        if (!n.status || !statusFilter.has(n.status)) return false
-      }
-      return true
-    })
-  }, [allNodes, kindFilter, statusFilter, mode])
-
-  const edges = useMemo(() => {
-    const ids = new Set(nodes.map(n => n.id))
-    return allEdges.filter(e => {
-      if (!ids.has(e.source) || !ids.has(e.target)) return false
-      if (relationFilter.size > 0 && !relationFilter.has(e.relation)) return false
-      return true
-    })
-  }, [allEdges, nodes, relationFilter])
+  const nodes = allNodes
+  const edges = allEdges
+  const filterState = useMemo(() => computeGraphFilterState(allNodes, {
+    kinds: kindFilter,
+    statuses: mode === 'operations' ? statusFilter : new Set<string>(),
+  }), [allNodes, kindFilter, statusFilter, mode])
+  const scopeDimmedIds = useMemo(() => {
+    if (!drillScope || drillScope.kind === 'run') return new Set<string>()
+    return new Set(allNodes.filter(node => !drillScope.nodeIds.has(node.id)).map(node => node.id))
+  }, [allNodes, drillScope])
+  const dimmedIds = useMemo(() => new Set([...filterState.dimmedIds, ...scopeDimmedIds]), [filterState.dimmedIds, scopeDimmedIds])
+  const dimmedEdgeIds = useMemo(() => relationFilter.size === 0
+    ? new Set<string>()
+    : new Set(allEdges.filter(edge => !relationFilter.has(edge.relation)).map(edge => edge.id)),
+  [allEdges, relationFilter])
+  const filtersActive = kindFilter.size > 0 || relationFilter.size > 0 || statusFilter.size > 0
+  const operationHits = useMemo<SearchHit[]>(() => mode === 'operations'
+    ? searchScopedNodes(isolateScope ? allNodes.filter(node => isolateScope.nodeIds.has(node.id)) : allNodes, query)
+      .map(node => ({ id: node.id, label: node.label, kind: node.kind, projectId: node.projectId, status: node.status }))
+    : [], [mode, allNodes, isolateScope, query])
+  const visibleHits = mode === 'operations' ? operationHits : hits
 
   const presentKinds = useMemo(() => [...new Set(allNodes.map(n => n.kind))], [allNodes])
   const presentRelations = useMemo(() => [...new Set(allEdges.map(e => e.relation))], [allEdges])
@@ -181,18 +229,74 @@ export function IntelligenceGraphClient() {
     return allNodes.filter(n => ids.has(n.id))
   }, [selected, selectedEdges, allNodes])
 
+  const snapshotNavigation = useCallback((): NavigationSnapshot => ({
+    communityId,
+    drillScope,
+    isolateScope,
+    selectedId: selected?.id ?? null,
+    camera: cameraRef.current,
+  }), [communityId, drillScope, isolateScope, selected])
+
   const drillIn = useCallback((node: IntelligenceGraphNode) => {
-    if (node.kind === 'community' && typeof node.community === 'number') {
+    const scope = buildDrilldownScope(node, allNodes, allEdges)
+    if (!scope) return
+    navigationHistory.current.push(snapshotNavigation())
+    setIsolateScope(null)
+    setSelected(node)
+    if (node.kind === 'community' && typeof node.community === 'number' && mode === 'system') {
+      setDrillScope(null)
       setCommunityId(node.community)
-      setSelected(null)
+      return
+    }
+    setDrillScope(scope)
+    setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...scope.nodeIds] })
+  }, [allNodes, allEdges, mode, snapshotNavigation])
+
+  const isolateNode = useCallback((node: IntelligenceGraphNode) => {
+    const scope = buildDrilldownScope(node, allNodes, allEdges)
+    if (!scope) return
+    isolateCamera.current = cameraRef.current
+    setIsolateScope(scope)
+    setSelected(node)
+    setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...scope.nodeIds] })
+  }, [allNodes, allEdges])
+
+  const exitIsolate = useCallback(() => {
+    setIsolateScope(null)
+    if (isolateCamera.current) {
+      setCameraCommand({ nonce: Date.now(), type: 'restore', view: isolateCamera.current })
+      isolateCamera.current = null
     }
   }, [])
+
+  const goBack = useCallback(() => {
+    if (isolateScope) {
+      exitIsolate()
+      return
+    }
+    const previous = navigationHistory.current.pop()
+    if (!previous) {
+      if (selected) setSelected(null)
+      return
+    }
+    setDrillScope(previous.drillScope)
+    setIsolateScope(previous.isolateScope)
+    if (previous.communityId !== communityId) {
+      pendingRestore.current = previous
+      setCommunityId(previous.communityId)
+      return
+    }
+    setSelected(previous.selectedId ? allNodes.find(node => node.id === previous.selectedId) ?? null : null)
+    setCameraCommand({ nonce: Date.now(), type: 'restore', view: previous.camera })
+  }, [allNodes, communityId, exitIsolate, isolateScope, selected])
 
   const openSearchHit = useCallback((hit: SearchHit) => {
     setQuery('')
     setHits([])
+    setSearchResultId(hit.id)
     if (typeof hit.community === 'number') {
       // Selection resolves once the community payload lands.
+      navigationHistory.current.push(snapshotNavigation())
       pendingSelect.current = hit.id
       setCommunityId(hit.community)
       return
@@ -201,15 +305,58 @@ export function IntelligenceGraphClient() {
     // and never leave a stale pending selection behind (L1).
     pendingSelect.current = null
     const inView = data?.nodes?.find(n => n.id === hit.id)
-    if (inView) setSelected(inView)
-  }, [data])
+    if (inView) {
+      setSelected(inView)
+      setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [inView.id] })
+    }
+  }, [data, snapshotNavigation])
   useEffect(() => {
     if (!pendingSelect.current || !data?.nodes) return
-    const found = data.nodes.find(n => n.id === pendingSelect.current)
-    if (found) setSelected(found)
+    const found = resolveScopedUrlNode(data.nodes, pendingSelect.current ?? undefined)
+    if (found) {
+      setSelected(found)
+      setSearchResultId(found.id)
+      const requestedScope = buildDrilldownScope(found, data.nodes, data.edges ?? [])
+      if (requestedScope && pendingIsolateId.current === found.id) setIsolateScope(requestedScope)
+      if (requestedScope && pendingDrillId.current === found.id) setDrillScope(requestedScope)
+    }
     // One resolution attempt per payload — hit or miss, the intent is consumed (L1).
     pendingSelect.current = null
+    pendingIsolateId.current = null
+    pendingDrillId.current = null
   }, [data])
+
+  useEffect(() => {
+    if (initialUrlRead.current || typeof window === 'undefined') return
+    initialUrlRead.current = true
+    const state = parseGraphUrlState(window.location.search)
+    setMode(state.mode)
+    if (state.projectId) setProjectFilter(state.projectId)
+    if (state.communityId !== undefined) setCommunityId(state.communityId)
+    pendingSelect.current = state.selectedId ?? state.isolateId ?? state.drillId ?? null
+    pendingIsolateId.current = state.isolateId ?? null
+    pendingDrillId.current = state.drillId ?? null
+    setUrlHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!urlHydrated || typeof window === 'undefined') return
+    const query = serializeGraphUrlState({
+      mode: mode === 'operations' ? 'operations' : 'system',
+      ...(mode === 'operations' && projectFilter !== 'all' ? { projectId: projectFilter } : {}),
+      ...(mode === 'system' && communityId !== null ? { communityId } : {}),
+      ...(selected ? { selectedId: selected.id } : {}),
+      ...(drillScope ? { drillId: drillScope.rootId } : {}),
+      ...(isolateScope ? { isolateId: isolateScope.rootId } : {}),
+    })
+    window.history.replaceState(null, '', `${window.location.pathname}?${query}`)
+  }, [urlHydrated, mode, projectFilter, communityId, selected, drillScope, isolateScope])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === rootRef.current)
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
 
   const toggle = (set: Set<string>, value: string, apply: (next: Set<string>) => void) => {
     const next = new Set(set)
@@ -218,51 +365,118 @@ export function IntelligenceGraphClient() {
     apply(next)
   }
 
-  const resetView = useCallback(() => {
+  const clearFilters = useCallback(() => {
     setKindFilter(new Set())
     setRelationFilter(new Set())
     setStatusFilter(new Set())
+  }, [])
+
+  const resetView = useCallback(() => {
     setSelected(null)
+    setSearchResultId(null)
+    setDrillScope(null)
     setFitSignal(x => x + 1)
   }, [])
+
+  const resetAll = useCallback(() => {
+    clearFilters()
+    setQuery('')
+    setHits([])
+    setSearchResultId(null)
+    setSelected(null)
+    setDrillScope(null)
+    setIsolateScope(null)
+    navigationHistory.current = []
+    if (mode === 'system') setCommunityId(null)
+    else setProjectFilter('all')
+    setFitSignal(x => x + 1)
+  }, [clearFilters, mode])
+
+  const handleEscape = useCallback(() => {
+    if (isolateScope) exitIsolate()
+    else if (drillScope || communityId !== null) goBack()
+    else setSelected(null)
+  }, [communityId, drillScope, exitIsolate, goBack, isolateScope])
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!rootRef.current || typeof document === 'undefined') return
+    try {
+      if (document.fullscreenElement === rootRef.current) await document.exitFullscreen()
+      else await rootRef.current.requestFullscreen()
+    } catch {
+      // Browser/platform denial leaves graph selection and camera untouched.
+    }
+  }, [])
+
+  const switchMode = useCallback((next: Mode) => {
+    setMode(next)
+    setCommunityId(null)
+    setDrillScope(null)
+    setIsolateScope(null)
+    setSelected(null)
+    setSearchResultId(null)
+    setQuery('')
+    navigationHistory.current = []
+  }, [])
+
+  const breadcrumbs = useMemo(() => {
+    const values = ['Global']
+    if (mode === 'system' && communityId !== null) values.push(`Community ${communityId}`)
+    if (drillScope && !values.includes(drillScope.label)) values.push(drillScope.label)
+    if (isolateScope) values.push(`Isolated: ${isolateScope.label}`)
+    return values
+  }, [communityId, drillScope, isolateScope, mode])
 
   const unavailable = data && data.available === false
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div
+      ref={rootRef}
+      className={cn('flex h-full min-h-0 flex-col gap-3', fullscreen && 'bg-[var(--omnira-bg)] p-4')}
+    >
       {/* ── Mode tabs + toolbar ── */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
-          <TabButton active={mode === 'system'} onClick={() => setMode('system')}>System Map</TabButton>
-          <TabButton active={mode === 'operations'} onClick={() => setMode('operations')}>Live Operations</TabButton>
+          <TabButton active={mode === 'system'} onClick={() => switchMode('system')}>System Map</TabButton>
+          <TabButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Live Operations</TabButton>
           <TabButton active={false} disabled title="Kräver mer granulär eventdata (per-steg-tidslinje). Se docs/intelligence-graph.md.">
             Execution Replay
           </TabButton>
         </div>
 
-        {mode === 'system' && communityId !== null && (
+        {(communityId !== null || drillScope || isolateScope || navigationHistory.current.length > 0) && (
           <button
             type="button"
-            onClick={() => { setCommunityId(null); setSelected(null) }}
+            onClick={goBack}
             className="flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/[0.07]"
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Overview
+            <ArrowLeft className="h-3.5 w-3.5" /> Back
           </button>
         )}
 
+        <nav aria-label="Graph location" className="hidden items-center gap-1 text-[11px] text-slate-500 lg:flex">
+          {breadcrumbs.map((crumb, index) => (
+            <span key={`${crumb}:${index}`} className={index === breadcrumbs.length - 1 ? 'text-slate-300' : undefined}>
+              {index > 0 ? <span className="mr-1 text-slate-700">/</span> : null}{crumb}
+            </span>
+          ))}
+        </nav>
+
         <div className="ml-auto flex items-center gap-2">
-          {mode === 'system' && (
-            <div className="relative">
+          <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
               <input
+                ref={searchInputRef}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Sök nod…"
+                aria-label="Sök i aktuell graf"
+                aria-controls="graph-search-results"
                 className="w-44 rounded-lg border border-white/[0.07] bg-white/[0.03] py-1.5 pl-8 pr-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-400/40 focus:outline-none md:w-56"
               />
-              {hits.length > 0 && (
-                <ul className="absolute right-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-lg border border-white/[0.08] bg-[rgba(10,12,20,0.97)] p-1 shadow-2xl backdrop-blur-xl">
-                  {hits.map(hit => (
+              {query.trim().length >= 2 && !searchPending && (
+                <ul id="graph-search-results" className="absolute right-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-lg border border-white/[0.08] bg-[rgba(10,12,20,0.97)] p-1 shadow-2xl backdrop-blur-xl">
+                  {visibleHits.map(hit => (
                     <li key={hit.id}>
                       <button
                         type="button"
@@ -271,19 +485,39 @@ export function IntelligenceGraphClient() {
                       >
                         <span className="truncate text-xs text-slate-200">{hit.label}</span>
                         <span className="truncate text-[10px] text-slate-500">
-                          {hit.kind}{typeof hit.community === 'number' ? ` · community ${hit.community}` : ''}{hit.sourceFile ? ` · ${hit.sourceFile}` : ''}
+                          {hit.kind}{hit.status ? ` · ${hit.status}` : ''}{typeof hit.community === 'number' ? ` · community ${hit.community}` : ''}{hit.sourceFile ? ` · ${hit.sourceFile}` : ''}
                         </span>
                       </button>
                     </li>
                   ))}
+                  {visibleHits.length === 0 && (
+                    <li className="px-3 py-2 text-xs text-slate-500" role="status">Inga noder matchar i aktuell behörig scope.</li>
+                  )}
                 </ul>
               )}
             </div>
-          )}
 
           <IconButton onClick={() => setFitSignal(x => x + 1)} title="Fit to graph"><Maximize2 className="h-3.5 w-3.5" /></IconButton>
+          {selected && <IconButton onClick={() => setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [selected.id] })} title="Fokusera vald nod"><Crosshair className="h-3.5 w-3.5" /></IconButton>}
           <IconButton onClick={resetView} title="Återställ vy"><RotateCcw className="h-3.5 w-3.5" /></IconButton>
+          <IconButton onClick={resetAll} title="Återställ allt"><X className="h-3.5 w-3.5" /></IconButton>
+          <IconButton onClick={() => { void toggleFullscreen() }} title={fullscreen ? 'Avsluta helskärm' : 'Helskärm'}>
+            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </IconButton>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-indigo-200">
+          Zoom {zoomLevel}
+        </span>
+        {isolateScope && (
+          <span className="flex items-center gap-2 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1 text-amber-200">
+            Isolated: {isolateScope.label}
+            <button type="button" onClick={exitIsolate} className="underline decoration-amber-300/40 underline-offset-2">Exit isolate</button>
+            <button type="button" onClick={() => setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...isolateScope.nodeIds] })} className="underline decoration-amber-300/40 underline-offset-2">Fit scope</button>
+          </span>
+        )}
       </div>
 
       {/* ── Filter row ── */}
@@ -352,6 +586,18 @@ export function IntelligenceGraphClient() {
           </details>
         )}
 
+        {filtersActive && (
+          <span className="flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2.5 py-1 text-[11px] text-indigo-200">
+            {filterState.matchCount} matchar · övriga dimmade
+            <button type="button" onClick={clearFilters} className="underline decoration-indigo-300/40 underline-offset-2">Rensa filter</button>
+          </span>
+        )}
+        {filterState.criticalOutsideFilters > 0 && (
+          <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-300">
+            {filterState.criticalOutsideFilters} kritiska objekt bevarade utanför filtermatch
+          </span>
+        )}
+
         {data?.meta?.builtAtCommit && mode === 'system' && (
           <span className="ml-auto font-mono text-[10px] text-slate-600" title="Git-commit som grafen byggdes från">
             {data.meta.builtAtCommit.slice(0, 10)}
@@ -397,21 +643,39 @@ export function IntelligenceGraphClient() {
             />
           )}
 
+          {!loading && !error && !unavailable && filtersActive && filterState.matchCount === 0 && nodes.length > 0 && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-white/[0.08] bg-[rgba(10,12,20,0.92)] px-3 py-1.5 text-xs text-slate-300 shadow-xl" role="status">
+              Inga noder matchar filtren. Grafens struktur ligger kvar dimmad.
+            </div>
+          )}
+
           {!error && !unavailable && nodes.length > 0 && (
             <GraphCanvas
               nodes={nodes}
               edges={edges}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              onSelect={node => { setSelected(node); if (!node) setSearchResultId(null) }}
               onOpen={drillIn}
               fitSignal={fitSignal}
               mode={mode === 'operations' ? 'operations' : 'system'}
+              semanticContext={drillScope?.kind === 'run' ? 'execution' : communityId !== null || drillScope ? 'detail' : 'auto'}
+              dimmedIds={dimmedIds}
+              dimmedEdgeIds={dimmedEdgeIds}
+              isolatedIds={isolateScope?.nodeIds ?? (drillScope?.kind === 'run' ? drillScope.nodeIds : null)}
+              inspectorOpen={Boolean(selected)}
+              searchResultId={searchResultId}
+              cameraCommand={cameraCommand}
+              onCameraChange={view => { cameraRef.current = view }}
+              onZoomLevelChange={setZoomLevel}
+              onSearchRequest={() => searchInputRef.current?.focus()}
+              onIsolate={isolateNode}
+              onEscape={handleEscape}
             />
           )}
         </div>
 
         {selected && (
-          <div className="absolute inset-y-0 right-0 z-10 w-[19rem] max-w-[85vw] md:static md:z-auto md:w-80 md:shrink-0">
+          <div className="absolute inset-x-0 bottom-0 z-10 h-[min(48%,24rem)] md:static md:z-auto md:h-auto md:w-80 md:shrink-0">
             <NodeInspector
               node={selected}
               edges={selectedEdges}
@@ -420,6 +684,7 @@ export function IntelligenceGraphClient() {
               onClose={() => setSelected(null)}
               onSelectNeighbor={setSelected}
               onDrillIn={drillIn}
+              onIsolate={isolateNode}
             />
           </div>
         )}

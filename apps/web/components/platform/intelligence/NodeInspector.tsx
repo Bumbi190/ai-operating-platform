@@ -51,11 +51,12 @@ export interface NodeInspectorProps {
   onClose: () => void
   onSelectNeighbor: (node: IntelligenceGraphNode) => void
   onDrillIn?: (node: IntelligenceGraphNode) => void
+  onIsolate?: (node: IntelligenceGraphNode) => void
   className?: string
 }
 
 export function NodeInspector({
-  node, edges, neighbors, builtAtCommit, onClose, onSelectNeighbor, onDrillIn, className,
+  node, edges, neighbors, builtAtCommit, onClose, onSelectNeighbor, onDrillIn, onIsolate, className,
 }: NodeInspectorProps) {
   const color = nodeColor(node)
   const degree = node.degree ?? edges.length
@@ -181,15 +182,24 @@ export function NodeInspector({
       </div>
 
       {/* Footer actions */}
-      {(onDrillIn || link) && (
-        <div className="flex gap-2 border-t border-white/[0.06] p-3">
-          {onDrillIn && node.kind === 'community' && (
+      {(onDrillIn || onIsolate || link) && (
+        <div className="flex flex-wrap gap-2 border-t border-white/[0.06] p-3">
+          {onDrillIn && ['community', 'project', 'workflow', 'agent', 'run'].includes(node.kind) && (
             <button
               type="button"
               onClick={() => onDrillIn(node)}
               className="flex-1 rounded-lg border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-xs font-medium text-indigo-200 transition-colors hover:bg-indigo-400/20"
             >
-              Fördjupa i subsystemet
+              {node.kind === 'community' ? 'Fördjupa i subsystemet' : 'Fördjupa'}
+            </button>
+          )}
+          {onIsolate && ['community', 'project', 'workflow', 'agent', 'run'].includes(node.kind) && (
+            <button
+              type="button"
+              onClick={() => onIsolate(node)}
+              className="flex-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/[0.08]"
+            >
+              Isolera {node.kind === 'run' ? 'path' : 'scope'}
             </button>
           )}
           {link && (

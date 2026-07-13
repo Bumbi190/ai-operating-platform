@@ -5,11 +5,14 @@ import type { PositionedNode } from './force-layout'
 import {
   calculateGraphBounds,
   fitGraphBounds,
-  getLabelBudget,
+  formatGraphLabel,
   getEdgeReadability,
   getGraphZoomLevel,
+  getLabelBudget,
   getLabelPriority,
+  getNodeSemanticVisibility,
   getScreenStableLabelScale,
+  getSemanticZoomPolicy,
   getTerritoryLabelTypography,
   keepNodesVisible,
   selectVisibleNodeLabels,
@@ -18,270 +21,166 @@ import { getEdgeVisual, getStaticLabelPriority, type ProjectTerritory } from './
 
 function node(kind: IntelligenceGraphNode['kind'], id: string, overrides: Partial<IntelligenceGraphNode> = {}): IntelligenceGraphNode {
   return {
-    id,
-    kind,
-    label: `${kind} ${id}`,
-    source: ['project', 'agent', 'workflow', 'run', 'approval', 'output', 'task'].includes(kind) ? 'runtime' : 'graphify',
-    metadata: {},
-    ...overrides,
+    id, kind, label: id, source: ['project', 'agent', 'workflow', 'run', 'approval', 'output', 'task'].includes(kind) ? 'runtime' : 'graphify',
+    metadata: {}, ...overrides,
   }
 }
 
-function position(id: string, x: number, y: number, r = 14): PositionedNode {
-  return { id, x, y, r }
-}
-
+function position(id: string, x: number, y: number, r = 14): PositionedNode { return { id, x, y, r } }
 function edge(relation: IntelligenceGraphEdge['relation']): IntelligenceGraphEdge {
   return { id: `edge:${relation}`, source: 'a', target: 'b', relation, metadata: {} }
 }
+const view = (w: number) => ({ x: 0, y: 0, w, h: w * 2 / 3 })
 
-describe('Phase 1.1 graph readability policy', () => {
-  it('uses deterministic verified-role label priority', () => {
-    const selected = node('run', 'selected')
+describe('Phase 2 canonical semantic zoom and readability', () => {
+  it('maps the retained SVG camera deterministically to the five canonical levels', () => {
+    expect(getGraphZoomLevel(1200)).toBe('portfolio')
+    expect(getGraphZoomLevel(900)).toBe('project')
+    expect(getGraphZoomLevel(600)).toBe('operational')
+    expect(getGraphZoomLevel(300)).toBe('detail')
+    expect(getGraphZoomLevel(900, true)).toBe('execution')
+    expect(getSemanticZoomPolicy('portfolio').structuralDetail).toBe('landmarks')
+    expect(getSemanticZoomPolicy('execution').interactionDetail).toBe('path')
+    expect(getSemanticZoomPolicy('detail').inspectorDetail).toBe('full')
+  })
+
+  it('separates structural visibility while preserving selected and critical truth', () => {
+    const quietRun = node('run', 'quiet', { status: 'done' })
+    const failedRun = node('run', 'failed', { status: 'failed' })
+    const project = node('project', 'project')
+    const options = { level: 'portfolio' as const, mode: 'operations' as const }
+    expect(getNodeSemanticVisibility(project, options)).toBe('visible')
+    expect(getNodeSemanticVisibility(quietRun, options)).toBe('hidden')
+    expect(getNodeSemanticVisibility(failedRun, options)).toBe('visible')
+    expect(getNodeSemanticVisibility(quietRun, { ...options, selectedId: quietRun.id })).toBe('visible')
+  })
+
+  it('uses the canonical interaction and attention priority before the one static role source', () => {
     const project = node('project', 'project')
     const workflow = node('workflow', 'workflow')
-    const agent = node('agent', 'agent')
-    const detail = node('run', 'run')
-    expect(getLabelPriority(selected, { selectedId: selected.id })).toBeGreaterThan(getLabelPriority(node('project', 'project')))
-    expect(getLabelPriority(detail, { focusId: detail.id })).toBe(1000)
-    expect(getLabelPriority(detail, { hoverId: detail.id })).toBe(1000)
+    const failed = node('run', 'failed', { status: 'failed' })
+    const approval = node('approval', 'approval', { status: 'pending' })
+    expect(getLabelPriority(project, { selectedId: project.id })).toBe(1500)
+    expect(getLabelPriority(project, { focusId: project.id })).toBe(1450)
+    expect(getLabelPriority(project, { hoverId: project.id })).toBe(1400)
+    expect(getLabelPriority(failed)).toBe(1350)
+    expect(getLabelPriority(approval)).toBe(1300)
     expect(getLabelPriority(project)).toBe(getStaticLabelPriority(project))
-    expect(getLabelPriority(workflow)).toBe(getStaticLabelPriority(workflow))
-    expect(getLabelPriority(agent)).toBe(getStaticLabelPriority(agent))
-    expect(getLabelPriority(detail)).toBe(getStaticLabelPriority(detail))
     expect(getLabelPriority(project)).toBeGreaterThan(getLabelPriority(workflow))
-    expect(getLabelPriority(workflow)).toBeGreaterThan(getLabelPriority(node('approval', 'approval', { status: 'pending' })))
-    expect(getLabelPriority(node('approval', 'approval', { status: 'pending' }))).toBeGreaterThan(getLabelPriority(agent))
-    expect(getLabelPriority(agent)).toBeGreaterThan(getLabelPriority(detail))
   })
 
-  it('suppresses ordinary overview labels and caps structural workflow detail', () => {
-    const nodes = [
-      node('project', 'project'),
-      ...Array.from({ length: 5 }, (_, index) => node('workflow', `workflow:${index}`, { degree: 10 - index })),
-      node('agent', 'agent'),
-      node('run', 'run'),
-      node('task', 'task'),
-      node('output', 'output'),
-    ]
-    const layout = new Map(nodes.map((value, index) => [value.id, position(value.id, 80 + index * 100, 120 + (index % 2) * 100)]))
-    const visible = selectVisibleNodeLabels({ nodes, layout, viewWidth: 1200 })
-    const ids = new Set(visible.map(label => label.id))
-
-    expect(getGraphZoomLevel(1200)).toBe('overview')
-    expect(ids.has('project')).toBe(true)
-    expect([...ids].filter(id => id.startsWith('workflow:'))).toHaveLength(2)
-    expect(ids.has('agent')).toBe(false)
-    expect(ids.has('run')).toBe(false)
-    expect(ids.has('task')).toBe(false)
-    expect(ids.has('output')).toBe(false)
+  it('wraps long names to at most two lines and removes technical hash suffixes', () => {
+    expect(formatGraphLabel('Generate Voiceover · b5fcaa', 'ordinary')).toEqual(['Generate Voiceover'])
+    const lines = formatGraphLabel('A very long workflow name that needs deterministic compact wrapping for graph display', 'workflow')
+    expect(lines).toHaveLength(2)
+    expect(lines.every(line => line.length <= 28)).toBe(true)
+    expect(lines[1].endsWith('…')).toBe(true)
   })
 
-  it('keeps selected and hovered labels visible at overview without fabricating nodes', () => {
-    const nodes = [node('run', 'selected'), node('agent', 'hovered'), node('output', 'quiet')]
-    const layout = new Map([
-      ['selected', position('selected', 100, 100)],
-      ['hovered', position('hovered', 105, 105)],
-      ['quiet', position('quiet', 110, 110)],
+  it('keeps selected labels visible and rejects colliding ordinary labels deterministically', () => {
+    const nodes = [node('run', 'selected'), node('run', 'ordinary-a'), node('run', 'ordinary-b')]
+    const layout = new Map(nodes.map(value => [value.id, position(value.id, 300, 240)]))
+    const labels = selectVisibleNodeLabels({
+      nodes, layout, view: view(600), viewportWidth: 900, viewportHeight: 600,
+      mode: 'operations', level: 'detail', selectedId: 'selected',
+    })
+    expect(labels.map(label => label.id)).toContain('selected')
+    expect(labels.filter(label => label.id !== 'selected').length).toBeLessThan(2)
+    expect(selectVisibleNodeLabels({
+      nodes, layout, view: view(600), viewportWidth: 900, viewportHeight: 600,
+      mode: 'operations', level: 'detail', selectedId: 'selected',
+    })).toEqual(labels)
+  })
+
+  it('preserves a routed attention label when all primary anchors are occupied', () => {
+    const failed = node('run', 'failed', { status: 'failed' })
+    const blockers = Array.from({ length: 8 }, (_, index) => node('project', `project-${index}`))
+    const nodes = [failed, ...blockers]
+    const layout = new Map(nodes.map((value, index) => [
+      value.id,
+      index === 0 ? position(value.id, 300, 260) : position(value.id, 300 + Math.cos(index) * 38, 260 + Math.sin(index) * 38, 18),
+    ]))
+    const labels = selectVisibleNodeLabels({
+      nodes, layout, view: view(600), viewportWidth: 900, viewportHeight: 600,
+      mode: 'operations', level: 'detail',
+    })
+    expect(labels.map(label => label.id)).toContain(failed.id)
+  })
+
+  it('uses additional diagonal offsets and short leader lines for important routed labels', () => {
+    const selected = node('run', 'selected')
+    const blockers = Array.from({ length: 4 }, (_, index) => node('project', `blocker-${index}`))
+    const nodes = [selected, ...blockers]
+    const layout = new Map<string, PositionedNode>([
+      [selected.id, position(selected.id, 300, 260, 14)],
+      [blockers[0].id, position(blockers[0].id, 300, 292, 18)],
+      [blockers[1].id, position(blockers[1].id, 300, 222, 18)],
+      [blockers[2].id, position(blockers[2].id, 342, 260, 18)],
+      [blockers[3].id, position(blockers[3].id, 258, 260, 18)],
     ])
-    const visible = selectVisibleNodeLabels({
-      nodes,
-      layout,
-      viewWidth: 1200,
-      selectedId: 'selected',
-      hoverId: 'hovered',
-    })
-    const ids = visible.map(label => label.id)
-
-    expect(ids).toContain('selected')
-    expect(ids).toContain('hovered')
-    expect(ids).not.toContain('quiet')
-    expect(ids.every(id => nodes.some(value => value.id === id))).toBe(true)
+    const label = selectVisibleNodeLabels({
+      nodes, layout, view: view(600), viewportWidth: 900, viewportHeight: 600,
+      mode: 'operations', level: 'detail', selectedId: selected.id,
+    }).find(value => value.id === selected.id)!
+    expect(label.leaderLine).toBeDefined()
+    expect(Math.hypot(label.leaderLine!.x2 - label.leaderLine!.x1, label.leaderLine!.y2 - label.leaderLine!.y1)).toBeLessThan(80)
   })
 
-  it('limits inspector mode labels to landmarks, attention, and the selected neighborhood', () => {
-    const nodes = [
-      node('run', 'selected'),
-      node('agent', 'neighbor'),
-      node('workflow', 'unrelated-workflow'),
-      node('output', 'unrelated-output'),
-    ]
-    const layout = new Map(nodes.map((value, index) => [value.id, position(value.id, 100 + index * 180, 200)]))
-    const visible = selectVisibleNodeLabels({
-      nodes,
-      layout,
-      viewWidth: 600,
-      selectedId: 'selected',
-      neighborIds: new Set(['selected', 'neighbor']),
-    })
-    const ids = visible.map(label => label.id)
-
-    expect(ids).toContain('selected')
-    expect(ids).toContain('neighbor')
-    expect(ids).not.toContain('unrelated-workflow')
-    expect(ids).not.toContain('unrelated-output')
-  })
-
-  it('keeps eligible labels legible with a deterministic role and interaction hierarchy', () => {
-    const nodes = [
-      node('project', 'project'),
-      node('workflow', 'workflow'),
-      node('run', 'ordinary'),
-      node('agent', 'hovered'),
-    ]
-    const layout = new Map(nodes.map((value, index) => [value.id, position(value.id, 80 + index * 220, 160)]))
-    const viewWidth = 360
-    const viewportWidth = 960
-    const labels = new Map(selectVisibleNodeLabels({
-      nodes,
-      layout,
-      viewWidth,
-      viewportWidth,
-      hoverId: 'hovered',
-    }).map(label => [label.id, label]))
-    const cssPixels = (id: string) => labels.get(id)!.fontSize * viewportWidth / viewWidth
-
-    expect(cssPixels('ordinary')).toBeCloseTo(11.5, 6)
-    expect(cssPixels('workflow')).toBeCloseTo(12.5, 6)
-    expect(cssPixels('project')).toBeCloseTo(13.5, 6)
-    expect(cssPixels('hovered')).toBeCloseTo(15, 6)
-    expect(cssPixels('hovered')).toBeGreaterThan(cssPixels('project'))
-    expect(cssPixels('project')).toBeGreaterThan(cssPixels('workflow'))
-    expect(cssPixels('workflow')).toBeGreaterThan(cssPixels('ordinary'))
-    expect(getTerritoryLabelTypography(viewWidth, viewportWidth).fontSize * viewportWidth / viewWidth).toBeCloseTo(13.5, 6)
-  })
-
-  it('keeps interaction label sizing stable across overview, medium, close, and extreme close views', () => {
+  it('keeps typography screen-stable and role-scaled at every camera level', () => {
     const hovered = node('run', 'hovered')
     const layout = new Map([[hovered.id, position(hovered.id, 100, 100)]])
-    const viewportWidth = 960
-
-    for (const viewWidth of [1200, 600, 240, 80]) {
+    for (const width of [1200, 900, 600, 300, 80]) {
       const [label] = selectVisibleNodeLabels({
-        nodes: [hovered],
-        layout,
-        viewWidth,
-        viewportWidth,
-        hoverId: hovered.id,
+        nodes: [hovered], layout, view: view(width), viewportWidth: 960, viewportHeight: 640,
+        hoverId: hovered.id, level: width === 80 ? 'execution' : getGraphZoomLevel(width),
       })
-      expect(label.fontSize * viewportWidth / viewWidth).toBeCloseTo(15, 6)
+      expect(label.fontSize * 960 / width).toBeCloseTo(15, 6)
     }
-
-    expect(getScreenStableLabelScale(1200, viewportWidth)).toBeCloseTo(1.25, 6)
-    expect(getScreenStableLabelScale(80, viewportWidth)).toBeCloseTo(1 / 12, 6)
+    expect(getScreenStableLabelScale(1200, 960)).toBeCloseTo(1.25, 6)
+    expect(getTerritoryLabelTypography(600, 960).fontSize * 960 / 600).toBeCloseTo(13.5, 6)
   })
 
-  it('keeps a selected label prominent and externally placed beside a large node', () => {
-    const selected = node('run', 'selected')
-    const project = node('project', 'project')
-    const selectedRadius = 56
-    const viewWidth = 600
-    const viewportWidth = 900
-    const layout = new Map([
-      [selected.id, position(selected.id, 120, 180, selectedRadius)],
-      [project.id, position(project.id, 500, 180, 34)],
-    ])
-    const labels = new Map(selectVisibleNodeLabels({
-      nodes: [selected, project],
-      layout,
-      viewWidth,
-      viewportWidth,
-      selectedId: selected.id,
-      neighborIds: new Set([selected.id]),
-    }).map(label => [label.id, label]))
-    const selectedLabel = labels.get(selected.id)!
-    const projectLabel = labels.get(project.id)!
-
-    expect(selectedLabel.fontSize * viewportWidth / viewWidth).toBeCloseTo(15, 6)
-    expect(projectLabel.fontSize * viewportWidth / viewWidth).toBeCloseTo(13.5, 6)
-    expect(selectedLabel.fontSize).toBeGreaterThan(projectLabel.fontSize)
-    expect(selectedLabel.y - selectedLabel.fontSize).toBeGreaterThan(selectedRadius)
+  it('uses responsive dynamic budgets within canonical upper guidance', () => {
+    expect(getLabelBudget('portfolio', 80, 0, { width: 1200, height: 800 })).toBeGreaterThanOrEqual(8)
+    expect(getLabelBudget('portfolio', 80, 0, { width: 1200, height: 800 })).toBeLessThanOrEqual(25)
+    expect(getLabelBudget('operational', 80, 0, { width: 1200, height: 800 })).toBeGreaterThan(25)
+    expect(getLabelBudget('detail', 80, 0, { width: 1200, height: 800 })).toBeLessThanOrEqual(120)
+    expect(getLabelBudget('operational', 300, 0, { width: 390, height: 844 }))
+      .toBeLessThan(getLabelBudget('operational', 80, 0, { width: 1200, height: 800 }))
+    expect(getLabelBudget('portfolio', 80, 30, { width: 390, height: 844 })).toBe(30)
   })
 
-  it('retains the Phase 1.1 finite collision budgets exactly', () => {
-    expect(getLabelBudget('overview', 80, 0)).toBe(8)
-    expect(getLabelBudget('medium', 80, 0)).toBe(30)
-    expect(getLabelBudget('close', 80, 0)).toBe(52)
-    expect(getLabelBudget('medium', 121, 0)).toBe(20)
-    expect(getLabelBudget('close', 121, 0)).toBe(34)
-    expect(getLabelBudget('overview', 80, 12)).toBe(12)
-  })
-
-  it('strongly fades unrelated edges and suppresses low-value overview detail', () => {
+  it('progressively reveals edges while selected and attention paths survive every level', () => {
     const association = edge('TRACKS')
-    const associationVisual = getEdgeVisual(association)
-    const overview = getEdgeReadability({
-      edge: association,
-      visual: associationVisual,
-      zoomLevel: 'overview',
-      highlighted: false,
-      attentionPath: false,
-      hasInteraction: false,
-    })
-    const focusedElsewhere = getEdgeReadability({
-      edge: edge('STARTED'),
-      visual: getEdgeVisual(edge('STARTED')),
-      zoomLevel: 'medium',
-      highlighted: false,
-      attentionPath: false,
-      hasInteraction: true,
-    })
-    const selectedPath = getEdgeReadability({
-      edge: association,
-      visual: associationVisual,
-      zoomLevel: 'overview',
-      highlighted: true,
-      attentionPath: false,
-      hasInteraction: true,
-    })
-
-    expect(overview.visible).toBe(false)
-    expect(focusedElsewhere.opacity).toBeLessThan(0.02)
-    expect(selectedPath.visible).toBe(true)
-    expect(selectedPath.opacity).toBeGreaterThan(0.9)
+    const visual = getEdgeVisual(association)
+    expect(getEdgeReadability({ edge: association, visual, zoomLevel: 'portfolio', highlighted: false, attentionPath: false, hasInteraction: false }).visible).toBe(false)
+    expect(getEdgeReadability({ edge: association, visual, zoomLevel: 'detail', highlighted: false, attentionPath: false, hasInteraction: false }).visible).toBe(true)
+    expect(getEdgeReadability({ edge: association, visual, zoomLevel: 'portfolio', highlighted: true, attentionPath: false, hasInteraction: true }).opacity).toBeGreaterThan(0.9)
+    expect(getEdgeReadability({ edge: association, visual, zoomLevel: 'portfolio', highlighted: false, attentionPath: true, hasInteraction: false }).visible).toBe(true)
   })
 
-  it('fits territory labels and padding inside the usable viewport', () => {
+  it('fits territory labels and preserves selected camera scale during inspector resize', () => {
     const layout = new Map([
       ['top', position('top', 80, 70, 30)],
       ['bottom', position('bottom', 1080, 760, 20)],
     ])
-    const territories: ProjectTerritory[] = [{
-      id: 'gainpilot',
-      label: 'GainPilot',
-      color: '#112233',
-      cx: 1010,
-      cy: 700,
-      rx: 145,
-      ry: 105,
-    }]
+    const territories: ProjectTerritory[] = [{ id: 'gainpilot', label: 'GainPilot', color: '#112233', cx: 1010, cy: 700, rx: 145, ry: 105 }]
     const bounds = calculateGraphBounds(layout, territories)
-    const view = fitGraphBounds(bounds, { width: 960, height: 540 }, 64)
-
-    expect(view.w / view.h).toBeCloseTo(16 / 9, 6)
-    expect(view.x).toBeLessThan(bounds.minX)
-    expect(view.y).toBeLessThan(bounds.minY)
-    expect(view.x + view.w).toBeGreaterThan(bounds.maxX)
-    expect(view.y + view.h).toBeGreaterThan(bounds.maxY)
+    const fitted = fitGraphBounds(bounds, { width: 960, height: 540 }, 64)
+    expect(fitted.w / fitted.h).toBeCloseTo(16 / 9, 6)
+    const adjusted = keepNodesVisible({ x: 0, y: 0, w: 900, h: 600 }, layout, new Set(['bottom']))
+    expect(adjusted.w).toBe(900)
+    expect(adjusted.h).toBe(600)
+    expect(adjusted.x).toBeGreaterThan(0)
+    const mobileAdjusted = keepNodesVisible({ x: 0, y: 0, w: 900, h: 600 }, layout, new Set(['bottom']), { bottom: 280 })
+    expect(mobileAdjusted.y).toBeGreaterThan(adjusted.y)
   })
 
-  it('pans minimally to keep the selected neighborhood visible after inspector resize', () => {
-    const layout = new Map([
-      ['selected', position('selected', 960, 400, 20)],
-      ['neighbor', position('neighbor', 1010, 430, 14)],
-    ])
-    const original = { x: 0, y: 0, w: 900, h: 600 }
-    const adjusted = keepNodesVisible(original, layout, new Set(['selected', 'neighbor']))
-
-    expect(adjusted.w).toBe(original.w)
-    expect(adjusted.h).toBe(original.h)
-    expect(adjusted.x).toBeGreaterThan(original.x)
-    expect(adjusted.y).toBe(original.y)
-  })
-
-  it('keeps Execution Replay explicitly disabled', () => {
-    const clientSource = readFileSync(new URL('./IntelligenceGraphClient.tsx', import.meta.url), 'utf8')
-    expect(clientSource).toContain('<TabButton active={false} disabled')
-    expect(clientSource).toContain('Execution Replay')
+  it('keeps Replay disabled and reduced-motion styling present', () => {
+    const client = readFileSync(new URL('./IntelligenceGraphClient.tsx', import.meta.url), 'utf8')
+    const css = readFileSync(new URL('./GraphCanvas.module.css', import.meta.url), 'utf8')
+    expect(client).toContain('<TabButton active={false} disabled')
+    expect(client).toContain('Execution Replay')
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })

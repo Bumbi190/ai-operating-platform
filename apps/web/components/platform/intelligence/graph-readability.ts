@@ -1,6 +1,11 @@
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import type { PositionedNode } from './force-layout'
-import { getStatusVisual, type GraphEdgeVisual, type ProjectTerritory } from './graph-visuals'
+import {
+  getStaticLabelPriority,
+  getStatusVisual,
+  type GraphEdgeVisual,
+  type ProjectTerritory,
+} from './graph-visuals'
 
 export type GraphZoomLevel = 'overview' | 'medium' | 'close'
 
@@ -126,11 +131,8 @@ export function getLabelPriority(
   interaction: { selectedId?: string | null; hoverId?: string | null; focusId?: string | null } = {},
 ): number {
   if (node.id === interaction.selectedId || node.id === interaction.focusId || node.id === interaction.hoverId) return 1000
-  if (node.kind === 'project') return 900
-  if (node.kind === 'workflow') return 800
   if (getStatusVisual(node)?.attention) return 700
-  if (node.kind === 'agent') return 600
-  return 500
+  return getStaticLabelPriority(node)
 }
 
 /**

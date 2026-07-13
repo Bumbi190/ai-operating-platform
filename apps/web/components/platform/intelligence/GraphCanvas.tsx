@@ -8,7 +8,7 @@
  * is limited to interaction transitions (no synthetic operational activity).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { computeLayout } from './force-layout'
@@ -251,7 +251,7 @@ export function GraphCanvas({
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
       onClick={backgroundClick}
-      role="img"
+      role="group"
       aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
     >
       <defs>

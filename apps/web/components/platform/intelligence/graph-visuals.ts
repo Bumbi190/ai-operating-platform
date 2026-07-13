@@ -45,17 +45,17 @@ export interface GraphEdgeVisual {
 }
 
 const KIND_VISUAL: Record<NodeKind, Omit<GraphNodeVisual, 'radius'>> = {
-  community: { shape: 'community', fill: '#6366f1', stroke: '#a5b4fc', labelPriority: 70 },
-  code: { shape: 'code', fill: '#818cf8', stroke: '#c7d2fe', labelPriority: 20 },
-  document: { shape: 'document', fill: '#22d3ee', stroke: '#a5f3fc', labelPriority: 25 },
-  rationale: { shape: 'rationale', fill: '#d4a574', stroke: '#f1d6b3', labelPriority: 30 },
-  project: { shape: 'project', fill: '#8b5cf6', stroke: '#e9d5ff', labelPriority: 80 },
-  agent: { shape: 'circle', fill: '#8b5cf6', stroke: '#c4b5fd', labelPriority: 45 },
-  workflow: { shape: 'workflow', fill: '#4f7fff', stroke: '#a5b4fc', labelPriority: 55 },
-  run: { shape: 'run', fill: '#60a5fa', stroke: '#bfdbfe', labelPriority: 30 },
-  approval: { shape: 'approval', fill: '#d4a574', stroke: '#fde68a', labelPriority: 90 },
-  output: { shape: 'output', fill: '#34d399', stroke: '#a7f3d0', labelPriority: 25 },
-  task: { shape: 'task', fill: '#64748b', stroke: '#cbd5e1', labelPriority: 35 },
+  community: { shape: 'community', fill: '#6366f1', stroke: '#a5b4fc', labelPriority: 500 },
+  code: { shape: 'code', fill: '#818cf8', stroke: '#c7d2fe', labelPriority: 500 },
+  document: { shape: 'document', fill: '#22d3ee', stroke: '#a5f3fc', labelPriority: 500 },
+  rationale: { shape: 'rationale', fill: '#d4a574', stroke: '#f1d6b3', labelPriority: 500 },
+  project: { shape: 'project', fill: '#8b5cf6', stroke: '#e9d5ff', labelPriority: 900 },
+  agent: { shape: 'circle', fill: '#8b5cf6', stroke: '#c4b5fd', labelPriority: 600 },
+  workflow: { shape: 'workflow', fill: '#4f7fff', stroke: '#a5b4fc', labelPriority: 800 },
+  run: { shape: 'run', fill: '#60a5fa', stroke: '#bfdbfe', labelPriority: 500 },
+  approval: { shape: 'approval', fill: '#d4a574', stroke: '#fde68a', labelPriority: 500 },
+  output: { shape: 'output', fill: '#34d399', stroke: '#a7f3d0', labelPriority: 500 },
+  task: { shape: 'task', fill: '#64748b', stroke: '#cbd5e1', labelPriority: 500 },
 }
 
 const BASE_RADIUS: Record<NodeKind, number> = {
@@ -125,6 +125,11 @@ export function getNodeVisual(node: IntelligenceGraphNode): GraphNodeVisual {
   const base = KIND_VISUAL[node.kind]
   const degreeLift = Math.min(4, Math.log2(1 + Math.max(0, node.degree ?? 0)) * 0.55)
   return { ...base, radius: BASE_RADIUS[node.kind] + degreeLift }
+}
+
+/** Static node-role priority. Interaction and attention overlays belong to readability policy. */
+export function getStaticLabelPriority(node: IntelligenceGraphNode): number {
+  return KIND_VISUAL[node.kind].labelPriority
 }
 
 /** Identity color only. Runtime status is rendered as a separate visual layer. */

@@ -4,6 +4,7 @@ Date: 2026-07-13
 Branch: `feat/omnira-intelligence-graph`
 Starting commit: `fe3c14b`
 Decision: **COMPLETE WITH DOCUMENTED LIMITATIONS**
+Founder decision: **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**
 
 ## Scope and sources
 
@@ -42,13 +43,16 @@ Application code:
 - `apps/web/components/platform/intelligence/GraphCanvas.module.css`
 - `apps/web/components/platform/intelligence/IntelligenceGraphClient.tsx`
 - `apps/web/components/platform/intelligence/force-layout.ts`
+- `apps/web/components/platform/intelligence/graph-readability.ts`
 - `apps/web/components/platform/intelligence/graph-visuals.ts`
 - `apps/web/vitest.config.ts`
 
 Focused tests:
 
+- `apps/web/components/platform/intelligence/GraphCanvas.accessibility.test.ts`
 - `apps/web/components/platform/intelligence/graph-visuals.test.ts`
 - `apps/web/components/platform/intelligence/force-layout.test.ts`
+- `apps/web/components/platform/intelligence/graph-readability.test.ts`
 
 Documentation:
 
@@ -156,11 +160,13 @@ Additional validation:
 - A second build with the main checkout's existing local environment loaded stopped fail-closed in `scripts/check-migrations.mjs` because the service-role credential did not satisfy the guard. No guard or credential behavior was changed.
 - `git diff --check`: pass before report creation and included again in final validation.
 
-## Visual-validation status
+## Historical local visual-validation status (superseded)
 
 A local Next.js development server was started from the required worktree. With the main checkout's existing local environment loaded, `/intelligence/graph` compiled and the existing authentication middleware redirected the unauthenticated Playwright session to `/login` with HTTP 200.
 
-No test account or authenticated browser state was available. The protected graph canvas therefore could not be visually inspected without weakening or bypassing authentication, which is explicitly outside Phase 1 authority. No screenshot is presented as graph validation. Generated Playwright files were removed from the worktree.
+At that point, no test account or authenticated browser state was available. The protected graph canvas therefore could not be visually inspected locally without weakening or bypassing authentication, which was explicitly outside Phase 1 authority. No screenshot from that local pass was presented as graph validation. Generated Playwright files were removed from the worktree.
+
+This local limitation was subsequently superseded by authenticated Vercel Preview reviews of both Phase 1.1 and Phase 1.2. The founder decision after those reviews is **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**.
 
 ## Deferred requirements and missing runtime dependencies
 
@@ -224,7 +230,7 @@ Focused result: **PASS - 7 files, 58 tests**.
 - Labels can still collide when multiple mandatory project, selected, or critical attention labels occupy the same small area; mandatory truth is retained instead of silently hidden.
 - Node aggregation, run clusters, dynamic device-specific budgets, list view, advanced leader lines, and full inspector/control avoidance remain later-phase work.
 - The layout remains deterministic, fixed-iteration, main-thread, and quadratic in node count.
-- Authenticated post-correction visual review on the Vercel Preview is still required before visual approval.
+- Authenticated post-correction visual review on the Vercel Preview was completed and its findings produced the Phase 1.2 calibration below.
 - System Map remains a truthful empty state until a reproducible, secure deployed Graphify artifact exists.
 
 ## Phase 1.2 label legibility calibration
@@ -239,7 +245,17 @@ Phase 1.1 suppression behavior is unchanged: no new label class is eligible, ove
 
 Focused validation: **PASS - 7 files, 61 tests**. Coverage includes minimum eligible-label sizes, selected-label prominence and external placement, project/territory hierarchy, stable sizing across overview through extreme-close views, unchanged overview suppression, unchanged finite collision budgets, and Replay remaining disabled.
 
-Remaining limitations are unchanged in scope: this is still the Phase 1 three-band label LOD rather than the canonical five-level Phase 2 engine; mandatory labels can still collide in constrained views; long-name wrapping, advanced offsets/leader lines, dynamic device-density budgets, and authenticated post-calibration visual approval remain deferred. No Graphify artifact was generated and System Map remains truthful when none is distributed.
+Remaining limitations are unchanged in scope: this is still the Phase 1 three-band label LOD rather than the canonical five-level Phase 2 engine; mandatory labels can still collide in constrained views; long-name wrapping, advanced offsets/leader lines, and dynamic device-density budgets remain deferred. Authenticated post-calibration Vercel Preview review was completed, and the founder decision is **FOUNDER APPROVED WITH DOCUMENTED LIMITATIONS**. No Graphify artifact was generated and System Map remains truthful when none is distributed.
+
+## Final minor review corrections
+
+The final code and architecture review requested three narrow corrections without changing Phase 1 behavior:
+
+- The interactive root SVG now uses a labeled, non-flattening `group` role instead of `img`. Node `button` roles, accessible names, `aria-pressed`, keyboard focus, Enter/Space activation and SVG titles remain intact. A rendered React accessibility test verifies both graph-mode names and selected node semantics. The canonical parallel list view remains deferred.
+- Static node-role label priorities now have one authority in `graph-visuals.ts`, exposed through `getStaticLabelPriority`. Selected/focused/hovered and approval/failure attention overlays remain in `graph-readability.ts`. Label eligibility, overview suppression, collision behavior and the finite budgets are unchanged.
+- The affected-file inventory and final validation/delivery state in this report were corrected without rewriting the historical implementation record.
+
+Validation immediately before this review-fix pass was **PASS - 7 files, 61 tests**. Final focused validation after the rendered accessibility tests and priority-source consolidation is **PASS - 8 files, 63 tests**. `git diff --check` passes. The narrow typecheck remains blocked only by the unrelated pre-existing `apps/web/lib/media/lambda-render.ts:54` `VideoInputProps` error.
 
 ## Known limitations and risks
 
@@ -249,10 +265,10 @@ Remaining limitations are unchanged in scope: this is still the Phase 1 three-ba
 - System Map may show no project territories until its source gains verified membership.
 - Atlas and Manager canonical hierarchy is reserved, tested, and documented but not visible in current runtime data.
 - Light appearance is not reachable through the current app-wide dark-only theme.
-- Browser rendering of the protected graph remains unverified in this environment because no authenticated test session was available.
+- Authenticated browser rendering was reviewed on the Vercel Preview. Automated authenticated visual-regression coverage still requires an approved reusable test identity/session and fixture data.
 
 ## Recommendation for the next phase
 
 Accept Phase 1 as **COMPLETE WITH DOCUMENTED LIMITATIONS** for the verified runtime graph. Before claiming canonical Atlas/Manager completion, define and approve their real source contracts rather than mapping existing tasks or agents to those roles. Phase 2 may proceed for supported nodes with semantic zoom and denser-view behavior, provided it keeps project membership sourced, does not infer authorization, and treats the Atlas/Manager contracts as explicit prerequisites.
 
-No commit, push, pull request, merge, or deployment was performed.
+At the time of this report update, the Phase 1 implementation commits are pushed on `feat/omnira-intelligence-graph`, Draft PR #48 is open, no merge to `main` or production deployment has occurred, and Phase 2 has not started. The final minor review corrections remain uncommitted for review.

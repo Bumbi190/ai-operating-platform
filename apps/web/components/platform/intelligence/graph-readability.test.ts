@@ -14,7 +14,7 @@ import {
   keepNodesVisible,
   selectVisibleNodeLabels,
 } from './graph-readability'
-import { getEdgeVisual, type ProjectTerritory } from './graph-visuals'
+import { getEdgeVisual, getStaticLabelPriority, type ProjectTerritory } from './graph-visuals'
 
 function node(kind: IntelligenceGraphNode['kind'], id: string, overrides: Partial<IntelligenceGraphNode> = {}): IntelligenceGraphNode {
   return {
@@ -38,11 +38,21 @@ function edge(relation: IntelligenceGraphEdge['relation']): IntelligenceGraphEdg
 describe('Phase 1.1 graph readability policy', () => {
   it('uses deterministic verified-role label priority', () => {
     const selected = node('run', 'selected')
+    const project = node('project', 'project')
+    const workflow = node('workflow', 'workflow')
+    const agent = node('agent', 'agent')
+    const detail = node('run', 'run')
     expect(getLabelPriority(selected, { selectedId: selected.id })).toBeGreaterThan(getLabelPriority(node('project', 'project')))
-    expect(getLabelPriority(node('project', 'project'))).toBeGreaterThan(getLabelPriority(node('workflow', 'workflow')))
-    expect(getLabelPriority(node('workflow', 'workflow'))).toBeGreaterThan(getLabelPriority(node('approval', 'approval', { status: 'pending' })))
-    expect(getLabelPriority(node('approval', 'approval', { status: 'pending' }))).toBeGreaterThan(getLabelPriority(node('agent', 'agent')))
-    expect(getLabelPriority(node('agent', 'agent'))).toBeGreaterThan(getLabelPriority(node('run', 'run')))
+    expect(getLabelPriority(detail, { focusId: detail.id })).toBe(1000)
+    expect(getLabelPriority(detail, { hoverId: detail.id })).toBe(1000)
+    expect(getLabelPriority(project)).toBe(getStaticLabelPriority(project))
+    expect(getLabelPriority(workflow)).toBe(getStaticLabelPriority(workflow))
+    expect(getLabelPriority(agent)).toBe(getStaticLabelPriority(agent))
+    expect(getLabelPriority(detail)).toBe(getStaticLabelPriority(detail))
+    expect(getLabelPriority(project)).toBeGreaterThan(getLabelPriority(workflow))
+    expect(getLabelPriority(workflow)).toBeGreaterThan(getLabelPriority(node('approval', 'approval', { status: 'pending' })))
+    expect(getLabelPriority(node('approval', 'approval', { status: 'pending' }))).toBeGreaterThan(getLabelPriority(agent))
+    expect(getLabelPriority(agent)).toBeGreaterThan(getLabelPriority(detail))
   })
 
   it('suppresses ordinary overview labels and caps structural workflow detail', () => {

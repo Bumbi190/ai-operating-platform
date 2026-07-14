@@ -18,10 +18,13 @@
 
 import { getAllowedProjectIds, scopeToProjects } from '@/lib/atlas/isolation'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
+import { LIMITS } from './graph-contract'
 import type {
   IntelligenceGraph,
   IntelligenceGraphEdge,
   IntelligenceGraphNode,
+  OperationsSnapshotMeta,
+  OperationsSnapshotSource,
 } from './graph-contract'
 
 type AnyDb = any
@@ -37,8 +40,16 @@ export const DEFAULT_WINDOW: OperationsWindow = { hours: 24, maxRuns: 120 }
 
 export interface OperationsGraphResult {
   graph: IntelligenceGraph
-  /** Projects visible to this caller (id, name, slug) for the project filter. */
+  /** Full allow-listed project list for the project filter. */
   projects: Array<{ id: string; name: string; slug: string; color: string }>
+  snapshot: OperationsSnapshotMeta
+}
+
+export class OperationsGraphLimitError extends Error {
+  constructor() {
+    super('operations graph exceeds response limits')
+    this.name = 'OperationsGraphLimitError'
+  }
 }
 
 export async function buildOperationsGraph(
@@ -50,9 +61,10 @@ export async function buildOperationsGraph(
   const allowed = await getAllowedProjectIds(db, userId)
 
   // Optional caller-supplied narrowing — only honored if inside the allow-list.
-  const scope = opts.projectId && allowed.includes(opts.projectId)
-    ? [opts.projectId]
-    : allowed
+  const appliedProjectId = opts.projectId && allowed.includes(opts.projectId)
+    ? opts.projectId
+    : null
+  const scope = appliedProjectId ? [appliedProjectId] : allowed
 
   const sinceIso = new Date(Date.now() - window.hours * 3600_000).toISOString()
 
@@ -239,10 +251,11 @@ export async function buildOperationsGraph(
     })
   }
 
+  const generatedAt = new Date().toISOString()
   const graph: IntelligenceGraph = {
     meta: {
       source: 'runtime',
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       nodeCount: nodes.length,
       edgeCount: edges.length,
     },
@@ -250,5 +263,46 @@ export async function buildOperationsGraph(
     edges,
   }
 
-  return { graph, projects: projects.filter(p => scopeSet.has(p.id)) }
+  if (graph.meta.nodeCount > LIMITS.MAX_RESPONSE_NODES || graph.meta.edgeCount > LIMITS.MAX_RESPONSE_EDGES) {
+    throw new OperationsGraphLimitError()
+  }
+
+  const queriedSources: OperationsSnapshotSource[] = [
+    'projects',
+    'agents',
+    'workflows',
+    'runs',
+    ...(runIds.length > 0 ? ['approvals', 'outputs', 'manager_tasks'] as const : []),
+  ]
+  const returnedProjectIds = [...new Set(
+    nodes
+      .filter(node => node.kind === 'project' && typeof node.projectId === 'string')
+      .map(node => node.projectId!),
+  )].sort()
+
+  return {
+    graph,
+    projects,
+    snapshot: {
+      generatedAt,
+      requestedHours: window.hours,
+      authorizedProjectIds: [...allowed].sort(),
+      appliedProjectId,
+      returnedProjectIds,
+      queriedSources,
+      delivery: 'snapshot_only',
+      sourceFreshness: 'unknown',
+      capabilities: {
+        realtime: false,
+        polling: true,
+        incidents: false,
+        toolCalls: false,
+        atlasRuntime: false,
+        managerRuntime: false,
+        correlation: false,
+        causation: false,
+        replay: false,
+      },
+    },
+  }
 }

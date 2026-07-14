@@ -117,6 +117,57 @@ export interface IntelligenceGraph {
   edges: IntelligenceGraphEdge[]
 }
 
+// ─── Live Operations snapshot contract ──────────────────────────────────────
+
+/** Sources queried to assemble a Live Operations snapshot. */
+export const OPERATIONS_SNAPSHOT_SOURCES = [
+  'projects',
+  'agents',
+  'workflows',
+  'runs',
+  'approvals',
+  'outputs',
+  'manager_tasks',
+] as const
+
+export type OperationsSnapshotSource = (typeof OPERATIONS_SNAPSHOT_SOURCES)[number]
+
+/** Capabilities that are truthfully available in the current snapshot response. */
+export interface OperationsSnapshotCapabilities {
+  realtime: false
+  polling: true
+  incidents: false
+  toolCalls: false
+  atlasRuntime: false
+  managerRuntime: false
+  correlation: false
+  causation: false
+  replay: false
+}
+
+export interface OperationsSnapshotMeta {
+  generatedAt: string
+  requestedHours: number
+  authorizedProjectIds: string[]
+  appliedProjectId: string | null
+  returnedProjectIds: string[]
+  queriedSources: OperationsSnapshotSource[]
+  delivery: 'snapshot_only'
+  sourceFreshness: 'unknown'
+  capabilities: OperationsSnapshotCapabilities
+}
+
+export interface OperationsGraphResponse extends IntelligenceGraph {
+  available: true
+  projects: Array<{
+    id: string
+    name: string
+    slug: string
+    color: string
+  }>
+  snapshot: OperationsSnapshotMeta
+}
+
 // ─── Limits (fail closed on oversized/malformed input) ───────────────────────
 
 export const LIMITS = {

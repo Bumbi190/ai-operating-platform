@@ -432,7 +432,7 @@ export function GraphCanvas({
       onClick={backgroundClick}
       onKeyDown={handleCanvasKeyDown}
       role="group"
-      aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
+      aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Operations Snapshot graph'}
       data-semantic-zoom={zoomLevel}
       data-semantic-meaning={semanticPolicy.meaning}
       data-structural-detail={semanticPolicy.structuralDetail}

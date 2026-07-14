@@ -66,12 +66,12 @@ describe('GraphCanvas rendered accessibility semantics', () => {
     expect(markup).not.toContain('aria-label="run: Quiet run (done)"')
   })
 
-  it('keeps System Map and Live Operations graph names distinct', () => {
+  it('keeps System Map and Operations Snapshot graph names distinct', () => {
     const system = openingTagsByRole(renderGraph('system'), 'group')[0]
     const operations = openingTagsByRole(renderGraph('operations'), 'group')[0]
 
     expect(system).toContain('aria-label="System Map intelligence graph"')
-    expect(operations).toContain('aria-label="Live Operations snapshot graph"')
+    expect(operations).toContain('aria-label="Operations Snapshot graph"')
     expect(system).not.toBe(operations)
   })
 

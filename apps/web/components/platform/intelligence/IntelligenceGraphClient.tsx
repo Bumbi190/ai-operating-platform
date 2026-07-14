@@ -6,7 +6,7 @@
  * Three modes:
  *   System Map      — static architecture (Graphify import), progressive levels
  *                     Overview (communities) → Community (drilldown)
- *   Live Operations — read-only runtime graph from real Omnira tables
+ *   Operations Snapshot — read-only runtime graph from real Omnira tables
  *   Execution Replay— honestly disabled (per-step event data is not granular
  *                     enough yet; see docs/intelligence-graph.md)
  *
@@ -21,6 +21,7 @@ import type {
   IntelligenceGraphEdge,
   IntelligenceGraphMeta,
   IntelligenceGraphNode,
+  OperationsSnapshotMeta,
 } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas, nodeColor, type GraphCameraCommand } from './GraphCanvas'
 import type { GraphViewBox, GraphZoomLevel } from './graph-readability'
@@ -51,6 +52,7 @@ interface GraphPayload {
   nodes?: IntelligenceGraphNode[]
   edges?: IntelligenceGraphEdge[]
   projects?: Array<{ id: string; name: string; slug: string; color: string }>
+  snapshot?: OperationsSnapshotMeta
 }
 
 interface SearchHit {
@@ -90,6 +92,78 @@ const TIME_FILTERS = [
   { hours: 24 * 30, label: '30 d' },
 ] as const
 
+export type OperationsSnapshotUiState = 'loading' | 'unavailable' | 'available' | 'empty-authorized-scope' | 'empty-runs'
+
+export function getOperationsSnapshotUiState({
+  loading,
+  payload,
+  nodes,
+}: {
+  loading: boolean
+  payload: GraphPayload | null
+  nodes: IntelligenceGraphNode[]
+}): OperationsSnapshotUiState {
+  const snapshot = payload?.available === true ? payload.snapshot : undefined
+  if (!snapshot) return loading ? 'loading' : 'unavailable'
+  if (snapshot.authorizedProjectIds.length === 0) return 'empty-authorized-scope'
+  return nodes.some(node => node.kind === 'run') ? 'available' : 'empty-runs'
+}
+
+export function getOperationsSnapshotStateCopy(state: OperationsSnapshotUiState): { title: string; body?: string } | null {
+  switch (state) {
+    case 'loading':
+      return { title: 'Hämtar operationssnapshot…' }
+    case 'unavailable':
+      return {
+        title: 'Operationssnapshot är inte tillgänglig.',
+        body: 'Ingen bekräftad operationssnapshot finns att visa.',
+      }
+    case 'empty-authorized-scope':
+      return { title: 'Tom operationssnapshot', body: 'Ingen operationsdata i behörig scope.' }
+    case 'empty-runs':
+      return { title: 'Tom operationssnapshot', body: 'Inga körningar i vald scope och tidsperiod.' }
+    case 'available':
+      return null
+  }
+}
+
+export function shouldRenderOperationsSnapshotGraph({
+  state,
+  snapshot,
+  nodes,
+}: {
+  state: OperationsSnapshotUiState
+  snapshot: OperationsSnapshotMeta | undefined
+  nodes: IntelligenceGraphNode[]
+}): boolean {
+  return state === 'available' && Boolean(snapshot) && nodes.length > 0
+}
+
+export function OperationsSnapshotStateMessage({ state }: { state: OperationsSnapshotUiState }) {
+  const copy = getOperationsSnapshotStateCopy(state)
+  if (!copy) return null
+  return <StateMessage title={copy.title} body={copy.body ?? ''} tone={state === 'unavailable' ? 'error' : 'default'} />
+}
+
+export function formatOperationsSnapshotGeneratedAt(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const generatedAt = new Date(value)
+  if (Number.isNaN(generatedAt.getTime())) return null
+  return generatedAt.toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+export function OperationsSnapshotStatus({ snapshot }: { snapshot: OperationsSnapshotMeta }) {
+  const generatedAt = formatOperationsSnapshotGeneratedAt(snapshot.generatedAt)
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]" role="status" aria-label="Operationssnapshotstatus">
+      <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-indigo-200">Snapshot</span>
+      <span className="text-slate-400">Källfärskhet: okänd</span>
+      <span className="text-slate-500">Senast bekräftade snapshot: {generatedAt ?? 'okänd'}</span>
+    </div>
+  )
+}
+
 export function IntelligenceGraphClient() {
   const rootRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -103,7 +177,7 @@ export function IntelligenceGraphClient() {
   // System Map state
   const [communityId, setCommunityId] = useState<number | null>(null)
 
-  // Live Operations state
+  // Operations Snapshot state
   const [projectFilter, setProjectFilter] = useState<string>('all')
   const [hours, setHours] = useState<number>(24)
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
@@ -473,6 +547,8 @@ export function IntelligenceGraphClient() {
 
   const switchMode = useCallback((next: Mode) => {
     cancelPendingNavigation()
+    setLoading(true)
+    setError(null)
     setMode(next)
     setCommunityId(null)
     setDrillScope(null)
@@ -489,6 +565,15 @@ export function IntelligenceGraphClient() {
   )
 
   const unavailable = data && data.available === false
+  const operationsSnapshot = mode === 'operations' && data?.available === true ? data.snapshot : undefined
+  const operationsUiState = mode === 'operations'
+    ? getOperationsSnapshotUiState({ loading, payload: data, nodes })
+    : null
+  const hasOperationsSnapshot = Boolean(operationsSnapshot)
+  const operationsStateCopy = operationsUiState ? getOperationsSnapshotStateCopy(operationsUiState) : null
+  const operationsUnavailable = mode === 'operations' && !loading && operationsUiState === 'unavailable'
+  const operationsEmpty = mode === 'operations'
+    && (operationsUiState === 'empty-authorized-scope' || operationsUiState === 'empty-runs')
 
   return (
     <div
@@ -499,7 +584,7 @@ export function IntelligenceGraphClient() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
           <TabButton active={mode === 'system'} onClick={() => switchMode('system')}>System Map</TabButton>
-          <TabButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Live Operations</TabButton>
+          <TabButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Operations Snapshot</TabButton>
           <TabButton active={false} disabled title="Kräver mer granulär eventdata (per-steg-tidslinje). Se docs/intelligence-graph.md.">
             Execution Replay
           </TabButton>
@@ -572,6 +657,7 @@ export function IntelligenceGraphClient() {
         <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-indigo-200">
           Zoom {zoomLevel}
         </span>
+        {operationsSnapshot && operationsUiState === 'available' && <OperationsSnapshotStatus snapshot={operationsSnapshot} />}
         {isolateScope && (
           <span className="flex items-center gap-2 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1 text-amber-200">
             Isolated: {isolateScope.label}
@@ -677,16 +763,18 @@ export function IntelligenceGraphClient() {
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
               <div className="flex items-center gap-2 text-sm text-slate-300">
-                <Loader2 className="h-4 w-4 animate-spin" /> Laddar graf…
+                <Loader2 className="h-4 w-4 animate-spin" /> {mode === 'operations' && !hasOperationsSnapshot ? operationsStateCopy?.title : 'Laddar graf…'}
               </div>
             </div>
           )}
 
-          {error && !loading && (
+          {operationsUnavailable && <OperationsSnapshotStateMessage state="unavailable" />}
+
+          {error && !loading && !operationsUnavailable && (
             <StateMessage title="Grafen kunde inte laddas" body={error} tone="error" />
           )}
 
-          {unavailable && !loading && !error && (
+          {unavailable && !loading && !error && !operationsUnavailable && (
             <StateMessage
               title={mode === 'system' ? 'Ingen System Map-artifact ännu' : 'Ingen driftdata'}
               body={mode === 'system'
@@ -695,13 +783,10 @@ export function IntelligenceGraphClient() {
             />
           )}
 
-          {!loading && !error && !unavailable && nodes.length === 0 && (
-            <StateMessage
-              title="Tom graf"
-              body={mode === 'operations'
-                ? 'Inga körningar i det valda tidsfönstret. Justera tids- eller projektfiltret.'
-                : 'Inga noder matchar de aktiva filtren.'}
-            />
+          {!loading && !error && !unavailable && ((mode === 'operations' && operationsEmpty) || (mode !== 'operations' && nodes.length === 0)) && (
+            mode === 'operations'
+              ? <OperationsSnapshotStateMessage state={operationsUiState!} />
+              : <StateMessage title="Tom graf" body="Inga noder matchar de aktiva filtren." />
           )}
 
           {!loading && !error && !unavailable && filtersActive && filterState.matchCount === 0 && nodes.length > 0 && (
@@ -710,7 +795,11 @@ export function IntelligenceGraphClient() {
             </div>
           )}
 
-          {!error && !unavailable && nodes.length > 0 && (
+          {!error && !unavailable && nodes.length > 0 && (mode !== 'operations' || shouldRenderOperationsSnapshotGraph({
+            state: operationsUiState!,
+            snapshot: operationsSnapshot,
+            nodes,
+          })) && (
             <GraphCanvas
               nodes={nodes}
               edges={edges}

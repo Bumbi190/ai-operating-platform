@@ -20,6 +20,7 @@ export default defineConfig({
       "lib/nav/**/*.test.ts",
       "lib/intelligence/**/*.test.ts",
       "components/platform/intelligence/**/*.test.ts",
+      "components/platform/intelligence/**/*.test.tsx",
     ],
   },
 });

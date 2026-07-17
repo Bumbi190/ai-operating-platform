@@ -5,9 +5,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { IntelligenceGraphNode, OperationsSnapshotMeta } from '@/lib/intelligence/graph-contract'
 import {
+  getOperationsSnapshotRefreshMessage,
   getOperationsSnapshotStateCopy,
   getOperationsSnapshotUiState,
   IntelligenceGraphClient,
+  OperationsSnapshotRefreshButton,
   OperationsSnapshotStateMessage,
   OperationsSnapshotStatus,
   shouldRenderOperationsSnapshotGraph,
@@ -70,6 +72,18 @@ describe('Operations Snapshot UI states', () => {
       title: 'Tom operationssnapshot',
       body: 'Inga körningar i vald scope och tidsperiod.',
     })
+  })
+
+
+  it('renders manual refresh control and truthful retained-snapshot refresh messages', () => {
+    const button = renderToStaticMarkup(createElement(OperationsSnapshotRefreshButton, { onClick: () => {} }))
+    expect(button).toContain('Hämta ny snapshot')
+
+    expect(getOperationsSnapshotRefreshMessage({ refreshing: true, failed: false, hasSnapshot: true }))
+      .toEqual({ text: 'Hämtar ny snapshot…', tone: 'neutral' })
+    expect(getOperationsSnapshotRefreshMessage({ refreshing: false, failed: true, hasSnapshot: true }))
+      .toEqual({ text: 'Kunde inte hämta ny snapshot. Visar senast bekräftade snapshot.', tone: 'warning' })
+    expect(getOperationsSnapshotRefreshMessage({ refreshing: false, failed: true, hasSnapshot: false })).toBeNull()
   })
 
   it('fails safely when the server generation time is malformed', () => {

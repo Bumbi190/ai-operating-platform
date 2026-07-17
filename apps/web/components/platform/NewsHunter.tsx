@@ -142,6 +142,7 @@ export function NewsHunter({ projectId, slug, onSelectStory }: NewsHunterProps) 
     const text = [
       candidate.story.title,
       candidate.story.summary,
+      `URL: ${candidate.story.url}`,
       `Source: ${candidate.story.sourceLabel}`,
       `Editorial note: ${candidate.editorialNote}`,
     ].filter(Boolean).join('\n\n')

@@ -31,6 +31,7 @@ import {
   claudeEditorialPick,
 } from '@/lib/media/news-hunter'
 import type { HunterCandidate } from '@/lib/media/news-hunter'
+import { persistCandidateWithNoveltyReview } from '@/lib/media/novelty'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120  // RSS + HN + Reddit + Claude
@@ -104,9 +105,10 @@ export async function POST(request: Request) {
         const { candidates, summary } = await claudeEditorialPick(scored, max_candidates)
 
         // ── Step 5: Auto-save #1 if requested ────────────────────────────────
+        let autoSaveResult: Record<string, unknown> | null = null
         if (auto_save && candidates.length > 0) {
           const top = candidates[0]
-          await db.from('media_news_items').insert({
+          const novelty = await persistCandidateWithNoveltyReview(db, {
             project_id,
             title:          top.story.title,
             summary:        top.story.summary || null,
@@ -114,7 +116,8 @@ export async function POST(request: Request) {
             source_name:    top.story.sourceLabel,
             virality_score: top.estimatedViralityScore,
             content_angle:  top.suggestedAngle,
-            status:         'approved',
+            key_insight:    top.editorialNote,
+            target_audience: 'intermediate',
             raw_output: {
               title:            top.story.title,
               summary:          top.story.summary,
@@ -126,6 +129,11 @@ export async function POST(request: Request) {
               source_name:      top.story.sourceLabel,
             },
           })
+          autoSaveResult = {
+            status: novelty.status,
+            newsItemId: novelty.newsItemId,
+            verdict: novelty.verdict,
+          }
         }
 
         // Serialize candidates (strip circular refs, just what UI needs)
@@ -154,6 +162,7 @@ export async function POST(request: Request) {
           totalFetched:  allStories.length,
           afterDedup:    fresh.length,
           autoSaved:     auto_save,
+          autoSaveResult,
         })
 
       } catch (err) {

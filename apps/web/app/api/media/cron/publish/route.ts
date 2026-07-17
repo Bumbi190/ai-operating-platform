@@ -25,11 +25,19 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAutomationPaused, handlePublishFailure } from '@/lib/media/safeguards'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
-import { createReelContainer, pollUntilReady, publishContainer, buildInstagramCaption } from '@/lib/media/instagram'
-import { postReelToFacebook } from '@/lib/media/facebook'
+import { buildInstagramCaption } from '@/lib/media/instagram'
+import { publishInstagramWithLedger } from '@/lib/media/instagram-publication'
+import { postReelToFacebook, isFacebookAmbiguousOutcomeError } from '@/lib/media/facebook'
 import { getToken } from '@/lib/media/token-store'
 import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
+import {
+  claimPublicationChannel,
+  markPublicationFailed,
+  markPublicationPublished,
+  markPublicationUnknownExternalOutcome,
+} from '@/lib/media/publication-ledger'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -47,6 +55,8 @@ export async function GET(request: Request) {
   }
 
   const db = createAdminClient()
+  const { searchParams } = new URL(request.url)
+  const scriptIdParam = searchParams.get('scriptId')
 
   // ── Global pauscheck ──────────────────────────────────────────────────────────
   const pauseCheck = await checkAutomationPaused(db)
@@ -136,10 +146,11 @@ export async function GET(request: Request) {
   // ── Find ready-but-unpublished scripts (FIFO: äldsta FÄRSKA först) ─────────────
   // FIFO så ingen video svälts ut. Färskhetsfönstret (FRESH_DAYS) gör att inget
   // äldre än policyn någonsin kan väljas.
-  const { data: scripts } = await db
+  let readyQuery = db
     .from('media_scripts')
     .select(`
       id,
+      project_id,
       hook,
       script,
       cta,
@@ -148,14 +159,23 @@ export async function GET(request: Request) {
       video_status,
       status,
       instagram_creation_id,
-      media_news_items ( url, source_name )
+      instagram_media_id,
+      facebook_post_id,
+      media_news_items ( id, url, source_name )
     `)
     .eq('video_status', 'ready')
     .eq('status', 'approved')
     .is('published_at', null)
-    .gte('generated_at', freshCutoff)
     .order('generated_at', { ascending: true })
     .limit(1)
+
+  if (scriptIdParam) {
+    readyQuery = readyQuery.eq('id', scriptIdParam)
+  } else {
+    readyQuery = readyQuery.gte('generated_at', freshCutoff)
+  }
+
+  const { data: scripts } = await readyQuery
 
   if (!scripts || scripts.length === 0) {
     log('check', 'Nothing to publish — all clear')
@@ -166,6 +186,15 @@ export async function GET(request: Request) {
   }
 
   const script = scripts[0]
+  try {
+    await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId: script.id, stage: 'publish' })
+  } catch (guardError) {
+    return NextResponse.json({
+      status: 'not_publish_eligible',
+      scriptId: script.id,
+      error: guardError instanceof Error ? guardError.message : 'not eligible',
+    }, { status: 409 })
+  }
 
   // ── Idempotens: hävda raden ATOMISKT (approved → publishing) ──────────────────
   // Endast den körning som lyckas flippa status fortsätter. Två överlappande
@@ -208,26 +237,43 @@ export async function GET(request: Request) {
   // video on retries). Poll for up to 55s. If it times out, the next cron run
   // will retry with the same creation_id — Instagram keeps it for ~24h.
   let igResult: { mediaId: string; permalink?: string }
+  const newsItemId = Array.isArray(script.media_news_items)
+    ? script.media_news_items[0]?.id
+    : script.media_news_items?.id
   try {
-    let creationId = script.instagram_creation_id as string | null | undefined
+    const igPublication = await publishInstagramWithLedger(db, {
+      projectId: script.project_id,
+      newsItemId: newsItemId ?? null,
+      scriptId: script.id,
+      mediaAssetId: script.video_url,
+      caption,
+      existingContainerId: script.instagram_creation_id,
+      scheduledTime: new Date().toISOString(),
+      pollTimeoutMs: 90_000,
+      persistContainerId: async (creationId) => {
+        const { error: persistError } = await db.from('media_scripts')
+          .update({ instagram_creation_id: creationId })
+          .eq('id', script.id)
+        if (persistError) throw new Error(`script Instagram container persist failed: ${persistError.message}`)
+      },
+    })
 
-    if (!creationId) {
-      log('publish', 'Creating Instagram container...')
-      creationId = await createReelContainer(script.video_url, caption)
-      // Save creation_id so retries can skip re-upload
-      await db.from('media_scripts')
-        .update({ instagram_creation_id: creationId })
-        .eq('id', script.id)
-      log('publish', `Container created: ${creationId}`)
-    } else {
-      log('publish', `Reusing existing container: ${creationId}`)
+    if (igPublication.status === 'not_claimed' || igPublication.status === 'reconciliation_required') {
+      await db.from('media_scripts').update({ status: 'approved' }).eq('id', script.id)
+      return NextResponse.json({
+        status: igPublication.status === 'reconciliation_required' ? 'publication_reconciliation_required' : 'publication_not_claimed',
+        channel: 'instagram',
+        claim: igPublication.claim,
+        scriptId: script.id,
+      }, { status: 409 })
     }
 
-    // Poll up to 90s (container already created, so we have more headroom)
-    // maxDuration=120 gives ~30s for setup+creation before polling begins
-    await pollUntilReady(creationId, 90_000)
-    igResult = await publishContainer(creationId)
-    log('publish', `Instagram OK: ${igResult.permalink}`)
+    igResult = igPublication.result
+    if (igPublication.status === 'already_published') {
+      log('publish', `Instagram already published for script ${script.id} — ledger skip`)
+    } else {
+      log('publish', `Instagram OK: ${igResult.permalink}`)
+    }
   } catch (igErr) {
     const msg = igErr instanceof Error ? igErr.message : 'unknown'
     log('publish', `Instagram failed: ${msg}`)
@@ -266,12 +312,47 @@ export async function GET(request: Request) {
   const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
 
   if (hasFacebook) {
+    const fbClaim = await claimPublicationChannel(db, {
+      projectId: script.project_id,
+      newsItemId: newsItemId ?? null,
+      scriptId: script.id,
+      mediaAssetId: script.video_url,
+      channel: 'facebook',
+      scheduledTime: new Date().toISOString(),
+    })
     try {
-      fbResult = await postReelToFacebook(script.video_url, caption)
-      log('publish', `Facebook OK: ${fbResult.url}`)
+      if (fbClaim.status === 'already_published') {
+        fbResult = { postId: fbClaim.externalPublicationId ?? script.facebook_post_id ?? 'already-published' }
+        log('publish', `Facebook already published for script ${script.id} — ledger skip`)
+      } else if (fbClaim.status !== 'claimed' && fbClaim.status !== 'retry_claimed' && fbClaim.status !== 'stale_claim_recovered') {
+        log('publish', `Facebook not claimed (${fbClaim.status}) — skip`)
+      } else {
+        fbResult = await postReelToFacebook(script.video_url, caption)
+        try {
+          await markPublicationPublished(db, fbClaim.ledgerId, fbResult.postId)
+        } catch (ledgerErr) {
+          await markPublicationUnknownExternalOutcome(
+            db,
+            fbClaim.ledgerId,
+            ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+            fbResult.postId,
+          )
+          throw ledgerErr
+        }
+        log('publish', `Facebook OK: ${fbResult.url}`)
+      }
     } catch (fbErr) {
       const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
       log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
+      if (fbResult?.postId) {
+        await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbMsg, fbResult.postId)
+      } else if (isFacebookAmbiguousOutcomeError(fbErr)) {
+        // The post was dispatched but no definitive response was read — the
+        // reel may exist on Facebook. Fail closed: never auto-retry.
+        await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbMsg)
+      } else {
+        await markPublicationFailed(db, fbClaim.ledgerId, fbMsg)
+      }
       await sendPipelineAlert({
         cronRoute: 'cron/publish',
         step:      'facebook_publish',

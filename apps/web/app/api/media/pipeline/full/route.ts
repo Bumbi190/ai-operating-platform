@@ -6,16 +6,16 @@
  *
  * Steps (in order):
  *   1. Claude analyzes the article → NewsHunterOutput
- *   2. Saves news item to media_news_items (auto-approved)
+ *   2. Saves/reuses news item after novelty review
  *   3. Claude writes short-form video script → ScriptWriterOutput
- *   4. Saves script to media_scripts (auto-approved)
+ *   4. Saves script to media_scripts after approved news + quality gate
  *   5. ElevenLabs generates Victoria voiceover + word timing
  *   6. Uploads audio + timing to Supabase Storage
  *   7. Ideogram generates 5 cinematic scene images
  *   8. Uploads images to Supabase Storage
  *   9. Returns script_id + render_input_url
  *
- * Body: { text: string, project_id: string }
+ * Body: { text: string, project_id: string, news_item_id?: string }
  *
  * SSE event format:
  *   data: {"step":"analyzing","label":"Analyserar artikel...","progress":10}
@@ -23,7 +23,6 @@
  *   data: {"step":"error","message":"..."}
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -33,6 +32,10 @@ import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
 import { Anthropic } from '@anthropic-ai/sdk'
+import { persistCandidateWithNoveltyReview } from '@/lib/media/novelty'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { transitionNewsItemStatus } from '@/lib/media/news-state'
 
 // Pipeline modes:
 // 'lite'  — 1 image with headline baked in, SimpleNewsReel composition (~5× cheaper)
@@ -164,21 +167,31 @@ Return ONLY valid JSON (no markdown fences):
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return new Response('Unauthorized', { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
-  const { text, project_id, mode = 'lite' } = await request.json() as {
+  const { text, project_id, news_item_id, mode = 'lite' } = await request.json() as {
     text: string
     project_id: string
+    news_item_id?: string
     mode?: PipelineMode
   }
   if (!text?.trim() || !project_id) {
     return new Response('text and project_id required', { status: 400 })
   }
+  if (!assertProjectAllowed(project_id, access.allowedProjectIds)) return projectForbidden()
   const isLite = mode !== 'full'
 
   const db = createAdminClient()
+  if (news_item_id) {
+    const { data: news } = await db
+      .from('media_news_items')
+      .select('id, project_id')
+      .eq('id', news_item_id)
+      .single()
+    if (!news) return new Response('News item not found', { status: 404 })
+    if (news.project_id !== project_id) return new Response('News item does not belong to project', { status: 403 })
+  }
   const claude = new Anthropic()
 
   const stream = new ReadableStream({
@@ -201,10 +214,12 @@ export async function POST(request: Request) {
 
         emit({ step: 'news_done', label: `Nyhet: "${news.title}"`, progress: 20 })
 
-        // ── Step 2: Save news item (auto-approved) ───────────────────────────
-        const { data: newsItem } = await db
-          .from('media_news_items')
-          .insert({
+        // ── Step 2: Save/reuse news item behind novelty review ───────────────
+        let newsItemId = news_item_id ?? null
+        if (newsItemId) {
+          await assertMediaProductionEligible(db, { projectId: project_id, newsItemId, stage: 'script' })
+        } else {
+          const novelty = await persistCandidateWithNoveltyReview(db, {
             project_id,
             title: news.title,
             summary: news.summary,
@@ -214,11 +229,28 @@ export async function POST(request: Request) {
             target_audience: news.target_audience,
             content_angle: news.content_angle,
             virality_score: news.virality_score ?? 0,
-            status: 'approved',  // skip manual approval
-            raw_output: toJson(news),
+            raw_output: toJson(news) as Record<string, unknown>,
           })
-          .select('id')
-          .single()
+
+          emit({
+            step: 'blocked',
+            label: 'Novelty passed; editorial approval is required before media production',
+            progress: 100,
+            outcome: novelty.status,
+            newsItemId: novelty.newsItemId,
+            verdict: novelty.verdict,
+          })
+          return
+        }
+
+        if (!newsItemId) {
+            emit({
+              step: 'blocked',
+              label: 'No approved news item available for media production',
+              progress: 100,
+            })
+            return
+        }
 
         // ── Step 3: Write script ─────────────────────────────────────────────
         emit({ step: 'scripting', label: 'Skriver manus...', progress: 30 })
@@ -290,12 +322,32 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           qualityScore,
         })
 
-        // ── Step 4: Save script (auto-approved) ──────────────────────────────
+        // ── Step 4: Save script after editorial-approved news + quality gate ──
+        const { data: existingScript } = await db
+          .from('media_scripts')
+          .select('id')
+          .eq('project_id', project_id)
+          .eq('news_item_id', newsItemId)
+          .in('status', ['pending_review', 'approved', 'publishing', 'published'])
+          .limit(1)
+          .maybeSingle()
+
+        if (existingScript?.id) {
+          emit({
+            step: 'done',
+            label: 'Existing script reused for this news item',
+            progress: 100,
+            scriptId: existingScript.id,
+            reused: true,
+          })
+          return
+        }
+
         const { data: scriptRow } = await db
           .from('media_scripts')
           .insert({
             project_id,
-            news_item_id: newsItem?.id ?? null,
+            news_item_id: newsItemId,
             hook: script.hook,
             script: script.script,
             captions: script.captions,
@@ -305,7 +357,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
             estimated_duration: script.estimated_duration,
             raw_output: toJson(script),
             quality_score: toJson(qualityScore),
-            status: 'approved',   // skip manual approval
+            status: 'approved',
             voice_status: 'none',
             video_status: 'none',
             version: 1,
@@ -315,10 +367,17 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
         if (!scriptRow) throw new Error('Kunde inte spara manus till databasen')
         const scriptId = scriptRow.id
+        await assertMediaProductionEligible(db, { projectId: project_id, scriptId, stage: 'voice' })
 
         // Mark news as scripted
-        if (newsItem?.id) {
-          await db.from('media_news_items').update({ status: 'scripted' }).eq('id', newsItem.id)
+        if (newsItemId) {
+          await transitionNewsItemStatus(db, {
+            projectId: project_id,
+            newsItemId,
+            toStatus: 'scripted',
+            actor: { id: access.userId, kind: 'user' },
+            reason: 'Full media pipeline created an approved script',
+          })
         }
 
         // ── Step 5: Voice generation (Victoria) ──────────────────────────────

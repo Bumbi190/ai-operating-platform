@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
   // ── Load script to get tone ──────────────────────────────────────────────
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, tone')
+    .select('id, project_id, tone, background_music_url')
     .eq('id', scriptId)
     .single()
 
@@ -68,12 +69,17 @@ export async function POST(request: Request) {
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
   }
-
   // ISOLATION (C-1): the script must belong to one of the caller's projects
-  // BEFORE the paid ElevenLabs generation and the DB write. Foreign scripts
-  // return the same 404 as missing (no existence probing).
+  // BEFORE eligibility probing, the paid ElevenLabs generation, and the DB
+  // write. Foreign scripts return the same 404 as missing (no existence probing).
   if (!assertProjectAllowed(projectId, access.allowedProjectIds)) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+  }
+  try {
+    await assertMediaProductionEligible(db, { projectId, scriptId, stage: 'music' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return NextResponse.json(res.body, { status: res.status })
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY

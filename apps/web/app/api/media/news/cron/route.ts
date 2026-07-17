@@ -9,27 +9,17 @@
  *
  * Optional query params:
  *   ?project_id=xxx   — run for a specific project only
- *   ?auto_pipeline=1  — also kick off the full pipeline for the top pick
+ *   ?auto_pipeline=1  — deprecated; novelty-passed items still require editorial approval
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { logRun } from '@/lib/media/run-log'
+import { persistCandidateWithNoveltyReview } from '@/lib/media/novelty'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
-
-function isDuplicateNewsUrlError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const err = error as { code?: string; message?: string; details?: string; hint?: string }
-  const text = `${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`.toLowerCase()
-  return err.code === '23505' && (
-    text.includes('unique_project_news_url') ||
-    text.includes('media_news_items') ||
-    text.includes('duplicate key')
-  )
-}
 
 export async function GET(request: Request) {
   // Verify cron secret
@@ -77,53 +67,56 @@ export async function GET(request: Request) {
         continue
       }
 
-      // Save top candidate as 'new' (needs human approval before pipeline runs)
+      // Save top candidate for novelty review. The reviewer is the only path from
+      // discovery into approval; News Hunter never approves directly.
       const top = result.candidates[0]
-      const { data: savedItem, error: saveError } = await db.from('media_news_items').insert({
-        project_id:     project.id,
-        title:          top.story.title,
-        summary:        top.story.summary || null,
-        url:            top.story.url,
-        source_name:    top.story.sourceLabel,
-        virality_score: top.estimatedViralityScore,
-        content_angle:  top.suggestedAngle,
-        key_insight:    top.editorialNote,
-        status:         'new',   // Waits for human approval in the UI
-        raw_output: {
-          title:           top.story.title,
-          summary:         top.story.summary,
-          key_insight:     top.editorialNote,
-          virality_score:  top.estimatedViralityScore,
+      let novelty
+      try {
+        novelty = await persistCandidateWithNoveltyReview(db, {
+          project_id:     project.id,
+          title:          top.story.title,
+          summary:        top.story.summary || null,
+          url:            top.story.url,
+          source_name:    top.story.sourceLabel,
+          virality_score: top.estimatedViralityScore,
+          content_angle:  top.suggestedAngle,
           target_audience: 'intermediate',
-          content_angle:   top.suggestedAngle,
-          source_url:      top.story.url,
-          source_name:     top.story.sourceLabel,
-        },
-      }).select('id').single()
-
-      if (saveError || !savedItem?.id) {
-        if (isDuplicateNewsUrlError(saveError)) {
-          results.push({
-            project:      project.slug,
-            status:       'duplicate_existing_story',
-            reason:       'duplicate_url',
-            title:        top.story.title,
-            url:          top.story.url,
-            totalFetched: result.totalFetched,
-            afterDedup:   result.afterDedup,
-            summary:      result.claudeSummary,
-          })
-          continue
-        }
-
-        const msg = saveError?.message ?? 'media_news_items insert returned no id'
+          key_insight:    top.editorialNote,
+          raw_output: {
+            title:           top.story.title,
+            summary:         top.story.summary,
+            key_insight:     top.editorialNote,
+            virality_score:  top.estimatedViralityScore,
+            target_audience: 'intermediate',
+            content_angle:   top.suggestedAngle,
+            source_url:      top.story.url,
+            source_name:     top.story.sourceLabel,
+          },
+        })
+      } catch (saveError) {
+        const msg = saveError instanceof Error ? saveError.message : 'media_news_items insert failed'
         console.error(`[news/cron] Failed to save news item for ${project.slug}:`, msg)
         results.push({
           project:      project.slug,
-          status:       'error',
+          status:       msg.includes('unique') ? 'duplicate_race_prevented' : 'error',
           error:        msg,
+          title:           top.story.title,
+          url:             top.story.url,
+          totalFetched: result.totalFetched,
+          afterDedup:   result.afterDedup,
+          summary:      result.claudeSummary,
+        })
+        continue
+      }
+
+      if (novelty.status !== 'novelty_passed') {
+        results.push({
+          project:      project.slug,
+          status:       novelty.status,
           title:        top.story.title,
           url:          top.story.url,
+          newsItemId:   novelty.newsItemId,
+          verdict:      novelty.verdict,
           totalFetched: result.totalFetched,
           afterDedup:   result.afterDedup,
           summary:      result.claudeSummary,
@@ -133,54 +126,18 @@ export async function GET(request: Request) {
 
       const resultEntry: Record<string, unknown> = {
         project:      project.slug,
-        status:       'saved',
+        status:       'awaiting_editorial_review',
         title:        top.story.title,
-        newsItemId:   savedItem?.id,
+        newsItemId:   novelty.newsItemId,
         totalFetched: result.totalFetched,
         afterDedup:   result.afterDedup,
         summary:      result.claudeSummary,
       }
 
-      // Optional: kick off full pipeline automatically (no human approval gate)
-      if (autoPipeline && savedItem?.id) {
-        try {
-          const pipelineRes = await fetch(
-            `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/api/media/pipeline/full`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: `${top.story.title}\n\n${top.story.summary}\n\nSource: ${top.story.sourceLabel}`, project_id: project.id, mode: 'lite' }),
-            },
-          )
-
-          if (pipelineRes.ok) {
-            // Consume the SSE stream to get scriptId
-            const reader = pipelineRes.body?.getReader()
-            let scriptId: string | null = null
-            if (reader) {
-              const decoder = new TextDecoder()
-              let buf = ''
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                buf += decoder.decode(value, { stream: true })
-                const lines = buf.split('\n')
-                buf = lines.pop() ?? ''
-                for (const line of lines) {
-                  if (!line.startsWith('data:')) continue
-                  try {
-                    const ev = JSON.parse(line.slice(5).trim())
-                    if (ev.step === 'done' && ev.scriptId) scriptId = ev.scriptId
-                  } catch { /* skip */ }
-                }
-              }
-            }
-            resultEntry.pipelineScriptId = scriptId
-            resultEntry.pipelineStatus = 'kicked_off'
-          }
-        } catch (pErr) {
-          resultEntry.pipelineError = pErr instanceof Error ? pErr.message : 'unknown'
-        }
+      // auto_pipeline is intentionally inert after the duplicate-guard hotfix:
+      // novelty review may not grant production authority.
+      if (autoPipeline && novelty.newsItemId) {
+        resultEntry.pipelineStatus = 'blocked_pending_editorial_review'
       }
 
       results.push(resultEntry)
@@ -192,7 +149,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const savedCount = results.filter(r => r.status === 'saved' && typeof r.newsItemId === 'string').length
+  const savedCount = results.filter(r => r.status === 'awaiting_editorial_review' && typeof r.newsItemId === 'string').length
   const hadError   = results.some(r => r.status === 'error')
   const fetchRunId = await logRun({
     workflow: 'Fetch AI News',

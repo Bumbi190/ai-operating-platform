@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  cacheDir: process.env.VITE_CACHE_DIR ?? "node_modules/.vite",
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),

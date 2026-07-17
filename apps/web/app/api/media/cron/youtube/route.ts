@@ -26,6 +26,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
+import {
+  claimPublicationChannel,
+  markPublicationFailed,
+  markPublicationProviderAttempt,
+  markPublicationPublished,
+  markPublicationUnknownExternalOutcome,
+} from '@/lib/media/publication-ledger'
+import { assertMediaProductionEligible } from '@/lib/media/eligibility'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -35,6 +43,7 @@ const MAX_PER_RUN  = 3    // tak per körning för att hålla oss inom maxDurati
 
 type ScriptRow = {
   id: string
+  project_id: string
   hook: string | null
   cta: string | null
   hashtags: unknown
@@ -48,9 +57,28 @@ function log(msg: string) {
 }
 
 async function uploadOne(db: ReturnType<typeof createAdminClient>, script: ScriptRow) {
+  await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId: script.id, stage: 'youtube' })
+
   const newsItem = Array.isArray(script.media_news_items)
     ? script.media_news_items[0]
     : script.media_news_items
+
+  const claim = await claimPublicationChannel(db, {
+    projectId: script.project_id,
+    newsItemId: (newsItem as { id?: string } | null)?.id ?? null,
+    scriptId: script.id,
+    mediaAssetId: script.video_url!,
+    channel: 'youtube',
+    scheduledTime: new Date().toISOString(),
+  })
+  if (claim.status === 'already_published') {
+    return claim.externalPublicationId
+      ? `https://www.youtube.com/shorts/${claim.externalPublicationId}`
+      : 'already_published'
+  }
+  if (claim.status !== 'claimed' && claim.status !== 'retry_claimed' && claim.status !== 'stale_claim_recovered') {
+    return `not_claimed:${claim.status}`
+  }
 
   const { title, description, tags } = buildYouTubeMeta({
     hook:       script.hook ?? 'AI news update',
@@ -60,14 +88,74 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     sourceUrl:  (newsItem as { url?: string } | null)?.url ?? null,
   })
 
-  const { videoId, url } = await uploadShort({ videoUrl: script.video_url!, title, description, tags })
+  let externalVideoId: string | null = null
+  // Fail-closed provider-side-effect boundary. Becomes true only once:
+  //   1. YouTube has registered the resumable upload session, AND
+  //   2. the session evidence (provider_attempt_id/provider_upload_url) has been
+  //      durably persisted to the publication ledger, AND
+  //   3. execution is about to cross into the video-upload side effect
+  //      (uploadShort awaits onUploadSession immediately before sending the body).
+  // Any error thrown after this point — connection reset, response timeout,
+  // truncated/invalid body, JSON parse failure, process error after the body was
+  // sent — cannot rule out that YouTube completed the upload, so it must never
+  // be classified as retryable.
+  let uploadSideEffectPossible = false
+  try {
+    const { videoId, url } = await uploadShort({
+      videoUrl: script.video_url!,
+      title,
+      description,
+      tags,
+      onUploadSession: async uploadUrl => {
+        await markPublicationProviderAttempt(db, claim.ledgerId, {
+          providerAttemptId: uploadUrl,
+          providerUploadUrl: uploadUrl,
+        })
+        uploadSideEffectPossible = true
+      },
+    })
+    externalVideoId = videoId
 
-  await db.from('media_scripts')
-    .update({ youtube_video_id: videoId, youtube_url: url })
-    .eq('id', script.id)
+    const { error: scriptUpdateError } = await db.from('media_scripts')
+      .update({ youtube_video_id: videoId, youtube_url: url })
+      .eq('id', script.id)
+    if (scriptUpdateError) throw new Error(`youtube script update failed: ${scriptUpdateError.message}`)
 
-  await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
-  return url
+    try {
+      await markPublicationPublished(db, claim.ledgerId, videoId)
+    } catch (ledgerErr) {
+      await markPublicationUnknownExternalOutcome(
+        db,
+        claim.ledgerId,
+        ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+        videoId,
+      )
+      throw ledgerErr
+    }
+    await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
+    return url
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (externalVideoId) {
+      // External video id is known — preserve reconciliation with the id.
+      await markPublicationUnknownExternalOutcome(db, claim.ledgerId, message, externalVideoId)
+    } else if (uploadSideEffectPossible) {
+      // The upload session was registered and persisted, and the upload body may
+      // have reached YouTube — external success cannot be ruled out. Fail closed:
+      // this row must never be automatically uploaded again.
+      await markPublicationUnknownExternalOutcome(
+        db,
+        claim.ledgerId,
+        `YouTube upload outcome unknown after registered upload session (fail closed): ${message}`,
+      )
+    } else {
+      // Strictly before the provider-side-effect boundary (token refresh, video
+      // fetch, session init, missing Location header, session persistence) — no
+      // upload can have occurred, so the row stays retryable.
+      await markPublicationFailed(db, claim.ledgerId, message)
+    }
+    throw error
+  }
 }
 
 export async function GET(request: Request) {
@@ -90,7 +178,7 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( id, url, source_name )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
 

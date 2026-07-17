@@ -13,6 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,18 @@ export async function POST(request: Request) {
   }
 
   const db = createAdminClient()
+  const { data: script } = await db
+    .from('media_scripts')
+    .select('id, project_id')
+    .eq('id', body.script_id)
+    .single()
+  if (!script) return NextResponse.json({ error: 'Script not found' }, { status: 404 })
+  try {
+    await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId: body.script_id, stage: 'render' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return NextResponse.json(res.body, { status: res.status })
+  }
 
   const { error } = await db
     .from('media_scripts')

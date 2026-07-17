@@ -17,8 +17,17 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
-import { postReelToFacebook } from '@/lib/media/facebook'
+import { buildInstagramCaption } from '@/lib/media/instagram'
+import { publishInstagramWithLedger } from '@/lib/media/instagram-publication'
+import { postReelToFacebook, isFacebookAmbiguousOutcomeError } from '@/lib/media/facebook'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
+import {
+  claimPublicationChannel,
+  markPublicationFailed,
+  markPublicationPublished,
+  markPublicationUnknownExternalOutcome,
+} from '@/lib/media/publication-ledger'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300  // Video processing can take up to 5 min
@@ -31,6 +40,8 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { scriptId } = await request.json() as { scriptId: string }
   if (!scriptId) return new Response('scriptId required', { status: 400 })
@@ -40,12 +51,19 @@ export async function POST(request: Request) {
   // Load script
   const { data: script, error } = await db
     .from('media_scripts')
-    .select('id, hook, script, cta, hashtags, video_url, video_status, status, media_news_items(url, source_name)')
+    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, instagram_creation_id, media_news_items(id, url, source_name)')
     .eq('id', scriptId)
     .single()
 
   if (error || !script) {
     return new Response('Script not found', { status: 404 })
+  }
+  if (!assertProjectAllowed(script.project_id, access.allowedProjectIds)) return projectForbidden()
+  try {
+    await assertMediaProductionEligible(db, { projectId: script.project_id, scriptId, stage: 'publish' })
+  } catch (guardError) {
+    const res = eligibilityResponse(guardError)
+    return Response.json(res.body, { status: res.status })
   }
   if (script.video_status !== 'ready' || !script.video_url) {
     return new Response('Video not rendered yet', { status: 400 })
@@ -67,6 +85,7 @@ export async function POST(request: Request) {
         const newsItem = Array.isArray(script.media_news_items)
           ? script.media_news_items[0]
           : script.media_news_items
+        const newsItemId = newsItem?.id ?? null
 
         const caption = buildInstagramCaption({
           hook:        script.hook ?? '',
@@ -81,39 +100,97 @@ export async function POST(request: Request) {
         // ── Instagram ────────────────────────────────────────────────────────
         emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
 
-        const igResult = await postReelToInstagram(
-          videoUrl,
+        let igResult: { mediaId: string; permalink?: string }
+        const igPublication = await publishInstagramWithLedger(db, {
+          projectId: script.project_id,
+          newsItemId,
+          scriptId: script.id,
+          mediaAssetId: videoUrl,
           caption,
-          (step, pct) => {
-            const labels: Record<string, string> = {
-              uploading:  'Uploading video to Instagram...',
-              processing: 'Instagram is processing the video...',
-              publishing: 'Publishing to Instagram...',
-            }
-            emit({ step, label: labels[step] ?? step, progress: Math.round(pct * (hasFacebook ? 0.6 : 1)) })
+          existingContainerId: script.instagram_creation_id,
+          scheduledTime: new Date().toISOString(),
+          persistContainerId: async (creationId) => {
+            const { error: persistError } = await db.from('media_scripts')
+              .update({ instagram_creation_id: creationId })
+              .eq('id', script.id)
+            if (persistError) throw new Error(`script Instagram container persist failed: ${persistError.message}`)
           },
-        )
+          onProgress: (step, pct) => {
+            emit({
+              step,
+              label: step === 'uploading'
+                ? 'Uploading video to Instagram...'
+                : step === 'processing'
+                  ? 'Instagram is processing the video...'
+                  : 'Publishing to Instagram...',
+              progress: hasFacebook ? Math.min(60, pct) : pct,
+            })
+          },
+        })
+
+        if (igPublication.status === 'not_claimed' || igPublication.status === 'reconciliation_required') {
+          emit({ step: 'blocked', label: `Instagram publication blocked: ${igPublication.status}`, progress: 100, claim: igPublication.claim })
+          return
+        }
+        igResult = igPublication.result
+        if (igPublication.status === 'already_published') {
+          emit({ step: 'skipped', label: 'Instagram already published for this asset.', progress: hasFacebook ? 60 : 90 })
+        }
 
         // ── Facebook (optional) ───────────────────────────────────────────────
         let fbResult: { postId: string; url?: string } | null = null
         if (hasFacebook) {
           emit({ step: 'uploading', label: 'Publicerar på Facebook...', progress: 65 })
+          const fbClaim = await claimPublicationChannel(db, {
+            projectId: script.project_id,
+            newsItemId,
+            scriptId: script.id,
+            mediaAssetId: videoUrl,
+            channel: 'facebook',
+            scheduledTime: new Date().toISOString(),
+          })
           try {
-            fbResult = await postReelToFacebook(
-              videoUrl,
-              caption,
-              (step, pct) => {
-                emit({
-                  step,
-                  label: step === 'uploading' ? 'Uploading to Facebook...' : 'Publishing to Facebook...',
-                  progress: 65 + Math.round(pct * 0.3),
-                })
+            if (fbClaim.status === 'already_published') {
+              fbResult = { postId: fbClaim.externalPublicationId ?? 'already-published' }
+            } else if (fbClaim.status === 'claimed' || fbClaim.status === 'retry_claimed' || fbClaim.status === 'stale_claim_recovered') {
+              fbResult = await postReelToFacebook(
+                videoUrl,
+                caption,
+                (step, pct) => {
+                  emit({
+                    step,
+                    label: step === 'uploading' ? 'Uploading to Facebook...' : 'Publishing to Facebook...',
+                    progress: 65 + Math.round(pct * 0.3),
+                  })
               },
-            )
+              )
+              try {
+                await markPublicationPublished(db, fbClaim.ledgerId, fbResult.postId)
+              } catch (ledgerErr) {
+                await markPublicationUnknownExternalOutcome(
+                  db,
+                  fbClaim.ledgerId,
+                  ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+                  fbResult.postId,
+                )
+                throw ledgerErr
+              }
+            } else {
+              emit({ step: 'fb_warning', label: `Facebook publication not claimed: ${fbClaim.status}`, progress: 95, claim: fbClaim })
+            }
           } catch (fbErr) {
             // Facebook failure is non-fatal — Instagram already succeeded
+            if (fbResult?.postId) {
+              await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr), fbResult.postId)
+            } else if (isFacebookAmbiguousOutcomeError(fbErr)) {
+              // The post was dispatched but no definitive response was read —
+              // the reel may exist on Facebook. Fail closed: never auto-retry.
+              await markPublicationUnknownExternalOutcome(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr))
+            } else {
+              await markPublicationFailed(db, fbClaim.ledgerId, fbErr instanceof Error ? fbErr.message : String(fbErr))
+            }
             console.error('[publish/facebook]', fbErr instanceof Error ? fbErr.message : fbErr)
-            emit({ step: 'fb_warning', label: '⚠️ Facebook posting failed (Instagram OK)', progress: 95 })
+            emit({ step: 'fb_warning', label: 'Facebook posting failed (Instagram OK)', progress: 95 })
           }
         }
 

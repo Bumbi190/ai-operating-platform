@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import type { Database } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
+import { assertMediaProductionEligible, eligibilityResponse } from '@/lib/media/eligibility'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,6 +73,14 @@ export async function PATCH(
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!assertProjectAllowed(existing.project_id, access.allowedProjectIds)) return projectForbidden()
+  if (body.status === 'approved') {
+    try {
+      await assertMediaProductionEligible(db, { projectId: existing.project_id, scriptId: id, stage: 'script' })
+    } catch (guardError) {
+      const res = eligibilityResponse(guardError)
+      return NextResponse.json(res.body, { status: res.status })
+    }
+  }
 
   const { data, error } = await db
     .from('media_scripts')

@@ -182,27 +182,6 @@ export async function publishContainer(creationId: string): Promise<PublishResul
   }
 }
 
-// ─── Orchestrator ─────────────────────────────────────────────────────────────
-
-export async function postReelToInstagram(
-  videoUrl:       string,
-  caption:        string,
-  onProgress?:    (step: 'uploading' | 'processing' | 'publishing', pct: number) => void,
-  pollTimeoutMs?: number,   // override poll timeout — use ~50000 for Vercel Hobby crons
-): Promise<PublishResult> {
-  onProgress?.('uploading', 10)
-  const creationId = await createReelContainer(videoUrl, caption)
-
-  onProgress?.('processing', 30)
-  await pollUntilReady(creationId, pollTimeoutMs)
-
-  onProgress?.('publishing', 90)
-  const result = await publishContainer(creationId)
-
-  onProgress?.('publishing', 100)
-  return result
-}
-
 // ─── Caption builder ──────────────────────────────────────────────────────────
 
 export function buildInstagramCaption(opts: {

@@ -7,6 +7,7 @@ import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/
 import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type { Database } from '@/lib/supabase/types'
 import { NextResponse } from 'next/server'
+import { persistCandidateWithNoveltyReview } from '@/lib/media/novelty'
 
 type NewsInsert = Database['public']['Tables']['media_news_items']['Insert']
 
@@ -51,9 +52,31 @@ export async function POST(request: Request) {
   // into someone else's pipeline.
   const projectId = typeof body.project_id === 'string' ? body.project_id : null
   if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+  if (!projectId) return projectForbidden()
+  if (typeof body.title !== 'string' || !body.title.trim()) {
+    return NextResponse.json({ error: 'title is required' }, { status: 400 })
+  }
 
   const db = createAdminClient()
-  const { data, error } = await db.from('media_news_items').insert(body).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+  try {
+    const result = await persistCandidateWithNoveltyReview(db, {
+      project_id: projectId,
+      run_id: typeof body.run_id === 'string' ? body.run_id : null,
+      title: body.title,
+      summary: body.summary ?? null,
+      key_insight: body.key_insight ?? null,
+      url: body.url ?? null,
+      source_name: body.source_name ?? null,
+      target_audience: body.target_audience ?? null,
+      content_angle: body.content_angle ?? null,
+      virality_score: body.virality_score ?? 0,
+      raw_output: typeof body.raw_output === 'object' && body.raw_output !== null
+        ? body.raw_output as Record<string, unknown>
+        : null,
+    })
+    const { data } = await db.from('media_news_items').select('*').eq('id', result.newsItemId).single()
+    return NextResponse.json({ ...data, novelty_outcome: result.status, novelty_verdict_result: result.verdict }, { status: 201 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to save news item' }, { status: 500 })
+  }
 }

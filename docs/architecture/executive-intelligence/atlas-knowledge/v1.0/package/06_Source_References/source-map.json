@@ -1,0 +1,49 @@
+{
+  "_note": "All sources are READ-ONLY; not modified, not copied elsewhere.",
+  "package_status": "ATLAS KNOWLEDGE EDITION v1.0 — LOCAL VALIDATION CANDIDATE 2 CLEAN",
+  "hash_schema": {
+    "canonical_book_sha256": "ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8",
+    "note": "Hash schema (one meaning per field, identical for chapters and front matter):\n- `canonical_book_sha256` — ALWAYS the compiled canonical book: `ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8`.\n- `canonical_source_file_sha256` — the chapter's separate canonical source-file SHA-256; `null` for front matter\n  (front matter has no separate source file).\n- `record_text_sha256` — SHA-256 of this record's exact canonical text.\n- `section_text_sha256` (sections) / `block_text_sha256` (blocks) — documented aliases of `record_text_sha256`.\nThe ambiguous field `canonical_sha256` from Candidate 1 is removed."
+  },
+  "read_only_sources": {
+    "canonical_book_docx": {
+      "path": "Executive Intelligence — Canonical v1.0/Omnira — Executive Intelligence — Canonical Edition v1.0.docx",
+      "sha256": "ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8"
+    },
+    "final_professional_edition_pdf": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Final Professional Edition/Book/Omnira — Executive Intelligence — Professional Edition v1.0.pdf",
+      "sha256": "b0cbb84eb0a53265bcc03b97c5c780e436489aaacdde1e7092816aa039be6aa2"
+    },
+    "content_map_json": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Production/Source/content_map.json",
+      "sha256": "74ff02ce0adeaaf5605063b678f302ea6494b556f19bc7256acaa877e16a4f7e"
+    },
+    "build_pagemap_final_json": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Final Professional Edition/Source/build_pagemap_final.json",
+      "sha256": "4475a6e1c2448bc430a564a9e044a9069fed8a09b9c1c24133342e64933aa040"
+    },
+    "diagram_source_map_json": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Production/Source/diagram_source_map.json",
+      "sha256": "938eefaa524b5689699ed72a03deabf13b561a8cf3b61dc05a86c5a086b868e9"
+    },
+    "navigation_map_json": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Production/Source/navigation_map.json",
+      "sha256": "6efe4662530075cd2163048ea43703b3e5e05e1c4553f6a7d4a650b9e2b4622d"
+    },
+    "diagrams_final_py": {
+      "path": "Executive Intelligence — Professional Edition v1.0/Final Professional Edition/Source/diagrams_final.py",
+      "sha256": "cea444753d02e609d80ec5fb4a0735aeac18e99bfaac07649cf6bdccce06e83c"
+    }
+  },
+  "protected_but_untouched": [
+    "Candidate v1",
+    "Production Candidate v2",
+    "Production Candidate v3",
+    "Proof v1",
+    "Proof v2",
+    "Correction Proof",
+    "Design References",
+    "Atlas Knowledge Edition v1.0 (Candidate 1)",
+    "prior reports/manifests/renders"
+  ]
+}

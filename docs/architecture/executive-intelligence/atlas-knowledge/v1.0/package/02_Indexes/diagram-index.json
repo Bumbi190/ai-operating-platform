@@ -1,0 +1,1417 @@
+{
+  "_note": "NON-CANONICAL RETRIEVAL AID — 17 final diagrams with real visible labels and structured, explicitly-supported visual relations. Diagrams are additive presentation derived from canonical sections; never doctrine. The historical withdrawn integration diagram (between D13 and D15) is intentionally excluded and not imported.",
+  "canonical_status": "Approved and locked — Canonical v1.0",
+  "active_diagram_count": 17,
+  "excluded_note": "The withdrawn integration diagram is not imported as an active diagram.",
+  "relation_types_used": [
+    "authority_flow",
+    "compares",
+    "containment",
+    "contrast",
+    "denial",
+    "direction",
+    "feedback_loop",
+    "groups",
+    "level_hierarchy",
+    "sequence",
+    "state_transition",
+    "supporting"
+  ],
+  "diagrams": [
+    {
+      "diagram_id": "D01",
+      "title": "Omnira Intelligence Position Model",
+      "anchor_chapter": 2,
+      "chapters": [
+        1,
+        2
+      ],
+      "canonical_source_section_refs": [
+        "Ch 2 §§2.2-2.3"
+      ],
+      "visible_labels": [
+        "ULTIMATE AUTHORITY",
+        "Human Founder / Future Omnira Constitution",
+        "LEADERSHIP",
+        "Executive Intelligence",
+        "COORDINATION & EXECUTION",
+        "Manager / Workforce / Agents / Workflows",
+        "OUTCOMES",
+        "Execution Results",
+        "EXECUTION RESULTS & FEEDBACK — EVIDENCE, NOT AUTHORITY",
+        "Performance Intelligence · Memory · Knowledge",
+        "SUPPORTING FUNCTIONS — NOT IN THE AUTHORITY CHAIN",
+        "USER-FACING SURFACE",
+        "Atlas communicates",
+        "RESOURCE SELECTION",
+        "AI Intelligence selects resources"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Human Founder / Future Omnira Constitution",
+          "predicate": "directs",
+          "object": "Executive Intelligence",
+          "relation_type": "authority_flow",
+          "supporting_section_ids": [
+            "2.2",
+            "2.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Executive Intelligence",
+          "predicate": "directs",
+          "object": "Manager / Workforce / Agents / Workflows",
+          "relation_type": "authority_flow",
+          "supporting_section_ids": [
+            "2.2",
+            "2.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Manager / Workforce / Agents / Workflows",
+          "predicate": "produces",
+          "object": "Execution Results",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "2.2",
+            "2.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Execution Results & Feedback",
+          "predicate": "provides_evidence_to",
+          "object": "Executive Intelligence",
+          "relation_type": "feedback_loop",
+          "supporting_section_ids": [
+            "2.2",
+            "2.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit",
+          "note": "Gold loop labelled 'EVIDENCE, NOT AUTHORITY'."
+        },
+        {
+          "subject": "Atlas",
+          "predicate": "supports_not_in_authority_chain",
+          "object": "Executive Intelligence",
+          "relation_type": "supporting",
+          "supporting_section_ids": [
+            "2.6",
+            "2.7"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "AI Intelligence",
+          "predicate": "supports_not_in_authority_chain",
+          "object": "Executive Intelligence",
+          "relation_type": "supporting",
+          "supporting_section_ids": [
+            "2.2"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 23,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D02",
+      "title": "Executive · Manager · Workforce",
+      "anchor_chapter": 3,
+      "chapters": [
+        3
+      ],
+      "canonical_source_section_refs": [
+        "Ch 3 §3.2"
+      ],
+      "visible_labels": [
+        "EXECUTIVE",
+        "= leadership",
+        "MANAGER",
+        "= coordination",
+        "WORKFORCE",
+        "= execution",
+        "What matters?",
+        "Why now?",
+        "What should be prioritized?",
+        "What should not be started?",
+        "What requires approval?",
+        "What should be delegated?",
+        "What must be escalated?",
+        "Who is assigned?",
+        "What is the status?",
+        "What is blocked?",
+        "What is next?",
+        "What work must be performed?",
+        "What specialist skill is required?",
+        "What output must be produced?"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "EXECUTIVE (leadership)",
+          "predicate": "compared_with",
+          "object": "MANAGER (coordination)",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "3.2"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "MANAGER (coordination)",
+          "predicate": "compared_with",
+          "object": "WORKFORCE (execution)",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "3.2"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 45,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D03",
+      "title": "Portfolio Executive vs Project Executive",
+      "anchor_chapter": 5,
+      "chapters": [
+        4,
+        5
+      ],
+      "canonical_source_section_refs": [
+        "Ch 4 §4.4",
+        "Ch 5 §5.4"
+      ],
+      "visible_labels": [
+        "PORTFOLIO EXECUTIVE",
+        "governs across projects",
+        "PROJECT EXECUTIVE",
+        "governs one project",
+        "Portfolio Scope (§4.5)",
+        "Portfolio Objectives (§4.12)",
+        "Portfolio Prioritization (§4.13)",
+        "Cross-Project Dependencies (§4.27)",
+        "Project Identity (§5.7)",
+        "Project Goals (§5.13)",
+        "Project Autonomy Licenses (§5.24)",
+        "Project Trust Score (§5.25)",
+        "Directs (§5.53)",
+        "Escalates (§5.52)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Portfolio Executive",
+          "predicate": "directs",
+          "object": "Project Executive",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "5.53"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal diagram label 'Directs (§5.53)'."
+        },
+        {
+          "subject": "Project Executive",
+          "predicate": "escalates_to",
+          "object": "Portfolio Executive",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "5.52"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal diagram label 'Escalates (§5.52)'."
+        },
+        {
+          "subject": "Portfolio Executive",
+          "predicate": "compared_with",
+          "object": "Project Executive",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "4.4",
+            "5.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 107,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D04",
+      "title": "Project Isolation & Executive Boundaries",
+      "anchor_chapter": 6,
+      "chapters": [
+        6
+      ],
+      "canonical_source_section_refs": [
+        "Ch 6 §§6.4–6.8, 6.40–6.43"
+      ],
+      "visible_labels": [
+        "Default-Deny Project Isolation (§6.7)",
+        "Explicit Scope Before Action (§6.6) · Scope Envelope (§6.5)",
+        "Least Privilege (§6.8) · Authority Narrowing (§6.40)",
+        "Isolated Project (§6.4 Boundary Model)",
+        "Cross-project request → denied by default; only via Governed Summaries (§6.42–6.43)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Default-Deny Project Isolation",
+          "predicate": "contains",
+          "object": "Explicit Scope Before Action",
+          "relation_type": "containment",
+          "supporting_section_ids": [
+            "6.7",
+            "6.6"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Explicit Scope Before Action",
+          "predicate": "contains",
+          "object": "Least Privilege",
+          "relation_type": "containment",
+          "supporting_section_ids": [
+            "6.6",
+            "6.8"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Least Privilege",
+          "predicate": "contains",
+          "object": "Isolated Project",
+          "relation_type": "containment",
+          "supporting_section_ids": [
+            "6.8",
+            "6.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Cross-project request",
+          "predicate": "denied_by_default",
+          "object": "Isolated Project",
+          "relation_type": "denial",
+          "supporting_section_ids": [
+            "6.42",
+            "6.43"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal diagram label for default-deny; exception only via Governed Summaries."
+        }
+      ],
+      "final_page": 153,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D05",
+      "title": "Leadership Loop — Executive Operating Cadence",
+      "anchor_chapter": 7,
+      "chapters": [
+        7
+      ],
+      "canonical_source_section_refs": [
+        "Ch 7 §7.4, §§7.8–7.70"
+      ],
+      "visible_labels": [
+        "Daily Executive Brief (§7.8)",
+        "Weekly Executive Cycle (§7.26)",
+        "Monthly Executive Review (§7.45)",
+        "Quarterly Strategic Review (§7.57)",
+        "Annual Direction Review (§7.65)",
+        "Event-Driven Cadence (§7.70)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Daily Executive Brief",
+          "predicate": "sequence_step",
+          "object": "Weekly Executive Cycle",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "7.8",
+            "7.26"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Weekly Executive Cycle",
+          "predicate": "sequence_step",
+          "object": "Monthly Executive Review",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "7.26",
+            "7.45"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Monthly Executive Review",
+          "predicate": "sequence_step",
+          "object": "Quarterly Strategic Review",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "7.45",
+            "7.57"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Quarterly Strategic Review",
+          "predicate": "sequence_step",
+          "object": "Annual Direction Review",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "7.57",
+            "7.65"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Annual Direction Review",
+          "predicate": "feedback_loop",
+          "object": "Daily Executive Brief",
+          "relation_type": "feedback_loop",
+          "supporting_section_ids": [
+            "7.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit",
+          "note": "Cadence forms a closed leadership loop."
+        }
+      ],
+      "final_page": 209,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D06",
+      "title": "Decision Lifecycle",
+      "anchor_chapter": 10,
+      "chapters": [
+        10
+      ],
+      "canonical_source_section_refs": [
+        "Ch 10 §§10.3–10.85"
+      ],
+      "visible_labels": [
+        "Recommendation (§10.3)",
+        "Evidence · Assumptions · Confidence (§§10.13, 10.20, 10.24)",
+        "Risk · Alternatives · Opportunity Cost (§§10.27, 10.35, 10.38)",
+        "Authorization (§10.4 · Founder Override §10.60)",
+        "Active Decision · Status (§10.57)",
+        "Review Date (§10.45)",
+        "Outcome · Decision Learning (§§10.83, 10.85)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Recommendation",
+          "predicate": "sequence_step",
+          "object": "Authorization",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "10.3",
+            "10.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Authorization",
+          "predicate": "sequence_step",
+          "object": "Active Decision · Status",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "10.4",
+            "10.57"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Active Decision · Status",
+          "predicate": "sequence_step",
+          "object": "Review Date",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "10.57",
+            "10.45"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Review Date",
+          "predicate": "sequence_step",
+          "object": "Outcome · Decision Learning",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "10.45",
+            "10.83"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Outcome · Decision Learning",
+          "predicate": "feedback_loop",
+          "object": "Recommendation",
+          "relation_type": "feedback_loop",
+          "supporting_section_ids": [
+            "10.85"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label 'learning feeds next recommendation (§10.85)'."
+        }
+      ],
+      "final_page": 349,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D07",
+      "title": "Decision Ledger — Decision Status States",
+      "anchor_chapter": 11,
+      "chapters": [
+        11
+      ],
+      "canonical_source_section_refs": [
+        "Ch 11 §§11.48–11.60"
+      ],
+      "visible_labels": [
+        "Draft (§11.49)",
+        "Proposed (§11.50)",
+        "Approved (§11.51)",
+        "Active (§11.52)",
+        "Completed (§11.58)",
+        "Rejected (§11.53)",
+        "Deferred (§11.54)",
+        "Expired (§11.55)",
+        "Superseded (§11.56)",
+        "Reversed (§11.57)",
+        "Immutable History (§11.60)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Draft",
+          "predicate": "sequence_step",
+          "object": "Proposed",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "11.49",
+            "11.50"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Proposed",
+          "predicate": "sequence_step",
+          "object": "Approved",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "11.50",
+            "11.51"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Approved",
+          "predicate": "sequence_step",
+          "object": "Active",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "11.51",
+            "11.52"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Active",
+          "predicate": "sequence_step",
+          "object": "Completed",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "11.52",
+            "11.58"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Proposed",
+          "predicate": "state_transition",
+          "object": "Rejected",
+          "relation_type": "state_transition",
+          "supporting_section_ids": [
+            "11.53"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Active",
+          "predicate": "state_transition",
+          "object": "Reversed",
+          "relation_type": "state_transition",
+          "supporting_section_ids": [
+            "11.57"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 396,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D08",
+      "title": "Prioritization Classes & Opportunity Cost Relationship",
+      "anchor_chapter": 15,
+      "chapters": [
+        14,
+        15
+      ],
+      "canonical_source_section_refs": [
+        "Ch 14 §§14.50–14.55",
+        "Ch 15 §§15.7, 15.110–15.112"
+      ],
+      "visible_labels": [
+        "P0 — Immediate Critical (§14.50)",
+        "P1 — Executive Priority (§14.51)",
+        "P2 — Planned Priority (§14.52)",
+        "P3 — Prepared Opportunity (§14.53)",
+        "P4 — Parked (§14.54)",
+        "Rejected Work (§14.55)",
+        "Chosen Option (§15.111)",
+        "Displaced Best Alternative (§15.112 · §15.7)",
+        "displaces (opportunity cost §15.3)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Priority Classes P0–P4",
+          "predicate": "groups",
+          "object": "Prioritization class set (P0,P1,P2,P3,P4,Rejected)",
+          "relation_type": "groups",
+          "supporting_section_ids": [
+            "14.50",
+            "14.51",
+            "14.52",
+            "14.53",
+            "14.54",
+            "14.55"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Chosen Option",
+          "predicate": "displaces",
+          "object": "Displaced Best Alternative",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "15.111",
+            "15.112",
+            "15.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label 'displaces (opportunity cost §15.3)'."
+        }
+      ],
+      "final_page": 608,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D09",
+      "title": "Governance Layers & Authority Gradient",
+      "anchor_chapter": 16,
+      "chapters": [
+        16
+      ],
+      "canonical_source_section_refs": [
+        "Ch 16 §§16.6–16.31"
+      ],
+      "visible_labels": [
+        "Constitutional Rules (§16.7)",
+        "Global Omnira Policy (§16.8)",
+        "Portfolio Policy (§16.9)",
+        "Project Policy (§16.10)",
+        "Mission Constraints (§16.11)",
+        "Workflow Policy (§16.12)",
+        "Tool Permissions (§16.13)",
+        "Task Authority (§16.14)",
+        "precedence & narrowing (§§16.18–16.22)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Constitutional Rules",
+          "predicate": "has_precedence_over",
+          "object": "Global Omnira Policy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.7",
+            "16.8"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Global Omnira Policy",
+          "predicate": "has_precedence_over",
+          "object": "Portfolio Policy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.8",
+            "16.9"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Portfolio Policy",
+          "predicate": "has_precedence_over",
+          "object": "Project Policy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.9",
+            "16.10"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Project Policy",
+          "predicate": "has_precedence_over",
+          "object": "Mission Constraints",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.10",
+            "16.11"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Mission Constraints",
+          "predicate": "has_precedence_over",
+          "object": "Workflow Policy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.11",
+            "16.12"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Workflow Policy",
+          "predicate": "has_precedence_over",
+          "object": "Tool Permissions",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.12",
+            "16.13"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Tool Permissions",
+          "predicate": "has_precedence_over",
+          "object": "Task Authority",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "16.13",
+            "16.14"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 658,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D10",
+      "title": "Damage Severity & Boundary States",
+      "anchor_chapter": 17,
+      "chapters": [
+        17
+      ],
+      "canonical_source_section_refs": [
+        "Ch 17 §§17.100-17.119"
+      ],
+      "visible_labels": [
+        "D0 — Negligible",
+        "D1 — Limited",
+        "D2 — Material",
+        "D3 — Severe",
+        "D4 — Critical or Systemic",
+        "Below Boundary",
+        "Near Boundary",
+        "Crosses Boundary",
+        "Prohibited Regardless of Approval",
+        "Two distinct canonical classification systems (Ch 17 §§17.100-17.119). No one-to-one mapping is implied."
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Damage Severity Classes (D0–D4)",
+          "predicate": "groups",
+          "object": "Severity scale D0,D1,D2,D3,D4",
+          "relation_type": "groups",
+          "supporting_section_ids": [
+            "17.100",
+            "17.119"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Boundary States",
+          "predicate": "groups",
+          "object": "Below / Near / Crosses / Prohibited",
+          "relation_type": "groups",
+          "supporting_section_ids": [
+            "17.100",
+            "17.119"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit",
+          "note": "Diagram explicitly states NO one-to-one mapping between the two classifications; no cross-mapping relation is created."
+        }
+      ],
+      "final_page": 720,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D11",
+      "title": "Autonomy Licensing Model",
+      "anchor_chapter": 18,
+      "chapters": [
+        18
+      ],
+      "canonical_source_section_refs": [
+        "Ch 18",
+        "Terminology Guide L0–L6"
+      ],
+      "visible_labels": [
+        "L0 — Observe",
+        "L1 — Recommend",
+        "L2 — Prepare",
+        "L3 — Execute Internally",
+        "L4 — External Low-Risk",
+        "L5 — Conditional Business Autonomy",
+        "L6 — Full Strategic Autonomy",
+        "Autonomy is licensed, not assumed — canonical levels L0–L6 (Ch 18; Terminology Guide)."
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "L0 — Observe",
+          "predicate": "lower_autonomy_than",
+          "object": "L1 — Recommend",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.11",
+            "18.12"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L1 — Recommend",
+          "predicate": "lower_autonomy_than",
+          "object": "L2 — Prepare",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.12",
+            "18.13"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L2 — Prepare",
+          "predicate": "lower_autonomy_than",
+          "object": "L3 — Execute Internally",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.13",
+            "18.14"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L3 — Execute Internally",
+          "predicate": "lower_autonomy_than",
+          "object": "L4 — External Low-Risk",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.14",
+            "18.15"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L4 — External Low-Risk",
+          "predicate": "lower_autonomy_than",
+          "object": "L5 — Conditional Business Autonomy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.15",
+            "18.16"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L5 — Conditional Business Autonomy",
+          "predicate": "lower_autonomy_than",
+          "object": "L6 — Full Strategic Autonomy",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "18.16",
+            "18.17"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 781,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D12",
+      "title": "Trust Score & Autonomy Progression",
+      "anchor_chapter": 19,
+      "chapters": [
+        19
+      ],
+      "canonical_source_section_refs": [
+        "Ch 19",
+        "Terminology Guide L0–L6"
+      ],
+      "visible_labels": [
+        "L0 — Observe",
+        "L1 — Recommend",
+        "L2 — Prepare",
+        "L3 — Execute Internally",
+        "L4 — External Low-Risk",
+        "L5 — Conditional Business Autonomy",
+        "L6 — Full Strategic Autonomy",
+        "Progression is gated by Trust Score & governance — not automatic (Ch 19)."
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "L0 — Observe",
+          "predicate": "progresses_to_if_gated",
+          "object": "L1 — Recommend",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit",
+          "note": "Ladder is ascending; progression gated by Trust Score & governance, not automatic."
+        },
+        {
+          "subject": "L1 — Recommend",
+          "predicate": "progresses_to_if_gated",
+          "object": "L2 — Prepare",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L2 — Prepare",
+          "predicate": "progresses_to_if_gated",
+          "object": "L3 — Execute Internally",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L3 — Execute Internally",
+          "predicate": "progresses_to_if_gated",
+          "object": "L4 — External Low-Risk",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L4 — External Low-Risk",
+          "predicate": "progresses_to_if_gated",
+          "object": "L5 — Conditional Business Autonomy",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "L5 — Conditional Business Autonomy",
+          "predicate": "progresses_to_if_gated",
+          "object": "L6 — Full Strategic Autonomy",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "19.4"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 852,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D13",
+      "title": "Executive Mission Delegation Flow",
+      "anchor_chapter": 21,
+      "chapters": [
+        20,
+        21
+      ],
+      "canonical_source_section_refs": [
+        "Ch 21 §§21.6–21.12",
+        "Ch 20 §20.3"
+      ],
+      "visible_labels": [
+        "Founder (ultimate authority)",
+        "Executive (§21.7 Founder→Executive)",
+        "Manager (§21.8 Executive→Manager · Mission Brief §20.3)",
+        "Workforce (§21.9 Manager→Workforce)",
+        "Agent (§21.10 Workforce→Agent)",
+        "Tool (§21.11 Tool-Level)",
+        "Escalated (§21.46) — bounded, two-sided (§21.18)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Founder",
+          "predicate": "delegates_to",
+          "object": "Executive",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "21.7"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label '§21.7 Founder→Executive'."
+        },
+        {
+          "subject": "Executive",
+          "predicate": "delegates_to",
+          "object": "Manager",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "21.8",
+            "20.3"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label '§21.8 Executive→Manager'; Mission Brief §20.3."
+        },
+        {
+          "subject": "Manager",
+          "predicate": "delegates_to",
+          "object": "Workforce",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "21.9"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit"
+        },
+        {
+          "subject": "Workforce",
+          "predicate": "delegates_to",
+          "object": "Agent",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "21.10"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit"
+        },
+        {
+          "subject": "Agent",
+          "predicate": "delegates_to",
+          "object": "Tool",
+          "relation_type": "direction",
+          "supporting_section_ids": [
+            "21.11"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit"
+        },
+        {
+          "subject": "Tool",
+          "predicate": "escalates_to",
+          "object": "Founder",
+          "relation_type": "feedback_loop",
+          "supporting_section_ids": [
+            "21.46",
+            "21.18"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Escalation is bounded and two-sided."
+        }
+      ],
+      "final_page": 974,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D15",
+      "title": "Operating Graph vs Intelligence Graph",
+      "anchor_chapter": 26,
+      "chapters": [
+        26
+      ],
+      "canonical_source_section_refs": [
+        "Ch 26 §§26.3–26.5, 26.14–26.26, 26.58–26.76"
+      ],
+      "visible_labels": [
+        "OPERATING GRAPH (§26.4 · what runs)",
+        "Portfolio → Project → Objective",
+        "Mission → Workstream → Workflow",
+        "Task → Role → Agent → Tool",
+        "Action → Execution Result",
+        "INTELLIGENCE GRAPH (§26.5 · why it is believed)",
+        "Signal → Evidence → Interpretation",
+        "Hypothesis → Recommendation",
+        "Approval → Decision",
+        "Outcome → Review → Learning",
+        "Two Graphs, Not One (§26.3)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Operating Graph",
+          "predicate": "compared_with",
+          "object": "Intelligence Graph",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "26.3",
+            "26.4",
+            "26.5"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label 'Two Graphs, Not One (§26.3)'."
+        },
+        {
+          "subject": "Portfolio",
+          "predicate": "sequence_step",
+          "object": "Project → Objective (operating hierarchy)",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "26.15",
+            "26.26"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Signal → Evidence",
+          "predicate": "sequence_step",
+          "object": "Interpretation → Recommendation (intelligence chain)",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "26.58",
+            "26.76"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 1303,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D16",
+      "title": "Approval Flow — Approval Status Lifecycle",
+      "anchor_chapter": 27,
+      "chapters": [
+        27
+      ],
+      "canonical_source_section_refs": [
+        "Ch 27 §§27.43–27.59"
+      ],
+      "visible_labels": [
+        "Draft (§27.44)",
+        "Preparing (§27.45)",
+        "Pending (§27.46)",
+        "Approved (§27.51)",
+        "Executed (§27.56)",
+        "Needs Evidence (§27.47)",
+        "Needs Revision (§27.48)",
+        "Approved w/ Conditions (§27.52)",
+        "Rejected (§27.53)",
+        "Approval is an authority act (§27.3); it is not agreement, review, or silence (§§27.4–27.10)."
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Draft",
+          "predicate": "sequence_step",
+          "object": "Preparing",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "27.44",
+            "27.45"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Preparing",
+          "predicate": "sequence_step",
+          "object": "Pending",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "27.45",
+            "27.46"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Pending",
+          "predicate": "sequence_step",
+          "object": "Approved",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "27.46",
+            "27.51"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Approved",
+          "predicate": "sequence_step",
+          "object": "Executed",
+          "relation_type": "sequence",
+          "supporting_section_ids": [
+            "27.51",
+            "27.56"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Pending",
+          "predicate": "state_transition",
+          "object": "Rejected",
+          "relation_type": "state_transition",
+          "supporting_section_ids": [
+            "27.53"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        }
+      ],
+      "final_page": 1366,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D17",
+      "title": "Crisis Mode & Emergency Brake",
+      "anchor_chapter": 28,
+      "chapters": [
+        28
+      ],
+      "canonical_source_section_refs": [
+        "Ch 28 §§28.3–28.5, 28.28–28.32, 28.71–28.73"
+      ],
+      "visible_labels": [
+        "C0 — Operational Disturbance (§28.28)",
+        "C1 — Contained Incident (§28.29)",
+        "C2 — Material Crisis (§28.30)",
+        "C3 — Severe Crisis (§28.31)",
+        "C4 — Systemic Emergency (§28.32)",
+        "Crisis Mode (§28.3)",
+        "Emergency Brake (§28.4)",
+        "Crisis Mode vs Emergency Brake (§28.5)"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "C0 — Operational Disturbance",
+          "predicate": "lower_severity_than",
+          "object": "C1 — Contained Incident",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "28.28",
+            "28.29"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "C1 — Contained Incident",
+          "predicate": "lower_severity_than",
+          "object": "C2 — Material Crisis",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "28.29",
+            "28.30"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "C2 — Material Crisis",
+          "predicate": "lower_severity_than",
+          "object": "C3 — Severe Crisis",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "28.30",
+            "28.31"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "C3 — Severe Crisis",
+          "predicate": "lower_severity_than",
+          "object": "C4 — Systemic Emergency",
+          "relation_type": "level_hierarchy",
+          "supporting_section_ids": [
+            "28.31",
+            "28.32"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "structurally_explicit"
+        },
+        {
+          "subject": "Crisis Mode",
+          "predicate": "compared_with",
+          "object": "Emergency Brake",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "28.3",
+            "28.4",
+            "28.5"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label 'Crisis Mode vs Emergency Brake (§28.5)'."
+        }
+      ],
+      "final_page": 1439,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    },
+    {
+      "diagram_id": "D18",
+      "title": "Stage 1 vs Future Target Architecture",
+      "anchor_chapter": 32,
+      "chapters": [
+        30,
+        31,
+        32
+      ],
+      "canonical_source_section_refs": [
+        "Front matter — Implementation Scope"
+      ],
+      "visible_labels": [
+        "STAGE 1 · APPROVED INITIAL SCOPE",
+        "Executive Context",
+        "Daily Executive Brief",
+        "Decision Ledger V1",
+        "Executive Mission Brief V1",
+        "Explicit human authorization",
+        "Safe Manager & Workforce handoff",
+        "Project-scoped status & evidence",
+        "Basic traceability & review",
+        "FUTURE TARGET",
+        "NOT IMPLEMENTED IN STAGE 1",
+        "Full Approval Inbox",
+        "Full policy engine",
+        "Damage Boundary engine",
+        "Trust Score",
+        "Autonomy Licensing",
+        "Automatic autonomy progression",
+        "Crisis Mode & Emergency Brake",
+        "L4–L6 autonomy"
+      ],
+      "explicit_visual_relations": [
+        {
+          "subject": "Stage 1 (Approved Initial Scope)",
+          "predicate": "compared_with",
+          "object": "Future Target Architecture",
+          "relation_type": "compares",
+          "supporting_section_ids": [
+            "FM.2"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Two-column comparison; Stage 1 solid vs Future dashed."
+        },
+        {
+          "subject": "Future Target Architecture",
+          "predicate": "not_implemented_in",
+          "object": "Stage 1",
+          "relation_type": "contrast",
+          "supporting_section_ids": [
+            "FM.2"
+          ],
+          "provenance": "Final Professional Edition diagrams_final.py + cited canonical sections",
+          "confidence": "explicit",
+          "note": "Literal label 'NOT IMPLEMENTED IN STAGE 1'."
+        }
+      ],
+      "final_page": 1700,
+      "role_in_retrieval": "Navigational/visual entry point; route to the cited canonical sections for authoritative text. Diagrams are additive presentation, never doctrine.",
+      "source_provenance": "Final Professional Edition: diagrams_final.py (build definitions) + build_pagemap_final.json (page) + diagram_source_map.json (canonical sections)."
+    }
+  ]
+}

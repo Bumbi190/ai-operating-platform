@@ -1,0 +1,20 @@
+{
+  "_note": "NON-CANONICAL RETRIEVAL AID — sections mentioning 'Stage 1'. Authoritative scope: Front Matter §FM.2.",
+  "canonical_status": "Approved and locked — Canonical v1.0",
+  "authoritative_scope_source": {
+    "section_id": "FM.2",
+    "heading": "Implementation Scope and Maturity",
+    "citation": "Omnira — Executive Intelligence — Canonical v1.0 · Front Matter · Implementation Scope and Maturity · Professional Edition p.3–6"
+  },
+  "stage_1_explicit_sections": {
+    "section_count": 6,
+    "section_ids": [
+      "7.29",
+      "8.8",
+      "8.9",
+      "8.11",
+      "13.30",
+      "20.31"
+    ]
+  }
+}

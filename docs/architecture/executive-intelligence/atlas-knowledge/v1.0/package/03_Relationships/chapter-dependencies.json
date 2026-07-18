@@ -1,0 +1,281 @@
+{
+  "_note": "NON-CANONICAL RETRIEVAL AID — parts & diagram anchoring are Professional Edition structural layers; only textual references are canonical. No semantic doctrine dependencies synthesized.",
+  "canonical_status": "Approved and locked — Canonical v1.0",
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "part": "I",
+      "part_title": "FOUNDATIONS & ROLES",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 2,
+      "part": "I",
+      "part_title": "FOUNDATIONS & ROLES",
+      "diagrams": [
+        "D01"
+      ],
+      "explicit_outgoing_chapter_references": [
+        1
+      ]
+    },
+    {
+      "chapter_number": 3,
+      "part": "I",
+      "part_title": "FOUNDATIONS & ROLES",
+      "diagrams": [
+        "D02"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 4,
+      "part": "II",
+      "part_title": "PORTFOLIO, PROJECTS & ISOLATION",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 5,
+      "part": "II",
+      "part_title": "PORTFOLIO, PROJECTS & ISOLATION",
+      "diagrams": [
+        "D03"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 6,
+      "part": "II",
+      "part_title": "PORTFOLIO, PROJECTS & ISOLATION",
+      "diagrams": [
+        "D04"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 7,
+      "part": "III",
+      "part_title": "EXECUTIVE CADENCE & FOUNDER CAPACITY",
+      "diagrams": [
+        "D05"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 8,
+      "part": "III",
+      "part_title": "EXECUTIVE CADENCE & FOUNDER CAPACITY",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 9,
+      "part": "III",
+      "part_title": "EXECUTIVE CADENCE & FOUNDER CAPACITY",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 10,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [
+        "D06"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 11,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [
+        "D07"
+      ],
+      "explicit_outgoing_chapter_references": [
+        12
+      ]
+    },
+    {
+      "chapter_number": 12,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 13,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 14,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 15,
+      "part": "IV",
+      "part_title": "DECISIONS, PLANNING & PRIORITIZATION",
+      "diagrams": [
+        "D08"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 16,
+      "part": "V",
+      "part_title": "GOVERNANCE, DAMAGE & AUTONOMY",
+      "diagrams": [
+        "D09"
+      ],
+      "explicit_outgoing_chapter_references": [
+        29
+      ]
+    },
+    {
+      "chapter_number": 17,
+      "part": "V",
+      "part_title": "GOVERNANCE, DAMAGE & AUTONOMY",
+      "diagrams": [
+        "D10"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 18,
+      "part": "V",
+      "part_title": "GOVERNANCE, DAMAGE & AUTONOMY",
+      "diagrams": [
+        "D11"
+      ],
+      "explicit_outgoing_chapter_references": [
+        19
+      ]
+    },
+    {
+      "chapter_number": 19,
+      "part": "V",
+      "part_title": "GOVERNANCE, DAMAGE & AUTONOMY",
+      "diagrams": [
+        "D12"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 20,
+      "part": "VI",
+      "part_title": "MISSIONS, DELEGATION & MEMORY",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 21,
+      "part": "VI",
+      "part_title": "MISSIONS, DELEGATION & MEMORY",
+      "diagrams": [
+        "D13"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 22,
+      "part": "VI",
+      "part_title": "MISSIONS, DELEGATION & MEMORY",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 23,
+      "part": "VII",
+      "part_title": "KNOWLEDGE, AI & PERFORMANCE",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 24,
+      "part": "VII",
+      "part_title": "KNOWLEDGE, AI & PERFORMANCE",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 25,
+      "part": "VII",
+      "part_title": "KNOWLEDGE, AI & PERFORMANCE",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 26,
+      "part": "VIII",
+      "part_title": "GRAPHS, APPROVALS & TRANSPARENCY",
+      "diagrams": [
+        "D15"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 27,
+      "part": "VIII",
+      "part_title": "GRAPHS, APPROVALS & TRANSPARENCY",
+      "diagrams": [
+        "D16"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 28,
+      "part": "IX",
+      "part_title": "CRISIS, VIOLATIONS & CONTROL",
+      "diagrams": [
+        "D17"
+      ],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 29,
+      "part": "IX",
+      "part_title": "CRISIS, VIOLATIONS & CONTROL",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 30,
+      "part": "X",
+      "part_title": "AUTONOMY PROVING GROUND & FUTURE",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": [
+        29
+      ]
+    },
+    {
+      "chapter_number": 31,
+      "part": "X",
+      "part_title": "AUTONOMY PROVING GROUND & FUTURE",
+      "diagrams": [],
+      "explicit_outgoing_chapter_references": []
+    },
+    {
+      "chapter_number": 32,
+      "part": "X",
+      "part_title": "AUTONOMY PROVING GROUND & FUTURE",
+      "diagrams": [
+        "D18"
+      ],
+      "explicit_outgoing_chapter_references": []
+    }
+  ],
+  "front_matter_references": [
+    {
+      "from": "FM.3",
+      "to_chapter": 32,
+      "provenance": "explicit"
+    }
+  ]
+}

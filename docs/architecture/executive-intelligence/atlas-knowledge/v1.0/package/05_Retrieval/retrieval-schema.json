@@ -1,0 +1,86 @@
+{
+  "schema_version": "2.0",
+  "package_status": "ATLAS KNOWLEDGE EDITION v1.0 — LOCAL VALIDATION CANDIDATE 2 CLEAN",
+  "_note": "Documented retrieval contract. A real deterministic local router (Build/query_atlas.py) implements it. No embeddings, no vector database, no model. Ingestion occurs later in the Omnira repository.",
+  "hash_schema": {
+    "canonical_book_sha256": {
+      "meaning": "compiled canonical book",
+      "value": "ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8",
+      "applies_to": "all records"
+    },
+    "canonical_source_file_sha256": {
+      "meaning": "chapter source-file SHA; null for front matter",
+      "applies_to": "sections, blocks, chapters"
+    },
+    "record_text_sha256": {
+      "meaning": "SHA-256 of this record's exact canonical text",
+      "applies_to": "all records"
+    },
+    "section_text_sha256": {
+      "meaning": "alias of record_text_sha256",
+      "applies_to": "sections"
+    },
+    "block_text_sha256": {
+      "meaning": "alias of record_text_sha256",
+      "applies_to": "blocks"
+    },
+    "removed": [
+      "canonical_sha256 (ambiguous; removed in Candidate 2)"
+    ]
+  },
+  "record_types": {
+    "section": {
+      "file": "01_Canonical_Knowledge/executive-intelligence-sections.jsonl",
+      "key": "section_id"
+    },
+    "block": {
+      "file": "01_Canonical_Knowledge/executive-intelligence-blocks.jsonl",
+      "key": "block_id"
+    },
+    "front_matter": {
+      "file": "01_Canonical_Knowledge/front-matter.jsonl",
+      "key": "section_id"
+    }
+  },
+  "router": {
+    "implementation": "Build/query_atlas.py",
+    "type": "deterministic_token_phrase_scoring",
+    "term_lexicon": "05_Retrieval/term-lexicon.json",
+    "embeddings": false,
+    "vector_database": false,
+    "model": false
+  },
+  "query_capabilities": {
+    "by_section_id": "02_Indexes/section-index.json",
+    "by_chapter": "02_Indexes/chapter-index.json",
+    "by_concept": "02_Indexes/concept-index.json",
+    "by_project": "02_Indexes/project-index.json",
+    "by_authority_class": {
+      "index": "02_Indexes/authority-index.json",
+      "classes": [
+        "human_authority",
+        "approval_gate",
+        "governance_policy",
+        "autonomy",
+        "damage_boundary",
+        "emergency_control"
+      ]
+    },
+    "by_stage_or_future_scope": "02_Indexes/stage-1-index.json",
+    "by_lifecycle_operating": "02_Indexes/lifecycle-and-operating-modes-index.json",
+    "by_diagram": "02_Indexes/diagram-index.json"
+  },
+  "response_contract": {
+    "must_return_canonical_text": true,
+    "must_return_citation": true,
+    "navigational_aids_returned_separately": true,
+    "must_attach_implementation_status": "unknown_not_verified_in_this_package",
+    "warning_flags_reference": "05_Retrieval/query-routing-rules.md"
+  },
+  "prohibited_in_this_phase": [
+    "embeddings",
+    "vector_database",
+    "repo_ingestion",
+    "execution_grants"
+  ]
+}

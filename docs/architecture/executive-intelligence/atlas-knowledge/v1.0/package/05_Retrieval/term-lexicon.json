@@ -1,0 +1,458 @@
+{
+  "_note": "Documented deterministic synonym/term lexicon for query_atlas.py. Maps canonical CONCEPT phrasings to concept labels, title terms, and canonical ANCHOR sections. These are canonical concept anchors (not per-test answers). Weights are documented in the router and routing rules.",
+  "weights": {
+    "title_token": 4.0,
+    "title_phrase": 10.0,
+    "lexicon_title_term": 6.0,
+    "lexicon_anchor": 9.0,
+    "concept": 3.0,
+    "project": 4.0,
+    "authority": 2.0,
+    "body_token": 0.25,
+    "body_cap": 2.0,
+    "purpose_penalty": -3.5,
+    "min_confidence": 6.0,
+    "ambiguity_margin": 1.5
+  },
+  "entries": [
+    {
+      "match_phrases": [
+        "ultimate authority",
+        "final authority",
+        "highest authority",
+        "who has authority",
+        "who decides"
+      ],
+      "concepts": [
+        "Human authority"
+      ],
+      "title_terms": [
+        "authority",
+        "legitimacy"
+      ],
+      "anchor_section_ids": [
+        "32.15",
+        "1.10",
+        "19.194"
+      ]
+    },
+    {
+      "match_phrases": [
+        "raise its own autonomy",
+        "increase its own autonomy",
+        "raise autonomy",
+        "grant itself autonomy",
+        "promote itself",
+        "self-promote",
+        "self promotion",
+        "own autonomy"
+      ],
+      "concepts": [
+        "L0-L6",
+        "Autonomy Licensing"
+      ],
+      "title_terms": [
+        "self-promotion",
+        "promotion",
+        "trust does not transfer"
+      ],
+      "anchor_section_ids": [
+        "18.80",
+        "18.247",
+        "18.62"
+      ]
+    },
+    {
+      "match_phrases": [
+        "stage 1",
+        "stage one",
+        "initial scope"
+      ],
+      "concepts": [
+        "Stage 1"
+      ],
+      "title_terms": [
+        "implementation scope",
+        "scope",
+        "maturity"
+      ],
+      "anchor_section_ids": [
+        "FM.2"
+      ]
+    },
+    {
+      "match_phrases": [
+        "canonical target",
+        "implemented runtime",
+        "canonical vs runtime",
+        "target architecture vs",
+        "difference between canonical",
+        "is it implemented"
+      ],
+      "concepts": [
+        "future target architecture"
+      ],
+      "title_terms": [
+        "canonical doctrine notice"
+      ],
+      "anchor_section_ids": [
+        "FM.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "recommendation, decision and approval",
+        "recommendation decision approval",
+        "relationship between recommendation",
+        "recommendation vs decision"
+      ],
+      "concepts": [],
+      "title_terms": [
+        "how to read this book"
+      ],
+      "anchor_section_ids": [
+        "FM.3"
+      ]
+    },
+    {
+      "match_phrases": [
+        "lifecycle mode",
+        "operating mode",
+        "lifecycle and operating"
+      ],
+      "concepts": [
+        "lifecycle modes",
+        "operating modes"
+      ],
+      "title_terms": [
+        "terminology"
+      ],
+      "anchor_section_ids": [
+        "FM.4"
+      ]
+    },
+    {
+      "match_phrases": [
+        "gainpilot"
+      ],
+      "concepts": [
+        "GainPilot"
+      ],
+      "title_terms": [
+        "gainpilot"
+      ],
+      "anchor_section_ids": [
+        "2.26"
+      ]
+    },
+    {
+      "match_phrases": [
+        "familje-stunden",
+        "familje stunden"
+      ],
+      "concepts": [
+        "Familje-Stunden"
+      ],
+      "title_terms": [
+        "familje"
+      ],
+      "anchor_section_ids": [
+        "2.25"
+      ]
+    },
+    {
+      "match_phrases": [
+        "the prompt"
+      ],
+      "concepts": [
+        "The Prompt"
+      ],
+      "title_terms": [
+        "the prompt",
+        "proving ground"
+      ],
+      "anchor_section_ids": [
+        "30.1",
+        "1.18"
+      ]
+    },
+    {
+      "match_phrases": [
+        "decision ledger"
+      ],
+      "concepts": [
+        "Decision Ledger"
+      ],
+      "title_terms": [
+        "decision ledger"
+      ],
+      "anchor_section_ids": []
+    },
+    {
+      "match_phrases": [
+        "damage boundary"
+      ],
+      "concepts": [
+        "Damage Boundary"
+      ],
+      "title_terms": [
+        "damage boundary"
+      ],
+      "anchor_section_ids": []
+    },
+    {
+      "match_phrases": [
+        "autonomy level",
+        "autonomy levels",
+        "l0-l6",
+        "levels of autonomy",
+        "l0 to l6"
+      ],
+      "concepts": [
+        "L0-L6"
+      ],
+      "title_terms": [
+        "the autonomy levels"
+      ],
+      "anchor_section_ids": [
+        "18.10"
+      ]
+    },
+    {
+      "match_phrases": [
+        "mission brief",
+        "executive mission brief"
+      ],
+      "concepts": [
+        "Executive Mission Brief"
+      ],
+      "title_terms": [
+        "mission brief"
+      ],
+      "anchor_section_ids": [
+        "20.3"
+      ]
+    },
+    {
+      "match_phrases": [
+        "approval inbox"
+      ],
+      "concepts": [
+        "Approval Inbox"
+      ],
+      "title_terms": [
+        "approval inbox"
+      ],
+      "anchor_section_ids": [
+        "27.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "trust score"
+      ],
+      "concepts": [
+        "Trust Score"
+      ],
+      "title_terms": [
+        "trust score"
+      ],
+      "anchor_section_ids": [
+        "19.10"
+      ]
+    },
+    {
+      "match_phrases": [
+        "crisis mode",
+        "emergency brake"
+      ],
+      "concepts": [
+        "Crisis Mode",
+        "Emergency Brake"
+      ],
+      "title_terms": [
+        "crisis mode",
+        "emergency brake"
+      ],
+      "anchor_section_ids": [
+        "28.3",
+        "28.5"
+      ]
+    },
+    {
+      "match_phrases": [
+        "project isolation"
+      ],
+      "concepts": [
+        "project isolation"
+      ],
+      "title_terms": [
+        "project isolation"
+      ],
+      "anchor_section_ids": [
+        "2.19",
+        "6.7"
+      ]
+    },
+    {
+      "match_phrases": [
+        "human approval",
+        "when is approval required",
+        "require approval",
+        "requires approval"
+      ],
+      "concepts": [],
+      "title_terms": [
+        "require approval",
+        "approval"
+      ],
+      "anchor_section_ids": [
+        "16.28",
+        "16.19"
+      ]
+    },
+    {
+      "match_phrases": [
+        "portfolio executive"
+      ],
+      "concepts": [
+        "Portfolio Executive"
+      ],
+      "title_terms": [
+        "portfolio executive"
+      ],
+      "anchor_section_ids": [
+        "4.6",
+        "4.4"
+      ]
+    },
+    {
+      "match_phrases": [
+        "project executive"
+      ],
+      "concepts": [
+        "Project Executive"
+      ],
+      "title_terms": [
+        "project executive"
+      ],
+      "anchor_section_ids": [
+        "5.5",
+        "5.4"
+      ]
+    },
+    {
+      "match_phrases": [
+        "atlas may say",
+        "atlas say but not",
+        "what can atlas do",
+        "atlas but not execute",
+        "say but not automatically"
+      ],
+      "concepts": [
+        "Atlas"
+      ],
+      "title_terms": [
+        "atlas as voice",
+        "voice, executive as judgment"
+      ],
+      "anchor_section_ids": [
+        "2.7",
+        "FM.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "difference between executive",
+        "executive vs manager",
+        "executive manager workforce",
+        "executive versus workforce"
+      ],
+      "concepts": [],
+      "title_terms": [
+        "leadership layer",
+        "execution layer"
+      ],
+      "anchor_section_ids": [
+        "3.4",
+        "3.6"
+      ]
+    },
+    {
+      "match_phrases": [
+        "governance",
+        "policy engine"
+      ],
+      "concepts": [
+        "Governance",
+        "Policy Engine"
+      ],
+      "title_terms": [
+        "governance",
+        "policy"
+      ],
+      "anchor_section_ids": [
+        "16.6",
+        "16.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "founder capacity",
+        "calendar-aware"
+      ],
+      "concepts": [
+        "founder capacity"
+      ],
+      "title_terms": [
+        "founder capacity",
+        "capacity"
+      ],
+      "anchor_section_ids": [
+        "9.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "daily executive brief"
+      ],
+      "concepts": [],
+      "title_terms": [
+        "daily",
+        "brief",
+        "snapshot"
+      ],
+      "anchor_section_ids": [
+        "8.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "decision intelligence"
+      ],
+      "concepts": [],
+      "title_terms": [
+        "decision"
+      ],
+      "anchor_section_ids": [
+        "10.1"
+      ]
+    },
+    {
+      "match_phrases": [
+        "future full autonomy",
+        "full autonomy"
+      ],
+      "concepts": [
+        "future target architecture"
+      ],
+      "title_terms": [
+        "future",
+        "full autonomy"
+      ],
+      "anchor_section_ids": [
+        "31.1"
+      ]
+    }
+  ]
+}

@@ -6,9 +6,16 @@
  *
  * Hittar scripts som:
  *   - har en renderad video (video_url IS NOT NULL)
- *   - redan publicerats på IG/FB (published_at IS NOT NULL)  — vi återanvänder samma video
+ *   - är redaktionellt godkända (status 'approved' eller 'published')
  *   - ännu inte laddats upp till YouTube (youtube_video_id IS NULL)
- *   - publicerats inom WINDOW_HOURS (default 48h)
+ *   - genererats inom WINDOW_HOURS (default 48h)
+ *
+ * KANALOBEROENDE (incident 2026-07-19): villkoret var tidigare
+ * `published_at IS NOT NULL`, vilket band YouTube till att Instagram lyckats.
+ * När Instagram failade blev published_at aldrig satt → YouTube fick noll
+ * kandidater och teg helt, trots att videon var färdig och godkänd. YouTube
+ * väljer nu scripts oberoende av Instagram-utfallet, men fortfarande ENDAST
+ * redaktionellt godkända scripts med färdig video.
  *
  * HÄRDAT: tar INTE bara senaste videon utan loopar över ALLA som saknas på
  * YouTube inom fönstret (äldst först). På så vis hoppas ingen video över om en
@@ -25,6 +32,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { checkAutomationPaused } from '@/lib/media/safeguards'
 import { logRun } from '@/lib/media/run-log'
 
 export const dynamic    = 'force-dynamic'
@@ -84,6 +92,17 @@ export async function GET(request: Request) {
 
   const db = createAdminClient()
 
+  // ── Global pauscheck ──────────────────────────────────────────────────────
+  // KRITISKT efter frikopplingen från published_at: tidigare kunde YouTube bara
+  // plocka scripts som publish-cronen redan släppt igenom, och den kontrollerar
+  // pausflaggan. Nu väljer YouTube självständigt och MÅSTE därför göra sin egen
+  // pauskontroll — annars skulle killswitchen inte längre stoppa YouTube.
+  const pauseCheck = await checkAutomationPaused(db)
+  if (!pauseCheck.allowed) {
+    log(`PAUSAD — ${pauseCheck.reason}`)
+    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  }
+
   const { searchParams } = new URL(request.url)
   const scriptIdParam = searchParams.get('scriptId')
 
@@ -98,11 +117,15 @@ export async function GET(request: Request) {
     query = query.eq('id', scriptIdParam).limit(1)
   } else {
     const cutoff = new Date(Date.now() - WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    // Kanalspecifika krav: godkänt innehåll + färdig video. Ett Instagram-fel
+    // ska inte kunna hindra YouTube, men ett icke godkänt eller ogranskat
+    // script får aldrig ut. 'pending_review' och 'draft' utesluts därmed.
     // Äldst först → en missad video åker upp före den nyaste, i kronologisk ordning.
     query = query
-      .not('published_at', 'is', null)
-      .gte('published_at', cutoff)
-      .order('published_at', { ascending: true })
+      .in('status', ['approved', 'published'])
+      .eq('video_status', 'ready')
+      .gte('generated_at', cutoff)
+      .order('generated_at', { ascending: true })
       .limit(MAX_PER_RUN)
   }
 
@@ -118,6 +141,11 @@ export async function GET(request: Request) {
 
   for (const script of scripts as ScriptRow[]) {
     if (!script.video_url) continue
+    // Idempotens: gäller även ?scriptId-vägen, som annars kringgår filtret ovan.
+    if (script.youtube_video_id) {
+      log(`Script ${script.id} har redan youtube_video_id — hoppar över`)
+      continue
+    }
     log(`Laddar upp script ${script.id} till YouTube...`)
     try {
       const url = await uploadOne(db, script)

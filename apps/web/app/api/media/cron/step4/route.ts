@@ -218,8 +218,13 @@ export async function GET(request: Request) {
 
   try {
     const creationId = await createReelContainer(videoUrl, caption)
+    // Tidsstämpeln krävs för att publish-cronen ska kunna avgöra om containern
+    // hunnit bli för gammal (Meta håller den i ~24h) innan den återanvänds.
     await db.from('media_scripts')
-      .update({ instagram_creation_id: creationId })
+      .update({
+        instagram_creation_id:    creationId,
+        instagram_creation_id_at: new Date().toISOString(),
+      })
       .eq('id', script.id)
     log(`Instagram container created: ${creationId}`)
 

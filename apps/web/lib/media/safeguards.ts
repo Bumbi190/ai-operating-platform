@@ -126,6 +126,7 @@ export async function handlePublishFailure(
   db: SupabaseClient,
   scriptId: string,
   errorMsg: string,
+  opts: { permanent?: boolean } = {},
 ): Promise<{ sentToReview: boolean; newRetryCount: number }> {
   const config = await getPlatformConfig(db)
 
@@ -138,7 +139,11 @@ export async function handlePublishFailure(
 
   const newCount = (data?.retry_count ?? 0) + 1
 
-  if (newCount >= config.max_retry_attempts) {
+  // Permanenta fel (t.ex. ogiltig token, korrupt video, obrukbar container) kan
+  // aldrig läka av sig själva. Att låta dem konsumera hela retry-budgeten
+  // blockerade färskare godkänt innehåll i FIFO-kön i upp till 1,5 dygn
+  // (incident 2026-07-19). De går därför direkt till operatörsgranskning.
+  if (opts.permanent || newCount >= config.max_retry_attempts) {
     // Cap nådd — skicka till operatörsgranskning
     await db.from('media_scripts').update({
       retry_count:           newCount,
@@ -153,8 +158,11 @@ export async function handlePublishFailure(
         type:         'publish_failure',
         scriptId,
         retryCount:   newCount,
+        permanent:    opts.permanent === true,
         error:        errorMsg,
-        message:      `Publish misslyckades ${newCount} gånger. Manuell åtgärd krävs.`,
+        message:      opts.permanent
+          ? `Publish misslyckades med ett permanent fel. Manuell åtgärd krävs.`
+          : `Publish misslyckades ${newCount} gånger. Manuell åtgärd krävs.`,
       }),
       status:        'pending',
       reviewer_notes: null,

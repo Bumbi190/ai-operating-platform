@@ -275,4 +275,3 @@ describe('OperationsSnapshotLifecycle production request lifecycle', () => {
     expect(h.requests).toHaveLength(2) // immediate request, no extra timer wait
   })
 })
-

@@ -10,19 +10,25 @@
  * men fortfarande ENDAST godkända scripts med färdig video, och aldrig laddar
  * upp något som redan har youtube_video_id.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 type Filter = [string, unknown[]]
 
 const captured = { filters: [] as Filter[] }
 const dbState = {
-  rows:    [] as Record<string, unknown>[],
-  updates: [] as Record<string, unknown>[],
-  paused:  false,
+  rows:                    [] as Record<string, unknown>[],
+  updates:                 [] as Record<string, unknown>[],
+  publishedAt:             null as string | null,
+  paused:                  false,
+  scriptExists:            true,
+  forceConditionalNoMatch: false,
+  conditionalUpdateError:  null as string | null,
+  fallbackAttempts:        0,
 }
 
 function makeChain(table: string) {
   const calls: Filter[] = []
+  let updatePayload: Record<string, unknown> | null = null
   const proxy: Record<string, unknown> = new Proxy({}, {
     get(_t, prop) {
       if (prop === 'then') {
@@ -34,7 +40,52 @@ function makeChain(table: string) {
               error: null,
             }).then(onOk)
           }
-          if (table === 'media_scripts' && !calls.some(([m]) => m === 'update')) {
+          if (table === 'media_scripts' && updatePayload) {
+            const guardedFirstPublish = 'published_at' in updatePayload
+              && calls.some(([m, a]) => m === 'is' && a[0] === 'published_at' && a[1] === null)
+
+            if (guardedFirstPublish && dbState.conditionalUpdateError) {
+              return Promise.resolve({
+                data: null,
+                error: { message: dbState.conditionalUpdateError },
+              }).then(onOk)
+            }
+
+            if (guardedFirstPublish && (dbState.forceConditionalNoMatch || dbState.publishedAt !== null)) {
+              return Promise.resolve({ data: null, error: null }).then(onOk)
+            }
+
+            if (!guardedFirstPublish) {
+              dbState.fallbackAttempts += 1
+              const expectedPublishedAt = calls.find(
+                ([m, a]) => m === 'eq' && a[0] === 'published_at',
+              )?.[1]?.[1]
+              if (!dbState.scriptExists || expectedPublishedAt !== dbState.publishedAt) {
+                return Promise.resolve({ data: null, error: null }).then(onOk)
+              }
+            }
+
+            dbState.updates.push(updatePayload)
+            if (typeof updatePayload.published_at === 'string') {
+              dbState.publishedAt = updatePayload.published_at
+            }
+
+            const scriptId = calls.find(([m, a]) => m === 'eq' && a[0] === 'id')?.[1]?.[1]
+            return Promise.resolve({
+              data: { id: scriptId },
+              error: null,
+            }).then(onOk)
+          }
+          if (table === 'media_scripts') {
+            const selectedColumns = String(
+              calls.find(([method]) => method === 'select')?.[1]?.[0] ?? '',
+            )
+            if (selectedColumns === 'published_at') {
+              return Promise.resolve({
+                data: dbState.scriptExists ? { published_at: dbState.publishedAt } : null,
+                error: null,
+              }).then(onOk)
+            }
             captured.filters = calls
             return Promise.resolve({ data: dbState.rows, error: null }).then(onOk)
           }
@@ -43,7 +94,7 @@ function makeChain(table: string) {
       }
       return (...args: unknown[]) => {
         calls.push([String(prop), args])
-        if (prop === 'update') dbState.updates.push(args[0] as Record<string, unknown>)
+        if (prop === 'update') updatePayload = args[0] as Record<string, unknown>
         return proxy
       }
     },
@@ -61,7 +112,10 @@ vi.mock('@/lib/media/youtube', () => ({
   uploadShort:         (...a: unknown[]) => uploadShort(...a),
   buildYouTubeMeta:    () => ({ title: 't', description: 'd', tags: [] }),
 }))
-vi.mock('@/lib/media/alert', () => ({ sendPipelineAlert: vi.fn().mockResolvedValue(undefined) }))
+const sendPipelineAlert = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/media/alert', () => ({
+  sendPipelineAlert: (...a: unknown[]) => sendPipelineAlert(...a),
+}))
 vi.mock('@/lib/media/run-log', () => ({ logRun: vi.fn().mockResolvedValue(null) }))
 
 import { GET } from '@/app/api/media/cron/youtube/route'
@@ -73,12 +127,24 @@ const call = (qs = '') =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-07-20T07:15:13.000Z'))
+  uploadShort.mockReset()
   captured.filters = []
   dbState.rows = []
   dbState.updates = []
+  dbState.publishedAt = null
   dbState.paused = false
+  dbState.scriptExists = true
+  dbState.forceConditionalNoMatch = false
+  dbState.conditionalUpdateError = null
+  dbState.fallbackAttempts = 0
   process.env.CRON_SECRET = 'test-secret'
   vi.spyOn(console, 'log').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('YouTube — oberoende av Instagram', () => {
@@ -114,7 +180,78 @@ describe('YouTube — oberoende av Instagram', () => {
 
     expect(uploadShort).toHaveBeenCalledTimes(1)
     expect(body.status).toBe('uploaded')
-    expect(dbState.updates.some(u => u.youtube_video_id === 'YT1')).toBe(true)
+    const write = dbState.updates.find(u => u.youtube_video_id === 'YT1')
+    expect(write).toMatchObject({
+      youtube_video_id: 'YT1',
+      youtube_url: 'https://youtu.be/YT1',
+      published_at: '2026-07-20T07:15:13.000Z',
+    })
+    expect(dbState.publishedAt).toBe('2026-07-20T07:15:13.000Z')
+  })
+
+  it('C2 — Meta-first bevarar Meta-tiden när YouTube publiceras senare', async () => {
+    dbState.publishedAt = '2026-07-20T07:04:16.192Z'
+    dbState.rows = [{
+      id: 's1', hook: 'h', cta: null, hashtags: [],
+      video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
+    }]
+    uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
+
+    await call()
+
+    expect(dbState.publishedAt).toBe('2026-07-20T07:04:16.192Z')
+    expect(dbState.updates).toContainEqual({
+      youtube_video_id: 'YT1',
+      youtube_url: 'https://youtu.be/YT1',
+    })
+    expect(dbState.updates.every(u => !('published_at' in u))).toBe(true)
+    expect(dbState.fallbackAttempts).toBe(1)
+  })
+
+  it('C3 — noll träffar och saknad script-rad ger tydligt fel utan fallback', async () => {
+    dbState.forceConditionalNoMatch = true
+    dbState.scriptExists = false
+    dbState.rows = [{
+      id: 'missing', hook: 'h', cta: null, hashtags: [],
+      video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
+    }]
+    uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
+
+    const body = await (await call()).json()
+
+    expect(body.status).toBe('youtube_failed')
+    expect(body.failed[0].error).toContain('Media-script missing saknas')
+    expect(dbState.fallbackAttempts).toBe(0)
+  })
+
+  it('C4 — Supabase-updatefel kastas och maskeras inte av fallback', async () => {
+    dbState.conditionalUpdateError = 'write denied'
+    dbState.rows = [{
+      id: 's1', hook: 'h', cta: null, hashtags: [],
+      video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
+    }]
+    uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
+
+    const body = await (await call()).json()
+
+    expect(body.status).toBe('youtube_failed')
+    expect(body.failed[0].error).toContain('write denied')
+    expect(dbState.fallbackAttempts).toBe(0)
+  })
+
+  it('C5 — noll träffar med kvarvarande null är ett oväntat tillstånd', async () => {
+    dbState.forceConditionalNoMatch = true
+    dbState.rows = [{
+      id: 's1', hook: 'h', cta: null, hashtags: [],
+      video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
+    }]
+    uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
+
+    const body = await (await call()).json()
+
+    expect(body.status).toBe('youtube_failed')
+    expect(body.failed[0].error).toContain('published_at är fortfarande null')
+    expect(dbState.fallbackAttempts).toBe(0)
   })
 
   it('D — script som redan har youtube_video_id laddas ALDRIG upp igen', async () => {
@@ -126,6 +263,7 @@ describe('YouTube — oberoende av Instagram', () => {
     await call('?scriptId=s1')   // ?scriptId kringgår kandidatfiltret
 
     expect(uploadShort).not.toHaveBeenCalled()
+    expect(dbState.updates).toHaveLength(0)
   })
 
   it('E2 — global paus stoppar YouTube (killswitchen gäller efter frikopplingen)', async () => {
@@ -157,5 +295,20 @@ describe('YouTube — oberoende av Instagram', () => {
     expect(body.status).toBe('partial')
     expect(body.uploadedCount).toBe(1)
     expect(body.failedCount).toBe(1)
+  })
+
+  it('F — YouTube-felalerten gör inga antaganden om Meta-kanalerna', async () => {
+    dbState.rows = [{
+      id: 's1', hook: 'h', cta: null, hashtags: [],
+      video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
+    }]
+    uploadShort.mockRejectedValue(new Error('quota exceeded'))
+
+    await call()
+
+    expect(sendPipelineAlert).toHaveBeenCalledTimes(1)
+    const alert = sendPipelineAlert.mock.calls[0][0] as { context: { note: string } }
+    expect(alert.context.note).toContain('övriga kanalers status verifierades inte')
+    expect(alert.context.note).not.toMatch(/IG|Facebook/)
   })
 })

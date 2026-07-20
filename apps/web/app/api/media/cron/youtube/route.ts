@@ -34,6 +34,7 @@ import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { checkAutomationPaused } from '@/lib/media/safeguards'
 import { logRun } from '@/lib/media/run-log'
+import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -69,10 +70,14 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
   })
 
   const { videoId, url } = await uploadShort({ videoUrl: script.video_url!, title, description, tags })
+  const channelPublishedAt = new Date().toISOString()
 
-  await db.from('media_scripts')
-    .update({ youtube_video_id: videoId, youtube_url: url })
-    .eq('id', script.id)
+  await persistChannelSuccess(
+    db,
+    script.id,
+    { youtube_video_id: videoId, youtube_url: url },
+    channelPublishedAt,
+  )
 
   await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
   return url
@@ -161,7 +166,10 @@ export async function GET(request: Request) {
         step:      'youtube_upload',
         error:     msg,
         severity:  'warning',
-        context:   { scriptId: script.id, note: 'IG/FB publicerades OK — endast YouTube failade' },
+        context:   {
+          scriptId: script.id,
+          note: 'YouTube-uppladdningen misslyckades — övriga kanalers status verifierades inte av denna körning',
+        },
       })
     }
   }

@@ -27,6 +27,7 @@ const dbState = {
   approvals: [] as Record<string, unknown>[],
   retryCount: 0,
   maxRetries: 3,
+  persistedPublishedAt: null as string | null,
 }
 
 function resolveQuery(s: ChainState): { data: unknown; error: null } {
@@ -52,10 +53,35 @@ function resolveQuery(s: ChainState): { data: unknown; error: null } {
       // på id och ska inte förväxlas med scriptets eget tillstånd.
       const targetsOneScript = s.calls.some(([m, a]) => m === 'eq' && a[0] === 'id')
       if (targetsOneScript) {
+        const guardedFirstPublish = 'published_at' in payload
+          && s.calls.some(([m, a]) => m === 'is' && a[0] === 'published_at' && a[1] === null)
+
+        // Postgres re-evaluates the conditional UPDATE after acquiring the row
+        // lock. A pre-existing timestamp therefore makes the guarded write a
+        // no-op; the helper follows with an id/url-only fallback update.
+        if (guardedFirstPublish && dbState.persistedPublishedAt !== null) {
+          return { data: null, error: null }
+        }
+
         dbState.updates.push(payload)
+        if (typeof payload.published_at === 'string') {
+          dbState.persistedPublishedAt = payload.published_at
+        }
         if (typeof payload.retry_count === 'number') dbState.retryCount = payload.retry_count
+        if (guardedFirstPublish) return { data: { id: dbState.script?.id }, error: null }
+        const verifiedRaceFallback = s.calls.some(
+          ([m, a]) => m === 'eq' && a[0] === 'published_at' && a[1] === dbState.persistedPublishedAt,
+        )
+        if (verifiedRaceFallback) return { data: { id: dbState.script?.id }, error: null }
       }
       return { data: [], error: null }
+    }
+    // Race-verifieringen efter en villkorad first-publish som inte matchade.
+    if (cols.trim() === 'published_at') {
+      return {
+        data: dbState.script ? { published_at: dbState.persistedPublishedAt } : null,
+        error: null,
+      }
     }
     // Rendering-pollen
     if (cols.includes('render_id')) return { data: [], error: null }
@@ -188,6 +214,7 @@ beforeEach(() => {
   dbState.approvals = []
   dbState.retryCount = 0
   dbState.maxRetries = 3
+  dbState.persistedPublishedAt = null
 
   process.env.CRON_SECRET                = 'test-secret'
   process.env.FACEBOOK_PAGE_ID           = 'PAGE_1'
@@ -441,6 +468,7 @@ describe('idempotens per kanal', () => {
   })
 
   it('L2 — published_at skrivs inte om vid en senare körning', async () => {
+    dbState.persistedPublishedAt = '2026-07-19T08:00:00.000Z'
     dbState.script = script({
       instagram_media_id: 'IG_DONE',
       published_at:       '2026-07-19T08:00:00.000Z',
@@ -449,6 +477,23 @@ describe('idempotens per kanal', () => {
 
     await call()
 
+    expect(dbState.updates.every(u => !('published_at' in u))).toBe(true)
+  })
+
+  it('L3 — YouTube-first behåller sin tid när en samtidig Meta-snapshot är gammal', async () => {
+    const youtubePublishedAt = '2026-07-20T07:15:13.000Z'
+    dbState.persistedPublishedAt = youtubePublishedAt
+    // Routens rad kan ha lästs före YouTube-skrivningen och är därför stale.
+    dbState.script = script({ published_at: null })
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockResolvedValue({ mediaId: 'IG1', permalink: 'https://ig/p/1' })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    await call()
+
+    expect(dbState.persistedPublishedAt).toBe(youtubePublishedAt)
+    expect(dbState.updates.some(u => u.instagram_media_id === 'IG1')).toBe(true)
+    expect(dbState.updates.some(u => u.facebook_post_id === 'FB1')).toBe(true)
     expect(dbState.updates.every(u => !('published_at' in u))).toBe(true)
   })
 })

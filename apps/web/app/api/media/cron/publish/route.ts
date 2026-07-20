@@ -60,6 +60,7 @@ import { toJson } from '@/lib/supabase/json'
 import { withRetry } from '@/lib/media/retry'
 import { MetaApiError, errorSummary, isPermanentError, redactSecrets } from '@/lib/media/meta-errors'
 import { decideContainerAction, containerAgeHours } from '@/lib/media/container-policy'
+import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -273,28 +274,28 @@ export async function GET(request: Request) {
 
   // ══ KANAL 1: Instagram ═══════════════════════════════════════════════════════
   const instagram = await publishInstagram()
-  channelState.instagram = { ...instagram, at: new Date().toISOString() }
+  const instagramCompletedAt = new Date().toISOString()
+  channelState.instagram = { ...instagram, at: instagramCompletedAt }
 
   if (instagram.ok && instagram.id && !dryRun) {
     // Skriv direkt — en krasch efter den här punkten får aldrig leda till att
     // Instagram publiceras igen vid nästa körning.
-    await db.from('media_scripts').update({
+    await persistChannelSuccess(db, script.id, {
       instagram_media_id: instagram.id,
       instagram_url:      instagram.url,
-      ...(script.published_at ? {} : { published_at: new Date().toISOString() }),
-    }).eq('id', script.id)
+    }, instagramCompletedAt)
   }
 
   // ══ KANAL 2: Facebook (körs OAVSETT hur Instagram gick) ══════════════════════
   const facebook = await publishFacebook()
-  channelState.facebook = { ...facebook, at: new Date().toISOString() }
+  const facebookCompletedAt = new Date().toISOString()
+  channelState.facebook = { ...facebook, at: facebookCompletedAt }
 
   if (facebook.ok && facebook.id && !dryRun) {
-    await db.from('media_scripts').update({
+    await persistChannelSuccess(db, script.id, {
       facebook_post_id: facebook.id,
       facebook_url:     facebook.url,
-      ...(script.published_at || instagram.ok ? {} : { published_at: new Date().toISOString() }),
-    }).eq('id', script.id)
+    }, facebookCompletedAt)
   }
 
   // ── Sammanvägning ────────────────────────────────────────────────────────────

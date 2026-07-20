@@ -1670,12 +1670,14 @@ export type Database = {
           id: string
           images: Json | null
           instagram_creation_id: string | null
+          instagram_creation_id_at: string | null
           instagram_media_id: string | null
           instagram_url: string | null
           news_item_id: string | null
           pipeline_failed_reason: string | null
           pipeline_next_retry_at: string | null
           project_id: string
+          publish_channel_state: Json
           publish_failed_reason: string | null
           published_at: string | null
           quality_score: Json | null
@@ -1720,12 +1722,14 @@ export type Database = {
           id?: string
           images?: Json | null
           instagram_creation_id?: string | null
+          instagram_creation_id_at?: string | null
           instagram_media_id?: string | null
           instagram_url?: string | null
           news_item_id?: string | null
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
           project_id: string
+          publish_channel_state?: Json
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null
@@ -1770,12 +1774,14 @@ export type Database = {
           id?: string
           images?: Json | null
           instagram_creation_id?: string | null
+          instagram_creation_id_at?: string | null
           instagram_media_id?: string | null
           instagram_url?: string | null
           news_item_id?: string | null
           pipeline_failed_reason?: string | null
           pipeline_next_retry_at?: string | null
           project_id?: string
+          publish_channel_state?: Json
           publish_failed_reason?: string | null
           published_at?: string | null
           quality_score?: Json | null

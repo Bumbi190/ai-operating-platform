@@ -24,6 +24,16 @@ function renderGraph(mode: 'system' | 'operations', selectedId: string | null = 
   }))
 }
 
+function renderNode(node: IntelligenceGraphNode): string {
+  return renderToStaticMarkup(createElement(GraphCanvas, {
+    nodes: [node],
+    edges: [],
+    selectedId: node.id,
+    onSelect: () => {},
+    mode: 'operations',
+  }))
+}
+
 function openingTagsByRole(markup: string, role: string): string[] {
   return markup.match(new RegExp(`<[^>]+role="${role}"[^>]*>`, 'g')) ?? []
 }
@@ -64,6 +74,56 @@ describe('GraphCanvas rendered accessibility semantics', () => {
 
     expect(markup).toContain('aria-label="run: Failed run (failed)"')
     expect(markup).not.toContain('aria-label="run: Quiet run (done)"')
+  })
+
+  it('describes workflow status as configuration truth in rendered tooltips', () => {
+    const active = renderNode({
+      id: 'workflow:active', kind: 'workflow', label: 'Active workflow', source: 'runtime', status: 'active', metadata: {},
+    })
+    const inactive = renderNode({
+      id: 'workflow:inactive', kind: 'workflow', label: 'Inactive workflow', source: 'runtime', status: 'inactive', metadata: {},
+    })
+    const unknown = renderNode({
+      id: 'workflow:unknown', kind: 'workflow', label: 'Unknown workflow', source: 'runtime', status: 'paused', metadata: {},
+    })
+
+    expect(active).toContain('<title>Active workflow · workflow · konfiguration aktiverad</title>')
+    expect(inactive).toContain('<title>Inactive workflow · workflow · konfiguration inaktiverad</title>')
+    expect(unknown).toContain('<title>Unknown workflow · workflow · konfiguration okänd</title>')
+    expect(active).not.toContain('workflow · active')
+    expect(inactive).not.toContain('workflow · inactive')
+    expect(unknown).not.toContain('workflow · paused')
+  })
+
+  it('describes a workflow with missing status as unknown configuration truth', () => {
+    const missingStatus = renderNode({
+      id: 'workflow:missing-status', kind: 'workflow', label: 'Missing-status workflow', source: 'runtime', metadata: {},
+    })
+
+    expect(missingStatus).toContain('<title>Missing-status workflow · workflow · konfiguration okänd</title>')
+    expect(missingStatus).not.toContain('workflow · active')
+    expect(missingStatus).not.toContain('workflow · inactive')
+    expect(missingStatus).not.toContain('workflow · running')
+  })
+
+  it('keeps non-workflow rendered tooltip wording unchanged', () => {
+    const run = renderNode({
+      id: 'run:current', kind: 'run', label: 'Current run', source: 'runtime', status: 'running', metadata: {},
+    })
+    const agent = renderNode({
+      id: 'agent:configured', kind: 'agent', label: 'Configured agent', source: 'runtime', status: 'active', metadata: {},
+    })
+    const project = renderNode({
+      id: 'project:alpha', kind: 'project', label: 'Project Alpha', source: 'runtime', metadata: {},
+    })
+    const approval = renderNode({
+      id: 'approval:pending', kind: 'approval', label: 'Pending approval', source: 'runtime', status: 'pending', metadata: {},
+    })
+
+    expect(run).toContain('<title>Current run · run · running</title>')
+    expect(agent).toContain('<title>Configured agent · agent · active</title>')
+    expect(project).toContain('<title>Project Alpha · project</title>')
+    expect(approval).toContain('<title>Pending approval · approval · pending</title>')
   })
 
   it('keeps System Map and Operations Snapshot graph names distinct', () => {

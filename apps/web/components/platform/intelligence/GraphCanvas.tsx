@@ -83,6 +83,20 @@ export interface GraphCameraCommand {
 const WORLD_W = 1200
 const WORLD_H = 800
 
+function nodeTooltipText(node: IntelligenceGraphNode): string {
+  if (node.kind !== 'workflow') {
+    return `${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`
+  }
+
+  const configurationStatus = node.status === 'active'
+    ? 'konfiguration aktiverad'
+    : node.status === 'inactive'
+      ? 'konfiguration inaktiverad'
+      : 'konfiguration okänd'
+
+  return `${node.label} · workflow · ${configurationStatus}`
+}
+
 export function GraphCanvas({
   nodes,
   edges,
@@ -598,7 +612,7 @@ export function GraphCanvas({
               onPointerEnter={() => setHoverId(node.id)}
               onPointerLeave={() => setHoverId(current => current === node.id ? null : current)}
             >
-              <title>{`${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`}</title>
+              <title>{nodeTooltipText(node)}</title>
               <circle r={Math.max(22, position.r + 8)} fill="transparent" pointerEvents="all" />
               {isFocused && <FocusRings radius={position.r} />}
               {isSelected && (

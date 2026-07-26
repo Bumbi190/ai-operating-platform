@@ -1,0 +1,107 @@
+{
+ "note": "Non-canonical navigational grouping added only in the Professional Edition.",
+ "parts": [
+  {
+   "part": "I",
+   "num": 1,
+   "title": "FOUNDATIONS & ROLES",
+   "chapters": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "part": "II",
+   "num": 2,
+   "title": "PORTFOLIO, PROJECTS & ISOLATION",
+   "chapters": [
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "part": "III",
+   "num": 3,
+   "title": "EXECUTIVE CADENCE & FOUNDER CAPACITY",
+   "chapters": [
+    7,
+    8,
+    9
+   ]
+  },
+  {
+   "part": "IV",
+   "num": 4,
+   "title": "DECISIONS, PLANNING & PRIORITIZATION",
+   "chapters": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ]
+  },
+  {
+   "part": "V",
+   "num": 5,
+   "title": "GOVERNANCE, DAMAGE & AUTONOMY",
+   "chapters": [
+    16,
+    17,
+    18,
+    19
+   ]
+  },
+  {
+   "part": "VI",
+   "num": 6,
+   "title": "MISSIONS, DELEGATION & MEMORY",
+   "chapters": [
+    20,
+    21,
+    22
+   ]
+  },
+  {
+   "part": "VII",
+   "num": 7,
+   "title": "KNOWLEDGE, AI & PERFORMANCE",
+   "chapters": [
+    23,
+    24,
+    25
+   ]
+  },
+  {
+   "part": "VIII",
+   "num": 8,
+   "title": "GRAPHS, APPROVALS & TRANSPARENCY",
+   "chapters": [
+    26,
+    27
+   ]
+  },
+  {
+   "part": "IX",
+   "num": 9,
+   "title": "CRISIS, VIOLATIONS & CONTROL",
+   "chapters": [
+    28,
+    29
+   ]
+  },
+  {
+   "part": "X",
+   "num": 10,
+   "title": "AUTONOMY PROVING GROUND & FUTURE",
+   "chapters": [
+    30,
+    31,
+    32
+   ]
+  }
+ ]
+}

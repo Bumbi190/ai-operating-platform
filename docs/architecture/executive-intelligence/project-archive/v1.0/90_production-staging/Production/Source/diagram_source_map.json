@@ -1,0 +1,233 @@
+{
+ "note": "Diagrams are additive presentation layers; they never replace canonical text. Labels are derived from canonical sections; no new doctrine is introduced.",
+ "diagrams": [
+  {
+   "id": "D01",
+   "title": "Omnira Intelligence Position Model",
+   "chapters": [
+    1,
+    2
+   ],
+   "canonical_sections": [
+    "Ch 2 §§2.2-2.3"
+   ],
+   "anchor_chapter": 2,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D02",
+   "title": "Executive · Manager · Workforce",
+   "chapters": [
+    3
+   ],
+   "canonical_sections": [
+    "Ch 3 §3.2"
+   ],
+   "anchor_chapter": 3,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D03",
+   "title": "Portfolio Executive vs Project Executive",
+   "chapters": [
+    4,
+    5
+   ],
+   "canonical_sections": [
+    "Ch 4",
+    "Ch 5"
+   ],
+   "anchor_chapter": 5,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D04",
+   "title": "Project Isolation & Executive Boundaries",
+   "chapters": [
+    6
+   ],
+   "canonical_sections": [
+    "Ch 6"
+   ],
+   "anchor_chapter": 6,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D05",
+   "title": "Leadership Loop / Executive Cadence",
+   "chapters": [
+    7
+   ],
+   "canonical_sections": [
+    "Ch 7"
+   ],
+   "anchor_chapter": 7,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D06",
+   "title": "Decision Lifecycle",
+   "chapters": [
+    10
+   ],
+   "canonical_sections": [
+    "Ch 10"
+   ],
+   "anchor_chapter": 10,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D07",
+   "title": "Decision Ledger",
+   "chapters": [
+    11
+   ],
+   "canonical_sections": [
+    "Ch 11"
+   ],
+   "anchor_chapter": 11,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D08",
+   "title": "Prioritization / Opportunity Cost Relationship",
+   "chapters": [
+    14,
+    15
+   ],
+   "canonical_sections": [
+    "Ch 14",
+    "Ch 15"
+   ],
+   "anchor_chapter": 15,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D09",
+   "title": "Governance & Authority Gradient",
+   "chapters": [
+    16
+   ],
+   "canonical_sections": [
+    "Ch 16 §16.1"
+   ],
+   "anchor_chapter": 16,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D10",
+   "title": "Damage Severity & Boundary States",
+   "chapters": [
+    17
+   ],
+   "canonical_sections": [
+    "Ch 17 §§17.100-17.119"
+   ],
+   "anchor_chapter": 17,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D11",
+   "title": "Autonomy Licensing Model",
+   "chapters": [
+    18
+   ],
+   "canonical_sections": [
+    "Ch 18"
+   ],
+   "anchor_chapter": 18,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D12",
+   "title": "Trust Score & Autonomy Progression",
+   "chapters": [
+    19
+   ],
+   "canonical_sections": [
+    "Ch 19"
+   ],
+   "anchor_chapter": 19,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D13",
+   "title": "Executive Mission Delegation Flow",
+   "chapters": [
+    20,
+    21
+   ],
+   "canonical_sections": [
+    "Ch 20",
+    "Ch 21"
+   ],
+   "anchor_chapter": 21,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D14",
+   "title": "Memory · Knowledge · AI · Performance Integration",
+   "chapters": [
+    22,
+    23,
+    24,
+    25
+   ],
+   "canonical_sections": [
+    "Ch 22-25"
+   ],
+   "anchor_chapter": 25,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D15",
+   "title": "Operating Graph vs Intelligence Graph",
+   "chapters": [
+    26
+   ],
+   "canonical_sections": [
+    "Ch 26"
+   ],
+   "anchor_chapter": 26,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D16",
+   "title": "Approval Flow",
+   "chapters": [
+    27
+   ],
+   "canonical_sections": [
+    "Ch 27"
+   ],
+   "anchor_chapter": 27,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D17",
+   "title": "Crisis Mode & Emergency Brake",
+   "chapters": [
+    28
+   ],
+   "canonical_sections": [
+    "Ch 28"
+   ],
+   "anchor_chapter": 28,
+   "placement": "full-page (dark for system models) or large half-page"
+  },
+  {
+   "id": "D18",
+   "title": "Stage 1 vs Future Target Architecture",
+   "chapters": [
+    30,
+    31,
+    32
+   ],
+   "canonical_sections": [
+    "Front matter — Implementation Scope"
+   ],
+   "anchor_chapter": 32,
+   "placement": "full-page (dark for system models) or large half-page"
+  }
+ ]
+}

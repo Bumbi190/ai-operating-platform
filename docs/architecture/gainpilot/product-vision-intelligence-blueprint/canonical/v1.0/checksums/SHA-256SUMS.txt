@@ -1,0 +1,47 @@
+620865903ee755f4a18341e9caf22c7a457f1972a079e076ef94cb2ba73e6f4f  .gitignore
+9cd07502f0d50cc09bba15c64fad407eea7dd455427c4c65a34832654172bdca  README.md
+a0ab8bae584c55a5a38f94bb27c7abd46a357002691b3e495191425f3e452da9  archive/STATUS_ARCHIVED_2026-07-24.md
+1b6d67ca8b89a63a33c701fab1b47e2654f13a67b6a96c5f1955615574cc9446  canonical/v1.0/chapters/Kapitel 01 — GainPilots uppdrag.md
+4ba03fdb44ebe8bfe9a130bfaf5fe2d09771022d3022195ae95833ba480cb24d  canonical/v1.0/chapters/Kapitel 02 — Problemet GainPilot löser.md
+18ba2117eca71b2e8eddd9450fe9a10bc0ce316cdc1725c1d15ef6b741708c18  canonical/v1.0/chapters/Kapitel 03 — Arnold och den personliga coachupplevelsen.md
+35407d817e6670e02f0b186af8a2313f72671122b89f24b7bcfacf0425dbadbe  canonical/v1.0/chapters/Kapitel 04 — Målgrupper och användarbehov.md
+ac24a2817b6fe35282452bd2d9999fbe8bd0555a665e57a2ce5cf5b761ce589b  canonical/v1.0/chapters/Kapitel 05 — GainPilots produktprinciper och anti-principer.md
+0dc793ab3a16b53ce955c5a9fc5aed64135267ff1db1b2faf3484987498be4e0  canonical/v1.0/chapters/Kapitel 06 — Onboarding och den kanoniska användarmodellen.md
+c79e75f205bb27f95fd4f86646ebe0ceb79e677978466540de1707dfc07e87f1  canonical/v1.0/chapters/Kapitel 07 — Träningsintelligens.md
+8b0302c17319e83f1936a526b053b929196f9bffaab7cbd3565ea4c5a6beb48a  canonical/v1.0/chapters/Kapitel 08 — Kostintelligens.md
+532d9d6d4536ec0d02667adb37dc01ca6eeb3d5e724a72bcc873d22afe678378  canonical/v1.0/chapters/Kapitel 09 — Progression, återhämtning och anpassning.md
+5418f45f6d72cb00839e24e5ba25517a68ea1a10e8b015b3629007211dab2d28  canonical/v1.0/chapters/Kapitel 10 — Övningsgrafen och substitutionsmotorn.md
+0a76dcd27cf4e053a0df2313a99743a12272b657058f5b50e9e6b8c3640fa68a  canonical/v1.0/chapters/Kapitel 11 — Programimport, externa källor och canonical normalisering.md
+9e6d581066f3b4e77b4b508f60e57a86b3bb95879be0782285664bc1cb0c32dd  canonical/v1.0/chapters/Kapitel 12 — Minne, personalisering och kontinuerligt lärande.md
+67e7aa7f87be1438e0bfc2e43288817af909451c31db7f9377ab04ee4e956ab9  canonical/v1.0/chapters/Kapitel 13 — Program, kalender och långsiktig planering.md
+aa34041d701191eb6e53c98599bf66e29ecf9e4ebf22268914f46e0f64cca288  canonical/v1.0/chapters/Kapitel 14 — Träningspasset och den aktiva coachupplevelsen.md
+0ff20271643a28e7e8476bff2313363102094fa1ba407f4a84fd1a81d01f0df4  canonical/v1.0/chapters/Kapitel 15 — Animerade övningsdemonstrationer och visuellt tekniskt stöd.md
+9d5567e6ecd655717c5ad50f8d531a17468feec84ed9675e1a204092ae1bb71f  canonical/v1.0/chapters/Kapitel 16 — Kostplanering, recept och intelligenta måltidsbyten.md
+731bfd52fd08537cd74700f2a8f757aebcf10161fcd401ca6aa655e3c8b1f9d6  canonical/v1.0/chapters/Kapitel 17 — Progression, statistik och återkoppling.md
+fe79435d16612e3312dd55e8173dcb0728f26de1689c19dcfdb825770145797c  canonical/v1.0/chapters/Kapitel 18 — Motivation, följsamhet och coachkommunikation.md
+f26038171fbbe9fcea04eca12a075aa8feb0f25b43294a1c78ee02569ab3e75c  canonical/v1.0/chapters/Kapitel 19 — CrossFit, calisthenics och framtida träningsdomäner.md
+ae4c36ad79986477c81e941a93ec629c595c6318f26927e13c4a0e71e60be91a  canonical/v1.0/chapters/Kapitel 20 — GainPilot som Omnira-domän.md
+bdbee244786db8439ca0a8806aabb027e011b36d80db2251eb5516ee044f7c90  canonical/v1.0/chapters/Kapitel 21 — Atlas och Arnold.md
+94e0dd6c5ab44010d6363f76ed764ccd910427c927a7781ea4f8571d2b65960b  canonical/v1.0/chapters/Kapitel 22 — Hermes och isolerade minnesdomäner.md
+bf37fd8765e9af6ea60a3e451a5d10d4f96f016d9730719f643d62ddfed7595b  canonical/v1.0/chapters/Kapitel 23 — Analys, signaler och executive intelligence.md
+f1e3737567150c8bf77034ceb8b4eb6976d798e69ff3691e4f645a2ba02a57f9  canonical/v1.0/chapters/Kapitel 24 — Agentdriven produktutveckling.md
+d69d1e57262ff50249193e74938b78ef281bb4b5e3b762d28196bc2d1a438850  canonical/v1.0/chapters/Kapitel 25 — Branch-, test-, PR- och mergegovernance.md
+805fa0a12ab4c37647e07e3247eed99336f95c4aec9034d7dc83c3c75d07a025  canonical/v1.0/chapters/Kapitel 26 — Behörigheter, autonomi och godkännanden.md
+ba6b8d74c2b81960813067610cd61a111b07f2df7ac67a43b215f95e70722a74  canonical/v1.0/chapters/Kapitel 27 — Drift, observability, incidenter och återhämtning.md
+2328157d7572d027c80b38f3c0812a4d7c96a63e5829ae127aebc209f1f3d085  canonical/v1.0/chapters/Kapitel 28 — Krisläge, nödbroms och verksamhetskontinuitet.md
+fff9291be578d35daafef087ef85e31aa333d1831cbe69f3ec4aff1fe033f96e  canonical/v1.0/chapters/Kapitel 29 — Kommersiella modeller och skalbarhet.md
+ab9c0e087b22895390890117dbd11a5bd93c41f6e09b98295af4a96a81aaf02c  canonical/v1.0/chapters/Kapitel 30 — Juridik, etik, ansvar och regulatorisk beredskap.md
+9645b898de74059b4f5907ea15b54548f182d402122d2bebefb6412797430883  canonical/v1.0/chapters/Kapitel 31 — Roadmap, genomförande och stegvis realisering.md
+5e9ed338ce7eb7b8600dc7c441878a39f8d7ccfc1c7ed24ee4890c2478e938c4  canonical/v1.0/chapters/Kapitel 32 — Canonical sammanfattning, målbild och slutliga arkitekturprinciper.md
+3b5e2468cc87cd357299d6d802008171d780dd52fec065dac719dfa4919d46f6  canonical/v1.0/contracts/contract-registry.csv
+2e394fd575d0b79172ae3bd15ac96d6f848ad71d6b8cff6da5f7cea7f0ae01fd  canonical/v1.0/contracts/contract-registry.json
+3707d66dccfb57491aa91e9069a79555805787f1d85bd0f7697d6143cf02705f  canonical/v1.0/contracts/contract-registry.md
+f6c0456f145c2a995a6aa065f23e415edad87d618771a48b0713467f90b06de9  canonical/v1.0/editorial/CANONICALIZATION_NOTES.md
+ca9c494f285fa2ce7e665c7dd2b2254322b6fb26b4ec10699fa27b673aac7d35  canonical/v1.0/editorial/EDITORIAL_CHANGELOG.md
+40a4abb103498901a149a45acb0e215d3c86834d5a44ac374a15a5f23a5a51ae  canonical/v1.0/full-book/GainPilot — Product Vision & Intelligence Blueprint — Canonical Review Candidate v1.0.docx
+dbbf6ad3c3925e2c061a0754d12a3efa0544957dbbcbc82fd11558659b33c911  canonical/v1.0/full-book/GainPilot — Product Vision & Intelligence Blueprint — Canonical Review Candidate v1.0.md
+f2f9e6dcfee020ac479fdee423054771ea479885bb212c4ce551cb8616dcc258  canonical/v1.0/full-book/GainPilot — Product Vision & Intelligence Blueprint — Canonical Review Candidate v1.0.pdf
+722af18efe76fef0931bdcfd402922b81f0755f72987ec164109b6137de7c66d  canonical/v1.0/proofs/FULL_VS_CHAPTERS_DIFF_REPORT.md
+0f091372c84f99c8b76d96e86e7c054f0f2b17a7769872d8447001e67c7d4237  canonical/v1.0/validation/LAYOUT_GATE_REPORT.md
+e9bdc06429c886ec7e27992835b2595388b5cc7510ede80920629054d296006c  canonical/v1.0/validation/VALIDATION_REPORT.md
+02124489559c6eb7e7fef80b7063db41e42b2e536662f7893617e6cab5c082bb  sources/SOURCE_PROVENANCE.md

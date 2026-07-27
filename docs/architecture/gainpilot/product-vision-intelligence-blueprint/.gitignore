@@ -1,0 +1,4 @@
+# Icke-canonical artefakter — får ej committas
+*.tmp
+.~lock.*
+.DS_Store

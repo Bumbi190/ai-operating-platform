@@ -1,0 +1,56 @@
+620865903ee755f4a18341e9caf22c7a457f1972a079e076ef94cb2ba73e6f4f  .gitignore
+97d28ad3f6c6e422823484ebbfc0310c1d5676620dccf1f269f2c09de4b353d5  README.md
+e5ebe9fa9d793a7dbd39b62708cee0a6bd12c1ca01ef5584b7386a6489000ce7  atlas-knowledge/v1.0/README.md
+8eb69772be89f3408f7f1b79153ae0a191a3818857820d9eae91a57ef956e2d7  atlas-knowledge/v1.0/chapters/ch01.md
+8568daa433f6754296afe4553b8411fea21a3a499fe205ac6bcc4e1b757782e5  atlas-knowledge/v1.0/chapters/ch02.md
+1d8ae067efc79911081ea2e13dca1d0f3d580574e116ae333ead180f7a961b59  atlas-knowledge/v1.0/chapters/ch03.md
+0630cb8ea9941e14c464b3961ceb75bede88becc19dd897e7407220cd1c6e665  atlas-knowledge/v1.0/chapters/ch04.md
+a22c920edcba5eb21c30c2209433b894fbc4423f8535de8decb352f1833306f5  atlas-knowledge/v1.0/chapters/ch05.md
+e56c90058a4a844cc02d4d97cb2b00ebcd01ed595d1d8f4b8f3ac6d1495e882a  atlas-knowledge/v1.0/chapters/ch06.md
+50597524c50112e28498165a09b87895166209c6894bf8fd44d659e6c4b39853  atlas-knowledge/v1.0/chapters/ch07.md
+a612ceca045998bfb81797aa78a17bb09a393c3e15daecbe33e251e5e84c70e3  atlas-knowledge/v1.0/chapters/ch08.md
+6b86101d2965746285ae8472924cd78bf570e1980a4476ffd76381d23001ef23  atlas-knowledge/v1.0/chapters/ch09.md
+3508660708f61d67a9310d8ad574f087483d09f6f39c532f3781fdb8c5308762  atlas-knowledge/v1.0/chapters/ch10.md
+17d4756b4582da25979a51a3c9efeb2ab7736894f7a710dcc95a7855550aeac7  atlas-knowledge/v1.0/chapters/ch11.md
+9042bdf07b136f85ae35f70911fb377c0b40f4f49ac098755482eb9face1fb06  atlas-knowledge/v1.0/chapters/ch12.md
+b28f8a9c2d0745b9198dfa74914658bb502a714be747ae5db1cf332cfe57b3d1  atlas-knowledge/v1.0/chapters/ch13.md
+eb5bbb3771832257a06899db3b71a805ae2b3dd98c088fbb79dbe6ea09651ccd  atlas-knowledge/v1.0/chapters/ch14.md
+f88790d7d87381a003c4f85995b4e9c26121db9d95cedc0a0a7c14644e6ef55c  atlas-knowledge/v1.0/chapters/ch15.md
+c940ea1dac620f26941ac60aab865e2aeeccf58284f80b94e84519f487215413  atlas-knowledge/v1.0/chapters/ch16.md
+39d5fcf2e6178615cd06f8d8b2d3ba7c52c0551fe019bb81cd909f988f0fe531  atlas-knowledge/v1.0/chapters/ch17.md
+0324bc290c884311b1847d094d337ab4b096d10e32373a66ca82ae16f844383f  atlas-knowledge/v1.0/chapters/ch18.md
+302123362aab9bd9e2694ef63d7cf0e14c1e553c355241530f88ad7396db187b  atlas-knowledge/v1.0/chapters/ch19.md
+b1911e53f378aa14c7d1f4822f4803d2cb6bc515d30a2a61d90a7dc1f40715ca  atlas-knowledge/v1.0/chapters/ch20.md
+e8319663c1f1914a909eca7a10dafe88e560fce38b3a035561f2874622faea33  atlas-knowledge/v1.0/chapters/ch21.md
+62881e8b02c842012b314750925836a885d293a53a85bc4ecf1ba4a7876b3ee7  atlas-knowledge/v1.0/chapters/ch22.md
+dfa53304f2c7306b3b404124eb48fd52a28ad144762a8ba32d3f28d439575f18  atlas-knowledge/v1.0/chapters/ch23.md
+efad5ae7a672b982ed3091f2edbfae3807fe0e689503408b2e02ac98ffab78ad  atlas-knowledge/v1.0/chapters/ch24.md
+9a1d70df6f5041dbd277b272ffd54dd7430866408fd655f0d7cdb109424e0b24  atlas-knowledge/v1.0/chapters/ch25.md
+66343923007daebdec40b6c723bc2f6cb09c0be9e8e5f6332f9eb2829b9b3dfc  atlas-knowledge/v1.0/chapters/ch26.md
+fc2089d126fe6e7b0b55c7acd6688536a71044b50e79dd5b09385558b6134d19  atlas-knowledge/v1.0/chapters/ch27.md
+19533fc32b2d97991eab466c2c65060f0e7c759cbf67be989b005aeb17feba9e  atlas-knowledge/v1.0/chapters/ch28.md
+bc6fb93ad9b38df4d0f581a6cf9f226eab1e1d5a8858789bd8558394d3d3b612  atlas-knowledge/v1.0/chapters/ch29.md
+c02e83cfc6950149aca1b21c9ebe353adae627b20647ac09c407a1a175b3f7c4  atlas-knowledge/v1.0/chapters/ch30.md
+a4a3a5ac4ee028e59fe4c542e5af8a40d04adfd7bc5a5445d7f12f09d435a315  atlas-knowledge/v1.0/chapters/ch31.md
+61cb37466ca90b514ddbc8031a0d723cace74840f5cc57c0567fea38800569f4  atlas-knowledge/v1.0/chapters/ch32.md
+0e445a359dba9bf9f7c0ced8c02a4409266daeecc59c62de7f878b4db9de2275  atlas-knowledge/v1.0/front-matter/00-canonical-decision-register.md
+ed9786221c78a0950f6ec7cedf83ecfe13f6d1f707b54d885d2fea42c97d818f  atlas-knowledge/v1.0/front-matter/01-canonical-book-architecture.md
+46a9811352f67d45603fccae9bb37f4cbb24da726daeac4e27e1f804a4a40779  atlas-knowledge/v1.0/index/chapters.json
+4325b3897c326b5e4ba5ca290b83932161b63ae1b012f06c3d30f8d7c903e212  atlas-knowledge/v1.0/index/parts.json
+b399dbdf326d786b45b4d04520a68c9167341410fd3d2e3cbbbae07af57bc46d  atlas-knowledge/v1.0/index/requirements.jsonl
+64054c7688d401214988a8a9c496cf6bb0941c0e40d43082f39dbf91a6b73bca  canonical/v1.0/contracts/Omnira — Mobile Intelligence — Requirement Register v1.0 (APPROVED).xlsx
+6998bf8937b5438a28ce631268d12dfb1cb299059ec21f5afb3fdd1327e09dc9  canonical/v1.0/contracts/contract-registry.csv
+6fb7f4a27eda15c4c91e8b0f529bb0d4f2bfa4e55b2c58ea2e1ad9891a24e06c  canonical/v1.0/contracts/contract-registry.json
+73003a9a4fdf4ec4847491b89478802bc78eed3a4523b3d796bcc8570fce0bbc  canonical/v1.0/contracts/contract-registry.md
+7b824674efdada85d9b9589596657df66f2adff1800804a0d62b737cad2ab88d  canonical/v1.0/editorial/Change Log v1.0 (APPROVED).md
+882633ef70516fced4677d1a5b6ccb4e98041f5f371798ac9c57b22fcc1a68f4  canonical/v1.0/editorial/Correction Proposal — Normative Terminology v1.0.md
+bd2bf8936cd9bcf82e643b71bde6da0af22f5112d0cf42c60b16f7880efb7019  canonical/v1.0/editorial/Editorial Review Report v1.0 (APPROVED).docx
+db9185a6396254476ae6acc445dd4427eab5132047dd904275636cc27ced0aac  canonical/v1.0/full-book/Omnira — Mobile Intelligence & Device Control — Canonical Edition v1.0 (APPROVED).docx
+f80ec5fa8a59dfc44d9ea3c22a0e668824b4ebbdb5f522a27c8a0a8194484a5b  canonical/v1.0/full-book/Omnira — Mobile Intelligence & Device Control — Canonical Edition v1.0 (APPROVED).pdf
+2a39ad1eae39a63d0c2f5251daa53d4ee29d75ae4c51daf76fba3c839e5dee0f  canonical/v1.0/glossary/Canonical Glossary v1.0 (APPROVED).docx
+4f765a29651b702ba1e4cd375ce2a60435ee1c2ba7e905b173c72f6f29983528  canonical/v1.0/manifest/Manifest v1.0 (APPROVED).md
+6eae915f34224df245c05caca116d347cb24d2035faed5a2d35951c0f3a9e090  canonical/v1.0/manifest/Source-to-Export Map v1.0 (APPROVED).md
+c1278b9685c71d319066d0c272cc1c08c02b7e05249df98ddd668fbfa909144e  canonical/v1.0/traceability/Requirement-to-Architecture Traceability Matrix v1.0 (APPROVED).xlsx
+b306ce9ae3adb4af9accb7c9d3e4ae1ab347860d76f92a965b6c5f2386602ada  canonical/v1.0/traceability/Requirement-to-Implementation Traceability Matrix v1.0 (APPROVED).xlsx
+1371bb667c5f0ee0423b1085d53419c40ede352eaf8629649c2b4de472119fe4  canonical/v1.0/traceability/Verification Matrix v1.0 (APPROVED).xlsx
+74cfff133631780ff9b1aa12f5a1eb889b7aa958fb9b6394ee9bb74574e93929  canonical/v1.0/validation/Validation Report v1.0 (APPROVED).docx

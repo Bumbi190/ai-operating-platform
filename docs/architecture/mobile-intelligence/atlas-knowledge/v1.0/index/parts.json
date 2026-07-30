@@ -1,0 +1,82 @@
+[
+ {
+  "part": "PART I",
+  "title": "DOMAIN, VISION AND CANONICAL FOUNDATIONS",
+  "chapters": [
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ {
+  "part": "PART II",
+  "title": "AUTHORITY, GOVERNANCE AND PROJECT BOUNDARIES",
+  "chapters": [
+   5,
+   6,
+   7,
+   8
+  ]
+ },
+ {
+  "part": "PART III",
+  "title": "PRIVACY, COMMUNICATION AND HUMAN ATTENTION",
+  "chapters": [
+   9,
+   10,
+   11,
+   12
+  ]
+ },
+ {
+  "part": "PART IV",
+  "title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "chapters": [
+   13,
+   14,
+   15,
+   16,
+   17
+  ]
+ },
+ {
+  "part": "PART V",
+  "title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "chapters": [
+   18,
+   19,
+   20,
+   21,
+   22
+  ]
+ },
+ {
+  "part": "PART VI",
+  "title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "chapters": [
+   23,
+   24,
+   25,
+   26,
+   27
+  ]
+ },
+ {
+  "part": "PART VII",
+  "title": "VERIFICATION, AUDIT, FAILURE AND LIFECYCLE CONTROL",
+  "chapters": [
+   28,
+   29,
+   30,
+   31
+  ]
+ },
+ {
+  "part": "PART VIII",
+  "title": "EXPERIENCE, ADOPTION AND CANONICAL IMPLEMENTATION GOVERNANCE",
+  "chapters": [
+   32
+  ]
+ }
+]

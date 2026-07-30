@@ -1,0 +1,546 @@
+[
+ {
+  "chapter": 1,
+  "file": "chapters/ch01.md",
+  "title_en": "Mobile Intelligence as an Omnira System Domain",
+  "title_sv": "Mobile Intelligence som systemdomän i Omnira",
+  "part": "PART I",
+  "part_title": "DOMAIN, VISION AND CANONICAL FOUNDATIONS",
+  "requirements": 69,
+  "requirement_range": [
+   "MI-01-001",
+   "MI-01-069"
+  ],
+  "sections": 32,
+  "words": 4569,
+  "source_sha256": "f3d3519edb9b7b0b752a9f866fb05ed1ca475bc2a13c203e12e2392b1fd689be",
+  "approved": true
+ },
+ {
+  "chapter": 2,
+  "file": "chapters/ch02.md",
+  "title_en": "Vision, Product Scope and Evolution Path",
+  "title_sv": "Vision, produktomfattning och utvecklingsväg",
+  "part": "PART I",
+  "part_title": "DOMAIN, VISION AND CANONICAL FOUNDATIONS",
+  "requirements": 67,
+  "requirement_range": [
+   "MI-02-001",
+   "MI-02-067"
+  ],
+  "sections": 28,
+  "words": 3343,
+  "source_sha256": "8a7ec41c2ea01c7fab6087f6d887641045ccec05474692913e47c9db8250856d",
+  "approved": true
+ },
+ {
+  "chapter": 3,
+  "file": "chapters/ch03.md",
+  "title_en": "System Actors, Roles and Trust Relationships",
+  "title_sv": "Systemaktörer, roller och tillitsrelationer",
+  "part": "PART I",
+  "part_title": "DOMAIN, VISION AND CANONICAL FOUNDATIONS",
+  "requirements": 115,
+  "requirement_range": [
+   "MI-03-001",
+   "MI-03-115"
+  ],
+  "sections": 55,
+  "words": 4398,
+  "source_sha256": "7ee357075a2615c13d49065c172b58dfc8cda756588b40428cb8be335b50e37d",
+  "approved": true
+ },
+ {
+  "chapter": 4,
+  "file": "chapters/ch04.md",
+  "title_en": "Core Principles, Invariants and Absolute Prohibitions",
+  "title_sv": "Kärnprinciper, invariants och absoluta förbud",
+  "part": "PART I",
+  "part_title": "DOMAIN, VISION AND CANONICAL FOUNDATIONS",
+  "requirements": 141,
+  "requirement_range": [
+   "MI-04-001",
+   "MI-04-141"
+  ],
+  "sections": 55,
+  "words": 3929,
+  "source_sha256": "19727ec4dd21a75d75b4f6dd5ab937d4c9a5c443c693032e68ff24d12fbfc18a",
+  "approved": true
+ },
+ {
+  "chapter": 5,
+  "file": "chapters/ch05.md",
+  "title_en": "Authority Model L0–L6",
+  "title_sv": "Authority-modellen L0–L6",
+  "part": "PART II",
+  "part_title": "AUTHORITY, GOVERNANCE AND PROJECT BOUNDARIES",
+  "requirements": 144,
+  "requirement_range": [
+   "MI-05-001",
+   "MI-05-144"
+  ],
+  "sections": 56,
+  "words": 4619,
+  "source_sha256": "38eea3b0fb65fa1d2310ac96894e870f235c855fb550fe2fb8d490e134c82d85",
+  "approved": true
+ },
+ {
+  "chapter": 6,
+  "file": "chapters/ch06.md",
+  "title_en": "Scope Architecture and Capability Grants",
+  "title_sv": "Scope-arkitektur och capability grants",
+  "part": "PART II",
+  "part_title": "AUTHORITY, GOVERNANCE AND PROJECT BOUNDARIES",
+  "requirements": 181,
+  "requirement_range": [
+   "MI-06-001",
+   "MI-06-181"
+  ],
+  "sections": 70,
+  "words": 5119,
+  "source_sha256": "d6799c37179c460ed58bdfb6682811e2c4f8381cb8f4bed3ac59c19338f5aafb",
+  "approved": true
+ },
+ {
+  "chapter": 7,
+  "file": "chapters/ch07.md",
+  "title_en": "Approval Architecture and Mandate Lifecycle",
+  "title_sv": "Approval-arkitektur och mandatets livscykel",
+  "part": "PART II",
+  "part_title": "AUTHORITY, GOVERNANCE AND PROJECT BOUNDARIES",
+  "requirements": 164,
+  "requirement_range": [
+   "MI-07-001",
+   "MI-07-164"
+  ],
+  "sections": 74,
+  "words": 4894,
+  "source_sha256": "5cb3554f30c59e68f4799b73dcd4b87287e5ee45bbe0e338834dbbcbe341442d",
+  "approved": true
+ },
+ {
+  "chapter": 8,
+  "file": "chapters/ch08.md",
+  "title_en": "Project Isolation, Tenant Boundaries and Atlas Global View",
+  "title_sv": "Projektisolering, tenantgränser och Atlas globala vy",
+  "part": "PART II",
+  "part_title": "AUTHORITY, GOVERNANCE AND PROJECT BOUNDARIES",
+  "requirements": 190,
+  "requirement_range": [
+   "MI-08-001",
+   "MI-08-190"
+  ],
+  "sections": 68,
+  "words": 5130,
+  "source_sha256": "40eb7a89d479db86d6c8d12633cb9d603852cf41437a7275bd2059b0420ba4db",
+  "approved": true
+ },
+ {
+  "chapter": 9,
+  "file": "chapters/ch09.md",
+  "title_en": "Privacy Architecture and Private-by-Default Boundaries",
+  "title_sv": "Privacy-arkitektur och private-by-default-gränser",
+  "part": "PART III",
+  "part_title": "PRIVACY, COMMUNICATION AND HUMAN ATTENTION",
+  "requirements": 193,
+  "requirement_range": [
+   "MI-09-001",
+   "MI-09-193"
+  ],
+  "sections": 65,
+  "words": 5175,
+  "source_sha256": "047385fa7c273f193fc720bf3412979df090183dda7e40f5fe3a9208bfe3f1a2",
+  "approved": true
+ },
+ {
+  "chapter": 10,
+  "file": "chapters/ch10.md",
+  "title_en": "Communication Channels, Accounts and Content Access",
+  "title_sv": "Kommunikationskanaler, konton och innehållsåtkomst",
+  "part": "PART III",
+  "part_title": "PRIVACY, COMMUNICATION AND HUMAN ATTENTION",
+  "requirements": 213,
+  "requirement_range": [
+   "MI-10-001",
+   "MI-10-213"
+  ],
+  "sections": 70,
+  "words": 5380,
+  "source_sha256": "27798e6017d6835b9d401670269cac9da6143e77dd8b267f9829f66ef6524621",
+  "approved": true
+ },
+ {
+  "chapter": 11,
+  "file": "chapters/ch11.md",
+  "title_en": "Outbound Communication, Brand Identity and Human Representation",
+  "title_sv": "Utgående kommunikation, varumärkesidentitet och mänsklig representation",
+  "part": "PART III",
+  "part_title": "PRIVACY, COMMUNICATION AND HUMAN ATTENTION",
+  "requirements": 221,
+  "requirement_range": [
+   "MI-11-001",
+   "MI-11-221"
+  ],
+  "sections": 74,
+  "words": 5711,
+  "source_sha256": "b3b8a4ee110d9f037f4a2ff361c26caa17560ed5d1ae9d505fca9f6e0642527b",
+  "approved": true
+ },
+ {
+  "chapter": 12,
+  "file": "chapters/ch12.md",
+  "title_en": "Notifications, Attention and Priority Governance",
+  "title_sv": "Notifieringar, mänsklig uppmärksamhet och prioritetsgovernance",
+  "part": "PART III",
+  "part_title": "PRIVACY, COMMUNICATION AND HUMAN ATTENTION",
+  "requirements": 225,
+  "requirement_range": [
+   "MI-12-001",
+   "MI-12-225"
+  ],
+  "sections": 80,
+  "words": 6197,
+  "source_sha256": "f81b8bb523bb9b1592c68364c4f4743d264b26dfbd414383102244683c467871",
+  "approved": true
+ },
+ {
+  "chapter": 13,
+  "file": "chapters/ch13.md",
+  "title_en": "Device Control Capability Model",
+  "title_sv": "Capability-modell för enhetskontroll",
+  "part": "PART IV",
+  "part_title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "requirements": 241,
+  "requirement_range": [
+   "MI-13-001",
+   "MI-13-241"
+  ],
+  "sections": 76,
+  "words": 6206,
+  "source_sha256": "1822cc2ae44622f3ca3171028a6396879ba00f8ba630263ed6bf077f5f8faea1",
+  "approved": true
+ },
+ {
+  "chapter": 14,
+  "file": "chapters/ch14.md",
+  "title_en": "Sensitive Applications and Human-Presence Requirements",
+  "title_sv": "Känsliga applikationer och krav på mänsklig närvaro",
+  "part": "PART IV",
+  "part_title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "requirements": 225,
+  "requirement_range": [
+   "MI-14-001",
+   "MI-14-225"
+  ],
+  "sections": 67,
+  "words": 5709,
+  "source_sha256": "fc0fa144a54c8fd965432ef03650a806c5c20455f20e58a6c9d199b5380f4093",
+  "approved": true
+ },
+ {
+  "chapter": 15,
+  "file": "chapters/ch15.md",
+  "title_en": "File Operations, Project Storage and Quarantine",
+  "title_sv": "Filoperationer, projektlagring och karantän",
+  "part": "PART IV",
+  "part_title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "requirements": 317,
+  "requirement_range": [
+   "MI-15-001",
+   "MI-15-317"
+  ],
+  "sections": 91,
+  "words": 7190,
+  "source_sha256": "58cd3956ddb9e3f71a8df03befc0f5bd8ec8bc0c13a8b8f90484dfc49c5b05d7",
+  "approved": true
+ },
+ {
+  "chapter": 16,
+  "file": "chapters/ch16.md",
+  "title_en": "Image, Video, Camera and Microphone Governance",
+  "title_sv": "Styrning av bild, video, kamera och mikrofon",
+  "part": "PART IV",
+  "part_title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "requirements": 231,
+  "requirement_range": [
+   "MI-16-001",
+   "MI-16-231"
+  ],
+  "sections": 69,
+  "words": 5763,
+  "source_sha256": "28902cf582bc34e8988bd4d0ddbbf4b44237a4ede7dcbe67ab30107054454bfc",
+  "approved": true
+ },
+ {
+  "chapter": 17,
+  "file": "chapters/ch17.md",
+  "title_en": "Location, Geofencing and Physical Context",
+  "title_sv": "Plats, geofencing och fysisk kontext",
+  "part": "PART IV",
+  "part_title": "DEVICE CONTROL, FILES, MEDIA AND LOCAL CONTEXT",
+  "requirements": 263,
+  "requirement_range": [
+   "MI-17-001",
+   "MI-17-263"
+  ],
+  "sections": 82,
+  "words": 6756,
+  "source_sha256": "e0493c7ac7cd2eeff90603b87c7ddefd08562226c25c7c5ad718e4c05aa72a40",
+  "approved": true
+ },
+ {
+  "chapter": 18,
+  "file": "chapters/ch18.md",
+  "title_en": "Local Processing, Cloud Processing and Data Egress",
+  "title_sv": "Lokal bearbetning, molnbearbetning och datautflöde",
+  "part": "PART V",
+  "part_title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "requirements": 285,
+  "requirement_range": [
+   "MI-18-001",
+   "MI-18-285"
+  ],
+  "sections": 87,
+  "words": 6801,
+  "source_sha256": "6f5b4f781288894611e01f2decf0a3b9c5652e687354f220609022c610b528ba",
+  "approved": true
+ },
+ {
+  "chapter": 19,
+  "file": "chapters/ch19.md",
+  "title_en": "Provider Routing, Cost, Quality and Resilience",
+  "title_sv": "Provider-routing, kostnad, kvalitet och motståndskraft",
+  "part": "PART V",
+  "part_title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "requirements": 349,
+  "requirement_range": [
+   "MI-19-001",
+   "MI-19-349"
+  ],
+  "sections": 107,
+  "words": 8050,
+  "source_sha256": "88b462f0e426b8d8d05a201941bfb37b655b8f28edc6126f9e24e484e3f772c0",
+  "approved": true
+ },
+ {
+  "chapter": 20,
+  "file": "chapters/ch20.md",
+  "title_en": "Memory Architecture and Knowledge Boundaries",
+  "title_sv": "Minnesarkitektur och kunskapsgränser",
+  "part": "PART V",
+  "part_title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "requirements": 361,
+  "requirement_range": [
+   "MI-20-001",
+   "MI-20-361"
+  ],
+  "sections": 110,
+  "words": 8837,
+  "source_sha256": "139409cd8efd44f963c69d028bf93b0d9ed957cf9844c75ebead6e3eabe04280",
+  "approved": true
+ },
+ {
+  "chapter": 21,
+  "file": "chapters/ch21.md",
+  "title_en": "Retention, Deletion, Backup and Recoverability",
+  "title_sv": "Retention, radering, backup och återställningsförmåga",
+  "part": "PART V",
+  "part_title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "requirements": 325,
+  "requirement_range": [
+   "MI-21-001",
+   "MI-21-325"
+  ],
+  "sections": 101,
+  "words": 7890,
+  "source_sha256": "00525199f8e9efc0cdfa6299698f1bcd7db9def0b551df61356a6aa24d380d61",
+  "approved": true
+ },
+ {
+  "chapter": 22,
+  "file": "chapters/ch22.md",
+  "title_en": "Identity, Credentials and Account Recovery",
+  "title_sv": "Identitet, credentials och kontoåterställning",
+  "part": "PART V",
+  "part_title": "MEMORY, DATA, PROVIDERS AND SECURITY",
+  "requirements": 399,
+  "requirement_range": [
+   "MI-22-001",
+   "MI-22-399"
+  ],
+  "sections": 116,
+  "words": 9192,
+  "source_sha256": "dc3018b3d01844ba9b6648397bf0ec1c9f75df6ddd62563861a42d90145f1a7c",
+  "approved": true
+ },
+ {
+  "chapter": 23,
+  "file": "chapters/ch23.md",
+  "title_en": "Omnira Nodes and Execution Roles",
+  "title_sv": "Omnira-noder och exekveringsroller",
+  "part": "PART VI",
+  "part_title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "requirements": 365,
+  "requirement_range": [
+   "MI-23-001",
+   "MI-23-365"
+  ],
+  "sections": 110,
+  "words": 8362,
+  "source_sha256": "9370f981ad0e48c1c89a09eaf609ea6c55c207b9e7a9f58d6ffe5e1c7c64001b",
+  "approved": true
+ },
+ {
+  "chapter": 24,
+  "file": "chapters/ch24.md",
+  "title_en": "Control Surfaces, Execution Surfaces and Data Locality",
+  "title_sv": "Kontrollytor, exekveringsytor och datalokalitet",
+  "part": "PART VI",
+  "part_title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "requirements": 336,
+  "requirement_range": [
+   "MI-24-001",
+   "MI-24-336"
+  ],
+  "sections": 103,
+  "words": 8140,
+  "source_sha256": "45f7852b37e58aba8426d341dd07da39f24a4134764090ddd6cdfdf67218108a",
+  "approved": true
+ },
+ {
+  "chapter": 25,
+  "file": "chapters/ch25.md",
+  "title_en": "Node Selection, Work Placement and Provider Continuity",
+  "title_sv": "Nodval, arbetsplacering och providerkontinuitet",
+  "part": "PART VI",
+  "part_title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "requirements": 370,
+  "requirement_range": [
+   "MI-25-001",
+   "MI-25-370"
+  ],
+  "sections": 108,
+  "words": 8745,
+  "source_sha256": "94a01ac3dae949c24cc16c4cf50a3d4dea1285e9c2bbd6d9d651c147e16a8194",
+  "approved": true
+ },
+ {
+  "chapter": 26,
+  "file": "chapters/ch26.md",
+  "title_en": "Workflow Ownership, Concurrency and Duplicate Prevention",
+  "title_sv": "Workflowägarskap, samtidighet och dubblettskydd",
+  "part": "PART VI",
+  "part_title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "requirements": 465,
+  "requirement_range": [
+   "MI-26-001",
+   "MI-26-465"
+  ],
+  "sections": 137,
+  "words": 10207,
+  "source_sha256": "63fbf91ed1b96f20ba8c50142a6f35663908b4925535a20892b4923db1017139",
+  "approved": true
+ },
+ {
+  "chapter": 27,
+  "file": "chapters/ch27.md",
+  "title_en": "Offline Operation, Synchronization and Canonical State",
+  "title_sv": "Offlinedrift, synkronisering och canonical state",
+  "part": "PART VI",
+  "part_title": "MULTI-DEVICE ORCHESTRATION AND DISTRIBUTED EXECUTION",
+  "requirements": 405,
+  "requirement_range": [
+   "MI-27-001",
+   "MI-27-405"
+  ],
+  "sections": 121,
+  "words": 8907,
+  "source_sha256": "f77ace82be8627eecfb7411975ce690d500634a91cb1115ac9a63a2c0e2e593b",
+  "approved": true
+ },
+ {
+  "chapter": 28,
+  "file": "chapters/ch28.md",
+  "title_en": "Verification, Evidence and Unknown Outcomes",
+  "title_sv": "Verifiering, evidens och okända utfall",
+  "part": "PART VII",
+  "part_title": "VERIFICATION, AUDIT, FAILURE AND LIFECYCLE CONTROL",
+  "requirements": 373,
+  "requirement_range": [
+   "MI-28-001",
+   "MI-28-373"
+  ],
+  "sections": 122,
+  "words": 9046,
+  "source_sha256": "7b092259047245cc2fcb2992578c949ce2cc4e33ede652593aca4c51be2f7495",
+  "approved": true
+ },
+ {
+  "chapter": 29,
+  "file": "chapters/ch29.md",
+  "title_en": "Failure Handling, Rollback, Compensation and Emergency Stop",
+  "title_sv": "Felhantering, rollback, compensation och nödstopp",
+  "part": "PART VII",
+  "part_title": "VERIFICATION, AUDIT, FAILURE AND LIFECYCLE CONTROL",
+  "requirements": 462,
+  "requirement_range": [
+   "MI-29-001",
+   "MI-29-462"
+  ],
+  "sections": 156,
+  "words": 10239,
+  "source_sha256": "dac1c41eeff790fed8a8ba385ab3c2a0f933454700e97f9fdb3e25bc07784804",
+  "approved": true
+ },
+ {
+  "chapter": 30,
+  "file": "chapters/ch30.md",
+  "title_en": "Audit, Explainability, Accountability and Continuous Learning",
+  "title_sv": "Audit, förklarbarhet, ansvar och kontinuerligt lärande",
+  "part": "PART VII",
+  "part_title": "VERIFICATION, AUDIT, FAILURE AND LIFECYCLE CONTROL",
+  "requirements": 402,
+  "requirement_range": [
+   "MI-30-001",
+   "MI-30-402"
+  ],
+  "sections": 133,
+  "words": 9603,
+  "source_sha256": "1ceadcc1b009d062e6642f5c2795f6889948e3052299e52c3330c7d9ea0e46f9",
+  "approved": true
+ },
+ {
+  "chapter": 31,
+  "file": "chapters/ch31.md",
+  "title_en": "Versioning, Testing, Rollout and Capability Expansion",
+  "title_sv": "Versionering, testning, utrullning och capability expansion",
+  "part": "PART VII",
+  "part_title": "VERIFICATION, AUDIT, FAILURE AND LIFECYCLE CONTROL",
+  "requirements": 473,
+  "requirement_range": [
+   "MI-31-001",
+   "MI-31-473"
+  ],
+  "sections": 166,
+  "words": 10151,
+  "source_sha256": "e2db5e33637648729d182a647bc4a9b59b0f6a4cd03127956097a9cc40f7b6f4",
+  "approved": true
+ },
+ {
+  "chapter": 32,
+  "file": "chapters/ch32.md",
+  "title_en": "Mobile Experience, Daily Operations and Canonical Implementation Contract",
+  "title_sv": "Mobilupplevelse, daglig drift och canonical implementation contract",
+  "part": "PART VIII",
+  "part_title": "EXPERIENCE, ADOPTION AND CANONICAL IMPLEMENTATION GOVERNANCE",
+  "requirements": 350,
+  "requirement_range": [
+   "MI-32-001",
+   "MI-32-350"
+  ],
+  "sections": 104,
+  "words": 8841,
+  "source_sha256": "d4f6327dfa2f9a226380f3efd7045389031bee5327dd90ceeb74a5a4c46adba3",
+  "approved": true
+ }
+]

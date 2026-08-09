@@ -48,13 +48,14 @@ describe('hard/soft split — renderAssembledContext with a constraints block pr
         operational: { dimension: 'operational', channel: 'soft', text: '[①]' },
         activeWork: null,
         view: { dimension: 'view', channel: 'soft', text: '[③]' },
+        knowledge: null,
         intelligence: null,
         memory: null,
       },
       allocation: { policyVersion: 'v1', modality: 'chat' },
       provenance: {
         generatedAt: NOW, contextRequest: baseReq(), blocksPresent: ['operational', 'view'],
-        blocksDropped: [], cacheHits: [], assemblerVersion: ASSEMBLER_VERSION,
+        blocksDropped: [], cacheHits: [], assemblerVersion: ASSEMBLER_VERSION, knowledgeDiagnostics: null,
       },
     }
   }

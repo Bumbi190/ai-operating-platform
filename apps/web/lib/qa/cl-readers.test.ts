@@ -70,10 +70,10 @@ const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60000).toISOStrin
 
 describe('reader registry', () => {
   it('fixes the soft composition order ①②③④⑤ (stable → volatile, never content-dependent)', () => {
-    expect(SOFT_ORDER).toEqual(['operational', 'activeWork', 'view', 'intelligence', 'memory'])
+    expect(SOFT_ORDER).toEqual(['operational', 'activeWork', 'view', 'knowledge', 'intelligence', 'memory'])
   })
   it('registers exactly ①②③ in Stage 0 Commit 2 (④/⑤/constraints land in their mapped stages)', () => {
-    expect(Object.keys(CONTEXT_READERS).sort()).toEqual(['activeWork', 'operational', 'view'])
+    expect(Object.keys(CONTEXT_READERS).sort()).toEqual(['activeWork', 'knowledge', 'operational', 'view'])
     expect(CONTEXT_READERS.intelligence).toBeUndefined()
     expect(CONTEXT_READERS.memory).toBeUndefined()
     expect(CONTEXT_READERS.constraints).toBeUndefined()

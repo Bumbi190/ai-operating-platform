@@ -1,0 +1,431 @@
+{
+  "book": "Omnira Intelligence Fabric",
+  "edition": "v1.0",
+  "status": "canonical_verified",
+  "verification_date": "2026-08-09",
+  "chapter_count": 28,
+  "runtime_ingested": false,
+  "payload_file_count": 70,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "role": "repository_attributes",
+      "size_bytes": 27,
+      "sha256": "d00feaedee8b8325998749060a25f5715f1b727cbf831fa601c42c60ce3db589"
+    },
+    {
+      "path": "README.md",
+      "role": "package_documentation",
+      "size_bytes": 1680,
+      "sha256": "d255068d20949497f57b12929ab59927ba8d009cbcfcfacbf5171a08f919832e"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/INTEGRATION_NOTES.md",
+      "role": "package_documentation",
+      "size_bytes": 549,
+      "sha256": "2551b4fa4e5d303988f82f1a081d9f36c495781468384a12134c377b28892ffd"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/README.md",
+      "role": "package_documentation",
+      "size_bytes": 3207,
+      "sha256": "c86836d21da286367cae1a0a22e2aed6aca34a368e6bad417c473adcec322ceb"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/RUNTIME_INGESTION_STATUS.md",
+      "role": "package_documentation",
+      "size_bytes": 778,
+      "sha256": "5c740478dc94e3bb78258e09cb5a604f592e43a56d71d1601e8800d25598b36c"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch01.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 41290,
+      "sha256": "923f17e11bd89016f5952ac9922e40199a20611660b419b0d7d1f4f43ecb7496"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch02.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 66305,
+      "sha256": "bc2a5067f0c428382d348a4b2754873dd2c8756d7a39057bf05652dde993953a"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch03.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 69330,
+      "sha256": "68e44c77f8a9bdb302a0753dee801ee0a6ef363ad4e43adf88d9dc706f41e87e"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch04.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 102826,
+      "sha256": "cdd62286d9a3523607c1749361be4d348652635a0c6a278e48dcc538b89929e5"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch05.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 103358,
+      "sha256": "c65daa27299001fcdff93cf7871711f6348fe28269852c507d7a8caba8e0203c"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch06.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 111524,
+      "sha256": "1a3617d32ab551982869181bf4ecf67125a569f3a0bbd244e0c28e86b7e605f7"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch07.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 112263,
+      "sha256": "370324916e536bfd2a77eca5aef9bc5a62b1e8d3922e7ba77a20f74e8e07f908"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch08.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 117893,
+      "sha256": "167969b8771e75c8165a253f7e36d4bbcb9cfc3dc0577ca3b07bb79aaf00b794"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch09.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 137323,
+      "sha256": "ade8fb47d808497b478c3761aeec0633df05a6ec92349124814a92bb156a97db"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch10.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 111520,
+      "sha256": "8509dd6846da41548623894bc767b2467e097b759ead137c748abb08b57f94e3"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch11.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 129969,
+      "sha256": "122dccbeb6e1d5d79827f46a671d005bc092225c0715bd0cbf0ea7794bcc48d8"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch12.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 139999,
+      "sha256": "451fd0a6156f4a0855496d6624630b7ebdbe7862447dc4f5c7f39cf7168d4351"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch13.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 132156,
+      "sha256": "294d3bd2d684b8ef3447905b735b2454233202a9d9064fbcdb24c4ed70d950bd"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch14.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 143588,
+      "sha256": "4132553384f55afdf11a5beb612e971fb92692fb5bb95c015f7120dbfd615f3d"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch15.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 154584,
+      "sha256": "1a48ba4b7d502211a8aba83d9b00bc016591e39e12e7d1420d8b456f35392112"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch16.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 157784,
+      "sha256": "5349740e36e9b5e2a89b1685910faf494e4ff9f42781f6aaf4bb54ae29ed62b7"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch17.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 148937,
+      "sha256": "ee51e1bb8f8a8f66179eff8c77721fdf5b8a3b204aa78a59afae24105823320d"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch18.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 145374,
+      "sha256": "43201aa6dea6a77af966816952964ef82bb5e267f0bfd6e94a6233212f6bc21f"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch19.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 175215,
+      "sha256": "4ca4a4bad332cd18cf04afd65042eade88f3066c75b360fdc988d17106a4777a"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch20.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 146747,
+      "sha256": "f8514a26c8e3f02edcafd630cfcf1bd334e6951c885502228152f82ead7b2e17"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch21.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 153746,
+      "sha256": "78a7dfef9afbc6f8d5cd4396d2153b5cf892195e7d9c478fabca362b6484ea4b"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch22.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 159233,
+      "sha256": "fa376db960643868ce35f6fb80030f74e213a708e4af75e8fa67f1adf60e81be"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch23.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 170205,
+      "sha256": "b29ff6ebc04ee22265f79231116277ee3bf9eeb5d53bde589984703ddcc89e73"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch24.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 172430,
+      "sha256": "6a5a3811f10d76e0ec002cf36e9e995772a8c111271c089a40e0baa53b02cac6"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch25.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 194665,
+      "sha256": "6527de9441a0f029cf8b8be6c6a16f0fe38a6c54264237f8d7043c9c4a826e53"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch26.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 190004,
+      "sha256": "7f45bd73b4bce6471f25d0ab2a32624c23364bb3e8fb24293e86072aead1e971"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch27.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 179751,
+      "sha256": "201289ae63394a567ac4e9102a8c6d27efa459b862f04de04c38b6c299cf9147"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/chapters/ch28.md",
+      "role": "derived_atlas_chapter",
+      "size_bytes": 181680,
+      "sha256": "fa8eb15fcc90cf5cb14fb94c35f80e91741aa55b470ad1c280855cc9a95b7cad"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/front-matter/00-book-foundation-and-contents.md",
+      "role": "derived_atlas_front_matter",
+      "size_bytes": 25058,
+      "sha256": "409e84933b72e446000000eadb0f694f1b085e2dd1d1265acdc8f89785f6e5d5"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/index/chapters.json",
+      "role": "atlas_index",
+      "size_bytes": 15863,
+      "sha256": "76b803ecd6d4aca430340cd34f1780d6b5c6a8693738553f4513fb917cbe0fb8"
+    },
+    {
+      "path": "atlas-knowledge/v1.0/index/parts.json",
+      "role": "atlas_index",
+      "size_bytes": 874,
+      "sha256": "b71e5c29eb21948e11c87273a02ec374d3115829ca2460e32f5fcc8f3ac9c995"
+    },
+    {
+      "path": "canonical/v1.0/chapters/01-the-intelligence-fabric-vision.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 81517,
+      "sha256": "c6bd548f980e4e78958976464538ef8419d7dc29a4c4d9d19c94a46ee07e7a83"
+    },
+    {
+      "path": "canonical/v1.0/chapters/02-system-position-ownership-and-boundaries.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 76981,
+      "sha256": "dec8ba842880e9432635539f61cb92d10cb25c3a5dd896fc174ff371a72338ea"
+    },
+    {
+      "path": "canonical/v1.0/chapters/03-doctrine-and-architectural-principles.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 82597,
+      "sha256": "7ec1cd9cc9e189a33e2cf63c1dd481b840174306c5768be8fb5260def4c8ef84"
+    },
+    {
+      "path": "canonical/v1.0/chapters/04-canonical-concepts-and-object-model.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 121630,
+      "sha256": "9195168165dd68d8309deb2a81604b6b00ca169aa96d3d606351af69bcff8581"
+    },
+    {
+      "path": "canonical/v1.0/chapters/05-capability-requests-and-intent-envelopes.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 182686,
+      "sha256": "7b80be383bea95d41f7c1838f89758ee54755643604c20d8ca879900c8abf012"
+    },
+    {
+      "path": "canonical/v1.0/chapters/06-capability-registry.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 125144,
+      "sha256": "a695fddf5743938786253528e3e1277075d76f330fa297a8834fa6ea1082d03a"
+    },
+    {
+      "path": "canonical/v1.0/chapters/07-model-registry.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 126698,
+      "sha256": "5d50bc175dfe3d93e00113f20f4a712920b695aa59e8970da16232d2f2ca1b08"
+    },
+    {
+      "path": "canonical/v1.0/chapters/08-provider-registry.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 131937,
+      "sha256": "b73c1672778df9f525b13f5d0bbb8ef7614cefcac251bb8f78234c3a53242244"
+    },
+    {
+      "path": "canonical/v1.0/chapters/09-agent-tool-and-execution-resource-registry.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 106321,
+      "sha256": "ee97a45e605b283c4c59695595383cce94312cc19340b73bb1b6c1a4fe71da83"
+    },
+    {
+      "path": "canonical/v1.0/chapters/10-intelligence-planning-and-execution-graphs.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 126006,
+      "sha256": "3c43f407b5fa1d592cb21d528afdb317109aebddb86ebe3d9c79097814173b8a"
+    },
+    {
+      "path": "canonical/v1.0/chapters/11-routing-profiles-and-selection-policy.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 136281,
+      "sha256": "cdd4fc7c2c440c30e4b0be1cc15820c77c95b7297e68b92d99bc7954aa22c3aa"
+    },
+    {
+      "path": "canonical/v1.0/chapters/12-cost-credits-and-economic-governance.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 143905,
+      "sha256": "50a913c3c4a2ff166cdbd8e1ab1ce852e097d9b8d22628b545c01e54fb151cb7"
+    },
+    {
+      "path": "canonical/v1.0/chapters/13-quality-evaluation-and-benchmarking.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 139470,
+      "sha256": "46aa85bcf3825a1c067108abc8bfcef2622654f9ba1d9e0206ff1d356dd341c7"
+    },
+    {
+      "path": "canonical/v1.0/chapters/14-reliability-fallback-and-recovery.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 148188,
+      "sha256": "3f6d88a87d6d511a62873fb492d7b48cf4029bc626647f168a0b7fd0b8739279"
+    },
+    {
+      "path": "canonical/v1.0/chapters/15-latency-capacity-scheduling-and-quotas.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 155302,
+      "sha256": "93ccaf3a2c75e5c9a3ee1a4df6fa69b5b24f97549450f032a952afcefdcfeecc"
+    },
+    {
+      "path": "canonical/v1.0/chapters/16-adapter-and-connector-architecture.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 159225,
+      "sha256": "160a69f7fe0d41b99bdfc2c33db233882bf69d86df5e2445674ab2863d50eade"
+    },
+    {
+      "path": "canonical/v1.0/chapters/17-apis-mcp-webhooks-and-asynchronous-jobs.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 151574,
+      "sha256": "7124c3e1e438561e829165eb439c61ac8a33e23d02324b5bc6c7766985580f76"
+    },
+    {
+      "path": "canonical/v1.0/chapters/18-credentials-identity-and-secret-management.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 110463,
+      "sha256": "591e2deff48a235b4c8a2e37e2bffd491ea09fa58e86fd1b83f1444c0b41bd5c"
+    },
+    {
+      "path": "canonical/v1.0/chapters/19-local-private-edge-and-self-hosted-intelligence.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 176997,
+      "sha256": "09e27c352f15d71ef6071a38964ee6af7a21a5116e2c96cd6405a0f7bfcf205a"
+    },
+    {
+      "path": "canonical/v1.0/chapters/20-multimodal-production-architecture.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 149406,
+      "sha256": "801e8c7fa6d0cc189b44e1f2a166d81bc0571489f472c973d37298af55c0ce54"
+    },
+    {
+      "path": "canonical/v1.0/chapters/21-assets-provenance-rights-and-consent.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 152951,
+      "sha256": "d0b4c590a0440688553bea8ea32fddce50157d51b8c64916018c44ceddcb996f"
+    },
+    {
+      "path": "canonical/v1.0/chapters/22-execution-evidence-learning-and-governed-memory.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 157738,
+      "sha256": "04b90df8d2d42f6a58333dbbf0c6550cac572181ce9871147c50f6ac2ffd5a21"
+    },
+    {
+      "path": "canonical/v1.0/chapters/23-data-classification-privacy-and-isolation.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 123516,
+      "sha256": "f8e4fb9facaca3231fb30bdadf80ecbb7a98b355c1a1a7f3fd1b5a7b0c78353d"
+    },
+    {
+      "path": "canonical/v1.0/chapters/24-approval-authority-and-bounded-autonomy.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 128217,
+      "sha256": "2fb15feed9e26d9d1456cb2ae893303101f45c76bc57236285e1664db0d6f383"
+    },
+    {
+      "path": "canonical/v1.0/chapters/25-observability-audit-and-incident-response.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 147154,
+      "sha256": "8261a5a9d459c241e7beab7695d5a0403f2796c927e4d044536a32425de6065b"
+    },
+    {
+      "path": "canonical/v1.0/chapters/26-developer-experience-testing-and-conformance.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 145198,
+      "sha256": "b7e1780200949d49c5b99a847cd97eeecd51f9570d082d2b45caa718ba10f0e9"
+    },
+    {
+      "path": "canonical/v1.0/chapters/27-stage-1-implementation-architecture.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 133697,
+      "sha256": "d4c711e04a26b39fb9ab6204bdde0f1268988af48887844687fcaacc74c2b0c4"
+    },
+    {
+      "path": "canonical/v1.0/chapters/28-rollout-migration-anti-patterns-and-future-evolution.docx.docx",
+      "role": "canonical_chapter_source",
+      "size_bytes": 135166,
+      "sha256": "70d96577435c5b2ba01a572cc7fcfebdb3f2b9a89c9ae3b5390f81e0680b1771"
+    },
+    {
+      "path": "canonical/v1.0/editorial/CHANGELOG.md",
+      "role": "package_documentation",
+      "size_bytes": 942,
+      "sha256": "29d7466cde826c54b606e4f939ad9dca34fa248793c88523de148a4acbfe3d84"
+    },
+    {
+      "path": "canonical/v1.0/editorial/DECISION_RECORD.md",
+      "role": "package_documentation",
+      "size_bytes": 1214,
+      "sha256": "e5e701066c7bc8484a2f24bbbf0b7fe2fdd2d375a5dfb529e2f3224c5712f7ad"
+    },
+    {
+      "path": "canonical/v1.0/front-matter/00-book-foundation-and-contents.docx",
+      "role": "canonical_front_matter",
+      "size_bytes": 41087,
+      "sha256": "b5975e7de481e6722d871098525fafbaae931c5563f335fa5621994401d40308"
+    },
+    {
+      "path": "canonical/v1.0/full-book/CANONICAL_BOOK_v1.0.docx",
+      "role": "canonical_full_book_docx",
+      "size_bytes": 1377859,
+      "sha256": "2f8a7c0b519c2ba7f7ebbcbe140f808ddeafa03e16d3b2602b2d06111cf25649"
+    },
+    {
+      "path": "canonical/v1.0/full-book/CANONICAL_BOOK_v1.0.pdf",
+      "role": "canonical_full_book_pdf",
+      "size_bytes": 4509719,
+      "sha256": "c95ac408e2ff1e5ea09a0ab2f7f49b77d6ac1744b3cc6d2da527781aa38ee5f4"
+    },
+    {
+      "path": "canonical/v1.0/validation/VALIDATION_REPORT.md",
+      "role": "package_documentation",
+      "size_bytes": 4594,
+      "sha256": "4943e86b7fb73f5ddf7ec4f0d575b715a7b5afb25372cf207db4323acc490956"
+    }
+  ]
+}

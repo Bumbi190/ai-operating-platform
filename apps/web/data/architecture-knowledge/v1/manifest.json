@@ -1,0 +1,32 @@
+{
+  "artifactChecksums": {
+    "chunks.jsonl": "d1f14d94af9b1f2b1822cfb7a5cfd60efebbffe270c1d790cbd1db1220f8c987",
+    "lexical-index.json": "943f3ea9a291f0d837cc68dccec250b4a6ac6539b2add570d5a1c4aa5a2f64e7",
+    "sections.jsonl": "36c4794ea329bf93237e4dbfede83cd9acb65e94953478f1089e43483d5a585c",
+    "sources.json": "f5bf635b024dada67c60f5054da2195f0a9d28a4360a3b189d7820233a26cae7"
+  },
+  "builderVersion": "akr-stage1-builder-v1",
+  "chapterCount": 70,
+  "chunkCount": 2276,
+  "indexVersion": "lexical-v1",
+  "registryChecksum": "c40b93dec44f521ae86e0da715823d89049c671e17b153144dcc79e78f5e5413",
+  "retrievalAlgorithmVersion": "lexical-bm25-v1",
+  "schemaVersion": "1.0",
+  "sectionCount": 18756,
+  "sourceChecksums": {
+    "omnira-intelligence-fabric-v1.0": "2f8a7c0b519c2ba7f7ebbcbe140f808ddeafa03e16d3b2602b2d06111cf25649",
+    "omnira-intelligence-graph-v1.0": "5747cdf284732a7b80272f09fe63700eb0f42d3eb80da41df6fb22eafea211fe",
+    "omnira-mobile-intelligence-v1.0": "db9185a6396254476ae6acc445dd4427eab5132047dd904275636cc27ced0aac"
+  },
+  "sourceCount": 3,
+  "sourceIds": [
+    "omnira-intelligence-fabric-v1.0",
+    "omnira-intelligence-graph-v1.0",
+    "omnira-mobile-intelligence-v1.0"
+  ],
+  "sourceVersions": {
+    "omnira-intelligence-fabric-v1.0": "v1.0",
+    "omnira-intelligence-graph-v1.0": "v1.0",
+    "omnira-mobile-intelligence-v1.0": "v1.0"
+  }
+}

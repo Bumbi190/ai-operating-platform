@@ -35,6 +35,7 @@ import type { ContextRequest } from '@/lib/atlas/context/request'
 import { readOperational } from './operational'
 import { readActiveWork } from './active-work'
 import { readView } from './view'
+import { readArchitectureKnowledge } from '@/lib/architecture-knowledge/context'
 
 type AnyDb = any
 
@@ -46,6 +47,7 @@ export type ContextDimension =
   | 'operational'   // SOFT ① gatherAtlasContext
   | 'activeWork'    // SOFT ② atlas_actions + in-flight runs
   | 'view'          // SOFT ③ NormalizedView
+  | 'knowledge'     // SOFT · shared canonical architecture knowledge
   | 'intelligence'  // SOFT ④ queryIntelligence (Stage 3)
   | 'memory'        // SOFT ⑤ recallMemories (Stage 2)
 
@@ -71,6 +73,8 @@ export interface ContextBlock {
 export interface ReaderEnv {
   db: AnyDb
   allowedProjectIds: string[]
+  /** Ephemeral only: raw retrieval input is never copied into ContextRequest provenance. */
+  knowledgeRetrievalEnvelope?: unknown
 }
 
 /** `ContextRequest → block | null` (Invariant E). Must never throw. */
@@ -87,6 +91,7 @@ export const SOFT_ORDER: readonly ContextDimension[] = [
   'operational',
   'activeWork',
   'view',
+  'knowledge',
   'intelligence',
   'memory',
 ] as const
@@ -101,4 +106,5 @@ export const CONTEXT_READERS: Partial<Record<ContextDimension, ContextReader>> =
   operational: readOperational,
   activeWork: readActiveWork,
   view: readView,
+  knowledge: readArchitectureKnowledge,
 }

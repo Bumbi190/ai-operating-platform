@@ -50,7 +50,7 @@ describe('STATIC_POLICY_V1 — shape and frozen rules', () => {
   })
 
   it('truncation order is fixed, volatile → stable, and excludes the never-truncated channels', () => {
-    expect(TRUNCATION_ORDER).toEqual(['memory', 'intelligence', 'view', 'activeWork'])
+    expect(TRUNCATION_ORDER).toEqual(['memory', 'intelligence', 'knowledge', 'view', 'activeWork'])
     expect(TRUNCATION_ORDER).not.toContain('constraints')
     expect(TRUNCATION_ORDER).not.toContain('operational')
   })

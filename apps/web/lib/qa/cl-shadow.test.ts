@@ -122,6 +122,9 @@ describe('runContextShadow — fire-and-forget containment', () => {
     const result = await runContextShadow({
       db: { from: () => { throw new Error('no real db in this test') } },
       allowedProjectIds: ['p1'],
+      principalId: 'test-principal',
+      internalAuthorized: false,
+      query: 'test query',
       voice: false,
       view: null,
       legacy: { live: '', action: '', view: '' },
@@ -129,13 +132,14 @@ describe('runContextShadow — fire-and-forget containment', () => {
     })
     expect(result).toBeUndefined()          // nothing usable is returned
     expect(diffs).toHaveLength(1)           // instrumentation happened
-    expect(diffs[0].structural.assembled).toEqual([])  // readers degraded to absent on the broken db
+    expect(diffs[0].structural.assembled).toEqual(['knowledge'])  // policy-denied knowledge is measured, never exposed
+    expect(diffs[0].knowledge?.failureCode).toBe('policy_denied')
   })
 
   it('never rejects, even when everything inside fails', async () => {
     const evil: any = { from: () => { throw new Error('boom') } }
     const bad = runContextShadow({
-      db: evil, allowedProjectIds: null as any, voice: false, view: null,
+      db: evil, allowedProjectIds: null as any, principalId: 'test-principal', internalAuthorized: false, query: 'test query', voice: false, view: null,
       legacy: null as any,                   // malformed on purpose
     })
     await expect(bad).resolves.toBeUndefined()

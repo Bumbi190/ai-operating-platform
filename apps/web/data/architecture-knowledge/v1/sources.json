@@ -1,0 +1,71 @@
+[
+  {
+    "activationStatus": "active",
+    "adapter": "intelligence-fabric",
+    "approvedAt": "2026-08-09",
+    "bookId": "omnira-intelligence-fabric",
+    "canonicalPath": "docs/architecture/intelligence-fabric/canonical/v1.0/full-book/CANONICAL_BOOK_v1.0.docx",
+    "canonicalStatus": "verified",
+    "classification": "internal",
+    "current": true,
+    "deprecatedAt": null,
+    "effectiveAt": "2026-08-09",
+    "knowledgePath": "docs/architecture/intelligence-fabric/atlas-knowledge/v1.0",
+    "knowledgeSourceId": "omnira-intelligence-fabric-v1.0",
+    "manifestPath": "docs/architecture/intelligence-fabric/canonical/v1.0/manifest/manifest.json",
+    "scope": {
+      "kind": "platform"
+    },
+    "sourceChecksum": "2f8a7c0b519c2ba7f7ebbcbe140f808ddeafa03e16d3b2602b2d06111cf25649",
+    "supersededBy": null,
+    "supersedes": null,
+    "title": "Omnira Intelligence Fabric",
+    "version": "v1.0"
+  },
+  {
+    "activationStatus": "active",
+    "adapter": "intelligence-graph",
+    "approvedAt": "2026-07-11",
+    "bookId": "omnira-intelligence-graph",
+    "canonicalPath": "docs/architecture/intelligence-graph/book/OMNIRA_INTELLIGENCE_GRAPH_BOOK_v1.0.docx",
+    "canonicalStatus": "approved",
+    "classification": "internal",
+    "current": true,
+    "deprecatedAt": null,
+    "effectiveAt": "2026-07-11",
+    "knowledgePath": "docs/architecture/intelligence-graph/book/OMNIRA_INTELLIGENCE_GRAPH_BOOK_v1.0.docx",
+    "knowledgeSourceId": "omnira-intelligence-graph-v1.0",
+    "manifestPath": "docs/architecture/intelligence-graph/book/OMNIRA_INTELLIGENCE_GRAPH_SOURCE_MANIFEST.md",
+    "scope": {
+      "kind": "platform"
+    },
+    "sourceChecksum": "5747cdf284732a7b80272f09fe63700eb0f42d3eb80da41df6fb22eafea211fe",
+    "supersededBy": null,
+    "supersedes": null,
+    "title": "Omnira Intelligence Graph",
+    "version": "v1.0"
+  },
+  {
+    "activationStatus": "active",
+    "adapter": "mobile-intelligence",
+    "approvedAt": "2026-07-30",
+    "bookId": "omnira-mobile-intelligence",
+    "canonicalPath": "docs/architecture/mobile-intelligence/canonical/v1.0/full-book/Omnira — Mobile Intelligence & Device Control — Canonical Edition v1.0 (APPROVED).docx",
+    "canonicalStatus": "approved",
+    "classification": "internal",
+    "current": true,
+    "deprecatedAt": null,
+    "effectiveAt": "2026-07-30",
+    "knowledgePath": "docs/architecture/mobile-intelligence/atlas-knowledge/v1.0",
+    "knowledgeSourceId": "omnira-mobile-intelligence-v1.0",
+    "manifestPath": "docs/architecture/mobile-intelligence/canonical/v1.0/manifest/Manifest v1.0 (APPROVED).md",
+    "scope": {
+      "kind": "platform"
+    },
+    "sourceChecksum": "db9185a6396254476ae6acc445dd4427eab5132047dd904275636cc27ced0aac",
+    "supersededBy": null,
+    "supersedes": null,
+    "title": "Omnira — Mobile Intelligence & Device Control",
+    "version": "v1.0"
+  }
+]

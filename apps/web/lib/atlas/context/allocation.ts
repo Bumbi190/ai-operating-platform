@@ -54,6 +54,7 @@ export const STATIC_POLICY_V1: AllocationTable = {
     operational:  'unbounded',
     activeWork:   300,
     view:         200,
+    knowledge:    400,
     intelligence: 0,     // §7: voice allocates ④ to zero by policy
     memory:       0,     // §7: voice allocates ⑤ to zero by policy
   },
@@ -62,6 +63,7 @@ export const STATIC_POLICY_V1: AllocationTable = {
     operational:  'unbounded',
     activeWork:   800,
     view:         600,
+    knowledge:    1200,
     intelligence: 1200,
     memory:       1200,  // = M4 DEFAULT_BUDGET_TOKENS (recall-memories.ts)
   },
@@ -70,6 +72,7 @@ export const STATIC_POLICY_V1: AllocationTable = {
     operational:  'unbounded',
     activeWork:   800,
     view:         0,     // scheduled reasoning has no operator screen
+    knowledge:    1500,
     intelligence: 1500,
     memory:       1200,
   },
@@ -86,6 +89,7 @@ export const STATIC_POLICY_VERSION = 'v1'
 export const TRUNCATION_ORDER: readonly AllocationChannel[] = [
   'memory',
   'intelligence',
+  'knowledge',
   'view',
   'activeWork',
 ] as const

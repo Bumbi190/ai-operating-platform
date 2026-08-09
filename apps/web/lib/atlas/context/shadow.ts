@@ -36,6 +36,8 @@ import { deriveContextRequest } from '@/lib/atlas/context/request'
 import { assembleContext, type AssembledContext } from '@/lib/atlas/context/assembler'
 import { estimateTokens } from '@/lib/atlas/context/allocation'
 import type { ClientViewEnvelope } from '@/lib/atlas/view-context'
+import { allocationFor } from '@/lib/atlas/context/allocation'
+import type { KnowledgeRetrievalDiagnostics } from '@/lib/architecture-knowledge/types'
 
 type AnyDb = any
 
@@ -80,7 +82,9 @@ export interface ShadowDiff {
     operational: number
     activeWork: number
     view: number
+    knowledge: number
   }
+  knowledge: KnowledgeRetrievalDiagnostics | null
   blocksDropped: AssembledContext['provenance']['blocksDropped']
   cacheHits: string[]
   shadowMs: number
@@ -140,7 +144,9 @@ export function computeShadowDiff(legacy: LegacySegments, assembled: AssembledCo
       operational: estimateTokens(assembled.soft.operational?.text ?? ''),
       activeWork: estimateTokens(awText),
       view: estimateTokens(viewText),
+      knowledge: estimateTokens(assembled.soft.knowledge?.text ?? ''),
     },
+    knowledge: assembled.provenance.knowledgeDiagnostics,
     blocksDropped: [...assembled.provenance.blocksDropped],
     cacheHits: [...assembled.provenance.cacheHits],
     shadowMs,
@@ -150,6 +156,10 @@ export function computeShadowDiff(legacy: LegacySegments, assembled: AssembledCo
 export interface ShadowArgs {
   db: AnyDb
   allowedProjectIds: string[]
+  principalId: string
+  internalAuthorized: boolean
+  /** Ephemeral raw query. It is used for retrieval and never emitted by this module. */
+  query: string
   voice: boolean
   view: ClientViewEnvelope | null
   legacy: LegacySegments
@@ -175,6 +185,18 @@ export async function runContextShadow(args: ShadowArgs): Promise<void> {
     const assembled = await assembleContext(req, {
       db: args.db,
       allowedProjectIds: args.allowedProjectIds,
+      knowledgeRetrievalEnvelope: {
+        query: args.query,
+        policy: {
+          principalId: args.principalId,
+          internalAuthorized: args.internalAuthorized,
+          allowedProjectIds: args.allowedProjectIds,
+          classificationCeiling: 'internal',
+          runtime: 'cloud',
+        },
+        tokenBudget: allocationFor('knowledge', args.voice ? 'voice' : 'chat'),
+        maxResults: 5,
+      },
     })
     const diff = computeShadowDiff(args.legacy, assembled, Date.now() - t0)
     if (args.sink) args.sink(diff)

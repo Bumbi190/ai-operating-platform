@@ -44,6 +44,7 @@ import {
 import { allocationFor, truncateToBudget, STATIC_POLICY_VERSION } from '@/lib/atlas/context/allocation'
 import { withDeadline } from '@/lib/atlas/context/deadline'
 import { VolatilityCache, tenantKey, DEFAULT_TTL_MS } from '@/lib/atlas/context/volatility-cache'
+import type { KnowledgeRetrievalDiagnostics } from '@/lib/architecture-knowledge/types'
 
 // ── Latency policy (assembler-local wiring of §7) ─────────────────────────────
 
@@ -59,6 +60,7 @@ const CACHED_PER_TENANT: readonly ContextDimension[] = ['operational', 'activeWo
  * first-token budget before those readers ever go live.
  */
 const DEADLINE_MS: Partial<Record<ContextDimension, number>> = {
+  knowledge: 500,
   intelligence: 300,
   memory: 300,
 }
@@ -74,7 +76,7 @@ const _stableBlockCache = new VolatilityCache<ContextBlock | null>(DEFAULT_TTL_M
  * composition/order/cache/deadline wiring — policy numbers version
  * separately via STATIC_POLICY_VERSION.
  */
-export const ASSEMBLER_VERSION = 'cl-v1.0-stage0'
+export const ASSEMBLER_VERSION = 'cl-v1.1-knowledge-shadow'
 
 // ── AssembledContext (canonical §6.3) ─────────────────────────────────────────
 
@@ -90,6 +92,7 @@ export interface AssembledContext {
     operational: ContextBlock | null
     activeWork: ContextBlock | null
     view: ContextBlock | null
+    knowledge: ContextBlock | null
     intelligence: ContextBlock | null
     memory: ContextBlock | null
   }
@@ -104,6 +107,8 @@ export interface AssembledContext {
     cacheHits: ContextDimension[]
     /** Composition-logic version (see ASSEMBLER_VERSION) — keeps every recorded diff attributable. */
     assemblerVersion: string
+    /** Safe IDs/metrics only. Never contains query or retrieved text. */
+    knowledgeDiagnostics: KnowledgeRetrievalDiagnostics | null
   }
 }
 
@@ -181,7 +186,7 @@ export async function assembleContext(
   // whose channel is allocated to zero (e.g. voice ④/⑤) composes as absent —
   // policy absence, not a drop; the policy version in provenance explains it.
   const soft: AssembledContext['soft'] = {
-    operational: null, activeWork: null, view: null, intelligence: null, memory: null,
+    operational: null, activeWork: null, view: null, knowledge: null, intelligence: null, memory: null,
   }
   for (const [dim, block] of results) {
     if (!block) continue
@@ -207,6 +212,7 @@ export async function assembleContext(
       blocksDropped: dropped,
       cacheHits,
       assemblerVersion: ASSEMBLER_VERSION,
+      knowledgeDiagnostics: (results.find(([dimension]) => dimension === 'knowledge')?.[1]?.meta?.knowledgeDiagnostics as KnowledgeRetrievalDiagnostics | undefined) ?? null,
     },
   }
 

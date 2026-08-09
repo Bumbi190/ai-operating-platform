@@ -19,6 +19,7 @@ export default defineConfig({
       "lib/qa/**/*.test.ts",
       "lib/nav/**/*.test.ts",
       "lib/intelligence/**/*.test.ts",
+      "lib/architecture-knowledge/**/*.test.ts",
       "components/platform/intelligence/**/*.test.ts",
     ],
   },

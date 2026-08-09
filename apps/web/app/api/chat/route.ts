@@ -39,6 +39,7 @@ import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 // CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
 // Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
 import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
+import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 
@@ -628,6 +629,9 @@ export async function POST(request: Request) {
       void runContextShadow({
         db,
         allowedProjectIds,
+        principalId: userId,
+        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
+        query: lastUserText,
         voice: !!voice,
         view: view ?? null,
         legacy: { live: shadowLive, action: shadowAction, view: shadowView },

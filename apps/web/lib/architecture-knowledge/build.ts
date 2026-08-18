@@ -4,7 +4,7 @@ import { chunkKnowledgeSections } from './chunk'
 import { loadAndValidateArtifactFiles } from './artifact'
 import { sha256, sha256File, stableJson } from './hash'
 import { buildLexicalIndex } from './lexical-index'
-import { activeKnowledgeSources, loadKnowledgeRegistry } from './registry'
+import { activeKnowledgeSources, artifactEligibilityFailure, loadKnowledgeRegistry } from './registry'
 import { sourceAdapterFor } from './source-adapters'
 import type { KnowledgeArtifactManifest, KnowledgeSection } from './types'
 import { KNOWLEDGE_BUILDER_VERSION, KNOWLEDGE_INDEX_VERSION, KNOWLEDGE_RETRIEVER_VERSION, KNOWLEDGE_SCHEMA_VERSION } from './types'
@@ -46,7 +46,11 @@ export async function buildArchitectureKnowledge(repoRoot: string, artifactDirec
     'lexical-index.json': stableJson(index),
   }
   for (const [file, payload] of Object.entries(payloads)) writeFileSync(resolve(artifactDirectory, file), payload)
-  const chapterCount = new Set(sections.map(section => `${section.knowledgeSourceId}:${section.chapterNumber}`)).size
+  const canonicalSections = sections.filter(section => section.recordClass === 'canonical_section')
+  const frontMatterSections = sections.filter(section => section.recordClass === 'canonical_front_matter')
+  // Chapters are counted over numbered canonical sections only: front matter is
+  // canonical doctrine but is not a chapter and never inflates the count.
+  const chapterCount = new Set(canonicalSections.map(section => `${section.knowledgeSourceId}:${section.chapterNumber}`)).size
   const manifest: KnowledgeArtifactManifest = {
     schemaVersion: KNOWLEDGE_SCHEMA_VERSION,
     builderVersion: KNOWLEDGE_BUILDER_VERSION,
@@ -60,6 +64,8 @@ export async function buildArchitectureKnowledge(repoRoot: string, artifactDirec
     sourceCount: sources.length,
     chapterCount,
     sectionCount: sections.length,
+    canonicalSectionCount: canonicalSections.length,
+    frontMatterCount: frontMatterSections.length,
     chunkCount: chunks.length,
   }
   writeFileSync(resolve(artifactDirectory, 'manifest.json'), stableJson(manifest))
@@ -83,9 +89,22 @@ export function verifyArchitectureKnowledge(repoRoot: string, artifactDirectory:
   if (artifact.manifest.registryChecksum !== sha256(registryRaw)) throw new Error('Artifact/source registry divergence')
   const expectedIds = active.map(source => source.knowledgeSourceId).sort()
   if (artifact.manifest.sourceIds.slice().sort().join('|') !== expectedIds.join('|')) throw new Error('Artifact active source set mismatch')
-  if (artifact.sources.some(source => source.adapter === 'executive-intelligence')) throw new Error('Inactive Executive Intelligence entered artifact')
-  if (artifact.sources.some(source => ['candidate', 'draft', 'deprecated', 'superseded'].includes(source.canonicalStatus))) throw new Error('Ineligible source entered artifact')
-  if (artifact.sources.some(source => ['local_only', 'prohibited'].includes(source.classification))) throw new Error('Cloud-ineligible classification entered artifact')
+  // Generic registry/artifact divergence check. Every source the artifact
+  // actually carries must still exist in the registry, be byte-identical to its
+  // registry row, and independently satisfy the same eligibility rule the
+  // builder selected on. No book is named here — an inactive, candidate,
+  // superseded, non-current or cloud-ineligible source is rejected by identity
+  // of the rule, not by a special case.
+  const registered = new Map(registry.sources.map(source => [source.knowledgeSourceId, source]))
+  for (const source of artifact.sources) {
+    const match = registered.get(source.knowledgeSourceId)
+    if (!match) throw new Error(`Artifact carries unregistered source: ${source.knowledgeSourceId}`)
+    // Eligibility is checked before row equality so the reported cause is the
+    // specific rule the artifact broke, not the generic "it differs" symptom.
+    const failure = artifactEligibilityFailure(source)
+    if (failure) throw new Error(`Ineligible source entered artifact: ${source.knowledgeSourceId} (${failure})`)
+    if (stableJson(match) !== stableJson(source)) throw new Error(`Artifact/registry source divergence: ${source.knowledgeSourceId}`)
+  }
   return {
     manifest: artifact.manifest,
     artifactDirectory,

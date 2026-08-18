@@ -1,6 +1,29 @@
 [
   {
     "activationStatus": "active",
+    "adapter": "executive-intelligence",
+    "approvedAt": "2026-07-09",
+    "bookId": "omnira-executive-intelligence",
+    "canonicalPath": "docs/architecture/executive-intelligence/project-archive/v1.0/10_canonical-edition/Omnira — Executive Intelligence — Canonical Edition v1.0.docx",
+    "canonicalStatus": "approved",
+    "classification": "internal",
+    "current": true,
+    "deprecatedAt": null,
+    "effectiveAt": "2026-07-09",
+    "knowledgePath": "docs/architecture/executive-intelligence/atlas-knowledge/v1.0/package",
+    "knowledgeSourceId": "omnira-executive-intelligence-v1.0",
+    "manifestPath": "docs/architecture/executive-intelligence/atlas-knowledge/v1.0/package/ATLAS_KNOWLEDGE_EDITION_MANIFEST.md",
+    "scope": {
+      "kind": "platform"
+    },
+    "sourceChecksum": "ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8",
+    "supersededBy": null,
+    "supersedes": null,
+    "title": "Omnira Executive Intelligence",
+    "version": "v1.0"
+  },
+  {
+    "activationStatus": "active",
     "adapter": "intelligence-fabric",
     "approvedAt": "2026-08-09",
     "bookId": "omnira-intelligence-fabric",

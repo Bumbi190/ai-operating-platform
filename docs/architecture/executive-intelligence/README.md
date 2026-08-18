@@ -52,7 +52,36 @@ implemented. Every record in the Atlas Knowledge Edition carries
 
 ## Runtime status
 
-The Atlas Knowledge Edition is repo-integrated as a versioned knowledge source **only**. It
-is **not** runtime-ingested: no embeddings, no vector database, no retrieval pipeline active
-in production, and no change to Atlas runtime permissions. See
-[`atlas-knowledge/v1.0/RUNTIME_INGESTION_STATUS.md`](atlas-knowledge/v1.0/RUNTIME_INGESTION_STATUS.md).
+**Executive Intelligence v1.0 is ACTIVE as an Architecture Knowledge source** (EI-S1.1). It is
+the fourth active source in the Architecture Knowledge Runtime, alongside Intelligence Fabric
+v1.0, Intelligence Graph v1.0 and Mobile Intelligence v1.0. See
+[`atlas-knowledge/v1.0/RUNTIME_INGESTION_STATUS.md`](atlas-knowledge/v1.0/RUNTIME_INGESTION_STATUS.md)
+for the authoritative statement of what that does and does not mean.
+
+What activation means:
+
+- The canonical package is normalized, chunked and lexically indexed into the committed
+  Architecture Knowledge artifact, and is retrievable with server-minted citations.
+- Canonical front matter FM.1–FM.4 is ingested alongside the numbered chapters. FM.2 —
+  *Implementation Scope and Maturity* — is the canonical Stage 1 boundary and is retrievable.
+- Every record's primary canonical identity is the canonical v1.0 book registered in this
+  repository (`ee85a1a0…f555b8`), re-verified against the file on disk at build time.
+
+What activation does **not** mean:
+
+- Architecture Knowledge remains **shadow-only**. No knowledge text enters the live model
+  prompt, and there is no user-visible grounding surface.
+- Canonical book knowledge grants **no execution authority**. Human authority, governance,
+  approval gates and project isolation continue to apply unchanged.
+- **This is not "Executive Intelligence Stage 1 complete".** Activating the knowledge source is
+  the first subphase of canonical Stage 1 (FM.2), not Stage 1 itself.
+- No embeddings, no vector database, no external retrieval service, and no Memory ingestion of
+  canonical books.
+
+Canonical FM.2 Stage 1 requires Executive Context, Daily Executive Brief, Decision Ledger V1,
+Executive Mission Brief V1, explicit human authorization, safe Manager/Workforce handoff,
+project-scoped status and evidence, and basic traceability and review. The runtime gaps
+established by the EI-S1.0 audit — the apex `executive_brief` producer, Decision Ledger V1,
+Executive Mission Brief V1, the Stage 1 authorization object, the Manager/Workforce handoff
+artifacts, principal-scoped reads on the intelligence read route, and retiring the legacy
+`lib/atlas/executive.ts` surface — all remain open and are tracked for later EI-S1 increments.

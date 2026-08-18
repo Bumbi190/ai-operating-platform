@@ -57,6 +57,10 @@ export function loadMarkdownPackage(
         effectiveAt: source.effectiveAt,
         scope: source.scope,
         classification: source.classification,
+        recordClass: 'canonical_section',
+        // Markdown packages carry no separate secondary digest beyond the
+        // per-chapter source checksum already used as the primary identity.
+        secondarySourceChecksum: null,
         ...draft,
       })
     }

@@ -1,11 +1,20 @@
 export const KNOWLEDGE_SCHEMA_VERSION = '1.0' as const
-export const KNOWLEDGE_BUILDER_VERSION = 'akr-stage1-builder-v1' as const
+export const KNOWLEDGE_BUILDER_VERSION = 'akr-stage1-builder-v2' as const
 export const KNOWLEDGE_INDEX_VERSION = 'lexical-v1' as const
 export const KNOWLEDGE_RETRIEVER_VERSION = 'lexical-bm25-v1' as const
 
 export type CanonicalStatus = 'verified' | 'approved' | 'candidate' | 'draft' | 'deprecated' | 'superseded'
 export type ActivationStatus = 'active' | 'inactive'
 export type KnowledgeClassification = 'public' | 'internal' | 'confidential' | 'local_only' | 'prohibited'
+
+/**
+ * The provenance class of one normalized knowledge record. Canonical books may
+ * carry front matter (doctrine notices, implementation scope) that is NOT part
+ * of the numbered chapter/section sequence. Both are canonical, but they are
+ * counted, reported and cited as distinct record classes — front matter is
+ * never folded into the numbered canonical section count.
+ */
+export type KnowledgeRecordClass = 'canonical_section' | 'canonical_front_matter'
 
 export type KnowledgeScope =
   | { kind: 'platform' }
@@ -70,6 +79,14 @@ export interface KnowledgeSection extends KnowledgeChapter {
   ordinal: number
   text: string
   textChecksum: string
+  /** Numbered canonical section vs canonical front matter. Never conflated. */
+  recordClass: KnowledgeRecordClass
+  /**
+   * Optional secondary provenance (e.g. a per-chapter source-file digest) kept
+   * for audit. `sourceChecksum` remains the PRIMARY canonical identity and must
+   * resolve to `canonicalPath` in this repository; this field never replaces it.
+   */
+  secondarySourceChecksum: string | null
 }
 
 export interface KnowledgeChunk {
@@ -95,6 +112,9 @@ export interface KnowledgeChunk {
   classification: KnowledgeClassification
   scope: KnowledgeScope
   effectiveAt: string | null
+  /** Homogeneous across the grouped sections — the chunker never mixes classes. */
+  recordClass: KnowledgeRecordClass
+  secondarySourceChecksum: string | null
 }
 
 export interface LexicalPosting {
@@ -122,8 +142,14 @@ export interface KnowledgeArtifactManifest {
   sourceChecksums: Record<string, string>
   artifactChecksums: Record<'sources.json' | 'sections.jsonl' | 'chunks.jsonl' | 'lexical-index.json', string>
   sourceCount: number
+  /** Distinct numbered chapters. Front-matter records are excluded by design. */
   chapterCount: number
+  /** Total normalized records (numbered sections + front matter). */
   sectionCount: number
+  /** Numbered canonical sections only. */
+  canonicalSectionCount: number
+  /** Canonical front-matter records only. */
+  frontMatterCount: number
   chunkCount: number
 }
 
@@ -161,7 +187,11 @@ export interface KnowledgeSourceReference {
   sectionTitles: string[]
   anchor: string
   canonicalPath: string
+  /** PRIMARY canonical identity: resolves to `canonicalPath` in the repository. */
   sourceChecksum: string
+  /** Secondary audit provenance; never the identity used for source validation. */
+  secondarySourceChecksum: string | null
+  recordClass: KnowledgeRecordClass
   textChecksum: string
   effectiveAt: string | null
 }

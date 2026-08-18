@@ -57,6 +57,16 @@ export function loadAndValidateArtifactFiles(directory: string): LoadedKnowledge
   if (manifest.sourceCount !== sources.length || manifest.sectionCount !== sections.length || manifest.chunkCount !== chunks.length) {
     throw new Error('Artifact manifest counts do not match payloads')
   }
+  // Record classes are counted separately and must reconcile with the total, so
+  // front matter can never be silently folded into the numbered section count.
+  const canonicalSectionCount = sections.filter(section => section.recordClass === 'canonical_section').length
+  const frontMatterCount = sections.filter(section => section.recordClass === 'canonical_front_matter').length
+  if (manifest.canonicalSectionCount !== canonicalSectionCount || manifest.frontMatterCount !== frontMatterCount) {
+    throw new Error('Artifact manifest record-class counts do not match payloads')
+  }
+  if (canonicalSectionCount + frontMatterCount !== sections.length) {
+    throw new Error('Artifact contains sections with an unknown record class')
+  }
   if (index.schemaVersion !== KNOWLEDGE_SCHEMA_VERSION || index.indexVersion !== KNOWLEDGE_INDEX_VERSION || index.documentCount !== chunks.length) {
     throw new Error('Malformed lexical index')
   }

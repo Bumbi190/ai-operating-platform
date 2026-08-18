@@ -37,7 +37,8 @@ function section(overrides: Partial<KnowledgeSection>): KnowledgeSection {
     chapterTitle: 'Chapter', canonicalStatus: 'approved', implementationStatus: 'unknown_not_verified',
     canonicalPath: 'docs/book.docx', sourceChecksum: 'a'.repeat(64), effectiveAt: '2026-01-01',
     scope: { kind: 'platform' }, classification: 'internal', sectionId: '1.1', sectionTitle: '1.1 Test',
-    anchor: 'section-1-1', ordinal: 0, text, textChecksum: sha256(text), ...overrides,
+    anchor: 'section-1-1', ordinal: 0, text, textChecksum: sha256(text),
+    recordClass: 'canonical_section', secondarySourceChecksum: null, ...overrides,
   }
 }
 
@@ -61,19 +62,25 @@ function syntheticArtifact(sources: KnowledgeSource[], chunks: KnowledgeChunk[])
       sourceVersions: Object.fromEntries(sources.map(item => [item.knowledgeSourceId, item.version])),
       sourceChecksums: Object.fromEntries(sources.map(item => [item.knowledgeSourceId, item.sourceChecksum])),
       artifactChecksums: { 'sources.json': '', 'sections.jsonl': '', 'chunks.jsonl': '', 'lexical-index.json': '' },
-      sourceCount: sources.length, chapterCount: 1, sectionCount: chunks.length, chunkCount: chunks.length,
+      sourceCount: sources.length, chapterCount: 1, sectionCount: chunks.length,
+      canonicalSectionCount: chunks.length, frontMatterCount: 0, chunkCount: chunks.length,
     },
     manifestChecksum: 'c'.repeat(64), sources, sections: [], chunks, index,
   }
 }
 
 describe('Architecture Knowledge registry and source eligibility', () => {
-  it('activates only approved Fabric, Mobile and verified Graph sources', () => {
+  it('activates exactly the four approved/verified canonical sources', () => {
     const registry = loadKnowledgeRegistry(repoRoot)
-    expect(activeKnowledgeSources(registry).map(item => item.adapter)).toEqual([
-      'intelligence-fabric', 'intelligence-graph', 'mobile-intelligence',
+    const active = activeKnowledgeSources(registry)
+    expect(active.map(item => item.adapter)).toEqual([
+      'executive-intelligence', 'intelligence-fabric', 'intelligence-graph', 'mobile-intelligence',
     ])
-    expect(registry.sources.find(item => item.adapter === 'executive-intelligence')?.activationStatus).toBe('inactive')
+    // Activation is only ever legitimate for an approved/verified current source.
+    for (const source of active) {
+      expect(['approved', 'verified']).toContain(source.canonicalStatus)
+      expect(source.current).toBe(true)
+    }
     expect(registry.sources.some(item => item.bookId.includes('gainpilot'))).toBe(false)
   })
 
@@ -144,10 +151,22 @@ describe('Immutable artifact and runtime loader', () => {
     const loaded = loadArchitectureKnowledge()
     expect(loaded.ok).toBe(true)
     if (!loaded.ok) return
-    expect(loaded.artifact.manifest.sourceCount).toBe(3)
-    expect(loaded.artifact.manifest.chapterCount).toBe(70)
-    expect(loaded.artifact.manifest.sectionCount).toBe(18_756)
-    expect(loaded.artifact.manifest.chunkCount).toBe(2_276)
+    // Derived from the registry and the payloads themselves — never a frozen
+    // aggregate that would have to be edited whenever a source is activated.
+    const active = activeKnowledgeSources(loadKnowledgeRegistry(repoRoot))
+    expect(loaded.artifact.manifest.sourceCount).toBe(active.length)
+    expect(loaded.artifact.manifest.sourceIds).toEqual(active.map(item => item.knowledgeSourceId).sort())
+    expect(loaded.artifact.manifest.sectionCount).toBe(loaded.artifact.sections.length)
+    expect(loaded.artifact.manifest.chunkCount).toBe(loaded.artifact.chunks.length)
+    expect(loaded.artifact.manifest.chapterCount).toBe(
+      new Set(
+        loaded.artifact.sections
+          .filter(section => section.recordClass === 'canonical_section')
+          .map(section => `${section.knowledgeSourceId}:${section.chapterNumber}`),
+      ).size,
+    )
+    expect(loaded.artifact.manifest.canonicalSectionCount + loaded.artifact.manifest.frontMatterCount)
+      .toBe(loaded.artifact.manifest.sectionCount)
   })
 
   it('fails closed on a corrupt payload', () => {
@@ -165,7 +184,6 @@ describe('Golden lexical retrieval and server citations', () => {
   }
 
   it.each([
-    ['How are Providers selected?', [8, 11]],
     ['How are Agents, Tools and Execution Resources registered?', [9]],
     ['How are Credentials separated from Agent authority?', [18]],
     ['How does multimodal production work?', [20]],
@@ -174,6 +192,30 @@ describe('Golden lexical retrieval and server citations', () => {
     expect(response.diagnostics.ok).toBe(true)
     expect(response.results[0].source.bookId).toBe('omnira-intelligence-fabric')
     expect(chapters).toContain(response.results[0].source.chapterNumber)
+  })
+
+  /**
+   * Provider selection is covered by two canonical books: Intelligence Fabric
+   * ch8/ch11 and Mobile Intelligence ch25 ("Node Selection, Work Placement and
+   * Provider Continuity"). Unscoped, the shared lexical corpus may rank either
+   * first — measured during EI-S1.1, adding a fourth source shifted this one
+   * query from Fabric to Mobile purely through BM25 corpus statistics. The
+   * invariant that matters is that BOTH books stay reachable and correctly
+   * attributed, so the routing is asserted per requested book rather than
+   * frozen to whichever book happened to win the shared ranking.
+   */
+  it('reaches provider-selection material in every canonical book that covers it', async () => {
+    const unscoped = await retrieve('How are Providers selected?')
+    expect(unscoped.diagnostics.ok).toBe(true)
+    expect(['omnira-intelligence-fabric', 'omnira-mobile-intelligence'])
+      .toContain(unscoped.results[0].source.bookId)
+
+    const fabric = await retrieve('How are Providers selected?', { requestedBookId: 'omnira-intelligence-fabric' })
+    expect(fabric.results[0].source.bookId).toBe('omnira-intelligence-fabric')
+    expect([8, 11]).toContain(fabric.results[0].source.chapterNumber)
+
+    const mobile = await retrieve('How are Providers selected?', { requestedBookId: 'omnira-mobile-intelligence' })
+    expect(mobile.results[0].source.bookId).toBe('omnira-mobile-intelligence')
   })
 
   it('supports exact section, chapter, book-title and requirement identifiers', async () => {

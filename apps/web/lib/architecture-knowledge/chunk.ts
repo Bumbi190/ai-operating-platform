@@ -42,6 +42,11 @@ function createChunk(fragments: Fragment[]): KnowledgeChunk {
   const textChecksum = sha256(text)
   const interval = `${uniqueSections[0].sectionId}..${uniqueSections[uniqueSections.length - 1].sectionId}`
   const part = fragments.length === 1 ? fragments[0].part : 1
+  // The grouping key already separates record classes; assert it rather than
+  // trusting it, so a future adapter can never silently merge doctrine classes.
+  if (sections.some(section => section.recordClass !== first.recordClass)) {
+    throw new Error(`Chunk mixes record classes: ${first.knowledgeSourceId} ch${first.chapterNumber}`)
+  }
   return {
     chunkId: `ak:${first.bookId}:${first.version}:ch${first.chapterNumber}:${interval}:p${part}:${textChecksum.slice(0, 16)}`,
     knowledgeSourceId: first.knowledgeSourceId,
@@ -65,6 +70,8 @@ function createChunk(fragments: Fragment[]): KnowledgeChunk {
     classification: first.classification,
     scope: first.scope,
     effectiveAt: first.effectiveAt,
+    recordClass: first.recordClass,
+    secondarySourceChecksum: first.secondarySourceChecksum,
   }
 }
 
@@ -85,7 +92,13 @@ export function chunkKnowledgeSections(sections: KnowledgeSection[]): KnowledgeC
   }
 
   for (const section of sorted) {
-    const key = `${section.knowledgeSourceId}:${section.chapterNumber}`
+    // Chapter prose is continuous, so sections inside a chapter may be grouped.
+    // Front-matter records are independent doctrinal statements with their own
+    // headings; grouping them would make one citation point at several
+    // unrelated doctrines at once, so each stands alone.
+    const key = section.recordClass === 'canonical_front_matter'
+      ? `${section.knowledgeSourceId}:${section.recordClass}:${section.sectionId}`
+      : `${section.knowledgeSourceId}:${section.recordClass}:${section.chapterNumber}`
     if (groupKey && key !== groupKey) flush()
     groupKey = key
     for (const fragment of splitLargeSection(section)) {

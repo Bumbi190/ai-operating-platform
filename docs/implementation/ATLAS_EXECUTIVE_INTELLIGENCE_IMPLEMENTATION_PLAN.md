@@ -562,6 +562,21 @@ When both `riskDraft` and `opportunityDraft` are non-null from the same input (i
 
 ## Epic 4 — Retire Legacy `executive.ts`
 
+> **Status (EI-S1.2):** delivered, with two deliberate deviations from the plan below.
+> 1. **Ordering.** The plan sequences Epic 4 after Epics 2 (triage gate) and 3 (unified
+>    Deviation & Significance). Neither shipped. Apex synthesis does not depend on either: it
+>    consumes the persisted `risk` and `opportunity` artifacts that Epic 1 already produces, and
+>    the triage gate is a reasoning-budget optimisation, not a correctness precondition. Both
+>    epics remain open.
+> 2. **Quarantine.** The plan renames `executive.ts` → `_legacy_executive.ts`. The file keeps its
+>    path instead, marked `@deprecated`, because the in-flight `feat/omnira-ui-vnext` branch still
+>    imports it from its own uncommitted Atlas page; renaming or deleting it would break that work
+>    on merge. It has no live importer and a regression test enforces that.
+>
+> The plan's `queryIntelligence` read is also replaced by a principal-scoped boundary
+> (`intelligence/principal-read.ts`), because the internal read route authenticates with the
+> shared `CRON_SECRET` and must not back a user-facing page.
+
 ### Goal
 
 Repoint the live Atlas page (`app/(platform)/atlas/page.tsx`) from `atlasExecutiveSummary` (legacy, P1/P6-violating) to the conformant `executive_brief` path. Delete or quarantine `executive.ts`. Close G1.

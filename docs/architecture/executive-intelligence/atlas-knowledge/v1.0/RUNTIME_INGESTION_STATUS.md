@@ -65,10 +65,12 @@ explicit human authorization, safe Manager/Workforce handoff, project-scoped sta
 evidence, and basic traceability and review. Knowledge activation is the **first subphase** of
 that target, not the target.
 
-The runtime gaps established by the EI-S1.0 audit remain open: the apex `executive_brief`
-producer, Decision Ledger V1, Executive Mission Brief V1, the Stage 1 authorization object, the
-Manager/Workforce handoff artifacts, principal-scoped reads on the intelligence read route, and
-retirement of the legacy `lib/atlas/executive.ts` surface.
+EI-S1.2 closed two of the runtime gaps established by the EI-S1.0 audit: the apex
+`executive_brief` producer now exists, and the legacy `lib/atlas/executive.ts` path no longer
+powers any live surface. Still open: Decision Ledger V1, Executive Mission Brief V1, the Stage 1
+authorization object, the Manager/Workforce handoff artifacts, the remaining principal-scoped
+read hardening on the internal `CRON_SECRET` intelligence route, and the final FM.2 conformance
+review.
 
 Everything on the canonical FM.2 exclusion list — Full Approval Inbox, full policy engine,
 Damage Boundary engine, Trust Score, Autonomy Licensing, automatic autonomy progression, full

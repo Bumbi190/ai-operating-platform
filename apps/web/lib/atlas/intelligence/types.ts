@@ -222,6 +222,79 @@ export interface OpportunityBody {
   projectId:       string | null
 }
 
+/**
+ * Apex Executive Brief body — the canonical five-section cognitive shape.
+ *
+ * Shape is taken verbatim from ATLAS_EXECUTIVE_INTELLIGENCE.md §13.1:
+ *   1. Situation      — current state in one reasoned sentence, not a list
+ *   2. What changed   — only the deviations that matter (§9), not all activity
+ *   3. What it means  — EI's interpretation: implications for goals
+ *   4. What I recommend — decision-ready, each beating the do-nothing baseline
+ *   5. What needs you — the SHORT list actually requiring the founder
+ *
+ * `horizon` is the §13.2 brief type (five horizons, one format).
+ * `noMaterialChange` realises canonical book §8.17: when nothing material
+ * changed the brief must say so rather than manufacture urgency or novelty.
+ *
+ * This is the apex artifact. It is distinct from the input-tier `brief`
+ * (BriefBody): the apex synthesises persisted brief/trend/insight/risk/
+ * opportunity objects and never reads signals or Memory itself.
+ *
+ * Authority: recommendation-first. Nothing here authorises an action.
+ */
+export type ExecutiveBriefHorizon = 'morning' | 'evening' | 'weekly' | 'project' | 'strategic'
+
+/**
+ * One reasoned line inside a brief section.
+ *
+ * `direction` follows the existing BriefFinding convention and canonical §9
+ * (a risk is a deviation with negative expected utility, an opportunity one
+ * with positive). It is derived from the signed risk/opportunity artifacts —
+ * never from a hardcoded per-metric polarity table.
+ */
+export interface ExecutiveBriefSection {
+  label:      string
+  detail:     string
+  direction:  'positive' | 'negative' | 'neutral'
+  confidence: Confidence
+  evidence:   EvidenceChain
+}
+
+/**
+ * A decision-ready recommendation. §13.1 requires each to beat the do-nothing
+ * baseline, so `counterfactual` (what happens if ignored) and `defeater` (what
+ * would change this recommendation) are both mandatory, not optional colour.
+ *
+ * A recommendation is a proposal for the founder. It confers no authority and
+ * is never an instruction to Manager or Workforce.
+ */
+export interface ExecutiveRecommendation {
+  summary:        string
+  counterfactual: string
+  defeater:       string
+  confidence:     Confidence
+  evidence:       EvidenceChain
+}
+
+export interface ExecutiveBriefBody {
+  horizon:    ExecutiveBriefHorizon
+  scope:      'project' | 'global'
+  projectId:  string | null
+  window:     { since: string; until: string }
+  /** One reasoned sentence — the whole situation. Never a list (§13.1). */
+  situation:  string
+  whatChanged:     ExecutiveBriefSection[]
+  whatItMeans:     ExecutiveBriefSection[]
+  recommendations: ExecutiveRecommendation[]
+  whatNeedsYou:    ExecutiveBriefSection[]
+  /** §8.17 — nothing material changed; say so instead of inventing novelty. */
+  noMaterialChange: boolean
+  /** IDs of the source intelligence objects synthesised into this brief. */
+  sourcedFrom: string[]
+  /** Prior apex brief read back as input for continuity (§13.3). */
+  priorBriefId: string | null
+}
+
 // ── Memory input type (passed to producers as context) ─────────────────────────
 
 /**

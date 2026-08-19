@@ -109,30 +109,129 @@ Cross-project authority, delegated approvers, batch/policy-bound approval, auton
 Trust Score, Damage Boundary, crisis authority and the full Approval Inbox all remain excluded
 by FM.2 and are not implemented.
 
-**Deployment status (EI-S1.3A-R1):**
+Every migration lives in the canonical guarded directory `apps/web/supabase/migrations/`, where
+`check-migrations.mjs` fails a Vercel build until the schema is applied through a separately
+authorized rollout. That failure is the guard working as intended and must never be bypassed,
+grandfathered, or dodged by moving a file back to the legacy repo-root directory. Both Stage 1
+schemas have since been applied through that controlled path.
+
+**Delivered by EI-S1.3B:** **Chapter 11 Decision Ledger V1** — an append-only institutional
+decision history (`atlas_decision_ledger`) in `lib/atlas/decision-ledger/`.
+
+> "Memory remembers context. The Decision Ledger remembers commitments." (§11.2)
+
+It is deliberately none of the neighbouring systems: not a general activity log (§11.3), not
+Memory/D1 (§11.5), not an audit log (§11.6), and not approval history (§11.7 — "Not every
+approval becomes a strategic decision"). It is also not the §8.4 Executive Calibration Ledger,
+which remains separate and unimplemented.
+
+Canonical properties:
+
+- Ten lifecycle states with dedicated Chapter 11 sections (§11.49–§11.58), derived from the
+  record lineage and never stored as a mutable column. `Under Review` is deferred to Chapter 12,
+  which owns the review/decay architecture (§11.46); `Cancelled` is named in §11.48 but defined
+  nowhere, so it is not invented here.
+- **Authority is proven at the moment of the institutional act, then pinned immutably.** §11.39
+  requires the ledger to identify the authority; §11.41 that "a decision requiring approval is
+  not effective until approval exists" and that the approval record reference its "Conditions.
+  Edited terms." So the exact prospective act is built first, canonically hashed, and matched
+  against one Authorization V1 grant's project, target, version, action **and principal** before
+  anything is written. What the human authorized is what gets appended — nothing material can
+  change between the proof and the record.
+- **Approval is a historical act, not a continuing authority lease.** §11.180 has an active
+  decision explain itself as "approved under this authority … and remains active until this
+  review condition", and §11.44/§11.45/§11.55 give the decision its own duration. A later
+  Authorization V1 expiry, revocation or supersession therefore does **not** retroactively erase
+  an approval that was valid when it happened; it is a §11.47 trigger to review or reconsider.
+  Governance after approval is decided by the decision's own lifecycle alone — `effectiveAt`,
+  `expiresAt`, and whether it has been reversed, superseded or completed. No `authorized: true`
+  boolean is stored to drift, and the governing read consults no live authorization state.
+- **Six distinct authority acts, each needing its own fresh proof** (§27.313, minimum authority):
+  `decision.approve`, `decision.amend`, `decision.reject`, `decision.defer`, `decision.reverse`,
+  `decision.supersede`. None inherits another's proof. Every material amendment creates version
+  N+1 under authority bound to the content of N+1 (§11.59, §11.62); §11.61 non-material
+  corrections are out of scope for V1, so every amendment here is material.
+- **Nothing is appended before it validates.** Each write authenticates, establishes project
+  authority from the lineage's own recorded scope, applies the canonical lifecycle gate, builds
+  the candidate, proves authority, folds `[existing lineage + candidate]` through the pure core,
+  and only then performs the single irreversible append. An invalid transition can never reach
+  an append-only table. If a lineage is read back after the append and still cannot be folded,
+  that is reported as `integrity_violation` — institutional corruption needing a human, never a
+  retryable availability error.
+- **Supersession is verified, not asserted.** §11.56's "replaced by a newer decision" requires a
+  successor that exists, shares the project, is not the decision itself, and is itself an
+  approved or active decision — a draft, proposal, rejection or deferral is not one. The
+  replacement chain is then walked with a visited set and a hard bound, so cycles are refused
+  rather than recorded. Missing, cross-project and non-decision successors deny identically, so
+  the boundary is never a cross-project decision-id oracle.
+- **Completion means it actually finished.** §11.58's "after successful execution and review"
+  is enforced literally: the decision must have taken effect, the lineage must carry a measured
+  outcome, and a review must be recorded. The explicit UNKNOWN (`not_yet_measurable`) asserts
+  nothing and cannot close a decision.
+- Active and expired are derived from time (§11.43, §11.55 — "Expiration should not depend on
+  manual memory"), so no background job is required.
+- Immutable history (§11.60): corrections and material amendments append a new version with
+  explicit provenance and reason (§11.59, §11.62); the database rejects UPDATE and DELETE.
+- What was known THEN stays known then — evidence references keep timestamp and scope (§11.27)
+  and the evidence snapshot is frozen against later data change (§11.28), including known gaps.
+- Recommendation is preserved separately from the final decision (§11.24/§11.25); expected impact
+  (§11.36) is never conflated with observed outcome (§11.96/§11.98), and `not_yet_measurable` is
+  the explicit UNKNOWN — absence of failure is never success (§11.100).
+- Materiality must be positively declared from the §11.19 domains; routine activity is refused
+  (§11.18), and nothing can self-classify past human authority.
+- Project-scoped only. Global and portfolio decisions (§11.10/§11.11) need the governed summaries
+  of §11.73, which Stage 1 does not fund, so cross-project reads are denied rather than guessed.
+- **Lifecycle concurrency is serialized on lifecycle position, not row count.** Each record
+  carries `lifecycle_generation`: the number of lifecycle-advancing records that preceded it.
+  `outcome_observed` and `reviewed` record something *about* a decision without moving it
+  (§11.96, §11.102), so they consume no generation and are excluded from serialization. A single
+  `UNIQUE (decision_id, lifecycle_generation)` index over the nine advancing types makes any two
+  acts derived from the same lifecycle state collide — a reversal and a supersession, two
+  amendments of one version, an approval and a deferral — and the loser gets `conflict` with no
+  row written. Counting total rows instead would let an unrelated review note landing between
+  two writers' reads hand them different keys and admit both.
+- **Ordering is deterministic for acts stamped in the same millisecond**: `occurredAt`, then
+  lifecycle generation, then annotations before the act that leaves their generation, then
+  record id. Record ids are random UUIDs, so without the generation tiebreak a same-millisecond
+  proposal and approval folded in the wrong order — and became permanently unreadable — about
+  half the time. Two annotations sharing a generation *and* a millisecond are genuinely
+  concurrent; their relative order is stable and reproducible for every reader, but is not
+  claimed to reflect real-world sequence.
+
+Not implemented, and out of scope by canon: Decision Quality Rating (§11.101 — "Omnira **may
+later** evaluate"), Trust Score, autonomy progression, Performance Intelligence, and the
+Chapter 12 review/decay architecture.
+
+**Deployment status (EI-S1.3B-R4, verified):**
 
 | Item | State |
 |---|---|
-| Human Authorization V1 code | **IMPLEMENTED** |
-| Schema migration | **REVIEWED, UNAPPLIED** — `apps/web/supabase/migrations/20260819_atlas_authorizations.sql`, ledger name `atlas_authorizations` |
-| Runtime | **NOT YET PRODUCTION-OPERATIONAL** |
-| Production deployment | **BLOCKED BY DESIGN** until a controlled migration application |
-| Decision Ledger V1 | **NOT STARTED** |
+| Human Authorization V1 | **IMPLEMENTED** — `atlas_authorizations`, applied and verified |
+| Chapter 11 Decision Ledger V1 | **IMPLEMENTED / PRODUCTION SCHEMA READY** |
+| Decision Ledger migration | `apps/web/supabase/migrations/20260819_atlas_decision_ledger.sql`, ledger name `atlas_decision_ledger` |
+| Schema | **APPLIED AND VERIFIED — SCHEMA_EQUIVALENT** |
+| Production initial row count | **0** |
+| Migration guard | **36 enforced / 0 missing**, no override, nothing grandfathered |
+| Executive Intelligence Stage 1 | **STILL NOT COMPLETE** |
 
-The migration lives in the canonical guarded directory, so `check-migrations.mjs` will fail a
-Vercel build until the schema is applied through a separately authorized rollout. That failure
-is the guard working as intended and must not be bypassed, grandfathered, or dodged by moving
-the file back to the legacy repo-root directory. Until the schema exists, every runtime path
-fails closed and nothing on a live Atlas surface depends on it.
+Verified read-only against the production catalogs after application: `lifecycle_generation`
+present and no stale `base_record_count`; the append-only BEFORE UPDATE and BEFORE DELETE reject
+triggers both enabled; RLS enabled with **zero** policies and no direct `anon`, `authenticated`
+or `public` grant; the lifecycle concurrency index present with exactly the nine advancing types
+in its predicate and annotations correctly absent; the lineage index carrying
+`lifecycle_generation`; and the migration registered exactly once. No seed rows, no test rows,
+no backfill.
 
-**Still open, tracked for later EI-S1 increments:** Chapter 11 Decision Ledger V1 (EI-S1.3B,
-which consumes the authorization seam), Executive Mission Brief V1, the Manager/Workforce
-handoff artifacts, the remaining principal-scoped read hardening on the internal `CRON_SECRET`
-intelligence route, and the final FM.2 conformance review.
+**Still open, tracked for later EI-S1 increments:** Executive Mission Brief V1, the safe
+Manager/Workforce handoff, the remaining principal-scoped read hardening on the internal
+`CRON_SECRET` intelligence route, and the final FM.2 conformance review.
 
 Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does
 not persist that reviewer identity — a separate, narrowly scoped security follow-up),
-**AK-PRELIVE-01** (Architecture Knowledge index/memory optimisation before live grounding), and
-physical deletion of `lib/atlas/executive.ts` once the UI branch migrates.
+**AK-PRELIVE-01** (Architecture Knowledge index/memory optimisation before live grounding),
+**R2-PROV-01** (the `atlas_authorizations` payload was schema-equivalent but not byte-identical
+to its repository file; the Decision Ledger rollout did not repeat that, differing only by a
+trailing newline), **§11.61 non-material corrections deferred** beyond V1, and physical deletion
+of `lib/atlas/executive.ts` once the UI branch migrates.
 
 **Executive Intelligence Stage 1 is still NOT complete.**

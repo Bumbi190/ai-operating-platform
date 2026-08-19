@@ -64,7 +64,10 @@ interface Row {
   version: number
   authority_record: unknown
   decision_ref: unknown
+  project_mode: string | null
   report: unknown
+  dependency_observation: unknown
+  gate_resolution: unknown
   blocker: unknown
   clears_blocker_id: string | null
   evidence: unknown
@@ -83,7 +86,8 @@ const COLS = [
   'allowed_actions', 'forbidden_actions', 'tools', 'data_scope', 'dependencies',
   'assumptions', 'risks', 'approval_gates', 'deadline', 'reporting',
   'escalation_triggers', 'stop_conditions', 'pause_conditions', 'completion_conditions',
-  'evidence_requirements', 'version', 'authority_record', 'decision_ref', 'report',
+  'evidence_requirements', 'version', 'authority_record', 'decision_ref',
+  'project_mode', 'report', 'dependency_observation', 'gate_resolution',
   'blocker', 'clears_blocker_id', 'evidence', 'closure', 'review_note',
   'superseded_by', 'reason', 'lifecycle_generation',
 ].join(', ')
@@ -131,7 +135,10 @@ function rowToRecord(row: Row): MissionRecord {
     version:    row.version,
     authorityRecord: (row.authority_record as MissionRecord['authorityRecord']) ?? null,
     decisionRef: (row.decision_ref as MissionRecord['decisionRef']) ?? null,
+    projectMode: row.project_mode,
     report:     (row.report as MissionRecord['report']) ?? null,
+    dependencyObservation: (row.dependency_observation as MissionRecord['dependencyObservation']) ?? null,
+    gateResolution: (row.gate_resolution as MissionRecord['gateResolution']) ?? null,
     blocker:    (row.blocker as MissionRecord['blocker']) ?? null,
     clearsBlockerId: row.clears_blocker_id,
     evidence:   (row.evidence as MissionRecord['evidence']) ?? null,
@@ -184,7 +191,10 @@ function recordToRow(record: MissionRecord): Record<string, unknown> {
     version:     record.version,
     authority_record: record.authorityRecord,
     decision_ref: record.decisionRef,
+    project_mode: record.projectMode,
     report:      record.report,
+    dependency_observation: record.dependencyObservation,
+    gate_resolution: record.gateResolution,
     blocker:     record.blocker,
     clears_blocker_id: record.clearsBlockerId,
     evidence:    record.evidence,

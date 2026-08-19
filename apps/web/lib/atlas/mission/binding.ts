@@ -65,6 +65,13 @@ export type MissionAct = keyof typeof MISSION_ACTION
 export const MISSION_UNBOUND_FIELDS = [
   'recordId', 'occurredAt', 'principalId', 'authorityRecord', 'lifecycleGeneration',
   'report', 'blocker', 'clearsBlockerId', 'evidence', 'reviewNote',
+  // EI-S1.4B-R1 additions, all observations rather than terms:
+  //   projectMode            the world's state when the act happened, compared
+  //                          live by §20.75; binding it would only duplicate a
+  //                          check the operational gate already performs
+  //   dependencyObservation  §20.101 — a prerequisite's real state
+  //   gateResolution         §20.73 — how a declared gate was resolved
+  'projectMode', 'dependencyObservation', 'gateResolution',
 ] as const
 
 function canonicalJson(value: unknown): string {

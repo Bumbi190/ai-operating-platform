@@ -33,6 +33,8 @@
 
 import {
   MalformedMissionLineageError,
+  type MissionGateOutcome,
+  type MissionGateResolution,
   type DerivedMissionState,
   type MissionActType,
   type MissionBlocker,
@@ -54,6 +56,11 @@ const TERMINAL = new Set<MissionActType>([
 /** Acts that record something ABOUT a mission without moving it. */
 const ANNOTATING = new Set<MissionActType>([
   'progress_reported', 'blocker_raised', 'blocker_cleared', 'evidence_recorded', 'reviewed',
+  // EI-S1.4B-R1: a prerequisite finishing and a gate being resolved are facts
+  // about the world, not movements of the mission. They must never advance the
+  // lifecycle generation, or two lifecycle writers separated by one of them
+  // would stop colliding — the EI-S1.3B-R3 defect.
+  'dependency_observed', 'gate_resolved',
 ])
 
 /**
@@ -225,6 +232,10 @@ export function deriveMissionState(
   const evidence: MissionEvidence[] = []
   const reviewNotes: string[] = []
   const reports: MissionProgressReport[] = []
+  /** §20.101 — latest observed satisfaction per declared dependency. */
+  const dependencySatisfied = new Map<string, boolean>()
+  /** §20.73 — latest resolution per declared gate. */
+  const gateResolutions = new Map<string, MissionGateResolution>()
 
   for (const [index, record] of ordered.entries()) {
     if (record.missionId !== missionId) {
@@ -275,6 +286,26 @@ export function deriveMissionState(
           if (!record.reviewNote) throw new MalformedMissionLineageError('review-record-requires-note', record.recordId)
           reviewNotes.push(record.reviewNote)
           break
+        case 'dependency_observed': {
+          const observation = record.dependencyObservation
+          if (!observation) throw new MalformedMissionLineageError('dependency-record-requires-observation', record.recordId)
+          // An observation about a dependency the mission never declared would
+          // satisfy nothing while looking like progress.
+          if (!current.dependencies.some(d => d.reference === observation.reference)) {
+            throw new MalformedMissionLineageError('dependency-observation-declared', observation.reference)
+          }
+          dependencySatisfied.set(observation.reference, observation.satisfied)
+          break
+        }
+        case 'gate_resolved': {
+          const resolution = record.gateResolution
+          if (!resolution) throw new MalformedMissionLineageError('gate-record-requires-resolution', record.recordId)
+          if (!current.approvalGates.some(g => g.gateId === resolution.gateId)) {
+            throw new MalformedMissionLineageError('gate-resolution-declared', resolution.gateId)
+          }
+          gateResolutions.set(resolution.gateId, resolution)
+          break
+        }
       }
       continue
     }
@@ -363,10 +394,17 @@ export function deriveMissionState(
   }
 
   const missingRequirements = missingBriefRequirements(current)
+  // §20.101 — a declared dependency with no observation is UNSATISFIED. Fail
+  // closed: an unobserved prerequisite blocks rather than passes.
+  const dependencyState = current.dependencies.map(d => ({
+    ...d, satisfied: dependencySatisfied.get(d.reference) ?? false,
+  }))
 
   return {
     missionId,
-    status: derivePersistedStatus(state, current, [...blockers.values()], evidence, reviewNotes, reports, options.at),
+    status: derivePersistedStatus(
+      state, current, [...blockers.values()], [...gateResolutions.values()],
+      evidence, reviewNotes, reports, options.at),
     projectId,
     version,
     title: current.title,
@@ -393,6 +431,7 @@ export function deriveMissionState(
     risks: current.risks,
     approvalGates: current.approvalGates,
     deadline: current.deadline,
+    projectMode: current.projectMode,
     reporting: current.reporting,
     escalationTriggers: current.escalationTriggers,
     stopConditions: current.stopConditions,
@@ -404,6 +443,8 @@ export function deriveMissionState(
     supersededBy,
     closure,
     openBlockers: [...blockers.values()],
+    dependencyState,
+    gateResolutions: [...gateResolutions.values()],
     evidence,
     reviewNotes,
     reports,
@@ -429,6 +470,7 @@ function derivePersistedStatus(
   state: LifecycleState,
   current: MissionRecord,
   openBlockers: MissionBlocker[],
+  gateResolutions: MissionGateResolution[],
   evidence: MissionEvidence[],
   reviewNotes: string[],
   reports: MissionProgressReport[],
@@ -437,6 +479,11 @@ function derivePersistedStatus(
   // §20.103 — a blocked mission cannot progress. An explicit unresolved blocker
   // outranks every other running state; §20.87 forbids leaving it silent.
   if (openBlockers.length > 0 && (state === 'active' || state === 'approved')) return 'blocked'
+  // §20.73 — a gate resolved with a blocking outcome stops the mission just as
+  // an explicit blocker does. Ignoring a rejection would be the §20.221
+  // hidden-approval failure mode.
+  if (gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))
+      && (state === 'active' || state === 'approved')) return 'blocked'
 
   switch (state) {
     case 'draft':     return 'draft'
@@ -454,7 +501,7 @@ function derivePersistedStatus(
       // §20.104 — likely to miss outcome, deadline, cost or quality. Derived
       // from an observable fact (the deadline has passed) or the reporter's own
       // assessment; never from a stored flag someone can set at will.
-      if (isPastDeadline(current, at) || reports.some(r => r.atRisk)) return 'at_risk'
+      if (isPastDeadline(current.deadline, at) || reports.some(r => r.atRisk)) return 'at_risk'
       return 'active'
     }
     case 'completed':           return 'completed'
@@ -466,9 +513,27 @@ function derivePersistedStatus(
   }
 }
 
-function isPastDeadline(current: MissionRecord, at: string): boolean {
-  return current.deadline != null && Date.parse(current.deadline) < Date.parse(at)
+/**
+ * §20.75 — "Approval should expire if… the deadline passes."
+ *
+ * Strictly past: a mission evaluated at exactly its deadline instant is still
+ * current, and becomes expired one millisecond later. The boundary is stated
+ * here rather than left to a reader of `<` vs `<=`, and is tested at the exact
+ * instant, before, and after.
+ */
+export function isPastDeadline(deadline: string | null, at: string): boolean {
+  return deadline != null && Date.parse(deadline) < Date.parse(at)
 }
+
+/**
+ * §20.73 — outcomes that stop a mission rather than letting it proceed.
+ *
+ * "Approve with conditions" and "edit and approve" both permit continuation;
+ * the rest each demand something before execution may go on.
+ */
+export const BLOCKING_GATE_OUTCOMES: ReadonlySet<MissionGateOutcome> = new Set<MissionGateOutcome>([
+  'reject', 'request_more_evidence', 'request_alternative', 'defer', 'escalate',
+])
 
 /** §20.80 — every declared evidence requirement has at least one matching record. */
 function evidenceSatisfied(current: MissionRecord, evidence: MissionEvidence[]): boolean {
@@ -499,8 +564,14 @@ export function missionCompletionGaps(
   for (const c of minimums) {
     if (!closure.criteriaMet.includes(c.criterion)) gaps.push(`success_criteria:${c.criterion}`)
   }
-  // §20.92 — approvals resolved: no gate may still be waiting, expressed as an
-  // unresolved blocker (§20.103).
+  // §20.92 — "Approvals are resolved." Every declared gate must actually have
+  // been resolved, and none may have been resolved with a blocking outcome.
+  // "Gate exists" is never "gate is satisfied" (§20.221 anti-hidden-approval).
+  for (const gate of state.approvalGates) {
+    const resolution = state.gateResolutions.find(r => r.gateId === gate.gateId)
+    if (!resolution) gaps.push(`gate_unresolved:${gate.gateId}`)
+    else if (BLOCKING_GATE_OUTCOMES.has(resolution.outcome)) gaps.push(`gate_blocked:${gate.gateId}`)
+  }
   if (state.openBlockers.length > 0) gaps.push('open_blocker')
   // §20.195 — a completion review must have happened.
   if (state.reviewNotes.length === 0) gaps.push('completion_review')
@@ -520,14 +591,60 @@ export function missionCompletionGaps(
 export function missionReadiness(
   state: DerivedMissionState,
   authority: MissionOperationalAuthority,
+  at: string,
 ): MissionReadiness {
   const missing: MissionRequirement[] = [...state.missingRequirements]
-  if (!authority.authorized) missing.push('current_authorization')
-  if (state.dependencies.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
+  // §20.101 "Valid authority" — present tense, so live authority decides.
+  if (!authority.authorized) {
+    missing.push(
+      authority.reason === 'deadline_expired' ? 'deadline_expired'
+      : authority.reason === 'project_mode_changed' ? 'project_mode_changed'
+      : 'current_authorization')
+  }
+  // §20.75 — a passed deadline expires approval even when the authorization
+  // itself is untouched, so it is checked here too rather than only upstream.
+  if (isPastDeadline(state.deadline, at)) missing.push('deadline_expired')
+  // §20.101 "Available dependencies" — §20.63: a hard dependency blocks
+  // activation. Satisfaction comes from observations, never from the contract.
+  if (state.dependencyState.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
+  // §20.101 "Required tools" — V1 proves DECLARATION only; see `unverified`.
   if (state.tools.length === 0) missing.push('tools')
   if (state.openBlockers.length > 0) missing.push('unresolved_blocker')
+  // §20.73 — a gate resolved as reject/defer/escalate/request-more stops the
+  // mission until it is resolved differently.
+  if (state.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
   // Only an approved mission can be Ready — §20.100 precedes §20.101.
-  const approvedOrRunning = state.approvedAt != null
-  if (!approvedOrRunning) missing.push('authority')
-  return { ready: missing.length === 0, missing: [...new Set(missing)] }
+  if (state.approvedAt == null) missing.push('authority')
+  return {
+    ready: missing.length === 0,
+    missing: [...new Set(missing)],
+    // Honest about what Stage 1 cannot check: there is no capability-
+    // availability primitive to ask, so declaration is not availability.
+    // §21.16 makes this a Manager acceptance check, landing in EI-S1.4C.
+    unverified: ['tool_availability', 'data_availability'],
+  }
+}
+
+/**
+ * §20.98 — the canonical status a human should be shown, layering live
+ * conditions over the immutable lifecycle status.
+ *
+ * Only two statuses can appear here that the lineage alone cannot produce:
+ * `ready` (§20.101) and authority-driven `blocked` (§20.103). Neither is ever
+ * persisted, and neither can be asserted by a caller.
+ */
+export function effectiveMissionStatus(
+  state: DerivedMissionState,
+  authority: MissionOperationalAuthority,
+  readiness: MissionReadiness,
+): MissionStatus {
+  // An approved-or-running mission that may no longer move is blocked, and the
+  // reason is explicit rather than silent (§20.87).
+  if (!authority.authorized
+      && (state.status === 'approved' || state.status === 'active' || state.status === 'at_risk')) {
+    return 'blocked'
+  }
+  // §20.101 — Ready sits between Approved and Active.
+  if (state.status === 'approved' && readiness.ready) return 'ready'
+  return state.status
 }

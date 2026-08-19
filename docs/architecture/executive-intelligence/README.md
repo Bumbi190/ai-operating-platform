@@ -218,10 +218,16 @@ Canonical properties:
 - All twelve mission types (§20.11) and all sixteen statuses (§20.98). A mission type is a
   classification and never a capability — `autonomy` grants exactly as much authority as
   `learning`, namely none (§20.55).
-- **Status is derived, never stored.** Twelve statuses follow from an immutable act; four —
-  Awaiting Approval, Ready, At Risk, Awaiting Review — are predicates over the lineage, the
-  clock and live authority, so no caller can assert one instead of satisfying it. There is
-  no mutable `status` column anywhere.
+- **Status is derived, never stored,** and there is **one** public evaluation surface.
+  `resolveMissionEvaluation()` returns the immutable `lifecycleStatus`, live `authority`,
+  `readiness`, and the `effectiveStatus` a human should be shown. `ready` and
+  authority-driven `blocked` exist only there — no persisted act can produce either, and no
+  caller can assert one instead of satisfying it. There is no mutable `status` column
+  anywhere.
+- **Mission V1 is honest about what it cannot prove.** §20.101 asks for available tools and
+  data; Stage 1 has no capability-availability primitive, so readiness reports
+  `unverified: ['tool_availability', 'data_availability']` rather than implying otherwise.
+  Actual availability is a §21.16 Manager acceptance check and lands in EI-S1.4C.
 - **Authority binds the exact prospective act.** The candidate record is built first and
   hashed over an explicit projection of every §20.126 material field and every other field
   whose post-approval change would alter what the human approved. Change the objective,
@@ -229,12 +235,42 @@ Canonical properties:
   and the required authorization changes with it.
 - **Mission authority is an OPERATIONAL GATE, not a historical fact.** This is the
   deliberate difference from the Decision Ledger. A decision's approval is past tense and
-  stands (§11.180). §20.75 makes mission approval expire when the object changes materially,
-  and §20.101 makes Ready depend on valid authority in the present tense — so readiness is
-  re-evaluated against live Authorization V1 state on every read, and an expired or revoked
-  grant means no NEW handoff may be built on it. History is never rewritten: the `activated`
-  act stays exactly where it is (§20.128), and the mission derives `blocked` with an
-  explicit reason (§20.103, §20.87).
+  stands (§11.180). §20.75 makes mission approval expire on material change, and §20.101
+  makes Ready depend on valid authority in the present tense. Every §20.75 input Stage 1 can
+  prove is enforced, in **one shared seam used by both boundaries**: material change (version
+  N+1 + fresh authority), **deadline passed** (`deadline_expired`), and **project mode
+  changed** (`project_mode_changed`, comparing a snapshot of `projects.atlas_mode` against
+  the live value). §20.75's remaining input — workflow version — is **not applicable**: a
+  Mission Brief binds no workflow, and inventing a field to satisfy a future clause would be
+  fake authority. It lands with EI-S1.4D.
+  History is never rewritten: the `activated` act stays exactly where it is (§20.128), and
+  the mission's *effective* status becomes `blocked` with an explicit reason (§20.103,
+  §20.87).
+- **Approve, activate and resume all prove current authority BEFORE the irreversible
+  append.** Nothing is appended and then found invalid on a later read. Resume in particular
+  re-proves authority in the write boundary itself, not by trusting that a caller consulted
+  the read boundary first.
+- **The governing decision is proven exactly.** When a Decision Ledger decision is the
+  authority source, it must exist, belong to this project *by its own record* (a
+  caller-supplied `decisionRef.projectId` proves nothing), still govern, and match the
+  **exact pinned version** — §11.62 makes an amended decision a different commitment, so
+  version drift stops new movement rather than silently authorizing the old mission.
+  Unknown and foreign decisions deny identically. The Decision Ledger is never written.
+- **Approval gates must be resolved, not merely declared** (§20.73, §20.92). Gates carry
+  stable ids; a `gate_resolved` annotation records which of the eight canonical outcomes
+  applied. Completion requires every declared gate resolved, and a blocking outcome —
+  reject, defer, request more evidence, request alternative, escalate — blocks the mission
+  instead of being quietly ignored (§20.221). This is not the Full Approval Inbox, which
+  FM.2 excludes, and adds no second approval-authority system.
+- **Dependency definition is separate from dependency observation** (§20.101). The contract
+  binds what the mission waits on — kind, reference, hardness, owner. Whether a prerequisite
+  has been met arrives as an immutable `dependency_observed` annotation, so a prerequisite
+  finishing no longer requires a material amendment and fresh authority. A hard dependency
+  is **unsatisfied until observed**. Replacing or removing a dependency is still material.
+- **Supersession proves the successor is real** (§20.97): it must exist, share the project,
+  be in a lifecycle state that can carry the direction forward, not be this mission, and not
+  close a cycle — checked by a bounded, fail-closed chain walk. Missing, foreign and
+  ineligible successors deny identically.
 - **A material amendment creates version N+1 and expires the prior approval** (§20.126,
   §20.75). Version N stays in the immutable lineage; the old authorization does not float
   forward; the mission returns to `proposed` until it earns fresh, exact authority.
@@ -281,6 +317,7 @@ only** — calling them a Damage Boundary would be a lie.
 | Production initial row count | **0** |
 | Migration guard | **36 enforced / 0 missing**, no override, nothing grandfathered |
 | Executive Mission Brief V1 | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
+| Mission operational readiness | EI-S1.4B-R1 corrections applied |
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Executive → Manager handoff | **NOT STARTED** |
 | Manager → Workforce handoff | **NOT STARTED** |

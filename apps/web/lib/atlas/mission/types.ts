@@ -116,6 +116,8 @@ export type MissionActType =
   | 'blocker_cleared'      // resolves a raised blocker; §20.87 no silent blockers
   | 'evidence_recorded'    // §20.80/§20.81
   | 'reviewed'             // §20.195
+  | 'dependency_observed'  // §20.101 — a prerequisite's real state changed
+  | 'gate_resolved'        // §20.73 — a declared approval gate was resolved
 
 // ── Structured safety fields (§20.42–§20.61) ──────────────────────────────────
 
@@ -160,16 +162,45 @@ export interface MissionSuccessCriterion {
   measure?: string | null
 }
 
-/** §20.62–§20.65 — what the mission waits on. */
+/**
+ * §20.62–§20.65 — what the mission waits on. DEFINITION ONLY.
+ *
+ * EI-S1.4B-R1 removed `satisfied` from this shape. Whether a prerequisite has
+ * been met is a condition of the world (§20.101 "Available dependencies"), not
+ * a term of the contract the human approved. Keeping it here put it inside the
+ * authorization-bound hash, so the only sanctioned way to record "the
+ * architecture plan was approved" was a material amendment to version N+1 plus
+ * fresh authority — which conflated a prerequisite finishing with the mission
+ * changing. Satisfaction now arrives as an immutable observation.
+ *
+ * Replacing or removing a dependency IS still material: it changes what the
+ * mission waits on, so it takes the full §20.126 amendment path.
+ */
 export interface MissionDependency {
   kind: 'decision' | 'mission' | 'capability' | 'approval' | 'external_provider' | 'project_mode' | 'data'
   reference: string
-  /** §20.63/§20.64 — a hard dependency blocks; a soft one degrades. */
+  /** §20.63/§20.64 — a hard dependency blocks activation or completion; a soft one degrades. */
   hardness: 'hard' | 'soft'
-  /** §20.65 — who owns resolving it. */
+  /** §20.65 — "Every material dependency should have an owner or source." */
   owner?: string | null
-  /** Whether it is currently satisfied — §20.101 feeds on this. */
+}
+
+/**
+ * §20.101 — an immutable observation that a dependency's real-world state
+ * changed. Annotation only: it never advances the lifecycle and is never part
+ * of the authorization binding, so a prerequisite finishing cannot silently
+ * rewrite what was approved.
+ *
+ * A hard dependency is UNSATISFIED until an observation says otherwise — the
+ * fail-closed default, so an unobserved prerequisite blocks rather than passes.
+ */
+export interface MissionDependencyObservation {
+  /** Must match a `reference` in the mission's declared dependencies. */
+  reference: string
   satisfied: boolean
+  /** Why this is believed — §20.81 evidence quality applies. */
+  evidence?: string | null
+  note?: string | null
 }
 
 /** §20.66/§20.67 — stated assumptions; the critical ones trigger escalation. */
@@ -192,11 +223,51 @@ export interface MissionRisk {
   control?: string | null
 }
 
-/** §20.71–§20.73 — where execution must pause for a human. */
+/**
+ * §20.71 — "Approval gates define where execution must pause." A gate is a
+ * point execution reaches, not a precondition of starting: "Before publishing"
+ * cannot be satisfied before the mission has begun.
+ *
+ * §20.244 therefore requires only that "Every approval gate must be known
+ * before execution reaches it", while §20.92 requires "Approvals are resolved"
+ * at completion. Both are enforced; see `MissionGateResolution`.
+ */
 export interface MissionApprovalGate {
+  /** Stable identifier a resolution refers to. */
+  gateId: string
   gate: string
-  /** §20.72 — what the approver needs to see. */
+  /** §20.72 — the decision-ready package the approver needs to see. */
   inputs?: string[]
+}
+
+/** §20.73 — the canonical outcomes an approval gate can produce. */
+export type MissionGateOutcome =
+  | 'approve'
+  | 'approve_with_conditions'
+  | 'edit_and_approve'
+  | 'reject'
+  | 'request_more_evidence'
+  | 'request_alternative'
+  | 'defer'
+  | 'escalate'
+
+/**
+ * §20.73 — an immutable record that a declared gate was actually resolved, and
+ * how. Annotation only: resolving a gate does not move the mission's lifecycle.
+ *
+ * "Gate exists" is never "gate is satisfied". §20.92 makes completion depend on
+ * approvals actually being resolved, and a blocking outcome (reject, defer,
+ * request more evidence, request alternative, escalate) stops the mission
+ * (§20.103) rather than being quietly ignored.
+ */
+export interface MissionGateResolution {
+  gateId: string
+  outcome: MissionGateOutcome
+  /** §20.72 — what the approver saw; §20.81 evidence quality applies. */
+  evidence?: string | null
+  /** Conditions attached by `approve_with_conditions`. */
+  conditions?: string[]
+  note?: string | null
 }
 
 /** §20.84/§20.85 — when to escalate, and to whom. */
@@ -421,7 +492,19 @@ export interface MissionRecord {
   // ── Act-specific payloads ───────────────────────────────────────────────────
   authorityRecord:  MissionAuthorityRecord | null
   decisionRef:      MissionDecisionReference | null
+  /**
+   * §20.75 — the project's `atlas_mode` when this act occurred.
+   *
+   * "Approval should expire if… the project mode changes." Project mode is a
+   * real Stage 1 primitive (`projects.atlas_mode`, active | observer |
+   * hibernate | archived), so the snapshot is taken here and compared against
+   * the live value before any new activation, resume or handoff. Not a policy
+   * engine: one string, one equality check.
+   */
+  projectMode:      string | null
   report:           MissionProgressReport | null
+  dependencyObservation: MissionDependencyObservation | null
+  gateResolution:   MissionGateResolution | null
   blocker:          MissionBlocker | null
   /** For `blocker_cleared`: which blocker this resolves. */
   clearsBlockerId:  string | null
@@ -450,6 +533,10 @@ export type MissionAuthorityReason =
   | 'no_authority_act'
   | 'authorization_invalid'
   | 'governing_decision_invalid'
+  /** §20.75 — the deadline passed; approval no longer authorizes new movement. */
+  | 'deadline_expired'
+  /** §20.75 — the project mode changed since approval. */
+  | 'project_mode_changed'
   | 'superseded_version'
 
 /** §20.106 — the canonical requirements an activation attempt can miss. */
@@ -466,6 +553,16 @@ export type MissionRequirement =
   | 'tools'
   | 'current_authorization'
   | 'unresolved_blocker'
+  /** §20.75 — the deadline has passed, so approval no longer authorizes. */
+  | 'deadline_expired'
+  /** §20.75 — the project's atlas_mode changed since the mission was approved. */
+  | 'project_mode_changed'
+  /** §20.73 — a declared gate was resolved with a blocking outcome. */
+  | 'gate_blocked'
+  /** §20.92 — a declared gate has not been resolved (completion only). */
+  | 'gate_unresolved'
+  /** §20.60/§20.105 — no data scope declared. */
+  | 'data_scope'
 
 export interface DerivedMissionState {
   missionId:   MissionId
@@ -496,6 +593,8 @@ export interface DerivedMissionState {
   risks:       MissionRisk[]
   approvalGates: MissionApprovalGate[]
   deadline:    string | null
+  /** §20.75 — the project mode this mission's current version was approved under. */
+  projectMode: string | null
   reporting:   MissionReportingRequirement[]
   escalationTriggers: MissionEscalationTrigger[]
   stopConditions: MissionHaltCondition[]
@@ -511,6 +610,13 @@ export interface DerivedMissionState {
 
   /** §20.103 — blockers raised and not cleared. §20.87: never silent. */
   openBlockers: MissionBlocker[]
+  /**
+   * §20.101 — current dependency satisfaction, derived from the observation
+   * history. A declared dependency with no observation is UNSATISFIED.
+   */
+  dependencyState: Array<MissionDependency & { satisfied: boolean }>
+  /** §20.73 — the latest resolution recorded for each declared gate. */
+  gateResolutions: Array<MissionGateResolution & { gateId: string }>
   /** §20.80 — evidence recorded so far, in order. */
   evidence:    MissionEvidence[]
   reviewNotes: string[]
@@ -537,10 +643,48 @@ export interface MissionOperationalAuthority {
   detail?:    string
 }
 
+/**
+ * What Mission V1 can and cannot prove about a mission being able to run.
+ *
+ * `unverified` is the honest half. §20.101 asks for "Required tools" to be
+ * available, but Stage 1 has no capability-availability primitive to ask, so
+ * Mission V1 proves only that the tools are DECLARED and narrowed. Actual tool
+ * and data availability is a §21.16 Manager acceptance check and lands in
+ * EI-S1.4C. Reporting `ready: true` without saying so would overclaim.
+ */
+export type MissionUnverified = 'tool_availability' | 'data_availability'
+
 /** §20.101 — readiness is a predicate, never a stored flag. */
 export interface MissionReadiness {
+  /** Everything Mission V1 can actually prove is satisfied. */
   ready:   boolean
   missing: MissionRequirement[]
+  /** Conditions Mission V1 deliberately does not claim to have verified. */
+  unverified: MissionUnverified[]
+}
+
+/**
+ * The single public evaluation surface (EI-S1.4B-R1).
+ *
+ * Before R1 a caller could read `status: 'active'` from one API while another
+ * said the mission was not operationally authorized, with no documented
+ * relationship between them. This type makes the two layers explicit and
+ * unambiguous:
+ *
+ *   lifecycleStatus  what the immutable record says happened
+ *   authority        whether the mission may move further RIGHT NOW
+ *   readiness        §20.101, including what V1 does not verify
+ *   effectiveStatus  the canonical §20.98 status a human should be shown
+ *
+ * `effectiveStatus` is where `ready` and authority-driven `blocked` appear;
+ * neither is ever persisted, and neither can be asserted by a caller.
+ */
+export interface MissionEvaluation {
+  lifecycleStatus: MissionStatus
+  effectiveStatus: MissionStatus
+  authority: MissionOperationalAuthority
+  readiness: MissionReadiness
+  state: DerivedMissionState
 }
 
 /** Thrown by the pure core when a record chain could not be a real history. */

@@ -77,14 +77,15 @@ create table if not exists public.atlas_mission_ledger (
   --   paused | resumed | completed | partially_completed
   --   failed | cancelled | superseded | archived
   --   progress_reported | blocker_raised | blocker_cleared
-  --   evidence_recorded | reviewed
+  --   evidence_recorded | reviewed | dependency_observed | gate_resolved
   record_type         text not null
     constraint atlas_mission_ledger_record_type_check check (record_type in (
       'drafted', 'proposed', 'approved', 'activated', 'amended',
       'paused', 'resumed', 'completed', 'partially_completed',
       'failed', 'cancelled', 'superseded', 'archived',
       'progress_reported', 'blocker_raised', 'blocker_cleared',
-      'evidence_recorded', 'reviewed'
+      'evidence_recorded', 'reviewed',
+      'dependency_observed', 'gate_resolved'
     )),
   occurred_at         timestamptz not null default now(),
 
@@ -155,6 +156,15 @@ create table if not exists public.atlas_mission_ledger (
   data_scope          jsonb not null default '[]',
 
   -- §20.62–§20.67 — what the mission waits on and what it assumes.
+  --
+  -- DEFINITION ONLY: kind, reference, hardness and owner. Whether a
+  -- prerequisite has actually been met is a condition of the world (§20.101),
+  -- recorded by a `dependency_observed` annotation. EI-S1.4B-R1 removed a
+  -- `satisfied` flag from here: living inside the authorization-bound hash, it
+  -- meant the only sanctioned way to record "the architecture plan was
+  -- approved" was a material amendment plus fresh authority, conflating a
+  -- prerequisite finishing with the mission changing. Replacing or removing a
+  -- dependency is still material and still takes the amendment path.
   dependencies        jsonb not null default '[]',
   assumptions         jsonb not null default '[]',
   -- §20.68/§20.69 — risks and their controls. DECLARATIVE ONLY. FM.2 excludes
@@ -162,7 +172,13 @@ create table if not exists public.atlas_mission_ledger (
   -- they record what the approving human was shown.
   risks               jsonb not null default '[]',
 
-  -- §20.71–§20.73 — where execution must pause for a human.
+  -- §20.71 — "Approval gates define where execution must pause." A gate is a
+  -- point execution reaches, not a precondition of starting: "Before
+  -- publishing" cannot be satisfied before the mission has begun. §20.244
+  -- requires gates to be KNOWN before execution reaches them; §20.92 requires
+  -- approvals to be RESOLVED at completion. Each gate carries a stable
+  -- `gateId` that a `gate_resolved` annotation refers to, so "gate exists" can
+  -- never be mistaken for "gate is satisfied" (§20.221).
   approval_gates      jsonb not null default '[]',
   -- §20.122 — when the mission is due.
   deadline            timestamptz,
@@ -198,6 +214,31 @@ create table if not exists public.atlas_mission_ledger (
   -- itself. No FK: the ledger's decision_id is a lineage key, not unique, and
   -- this migration does not touch that table.
   decision_ref        jsonb,
+
+  -- §20.75 — "Approval should expire if… the project mode changes." The
+  -- project's `atlas_mode` (active | observer | hibernate | archived, a real
+  -- Stage 1 primitive on public.projects) as it stood when this authority act
+  -- occurred. Compared by equality against the live value before any new
+  -- activation, resume or handoff. One string, one comparison — not a policy
+  -- engine.
+  --
+  -- §20.75's remaining input, "the workflow version changes", is NOT
+  -- APPLICABLE in V1: a Mission Brief binds no workflow, and inventing a
+  -- workflow column to satisfy a future clause would be fake authority. It
+  -- lands with EI-S1.4D.
+  project_mode        text,
+
+  -- §20.101 — a `dependency_observed` annotation: which declared dependency,
+  -- whether it is now satisfied, and the evidence. A hard dependency is
+  -- UNSATISFIED until observed, so an unobserved prerequisite blocks.
+  dependency_observation jsonb,
+
+  -- §20.73 — a `gate_resolved` annotation: which declared gate, and which of
+  -- the eight canonical outcomes. A blocking outcome (reject, defer, request
+  -- more evidence, request alternative, escalate) stops the mission (§20.103)
+  -- instead of being quietly ignored. This is not the Full Approval Inbox,
+  -- which FM.2 excludes, and introduces no second approval-authority system.
+  gate_resolution     jsonb,
 
   -- §20.78 — a progress report. §20.103 — an explicit blocker, and the act that
   -- clears it (§20.87 forbids leaving one silent). §20.80/§20.81 — evidence.
@@ -264,10 +305,13 @@ create index if not exists atlas_mission_ledger_type_idx
 -- lib/atlas/mission/derive.ts, and a test compares the two so they cannot drift.
 --
 -- Annotations (`progress_reported`, `blocker_raised`, `blocker_cleared`,
--- `evidence_recorded`, `reviewed`) are excluded and consume no generation: they
--- record something ABOUT a mission without moving it (§20.78, §20.103, §20.80,
--- §20.195). Serializing them would produce false `conflict` results for a report
--- filed alongside a lifecycle act, and would make no history safer.
+-- `evidence_recorded`, `reviewed`, `dependency_observed`, `gate_resolved`) are
+-- excluded and consume no generation: they record something ABOUT a mission
+-- without moving it (§20.78, §20.103, §20.80, §20.195, §20.101, §20.73).
+-- Serializing them would produce false `conflict` results for a report filed
+-- alongside a lifecycle act, and would make no history safer. EI-S1.4B-R1 added
+-- the last two, and they are excluded for exactly the same reason — a
+-- prerequisite finishing must not stop two lifecycle writers from colliding.
 --
 -- Narrowly scoped: no distributed transaction machinery, no generic
 -- event-sourcing framework, no advisory locks.
@@ -318,6 +362,7 @@ comment on table public.atlas_mission_ledger is
   'Executive Mission Brief V1 — append-only mission history. '
   'One row per immutable act in a mission lineage; status is derived, never stored. '
   'References atlas_authorizations for authority and atlas_decision_ledger for direction; duplicates neither. '
-  'Mission authority is an operational gate (Ch20 s20.75), unlike the Decision Ledger''s historical approval. '
+  'Mission authority is an operational gate (Ch20 s20.75), unlike the Decision Ledger''s historical approval: '
+  'deadline expiry, project-mode change, material amendment and governing-decision drift each stop new movement. '
   'Service-role only; UPDATE and DELETE are rejected by trigger. '
   'See docs/architecture/executive-intelligence/ and canonical Ch 20.';

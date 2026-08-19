@@ -49,13 +49,24 @@ import {
 } from './binding'
 import { buildMissionRecord, newMissionId, type BuildMissionRecordInput } from './build'
 import {
+  BLOCKING_GATE_OUTCOMES,
   deriveMissionState,
+  isPastDeadline,
   missionCompletionGaps,
   missionLifecycleGenerationOf,
 } from './derive'
+import {
+  evaluateGoverningDecision,
+  evaluateMissionOperationalAuthority,
+  readProjectMode,
+  type ProjectModeReader,
+} from './operational-authority'
 import { createMissionLedgerStore, type MissionLedgerStore } from './store'
 import type {
   DerivedMissionState,
+  MissionDependencyObservation,
+  MissionGateResolution,
+  MissionStatus,
   MissionAuthorityRecord,
   MissionBlocker,
   MissionClosure,
@@ -89,6 +100,14 @@ export type MissionWriteStatus =
   | 'completion_incomplete'
   /** §20.137 — the governing decision is missing, foreign, or no longer suitable. */
   | 'governing_decision_invalid'
+  /** Successor missing, not a mission, cross-project, self, or cyclic (§20.97). */
+  | 'invalid_successor'
+  /** §20.75 — the mission's deadline has passed; approval no longer authorizes. */
+  | 'deadline_expired'
+  /** §20.75 — the project's atlas_mode changed since the mission was approved. */
+  | 'project_mode_changed'
+  /** The mission's current operational authority is no longer valid. */
+  | 'authority_not_current'
   /** A competing transition won the race; the lineage is unchanged. */
   | 'conflict'
   /**
@@ -112,6 +131,8 @@ interface CommonArgs {
   store?: MissionLedgerStore
   /** Injected clock; production callers omit it. */
   now?: string
+  /** Injected §20.75 project-mode reader; production callers omit it. */
+  projectMode?: ProjectModeReader
 }
 
 /** The §20.244 brief content a caller supplies when opening or amending. */
@@ -204,6 +225,14 @@ export interface RaiseBlockerArgs extends CommonArgs { missionId: string; blocke
 export interface ClearBlockerArgs extends CommonArgs { missionId: string; blockerId: string }
 export interface RecordEvidenceArgs extends CommonArgs { missionId: string; evidence: MissionEvidence }
 export interface ReviewMissionArgs extends CommonArgs { missionId: string; reviewNote: string }
+export interface ObserveDependencyArgs extends CommonArgs {
+  missionId: string
+  observation: MissionDependencyObservation
+}
+export interface ResolveGateArgs extends CommonArgs {
+  missionId: string
+  resolution: MissionGateResolution
+}
 
 /** The act content a caller's arguments produce, before identity and clock. */
 type CandidateInput = Omit<BuildMissionRecordInput, 'principalId' | 'occurredAt' | 'lifecycleGeneration'>
@@ -303,6 +332,50 @@ function carryForward(prior: DerivedMissionState) {
     completionConditions: prior.completionConditions,
     evidenceRequirements: prior.evidenceRequirements,
     decisionRef: prior.decisionRef,
+    projectMode: prior.projectMode,
+  }
+}
+
+/**
+ * §20.75 — snapshot the project's current `atlas_mode` onto an authority act.
+ *
+ * Taken at approve/activate/amend time so a later mode change is detectable by
+ * simple equality. A mode that cannot be read fails closed rather than being
+ * recorded as "unknown and therefore fine".
+ */
+async function snapshotProjectMode(
+  projectId: string,
+  reader: ProjectModeReader | undefined,
+): Promise<string | MissionWriteResult> {
+  try {
+    const mode = await (reader ?? readProjectMode)(projectId)
+    if (!mode) return DENY('project_mode_changed', 'unreadable')
+    return mode
+  } catch {
+    return DENY('project_mode_changed', 'unreadable')
+  }
+}
+
+/**
+ * Prove that a mission may move RIGHT NOW, BEFORE anything is appended.
+ *
+ * §20.106 — "No external execution begins" when requirements are incomplete, so
+ * a denial here must leave the lineage untouched. This replaces the pre-R1
+ * arrangement where `activateMission` appended first and a later READ reported
+ * `governing_decision_invalid` — by then the act was permanent.
+ */
+async function requireCurrentAuthority(
+  prior: DerivedMissionState,
+  at: string,
+  projectMode: ProjectModeReader | undefined,
+): Promise<MissionWriteResult | null> {
+  const authority = await evaluateMissionOperationalAuthority(prior, { now: at, projectMode })
+  if (authority.authorized) return null
+  switch (authority.reason) {
+    case 'deadline_expired':           return DENY('deadline_expired', authority.detail)
+    case 'project_mode_changed':       return DENY('project_mode_changed', authority.detail)
+    case 'governing_decision_invalid': return DENY('governing_decision_invalid', authority.detail)
+    default:                           return DENY('authority_not_current', authority.detail)
   }
 }
 
@@ -618,7 +691,22 @@ export async function approveMission(args: ApproveMissionArgs): Promise<MissionW
   if (!prior.briefComplete) {
     return DENY('activation_incomplete', 'brief_incomplete', prior.missingRequirements)
   }
-  return commitAct(open, planFor({ ...args, act: 'approve' }, prior),
+  // §20.75 — approval expires when the deadline passes, so a mission whose
+  // deadline is already behind us cannot be approved at all.
+  if (isPastDeadline(prior.deadline, open.at)) {
+    return DENY('deadline_expired', prior.deadline ?? undefined, ['deadline_expired'])
+  }
+  // §20.54 — when a Decision Ledger decision IS the authority source, it must
+  // be proven to exist, belong to this project and still govern at the pinned
+  // version BEFORE the irreversible append. The caller-supplied
+  // `decisionRef.projectId` proves nothing on its own.
+  const governing = await evaluateGoverningDecision(prior, open.at)
+  if (governing) return DENY('governing_decision_invalid', governing.detail)
+
+  const mode = await snapshotProjectMode(prior.projectId, args.projectMode)
+  if (typeof mode !== 'string') return mode
+
+  return commitAct(open, { ...planFor({ ...args, act: 'approve' }, prior), projectMode: mode },
     { authorizationId: args.authorizationId, act: 'approve' })
 }
 
@@ -636,17 +724,35 @@ export async function activateMission(args: ActivateMissionArgs): Promise<Missio
   if ('status' in open) return open
   const { prior } = open
 
+  // §20.105 — the full activation checklist. Everything Stage 1 can actually
+  // prove is proven here, and §20.106 requires a failure to append NOTHING.
   const missing: MissionRequirement[] = [...prior.missingRequirements]
-  // §20.101/§20.105 — dependencies, tools and blockers are conditions of the
-  // world, checked here rather than at brief-completeness time.
-  if (prior.dependencies.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
+  // §20.101 "Available dependencies" — satisfaction comes from observations
+  // (§20.63: a hard dependency blocks activation), never from the contract.
+  if (prior.dependencyState.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
+  // §20.101 "Required tools" — V1 proves declaration; availability is a §21.16
+  // Manager acceptance check (EI-S1.4C), and `MissionReadiness.unverified`
+  // says so rather than pretending otherwise.
   if (prior.tools.length === 0) missing.push('tools')
+  if (prior.dataScope.length === 0) missing.push('data_scope')
   if (prior.openBlockers.length > 0) missing.push('unresolved_blocker')
+  // §20.73 — a gate already resolved with a blocking outcome stops the mission.
+  if (prior.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
+  // §20.75 — a passed deadline expires the approval.
+  if (isPastDeadline(prior.deadline, open.at)) missing.push('deadline_expired')
   if (missing.length > 0) {
     return DENY('activation_incomplete', 'requirements_incomplete', [...new Set(missing)])
   }
 
-  return commitAct(open, planFor({ ...args, act: 'activate' }, prior),
+  // Current authority — including the governing decision and the project mode —
+  // proven BEFORE the irreversible append.
+  const denied = await requireCurrentAuthority(prior, open.at, args.projectMode)
+  if (denied) return denied
+
+  const mode = await snapshotProjectMode(prior.projectId, args.projectMode)
+  if (typeof mode !== 'string') return mode
+
+  return commitAct(open, { ...planFor({ ...args, act: 'activate' }, prior), projectMode: mode },
     { authorizationId: args.authorizationId, act: 'activate' })
 }
 
@@ -665,7 +771,9 @@ export async function activateMission(args: ActivateMissionArgs): Promise<Missio
 export async function amendMission(args: AmendMissionArgs): Promise<MissionWriteResult> {
   const open = await openFor(args)
   if ('status' in open) return open
-  return commitAct(open, planFor({ ...args, act: 'amend' }, open.prior),
+  const mode = await snapshotProjectMode(open.prior.projectId, args.projectMode)
+  if (typeof mode !== 'string') return mode
+  return commitAct(open, { ...planFor({ ...args, act: 'amend' }, open.prior), projectMode: mode },
     { authorizationId: args.authorizationId, act: 'amend' })
 }
 
@@ -677,12 +785,71 @@ export async function cancelMission(args: CancelMissionArgs): Promise<MissionWri
     { authorizationId: args.authorizationId, act: 'cancel' })
 }
 
-/** §20.97 — replaced by a newer mission; the relationship is explicit. */
+/** How far the successor chain is walked before a supersession is refused. */
+const SUCCESSOR_CHAIN_LIMIT = 64
+
+/**
+ * §20.97 — "A mission may be replaced by a NEWER MISSION."
+ *
+ * The authorization binding proves WHICH successor the human authorized; it
+ * cannot prove the successor is a real mission. EI-S1.4B-R1 adds that proof: a
+ * successor must exist, share the project, be in a lifecycle state that could
+ * actually carry the direction forward, not be this mission, and not close a
+ * cycle. Superseding by a ghost id, a draft, or a cancelled mission would leave
+ * the institutional record pointing at nothing.
+ *
+ * A draft grants nothing (§20.99) and a cancelled, failed, superseded or
+ * archived mission is finished, so none of them can replace a live commitment.
+ * A proposal may: §20.97 is about replacing direction, and canon nowhere
+ * requires the successor to be approved first.
+ *
+ * Missing, foreign and ineligible successors deny identically, so this never
+ * becomes a cross-project mission-id oracle.
+ */
+const SUCCESSOR_ELIGIBLE = new Set<MissionStatus>([
+  'proposed', 'awaiting_approval', 'approved', 'ready', 'active', 'blocked', 'at_risk', 'paused', 'awaiting_review',
+])
+
 export async function supersedeMission(args: SupersedeMissionArgs): Promise<MissionWriteResult> {
   const open = await openFor(args)
   if ('status' in open) return open
-  if (args.supersededBy === args.missionId) return DENY('invalid_request', 'supersede-not-self')
-  return commitAct(open, planFor({ ...args, act: 'supersede' }, open.prior),
+  const { store, at, prior } = open
+
+  if (args.supersededBy === args.missionId) return DENY('invalid_successor', 'self')
+
+  // Bounded, deterministic, fail-closed walk of the replacement chain. Checked
+  // BEFORE the successor's own lifecycle, because a cycle is a fact about the
+  // graph and reporting it as "not a mission" would hide it. Not a graph
+  // engine: one pointer per mission, one visited set, a hard limit.
+  const visited = new Set<string>([args.missionId])
+  let successorState: DerivedMissionState | null = null
+  let cursor: string | null = args.supersededBy
+  for (let step = 0; cursor; step += 1) {
+    if (step >= SUCCESSOR_CHAIN_LIMIT) return DENY('invalid_successor', 'chain_too_long')
+    if (visited.has(cursor)) return DENY('invalid_successor', 'cycle')
+    visited.add(cursor)
+    let state: DerivedMissionState
+    try {
+      const chain = await store.lineage(cursor)
+      if (chain.length === 0) {
+        // Only the immediate successor's absence rejects THIS act; a dangling
+        // link deeper in the chain is history we simply cannot read further.
+        if (step === 0) return DENY('invalid_successor', 'unknown_or_foreign')
+        break
+      }
+      if (chain[0].projectId !== prior.projectId) return DENY('invalid_successor', 'unknown_or_foreign')
+      state = deriveMissionState(chain, { at })
+    } catch {
+      return DENY('invalid_successor', 'unknown_or_foreign')
+    }
+    if (step === 0) successorState = state
+    cursor = state.supersededBy
+  }
+  if (!successorState || !SUCCESSOR_ELIGIBLE.has(successorState.status)) {
+    return DENY('invalid_successor', 'unknown_or_foreign')
+  }
+
+  return commitAct(open, planFor({ ...args, act: 'supersede' }, prior),
     { authorizationId: args.authorizationId, act: 'supersede' })
 }
 
@@ -708,10 +875,26 @@ export async function resumeMission(args: ResumeMissionArgs): Promise<MissionWri
   const open = await openFor(args)
   if ('status' in open) return open
   const { prior } = open
+
   const missing: MissionRequirement[] = []
-  if (prior.dependencies.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
+  // §20.133 — "Dependencies remain current."
+  if (prior.dependencyState.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
   if (prior.openBlockers.length > 0) missing.push('unresolved_blocker')
-  if (missing.length > 0) return DENY('activation_incomplete', 'restart_requirements_incomplete', missing)
+  if (prior.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
+  if (isPastDeadline(prior.deadline, open.at)) missing.push('deadline_expired')
+  if (missing.length > 0) return DENY('activation_incomplete', 'restart_requirements_incomplete', [...new Set(missing)])
+
+  // §20.133 — "Authority remains valid." EI-S1.4B-R1: this is proven HERE, in
+  // the write boundary, not delegated to a comment about the caller having
+  // re-checked through the read boundary. Resuming restarts execution, so it
+  // needs the same live proof activation does — including the governing
+  // decision and the project mode. Invalid authority appends nothing.
+  //
+  // Resume needs no NEW `mission.resume` grant: canon does not define one, and
+  // §20.133 asks only that the existing authority "remains valid".
+  const denied = await requireCurrentAuthority(prior, open.at, args.projectMode)
+  if (denied) return denied
+
   return commitAct(open, { ...carryForward(prior), type: 'resumed', missionId: args.missionId }, null)
 }
 
@@ -790,6 +973,47 @@ export async function recordMissionEvidence(args: RecordEvidenceArgs): Promise<M
   const open = await openFor(args)
   if ('status' in open) return open
   return commitAct(open, { ...carryForward(open.prior), type: 'evidence_recorded', missionId: args.missionId, evidence: args.evidence }, null)
+}
+
+/**
+ * §20.101 — record that a declared dependency's real-world state changed.
+ *
+ * An annotation, deliberately: a prerequisite finishing is a fact about the
+ * world, not a change to the contract the human approved. Before R1 the only
+ * way to record false→true was a material amendment to version N+1 plus fresh
+ * authority, which meant "the architecture plan got approved" was treated as
+ * "the mission changed". The pure core refuses an observation naming a
+ * dependency the mission never declared.
+ */
+export async function observeMissionDependency(args: ObserveDependencyArgs): Promise<MissionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  return commitAct(open, {
+    ...carryForward(open.prior), type: 'dependency_observed',
+    missionId: args.missionId, dependencyObservation: args.observation,
+  }, null)
+}
+
+/**
+ * §20.73 — record that a declared approval gate was resolved, and how.
+ *
+ * An annotation: resolving a gate does not move the mission's lifecycle. But
+ * "gate exists" is never "gate is satisfied" — §20.92 makes completion depend
+ * on approvals actually being resolved, and a blocking outcome stops the
+ * mission (§20.103) instead of being quietly ignored (§20.221).
+ *
+ * This is not the Full Approval Inbox, which FM.2 excludes, and it introduces
+ * no second approval-authority system: the record names the resolving human
+ * from the authenticated session, and any Authorization V1 proof a gate needs
+ * is referenced through the mission's existing authority path.
+ */
+export async function resolveMissionGate(args: ResolveGateArgs): Promise<MissionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  return commitAct(open, {
+    ...carryForward(open.prior), type: 'gate_resolved',
+    missionId: args.missionId, gateResolution: args.resolution,
+  }, null)
 }
 
 /** §20.195 — completion review. Required before a mission may close. */

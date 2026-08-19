@@ -38,12 +38,15 @@ import 'server-only'
 
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
-import { isAuthorizationEffective } from '@/lib/atlas/authorization/principal-read'
-import { resolveDecision } from '@/lib/atlas/decision-ledger/principal-read'
-import { deriveMissionState, missionReadiness } from './derive'
+import { deriveMissionState, effectiveMissionStatus, missionReadiness } from './derive'
+import {
+  evaluateMissionOperationalAuthority,
+  type ProjectModeReader,
+} from './operational-authority'
 import { createMissionLedgerStore, type MissionLedgerStore } from './store'
 import type {
   DerivedMissionState,
+  MissionEvaluation,
   MissionOperationalAuthority,
   MissionReadiness,
   MissionRecord,
@@ -61,6 +64,8 @@ export type MissionReadStatus =
 export interface MissionReadArgs {
   store?: MissionLedgerStore
   now?: string
+  /** Injected §20.75 project-mode reader; production callers omit it. */
+  projectMode?: ProjectModeReader
 }
 
 const DENY = <T>(status: MissionReadStatus, empty: T) => ({ ...empty, status })
@@ -103,12 +108,10 @@ export async function resolveMission(
 /**
  * May this mission move toward execution or handoff RIGHT NOW?
  *
- * Combines the immutable lineage with live Authorization V1 state and, when a
- * Decision Ledger decision is the authority source, that decision's current
- * institutional standing.
- *
- * Fail-closed by construction: every path that cannot prove authority returns
- * `authorized: false` with a typed reason.
+ * Delegates to the shared seam in `operational-authority.ts`, which the WRITE
+ * boundary uses too. Before EI-S1.4B-R1 this logic lived only here, so a direct
+ * `resumeMission()` call bypassed it entirely — the two boundaries must never
+ * again hold separate copies of the same security question.
  */
 export async function isMissionOperationallyAuthorized(
   missionId: string,
@@ -119,78 +122,70 @@ export async function isMissionOperationallyAuthorized(
   if (read.status !== 'ok' || !read.state) {
     return { authorized: false, reason: 'no_authority_act', status: read.status }
   }
-  const state = read.state
+  const authority = await evaluateMissionOperationalAuthority(read.state, {
+    now: at, projectMode: args.projectMode,
+  })
+  return { ...authority, status: 'ok' }
+}
 
-  // §20.99 — a mission that was never approved has no authority to lose.
-  const authority = state.authorityRecord
-  if (!authority) return { authorized: false, reason: 'no_authority_act', status: 'ok' }
+/**
+ * THE public evaluation surface (EI-S1.4B-R1).
+ *
+ * Before R1 a caller could read `status: 'active'` from `resolveMission` while
+ * `isMissionOperationallyAuthorized` said the mission could not move, with no
+ * documented relationship between the two answers — and no API ever returned
+ * `ready` at all, despite the README claiming a sixteen-status public surface.
+ *
+ * This returns all four layers together, so the relationship is explicit:
+ *
+ *   lifecycleStatus  what the immutable record says happened
+ *   authority        whether the mission may move further right now
+ *   readiness        §20.101, plus what V1 deliberately does not verify
+ *   effectiveStatus  the canonical §20.98 status to show a human
+ *
+ * `ready` and authority-driven `blocked` exist only here. Neither is persisted;
+ * neither can be asserted by a caller.
+ */
+export async function resolveMissionEvaluation(
+  missionId: string,
+  args: MissionReadArgs = {},
+): Promise<{ evaluation: MissionEvaluation | null; status: MissionReadStatus }> {
+  const at = args.now ?? new Date().toISOString()
+  const read = await resolveMission(missionId, { ...args, now: at })
+  if (read.status !== 'ok' || !read.state) return { evaluation: null, status: read.status }
 
-  // §20.75/§20.101 — the proof must still be effective, for this exact project,
-  // mission version and action. A material amendment changed the bound hash, so
-  // a stale proof cannot match it.
-  const resolved = await isAuthorizationEffective(
-    authority.authorizationId,
-    {
-      projectId: state.projectId,
-      target: { targetType: 'mission', targetId: state.missionId, versionHash: authority.boundVersionHash },
-      actionKind: authority.actionKind,
+  const authority = await evaluateMissionOperationalAuthority(read.state, {
+    now: at, projectMode: args.projectMode,
+  })
+  const readiness = missionReadiness(read.state, authority, at)
+  return {
+    evaluation: {
+      lifecycleStatus: read.state.status,
+      effectiveStatus: effectiveMissionStatus(read.state, authority, readiness),
+      authority,
+      readiness,
+      state: read.state,
     },
-    { now: at },
-  )
-  if (!resolved.effective) {
-    return {
-      authorized: false,
-      reason: 'authorization_invalid',
-      detail: `${resolved.status}:${resolved.reason}`,
-      status: 'ok',
-    }
+    status: 'ok',
   }
-  // §20.55 — the proof must still belong to the human it was recorded for.
-  if (resolved.state?.principalId !== authority.principalId) {
-    return { authorized: false, reason: 'authorization_invalid', detail: 'principal_changed', status: 'ok' }
-  }
-
-  // §20.137/§20.54 — when a Decision Ledger decision is the authority source,
-  // the direction it authorized must still stand. An expired, reversed or
-  // superseded decision cannot back a NEW handoff (§11.55, §11.57, §11.56).
-  // The Decision Ledger is only read here; nothing mutates it.
-  if (state.authoritySource?.kind === 'decision_ledger' && state.decisionRef) {
-    const decision = await resolveDecision(state.decisionRef.decisionId, { now: at })
-    if (decision.status !== 'ok' || !decision.state) {
-      return { authorized: false, reason: 'governing_decision_invalid', detail: decision.status, status: 'ok' }
-    }
-    if (decision.state.projectId !== state.projectId) {
-      return { authorized: false, reason: 'governing_decision_invalid', detail: 'project_mismatch', status: 'ok' }
-    }
-    const governing = decision.state.status === 'approved' || decision.state.status === 'active'
-    if (!governing) {
-      return { authorized: false, reason: 'governing_decision_invalid', detail: decision.state.status, status: 'ok' }
-    }
-  }
-
-  return { authorized: true, reason: 'authorized', status: 'ok' }
 }
 
 /**
  * §20.101 — is the mission Ready?
  *
- * Ready is a predicate over the brief, the world and live authority; it is
- * never stored, so nothing can assert it into existence.
+ * Kept as a focused accessor over `resolveMissionEvaluation`, so it can never
+ * disagree with the effective status.
  */
 export async function resolveMissionReadiness(
   missionId: string,
   args: MissionReadArgs = {},
 ): Promise<{ readiness: MissionReadiness | null; authority: MissionOperationalAuthority | null; state: DerivedMissionState | null; status: MissionReadStatus }> {
-  const at = args.now ?? new Date().toISOString()
-  const read = await resolveMission(missionId, { ...args, now: at })
-  if (read.status !== 'ok' || !read.state) {
-    return { readiness: null, authority: null, state: null, status: read.status }
-  }
-  const authority = await isMissionOperationallyAuthorized(missionId, { ...args, now: at })
+  const { evaluation, status } = await resolveMissionEvaluation(missionId, args)
+  if (!evaluation) return { readiness: null, authority: null, state: null, status }
   return {
-    readiness: missionReadiness(read.state, authority),
-    authority,
-    state: read.state,
+    readiness: evaluation.readiness,
+    authority: evaluation.authority,
+    state: evaluation.state,
     status: 'ok',
   }
 }

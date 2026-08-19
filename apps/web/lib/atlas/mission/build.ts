@@ -22,6 +22,8 @@ import {
   type MissionDataScope,
   type MissionDecisionReference,
   type MissionDependency,
+  type MissionDependencyObservation,
+  type MissionGateResolution,
   type MissionEscalationTrigger,
   type MissionEvidence,
   type MissionEvidenceRequirement,
@@ -45,6 +47,7 @@ const ACT_TYPES: readonly MissionActType[] = [
   'drafted', 'proposed', 'approved', 'activated', 'amended', 'paused', 'resumed',
   'completed', 'partially_completed', 'failed', 'cancelled', 'superseded', 'archived',
   'progress_reported', 'blocker_raised', 'blocker_cleared', 'evidence_recorded', 'reviewed',
+  'dependency_observed', 'gate_resolved',
 ] as const
 
 function requireText(value: unknown, invariant: string): string {
@@ -198,7 +201,11 @@ export interface BuildMissionRecordInput {
 
   authorityRecord?: MissionAuthorityRecord | null
   decisionRef?:     MissionDecisionReference | null
+  /** §20.75 — the project's atlas_mode when this act occurred. */
+  projectMode?:     string | null
   report?:          MissionProgressReport | null
+  dependencyObservation?: MissionDependencyObservation | null
+  gateResolution?:  MissionGateResolution | null
   blocker?:         MissionBlocker | null
   clearsBlockerId?: string | null
   evidence?:        MissionEvidence | null
@@ -248,6 +255,22 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
     }
   }
 
+  const gateIds = new Set<string>()
+  for (const gate of input.approvalGates ?? []) {
+    requireText(gate.gateId, 'approval-gate-id-required')
+    requireText(gate.gate, 'approval-gate-text-required')
+    if (gateIds.has(gate.gateId)) throw new MalformedMissionLineageError('approval-gate-id-unique', gate.gateId)
+    gateIds.add(gate.gateId)
+  }
+  const depRefs = new Set<string>()
+  for (const dep of input.dependencies ?? []) {
+    requireText(dep.reference, 'dependency-reference-required')
+    // §20.101 — an observation names a dependency by reference, so references
+    // must be unique or a satisfaction could be ambiguous.
+    if (depRefs.has(dep.reference)) throw new MalformedMissionLineageError('dependency-reference-unique', dep.reference)
+    depRefs.add(dep.reference)
+  }
+
   const budget = validateBudget(input.budget ?? null)
   const decisionRef = validateDecisionRef(input.decisionRef ?? null, input.projectId)
   const authorityRecord = validateAuthorityRecord(input.authorityRecord ?? null)
@@ -287,6 +310,25 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
     throw new MalformedMissionLineageError('evidence-record-requires-evidence')
   }
   if (input.type === 'reviewed') requireText(input.reviewNote, 'review-record-requires-note')
+  if (input.type === 'dependency_observed') {
+    if (!input.dependencyObservation) throw new MalformedMissionLineageError('dependency-record-requires-observation')
+    requireText(input.dependencyObservation.reference, 'dependency-observation-reference-required')
+    if (typeof input.dependencyObservation.satisfied !== 'boolean') {
+      throw new MalformedMissionLineageError('dependency-observation-satisfied-boolean')
+    }
+  }
+  if (input.type === 'gate_resolved') {
+    if (!input.gateResolution) throw new MalformedMissionLineageError('gate-record-requires-resolution')
+    requireText(input.gateResolution.gateId, 'gate-resolution-id-required')
+    const outcomes = [
+      'approve', 'approve_with_conditions', 'edit_and_approve', 'reject',
+      'request_more_evidence', 'request_alternative', 'defer', 'escalate',
+    ]
+    // §20.73 — only the canonical outcomes exist.
+    if (!outcomes.includes(input.gateResolution.outcome)) {
+      throw new MalformedMissionLineageError('gate-outcome-canonical', input.gateResolution.outcome)
+    }
+  }
 
   return {
     recordId:   input.recordId ?? randomUUID(),
@@ -328,7 +370,10 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
     version:    input.version,
     authorityRecord,
     decisionRef,
+    projectMode: input.projectMode ?? null,
     report:     input.report ?? null,
+    dependencyObservation: input.dependencyObservation ?? null,
+    gateResolution: input.gateResolution ?? null,
     blocker:    input.blocker ?? null,
     clearsBlockerId: input.clearsBlockerId ?? null,
     evidence,

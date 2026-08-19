@@ -282,17 +282,23 @@ export interface DecisionRecord {
   reason:       string | null
 
   /**
-   * How many records the lineage held when this act was derived — optimistic
-   * concurrency, not decision content (so it is not authority-bound).
+   * Which lifecycle generation this act belongs to: the number of
+   * lifecycle-advancing records that preceded it (`lifecycleGenerationOf`).
+   * Optimistic concurrency and canonical ordering — not decision content, so it
+   * is deliberately not authority-bound.
    *
-   * Two writers reading the same lineage produce the same value, and the
-   * database's partial unique index rejects the loser with 23505. That is what
-   * stops two individually-valid candidates — an approval and a deferral, an
-   * amendment and a reversal — from combining into a lineage the pure core
-   * would then refuse to read. Annotations are excluded from the index and
-   * never conflict.
+   * Two writers reading the same LIFECYCLE STATE produce the same value, and
+   * the database's partial unique index rejects the loser with 23505. That is
+   * what stops two individually-valid candidates — an approval and a deferral,
+   * an amendment and a reversal — from combining into a lineage the pure core
+   * would then refuse to read.
+   *
+   * It counts lifecycle acts, never total rows (EI-S1.3B-R3). Counting rows let
+   * an unrelated review note appended between two writers' reads hand them
+   * different keys, so a reversal and a supersession both passed the unique
+   * index and left the decision permanently unreadable.
    */
-  baseRecordCount: number
+  lifecycleGeneration: number
 }
 
 // ── Derived state ─────────────────────────────────────────────────────────────

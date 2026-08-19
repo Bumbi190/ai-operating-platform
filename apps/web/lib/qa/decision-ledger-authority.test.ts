@@ -82,7 +82,7 @@ function record(type: DecisionRecordType, overrides: Record<string, unknown> = {
     occurredAt: T0,
     recordId: `r${++seq}`,
     version: 1,
-    baseRecordCount: 0,
+    lifecycleGeneration: 0,
     title: 'Grant L4 publishing autonomy',
     statement: 'The Prompt may publish short news autonomously for a 14-day trial.',
     materiality: ['autonomy'],
@@ -407,7 +407,7 @@ describe('The authority binding covers every canonically material field', () => 
       occurredAt: T4,
       principalId: PRINCIPAL_B,
       authority: null,
-      baseRecordCount: 99,
+      lifecycleGeneration: 99,
     }
     expect(JSON.stringify(authorityBoundProjection(noise as never))).toBe(original)
   })
@@ -575,11 +575,11 @@ describe('Supersession successor integrity (§11.56)', () => {
   async function successor(store: FakeStore, status: 'proposed' | 'approved' | 'rejected', project = PROJECT_P) {
     const id = newDecisionId()
     await store.append(record('proposed', {
-      decisionId: id, projectId: project, occurredAt: T0, recordId: `o-${id}`, baseRecordCount: 0,
+      decisionId: id, projectId: project, occurredAt: T0, recordId: `o-${id}`, lifecycleGeneration: 0,
     }))
     if (status === 'approved') {
       await store.append(record('approved', {
-        decisionId: id, projectId: project, occurredAt: T1, recordId: `a-${id}`, baseRecordCount: 1,
+        decisionId: id, projectId: project, occurredAt: T1, recordId: `a-${id}`, lifecycleGeneration: 1,
         rationale: 'r', review: REVIEW, effectiveAt: T1,
         authority: {
           basis: 'founder_owner', authorizationId: AUTH_CORRECT, principalId: PRINCIPAL_A,
@@ -590,7 +590,7 @@ describe('Supersession successor integrity (§11.56)', () => {
     if (status === 'rejected') {
       await store.append(record('rejected', {
         decisionId: id, projectId: project, occurredAt: T1, recordId: `x-${id}`,
-        baseRecordCount: 1, reason: 'No.',
+        lifecycleGeneration: 1, reason: 'No.',
       }))
     }
     return id
@@ -677,9 +677,9 @@ describe('Supersession successor integrity (§11.56)', () => {
 describe('Supersession cycle detection', () => {
   /** Chain `from` → `to` as an already-superseded, approved decision. */
   async function chain(store: FakeStore, from: string, to: string) {
-    await store.append(record('proposed', { decisionId: from, occurredAt: T0, recordId: `o-${from}`, baseRecordCount: 0 }))
+    await store.append(record('proposed', { decisionId: from, occurredAt: T0, recordId: `o-${from}`, lifecycleGeneration: 0 }))
     await store.append(record('approved', {
-      decisionId: from, occurredAt: T1, recordId: `a-${from}`, baseRecordCount: 1,
+      decisionId: from, occurredAt: T1, recordId: `a-${from}`, lifecycleGeneration: 1,
       rationale: 'r', review: REVIEW, effectiveAt: T1,
       authority: {
         basis: 'founder_owner', authorizationId: AUTH_CORRECT, principalId: PRINCIPAL_A,
@@ -687,7 +687,7 @@ describe('Supersession cycle detection', () => {
       },
     }))
     await store.append(record('superseded', {
-      decisionId: from, occurredAt: T2, recordId: `s-${from}`, baseRecordCount: 2,
+      decisionId: from, occurredAt: T2, recordId: `s-${from}`, lifecycleGeneration: 2,
       supersededBy: to, reason: 'Replaced.',
     }))
   }
@@ -735,9 +735,9 @@ describe('Supersession cycle detection', () => {
   it('accepts an approved successor that ends the chain', async () => {
     const store = await activeDecision()
     const b = newDecisionId()
-    await store.append(record('proposed', { decisionId: b, occurredAt: T0, recordId: `o-${b}`, baseRecordCount: 0 }))
+    await store.append(record('proposed', { decisionId: b, occurredAt: T0, recordId: `o-${b}`, lifecycleGeneration: 0 }))
     await store.append(record('approved', {
-      decisionId: b, occurredAt: T1, recordId: `a-${b}`, baseRecordCount: 1,
+      decisionId: b, occurredAt: T1, recordId: `a-${b}`, lifecycleGeneration: 1,
       rationale: 'r', review: REVIEW, effectiveAt: T1,
       authority: {
         basis: 'founder_owner', authorizationId: AUTH_CORRECT, principalId: PRINCIPAL_A,
@@ -860,9 +860,9 @@ describe('Concurrent incompatible transitions', () => {
     const store = await activeDecision()
     const approved = store.appended.find(r => r.type === 'approved')!
     // One prior record (the proposal) existed when the approval was derived.
-    expect(approved.baseRecordCount).toBe(1)
+    expect(approved.lifecycleGeneration).toBe(1)
     await observeOutcome({ decisionId: 'dec-A', outcome: MEASURED, store, now: T2 })
-    expect(store.appended.find(r => r.type === 'outcome_observed')!.baseRecordCount).toBe(2)
+    expect(store.appended.find(r => r.type === 'outcome_observed')!.lifecycleGeneration).toBe(2)
   })
 
   it('gives two acts derived from the same lineage the same serialization key', async () => {
@@ -880,8 +880,8 @@ describe('Concurrent incompatible transitions', () => {
     await deferDecision({
       decisionId: 'dec-A', authorizationId: AUTH_SECOND, reason: 'Awaiting data.', store: rival, now: T1,
     })
-    // Same (decision_id, base_record_count) — the unique index rejects the loser.
-    expect(rival.appended[0].baseRecordCount).toBe(store.appended[0].baseRecordCount)
+    // Same (decision_id, lifecycle_generation) — the unique index rejects the loser.
+    expect(rival.appended[0].lifecycleGeneration).toBe(store.appended[0].lifecycleGeneration)
     expect(rival.appended[0].decisionId).toBe(store.appended[0].decisionId)
   })
 
@@ -903,7 +903,7 @@ describe('Concurrent incompatible transitions', () => {
       resolve(__dirname, '../../supabase/migrations/20260819_atlas_decision_ledger.sql'), 'utf8')
     const index = sql.slice(sql.indexOf('atlas_decision_ledger_one_advance_idx'))
       .slice(0, sql.slice(sql.indexOf('atlas_decision_ledger_one_advance_idx')).indexOf(';'))
-    expect(index).toContain('(decision_id, base_record_count)')
+    expect(index).toContain('(decision_id, lifecycle_generation)')
     for (const type of ['drafted', 'proposed', 'approved', 'rejected', 'deferred',
       'amended', 'superseded', 'reversed', 'completed']) {
       expect(index).toContain(`'${type}'`)

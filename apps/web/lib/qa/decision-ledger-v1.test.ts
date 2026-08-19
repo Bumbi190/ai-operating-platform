@@ -76,7 +76,7 @@ function record(type: DecisionRecordType, overrides: Record<string, unknown> = {
     occurredAt: T0,
     recordId: `r${++seq}`,
     version: 1,
-    baseRecordCount: 0,
+    lifecycleGeneration: 0,
     title: 'Newsletter sending stays approval-gated',
     statement: 'The Prompt newsletter workflow may prepare drafts autonomously, but sending requires explicit human approval.',
     materiality: ['autonomy', 'customers'],
@@ -90,7 +90,7 @@ const approved = (o: Record<string, unknown> = {}) => record('approved', {
   rationale: 'Subscriber trust and limited production evidence.',
   review: REVIEW,
   effectiveAt: EFFECTIVE,
-  baseRecordCount: 1,
+  lifecycleGeneration: 1,
   authority: {
     basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A,
     actionKind: 'decision.approve', boundVersionHash: 'a'.repeat(64), authorityActAt: T1,
@@ -354,7 +354,7 @@ describe('Decision Ledger V1 — historical truth is immutable', () => {
     // EI-S1.3B-R2 replaced four narrower transition indexes with one
     // optimistic-concurrency invariant covering every lifecycle family.
     expect(migration).toContain('atlas_decision_ledger_one_advance_idx')
-    expect(migration).toContain('(decision_id, base_record_count)')
+    expect(migration).toContain('(decision_id, lifecycle_generation)')
     expect(migration).not.toMatch(/^\s*status\s+text/m)
   })
 })
@@ -645,7 +645,7 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
       record('proposed', { decisionId: successorId, occurredAt: T0, recordId: 'succ-1' }),
       // §11.56 — a successor must itself be a decision, not a proposal.
       record('approved', {
-        decisionId: successorId, occurredAt: T1, recordId: 'succ-2', baseRecordCount: 1,
+        decisionId: successorId, occurredAt: T1, recordId: 'succ-2', lifecycleGeneration: 1,
         rationale: 'r', review: REVIEW, effectiveAt: T1,
         authority: {
           basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A,

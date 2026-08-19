@@ -51,7 +51,7 @@ interface Row {
   outcome: unknown
   review_note: string | null
   reason: string | null
-  base_record_count: number
+  lifecycle_generation: number
 }
 
 const COLS = [
@@ -59,7 +59,7 @@ const COLS = [
   'title', 'statement', 'recommendation', 'rationale', 'materiality', 'authority',
   'evidence', 'snapshot', 'alternatives', 'confidence', 'expected_impact',
   'effective_at', 'expires_at', 'review', 'reversal_conditions', 'superseded_by',
-  'version', 'outcome', 'review_note', 'reason', 'base_record_count',
+  'version', 'outcome', 'review_note', 'reason', 'lifecycle_generation',
 ].join(', ')
 
 function rowToRecord(row: Row): DecisionRecord {
@@ -90,7 +90,7 @@ function rowToRecord(row: Row): DecisionRecord {
     outcome:    (row.outcome as DecisionRecord['outcome']) ?? null,
     reviewNote: row.review_note,
     reason:     row.reason,
-    baseRecordCount: row.base_record_count,
+    lifecycleGeneration: row.lifecycle_generation,
   }
 }
 
@@ -122,7 +122,7 @@ function recordToRow(record: DecisionRecord): Record<string, unknown> {
     outcome:     record.outcome,
     review_note: record.reviewNote,
     reason:      record.reason,
-    base_record_count: record.baseRecordCount,
+    lifecycle_generation: record.lifecycleGeneration,
   }
 }
 
@@ -142,7 +142,10 @@ class PostgresDecisionLedgerStore implements DecisionLedgerStore {
     const { data, error } = await this.table()
       .select(COLS)
       .eq('decision_id', decisionId)
+      // Matches the pure core's canonical order and the lineage index. The core
+      // re-sorts regardless — this is never the authority on ordering.
       .order('occurred_at', { ascending: true })
+      .order('lifecycle_generation', { ascending: true })
       .order('record_id', { ascending: true })
     if (error) throw new Error(`[atlas-decision-ledger] lineage failed: ${error.message}`)
     return ((data ?? []) as Row[]).map(rowToRecord)

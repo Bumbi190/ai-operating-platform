@@ -139,20 +139,26 @@ create table if not exists public.atlas_decision_ledger (
   -- §11.53/§11.54/§11.57 — rejection, deferral, reversal, amendment reason.
   reason              text,
 
-  -- Optimistic concurrency: how many records the lineage held when this act was
-  -- derived and validated. Not decision content, and deliberately not part of
-  -- the authorization binding. See the serialization index below.
-  base_record_count   integer not null default 0
-    constraint atlas_decision_ledger_base_record_count_check check (base_record_count >= 0),
+  -- Which lifecycle generation this act belongs to: the number of
+  -- LIFECYCLE-ADVANCING records that preceded it. Not total rows — an
+  -- `outcome_observed` or `reviewed` record never consumes a generation.
+  -- Serves optimistic concurrency (the index below) and canonical ordering.
+  -- Not decision content, and deliberately not part of the authority binding.
+  lifecycle_generation integer not null default 0
+    constraint atlas_decision_ledger_lifecycle_generation_check check (lifecycle_generation >= 0),
 
   created_at          timestamptz not null default now()
 );
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 
--- Primary read: the ordered lineage of one decision (§11.63).
+-- Primary read: the ordered lineage of one decision (§11.63). The generation
+-- column is part of the key because it is the pure core's tiebreak for acts
+-- stamped in the same millisecond — record ids are random UUIDs, so ordering by
+-- id alone made a same-millisecond proposal/approval pair fold in the wrong
+-- order roughly half the time.
 create index if not exists atlas_decision_ledger_lineage_idx
-  on public.atlas_decision_ledger (decision_id, occurred_at, record_id);
+  on public.atlas_decision_ledger (decision_id, occurred_at, lifecycle_generation, record_id);
 
 -- Project audit listing.
 create index if not exists atlas_decision_ledger_project_idx
@@ -162,33 +168,42 @@ create index if not exists atlas_decision_ledger_project_idx
 create index if not exists atlas_decision_ledger_type_idx
   on public.atlas_decision_ledger (project_id, record_type, occurred_at desc);
 
--- ── Transition serialization ──────────────────────────────────────────────────
+-- ── Lifecycle serialization ───────────────────────────────────────────────────
 -- The write boundary validates every prospective lineage through the pure core
 -- BEFORE it appends, so a semantically invalid transition never reaches this
 -- table. What pure validation cannot do is serialize two writers who each read
--- the same lineage and each produce an individually valid candidate: an approval
+-- the same state and each produce an individually valid candidate: an approval
 -- and a deferral, two amendments of the same version, a reversal and a
 -- supersession. Appended together those form a history the pure core would then
 -- refuse to read — and on an append-only table that is permanent.
 --
 -- ONE optimistic-concurrency invariant covers every such family: any two
--- lifecycle acts derived from the same lineage position collide. The loser gets
--- a unique violation (23505), which the write boundary surfaces as `conflict`
--- and no row is written.
+-- lifecycle acts derived from the same LIFECYCLE GENERATION collide. The loser
+-- gets a unique violation (23505), which the write boundary surfaces as
+-- `conflict`, and no row is written.
+--
+-- THE GENERATION COUNTS LIFECYCLE ACTS, NOT ROWS (EI-S1.3B-R3). Counting rows
+-- left a hole: a reviewer appending a lesson between two writers' reads gave
+-- them different keys, so a reversal (key 2) and a supersession (key 3) both
+-- passed this index and the decision ended with two closing acts and no
+-- readable history. The listed types below are exactly `LIFECYCLE_ADVANCING`
+-- in lib/atlas/decision-ledger/derive.ts, and a test compares the two so they
+-- cannot drift.
+--
+-- Annotations (`outcome_observed`, `reviewed`) are excluded and consume no
+-- generation: they record something ABOUT a decision without moving it (§11.96,
+-- §11.102). Serializing them would produce false `conflict` results for a note
+-- recorded alongside a decision act, and would not make any history safer.
 --
 -- EI-S1.3B-R2 replaced four narrower indexes with this one. They did not cover
 -- amendment-versus-close or approval-versus-deferral at all, and the old
 -- `one_open` index was actively wrong: it forbade the draft → proposal sequence
 -- that §11.49/§11.50 and the pure core both allow.
 --
--- Annotations (`outcome_observed`, `reviewed`) are excluded: they never
--- conflict with anything, and making them collide would produce false
--- `conflict` results for a note recorded alongside a decision act.
---
 -- Narrowly scoped: no distributed transaction machinery, no generic
 -- event-sourcing framework, no advisory locks.
 create unique index if not exists atlas_decision_ledger_one_advance_idx
-  on public.atlas_decision_ledger (decision_id, base_record_count)
+  on public.atlas_decision_ledger (decision_id, lifecycle_generation)
   where record_type in (
     'drafted', 'proposed', 'approved', 'rejected', 'deferred',
     'amended', 'superseded', 'reversed', 'completed'

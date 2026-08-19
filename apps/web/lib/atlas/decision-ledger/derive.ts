@@ -52,12 +52,75 @@ const CLOSING = new Set<DecisionRecordType>(['superseded', 'reversed', 'complete
 /** Acts that annotate without changing the lifecycle position. */
 const ANNOTATING = new Set<DecisionRecordType>(['outcome_observed', 'reviewed'])
 
+/**
+ * The acts that ADVANCE a decision's lifecycle — the ones whose combination
+ * order decides whether a lineage is a real history.
+ *
+ * This is the single definition. The write boundary counts them to stamp
+ * `lifecycleGeneration`, the ordering below uses them to break timestamp ties,
+ * and the migration's serialization index lists exactly these types — a test
+ * compares the SQL against this set so the two cannot drift.
+ *
+ * `outcome_observed` and `reviewed` are deliberately absent: an observation or
+ * a lesson records something ABOUT the decision without moving it (§11.96,
+ * §11.102), so they must neither consume a generation nor conflict with one.
+ */
+export const LIFECYCLE_ADVANCING: ReadonlySet<DecisionRecordType> = new Set<DecisionRecordType>([
+  'drafted', 'proposed', 'approved', 'rejected', 'deferred',
+  'amended', 'superseded', 'reversed', 'completed',
+])
+
+/**
+ * The lifecycle generation an act derived from this lineage belongs to: the
+ * number of lifecycle-advancing records already in it.
+ *
+ * For a lifecycle act this is its own position in the lifecycle sequence, and
+ * two acts derived from the same state necessarily claim the same one — which
+ * is what the database uses to serialize them. For an annotation it records
+ * which lifecycle state was observed, and nothing more.
+ */
+export function lifecycleGenerationOf(records: DecisionRecord[]): number {
+  return records.reduce((count, record) => count + (LIFECYCLE_ADVANCING.has(record.type) ? 1 : 0), 0)
+}
+
 // ── Ordering ──────────────────────────────────────────────────────────────────
 
 /**
- * Deterministic lineage order: by time, then by record id so equal timestamps
- * can never reorder between reads. Byte-identical duplicates collapse, which
- * makes a retried append safe rather than a contradiction.
+ * Deterministic lineage order.
+ *
+ * Time first, then LIFECYCLE GENERATION, then annotations before the act that
+ * leaves their generation, then record id.
+ *
+ * The generation tiebreak is load-bearing, not cosmetic (EI-S1.3B-R3). Record
+ * ids are random UUIDs, so ordering two same-millisecond lifecycle acts by id
+ * was a coin flip: measured over 200 trials, a proposal and an approval stamped
+ * in the same millisecond folded in the wrong order — and threw
+ * `lineage-starts-with-draft-or-proposal`, permanently unreadable on an
+ * append-only table — about half the time. Generation is a canonical sequence
+ * per decision, so the correct order is now a fact about the data rather than a
+ * property of two random numbers.
+ *
+ * Within one generation an annotation sorts before the lifecycle act, because
+ * it observed that state before the act left it.
+ *
+ * ANNOTATIONS ARE DELIBERATELY NOT SERIALIZED. Two reviews, or two outcome
+ * observations, may be appended concurrently: neither moves the lifecycle, so
+ * no combination of them can make a lineage unreadable (§11.96 outcomes never
+ * overwrite the decision, §11.102 lessons accumulate). Making them collide
+ * would only produce false `conflict` results for a note recorded alongside a
+ * decision act.
+ *
+ * The cost is that two annotations sharing a generation AND a millisecond fall
+ * through to record id, so which one counts as the "latest outcome" is not the
+ * real-world order. That is honest rather than lossy: acts stamped in the same
+ * millisecond at the same lifecycle position are genuinely concurrent, and no
+ * true order between them exists to recover. What the ledger does guarantee is
+ * the property that matters institutionally — every reader of the same records
+ * derives the same state, always. Where real order matters, the timestamps
+ * differ and the fold follows them.
+ *
+ * Byte-identical duplicates collapse, which makes a retried append safe rather
+ * than a contradiction.
  */
 export function orderDecisionRecords(records: DecisionRecord[]): DecisionRecord[] {
   const unique = new Map<string, DecisionRecord>()
@@ -68,13 +131,17 @@ export function orderDecisionRecords(records: DecisionRecord[]): DecisionRecord[
     }
     unique.set(record.recordId, record)
   }
+  const rank = (record: DecisionRecord) => (LIFECYCLE_ADVANCING.has(record.type) ? 1 : 0)
   return [...unique.values()].sort((a, b) => {
     const at = Date.parse(a.occurredAt)
     const bt = Date.parse(b.occurredAt)
     if (Number.isNaN(at) || Number.isNaN(bt)) {
       throw new MalformedDecisionLineageError('record-timestamp-valid')
     }
-    return at - bt || (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : 0)
+    return at - bt
+      || a.lifecycleGeneration - b.lifecycleGeneration
+      || rank(a) - rank(b)
+      || (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : 0)
   })
 }
 

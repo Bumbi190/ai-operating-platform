@@ -32,7 +32,8 @@
  *   principalId      the acting human, verified separately and directly against
  *                    the authorization's own principal
  *   authority        the proof being computed; including it would be circular
- *   baseRecordCount  optimistic-concurrency position, not decision content
+ *   lifecycleGeneration  optimistic-concurrency and ordering position, not
+ *                    decision content
  *
  * Everything else is bound. `authorityBoundProjection` enumerates the fields
  * explicitly rather than spreading the record, so a field added to
@@ -65,7 +66,7 @@ export type DecisionAct = keyof typeof DECISION_ACTION
 
 /** Fields excluded from the bound projection. Named for the guard test. */
 export const AUTHORITY_UNBOUND_FIELDS = [
-  'recordId', 'occurredAt', 'principalId', 'authority', 'baseRecordCount',
+  'recordId', 'occurredAt', 'principalId', 'authority', 'lifecycleGeneration',
 ] as const
 
 function canonicalJson(value: unknown): string {

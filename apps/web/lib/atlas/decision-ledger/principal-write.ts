@@ -68,7 +68,7 @@ import {
   type DecisionAuthorizationBinding,
 } from './binding'
 import { buildDecisionRecord, newDecisionId, type BuildDecisionRecordInput } from './build'
-import { deriveDecisionState, isLedgerMaterial } from './derive'
+import { deriveDecisionState, isLedgerMaterial, lifecycleGenerationOf } from './derive'
 import { createDecisionLedgerStore, type DecisionLedgerStore } from './store'
 import type {
   DecisionAlternative,
@@ -111,6 +111,12 @@ export type DecisionWriteStatus =
   | 'review_required'
   /** A competing transition won the race; the lineage is unchanged. */
   | 'conflict'
+  /**
+   * The append succeeded and the resulting lineage is one the invariants say
+   * cannot exist. Distinct from `unavailable`: the record is permanent, a retry
+   * cannot help, and the institutional history needs a human.
+   */
+  | 'integrity_violation'
   | 'unavailable'
 
 export interface DecisionWriteResult {
@@ -211,7 +217,7 @@ export interface ReviewDecisionArgs extends CommonArgs {
 }
 
 /** The act content a caller's arguments produce, before identity and clock. */
-type CandidateInput = Omit<BuildDecisionRecordInput, 'principalId' | 'occurredAt' | 'baseRecordCount'>
+type CandidateInput = Omit<BuildDecisionRecordInput, 'principalId' | 'occurredAt' | 'lifecycleGeneration'>
 
 const DENY = (status: DecisionWriteStatus, detail?: string): DecisionWriteResult =>
   ({ state: null, status, ...(detail ? { detail } : {}) })
@@ -361,7 +367,9 @@ async function commitAct(
     ...input,
     principalId: principal.userId,
     occurredAt: at,
-    baseRecordCount: records.length,
+    // Lifecycle acts only. An unrelated review note appended between two
+    // writers' reads must NOT hand them different serialization keys.
+    lifecycleGeneration: lifecycleGenerationOf(records),
   }
 
   let candidate: DecisionRecord
@@ -425,10 +433,33 @@ async function commitAct(
   } catch (error) {
     return isConflict(error) ? DENY('conflict') : DENY('unavailable')
   }
+
+  // Readback is VERIFICATION, not derivation of the answer. Two failures are
+  // possible here and they are not the same event.
+  let persisted: DecisionRecord[]
   try {
-    return { state: deriveDecisionState(await store.lineage(final.decisionId), { at }), status: 'ok' }
+    persisted = await store.lineage(final.decisionId)
   } catch {
+    // The write landed; we simply cannot read it back right now.
     return DENY('unavailable')
+  }
+  try {
+    return { state: deriveDecisionState(persisted, { at }), status: 'ok' }
+  } catch (error) {
+    // The candidate passed the pure core moments ago and the database accepted
+    // it, yet the resulting lineage is one the invariants say cannot exist. On
+    // an append-only table with UPDATE and DELETE rejected by trigger, that is
+    // institutional history corruption — not an availability blip — and calling
+    // it `unavailable` would invite a retry that cannot help.
+    const invariant = error instanceof Error ? error.message : 'malformed'
+    console.error('[atlas-decision-ledger] LEDGER INTEGRITY VIOLATION', {
+      decisionId: final.decisionId,
+      recordId: final.recordId,
+      recordType: final.type,
+      lifecycleGeneration: final.lifecycleGeneration,
+      invariant,
+    })
+    return DENY('integrity_violation', invariant)
   }
 }
 
@@ -552,7 +583,7 @@ export async function prepareDecisionAct(
       authority: PROVISIONAL_AUTHORITY(args.act),
       principalId: principal.userId,
       occurredAt: at,
-      baseRecordCount: records.length,
+      lifecycleGeneration: lifecycleGenerationOf(records),
     })
     return { binding: bindingForCandidate(candidate, args.act), status: 'ok' }
   } catch (error) {

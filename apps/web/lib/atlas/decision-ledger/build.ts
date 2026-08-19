@@ -139,8 +139,8 @@ export interface BuildDecisionRecordInput {
   outcome?:    DecisionOutcome | null
   reviewNote?: string | null
   reason?:     string | null
-  /** Lineage length this act was derived from; 0 for an opening act. */
-  baseRecordCount: number
+  /** Lifecycle generation this act was derived from; 0 for an opening act. */
+  lifecycleGeneration: number
 }
 
 export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRecord {
@@ -151,8 +151,8 @@ export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRe
   // §11.23 — the commitment itself, clear enough to interpret consistently.
   requireText(input.statement, 'statement-required')
   requireIsoTime(input.occurredAt, 'occurred-at-valid')
-  if (!Number.isInteger(input.baseRecordCount) || input.baseRecordCount < 0) {
-    throw new MalformedDecisionLineageError('base-record-count-non-negative')
+  if (!Number.isInteger(input.lifecycleGeneration) || input.lifecycleGeneration < 0) {
+    throw new MalformedDecisionLineageError('lifecycle-generation-non-negative')
   }
   if (!Number.isInteger(input.version) || input.version < 1) {
     throw new MalformedDecisionLineageError('version-positive-integer')
@@ -238,7 +238,7 @@ export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRe
     outcome,
     reviewNote: input.reviewNote ?? null,
     reason:     input.reason ?? null,
-    baseRecordCount: input.baseRecordCount,
+    lifecycleGeneration: input.lifecycleGeneration,
   }
 }
 

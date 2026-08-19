@@ -10,13 +10,18 @@
  *
  * This module is the minimal alternative: a server-side read bound to an
  * authenticated principal, reusing the existing isolation boundary
- * (`getAllowedProjectIds`, which mirrors the `projects_owner` RLS policy) and
+ * (`getAllowedProjectIds`, which filters on `owner_id` in application code) and
  * the existing IntelligenceStore. It adds no new authorization framework.
+ *
+ * Note: the repository does not contain the `projects` table definition or any
+ * `create policy` statement for it, so no in-repo artefact proves what RLS is
+ * actually enabled there. This boundary is therefore written to be correct
+ * whether or not `projects` enforces RLS.
  *
  * FAIL-CLOSED RULES
  *   • no principal                       → null
  *   • project scope not in the allow-list → null
- *   • world scope while any project is outside the allow-list → null
+ *   • world scope unless the principal provably owns every project → null
  *
  * The third rule is the important one. A world-scope (`project_id IS NULL`)
  * Executive Brief is a synthesis *across* the portfolio, so reading it is only
@@ -26,26 +31,62 @@
  *
  * Errors resolve to null rather than propagating: a read failure must degrade to
  * "no brief" and never to an unscoped read.
+ *
+ * WHY PORTFOLIO AUTHORITY IS NOT PROVEN WITH THE CALLER'S CLIENT (EI-S1.2R1)
+ * The world-scope proof must not be an RLS-filtered query pretending to
+ * enumerate rows that the same RLS hides. If the enumeration ran on a
+ * cookie-bound user client under a `owner_id = auth.uid()` policy, then
+ * "every project I can see is a project I own" is a tautology and the world
+ * brief would be granted to anyone. The proof therefore runs through an
+ * explicit, module-owned authority seam rather than through whatever client the
+ * caller happened to inject — the caller's privilege level can no longer change
+ * the answer. `import 'server-only'` keeps this module (and the service-role
+ * key its default seam uses) out of any client bundle.
  */
 
+import 'server-only'
+
 import { getAllowedProjectIds } from '@/lib/atlas/isolation'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createIntelligenceStore } from './postgres-store'
 import type { IntelligenceStore } from './store'
 import type { ExecutiveBriefBody, IntelligenceObject } from './types'
 
 type AnyDb = any
 
+/**
+ * One project row as the authority seam sees it. Least privilege: identity and
+ * ownership only — never settings, names or any other project content.
+ */
+export interface PortfolioProjectRow {
+  id: string
+  owner_id: string | null
+}
+
+/**
+ * Enumerates EVERY project on the platform, independently of the caller.
+ * Must not be backed by a user-filtered client; see the header.
+ */
+export type PortfolioAuthorityReader = () => Promise<PortfolioProjectRow[]>
+
 export interface PrincipalBriefRequest {
-  /** Server-side DB handle used ONLY to resolve the principal's allow-list. */
+  /**
+   * Server-side DB handle used ONLY to resolve the principal's own allow-list
+   * (`getAllowedProjectIds`, which filters on `owner_id` and so returns the
+   * same set under either a user-scoped or a service-role client). It is never
+   * used to decide portfolio authority.
+   */
   db: AnyDb
   /** Authenticated principal id (`auth.uid()`). Absent ⇒ denied. */
   userId: string | null | undefined
   /**
    * Project to read. Omit or pass null for the world/portfolio brief, which
-   * requires authority over every project.
+   * requires provable authority over every project.
    */
   projectId?: string | null
   store?: IntelligenceStore
+  /** Test seam. Production callers omit it and get the service-role reader. */
+  portfolioAuthorityReader?: PortfolioAuthorityReader
 }
 
 export interface PrincipalBriefResult {
@@ -80,8 +121,12 @@ export async function readExecutiveBriefForPrincipal(
     // Project scope: membership in the allow-list is the whole test.
     if (!allowedProjectIds.includes(requestedProjectId)) return DENIED('project_denied')
   } else {
-    // World scope: the principal must be authorised for the entire portfolio.
-    const authorized = await isAuthorizedForWholePortfolio(db, allowedProjectIds)
+    // World scope: the principal must be provably authorised for the entire
+    // platform, proven independently of the caller's client (see header).
+    const authorized = await provePortfolioAuthority(
+      userId,
+      request.portfolioAuthorityReader ?? serviceRolePortfolioReader,
+    )
     if (!authorized) return DENIED('portfolio_denied')
   }
 
@@ -99,20 +144,40 @@ export async function readExecutiveBriefForPrincipal(
 }
 
 /**
- * True only when every project row is inside the principal's allow-list.
- * Any error, and any project the principal cannot see, denies the read.
+ * Default authority seam. Uses the service-role client deliberately and
+ * narrowly: enumerating the whole platform is precisely the question being
+ * asked, and a user-scoped client cannot answer it without begging it. The
+ * select is limited to `id, owner_id` so no project content is read, and this
+ * module is `server-only` so the key never reaches a browser bundle.
  */
-async function isAuthorizedForWholePortfolio(db: AnyDb, allowedProjectIds: string[]): Promise<boolean> {
+const serviceRolePortfolioReader: PortfolioAuthorityReader = async () => {
+  const { data, error } = await createAdminClient().from('projects').select('id, owner_id')
+  if (error) throw new Error(`[principal-read] portfolio enumeration failed: ${error.message}`)
+  return (data ?? []) as unknown as PortfolioProjectRow[]
+}
+
+/**
+ * True only when the principal owns EVERY project on the platform.
+ *
+ * A world-scope (`project_id IS NULL`) Executive Brief is synthesised from
+ * platform-wide signals — `querySignals` applies no project filter for global
+ * scope — so its conclusions can be drawn from any project. Reading it is only
+ * safe for a principal who holds authority over all of them.
+ *
+ * Fails closed on every uncertainty: a read error, an empty platform, an
+ * unowned project, or a project owned by anyone else. Authority must be
+ * positively held, never inferred from absence.
+ */
+async function provePortfolioAuthority(
+  userId: string,
+  readPortfolio: PortfolioAuthorityReader,
+): Promise<boolean> {
+  let projects: PortfolioProjectRow[]
   try {
-    const { data, error } = await db.from('projects').select('id')
-    if (error) return false
-    const all = (data ?? []) as { id: string }[]
-    // A principal with no projects never reaches the portfolio brief, even when
-    // the portfolio itself is empty: authority has to be positively held.
-    if (allowedProjectIds.length === 0) return false
-    const allowed = new Set(allowedProjectIds)
-    return all.every(project => allowed.has(project.id))
+    projects = await readPortfolio()
   } catch {
     return false
   }
+  if (projects.length === 0) return false
+  return projects.every(project => project.owner_id === userId)
 }

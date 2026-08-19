@@ -118,6 +118,8 @@ class FakeStore implements IntelligenceStore {
   rows: IntelligenceObject<unknown>[] = []
   appends = 0
   supersedes = 0
+  /** Every query the shell issued — lets a test assert the scope binding. */
+  queries: QueryArgs[] = []
   private seq = 0
 
   constructor(seed: IntelligenceObject<unknown>[] = []) { this.rows = [...seed] }
@@ -138,6 +140,7 @@ class FakeStore implements IntelligenceStore {
   }
 
   async query<B>(args: QueryArgs): Promise<IntelligenceObject<B>[]> {
+    this.queries.push(args)
     return this.rows.filter(r =>
       (!args.kinds || args.kinds.includes(r.kind)) &&
       (args.projectId === undefined || r.projectId === args.projectId) &&
@@ -150,23 +153,64 @@ class FakeStore implements IntelligenceStore {
   }
 }
 
-/** Minimal DB double for the isolation lookup. Never a Supabase client. */
-function fakeDb(opts: { owned: string[]; all: string[]; throwOnProjects?: boolean }) {
+/**
+ * DB double that models REAL row-level-security semantics.
+ *
+ * A `projects` row set plus the privilege the client runs with:
+ *   • 'user'         — behaves like a cookie-bound client under
+ *                      `owner_id = auth.uid()`: an unfiltered select returns
+ *                      ONLY the caller's own rows. This is the case that makes
+ *                      a naive whole-portfolio check tautological.
+ *   • 'service_role' — bypasses RLS: an unfiltered select returns every row.
+ *
+ * `.eq('owner_id', x)` filters on top of whatever the privilege already allows,
+ * exactly as Postgres would.
+ */
+type Privilege = 'user' | 'service_role'
+
+interface ProjectRow { id: string; owner_id: string }
+
+function rlsDb(opts: {
+  projects: ProjectRow[]
+  privilege: Privilege
+  asUser?: string
+  throwOnProjects?: boolean
+}) {
+  const visible = (): ProjectRow[] =>
+    opts.privilege === 'service_role'
+      ? opts.projects
+      : opts.projects.filter(p => p.owner_id === opts.asUser)
+
   return {
     from(table: string) {
       if (table !== 'projects') throw new Error(`unexpected table ${table}`)
+      const result = (rows: ProjectRow[]) =>
+        opts.throwOnProjects
+          ? { data: null, error: { message: 'boom' } }
+          : { data: rows, error: null }
       const builder = {
         select: () => builder,
-        eq: (_col: string, _val: string) => Promise.resolve({ data: opts.owned.map(id => ({ id })), error: null }),
-        then: (res: (v: unknown) => unknown) =>
-          Promise.resolve(opts.throwOnProjects
-            ? { data: null, error: { message: 'boom' } }
-            : { data: opts.all.map(id => ({ id })), error: null }).then(res),
+        eq: (col: string, val: string) =>
+          Promise.resolve(result(visible().filter(p => (p as never as Record<string, string>)[col] === val))),
+        then: (res: (v: unknown) => unknown) => Promise.resolve(result(visible())).then(res),
       }
       return builder
     },
   }
 }
+
+/** The authority seam as production wires it: enumerates every project row. */
+const portfolioReader = (projects: ProjectRow[], throws = false) => async () => {
+  if (throws) throw new Error('enumeration failed')
+  return projects.map(p => ({ id: p.id, owner_id: p.owner_id }))
+}
+
+// Two principals, one project each — the scenario the reviewer described.
+const OWNER_A = 'user-a'
+const OWNER_B = 'user-b'
+const PROJECT_A: ProjectRow = { id: 'p-a', owner_id: OWNER_A }
+const PROJECT_B: ProjectRow = { id: 'p-b', owner_id: OWNER_B }
+const BOTH_PROJECTS = [PROJECT_A, PROJECT_B]
 
 // ── 1–3. Generation, determinism, canonical shape ─────────────────────────────
 
@@ -359,67 +403,212 @@ describe('Apex Executive Brief — orchestrator', () => {
     expect(result.body.sourcedFrom).toEqual(['trend-project'])
     expect(result.body.horizon).toBe('project')
   })
+
+  // EI-S1.2R1 — the mirror direction. A world run must stay on
+  // `project_id IS NULL` artifacts and can never absorb project-scoped
+  // reasoning, matching PostgresStore's `.is('project_id', null)` filter.
+  it('runs the world scope without absorbing any project artifact', async () => {
+    const store = new FakeStore([
+      trend({ metric: 'global_metric' }, { id: 'trend-global' }),
+      trend({ metric: 'a_metric' }, { id: 'trend-a', projectId: 'p-a' }),
+      trend({ metric: 'b_metric' }, { id: 'trend-b', projectId: 'p-b' }),
+      risk({}, { id: 'risk-b', projectId: 'p-b' }),
+    ])
+    const result = await runExecutiveBriefProducer({ projectId: null, store, now: NOW })
+
+    expect(result.body.scope).toBe('global')
+    expect(result.body.horizon).toBe('morning')
+    expect(result.body.sourcedFrom).toEqual(['trend-global'])
+    // No project artifact may appear anywhere in the artifact or its provenance.
+    const trace = JSON.stringify(result)
+    for (const foreign of ['trend-a', 'trend-b', 'risk-b', 'a_metric', 'b_metric']) {
+      expect(trace).not.toContain(foreign)
+    }
+    expect(result.evidence.map(e => e.sourceId)).toEqual(['trend-global'])
+  })
+
+  // The store is the enforcement point in production; assert its scoping
+  // contract explicitly so a future refactor cannot silently widen it.
+  it('binds the store query to the requested scope', async () => {
+    const store = new FakeStore([trend({ metric: 'global_metric' }, { id: 'trend-global' })])
+    await runExecutiveBriefProducer({ projectId: null, store, now: NOW })
+    expect(store.queries.every(q => q.projectId === null)).toBe(true)
+
+    const projectStore = new FakeStore([trend({ metric: 'm' }, { id: 't', projectId: 'p1' })])
+    await runExecutiveBriefProducer({ projectId: 'p1', store: projectStore, now: NOW })
+    expect(projectStore.queries.every(q => q.projectId === 'p1')).toBe(true)
+  })
 })
 
 // ── 16–17. Principal-scoped read boundary ─────────────────────────────────────
 
 describe('Executive Brief principal read boundary', () => {
-  const persisted = object<ExecutiveBriefBody>({
-    id: 'eb-1', kind: 'executive_brief', body: buildExecutiveBrief(input()).body,
+  const worldBrief = object<ExecutiveBriefBody>({
+    id: 'eb-world', kind: 'executive_brief', body: buildExecutiveBrief(input()).body,
+  })
+  const briefA = object<ExecutiveBriefBody>({
+    id: 'eb-p-a', kind: 'executive_brief', projectId: PROJECT_A.id, body: worldBrief.body,
+  })
+  const briefB = object<ExecutiveBriefBody>({
+    id: 'eb-p-b', kind: 'executive_brief', projectId: PROJECT_B.id, body: worldBrief.body,
   })
 
   it('denies an unauthenticated principal', async () => {
     const result = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: [], all: ['p1'] }), userId: null, store: new FakeStore([persisted]),
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: null,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
     })
     expect(result).toEqual({ brief: null, status: 'no_principal' })
   })
 
-  it('denies a project the principal does not own', async () => {
+  it('returns a project brief the principal owns', async () => {
     const result = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1'], all: ['p1', 'p2'] }), userId: 'u1', projectId: 'p2',
-      store: new FakeStore([object<ExecutiveBriefBody>({ id: 'eb-p2', kind: 'executive_brief', projectId: 'p2', body: persisted.body })]),
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A, projectId: PROJECT_A.id,
+      store: new FakeStore([briefA, briefB]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
+    })
+    expect(result.status).toBe('ok')
+    expect(result.brief?.id).toBe('eb-p-a')
+  })
+
+  it('denies another principal’s project brief', async () => {
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A, projectId: PROJECT_B.id,
+      store: new FakeStore([briefA, briefB]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
     })
     expect(result.status).toBe('project_denied')
     expect(result.brief).toBeNull()
   })
 
-  it('allows a project the principal owns', async () => {
-    const owned = object<ExecutiveBriefBody>({ id: 'eb-p1', kind: 'executive_brief', projectId: 'p1', body: persisted.body })
+  // ── EI-S1.2R1 regression ────────────────────────────────────────────────────
+  // The world brief is synthesised from platform-wide signals, so it can carry
+  // conclusions drawn from project B. Owner A must never receive it — and that
+  // must hold even when the caller injects a user-scoped, RLS-filtered client,
+  // which is exactly the case that would make a naive check tautological.
+  it('denies the world brief to a principal who does not own the whole platform', async () => {
     const result = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1'], all: ['p1', 'p2'] }), userId: 'u1', projectId: 'p1', store: new FakeStore([owned]),
-    })
-    expect(result.status).toBe('ok')
-    expect(result.brief?.id).toBe('eb-p1')
-  })
-
-  it('denies the portfolio brief when any project is outside the allow-list', async () => {
-    const result = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1'], all: ['p1', 'p2'] }), userId: 'u1', store: new FakeStore([persisted]),
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
     })
     expect(result.status).toBe('portfolio_denied')
     expect(result.brief).toBeNull()
   })
 
-  it('allows the portfolio brief only with authority over every project', async () => {
+  it('denies the world brief identically under a service-role caller client', async () => {
+    // The caller's privilege must not be able to change the answer.
     const result = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1', 'p2'], all: ['p1', 'p2'] }), userId: 'u1', store: new FakeStore([persisted]),
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'service_role' }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
     })
-    expect(result.status).toBe('ok')
-    expect(result.brief?.id).toBe('eb-1')
+    expect(result.status).toBe('portfolio_denied')
   })
 
-  it('fails closed when the project lookup errors, and reports a missing brief honestly', async () => {
-    const denied = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1'], all: ['p1'], throwOnProjects: true }), userId: 'u1', store: new FakeStore([persisted]),
+  it('allows the world brief only when the principal owns every project', async () => {
+    const soleOwner = [PROJECT_A, { id: 'p-a2', owner_id: OWNER_A }]
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: soleOwner, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(soleOwner),
     })
-    expect(denied.status).toBe('portfolio_denied')
+    expect(result.status).toBe('ok')
+    expect(result.brief?.id).toBe('eb-world')
+  })
 
-    const empty = await readExecutiveBriefForPrincipal({
-      db: fakeDb({ owned: ['p1'], all: ['p1'] }), userId: 'u1', store: new FakeStore(),
+  it('denies the world brief when a project has no owner at all', async () => {
+    const orphaned = [PROJECT_A, { id: 'p-orphan', owner_id: '' }]
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: orphaned, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(orphaned),
     })
-    expect(empty.status).toBe('not_produced')
-    expect(empty.brief).toBeNull()
+    expect(result.status).toBe('portfolio_denied')
+  })
+
+  it('denies the world brief on an empty platform — authority must be positively held', async () => {
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: [], privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader([]),
+    })
+    expect(result.status).toBe('portfolio_denied')
+  })
+
+  it('fails closed when the authority enumeration errors', async () => {
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: new FakeStore([worldBrief]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS, true),
+    })
+    expect(result.status).toBe('portfolio_denied')
+    expect(result.brief).toBeNull()
+  })
+
+  it('fails closed when the allow-list lookup errors', async () => {
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A, throwOnProjects: true }),
+      userId: OWNER_A, projectId: PROJECT_A.id,
+      store: new FakeStore([briefA]),
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
+    })
+    expect(result.status).toBe('project_denied')
+    expect(result.brief).toBeNull()
+  })
+
+  it('reports a missing brief honestly rather than falling back to another scope', async () => {
+    const soleOwner = [PROJECT_A]
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: soleOwner, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      // Only a project-scoped brief exists; the world read must NOT return it.
+      store: new FakeStore([briefA]),
+      portfolioAuthorityReader: portfolioReader(soleOwner),
+    })
+    expect(result.status).toBe('not_produced')
+    expect(result.brief).toBeNull()
+  })
+
+  it('never reaches the store when authorization fails', async () => {
+    const store = new FakeStore([worldBrief])
+    const spy = { queries: 0 }
+    const watched = new Proxy(store, {
+      get(target, prop, receiver) {
+        if (prop === 'query') { spy.queries += 1 }
+        return Reflect.get(target, prop, receiver)
+      },
+    }) as typeof store
+    const result = await readExecutiveBriefForPrincipal({
+      db: rlsDb({ projects: BOTH_PROJECTS, privilege: 'user', asUser: OWNER_A }),
+      userId: OWNER_A,
+      store: watched,
+      portfolioAuthorityReader: portfolioReader(BOTH_PROJECTS),
+    })
+    expect(result.status).toBe('portfolio_denied')
+    expect(spy.queries).toBe(0)
+  })
+
+  it('proves portfolio authority without using the caller-supplied client', () => {
+    const source = readFileSync(
+      resolve(REPO_ROOT, 'apps/web/lib/atlas/intelligence/principal-read.ts'), 'utf8',
+    )
+    // The authority proof must not be an RLS-filtered enumeration of the very
+    // rows that RLS hides, so it must not run through `request.db`.
+    expect(source).toContain('provePortfolioAuthority(')
+    expect(source).not.toMatch(/isAuthorizedForWholePortfolio\s*\(\s*db/)
+    // Server-only, so the service-role seam can never reach a client bundle.
+    expect(source).toContain("import 'server-only'")
   })
 })
 

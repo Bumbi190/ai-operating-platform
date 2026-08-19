@@ -125,10 +125,53 @@ is the guard working as intended and must not be bypassed, grandfathered, or dod
 the file back to the legacy repo-root directory. Until the schema exists, every runtime path
 fails closed and nothing on a live Atlas surface depends on it.
 
-**Still open, tracked for later EI-S1 increments:** Chapter 11 Decision Ledger V1 (EI-S1.3B,
-which consumes the authorization seam), Executive Mission Brief V1, the Manager/Workforce
-handoff artifacts, the remaining principal-scoped read hardening on the internal `CRON_SECRET`
-intelligence route, and the final FM.2 conformance review.
+**Delivered by EI-S1.3B:** **Chapter 11 Decision Ledger V1** — an append-only institutional
+decision history (`atlas_decision_ledger`) in `lib/atlas/decision-ledger/`.
+
+> "Memory remembers context. The Decision Ledger remembers commitments." (§11.2)
+
+It is deliberately none of the neighbouring systems: not a general activity log (§11.3), not
+Memory/D1 (§11.5), not an audit log (§11.6), and not approval history (§11.7 — "Not every
+approval becomes a strategic decision"). It is also not the §8.4 Executive Calibration Ledger,
+which remains separate and unimplemented.
+
+Canonical properties:
+
+- Ten lifecycle states with dedicated Chapter 11 sections (§11.49–§11.58), derived from the
+  record lineage and never stored as a mutable column. `Under Review` is deferred to Chapter 12,
+  which owns the review/decay architecture (§11.46); `Cancelled` is named in §11.48 but defined
+  nowhere, so it is not invented here.
+- **Authority is resolved live, never copied.** §11.39 requires the ledger to identify the
+  authority; §11.41 that "a decision requiring approval is not effective until approval exists".
+  Approving resolves the referenced Authorization V1 proof through its own seam, so a later
+  revocation, expiry, supersession, version change or unverified condition immediately stops the
+  decision governing. No `authorized: true` boolean is stored to drift.
+- Active and expired are derived from time (§11.43, §11.55 — "Expiration should not depend on
+  manual memory"), so no background job is required.
+- Immutable history (§11.60): corrections and material amendments append a new version with
+  explicit provenance and reason (§11.59, §11.62); the database rejects UPDATE and DELETE.
+- What was known THEN stays known then — evidence references keep timestamp and scope (§11.27)
+  and the evidence snapshot is frozen against later data change (§11.28), including known gaps.
+- Recommendation is preserved separately from the final decision (§11.24/§11.25); expected impact
+  (§11.36) is never conflated with observed outcome (§11.96/§11.98), and `not_yet_measurable` is
+  the explicit UNKNOWN — absence of failure is never success (§11.100).
+- Materiality must be positively declared from the §11.19 domains; routine activity is refused
+  (§11.18), and nothing can self-classify past human authority.
+- Project-scoped only. Global and portfolio decisions (§11.10/§11.11) need the governed summaries
+  of §11.73, which Stage 1 does not fund, so cross-project reads are denied rather than guessed.
+
+Not implemented, and out of scope by canon: Decision Quality Rating (§11.101 — "Omnira **may
+later** evaluate"), Trust Score, autonomy progression, Performance Intelligence, and the
+Chapter 12 review/decay architecture.
+
+> The `atlas_decision_ledger` migration is committed in the canonical guarded directory but
+> **deliberately unapplied**, so `check-migrations.mjs` will fail a Vercel build until a
+> separately authorized rollout applies it — **deployment blocked by design**. Until then:
+> **Decision Ledger V1 = CODE COMPLETE / SCHEMA UNAPPLIED / NOT PRODUCTION-OPERATIONAL.**
+
+**Still open, tracked for later EI-S1 increments:** Executive Mission Brief V1, the
+Manager/Workforce handoff artifacts, the remaining principal-scoped read hardening on the
+internal `CRON_SECRET` intelligence route, and the final FM.2 conformance review.
 
 Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does
 not persist that reviewer identity — a separate, narrowly scoped security follow-up),

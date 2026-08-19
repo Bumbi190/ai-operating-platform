@@ -139,6 +139,8 @@ export interface BuildDecisionRecordInput {
   outcome?:    DecisionOutcome | null
   reviewNote?: string | null
   reason?:     string | null
+  /** Lineage length this act was derived from; 0 for an opening act. */
+  baseRecordCount: number
 }
 
 export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRecord {
@@ -149,6 +151,9 @@ export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRe
   // §11.23 — the commitment itself, clear enough to interpret consistently.
   requireText(input.statement, 'statement-required')
   requireIsoTime(input.occurredAt, 'occurred-at-valid')
+  if (!Number.isInteger(input.baseRecordCount) || input.baseRecordCount < 0) {
+    throw new MalformedDecisionLineageError('base-record-count-non-negative')
+  }
   if (!Number.isInteger(input.version) || input.version < 1) {
     throw new MalformedDecisionLineageError('version-positive-integer')
   }
@@ -176,6 +181,9 @@ export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRe
     if (!authority) throw new MalformedDecisionLineageError('approval-requires-authority')
     requireText(authority.authorizationId, 'approval-requires-authorization-reference')
     requireText(authority.principalId, 'approval-requires-authority-principal')
+    requireText(authority.actionKind, 'approval-requires-authority-action')
+    requireText(authority.boundVersionHash, 'approval-requires-bound-version')
+    requireIsoTime(requireText(authority.authorityActAt, 'approval-requires-authority-time'), 'authority-act-at-valid')
     if (authority.basis !== 'founder_owner') {
       throw new MalformedDecisionLineageError('authority-basis-canonical', authority.basis)
     }
@@ -230,6 +238,7 @@ export function buildDecisionRecord(input: BuildDecisionRecordInput): DecisionRe
     outcome,
     reviewNote: input.reviewNote ?? null,
     reason:     input.reason ?? null,
+    baseRecordCount: input.baseRecordCount,
   }
 }
 

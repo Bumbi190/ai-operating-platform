@@ -128,12 +128,20 @@ export interface DecisionAuthorityRecord {
   authorizationId: AuthorizationId
   /** The principal the authorization itself carried — not merely the caller. */
   principalId: string
-  /** Which authority act this proved (approve / amend / reverse / supersede). */
+  /** Which authority act this proved (approve / amend / reject / defer / reverse / supersede). */
   actionKind: string
-  /** The material decision version the authorization was bound to. */
+  /**
+   * sha256 over the bound projection of the exact act this authorized — not of
+   * the state before it. See `binding.ts`.
+   */
   boundVersionHash: string
-  /** When the authority act occurred. */
-  approvedAt: string
+  /**
+   * When the authority act occurred. Named for the ACT, not for approval:
+   * amendment, rejection, deferral, reversal and supersession are authority
+   * acts too, and `approvedAt` on a reversal record would be a false statement
+   * about institutional history.
+   */
+  authorityActAt: string
 }
 
 // ── Evidence (§11.27, §11.28) ─────────────────────────────────────────────────
@@ -272,6 +280,19 @@ export interface DecisionRecord {
   reviewNote:   string | null
   /** Why: rejection, deferral, amendment, reversal (§11.53/§11.54/§11.57/§11.59). */
   reason:       string | null
+
+  /**
+   * How many records the lineage held when this act was derived — optimistic
+   * concurrency, not decision content (so it is not authority-bound).
+   *
+   * Two writers reading the same lineage produce the same value, and the
+   * database's partial unique index rejects the loser with 23505. That is what
+   * stops two individually-valid candidates — an approval and a deferral, an
+   * amendment and a reversal — from combining into a lineage the pure core
+   * would then refuse to read. Annotations are excluded from the index and
+   * never conflict.
+   */
+  baseRecordCount: number
 }
 
 // ── Derived state ─────────────────────────────────────────────────────────────

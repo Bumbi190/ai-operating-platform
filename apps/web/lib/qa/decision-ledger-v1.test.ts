@@ -76,6 +76,7 @@ function record(type: DecisionRecordType, overrides: Record<string, unknown> = {
     occurredAt: T0,
     recordId: `r${++seq}`,
     version: 1,
+    baseRecordCount: 0,
     title: 'Newsletter sending stays approval-gated',
     statement: 'The Prompt newsletter workflow may prepare drafts autonomously, but sending requires explicit human approval.',
     materiality: ['autonomy', 'customers'],
@@ -89,7 +90,11 @@ const approved = (o: Record<string, unknown> = {}) => record('approved', {
   rationale: 'Subscriber trust and limited production evidence.',
   review: REVIEW,
   effectiveAt: EFFECTIVE,
-  authority: { basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A },
+  baseRecordCount: 1,
+  authority: {
+    basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A,
+    actionKind: 'decision.approve', boundVersionHash: 'a'.repeat(64), authorityActAt: T1,
+  },
   ...o,
 })
 
@@ -277,7 +282,7 @@ describe('Decision Ledger V1 — isolation and no existence oracle', () => {
   it('denies acting on a foreign-project decision without writing', async () => {
     authAs(PRINCIPAL_A, [PROJECT_A]); authorityEffective()
     const store = foreign()
-    const result = await rejectDecision({ decisionId: 'dec-b', reason: 'no', store, now: T1 })
+    const result = await rejectDecision({ decisionId: 'dec-b', authorizationId: AUTH_ID, reason: 'no', store, now: T1 })
     expect(result.status).toBe('not_permitted')
     expect(store.appended).toHaveLength(0)
   })
@@ -321,14 +326,19 @@ describe('Decision Ledger V1 — historical truth is immutable', () => {
 
   it('creates a new version on amendment and keeps identity stable (§11.59)', () => {
     const state = deriveDecisionState([
-      proposed(),
-      record('amended', { occurredAt: T1, version: 2, reason: 'Scope clarified.', statement: 'Amended statement.' }),
+      proposed(), approved(),
+      record('amended', { occurredAt: T2, version: 2, reason: 'Scope clarified.', statement: 'Amended statement.' }),
     ], { at: T2 })
     expect(state.decisionId).toBe('dec-1')
     expect(state.version).toBe(2)
     expect(state.statement).toBe('Amended statement.')
-    expect(() => deriveDecisionState([proposed(), record('amended', { occurredAt: T1, version: 1, reason: 'x' })], { at: T2 }))
+    expect(() => deriveDecisionState(
+      [proposed(), approved(), record('amended', { occurredAt: T2, version: 1, reason: 'x' })], { at: T2 }))
       .toThrow(/amendment-increments-version/)
+    // §11.62/§11.60 — there must be a live decision to amend.
+    expect(() => deriveDecisionState(
+      [proposed(), record('amended', { occurredAt: T1, version: 2, reason: 'x' })], { at: T2 }))
+      .toThrow(/amendment-requires-live-decision/)
     expect(() => record('amended', { occurredAt: T1, version: 2 })).toThrow(/amended-requires-reason/)
   })
 
@@ -341,9 +351,10 @@ describe('Decision Ledger V1 — historical truth is immutable', () => {
     expect(migration).toContain('before delete on public.atlas_decision_ledger')
     expect(migration).toContain('enable row level security')
     expect(migration).toContain('revoke all on public.atlas_decision_ledger from anon, authenticated')
-    expect(migration).toContain('atlas_decision_ledger_one_open_idx')
-    expect(migration).toContain('atlas_decision_ledger_one_settlement_idx')
-    expect(migration).toContain('atlas_decision_ledger_one_close_idx')
+    // EI-S1.3B-R2 replaced four narrower transition indexes with one
+    // optimistic-concurrency invariant covering every lifecycle family.
+    expect(migration).toContain('atlas_decision_ledger_one_advance_idx')
+    expect(migration).toContain('(decision_id, base_record_count)')
     expect(migration).not.toMatch(/^\s*status\s+text/m)
   })
 })
@@ -423,7 +434,10 @@ describe('Decision Ledger V1 — lifecycle and review', () => {
   it('requires a review condition on approval (§11.46)', () => {
     expect(() => record('approved', {
       occurredAt: T1, rationale: 'x', effectiveAt: EFFECTIVE,
-      authority: { basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A },
+      authority: {
+        basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A,
+        actionKind: 'decision.approve', boundVersionHash: 'a'.repeat(64), authorityActAt: T1,
+      },
     })).toThrow(/approval-requires-review-condition/)
   })
 
@@ -496,9 +510,10 @@ describe('Decision Ledger V1 — malformed lineages and concurrency', () => {
 
   it('surfaces a losing concurrent transition as conflict, not corruption', async () => {
     authAs(PRINCIPAL_A, [PROJECT_A])
+    authorityEffective()
     const store = new FakeStore([proposed()])
     store.append = async () => { throw new Error('duplicate key value violates unique constraint (23505)') }
-    const result = await rejectDecision({ decisionId: 'dec-1', reason: 'no', store, now: T1 })
+    const result = await rejectDecision({ decisionId: 'dec-1', authorizationId: AUTH_ID, reason: 'no', store, now: T1 })
     expect(result.status).toBe('conflict')
   })
 
@@ -587,7 +602,9 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
       'export async function supersedeDecision(',
       'export async function completeDecision(',
       'export async function observeOutcome(',
-      'function transition(',
+      'export async function rejectDecision(',
+      'export async function deferDecision(',
+      'export async function recordDecisionReview(',
     ]) {
       const from = write.indexOf(entry)
       expect(from).toBeGreaterThan(-1)
@@ -613,6 +630,7 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
       outcome: { status: 'successful', summary: 'Migration finished.', observedAt: T2, evidence: EVIDENCE },
       store, now: T2,
     })
+    await recordDecisionReview({ decisionId: 'dec-1', reviewNote: 'The controls worked.', store, now: T2 })
     const result = await completeDecision({ decisionId: 'dec-1', reason: 'Migration finished.', store, now: T2 })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('completed')
@@ -624,7 +642,16 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
     const successorId = newDecisionId()
     const superseding = new FakeStore([
       proposed(), approved(),
-      record('proposed', { decisionId: successorId, occurredAt: T1, recordId: 'succ-1' }),
+      record('proposed', { decisionId: successorId, occurredAt: T0, recordId: 'succ-1' }),
+      // §11.56 — a successor must itself be a decision, not a proposal.
+      record('approved', {
+        decisionId: successorId, occurredAt: T1, recordId: 'succ-2', baseRecordCount: 1,
+        rationale: 'r', review: REVIEW, effectiveAt: T1,
+        authority: {
+          basis: 'founder_owner', authorizationId: AUTH_ID, principalId: PRINCIPAL_A,
+          actionKind: 'decision.approve', boundVersionHash: 'a'.repeat(64), authorityActAt: T1,
+        },
+      }),
     ])
     const s = await supersedeDecision({
       decisionId: 'dec-1', supersededBy: successorId, authorizationId: AUTH_ID, store: superseding, now: T2,
@@ -632,7 +659,9 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
     expect(s.state?.status).toBe('superseded')
 
     const deferring = new FakeStore([proposed()])
-    const d = await deferDecision({ decisionId: 'dec-1', reason: 'Awaiting churn data.', store: deferring, now: T1 })
+    const d = await deferDecision({
+      decisionId: 'dec-1', authorizationId: AUTH_ID, reason: 'Awaiting churn data.', store: deferring, now: T1,
+    })
     expect(d.state?.status).toBe('deferred')
   })
 

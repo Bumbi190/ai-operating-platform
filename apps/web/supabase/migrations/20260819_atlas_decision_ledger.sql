@@ -30,6 +30,12 @@
 --   reject triggers below make UPDATE and DELETE impossible on this table, so
 --   institutional history cannot be rewritten even by a service-role caller.
 --
+--   AUTHORITY IS BOUND TO THE PROSPECTIVE ACT (EI-S1.3B-R2). The `authority`
+--   jsonb pins a sha256 over the exact record being appended — its terms, not
+--   the state before it — so an authorization obtained for one approval cannot
+--   append a different expiry, review condition or amendment. §11.41 requires
+--   the approval record to reference "Conditions. Edited terms."
+--
 --   ⚠️  THIS MIGRATION IS DELIBERATELY UNAPPLIED. EI-S1.3B is authorized to
 --   create and commit it, and explicitly NOT authorized to apply it to any
 --   remote database. EI-S1.3B-R1 re-reviewed it while still unapplied and
@@ -87,7 +93,7 @@ create table if not exists public.atlas_decision_ledger (
   -- §11.39/§11.41 — the authority behind THIS act, proven at the moment it
   -- occurred and pinned here immutably: the Authorization V1 reference, the
   -- principal that authorization itself carried, which act it proved
-  -- (decision.approve | amend | reverse | supersede), the material version hash
+  -- (decision.approve | amend | reject | defer | reverse | supersede), the hash
   -- it was bound to, and when. §11.180 requires an active decision to explain
   -- itself from its own record — "approved under this authority… and remains
   -- active until this review condition" — without re-reading live state.
@@ -133,6 +139,12 @@ create table if not exists public.atlas_decision_ledger (
   -- §11.53/§11.54/§11.57 — rejection, deferral, reversal, amendment reason.
   reason              text,
 
+  -- Optimistic concurrency: how many records the lineage held when this act was
+  -- derived and validated. Not decision content, and deliberately not part of
+  -- the authorization binding. See the serialization index below.
+  base_record_count   integer not null default 0
+    constraint atlas_decision_ledger_base_record_count_check check (base_record_count >= 0),
+
   created_at          timestamptz not null default now()
 );
 
@@ -150,37 +162,37 @@ create index if not exists atlas_decision_ledger_project_idx
 create index if not exists atlas_decision_ledger_type_idx
   on public.atlas_decision_ledger (project_id, record_type, occurred_at desc);
 
--- ── Transition invariants ─────────────────────────────────────────────────────
--- Append-only alone does not stop two concurrent writers appending, say, an
--- approval and a rejection to the same decision. The pure derivation would then
--- reject the persisted lineage as malformed and the decision would become
--- unreadable. These partial unique indexes serialize the transitions in the
--- database; a losing writer gets a unique violation (23505) which the write
--- boundary surfaces as `conflict`, and the lineage stays valid.
+-- ── Transition serialization ──────────────────────────────────────────────────
+-- The write boundary validates every prospective lineage through the pure core
+-- BEFORE it appends, so a semantically invalid transition never reaches this
+-- table. What pure validation cannot do is serialize two writers who each read
+-- the same lineage and each produce an individually valid candidate: an approval
+-- and a deferral, two amendments of the same version, a reversal and a
+-- supersession. Appended together those form a history the pure core would then
+-- refuse to read — and on an append-only table that is permanent.
+--
+-- ONE optimistic-concurrency invariant covers every such family: any two
+-- lifecycle acts derived from the same lineage position collide. The loser gets
+-- a unique violation (23505), which the write boundary surfaces as `conflict`
+-- and no row is written.
+--
+-- EI-S1.3B-R2 replaced four narrower indexes with this one. They did not cover
+-- amendment-versus-close or approval-versus-deferral at all, and the old
+-- `one_open` index was actively wrong: it forbade the draft → proposal sequence
+-- that §11.49/§11.50 and the pure core both allow.
+--
+-- Annotations (`outcome_observed`, `reviewed`) are excluded: they never
+-- conflict with anything, and making them collide would produce false
+-- `conflict` results for a note recorded alongside a decision act.
 --
 -- Narrowly scoped: no distributed transaction machinery, no generic
--- event-sourcing framework.
-
--- Exactly one opening act per decision.
-create unique index if not exists atlas_decision_ledger_one_open_idx
-  on public.atlas_decision_ledger (decision_id)
-  where record_type in ('drafted', 'proposed');
-
--- Exactly one settling act: approved | rejected.
--- `deferred` is excluded: §11.54 allows a deferred decision to be taken up again.
-create unique index if not exists atlas_decision_ledger_one_settlement_idx
-  on public.atlas_decision_ledger (decision_id)
-  where record_type in ('approved', 'rejected');
-
--- Exactly one closing act: superseded | reversed | completed.
-create unique index if not exists atlas_decision_ledger_one_close_idx
-  on public.atlas_decision_ledger (decision_id)
-  where record_type in ('superseded', 'reversed', 'completed');
-
--- One record per decision version for amendments (§11.59).
-create unique index if not exists atlas_decision_ledger_one_amendment_per_version_idx
-  on public.atlas_decision_ledger (decision_id, version)
-  where record_type = 'amended';
+-- event-sourcing framework, no advisory locks.
+create unique index if not exists atlas_decision_ledger_one_advance_idx
+  on public.atlas_decision_ledger (decision_id, base_record_count)
+  where record_type in (
+    'drafted', 'proposed', 'approved', 'rejected', 'deferred',
+    'amended', 'superseded', 'reversed', 'completed'
+  );
 
 -- ── Append-only enforcement (§11.60, §11.61, §11.62) ──────────────────────────
 -- History is immutable. Corrections and material amendments append a new record

@@ -51,6 +51,7 @@ interface Row {
   outcome: unknown
   review_note: string | null
   reason: string | null
+  base_record_count: number
 }
 
 const COLS = [
@@ -58,7 +59,7 @@ const COLS = [
   'title', 'statement', 'recommendation', 'rationale', 'materiality', 'authority',
   'evidence', 'snapshot', 'alternatives', 'confidence', 'expected_impact',
   'effective_at', 'expires_at', 'review', 'reversal_conditions', 'superseded_by',
-  'version', 'outcome', 'review_note', 'reason',
+  'version', 'outcome', 'review_note', 'reason', 'base_record_count',
 ].join(', ')
 
 function rowToRecord(row: Row): DecisionRecord {
@@ -89,6 +90,7 @@ function rowToRecord(row: Row): DecisionRecord {
     outcome:    (row.outcome as DecisionRecord['outcome']) ?? null,
     reviewNote: row.review_note,
     reason:     row.reason,
+    baseRecordCount: row.base_record_count,
   }
 }
 
@@ -120,6 +122,7 @@ function recordToRow(record: DecisionRecord): Record<string, unknown> {
     outcome:     record.outcome,
     review_note: record.reviewNote,
     reason:      record.reason,
+    base_record_count: record.baseRecordCount,
   }
 }
 

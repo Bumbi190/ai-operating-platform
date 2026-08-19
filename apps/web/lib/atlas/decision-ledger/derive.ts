@@ -84,6 +84,12 @@ export function orderDecisionRecords(records: DecisionRecord[]): DecisionRecord[
  * Fold a lineage into current state. Raises on any chain that could not be a
  * real history — reading a broken institutional record permissively is exactly
  * the wrong failure mode.
+ *
+ * EI-S1.3B-R2 makes this the PREFLIGHT for every write as well as the reader.
+ * The write boundary folds `[...existing lineage, candidate]` here BEFORE it
+ * appends, so a transition this function would refuse can never reach an
+ * append-only table. Previously the append happened first and the malformed
+ * chain was discovered afterwards — permanently.
  */
 export function deriveDecisionState(
   records: DecisionRecord[],
@@ -161,6 +167,20 @@ export function deriveDecisionState(
     }
 
     if (record.type === 'amended') {
+      // §11.62 — a material amendment changes scope, authority, risk, duration,
+      // autonomy, budget, approval requirement, external action permission or
+      // success criteria, and "material amendments require the applicable
+      // decision process". There must therefore be a decision to amend: a draft
+      // or proposal is not one (§11.49/§11.50, §10.3), and a rejected, deferred,
+      // reversed, superseded or completed decision is history — §11.60 keeps
+      // history immutable, so amending it would rewrite the record rather than
+      // evolve a live commitment.
+      //
+      // EI-S1.3B-R2: without this, a reversed decision could be quietly amended
+      // back into a new version. Fail closed.
+      if (status !== 'approved') {
+        throw new MalformedDecisionLineageError('amendment-requires-live-decision', record.recordId)
+      }
       // §11.59 — "Every material edit should create a new version." Identity and
       // lineage survive; the earlier version remains in the record chain.
       if (record.version <= version) {

@@ -21,10 +21,19 @@
  *     snapshot, rationale and alternatives are carried from the record that
  *     decided them. Later records append; they never rewrite history.
  *
- * Authority effectiveness is NOT decided here. The ledger stores an
- * authorization reference and resolves it live through the Authorization V1
- * seam, so revocation, expiry, supersession, version drift and unverified
- * conditions can never be stale (see `principal-write` / `principal-read`).
+ * APPROVAL IS A HISTORICAL ACT, NOT A CONTINUING LEASE (EI-S1.3B-R1).
+ * §11.180 requires an active decision to explain itself as "approved under this
+ * authority for these reasons and remains active until this review condition" —
+ * the decision remains active until ITS review condition, not until the
+ * approving authorization expires. §11.44/§11.45 give the decision its own
+ * duration and expiration, and §11.55 says an expired DECISION stops
+ * authorizing action. Authorization V1's own expiry bounds the authority to
+ * ACT (§27.319); it does not retroactively unmake a decision already taken.
+ *
+ * So authority is verified once, when the act occurs, and the proof is recorded
+ * immutably. Governing is then decided by the decision's own lifecycle. A later
+ * revocation is a reason to REVIEW the decision, never a silent retroactive
+ * deletion of the approval act.
  */
 
 import {
@@ -261,14 +270,14 @@ export function deriveDecisionState(
 /**
  * Is this decision currently governing behaviour (§11.52), and if not, why?
  *
- * Authority is deliberately NOT evaluated here — the pure core cannot resolve a
- * live authorization. A caller that needs the full answer passes
- * `authorityEffective`, which the write/read boundaries obtain from the
- * Authorization V1 seam. Omitting it answers only the ledger-side question.
+ * This is the complete evaluation. It takes no security-sensitive parameters,
+ * so no caller can weaken it by omitting one: the approving authority was
+ * verified and recorded when the act occurred, and from then on the decision's
+ * own lifecycle decides.
  */
 export function isDecisionGoverning(
   records: DecisionRecord[],
-  query: { at: string; authorityEffective?: boolean; authorityReason?: string },
+  query: { at: string },
 ): DecisionEffectivenessResult {
   let state: DerivedDecisionState
   try {
@@ -291,16 +300,6 @@ export function isDecisionGoverning(
     case 'completed':  return deny('completed')
     case 'approved':   return deny('not_yet_effective')
     case 'active':
-      // A decision cannot govern on stale authority. When the caller resolved
-      // the authorization and it is not effective, the decision is not either.
-      if (query.authorityEffective === false) {
-        return {
-          governing: false,
-          reason: 'authority_not_effective',
-          state,
-          ...(query.authorityReason ? { authorityReason: query.authorityReason } : {}),
-        }
-      }
       return { governing: true, reason: 'active', state }
   }
 }

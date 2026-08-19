@@ -32,7 +32,9 @@
 --
 --   ⚠️  THIS MIGRATION IS DELIBERATELY UNAPPLIED. EI-S1.3B is authorized to
 --   create and commit it, and explicitly NOT authorized to apply it to any
---   remote database. It sits in the canonical guarded directory, so
+--   remote database. EI-S1.3B-R1 re-reviewed it while still unapplied and
+--   revised only comments — the shape below is unchanged, so nothing here
+--   depends on when it is eventually applied. It sits in the canonical guarded directory, so
 --   apps/web/scripts/check-migrations.mjs will correctly fail a Vercel build
 --   until a separately authorized rollout applies it — deployment blocked by
 --   design. That failure must not be bypassed, grandfathered, or dodged by
@@ -82,9 +84,15 @@ create table if not exists public.atlas_decision_ledger (
   -- must be a non-empty array drawn from the canonical list.
   materiality         jsonb not null default '[]',
 
-  -- §11.39/§11.41 — authority behind the decision, holding an Authorization V1
-  -- reference. Effectiveness is resolved live through the authorization seam;
-  -- no `authorized: true` boolean is stored here to drift.
+  -- §11.39/§11.41 — the authority behind THIS act, proven at the moment it
+  -- occurred and pinned here immutably: the Authorization V1 reference, the
+  -- principal that authorization itself carried, which act it proved
+  -- (decision.approve | amend | reverse | supersede), the material version hash
+  -- it was bound to, and when. §11.180 requires an active decision to explain
+  -- itself from its own record — "approved under this authority… and remains
+  -- active until this review condition" — without re-reading live state.
+  -- Approve, amend, reverse and supersede each carry their own proof; none
+  -- inherits another's. No `authorized: true` boolean is stored.
   authority           jsonb,
 
   -- §11.27 — linked evidence, preserving timestamp and scope.
@@ -109,7 +117,10 @@ create table if not exists public.atlas_decision_ledger (
   -- §11.47 — conditions requiring reversal or reconsideration.
   reversal_conditions jsonb not null default '[]',
 
-  -- §11.56 — explicit "superseded by Decision X".
+  -- §11.56 — explicit "superseded by Decision X". No FK is possible: decision_id
+  -- is a lineage key, not unique here. The write boundary proves the successor
+  -- exists, shares this project, is not this decision, and does not close a
+  -- cycle, before any superseding row is appended.
   superseded_by       uuid,
   -- §11.59 — version within the lineage; identity stays stable.
   version             integer not null default 1

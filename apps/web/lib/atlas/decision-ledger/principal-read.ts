@@ -22,8 +22,6 @@ import 'server-only'
 
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
-import { isAuthorizationEffective } from '@/lib/atlas/authorization/principal-read'
-import type { AuthorizationTarget } from '@/lib/atlas/authorization/types'
 import { deriveDecisionState, isDecisionGoverning as isGoverningPure } from './derive'
 import { createDecisionLedgerStore, type DecisionLedgerStore } from './store'
 import type {
@@ -87,14 +85,22 @@ export async function resolveDecision(
 /**
  * Does this decision currently govern behaviour (§11.52)?
  *
- * When the decision is active and carries an authority reference, the
- * Authorization V1 proof is resolved live — a revoked, expired, superseded,
- * version-mismatched or conditionally unverified authorization stops the
- * decision from governing, which a stored boolean could never track.
+ * Governance is read from the decision alone. §11.180 requires an active
+ * decision to explain itself as "approved under this authority … and remains
+ * active until this review condition": the authority is the approval-time fact
+ * recorded on the record, and the decision's own effective date, expiry and
+ * review condition (§11.44, §11.45, §11.55) decide how long it stands.
+ *
+ * An earlier revision re-resolved the approval's authorization here and let a
+ * later expiry silently un-govern a standing decision — a continuing lease canon
+ * never grants. Worse, the target and action to check were optional caller
+ * arguments, so omitting them weakened validation to nothing. Both are gone: no
+ * caller can influence, and no caller need supply, what makes a decision
+ * effective. A revoked authorization is a §11.47 trigger for review, not a
+ * retroactive unmaking of the decision.
  */
 export async function isDecisionGoverning(
   decisionId: string,
-  query: { target?: AuthorizationTarget; actionKind?: string } = {},
   args: ReadArgs = {},
 ): Promise<DecisionEffectivenessResult & { status: DecisionReadStatus }> {
   const at = args.now ?? new Date().toISOString()
@@ -102,25 +108,7 @@ export async function isDecisionGoverning(
   if (read.status !== 'ok' || !read.state) {
     return { governing: false, reason: 'malformed_lineage', state: null, status: read.status }
   }
-
-  const authorizationId = read.state.authority?.authorizationId
-  if (!authorizationId) {
-    return { ...isGoverningPure(read.lineage, { at }), status: 'ok' }
-  }
-
-  const authority = await isAuthorizationEffective(
-    authorizationId,
-    { projectId: read.state.projectId, ...query },
-    { now: at },
-  )
-  return {
-    ...isGoverningPure(read.lineage, {
-      at,
-      authorityEffective: authority.effective,
-      authorityReason: `${authority.status}:${authority.reason}`,
-    }),
-    status: 'ok',
-  }
+  return { ...isGoverningPure(read.lineage, { at }), status: 'ok' }
 }
 
 /**

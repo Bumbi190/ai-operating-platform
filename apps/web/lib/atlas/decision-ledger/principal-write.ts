@@ -8,14 +8,24 @@
  * `not_permitted`, so this boundary can never become a decision-id existence
  * oracle.
  *
- * AUTHORITY IS RESOLVED LIVE, NEVER COPIED. §11.39 requires the ledger to
- * identify the authority behind a decision, and §11.41 that "a decision
- * requiring approval is not effective until approval exists". Approving a
- * decision therefore resolves the referenced Authorization V1 proof through its
- * own sanctioned seam and requires it to be effective for the exact project,
- * target, version and action. The ledger stores the reference; it never stores
- * an `authorized: true` boolean that could drift away from a later revocation,
- * expiry, supersession or unverified condition.
+ * AUTHORITY BINDING IS DERIVED, NEVER CALLER-SUPPLIED (EI-S1.3B-R1). An earlier
+ * revision let the caller pass the authorization target and action kind, so any
+ * legitimate authorization in the same project — one granted to publish a single
+ * unrelated article — could approve an unrelated autonomy decision. The binding
+ * now comes from the decision itself (`binding.ts`): target `decision:<id>`
+ * pinned to the material version hash, and a distinct action per authority act.
+ * No security-sensitive component is an argument.
+ *
+ * EVERY AUTHORITY ACT NEEDS ITS OWN FRESH PROOF. Approving, amending, reversing
+ * and superseding are four different permissions (§27.313 minimum authority);
+ * none of them reuses `prior.authority`, which would prove only that someone was
+ * once allowed to do something else.
+ *
+ * AUTHORITY IS PROVEN AT THE MOMENT OF THE ACT, then recorded immutably. §11.180
+ * requires an active decision to explain itself as "approved under this authority
+ * … and remains active until this review condition"; §11.44/§11.45 give the
+ * decision its own duration. So a later authorization expiry does not retroactively
+ * unmake the decision — it is a reason to review it.
  *
  * Nothing here executes anything. A ledger record is a commitment, never a
  * command: this module imports no tool, runner or action dispatcher.
@@ -28,12 +38,13 @@ import 'server-only'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { isAuthorizationEffective } from '@/lib/atlas/authorization/principal-read'
-import type { AuthorizationTarget } from '@/lib/atlas/authorization/types'
+import { bindingForState, type DecisionAct } from './binding'
 import { buildDecisionRecord, newDecisionId, type BuildDecisionRecordInput } from './build'
 import { deriveDecisionState, isLedgerMaterial } from './derive'
 import { createDecisionLedgerStore, type DecisionLedgerStore } from './store'
 import type {
   DecisionAlternative,
+  DecisionAuthorityRecord,
   DecisionConfidence,
   DecisionEvidenceReference,
   DecisionEvidenceSnapshot,
@@ -57,8 +68,16 @@ export type DecisionWriteStatus =
   | 'invalid_request'
   /** §11.18/§11.19 — not material enough to belong in the ledger. */
   | 'not_ledger_material'
-  /** The referenced Authorization V1 proof is not effective for this decision. */
+  /** The referenced Authorization V1 proof is not effective for this exact act. */
   | 'authority_not_effective'
+  /** The authorization's principal is not the acting caller (§11.39 provenance). */
+  | 'authority_principal_mismatch'
+  /** Successor missing, cross-project, or the decision itself (§11.56). */
+  | 'invalid_successor'
+  /** The act is not permitted from the decision's current state. */
+  | 'invalid_lifecycle'
+  /** §11.58 — completion needs a measured outcome, not an assumption. */
+  | 'outcome_required'
   /** A competing transition won the race; the lineage is unchanged. */
   | 'conflict'
   | 'unavailable'
@@ -96,16 +115,37 @@ export interface ProposeDecisionArgs extends CommonArgs {
 
 export interface ApproveDecisionArgs extends CommonArgs {
   decisionId:  string
-  /** Authorization V1 proof. Resolved live; never trusted as a flag. */
+  /**
+   * Authorization V1 proof. The target and action it must satisfy are DERIVED
+   * from the decision; the caller cannot choose or weaken them.
+   */
   authorizationId: string
-  /** The pinned target the authorization must cover. */
-  authorizationTarget: AuthorizationTarget
-  /** The action the authorization must grant. */
-  authorizationActionKind: string
   rationale:   string
   review:      DecisionReviewCondition
   effectiveAt: string
   expiresAt?:  string | null
+}
+
+/** §11.59/§11.62 — a material amendment creating version N+1. */
+export interface AmendDecisionArgs extends CommonArgs {
+  decisionId:  string
+  authorizationId: string
+  reason:      string
+  statement?:  string
+  title?:      string
+  materiality?: MaterialityDomain[]
+  rationale:   string
+  review:      DecisionReviewCondition
+  effectiveAt: string
+  expiresAt?:  string | null
+  reversalConditions?: string[]
+}
+
+/** §11.57 — reversal needs its own current authority, not the approval's. */
+export interface ReverseDecisionArgs extends CommonArgs {
+  decisionId: string
+  authorizationId: string
+  reason:     string
 }
 
 export interface SettleDecisionArgs extends CommonArgs {
@@ -115,7 +155,9 @@ export interface SettleDecisionArgs extends CommonArgs {
 
 export interface SupersedeDecisionArgs extends CommonArgs {
   decisionId:   string
+  /** Must be an existing decision in the same project, and not this one. */
   supersededBy: string
+  authorizationId: string
   reason?:      string
 }
 
@@ -234,15 +276,76 @@ async function openLineage(
 }
 
 /**
- * Approve a decision (§11.51) under a live Authorization V1 proof.
+ * Resolve the authority for ONE act, at the moment of the act.
  *
- * The authorization must be effective for this exact project, target version
- * and action at this moment. Expired, revoked, superseded, conditionally
- * unverified, wrong-project, wrong-version and wrong-action proofs all deny —
- * because effectiveness is resolved through the authorization seam rather than
- * copied into the ledger.
+ * The binding is computed from the decision, never from an argument, so an
+ * authorization granted for something else — another decision, another version,
+ * another act — cannot be presented here. §11.39 provenance additionally
+ * requires the authorization's own principal to be the acting human: a
+ * service-role or Atlas-initiated call carrying someone else's grant is not
+ * that human exercising authority, so it is refused rather than recorded under
+ * their name.
  */
-export async function approveDecision(args: ApproveDecisionArgs): Promise<DecisionWriteResult> {
+async function proveAuthority(
+  principal: Principal,
+  authorizationId: string,
+  state: DerivedDecisionState,
+  act: DecisionAct,
+  at: string,
+): Promise<DecisionAuthorityRecord | DecisionWriteResult> {
+  const binding = bindingForState(state, act)
+  const authority = await isAuthorizationEffective(
+    authorizationId,
+    { projectId: binding.projectId, target: binding.target, actionKind: binding.actionKind },
+    { now: at },
+  )
+  if (!authority.effective || !authority.state) {
+    return DENY('authority_not_effective', `${authority.status}:${authority.reason}`)
+  }
+  if (authority.state.principalId !== principal.userId) {
+    return DENY('authority_principal_mismatch')
+  }
+  // Pinned now, immutable forever: §11.180 lets an active decision explain
+  // itself from its own record, without re-reading live authorization state.
+  return {
+    basis: 'founder_owner',
+    authorizationId,
+    principalId: authority.state.principalId,
+    actionKind: binding.actionKind,
+    boundVersionHash: binding.target.versionHash,
+    approvedAt: at,
+  }
+}
+
+/** The decision content an appended act carries forward unchanged. */
+function carryForward(prior: DerivedDecisionState) {
+  return {
+    projectId:   prior.projectId,
+    version:     prior.version,
+    title:       prior.title,
+    statement:   prior.statement,
+    recommendation: prior.recommendation,
+    rationale:   prior.rationale,
+    materiality: prior.materiality,
+    evidence:    prior.evidence,
+    snapshot:    prior.snapshot,
+    alternatives: prior.alternatives,
+    confidence:  prior.confidence,
+    expectedImpact: prior.expectedImpact,
+    effectiveAt: prior.effectiveAt,
+    expiresAt:   prior.expiresAt,
+    review:      prior.review,
+    reversalConditions: prior.reversalConditions,
+  }
+}
+
+/** authenticate → project authority → lineage. Shared by every act below. */
+async function openFor(
+  args: CommonArgs & { decisionId: string },
+): Promise<
+  | { principal: Principal; store: DecisionLedgerStore; at: string; prior: DerivedDecisionState; records: DecisionRecord[] }
+  | DecisionWriteResult
+> {
   const principal = await authenticate()
   if ('status' in principal) return principal
 
@@ -251,90 +354,94 @@ export async function approveDecision(args: ApproveDecisionArgs): Promise<Decisi
 
   const opened = await openLineage(principal, store, args.decisionId, at)
   if ('status' in opened) return opened
-  const prior = opened.state
+  return { principal, store, at, prior: opened.state, records: opened.records }
+}
 
-  // §11.41 — a decision requiring approval is not effective until approval
-  // exists. Resolve the proof live, scoped to this decision's own project.
-  const authority = await isAuthorizationEffective(
-    args.authorizationId,
-    {
-      projectId:  prior.projectId,
-      target:     args.authorizationTarget,
-      actionKind: args.authorizationActionKind,
-    },
-    { now: at },
-  )
-  if (!authority.effective) {
-    return DENY('authority_not_effective', `${authority.status}:${authority.reason}`)
-  }
+/**
+ * Approve a decision (§11.51) under a live Authorization V1 proof bound to this
+ * exact decision version and to the approve act specifically.
+ *
+ * Approval is a moment, not a lease. Once proven, the approval stands on its own
+ * record: a later expiry or revocation of the authorization is a reason to
+ * review the decision (§11.47), not a retroactive unmaking of it. The decision's
+ * own `expiresAt` and review condition govern how long it remains in force
+ * (§11.44, §11.45, §11.55, §11.180).
+ */
+export async function approveDecision(args: ApproveDecisionArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior } = open
+
+  // §11.41 — a decision requiring approval is not effective until approval exists.
+  const authority = await proveAuthority(principal, args.authorizationId, prior, 'approve', at)
+  if ('status' in authority) return authority
 
   return persist(store, {
+    ...carryForward(prior),
     type: 'approved',
     decisionId: args.decisionId,
-    projectId: prior.projectId,
     principalId: principal.userId,
     occurredAt: at,
-    version: prior.version,
-    title: prior.title,
-    statement: prior.statement,
-    recommendation: prior.recommendation,
     rationale: args.rationale,
-    materiality: prior.materiality,
-    authority: {
-      basis: 'founder_owner',
-      authorizationId: args.authorizationId,
-      principalId: principal.userId,
-    },
-    evidence: prior.evidence,
-    snapshot: prior.snapshot,
-    alternatives: prior.alternatives,
-    confidence: prior.confidence,
-    expectedImpact: prior.expectedImpact,
+    authority,
     effectiveAt: args.effectiveAt,
     expiresAt: args.expiresAt ?? null,
     review: args.review,
-    reversalConditions: prior.reversalConditions,
   }, at)
 }
 
-/** Append a settling or closing act that carries the prior decision content forward. */
-function transition(
-  type: 'rejected' | 'deferred' | 'reversed' | 'completed' | 'superseded',
-) {
-  return async (args: SettleDecisionArgs & { supersededBy?: string }): Promise<DecisionWriteResult> => {
-    const principal = await authenticate()
-    if ('status' in principal) return principal
+/**
+ * §11.59/§11.62 — a material amendment creates version N+1 under its OWN fresh
+ * authority. The grant is pinned to the version being amended, so an
+ * authorization obtained for an earlier version cannot silently license a later,
+ * different change; and the approve grant cannot license an amendment at all.
+ * Version N stays in the immutable lineage (§11.63).
+ */
+export async function amendDecision(args: AmendDecisionArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior } = open
 
-    const store = args.store ?? createDecisionLedgerStore()
-    const at = args.now ?? new Date().toISOString()
+  const authority = await proveAuthority(principal, args.authorizationId, prior, 'amend', at)
+  if ('status' in authority) return authority
 
-    const opened = await openLineage(principal, store, args.decisionId, at)
-    if ('status' in opened) return opened
-    const prior = opened.state
+  const materiality = args.materiality ?? prior.materiality
+  if (!isLedgerMaterial({ materiality })) return DENY('not_ledger_material')
+
+  return persist(store, {
+    ...carryForward(prior),
+    type: 'amended',
+    decisionId: args.decisionId,
+    principalId: principal.userId,
+    occurredAt: at,
+    version: prior.version + 1,
+    title: args.title ?? prior.title,
+    statement: args.statement ?? prior.statement,
+    materiality,
+    rationale: args.rationale,
+    authority,
+    effectiveAt: args.effectiveAt,
+    expiresAt: args.expiresAt ?? null,
+    review: args.review,
+    reversalConditions: args.reversalConditions ?? prior.reversalConditions,
+    reason: args.reason,
+  }, at)
+}
+
+/** Append a settling act that carries the prior decision content forward. */
+function transition(type: 'rejected' | 'deferred') {
+  return async (args: SettleDecisionArgs): Promise<DecisionWriteResult> => {
+    const open = await openFor(args)
+    if ('status' in open) return open
+    const { principal, store, at, prior } = open
 
     return persist(store, {
+      ...carryForward(prior),
       type,
       decisionId: args.decisionId,
-      projectId: prior.projectId,
       principalId: principal.userId,
       occurredAt: at,
-      version: prior.version,
-      title: prior.title,
-      statement: prior.statement,
-      recommendation: prior.recommendation,
-      rationale: prior.rationale,
-      materiality: prior.materiality,
       authority: prior.authority,
-      evidence: prior.evidence,
-      snapshot: prior.snapshot,
-      alternatives: prior.alternatives,
-      confidence: prior.confidence,
-      expectedImpact: prior.expectedImpact,
-      effectiveAt: prior.effectiveAt,
-      expiresAt: prior.expiresAt,
-      review: prior.review,
-      reversalConditions: prior.reversalConditions,
-      supersededBy: args.supersededBy ?? null,
       reason: args.reason,
     }, at)
   }
@@ -344,60 +451,145 @@ function transition(
 export const rejectDecision = transition('rejected')
 /** §11.54 — deferred; must not disappear. */
 export const deferDecision = transition('deferred')
-/** §11.57 — actively undone, distinct from expiration. */
-export const reverseDecision = transition('reversed')
-/** §11.58 — finite outcome reached. */
-export const completeDecision = transition('completed')
 
-/** §11.56 — replaced by a newer decision; the relationship is explicit. */
-export async function supersedeDecision(args: SupersedeDecisionArgs): Promise<DecisionWriteResult> {
-  return transition('superseded')({
+/**
+ * §11.57 — actively undo an approved decision, distinct from expiration.
+ *
+ * Reversal is an exercise of authority in its own right, so it needs its own
+ * current proof. `prior.authority` shows only that someone was once allowed to
+ * approve this — reusing it would let a stale or revoked approval grant, or an
+ * unattended Atlas call, undo a standing institutional commitment. Both
+ * authority acts survive on their own records.
+ */
+export async function reverseDecision(args: ReverseDecisionArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior } = open
+
+  const authority = await proveAuthority(principal, args.authorizationId, prior, 'reverse', at)
+  if ('status' in authority) return authority
+
+  return persist(store, {
+    ...carryForward(prior),
+    type: 'reversed',
     decisionId: args.decisionId,
-    reason: args.reason ?? 'Superseded by a newer decision.',
-    supersededBy: args.supersededBy,
-    store: args.store,
-    now: args.now,
-  })
+    principalId: principal.userId,
+    occurredAt: at,
+    authority,
+    reason: args.reason,
+  }, at)
 }
 
 /**
- * §11.96 — record what actually happened. Appends; never overwrites the
- * original decision or its expected impact. An outcome in another project is
- * impossible here: scope comes from the decision's own lineage.
+ * §11.58 — a finite outcome has been REACHED, which is an observation, not a
+ * claim. Completion therefore requires a measured outcome already in the
+ * lineage: the explicit UNKNOWN (`not_yet_measurable`) asserts nothing and
+ * cannot close a decision, which would otherwise let "we stopped paying
+ * attention" masquerade as "this finished".
+ *
+ * Not an authority act — nothing new is authorized by acknowledging a finish —
+ * so it takes no authorization and carries the approval provenance forward.
  */
-export async function observeOutcome(args: ObserveOutcomeArgs): Promise<DecisionWriteResult> {
-  const principal = await authenticate()
-  if ('status' in principal) return principal
+export async function completeDecision(args: SettleDecisionArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior, records } = open
 
-  const store = args.store ?? createDecisionLedgerStore()
-  const at = args.now ?? new Date().toISOString()
-
-  const opened = await openLineage(principal, store, args.decisionId, at)
-  if ('status' in opened) return opened
-  const prior = opened.state
+  const measured = records.some(
+    record => record.type === 'outcome_observed'
+      && record.outcome != null
+      && record.outcome.status !== 'not_yet_measurable',
+  )
+  if (!measured) return DENY('outcome_required')
 
   return persist(store, {
-    type: 'outcome_observed',
+    ...carryForward(prior),
+    type: 'completed',
     decisionId: args.decisionId,
-    projectId: prior.projectId,
     principalId: principal.userId,
     occurredAt: at,
-    version: prior.version,
-    title: prior.title,
-    statement: prior.statement,
-    recommendation: prior.recommendation,
-    rationale: prior.rationale,
-    materiality: prior.materiality,
     authority: prior.authority,
-    evidence: prior.evidence,
-    snapshot: prior.snapshot,
-    alternatives: prior.alternatives,
-    confidence: prior.confidence,
-    expectedImpact: prior.expectedImpact,
-    effectiveAt: prior.effectiveAt,
-    expiresAt: prior.expiresAt,
-    review: prior.review,
-    reversalConditions: prior.reversalConditions,
+    outcome: prior.outcome,
+    reason: args.reason,
+  }, at)
+}
+
+/**
+ * §11.56 — replaced by a newer decision; the relationship is explicit and must
+ * be real. An unverified successor id would turn the ledger's own lineage into
+ * fiction, so the successor must exist, live in the same project, not be this
+ * decision, and not already be superseded by this one (which would close a
+ * cycle and leave neither decision governing).
+ *
+ * A missing successor and a successor in another project deny identically —
+ * this must not become a cross-project decision-id oracle.
+ */
+export async function supersedeDecision(args: SupersedeDecisionArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior, records } = open
+
+  if (args.supersededBy === args.decisionId) return DENY('invalid_successor', 'self')
+
+  let successor: DecisionRecord[]
+  try {
+    successor = await store.lineage(args.supersededBy)
+  } catch {
+    return DENY('unavailable')
+  }
+  if (successor.length === 0) return DENY('invalid_successor', 'unknown_or_foreign')
+  if (successor[0].projectId !== prior.projectId) return DENY('invalid_successor', 'unknown_or_foreign')
+
+  // A cycle: the proposed successor was itself superseded by this decision.
+  const successorSupersededBy = successor
+    .filter(record => record.type === 'superseded')
+    .map(record => record.supersededBy)
+  if (successorSupersededBy.includes(args.decisionId)) return DENY('invalid_successor', 'cycle')
+
+  const authority = await proveAuthority(principal, args.authorizationId, prior, 'supersede', at)
+  if ('status' in authority) return authority
+
+  return persist(store, {
+    ...carryForward(prior),
+    type: 'superseded',
+    decisionId: args.decisionId,
+    principalId: principal.userId,
+    occurredAt: at,
+    authority,
+    supersededBy: args.supersededBy,
+    reason: args.reason ?? 'Superseded by a newer decision.',
+  }, at)
+}
+
+/** Statuses a decision must have reached before an outcome can be meaningful. */
+const OUTCOME_ELIGIBLE = new Set([
+  'approved', 'active', 'expired', 'completed', 'reversed', 'superseded',
+])
+
+/**
+ * §11.96 — record what actually happened. Appends; never overwrites the original
+ * decision or its expected impact. An outcome in another project is impossible
+ * here: scope comes from the decision's own lineage.
+ *
+ * A decision that never took effect has no outcome to observe. Attaching one to
+ * a draft, proposal, rejection or deferral would fabricate consequences for a
+ * commitment that was never made, and would corrupt §8.4 calibration by scoring
+ * decisions that never ran.
+ */
+export async function observeOutcome(args: ObserveOutcomeArgs): Promise<DecisionWriteResult> {
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior } = open
+
+  if (!OUTCOME_ELIGIBLE.has(prior.status)) return DENY('invalid_lifecycle', prior.status)
+
+  return persist(store, {
+    ...carryForward(prior),
+    type: 'outcome_observed',
+    decisionId: args.decisionId,
+    principalId: principal.userId,
+    occurredAt: at,
+    authority: prior.authority,
     outcome: args.outcome,
   }, at)
 }
@@ -408,38 +600,17 @@ export async function observeOutcome(args: ObserveOutcomeArgs): Promise<Decision
  * review and decay architecture and is not implemented here.
  */
 export async function recordDecisionReview(args: ReviewDecisionArgs): Promise<DecisionWriteResult> {
-  const principal = await authenticate()
-  if ('status' in principal) return principal
-
-  const store = args.store ?? createDecisionLedgerStore()
-  const at = args.now ?? new Date().toISOString()
-
-  const opened = await openLineage(principal, store, args.decisionId, at)
-  if ('status' in opened) return opened
-  const prior = opened.state
+  const open = await openFor(args)
+  if ('status' in open) return open
+  const { principal, store, at, prior } = open
 
   return persist(store, {
+    ...carryForward(prior),
     type: 'reviewed',
     decisionId: args.decisionId,
-    projectId: prior.projectId,
     principalId: principal.userId,
     occurredAt: at,
-    version: prior.version,
-    title: prior.title,
-    statement: prior.statement,
-    recommendation: prior.recommendation,
-    rationale: prior.rationale,
-    materiality: prior.materiality,
     authority: prior.authority,
-    evidence: prior.evidence,
-    snapshot: prior.snapshot,
-    alternatives: prior.alternatives,
-    confidence: prior.confidence,
-    expectedImpact: prior.expectedImpact,
-    effectiveAt: prior.effectiveAt,
-    expiresAt: prior.expiresAt,
-    review: prior.review,
-    reversalConditions: prior.reversalConditions,
     reviewNote: args.reviewNote,
   }, at)
 }

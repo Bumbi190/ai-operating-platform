@@ -110,17 +110,30 @@ export type DecisionRecordType =
 export type DecisionAuthorityBasis = 'founder_owner'
 
 /**
- * The link to Human Authorization V1. The ledger stores the REFERENCE, never a
- * copied `authorized: true` flag — effectiveness is resolved live through the
- * authorization seam so it can never drift from revocation, expiry,
- * supersession, version change or unverified conditions.
+ * Immutable approval-time provenance for one authority act (§11.41).
+ *
+ * It answers, from the record alone and without consulting live authorization
+ * state: who exercised authority, under which authorization, at what moment,
+ * for which exact material decision version, and for which act.
+ *
+ * §11.180 requires an active decision to be explainable as "approved under this
+ * authority for these reasons and remains active until this review condition".
+ * That is historical proof, so this record is self-sufficient: reconstructing it
+ * later from live Authorization V1 state would be impossible once that
+ * authorization legitimately expires.
  */
 export interface DecisionAuthorityRecord {
   basis: DecisionAuthorityBasis
-  /** Authorization V1 proof. Required before a decision may be approved. */
+  /** Authorization V1 proof that was effective when the act occurred. */
   authorizationId: AuthorizationId
-  /** Human principal recorded on the ledger act itself. */
+  /** The principal the authorization itself carried — not merely the caller. */
   principalId: string
+  /** Which authority act this proved (approve / amend / reverse / supersede). */
+  actionKind: string
+  /** The material decision version the authorization was bound to. */
+  boundVersionHash: string
+  /** When the authority act occurred. */
+  approvedAt: string
 }
 
 // ── Evidence (§11.27, §11.28) ─────────────────────────────────────────────────
@@ -308,15 +321,20 @@ export type DecisionEffectivenessReason =
   | 'superseded'
   | 'reversed'
   | 'completed'
-  | 'authority_not_effective'
   | 'malformed_lineage'
 
+/**
+ * EI-S1.3B-R1 removed `authority_not_effective` and the `authorityReason` field.
+ * Whether a decision governs is a fact about the DECISION — its status, its
+ * effective date, its expiry (§11.43, §11.45, §11.55, §11.180) — not about the
+ * live state of the authorization that once approved it. Nothing could produce
+ * those values any more, and a reason no code can return is a false promise to
+ * anyone reading this type.
+ */
 export interface DecisionEffectivenessResult {
   governing: boolean
   reason:    DecisionEffectivenessReason
   state:     DerivedDecisionState | null
-  /** Set when authority resolution denied effectiveness — carries its reason. */
-  authorityReason?: string
 }
 
 /** Thrown by the pure core when a record chain could not be a real history. */

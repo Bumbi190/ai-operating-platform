@@ -115,7 +115,8 @@ const mockAuth = vi.mocked(isAuthorizationEffective)
 
 const unauthenticated = () => mockAccess.mockResolvedValue({ ok: false, response: { status: 401 } as never })
 const authAs = (userId: string, allowed: string[]) => mockAccess.mockResolvedValue({ ok: true, userId, allowedProjectIds: allowed })
-const authorityEffective = () => mockAuth.mockResolvedValue({ effective: true, reason: 'effective', state: null as never, status: 'ok' })
+const authorityEffective = (principalId = PRINCIPAL_A) =>
+  mockAuth.mockResolvedValue({ effective: true, reason: 'effective', state: { principalId } as never, status: 'ok' })
 const authorityDenied = (reason: string) => mockAuth.mockResolvedValue({ effective: false, reason: reason as never, state: null, status: 'ok' })
 
 beforeEach(() => { mockAccess.mockReset(); mockAuth.mockReset() })
@@ -164,8 +165,7 @@ describe('Decision Ledger V1 — canonical separation', () => {
 
 describe('Decision Ledger V1 — authority is resolved live, never copied', () => {
   const approveArgs = (store: FakeStore) => ({
-    decisionId: 'dec-1', authorizationId: AUTH_ID, authorizationTarget: TARGET,
-    authorizationActionKind: 'set_autonomy_policy',
+    decisionId: 'dec-1', authorizationId: AUTH_ID,
     rationale: 'Subscriber trust.', review: REVIEW, effectiveAt: EFFECTIVE,
     store, now: T1,
   })
@@ -198,15 +198,22 @@ describe('Decision Ledger V1 — authority is resolved live, never copied', () =
     expect(store.appended).toHaveLength(0)
   })
 
-  it('scopes the authorization check to the decision’s own project', async () => {
+  it('scopes the authorization check to the decision’s own project and identity', async () => {
     authAs(PRINCIPAL_A, [PROJECT_A]); authorityEffective()
     const store = new FakeStore([proposed()])
     await approveDecision(approveArgs(store))
+    // EI-S1.3B-R1: the target is DERIVED from the decision, so `TARGET` — a
+    // grant naming an unrelated policy object — can no longer reach this call.
     expect(mockAuth).toHaveBeenCalledWith(
       AUTH_ID,
-      expect.objectContaining({ projectId: PROJECT_A, target: TARGET, actionKind: 'set_autonomy_policy' }),
+      expect.objectContaining({
+        projectId: PROJECT_A,
+        target: expect.objectContaining({ targetType: 'decision', targetId: 'dec-1' }),
+        actionKind: 'decision.approve',
+      }),
       expect.anything(),
     )
+    expect(mockAuth).not.toHaveBeenCalledWith(AUTH_ID, expect.objectContaining({ target: TARGET }), expect.anything())
   })
 
   it('stores an authorization reference, never an authorized boolean', () => {
@@ -217,13 +224,19 @@ describe('Decision Ledger V1 — authority is resolved live, never copied', () =
     expect(write).toContain('isAuthorizationEffective(')
   })
 
-  it('re-resolves authority on read, so a later revocation stops governing', async () => {
+  it('keeps a decision governing after its authorization is later revoked (§11.180)', async () => {
+    // EI-S1.3B-R1 corrects the earlier continuing-lease reading. §11.180 has an
+    // active decision explain itself as "approved under this authority … and
+    // remains active until this review condition" — the approval was a moment.
+    // A later revocation is a §11.47 trigger to review, not a retroactive
+    // unmaking of a commitment the institution already made.
     authAs(PRINCIPAL_A, [PROJECT_A]); authorityDenied('revoked')
     const store = new FakeStore([proposed(), approved()])
-    const result = await isDecisionGoverning('dec-1', {}, { store, now: T2 })
-    expect(result.governing).toBe(false)
-    expect(result.reason).toBe('authority_not_effective')
-    expect(result.authorityReason).toContain('revoked')
+    const result = await isDecisionGoverning('dec-1', { store, now: T2 })
+    expect(result.governing).toBe(true)
+    expect(result.reason).toBe('active')
+    // And the governing read never consults live authorization state at all.
+    expect(mockAuth).not.toHaveBeenCalled()
   })
 })
 
@@ -323,7 +336,7 @@ describe('Decision Ledger V1 — historical truth is immutable', () => {
     const store = readFileSync(resolve(REPO_ROOT, `${DL_DIR}/store.ts`), 'utf8')
     expect(store).toContain('append(')
     expect(store).not.toMatch(/\.update\(|\.delete\(|\.upsert\(/)
-    const migration = readFileSync(resolve(REPO_ROOT, 'apps/web/supabase/migrations/20260820_atlas_decision_ledger.sql'), 'utf8')
+    const migration = readFileSync(resolve(REPO_ROOT, 'apps/web/supabase/migrations/20260819_atlas_decision_ledger.sql'), 'utf8')
     expect(migration).toContain('before update on public.atlas_decision_ledger')
     expect(migration).toContain('before delete on public.atlas_decision_ledger')
     expect(migration).toContain('enable row level security')
@@ -561,12 +574,30 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
       expect(source).not.toMatch(/process\.env\.CRON_SECRET/)
     }
     const write = readFileSync(resolve(REPO_ROOT, `${DL_DIR}/principal-write.ts`), 'utf8')
-    for (const entry of ['export async function proposeDecision(', 'export async function approveDecision(', 'function transition(']) {
-      const body = write.slice(write.indexOf(entry))
-      const auth = body.indexOf('await authenticate()')
+    // The shared gate authenticates before it reads.
+    const gate = write.slice(write.indexOf('async function openFor('))
+    expect(gate.indexOf('await authenticate()')).toBeGreaterThan(-1)
+    expect(gate.indexOf('await authenticate()')).toBeLessThan(gate.indexOf('openLineage('))
+    // And no act touches the store before passing through it.
+    for (const entry of [
+      'export async function proposeDecision(',
+      'export async function approveDecision(',
+      'export async function amendDecision(',
+      'export async function reverseDecision(',
+      'export async function supersedeDecision(',
+      'export async function completeDecision(',
+      'export async function observeOutcome(',
+      'function transition(',
+    ]) {
+      const from = write.indexOf(entry)
+      expect(from).toBeGreaterThan(-1)
+      const rest = write.slice(from + entry.length)
+      const next = rest.search(/\n(export )?(async )?function /)
+      const body = rest.slice(0, next > -1 ? next : undefined)
+      const gated = Math.max(body.indexOf('await authenticate()'), body.indexOf('await openFor('))
       const read = body.indexOf('store.lineage(')
-      expect(auth).toBeGreaterThan(-1)
-      if (read > -1) expect(auth).toBeLessThan(read)
+      expect(gated).toBeGreaterThan(-1)
+      if (read > -1) expect(gated).toBeLessThan(read)
     }
     // The principal is never a caller parameter.
     const exportedArgs = write.match(/export interface \w+Args[\s\S]*?\n}/g) ?? []
@@ -577,6 +608,11 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
   it('completes a decision with a finite outcome (§11.58)', async () => {
     authAs(PRINCIPAL_A, [PROJECT_A])
     const store = new FakeStore([proposed(), approved()])
+    await observeOutcome({
+      decisionId: 'dec-1',
+      outcome: { status: 'successful', summary: 'Migration finished.', observedAt: T2, evidence: EVIDENCE },
+      store, now: T2,
+    })
     const result = await completeDecision({ decisionId: 'dec-1', reason: 'Migration finished.', store, now: T2 })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('completed')
@@ -584,8 +620,15 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
 
   it('supersedes and defers through the write boundary', async () => {
     authAs(PRINCIPAL_A, [PROJECT_A])
-    const superseding = new FakeStore([proposed(), approved()])
-    const s = await supersedeDecision({ decisionId: 'dec-1', supersededBy: newDecisionId(), store: superseding, now: T2 })
+    authorityEffective()
+    const successorId = newDecisionId()
+    const superseding = new FakeStore([
+      proposed(), approved(),
+      record('proposed', { decisionId: successorId, occurredAt: T1, recordId: 'succ-1' }),
+    ])
+    const s = await supersedeDecision({
+      decisionId: 'dec-1', supersededBy: successorId, authorizationId: AUTH_ID, store: superseding, now: T2,
+    })
     expect(s.state?.status).toBe('superseded')
 
     const deferring = new FakeStore([proposed()])
@@ -594,9 +637,11 @@ describe('Decision Ledger V1 — materiality and system separation', () => {
   })
 
   it('reverses an approved decision through the write boundary', async () => {
-    authAs(PRINCIPAL_A, [PROJECT_A])
+    authAs(PRINCIPAL_A, [PROJECT_A]); authorityEffective()
     const store = new FakeStore([proposed(), approved()])
-    const result = await reverseDecision({ decisionId: 'dec-1', reason: 'Serious policy violation.', store, now: T2 })
+    const result = await reverseDecision({
+      decisionId: 'dec-1', authorizationId: AUTH_ID, reason: 'Serious policy violation.', store, now: T2,
+    })
     expect(result.state?.status).toBe('reversed')
   })
 

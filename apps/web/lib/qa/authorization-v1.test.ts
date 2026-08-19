@@ -211,7 +211,20 @@ describe('Authorization V1 — human authority provenance', () => {
     const source = readFileSync(resolve(REPO_ROOT, `${AUTH_DIR}/principal-write.ts`), 'utf8')
     // The principal comes from the authenticated session only.
     expect(source).toContain('resolveProjectAccess()')
-    expect(source).toContain('principalId: access.userId')
+    expect(source).toContain('principalId: principal.userId')
+    // Authentication precedes every privileged store access (EI-S1.3A-R1).
+    // Checked per entrypoint body, because `persist()` also reads the store —
+    // legitimately, since it only ever runs after authentication.
+    for (const entry of ['function decider(', 'export async function requestAuthorization(']) {
+      const body = source.slice(source.indexOf(entry))
+      const auth = body.indexOf('await authenticate()')
+      expect(auth).toBeGreaterThan(-1)
+      const read = body.indexOf('store.history(')
+      const append = body.indexOf('store.append(')
+      for (const access of [read, append]) {
+        if (access > -1) expect(auth).toBeLessThan(access)
+      }
+    }
     // No exported argument interface may carry a principal id — a caller can
     // never name the authority; only the session can.
     const exportedArgs = source.match(/export interface \w+Args[\s\S]*?\n}/g) ?? []
@@ -457,7 +470,7 @@ describe('Authorization V1 — evidence, storage and the Chapter 11 seam', () =>
 
   it('enforces append-only in the database, not only in TypeScript', () => {
     const migration = readFileSync(
-      resolve(REPO_ROOT, 'supabase/migrations/20260819_120000_atlas_authorizations.sql'), 'utf8',
+      resolve(REPO_ROOT, 'apps/web/supabase/migrations/20260819_atlas_authorizations.sql'), 'utf8',
     )
     expect(migration).toContain('before update on public.atlas_authorizations')
     expect(migration).toContain('before delete on public.atlas_authorizations')
@@ -466,5 +479,12 @@ describe('Authorization V1 — evidence, storage and the Chapter 11 seam', () =>
     expect(migration).toContain('principal_id          uuid not null')
     expect(migration).toContain('enable row level security')
     expect(migration).toContain('revoke all on public.atlas_authorizations from anon, authenticated')
+    // Transition invariants serialize concurrent terminal acts (EI-S1.3A-R1).
+    expect(migration).toContain('atlas_authorizations_one_request_idx')
+    expect(migration).toContain('atlas_authorizations_one_decision_idx')
+    expect(migration).toContain('atlas_authorizations_one_close_idx')
+    // No mutable current-status column: status is derived from the chain.
+    expect(migration).not.toMatch(/^\s*status\s+text/m)
+    expect(migration).not.toMatch(/current_status/)
   })
 })

@@ -109,9 +109,21 @@ Cross-project authority, delegated approvers, batch/policy-bound approval, auton
 Trust Score, Damage Boundary, crisis authority and the full Approval Inbox all remain excluded
 by FM.2 and are not implemented.
 
-> The `atlas_authorizations` migration is committed but **deliberately unapplied**. Until the
-> owner applies it, every runtime path fails closed and nothing on a live Atlas surface depends
-> on it.
+**Deployment status (EI-S1.3A-R1):**
+
+| Item | State |
+|---|---|
+| Human Authorization V1 code | **IMPLEMENTED** |
+| Schema migration | **REVIEWED, UNAPPLIED** — `apps/web/supabase/migrations/20260819_atlas_authorizations.sql`, ledger name `atlas_authorizations` |
+| Runtime | **NOT YET PRODUCTION-OPERATIONAL** |
+| Production deployment | **BLOCKED BY DESIGN** until a controlled migration application |
+| Decision Ledger V1 | **NOT STARTED** |
+
+The migration lives in the canonical guarded directory, so `check-migrations.mjs` will fail a
+Vercel build until the schema is applied through a separately authorized rollout. That failure
+is the guard working as intended and must not be bypassed, grandfathered, or dodged by moving
+the file back to the legacy repo-root directory. Until the schema exists, every runtime path
+fails closed and nothing on a live Atlas surface depends on it.
 
 **Still open, tracked for later EI-S1 increments:** Chapter 11 Decision Ledger V1 (EI-S1.3B,
 which consumes the authorization seam), Executive Mission Brief V1, the Manager/Workforce

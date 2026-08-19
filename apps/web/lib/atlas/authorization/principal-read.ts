@@ -8,6 +8,14 @@
  * shared-secret pattern belongs to cron-only internal routes and must not back
  * a user-facing surface.
  *
+ * NO EXISTENCE ORACLE (EI-S1.3A-R1): where the caller has not proven scope, an
+ * unknown authorization and one belonging to another project return the SAME
+ * `not_permitted`. Splitting them would let any authenticated principal probe
+ * which authorization ids exist across the platform. Where the caller supplied
+ * the scope themselves (`listProjectAuthorizations`,
+ * `findEffectiveAuthorizationForTarget`), `project_denied` is retained because
+ * it reveals nothing the caller did not already assert.
+ *
  * EI-S1.3B (Chapter 11 Decision Ledger) consumes `resolveAuthorization` and
  * `isAuthorizationEffective`. The ledger stores an `authorizationId` and derives
  * effectiveness through this seam; it never copies authority state into itself,
@@ -31,8 +39,13 @@ import type {
 export type AuthorizationReadStatus =
   | 'ok'
   | 'no_principal'
+  /** Caller named the scope themselves — denial reveals nothing new. */
   | 'project_denied'
-  | 'not_found'
+  /**
+   * Deliberately indistinguishable: no such authorization, OR it exists outside
+   * the caller's projects. Never split these apart.
+   */
+  | 'not_permitted'
   | 'malformed'
   | 'unavailable'
 
@@ -72,10 +85,12 @@ export async function resolveAuthorization(
   } catch {
     return DENY('unavailable')
   }
-  if (history.length === 0) return DENY('not_found')
+  // Unknown and foreign both answer `not_permitted`, so an authenticated caller
+  // cannot use this endpoint to discover which authorization ids exist.
+  if (history.length === 0) return DENY('not_permitted')
 
   // Scope check uses the chain's own recorded project, never a caller hint.
-  if (!assertProjectAllowed(history[0].projectId, access.allowedProjectIds)) return DENY('project_denied')
+  if (!assertProjectAllowed(history[0].projectId, access.allowedProjectIds)) return DENY('not_permitted')
 
   try {
     return { state: deriveAuthorizationState(history, { at }), history, status: 'ok' }
@@ -128,7 +143,7 @@ export async function findEffectiveAuthorizationForTarget(
   } catch {
     return { effective: false, reason: 'malformed_chain', state: null, status: 'unavailable' }
   }
-  if (events.length === 0) return { effective: false, reason: 'not_yet_decided', state: null, status: 'not_found' }
+  if (events.length === 0) return { effective: false, reason: 'not_yet_decided', state: null, status: 'ok' }
 
   const chains = new Map<string, AuthorizationEvent[]>()
   for (const event of events) {
@@ -141,7 +156,7 @@ export async function findEffectiveAuthorizationForTarget(
     if (result.effective) return { ...result, status: 'ok' }
     lastDenial = { ...result, status: 'ok' }
   }
-  return lastDenial ?? { effective: false, reason: 'not_yet_decided', state: null, status: 'not_found' }
+  return lastDenial ?? { effective: false, reason: 'not_yet_decided', state: null, status: 'ok' }
 }
 
 /** Bounded audit listing for one project. Fails closed. */

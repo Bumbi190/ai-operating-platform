@@ -31,6 +31,14 @@
 --   lib/atlas/authorization/ fails closed (typed 'unavailable'), and nothing in
 --   the live Atlas surface depends on this table.
 --
+--   It lives in the CANONICAL guarded directory apps/web/supabase/migrations/
+--   (owner ruling, EI-S1.3A-R1), so apps/web/scripts/check-migrations.mjs will
+--   correctly fail a Vercel build until the schema has been applied through a
+--   separately authorized rollout. That failure is the guard working as designed
+--   — it must not be bypassed, grandfathered, or worked around by moving this
+--   file back to the legacy repo-root directory.
+--   Derived ledger name: `atlas_authorizations`.
+--
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 create table if not exists public.atlas_authorizations (
@@ -104,6 +112,32 @@ create index if not exists atlas_authorizations_project_idx
 -- "Is there live authority for this pinned target?"
 create index if not exists atlas_authorizations_target_idx
   on public.atlas_authorizations (project_id, target_type, target_id, occurred_at);
+
+-- ── Transition invariants (EI-S1.3A-R1) ──────────────────────────────────────
+-- Append-only alone does not stop two concurrent writers appending two grants,
+-- or a grant and a deny, to the same aggregate. The pure derivation would then
+-- reject the persisted chain as malformed and the authorization would be
+-- permanently unreadable. These partial unique indexes serialize the transitions
+-- in the database, so a losing concurrent writer gets a unique violation (23505)
+-- which the write boundary surfaces as `conflict` and the chain stays valid.
+--
+-- Narrowly scoped on purpose: three indexes, no distributed transaction
+-- machinery, no generic event-sourcing framework.
+
+-- Exactly one opening request per aggregate.
+create unique index if not exists atlas_authorizations_one_request_idx
+  on public.atlas_authorizations (authorization_id)
+  where event_type = 'requested';
+
+-- Exactly one deciding act: granted | granted_with_conditions | denied.
+create unique index if not exists atlas_authorizations_one_decision_idx
+  on public.atlas_authorizations (authorization_id)
+  where event_type in ('granted', 'granted_with_conditions', 'denied');
+
+-- Exactly one closing act: revoked | superseded | expired.
+create unique index if not exists atlas_authorizations_one_close_idx
+  on public.atlas_authorizations (authorization_id)
+  where event_type in ('revoked', 'superseded', 'expired');
 
 -- ── Append-only enforcement (§11.60, §27.207) ────────────────────────────────
 -- History is immutable. This is enforced at the database layer so that no

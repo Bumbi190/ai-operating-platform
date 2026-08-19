@@ -80,8 +80,16 @@ What activation does **not** mean:
 
 Canonical FM.2 Stage 1 requires Executive Context, Daily Executive Brief, Decision Ledger V1,
 Executive Mission Brief V1, explicit human authorization, safe Manager/Workforce handoff,
-project-scoped status and evidence, and basic traceability and review. The runtime gaps
-established by the EI-S1.0 audit — the apex `executive_brief` producer, Decision Ledger V1,
-Executive Mission Brief V1, the Stage 1 authorization object, the Manager/Workforce handoff
-artifacts, principal-scoped reads on the intelligence read route, and retiring the legacy
-`lib/atlas/executive.ts` surface — all remain open and are tracked for later EI-S1 increments.
+project-scoped status and evidence, and basic traceability and review.
+
+**Delivered by EI-S1.2:** the apex `executive_brief` producer (canonical §13.1 five-section
+shape), and retirement of the legacy `lib/atlas/executive.ts` path from every live surface. The
+Atlas page now reads the conformant artifact through a principal-scoped server-side boundary.
+No new execution authority was added — the apex brief recommends, it never acts.
+
+**Still open, tracked for later EI-S1 increments:** Decision Ledger V1, Executive Mission Brief
+V1, the explicit Stage 1 authorization object, the Manager/Workforce handoff artifacts, the
+remaining principal-scoped read hardening on the internal `CRON_SECRET` intelligence route, and
+the final FM.2 conformance review.
+
+**Executive Intelligence Stage 1 is still NOT complete.**

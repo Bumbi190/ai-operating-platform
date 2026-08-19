@@ -306,6 +306,18 @@ describe('Executive canonical provenance', () => {
     await expect(executiveIntelligenceAdapter.load(source, root)).rejects.toThrow(/canonical-book-checksum/)
   }, 30_000)
 
+  it('fails closed with a named invariant when the package files are unreadable (AK-ADAPTER-02)', async () => {
+    const { root, source } = syntheticPackage()
+    // Point the package at a directory that carries no Executive package files.
+    const broken = { ...source, knowledgePath: 'package/01_Canonical_Knowledge/absent' }
+    await expect(executiveIntelligenceAdapter.load(broken, root)).rejects.toThrow(/front-matter-present/)
+    await expect(executiveIntelligenceAdapter.load(broken, root)).rejects.toThrow(/not readable in this repository/)
+    // The failure must never carry a machine-specific absolute path.
+    await expect(executiveIntelligenceAdapter.load(broken, root)).rejects.toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining(root) }),
+    )
+  }, 30_000)
+
   it('fails closed when the registered canonical book is not present in the repository', async () => {
     const { root, source } = syntheticPackage()
     await expect(executiveIntelligenceAdapter.load({ ...source, canonicalPath: 'absent-book.docx' }, root))

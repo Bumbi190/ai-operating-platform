@@ -70,10 +70,27 @@ function invariant(condition: boolean, name: string, detail?: string): asserts c
   }
 }
 
+/**
+ * Read one package JSONL file. AK-ADAPTER-02: a missing or unreadable package
+ * file previously escaped as a raw Node ENOENT carrying an absolute local path.
+ * Every failure mode now fails closed through a named invariant, and the
+ * resolved absolute path is never included in the message.
+ */
 function readJsonl<T>(path: string, invariantName: string): T[] {
-  const raw = readFileSync(path, 'utf8').trim()
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf8').trim()
+  } catch {
+    invariant(false, invariantName, 'package file is not readable in this repository')
+    throw new Error('unreachable')
+  }
   invariant(raw.length > 0, invariantName, 'package file is empty')
-  return raw.split('\n').map(line => JSON.parse(line) as T)
+  try {
+    return raw.split('\n').map(line => JSON.parse(line) as T)
+  } catch {
+    invariant(false, invariantName, 'package file is not valid JSONL')
+    throw new Error('unreachable')
+  }
 }
 
 function requireString(value: unknown, invariantName: string, field: string): string {

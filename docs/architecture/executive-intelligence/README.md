@@ -87,9 +87,40 @@ shape), and retirement of the legacy `lib/atlas/executive.ts` path from every li
 Atlas page now reads the conformant artifact through a principal-scoped server-side boundary.
 No new execution authority was added — the apex brief recommends, it never acts.
 
-**Still open, tracked for later EI-S1 increments:** Decision Ledger V1, Executive Mission Brief
-V1, the explicit Stage 1 authorization object, the Manager/Workforce handoff artifacts, the
-remaining principal-scoped read hardening on the internal `CRON_SECRET` intelligence route, and
-the final FM.2 conformance review.
+**Delivered by EI-S1.3A:** **Explicit Human Authorization V1** — an append-only authority
+event log (`atlas_authorizations`) in `lib/atlas/authorization/`. An authorization is an
+authority act (canonical §27.3): one identified human principal grants one explicitly stated
+permission, over one version-pinned target, inside one project, until an explicit expiry.
+
+Safety properties that are load-bearing:
+
+- The human principal is derived from the authenticated session and is never a caller
+  parameter. A service role has capability but never authority (§10.4).
+- History is immutable — revocation and supersession append new events; the database rejects
+  UPDATE and DELETE by trigger (§11.60, §27.207).
+- Expiry is derived from time, so an expired grant is ineffective even with no `expired` event
+  and no background job (§27.319).
+- Conditions are recorded as structured data (§11.42) but **not enforced** — Stage 1 has no
+  policy engine, so a conditional grant reports `conditions_unverified` and is never
+  execution-effective. Claiming otherwise would be canonical failure mode §27.348.
+- Authorization ≠ execution: the module imports no tool, runner or action dispatcher.
+
+Cross-project authority, delegated approvers, batch/policy-bound approval, autonomy licences,
+Trust Score, Damage Boundary, crisis authority and the full Approval Inbox all remain excluded
+by FM.2 and are not implemented.
+
+> The `atlas_authorizations` migration is committed but **deliberately unapplied**. Until the
+> owner applies it, every runtime path fails closed and nothing on a live Atlas surface depends
+> on it.
+
+**Still open, tracked for later EI-S1 increments:** Chapter 11 Decision Ledger V1 (EI-S1.3B,
+which consumes the authorization seam), Executive Mission Brief V1, the Manager/Workforce
+handoff artifacts, the remaining principal-scoped read hardening on the internal `CRON_SECRET`
+intelligence route, and the final FM.2 conformance review.
+
+Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does
+not persist that reviewer identity — a separate, narrowly scoped security follow-up),
+**AK-PRELIVE-01** (Architecture Knowledge index/memory optimisation before live grounding), and
+physical deletion of `lib/atlas/executive.ts` once the UI branch migrates.
 
 **Executive Intelligence Stage 1 is still NOT complete.**

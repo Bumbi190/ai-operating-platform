@@ -239,6 +239,92 @@ const containsDeadline = (
 }
 
 /**
+ * The parent-INDEPENDENT structural rules a Work Package must always satisfy.
+ *
+ * EI-S1.4D-R2 extracted these so creation and read cannot drift. Before, the
+ * rules lived only inside the creation path, and a stored row could be tampered
+ * with, re-hashed, and still pass every read-time check: coherence proved the
+ * contract had not changed since it was sealed, and containment proved it did
+ * not exceed its parent — but neither asked whether the terms were VALID. A
+ * package with an empty objective or no declared output is not assignable work,
+ * however well-sealed and however contained.
+ *
+ * Sharing one function is deliberate: an alignment test runs the same malformed
+ * terms through creation AND read and requires both to refuse, so a rule added
+ * here is automatically enforced at both ends.
+ *
+ * Parent-relative rules (scope containment, action/tool/data subsets) are NOT
+ * here — they need the Delegation and live in the containment checks.
+ */
+export interface WorkPackageTerms {
+  taskObjective: string
+  inputs: WorkPackageInput[]
+  expectedOutput: WorkPackageOutput[]
+  dataScope: MissionDataScope[]
+  dependencies: WorkPackageDependency[]
+  inScope: string[]
+  outOfScope: string[]
+  /**
+   * Absent at creation, where it is assigned by construction; required on read,
+   * where a stored value is data like any other.
+   */
+  packageVersion?: number
+}
+
+/** V1 assigns a package once. A stored row claiming otherwise is not a V1 package. */
+export const WORK_PACKAGE_V1_VERSION = 1
+
+export function validateWorkPackageTerms(terms: WorkPackageTerms): WorkPackageViolation[] {
+  const out: WorkPackageViolation[] = []
+
+  // §21.28 "appropriately sized" — work with no stated objective is not a slice
+  // of anything.
+  if (terms.taskObjective.trim().length === 0) {
+    out.push({ field: 'taskObjective', element: 'empty', rule: 'malformed' })
+  }
+  // §21.28 "verifiable" — a package nobody can judge done is not assignable.
+  if (terms.expectedOutput.length === 0) {
+    out.push({ field: 'expectedOutput', element: 'none', rule: 'malformed' })
+  }
+
+  // An input drawn from data scope must name a resource this package may
+  // actually read, or the package promises the role data its own bounds deny.
+  const readable = new Set(terms.dataScope.map(d => d.resource))
+  for (const input of terms.inputs) {
+    if (input.origin === 'data_scope' && !readable.has(input.resource ?? '')) {
+      out.push({
+        field: 'inputs',
+        element: `${input.inputId}:${input.resource || 'unnamed'}`,
+        rule: 'not_in_parent',
+      })
+    }
+  }
+
+  // §21.29 — a dependency may only require inputs this package declares.
+  const declared = new Set(terms.inputs.map(i => i.inputId))
+  for (const dep of terms.dependencies) {
+    for (const required of dep.requiredInputs) {
+      if (!declared.has(required)) {
+        out.push({ field: 'dependencies', element: `input:${required}`, rule: 'not_in_parent' })
+      }
+    }
+  }
+
+  // An item cannot be both in and out of scope; the exclusion wins, so a
+  // package claiming one is self-contradictory rather than merely ambitious.
+  const excluded = new Set(terms.outOfScope)
+  for (const s of terms.inScope) {
+    if (excluded.has(s)) out.push({ field: 'inScope', element: s, rule: 'not_in_parent' })
+  }
+
+  if (terms.packageVersion !== undefined && terms.packageVersion !== WORK_PACKAGE_V1_VERSION) {
+    out.push({ field: 'packageVersion', element: String(terms.packageVersion), rule: 'malformed' })
+  }
+
+  return out
+}
+
+/**
  * §21.28 — prove the decomposition is structurally subordinate.
  *
  * Separated from the bound checks because it answers a different question. The
@@ -251,46 +337,22 @@ function checkDecomposition(
   effectiveInScope: string[],
   out: WorkPackageViolation[],
 ): void {
-  if (request.taskObjective.trim().length === 0) {
-    out.push({ field: 'taskObjective', element: 'empty', rule: 'malformed' })
-  }
-  // §21.28 "verifiable" — work with no declared output cannot be judged done,
-  // and a package nobody can verify is not assignable work.
-  if (request.expectedOutput.length === 0) {
-    out.push({ field: 'expectedOutput', element: 'none', rule: 'malformed' })
-  }
-
-  const outOfScope = new Set(parent.outOfScope)
-  const inScope = new Set(effectiveInScope)
-  for (const s of request.inScope ?? []) {
-    // Checked before membership: an exclusion is not cancelled by an inclusion
-    // that happens to name the same thing.
-    if (outOfScope.has(s)) out.push({ field: 'inScope', element: s, rule: 'not_in_parent' })
-  }
-
-  // Every input must have a legitimate origin. A `data_scope` input must name a
-  // resource the package may actually read — otherwise the package promises the
-  // role data its own bounds do not grant.
-  const readable = new Set((request.dataScope ?? parent.dataScope).map(d => d.resource))
-  for (const input of request.inputs) {
-    if (input.origin === 'data_scope') {
-      const resource = input.resource ?? ''
-      if (!readable.has(resource)) {
-        out.push({ field: 'inputs', element: `${input.inputId}:${resource || 'unnamed'}`, rule: 'not_in_parent' })
-      }
-    }
-  }
-
-  // §21.29 — a dependency may only point within this package's own scope.
-  for (const dep of request.dependencies ?? []) {
-    for (const required of dep.requiredInputs) {
-      if (!request.inputs.some(i => i.inputId === required)) {
-        out.push({ field: 'dependencies', element: `input:${required}`, rule: 'not_in_parent' })
-      }
-    }
-  }
+  // The parent-independent rules, from the one shared seam.
+  out.push(...validateWorkPackageTerms({
+    taskObjective: request.taskObjective,
+    inputs: request.inputs,
+    expectedOutput: request.expectedOutput,
+    dataScope: request.dataScope ?? parent.dataScope,
+    dependencies: request.dependencies ?? [],
+    inScope: request.inScope ?? effectiveInScope,
+    outOfScope: parent.outOfScope,
+    // Assigned by construction below, so there is nothing to validate yet.
+  }))
 
   // A package that claims scope its parent never held is not decomposition.
+  // Parent-relative, so it stays here rather than in the shared seam.
+  const outOfScope = new Set(parent.outOfScope)
+  const inScope = new Set(effectiveInScope)
   if (request.inScope) {
     for (const s of request.inScope) {
       if (!inScope.has(s) && !outOfScope.has(s)) {
@@ -442,17 +504,20 @@ export function workPackageIsContained(
   requireSuperset('outOfScope', parent.outOfScope, pkg.outOfScope, s => s, v)
   requireSuperset('reporting', parent.reporting, pkg.reporting, reportKey, v)
 
-  // decomposed — the structural claim, re-checked.
-  const outOfScope = new Set(pkg.outOfScope)
-  for (const s of pkg.inScope) {
-    if (outOfScope.has(s)) v.push({ field: 'inScope', element: s, rule: 'not_in_parent' })
-  }
-  const readable = new Set(pkg.dataScope.map(d => d.resource))
-  for (const input of pkg.inputs) {
-    if (input.origin === 'data_scope' && !readable.has(input.resource ?? '')) {
-      v.push({ field: 'inputs', element: input.inputId, rule: 'not_in_parent' })
-    }
-  }
+  // decomposed — the SAME parent-independent rules the creation path applied.
+  // Sharing the seam is what stops a stored package from being valid at read
+  // time under rules that no longer match the ones it was created under.
+  v.push(...validateWorkPackageTerms({
+    taskObjective: pkg.taskObjective,
+    inputs: pkg.inputs,
+    expectedOutput: pkg.expectedOutput,
+    dataScope: pkg.dataScope,
+    dependencies: pkg.dependencies,
+    inScope: pkg.inScope,
+    outOfScope: pkg.outOfScope,
+    // On read the version is stored data, so it is validated like everything else.
+    packageVersion: pkg.packageVersion,
+  }))
 
   return v
 }

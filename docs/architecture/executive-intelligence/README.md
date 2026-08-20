@@ -599,6 +599,37 @@ Canonical properties:
   entirely. Ordinary legacy updates still pass. The shape CHECK is now all-or-none in both
   directions, so a row cannot carry a populated contract while leaving `work_package_id` NULL —
   invisible to every partial index yet sitting in the table looking like authority.
+- **The canonical discriminator is part of the contract** (EI-S1.4D-R2). R1 made
+  `source = 'work_package'` load-bearing for legacy isolation, but nothing required a canonical
+  row to carry it and the immutability trigger did not freeze it — so a package could lose its
+  discriminator and reappear as an ACTIVE MANAGER TASK. It is now required (`source_key` tied to
+  `work_package_id`), frozen once written, and a legacy row may not CLAIM to be a Work Package
+  without a complete contract. Other legacy `source` values — NULL, `dream`, anything else — are
+  untouched.
+- **Assignment history is not deletable** (§21.42, EI-S1.4D-R2). `manager_tasks.project_id`
+  references `projects(id)` **ON DELETE CASCADE** — verified against the production catalog — so
+  deleting a project would have silently erased every Work Package assigned within it. A
+  conditional BEFORE DELETE trigger now blocks the delete of any row carrying a contract, and
+  because a child trigger fires on cascades too, one guard closes both the direct delete and the
+  cascade **without** rewriting the foreign key or touching project lifecycle. Legacy rows keep
+  their existing delete semantics exactly; the table does **not** become append-only.
+- **Coherence and validity are different proofs** (EI-S1.4D-R2). R1 proved a stored contract had
+  not *changed* (pins agree, hash recomputes). It did not prove the terms were *valid*: a package
+  could be tampered with, re-sealed, stay fully contained by its parent, and still be usable with
+  an empty objective, no declared output, a dependency on an undeclared input, or a
+  `packageVersion` V1 never issues. One shared pure seam, `validateWorkPackageTerms`, now holds
+  every parent-independent structural rule and is called by **both** the creation and the read
+  path — with an alignment test running the same malformed terms through both ends, so a rule
+  can never be enforced at only one.
+- **A dependency predecessor is validated before it is trusted** (EI-S1.4D-R2). The check read
+  the predecessor's JSON `projectId`, so a row physically in another project could claim this one
+  and carry a dependency across the §21.158 boundary. It now requires stored-contract coherence
+  first and compares the **relational** project.
+- **One assignment act, one authenticated principal** (§21.19, EI-S1.4D-R2). `assignWorkPackage`
+  authenticated and then called `prepareWorkPackage`, which authenticated again — so a session
+  changing mid-act could have one principal establish scope and another complete the assignment.
+  An internal prepared-with-principal seam fixes this while `prepareWorkPackage` remains a
+  normally authenticated public boundary on its own.
 - **Role eligibility claims only what the sources prove** (EI-S1.4D-R1). The result is
   deliberately not called `fit`. `agents` proves identity and project; `DOMAIN_REGISTRY` proves
   a data domain is sanctioned *platform-wide*, not that this role may read it; Delegation

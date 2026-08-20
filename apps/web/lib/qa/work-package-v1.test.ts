@@ -43,6 +43,7 @@ import {
 import { delegationBoundHash, workPackageHash } from '@/lib/atlas/workpackage/binding'
 import { evaluateRoleEligibility, type WorkforceRole } from '@/lib/atlas/workpackage/roles'
 import { validateStoredWorkPackage } from '@/lib/atlas/workpackage/validate'
+import { validateWorkPackageTerms, WORK_PACKAGE_V1_VERSION } from '@/lib/atlas/workpackage/attenuate'
 import { isCompleteCanonicalRow } from '@/lib/atlas/workpackage/store'
 import { assignWorkPackage, prepareWorkPackage } from '@/lib/atlas/workpackage/principal-write'
 import { isWorkPackageUsable, resolveWorkPackage, listProjectWorkPackages } from '@/lib/atlas/workpackage/principal-read'
@@ -1328,6 +1329,182 @@ describe('R1 — assignment re-checks the parent immediately before INSERT', () 
   })
 })
 
+// ────────────────────────────────────────────────────────────────────────────
+// 10. EI-S1.4D-R2 — audit boundary, discriminator and stored-term validity
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('R2 — stored terms must still be VALID, not merely coherent', () => {
+  const parent = envelopeOf()
+  const coherent = (): WorkPackage => {
+    const b = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+    if (!b.ok) throw new Error('fixture')
+    const withId = { ...b.package, workPackageId: 'wp-1' }
+    return { ...withId, packageHash: workPackageHash(withId) }
+  }
+  /** Tamper then RE-SEAL, so coherence passes and only validity can refuse. */
+  const resealed = (over: Partial<WorkPackage>): StoredWorkPackage => {
+    const p = { ...coherent(), ...over }
+    const { packageHash: _h, ...terms } = p
+    const sealed = { ...p, packageHash: workPackageHash(terms as never) }
+    return {
+      taskId: 't', workPackage: sealed, assignedAt: T1, legacyStatus: 'pending',
+      columns: columnsOf(sealed),
+    }
+  }
+  const read = (stored: StoredWorkPackage) =>
+    resolveWorkPackage('wp-1', { store: new FakeStore([stored]), roleReader: roleReader([ROLE]) })
+
+  it.each([
+    ['an empty task objective', { taskObjective: '' }],
+    ['no expected output', { expectedOutput: [] }],
+    ['a dependency requiring an undeclared input', {
+      dependencies: [{ requiredInputs: ['in-missing'], expectedOutputs: [], owner: 'x', blockingState: 'y' }],
+    }],
+    ['a packageVersion other than 1', { packageVersion: 7 }],
+    ['a data_scope input naming an unreadable resource', {
+      inputs: [{ inputId: 'in-1', description: 'x', origin: 'data_scope' as const, resource: 'platform_tokens' }],
+    }],
+    ['an item both in and out of scope', { inScope: ['newsletter sending'] }],
+  ] as const)('REFUSES %s even when re-hashed and contained', async (_name, over) => {
+    const { evaluation } = await read(resealed(over as never))
+    expect(evaluation!.usable).toBe(false)
+    expect(evaluation!.reason).toBe('exceeds_delegation')
+  })
+
+  it('a valid self-hashed package remains usable', async () => {
+    const { evaluation } = await read(resealed({}))
+    expect(evaluation!.usable).toBe(true)
+  })
+
+  it('CREATION and READ enforce the same parent-independent rules', () => {
+    // The alignment guard. Each malformed term is run through BOTH ends; a rule
+    // enforced at only one end fails here, so the two cannot silently drift.
+    const cases: Partial<WorkPackageRequest>[] = [
+      { taskObjective: '' },
+      { expectedOutput: [] },
+      { dependencies: [{ requiredInputs: ['in-missing'], expectedOutputs: [], owner: 'x', blockingState: 'y' }] },
+      { inputs: [{ inputId: 'in-1', description: 'x', origin: 'data_scope', resource: 'platform_tokens' }] },
+      { inScope: ['newsletter sending'] },
+    ]
+    for (const over of cases) {
+      const created = attenuateWorkPackage(parent, baseRequest(over), delegationBoundHash(parent))
+      expect(created.ok, JSON.stringify(over)).toBe(false)
+
+      const stored = { ...coherent(), ...(over as Partial<WorkPackage>) }
+      expect(workPackageIsContained(parent, stored).length, JSON.stringify(over)).toBeGreaterThan(0)
+    }
+  })
+
+  it('the shared seam is the one place those rules live', () => {
+    const terms = validateWorkPackageTerms({
+      taskObjective: '', inputs: [], expectedOutput: [], dataScope: [],
+      dependencies: [], inScope: [], outOfScope: [], packageVersion: 2,
+    })
+    expect(terms.map(v => v.field).sort()).toEqual(['expectedOutput', 'packageVersion', 'taskObjective'])
+    expect(WORK_PACKAGE_V1_VERSION).toBe(1)
+  })
+
+  it('the version rule is skipped at creation and applied on read', () => {
+    // At creation the version is assigned by construction, so validating it
+    // there would test the constructor, not the input.
+    expect(validateWorkPackageTerms({
+      taskObjective: 'x', inputs: [], expectedOutput: [{ outputId: 'o', description: 'd' }],
+      dataScope: [], dependencies: [], inScope: [], outOfScope: [],
+    })).toEqual([])
+  })
+})
+
+describe('R2 — dependency predecessors are validated before they are trusted', () => {
+  const predecessorOf = (over: Partial<WorkPackage>, cols: Record<string, unknown> = {}) => {
+    const parent = envelopeOf()
+    const b = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+    if (!b.ok) throw new Error('fixture')
+    const withId = { ...b.package, workPackageId: 'pred-1', ...over }
+    const p = { ...withId, packageHash: workPackageHash(withId) }
+    return {
+      taskId: 'pred', workPackage: p, assignedAt: T0, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), ...cols },
+    } as StoredWorkPackage
+  }
+  const withDependency = (store: FakeStore) => assignWorkPackage(writeArgs(store, {
+    request: baseRequest({
+      dependencies: [{
+        predecessorPackageId: 'pred-1', requiredInputs: ['in-1'], expectedOutputs: [],
+        owner: 'x', blockingState: 'upstream pending',
+      }],
+    }),
+  }))
+
+  it('accepts a coherent same-project predecessor', async () => {
+    const store = new FakeStore([predecessorOf({})])
+    const r = await withDependency(store)
+    expect(r.status).toBe('ok')
+  })
+
+  it('REFUSES a predecessor whose JSON claims this project while its column does not', async () => {
+    // The dangerous case: a row physically in another project, claiming ours in
+    // its payload. Trusting the payload would carry a dependency across the
+    // §21.158 isolation boundary.
+    const store = new FakeStore([predecessorOf({}, { projectId: PROJECT_Q })])
+    const r = await withDependency(store)
+    expect(r.status).toBe('invalid_request')
+    expect(r.rejections![0].reason).toBe('dependency_project_mismatch')
+  })
+
+  it('REFUSES an incoherent predecessor outright', async () => {
+    const store = new FakeStore([predecessorOf({}, { missionVersion: 99 })])
+    const r = await withDependency(store)
+    expect(r.status).toBe('invalid_request')
+  })
+
+  it('REFUSES an unknown predecessor', async () => {
+    const r = await withDependency(new FakeStore())
+    expect(r.status).toBe('invalid_request')
+  })
+
+  it('uses the relational project, not the JSON payload', () => {
+    const write = sources.find(s => s.file === 'principal-write.ts')!.text
+    expect(write).toMatch(/validateStoredWorkPackage\(predecessor\)/)
+    expect(write).toMatch(/predecessor\.columns\.projectId/)
+    expect(write).not.toMatch(/predecessor\.workPackage\.projectId/)
+  })
+})
+
+describe('R2 — one assignment act, one authenticated principal (§21.19)', () => {
+  it('resolves the acting identity exactly once', async () => {
+    const store = new FakeStore()
+    vi.mocked(resolveProjectAccess).mockClear()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('ok')
+    expect(vi.mocked(resolveProjectAccess).mock.calls.length).toBe(1)
+  })
+
+  it('a changing identity cannot split one assignment act', async () => {
+    const store = new FakeStore()
+    const OTHER = '99999999-9999-4999-8999-999999999999'
+    vi.mocked(resolveProjectAccess)
+      .mockResolvedValueOnce({ ok: true, userId: PRINCIPAL_A, allowedProjectIds: [PROJECT_P] } as never)
+      // Any later resolve would hand the act to a principal with no access.
+      .mockResolvedValue({ ok: true, userId: OTHER, allowedProjectIds: [] } as never)
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('ok')
+    expect(store.assigned.length).toBe(1)
+  })
+
+  it('prepare remains a normally authenticated public boundary on its own', async () => {
+    vi.mocked(resolveProjectAccess).mockResolvedValue({ ok: false } as never)
+    const r = await prepareWorkPackage(writeArgs(new FakeStore()))
+    expect(r.status).toBe('no_principal')
+  })
+
+  it('still re-checks the parent immediately before INSERT', async () => {
+    const store = new FakeStore()
+    vi.mocked(resolveDelegationEvaluation).mockClear()
+    await assignWorkPackage(writeArgs(store))
+    expect(vi.mocked(resolveDelegationEvaluation).mock.calls.length).toBeGreaterThan(1)
+  })
+})
+
 describe('migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8')
 
@@ -1411,6 +1588,59 @@ describe('migration', () => {
 
   it('one canonical package per id, via a PARTIAL unique index', () => {
     expect(sql).toMatch(/create unique index if not exists manager_tasks_work_package_id_idx[\s\S]{0,120}where work_package_id is not null/)
+  })
+
+  it('requires the canonical discriminator on canonical rows (R2)', () => {
+    expect(sql).toMatch(/manager_tasks_work_package_source_check/)
+    expect(sql).toMatch(/source = 'work_package' and source_key = work_package_id::text/)
+  })
+
+  it('forbids a legacy row from CLAIMING to be a work package (R2)', () => {
+    const check = sql.slice(sql.indexOf('manager_tasks_work_package_source_check'))
+    expect(check.slice(0, 700)).toMatch(/else source is null or source <> 'work_package'/)
+  })
+
+  it('leaves other legacy source values alone (R2)', () => {
+    // Nothing constrains legacy `source` to an enum; NULL, 'dream' and any
+    // other existing value stay exactly as valid as before.
+    expect(sql).not.toMatch(/source in \(/)
+    expect(sql).not.toMatch(/source = 'dream'/)
+  })
+
+  it('freezes the discriminator once a contract exists (R2)', () => {
+    const canonicalBranch = sql.slice(sql.indexOf('-- From here the row carries a contract'))
+    const guard = canonicalBranch.slice(0, canonicalBranch.indexOf('raise exception'))
+    expect(guard).toMatch(/new\.source\b/)
+    expect(guard).toMatch(/new\.source_key\b/)
+  })
+
+  it('does NOT freeze source for legacy rows (R2)', () => {
+    // The legacy branch guards only against ATTACHING a contract; ordinary
+    // legacy `source` edits keep working.
+    const legacyBranch = sql.slice(sql.indexOf('if old.work_package_id is null'),
+      sql.indexOf('-- From here the row carries a contract'))
+    expect(legacyBranch).not.toMatch(/new\.source\b/)
+  })
+
+  it('protects canonical assignment history from DELETE (R2)', () => {
+    expect(sql).toMatch(/create or replace function public\.manager_tasks_reject_work_package_delete/)
+    expect(sql).toMatch(/create trigger manager_tasks_work_package_no_delete/)
+    expect(sql).toMatch(/before delete on public\.manager_tasks/)
+  })
+
+  it('leaves legacy DELETE semantics untouched, cascade included (R2)', () => {
+    const fn = sql.slice(sql.indexOf('manager_tasks_reject_work_package_delete'))
+    const body = fn.slice(0, fn.indexOf('$$;'))
+    expect(body).toMatch(/if old\.work_package_id is null then\s+return old;/)
+    // And the table is NOT made append-only.
+    expect(sql).not.toMatch(/for each row execute function public\.manager_tasks_reject_work_package_delete\(\);[\s\S]*append-only/i)
+  })
+
+  it('blocks the project cascade rather than rewriting the FK (R2)', () => {
+    // A BEFORE DELETE trigger on the child fires for cascaded deletes too, so
+    // the existing ON DELETE CASCADE foreign key is left alone.
+    expect(sql).not.toMatch(/alter table public\.manager_tasks[\s\S]{0,200}drop constraint manager_tasks_project_id_fkey/)
+    expect(sql).toMatch(/cascade/i)
   })
 
   it('creates no queue, cron or dispatch machinery', () => {

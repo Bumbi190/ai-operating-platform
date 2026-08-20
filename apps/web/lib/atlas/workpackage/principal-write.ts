@@ -39,6 +39,7 @@ import {
 } from './attenuate'
 import { delegationBoundHash, workPackageHash } from './binding'
 import { evaluateRoleEligibility, readWorkforceRole, type WorkforceRoleReader } from './roles'
+import { validateStoredWorkPackage } from './validate'
 import { createWorkPackageStore, WorkPackageConflictError, type WorkPackageStore } from './store'
 import type { WorkPackage, WorkPackageRejection } from './types'
 
@@ -148,7 +149,23 @@ export async function prepareWorkPackage(
 ): Promise<WorkPackageWriteResult> {
   const principal = await authenticate()
   if ('status' in principal) return principal
+  return prepareWithPrincipal(principal, args)
+}
 
+/**
+ * The preparation work, given an ALREADY-AUTHENTICATED principal.
+ *
+ * §21.19 — one institutional act resolves the acting identity once.
+ * `assignWorkPackage` used to authenticate, then call `prepareWorkPackage`
+ * which authenticated again, so a session changing mid-act could have one
+ * principal establish scope and another complete the assignment. Splitting the
+ * seam keeps `prepareWorkPackage` a normal authenticated public boundary when
+ * called on its own, without weakening it.
+ */
+async function prepareWithPrincipal(
+  principal: Principal,
+  args: PrepareWorkPackageArgs,
+): Promise<WorkPackageWriteResult> {
   const parent = await usableDelegation(principal, args.envelopeId, args)
   if ('status' in parent) return parent
 
@@ -194,11 +211,18 @@ export async function prepareWorkPackage(
       } catch {
         return DENY('unavailable')
       }
-      if (!predecessor || predecessor.workPackage.projectId !== parent.envelope.projectId) {
-        return DENY('invalid_request', 'dependency_project_mismatch', {
-          rejections: [{ reason: 'dependency_project_mismatch', subject: dep.predecessorPackageId }],
-        })
-      }
+      const mismatch = () => DENY('invalid_request', 'dependency_project_mismatch', {
+        rejections: [{ reason: 'dependency_project_mismatch', subject: dep.predecessorPackageId }],
+      })
+      if (!predecessor) return mismatch()
+
+      // EI-S1.4D-R2 — a stored package is not trustworthy until validated, and
+      // its RELATIONAL project is the scope. Reading `workPackage.projectId`
+      // here trusted the payload of a row nobody had checked: a predecessor
+      // physically in another project could claim this one and be accepted,
+      // carrying a dependency across an isolation boundary (§21.158).
+      if (!validateStoredWorkPackage(predecessor).coherent) return mismatch()
+      if (predecessor.columns.projectId !== parent.envelope.projectId) return mismatch()
     }
   }
 
@@ -233,10 +257,12 @@ export interface AssignWorkPackageArgs extends PrepareWorkPackageArgs {
 export async function assignWorkPackage(
   args: AssignWorkPackageArgs,
 ): Promise<WorkPackageWriteResult> {
+  // §21.19 — ONE authenticated principal for the whole assignment act: initial
+  // parent scope, preparation, and the final pre-insert re-check all use it.
   const principal = await authenticate()
   if ('status' in principal) return principal
 
-  const prepared = await prepareWorkPackage(args)
+  const prepared = await prepareWithPrincipal(principal, args)
   if (prepared.status !== 'ok' || !prepared.workPackage) return prepared
 
   const pkg = prepared.workPackage

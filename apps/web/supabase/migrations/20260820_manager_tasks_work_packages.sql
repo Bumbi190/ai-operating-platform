@@ -44,6 +44,13 @@
 --   mutable status sources competing over one row is how a ledger starts
 --   disagreeing with itself.
 --
+--   THE DISCRIMINATOR AND THE HISTORY ARE BOTH PROTECTED (EI-S1.4D-R2).
+--   `source = 'work_package'` is required on canonical rows and frozen once
+--   written, because legacy isolation depends on it. And a canonical row cannot
+--   be deleted — not directly, and not through the project ON DELETE CASCADE
+--   this table already carries — so §21.42 assignment history cannot disappear.
+--   Legacy rows keep their existing delete semantics untouched.
+--
 --   NOTHING HERE EXECUTES ANYTHING. §21.42 — assignment means the Workforce role
 --   has RECEIVED the package, not started it. This migration creates no queue,
 --   no cron, no dispatch trigger, and no path to any runner, workflow, tool,
@@ -154,6 +161,37 @@ begin
           and workforce_role_id      is not null
           and assigned_at            is not null
         )
+      );
+  end if;
+
+  -- THE CANONICAL DISCRIMINATOR IS PART OF THE CONTRACT (EI-S1.4D-R2).
+  --
+  -- `source` began as an ordinary operational-shell field, but EI-S1.4D-R1 made
+  -- it load-bearing: legacy Manager surfaces exclude canonical rows with
+  -- `source IS NULL OR source <> 'work_package'`. A canonical row that lost its
+  -- discriminator would therefore reappear as an ACTIVE MANAGER TASK — a §21.42
+  -- assigned package, which has been RECEIVED and not started, presented as
+  -- work in flight. So the value is now required, not merely written.
+  --
+  -- The reverse is constrained too: a row may not CLAIM to be a Work Package
+  -- without carrying a complete contract, which would exclude it from legacy
+  -- surfaces while giving it no canonical identity — invisible in both
+  -- directions at once.
+  --
+  -- Legacy `source` values are otherwise untouched: NULL, 'dream' and anything
+  -- else stay exactly as valid as they were.
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.manager_tasks'::regclass
+      and conname = 'manager_tasks_work_package_source_check'
+  ) then
+    alter table public.manager_tasks
+      add constraint manager_tasks_work_package_source_check check (
+        case
+          when work_package_id is not null
+            then source = 'work_package' and source_key = work_package_id::text
+          else source is null or source <> 'work_package'
+        end
       );
   end if;
 
@@ -278,6 +316,11 @@ begin
      or new.workforce_role_id    is distinct from old.workforce_role_id
      or new.assigned_at          is distinct from old.assigned_at
      or new.project_id           is distinct from old.project_id
+     -- EI-S1.4D-R2: the discriminator is frozen too. Clearing `source` on a
+     -- canonical row would push a §21.42 assigned package straight back into
+     -- the legacy ACTIVE MANAGER TASKS surface that R1 closed.
+     or new.source               is distinct from old.source
+     or new.source_key           is distinct from old.source_key
   then
     raise exception
       'manager_tasks: the Work Package authority contract is immutable once assigned (task %)', old.id
@@ -292,6 +335,42 @@ drop trigger if exists manager_tasks_work_package_immutable on public.manager_ta
 create trigger manager_tasks_work_package_immutable
   before update on public.manager_tasks
   for each row execute function public.manager_tasks_reject_work_package_mutation();
+
+-- ── Audit preservation (§21.42) ───────────────────────────────────────────────
+-- A canonical assignment is institutional history. It may not simply vanish.
+--
+-- THE CASCADE IS THE REAL RISK. `manager_tasks.project_id` references
+-- `projects(id)` ON DELETE CASCADE — verified read-only against the production
+-- catalog — so deleting a project would silently erase every Work Package
+-- assigned within it, with no trace that the assignments ever happened. A
+-- BEFORE DELETE trigger on the child table fires for cascaded deletes too, so
+-- one conditional guard closes both the direct DELETE and the cascade without
+-- rewriting the existing foreign key or touching project lifecycle.
+--
+-- THIS DOES NOT MAKE manager_tasks APPEND-ONLY. Legacy rows keep their existing
+-- delete semantics exactly, including cascade. Only rows carrying a canonical
+-- contract are protected, and the failure is loud: a project deletion that
+-- would destroy assignment history is BLOCKED rather than quietly completed.
+
+create or replace function public.manager_tasks_reject_work_package_delete()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.work_package_id is null then
+    return old;  -- legacy row: unchanged behaviour, including project cascade
+  end if;
+  raise exception
+    'manager_tasks: Work Package assignment history is not deletable (task %, package %)',
+    old.id, old.work_package_id
+    using errcode = 'restrict_violation';
+end;
+$$;
+
+drop trigger if exists manager_tasks_work_package_no_delete on public.manager_tasks;
+create trigger manager_tasks_work_package_no_delete
+  before delete on public.manager_tasks
+  for each row execute function public.manager_tasks_reject_work_package_delete();
 
 comment on column public.manager_tasks.work_package is
   'Chapter 21 s21.9 Work Package contract — the Manager to Workforce bounded handoff. '

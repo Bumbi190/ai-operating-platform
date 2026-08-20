@@ -84,7 +84,13 @@ export const MISSION_UNBOUND_FIELDS = [
   'decisionProvenance',
 ] as const
 
-function canonicalJson(value: unknown): string {
+/**
+ * Order-independent canonical serialization. Exported for the delegation
+ * module (EI-S1.4C), which must hash Mission bounds with EXACTLY this
+ * function: two canonicalizers over the same data are two answers waiting to
+ * disagree, and a hash that disagrees with itself proves nothing.
+ */
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)

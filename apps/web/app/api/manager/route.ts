@@ -9,6 +9,20 @@
  *   plan_tasks   — break a goal into manager_tasks
  *   retry_run    — retry a failed workflow run
  *   update_task  — update a manager_task's status/result
+ *
+ * Chapter 21 bounded handoff (EI-S1.4C) — none of these execute anything:
+ *   prepare_delegation — cut a bounded envelope from an exact Mission version
+ *   decide_delegation  — the Manager runs the §21.16 checks and records the
+ *                        outcome. There is NO `accepted` parameter: a caller
+ *                        asks for a decision, it never supplies one.
+ *   read_delegation    — is this envelope usable right now (live Mission)
+ *   revoke_delegation  — Executive withdraws an envelope
+ *   replan_delegation  — classify a Manager-side change (§21.20–§21.26)
+ *
+ * Every delegation action authenticates as a human through the same session
+ * gate as the rest of this route. CRON_SECRET is not accepted anywhere here and
+ * is not user authorization: a shared machine secret cannot stand in for a
+ * principal whose project ownership bounds the act.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -17,6 +31,40 @@ import { getManager } from '@/lib/ai/manager'
 import { toCanonicalManagerEvaluationRecord } from '@/lib/ai/memory/stage1-foundation'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { prepareDelegation, revokeDelegation, type DelegationWriteResult } from '@/lib/atlas/delegation/principal-write'
+import type { DelegationNarrowing } from '@/lib/atlas/delegation/attenuate'
+import type { DelegationRevocationReason } from '@/lib/atlas/delegation/types'
+import type { ProposedChange } from '@/lib/atlas/delegation/classify'
+
+/**
+ * Map a delegation boundary status to HTTP without inventing detail.
+ *
+ * `not_permitted` covers both "no such envelope" and "an envelope you may not
+ * see", and both must render as the SAME 404 — splitting them would turn this
+ * route into an existence oracle for other tenants' identifiers.
+ */
+function delegationResponse(result: DelegationWriteResult): NextResponse {
+  const body = {
+    status: result.status,
+    state: result.state,
+    ...(result.detail ? { detail: result.detail } : {}),
+    ...(result.violations ? { violations: result.violations } : {}),
+    ...(result.rejections ? { rejections: result.rejections } : {}),
+    ...(result.replan ? { replan: result.replan } : {}),
+  }
+  const code =
+    result.status === 'ok' ? 200 :
+    result.status === 'no_principal' ? 401 :
+    result.status === 'not_permitted' ? 404 :
+    result.status === 'project_denied' ? 403 :
+    result.status === 'invalid_request' ? 400 :
+    result.status === 'conflict' ? 409 :
+    result.status === 'unavailable' ? 503 :
+    // Every remaining status is a refusal the caller could in principle fix by
+    // changing the Mission or the envelope, not a server fault.
+    422
+  return NextResponse.json(body, { status: code })
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -161,6 +209,63 @@ export async function POST(req: NextRequest) {
         }
         await manager.updateTask(task_id, { status: status as any, result })
         return NextResponse.json({ ok: true })
+      }
+
+      // ── Chapter 21 bounded handoff ────────────────────────────────────────
+      //
+      // Project isolation for these is enforced inside the delegation boundary
+      // itself, from the MISSION's and the ENVELOPE's own recorded project —
+      // never from a caller-supplied project_id, which is why none of them
+      // accepts one.
+
+      case 'prepare_delegation': {
+        const { mission_id, narrowing, note } = body as {
+          mission_id?: string; narrowing?: DelegationNarrowing; note?: string
+        }
+        if (!mission_id) {
+          return NextResponse.json({ error: 'mission_id krävs' }, { status: 400 })
+        }
+        return delegationResponse(await prepareDelegation({ missionId: mission_id, narrowing, note }))
+      }
+
+      case 'decide_delegation': {
+        const { envelope_id, note } = body as { envelope_id?: string; note?: string }
+        if (!envelope_id) {
+          return NextResponse.json({ error: 'envelope_id krävs' }, { status: 400 })
+        }
+        // Note what is NOT read from the body: any acceptance flag. The Manager
+        // decides from the §21.16 checks (§21.16 — acceptance is earned, not
+        // asserted), so a hostile caller has nothing here to lie with.
+        return delegationResponse(await manager.decideDelegation(envelope_id))
+      }
+
+      case 'read_delegation': {
+        const { envelope_id } = body as { envelope_id?: string }
+        if (!envelope_id) {
+          return NextResponse.json({ error: 'envelope_id krävs' }, { status: 400 })
+        }
+        const { evaluation, status } = await manager.readDelegation(envelope_id)
+        if (status === 'no_principal') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        if (status !== 'ok' || !evaluation) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        return NextResponse.json({ evaluation })
+      }
+
+      case 'revoke_delegation': {
+        const { envelope_id, reason, note } = body as {
+          envelope_id?: string; reason?: DelegationRevocationReason; note?: string
+        }
+        if (!envelope_id || !reason) {
+          return NextResponse.json({ error: 'envelope_id och reason krävs' }, { status: 400 })
+        }
+        return delegationResponse(await revokeDelegation({ envelopeId: envelope_id, reason, note }))
+      }
+
+      case 'replan_delegation': {
+        const { envelope_id, change } = body as { envelope_id?: string; change?: ProposedChange }
+        if (!envelope_id || !change?.summary) {
+          return NextResponse.json({ error: 'envelope_id och change.summary krävs' }, { status: 400 })
+        }
+        return delegationResponse(await manager.replanDelegation(envelope_id, change))
       }
 
       default:

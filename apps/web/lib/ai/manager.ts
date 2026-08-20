@@ -20,6 +20,17 @@ import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
 import { toJson } from '@/lib/supabase/json'
 import type { Json } from '@/lib/supabase/database.types'
+import {
+  decideDelegation,
+  recordDelegationReplan,
+  type DelegationWriteResult,
+} from '@/lib/atlas/delegation/principal-write'
+import {
+  resolveDelegationEvaluation,
+  type DelegationEvaluation,
+  type DelegationReadStatus,
+} from '@/lib/atlas/delegation/principal-read'
+import type { ProposedChange } from '@/lib/atlas/delegation/classify'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -505,6 +516,50 @@ Return ONLY valid JSON:
     } catch {
       return null
     }
+  }
+
+  // ─── Bounded delegation (EI-S1.4C, Chapter 21) ──────────────────────────────
+  //
+  // The canonical Executive → Manager path. It deliberately shares NOTHING with
+  // `planTasks` above:
+  //
+  //   planTasks takes a goal STRING, asks an LLM to invent work, and writes
+  //   manager_tasks. That is fine for the operator-driven flows that already
+  //   call it, and it stays exactly as it is.
+  //
+  //   The methods below take an ENVELOPE ID, consult no model whatsoever, and
+  //   write no task. Authority questions are answered by deterministic code in
+  //   lib/atlas/delegation, because an authority check that a prompt can talk
+  //   its way past is not a check. The Manager here decides whether it can
+  //   accept bounded work — it does not decide what the work is, and it does
+  //   not start any.
+
+  /**
+   * §21.16/§21.17 — evaluate a prepared envelope and record the decision.
+   *
+   * There is no `accept` parameter. The delegation boundary runs the acceptance
+   * checks and appends whichever outcome they produce, so a caller cannot
+   * assert an acceptance the conditions do not support.
+   */
+  async decideDelegation(envelopeId: string): Promise<DelegationWriteResult> {
+    return decideDelegation({ envelopeId })
+  }
+
+  /** §21.14 — is this envelope usable right now, given its live Mission? */
+  async readDelegation(
+    envelopeId: string,
+  ): Promise<{ evaluation: DelegationEvaluation | null; status: DelegationReadStatus }> {
+    return resolveDelegationEvaluation(envelopeId)
+  }
+
+  /**
+   * §21.20–§21.26 — classify a proposed change against the accepted envelope.
+   *
+   * Recording is not permission. A material change is referred to the Executive
+   * and stops here; nothing in this method executes either class of change.
+   */
+  async replanDelegation(envelopeId: string, change: ProposedChange): Promise<DelegationWriteResult> {
+    return recordDelegationReplan({ envelopeId, change })
   }
 }
 

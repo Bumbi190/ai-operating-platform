@@ -2341,6 +2341,181 @@ describe('R2 — revoke / replan concurrency', () => {
   })
 })
 
+// ────────────────────────────────────────────────────────────────────────────
+// 11. EI-S1.4C-R3 — causal lineage closure
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('R3 — causal order of decision, replan and revocation (§21.20/§21.27)', () => {
+  /**
+   * Build a lineage from act types alone, stamping positions in written order.
+   *
+   * Deliberately clock-blind and id-blind: every act shares one `occurredAt`
+   * and carries a random `recordId`, so nothing below can pass or fail because
+   * of a timestamp or a UUID. The position is the only thing that orders these.
+   */
+  const causal = (...types: DelegationRecord['actType'][]) =>
+    types.map((actType, i) => {
+      const base = actType === 'delegation.prepared'
+        ? preparedAct({ occurredAt: T0 })
+        : act({ actType, occurredAt: T0 })
+      return {
+        ...base,
+        lineageSequence: i,
+        ...(actType === 'delegation.rejected' ? { rejections: [{ reason: 'tool_unavailable' as const }] } : {}),
+        ...(actType === 'delegation.revoked' ? { revokedReason: 'executive_withdrew' as const } : {}),
+        ...(actType.startsWith('delegation.replan')
+          ? { replan: { changeClass: 'operational_change' as const, exceeded: [], summary: 'x' } }
+          : {}),
+      }
+    })
+
+  // ── invalid: a Manager act before it had work ──
+
+  it('REFUSES a replan positioned before the acceptance', () => {
+    expect(() => deriveDelegationState(causal(
+      'delegation.prepared', 'delegation.replan.operational', 'delegation.accepted',
+    ))).toThrow(/precedes the decision/)
+  })
+
+  it('REFUSES a referred replan positioned before the acceptance', () => {
+    // The worse half of the same defect: an escalation raised to the Executive
+    // about an envelope nobody had agreed to yet.
+    expect(() => deriveDelegationState(causal(
+      'delegation.prepared', 'delegation.replan.referred', 'delegation.accepted',
+    ))).toThrow(MalformedDelegationError)
+  })
+
+  it('cannot reach equal positions at all — contiguity refuses them first', () => {
+    // The causal comparison is written `<=`, stating the intent that a replan
+    // must fall strictly after the decision. The `=` half is UNREACHABLE: the
+    // position-integrity guard runs earlier and requires positions to be
+    // exactly 0..n-1, so two acts can never share one. This test pins that
+    // ordering of guards rather than pretending the boundary is exercisable —
+    // `<=` and `<` are provably identical on every input that reaches the line,
+    // and a test contrived to tell them apart would be testing nothing real.
+    const rows = causal('delegation.prepared', 'delegation.accepted', 'delegation.replan.operational')
+    rows[2] = { ...rows[2], lineageSequence: 1 }
+    expect(() => deriveDelegationState(rows)).toThrow(/claimed twice/)
+  })
+
+  // ── invalid: a decision after the envelope was withdrawn ──
+
+  it('REFUSES an acceptance positioned after a revocation', () => {
+    expect(() => deriveDelegationState(causal(
+      'delegation.prepared', 'delegation.revoked', 'delegation.accepted',
+    ))).toThrow(/follows revocation/)
+  })
+
+  it('REFUSES a rejection positioned after a revocation', () => {
+    expect(() => deriveDelegationState(causal(
+      'delegation.prepared', 'delegation.revoked', 'delegation.rejected',
+    ))).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES a rejection alongside a revocation in either order', () => {
+    // §21.17 — two different endings; neither order makes them compatible.
+    expect(() => deriveDelegationState(causal(
+      'delegation.prepared', 'delegation.rejected', 'delegation.revoked',
+    ))).toThrow(MalformedDelegationError)
+  })
+
+  // ── valid: the sanctioned flows ──
+
+  it.each([
+    ['prepared → accepted', ['delegation.prepared', 'delegation.accepted'], 'accepted'],
+    ['prepared → rejected', ['delegation.prepared', 'delegation.rejected'], 'rejected'],
+    ['prepared → revoked (withdrawn before any decision)', ['delegation.prepared', 'delegation.revoked'], 'revoked'],
+    ['prepared → accepted → revoked', ['delegation.prepared', 'delegation.accepted', 'delegation.revoked'], 'revoked'],
+    ['prepared → accepted → replan', ['delegation.prepared', 'delegation.accepted', 'delegation.replan.operational'], 'accepted'],
+    ['prepared → accepted → replan → replan → revoked', ['delegation.prepared', 'delegation.accepted', 'delegation.replan.operational', 'delegation.replan.referred', 'delegation.revoked'], 'revoked'],
+  ] as const)('ACCEPTS %s', (_name, types, expected) => {
+    const s = deriveDelegationState(causal(...(types as unknown as DelegationRecord['actType'][])))
+    expect(s.status).toBe(expected)
+  })
+
+  it('a rejected lineage is terminal and carries its grounds', () => {
+    const s = deriveDelegationState(causal('delegation.prepared', 'delegation.rejected'))
+    expect(s.status).toBe('rejected')
+    expect(s.rejections).toEqual([{ reason: 'tool_unavailable' }])
+    expect(s.referrals).toEqual([])
+  })
+
+  it('a withdrawn-before-decision lineage records no decision at all', () => {
+    const s = deriveDelegationState(causal('delegation.prepared', 'delegation.revoked'))
+    expect(s.status).toBe('revoked')
+    expect(s.decidedAt).toBeNull()
+    expect(s.revokedReason).toBe('executive_withdrew')
+  })
+
+  // ── the verdict depends on position and nothing else ──
+
+  it('the verdict is independent of occurredAt', () => {
+    // Timestamps deliberately CONTRADICT the positions: the acceptance is
+    // stamped last while sitting first. The lineage is still valid, because the
+    // clock never had a say.
+    const rows = causal('delegation.prepared', 'delegation.accepted', 'delegation.replan.operational')
+    const scrambled = [
+      { ...rows[0], occurredAt: T2 },
+      { ...rows[1], occurredAt: T2 },
+      { ...rows[2], occurredAt: T0 },
+    ]
+    expect(deriveDelegationState(scrambled).status).toBe('accepted')
+  })
+
+  it('the verdict is independent of recordId', () => {
+    const build = (decId: string, repId: string) => {
+      const rows = causal('delegation.prepared', 'delegation.replan.operational', 'delegation.accepted')
+      return [rows[0], { ...rows[1], recordId: repId }, { ...rows[2], recordId: decId }]
+    }
+    const LOW = '00000000-0000-4000-8000-000000000000'
+    const HIGH = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    // Both id orderings, both refused. Before R3 neither was refused at all.
+    expect(() => deriveDelegationState(build(LOW, HIGH))).toThrow(MalformedDelegationError)
+    expect(() => deriveDelegationState(build(HIGH, LOW))).toThrow(MalformedDelegationError)
+  })
+
+  it('derives identically from reversed and shuffled input', () => {
+    const rows = causal(
+      'delegation.prepared', 'delegation.accepted',
+      'delegation.replan.operational', 'delegation.replan.referred', 'delegation.revoked',
+    )
+    const expected = deriveDelegationState(rows)
+    expect(deriveDelegationState([...rows].reverse())).toEqual(expected)
+    expect(deriveDelegationState([rows[3], rows[0], rows[4], rows[1], rows[2]])).toEqual(expected)
+  })
+
+  it('refuses the invalid orders however the input is shuffled', () => {
+    const rows = causal('delegation.prepared', 'delegation.revoked', 'delegation.accepted')
+    for (const order of [[0, 1, 2], [2, 1, 0], [1, 2, 0], [2, 0, 1]]) {
+      expect(() => deriveDelegationState(order.map(i => rows[i]))).toThrow(MalformedDelegationError)
+    }
+  })
+
+  it('the sanctioned write path produces only valid causal orders', async () => {
+    // End to end through the real boundary: positions are claimed in the order
+    // the acts actually happen, so the invariant never fires on real writes.
+    const store = new FakeStore()
+    const id = await prepared(store)
+    await decideDelegation({ envelopeId: id, store, now: T1 })
+    missionSays(missionEvaluation())
+    await recordDelegationReplan({ envelopeId: id, store, now: T2, change: { summary: 'a' } })
+    await recordDelegationReplan({ envelopeId: id, store, now: T2, change: { summary: 'b' } })
+    const revoked = await revokeDelegation({ envelopeId: id, reason: 'executive_withdrew', store, now: T2 })
+    expect(revoked.status).toBe('ok')
+    expect(store.appended.map(r => r.lineageSequence)).toEqual([0, 1, 2, 3, 4])
+    expect(deriveDelegationState(await store.lineage(id)).status).toBe('revoked')
+  })
+
+  it('records no execution side effect while proving any of this', () => {
+    const write = codeOf(sources.find(s => s.file === 'principal-write.ts')!.text)
+    const derive = codeOf(sources.find(s => s.file === 'derive.ts')!.text)
+    for (const src of [write, derive]) {
+      expect(src).not.toMatch(/manager_tasks|planTasks|workflow-(runner|executor)|run-create/)
+      expect(src).not.toMatch(/@anthropic-ai\/sdk|\bfetch\s*\(/)
+    }
+  })
+})
+
 describe('migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8')
 

@@ -211,6 +211,22 @@ export function deriveDelegationState(records: DelegationRecord[]): DerivedDeleg
   if (replans.length > 0 && decision?.actType !== 'delegation.accepted') {
     fail('replan recorded against a delegation that was never accepted')
   }
+  // §21.20 — and it must have accepted it FIRST.
+  //
+  // EXISTENCE IS NOT SEQUENCE. Until EI-S1.4C-R3 the rule above was the whole
+  // test: a lineage could place a replan at position 1 and the acceptance at
+  // position 2 and derive cleanly, because an acceptance existed *somewhere*.
+  // That is a Manager revising work it had not yet taken on — and in the
+  // `referred` case it recorded an escalation to the Executive about an
+  // envelope nobody had agreed to. The positions are already there; they simply
+  // were not compared.
+  if (decision && replans.length > 0) {
+    for (const r of replans) {
+      if (r.lineageSequence <= decision.lineageSequence) {
+        fail(`replan at position ${r.lineageSequence} precedes the decision at ${decision.lineageSequence}`)
+      }
+    }
+  }
   // §21.27 — REVOCATION IS A HARD STOP. Authority ended at that position, so no
   // Manager act may sit causally after it. Comparing positions rather than
   // timestamps is the whole point: a replan stamped in the same millisecond as
@@ -221,6 +237,16 @@ export function deriveDelegationState(records: DelegationRecord[]): DerivedDeleg
       if (r.lineageSequence > revocation.lineageSequence) {
         fail(`replan at position ${r.lineageSequence} follows revocation at ${revocation.lineageSequence}`)
       }
+    }
+    // §21.16/§21.27 — and no DECISION may follow it either. R2 sealed the
+    // replan case; an acceptance recorded after the withdrawal is the same
+    // impossibility wearing a different act type, and it hid behind the derived
+    // status: the lineage ended `revoked` either way, so a decision that could
+    // not have been made was carried in `decidedAt` without contradicting
+    // anything. Withdrawing before the Manager decides is legitimate
+    // (`prepared → revoked`); deciding afterwards is not.
+    if (decision && decision.lineageSequence > revocation.lineageSequence) {
+      fail(`decision at position ${decision.lineageSequence} follows revocation at ${revocation.lineageSequence}`)
     }
   }
 

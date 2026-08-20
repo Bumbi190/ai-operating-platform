@@ -480,9 +480,17 @@ Canonical properties:
   raced freely — three indexes serialized each act type against *itself* and nothing against
   anything else — and a revocation and a replan written in the same millisecond had their order
   settled by whichever random `recordId` sorted first.
-- **Revocation is a hard stop** (§21.27). No Manager act may sit causally after it. The pure core
-  compares positions, not clocks, so the verdict cannot flip with a UUID; `accepted → replan →
-  revoked` remains valid history, and `accepted → revoked → replan` is refused.
+- **The causal order is closed, not merely present** (§21.20/§21.27, completed in EI-S1.4C-R3).
+  The pure core compares positions, never clocks or identifiers, so no verdict can flip with a
+  UUID. Three rules, each proven against `lineage_sequence`: a replan must fall **after** the
+  acceptance, a replan must fall **before** any revocation, and a **decision** must fall before
+  any revocation. R2 sealed only the middle one, so two impossibilities still derived cleanly —
+  a replan positioned *before* the acceptance (existence of an acceptance was the whole test,
+  and in the `referred` case that meant an escalation about an envelope nobody had agreed to),
+  and an acceptance recorded *after* the withdrawal, which hid behind the derived status because
+  the lineage ended `revoked` either way. Valid: `prepared → accepted`, `prepared → rejected`,
+  `prepared → revoked` (the Executive may withdraw before the Manager decides),
+  `prepared → accepted → replan* → revoked`.
 - **A revocation that loses a race still lands.** Authority narrowing must not be defeated by a
   Manager winning a millisecond, so a revocation that collides with a concurrent replan retries
   at the next position — bounded, re-reading and re-checking the lifecycle each time, and reusing

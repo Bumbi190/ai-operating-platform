@@ -432,7 +432,13 @@ async function proveAvailability(
 ): Promise<{ tools: boolean; data: boolean } | MissionWriteResult> {
   try {
     const result = await (reader ?? unprovenAvailability)({
-      projectId: prior.projectId, tools: prior.tools, dataScope: prior.dataScope,
+      // §21.14 — identity is taken from the mission's own derived state, so a
+      // proof cut for a different mission or a different version cannot answer
+      // for this one.
+      projectId: prior.projectId,
+      missionId: prior.missionId,
+      missionVersion: prior.version,
+      tools: prior.tools, dataScope: prior.dataScope,
     })
     return { tools: result.tools, data: result.data }
   } catch {

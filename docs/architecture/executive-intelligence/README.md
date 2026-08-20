@@ -331,13 +331,192 @@ templates, simulation, pre-/post-mortem automation, drift detection and batch ap
 Structured risks, controls and stop conditions are **declarative Mission Brief boundaries
 only** — calling them a Damage Boundary would be a lie.
 
-> The `atlas_mission_ledger` migration is committed in the canonical guarded directory but
+The `atlas_mission_ledger` migration was subsequently applied through the controlled
+EI-S1.4B-R4 rollout (ledger version `20260820054225`), byte-identical to its repository file.
+**Executive Mission Brief V1 = IMPLEMENTED / SCHEMA APPLIED.**
+
+**Delivered by EI-S1.4C:** **Chapter 21 Delegation Envelope V1** — the bounded Executive to
+Manager handoff (`atlas_delegation_ledger`) in `lib/atlas/delegation/`.
+
+> "Delegation is not instruction. It is the transfer of BOUNDED authority." (§21.12)
+
+Canonical properties:
+
+- **The envelope is structured, not a prompt.** There is no `prompt: string` and no
+  `goal: string`. Every bound — objective, scope, authority, allowed and forbidden actions,
+  tools, data scope, budget, deadline, constraints, approval gates, escalation triggers, stop
+  conditions — is a typed field, because a string cannot be checked for containment against
+  its parent and therefore cannot carry authority.
+- **The envelope is DERIVED from an exact Mission version, never authored beside one.** The
+  caller supplies narrowings and nothing else. Project, mission, version, objective and every
+  inherited prohibition are taken from the Mission, so there is no field a caller can restate
+  into something wider.
+- **Attenuation is a pure, deterministic function** (§6.39). Permissive fields (authority,
+  actions, tools, data, scope, budget, deadline) may only narrow, and every claimed element
+  must be present in the parent. Restrictive fields (forbidden actions, out-of-scope,
+  constraints, approval gates, escalation triggers, stop conditions) are inherited in full and
+  may only be added to — removing an inherited prohibition is not merely rejected, it is
+  **unrepresentable** in the request type. There is no capability-token framework, no policy
+  engine, no Autonomy License and no Trust Score.
+- Two containment rules earn their keep specifically. A tool bound is matched **including its
+  §20.59 restriction**: no deterministic function can prove one prose restriction narrower than
+  another, so dropping `restriction: 'draft only'` is a widening rather than an omission. And
+  data scope is compared over an access lattice where write subsumes read, so narrowing a write
+  scope to a read is allowed while the reverse is a privilege escalation.
+- **Mission authority is re-asked on every prepare, decide, replan and read** (§21.14), through
+  `resolveMissionEvaluation` — the Mission module's single public evaluation surface. An
+  envelope is a claim about a Mission, never authority in itself, so a stored row over a
+  cancelled, failed, superseded, archived, completed, expired, mode-blocked or
+  decision-invalidated Mission is inert regardless of what the row says. The Mission's
+  lifecycle status is checked independently of its authority verdict rather than inferred from
+  it.
+- **Version pinning is a hard stop** (§21.15). An envelope prepared against version N is
+  decided against version N or not at all; it never floats to N+1, including when N+1 is
+  *wider*. The pin is stored as the version **and** a `mission_bound_hash` over the delegable
+  bounds, so drift is visible rather than assumed away. An editorial amendment that moves no
+  bound does not spuriously invalidate live delegations.
+- **The caller never chooses the outcome** (§21.16). There is no `accept()` taking
+  `accepted: true`; there is `decideDelegation`, which runs the acceptance checks and appends
+  whichever of accepted/rejected they produce. Every one of the eleven typed reasons —
+  `objective_ambiguous`, `authority_insufficient`, `tool_unavailable`, `data_unavailable`,
+  `dependency_unavailable`, `constraint_conflict`, `deadline_infeasible`, `escalation_missing`,
+  `mission_not_current`, `project_mismatch`, `delegation_exceeds_mission` — is decided by
+  deterministic code reading structured data. **No model is consulted anywhere on this path**,
+  because an authority check a prompt can talk its way past is not a check.
+- **Rejection is a first-class outcome, not a failure** (§21.17, §21.18). A refusal ends the
+  handoff and writes **nothing** to the Mission: it does not fail, cancel or amend it.
+- **The first sanctioned real capability check** (§20.105, §21.16). EI-S1.4B shipped
+  `unprovenAvailability`, which proves nothing and says so. `registryAvailability` replaces it
+  on this path and is deliberately **not** a stub returning true. Read scopes are proven against
+  `DOMAIN_REGISTRY` — the actual shipped security boundary for `get_records` — so
+  "can this Mission read `leads`?" now has a real answer. Where no source of truth exists the
+  check **fails closed per category**: write access has no registry that authorizes it, and
+  there is no enumerated tool registry in this codebase at all, so a declared tool cannot be
+  proven available. Matching free-form tool strings against workflow or agent names would mean
+  inventing a naming convention and then trusting it, which is not a source of truth.
+- **Manager acceptance IS the Mission's availability proof** (EI-S1.4C-R1). Before R1, capability
+  availability and Manager acceptance were two parallel facts: a Mission could be handed any
+  implementation answering "tools: true, data: true" and activate, while an accepted envelope sat
+  beside it proving nothing. `availabilityFromAcceptedDelegation` makes the chain sequential —
+  Mission → Envelope → Manager ACCEPT → accepted capability proof → **separate**
+  `mission.activate` Authorization V1 → Active. Manager acceptance is a NECESSARY input to
+  activation and never a sufficient one: it appends no Mission act, and withholding the activate
+  grant still leaves the Mission inactive.
+- **The capability seam carries server-derived Mission identity** (EI-S1.4C-R1). The query was
+  `{ projectId, tools, dataScope }`, which is enough for a capability-only lookup and *not*
+  enough for a proof derived from a specific artifact: a proof cut for Mission A would have
+  answered for Mission B in the same project merely because both wanted the same tools. The
+  query now carries `missionId` and `missionVersion`, populated by the Mission boundaries from
+  the lineage's own derived state — never from a caller parameter.
+- **Coverage runs the other way from attenuation** (§21.13, EI-S1.4C-R1). Attenuation guarantees
+  `delegation ⊆ mission`. Availability needs `queried ⊆ delegation`. A Manager that accepted an
+  envelope carrying tool A has proven A and said nothing about B, so a Mission requiring A + B
+  is not satisfied by that acceptance. The envelope is never widened to make a proof fit.
+- **The bound hash is an enforced pin, not provenance** (EI-S1.4C-R1). It shipped written,
+  carried and never consulted, so a stored envelope whose hash disagreed with the live Mission
+  was still accepted and still reported usable as long as the version matched. Prepare, decide,
+  replan and read now all compare it, and a same-version Mission whose delegable bounds moved
+  fails closed as `mission_bound_hash_changed`.
+- **The envelope must agree with the row carrying it** (EI-S1.4C-R1). A prepared row whose
+  relational columns said Mission A while its JSON payload said Mission B was accepted, and the
+  two halves would have authorized different things depending on which a reader trusted. Id,
+  project, mission, version, bound hash and `delegatedTo` are now checked in the pure core.
+- **Actor provenance is a lineage invariant** (§21.19, EI-S1.4C-R1). `DELEGATION_ACT_ACTOR` binds
+  each act to the only actor that may perform it — the Executive prepares and revokes, the
+  Manager decides and replans under exactly `atlas.manager` — enforced in the pure core AND
+  mirrored by a database CHECK, with a test comparing the two so they cannot drift. `system` is
+  reachable by no act; V1 has none, and inventing one would create an actor with no principal
+  behind it.
+- **Containment is re-proved across the whole contract** (EI-S1.4C-R1). The re-proof covered nine
+  fields and silently ignored the rest, so a stored envelope with a rewritten objective, an
+  invented deliverable, or its inherited constraints and escalation triggers deleted re-proved
+  clean. `ENVELOPE_FIELD_CLASS` now classifies every field as identity, exact, narrowable or
+  restrictive, a guard test enumerates the type's keys against it, and a field added later
+  without a containment ruling fails a test rather than defaulting to unchecked.
+- **The replanning boundary is classified, not negotiated** (§21.20–§21.26). Resequencing,
+  decomposition and retrying inside the envelope are `operational_change` and belong to the
+  Manager. Anything reaching past the envelope — an action outside the allowed set or inside
+  the forbidden set, an ungranted tool or resource, spend above the ceiling, a date past the
+  deadline, out-of-scope work, or skipping a declared gate — is
+  `material_change_requires_executive_review` and is **referred**, never executed. The default
+  is material: a change the classifier cannot positively prove inside the envelope goes upward.
+- **Actors are not interchangeable** (§21.19). Preparing and revoking are Executive principal
+  acts recording the acting human; deciding and replanning are Manager acts recording the
+  Manager's own constant identity. The Manager never borrows the requesting human's id to make
+  the ledger look authoritative, and the service role is neither. One institutional act resolves
+  the acting identity exactly once (EI-S1.4C-R1): revocation previously authenticated a second
+  time between the authorization and the append, so the row could name a principal who never
+  passed the isolation check that let the read through.
+- **Delegation ≠ Decision; acceptance ≠ Authorization** (§21.18). Nothing on this path writes to
+  `atlas_decision_ledger`, `atlas_authorizations` or `atlas_mission_ledger`.
+- **Tools in the envelope are a maximum bound, not execution permission** (§21.13). Nothing
+  here executes: no task is created, no `manager_tasks` row is written, no run is started, no
+  tool is called and no message is sent. The module imports no runner, executor, dispatcher or
+  publisher, and a test asserts that absence.
+- **Immutable and project-scoped.** `project_id NOT NULL` with `ON DELETE RESTRICT` — the
+  deliberate contrast with `manager_tasks`, whose project is nullable and whose status is
+  mutable. UPDATE and DELETE are rejected by trigger, and three partial unique indexes serialize
+  preparation, decision and revocation so two racing deciders cannot both write.
+- **`invalidated` is derived, never stored.** An envelope can be permanently and truthfully
+  `accepted` in the ledger while being unusable this second because the Mission behind it was
+  cancelled, amended or expired (§21.27). Storing that would mean writing to an append-only
+  ledger every time the world changed, so the live answer is computed on every read.
+- **A terminal Mission ends its delegations** (§21.27, EI-S1.4C-R2). Being *terminal* and
+  holding *authority* are different questions, and R1 asked only the second on the read path: a
+  completed, failed, cancelled, superseded, archived or partially-completed Mission whose
+  Authorization V1 grant was still effective, whose deadline had not passed and whose project
+  was still `active` reported `authorized` — so an accepted delegation stayed usable and kept
+  proving capability availability for a Mission that had already finished. `isTerminalMissionStatus`
+  now lives in the Mission domain and is asked by **both** delegation boundaries; the write
+  boundary's private six-status copy is gone. The historical acceptance is untouched:
+  `lifecycleStatus` stays `accepted`, `effectiveStatus` becomes `invalidated` with reason
+  `mission_ended`, and no revocation is fabricated to express that the work stopped.
+- **Order is a column, not a timestamp** (§21.18, EI-S1.4C-R2). Every act claims one
+  `lineage_sequence` position per envelope, unique and derived by the application from the exact
+  lineage it read. It is deliberately **not** the Mission ledger's `lifecycle_generation`: there,
+  annotations record something *about* a mission without moving it and consume no generation;
+  here there are no annotations, because whether a Manager's replan happened before or after an
+  Executive's revocation is precisely the question that must have one answer. Before R2 the two
+  raced freely — three indexes serialized each act type against *itself* and nothing against
+  anything else — and a revocation and a replan written in the same millisecond had their order
+  settled by whichever random `recordId` sorted first.
+- **The causal order is closed, not merely present** (§21.20/§21.27, completed in EI-S1.4C-R3).
+  The pure core compares positions, never clocks or identifiers, so no verdict can flip with a
+  UUID. Three rules, each proven against `lineage_sequence`: a replan must fall **after** the
+  acceptance, a replan must fall **before** any revocation, and a **decision** must fall before
+  any revocation. R2 sealed only the middle one, so two impossibilities still derived cleanly —
+  a replan positioned *before* the acceptance (existence of an acceptance was the whole test,
+  and in the `referred` case that meant an escalation about an envelope nobody had agreed to),
+  and an acceptance recorded *after* the withdrawal, which hid behind the derived status because
+  the lineage ended `revoked` either way. Valid: `prepared → accepted`, `prepared → rejected`,
+  `prepared → revoked` (the Executive may withdraw before the Manager decides),
+  `prepared → accepted → replan* → revoked`.
+- **A revocation that loses a race still lands.** Authority narrowing must not be defeated by a
+  Manager winning a millisecond, so a revocation that collides with a concurrent replan retries
+  at the next position — bounded, re-reading and re-checking the lifecycle each time, and reusing
+  the principal `openFor` already established rather than re-authenticating. A collision with
+  another *revocation* is correctly seen as `already_revoked`. If the bound is exhausted the
+  caller is told plainly that the revocation did **not** happen (`conflict:
+  revocation_not_appended`) — it is never silently discarded and never reported as success.
+
+The existing Manager surface is unchanged: `planTasks(goal, projectId)` and every current
+caller behave exactly as before. The bounded path is new methods on the same `ManagerAgent` —
+there is no `ManagerAgentV2` — and it shares nothing with `planTasks`. The vestigial
+`delegation_request` / `knowledge_request` intelligence kinds are **not** used as the Chapter 21
+artifact; they have no producers and are not the canonical names.
+
+Not implemented, and excluded by FM.2: work packages, Manager to Workforce delegation, task
+dispatch, the policy engine, Damage Boundary, Trust Score, Autonomy Licensing, Performance
+Intelligence, Crisis Mode, Emergency Brake, autonomy levels L4–L6, automatic spending, automatic
+publishing and automatic project-mode changes.
+
+> The `atlas_delegation_ledger` migration is committed in the canonical guarded directory but
 > **not yet applied**, so `check-migrations.mjs` will fail a Vercel build until a separately
 > authorized rollout applies it — deployment blocked by design. Until then:
-> **Executive Mission Brief V1 = CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET
+> **Executive → Manager Bounded Handoff V1 = CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET
 > PRODUCTION-OPERATIONAL.**
 
-**Deployment status (EI-S1.3B-R4 verified; EI-S1.4B pending rollout):**
+**Deployment status (EI-S1.4B-R4 verified; EI-S1.4C pending rollout):**
 
 | Item | State |
 |---|---|
@@ -346,11 +525,18 @@ only** — calling them a Damage Boundary would be a lie.
 | Decision Ledger migration | `apps/web/supabase/migrations/20260819_atlas_decision_ledger.sql`, ledger name `atlas_decision_ledger` |
 | Schema | **APPLIED AND VERIFIED — SCHEMA_EQUIVALENT** |
 | Production initial row count | **0** |
-| Migration guard | **36 enforced / 0 missing**, no override, nothing grandfathered |
-| Executive Mission Brief V1 | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
+| Migration guard (main, before this branch) | **37 enforced / 0 missing**, no override, nothing grandfathered |
+| Migration guard (this branch) | **38 enforced / 1 missing** — `atlas_delegation_ledger`, unapplied by design |
+| Executive Mission Brief V1 | **IMPLEMENTED / SCHEMA APPLIED** |
 | Mission operational readiness | EI-S1.4B-R1, R2 and R3 corrections applied |
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
-| Executive → Manager handoff | **NOT STARTED** |
+| Mission schema | **APPLIED AND VERIFIED — BYTE_IDENTICAL** (ledger version `20260820054225`) |
+| Executive → Manager handoff | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
+| Delegation proof integrity | EI-S1.4C-R1 and R2 corrections applied |
+| Delegation ordering | `lineage_sequence` — one writer per position per envelope |
+| Delegation migration | `apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql`, ledger name `atlas_delegation_ledger` |
+| Capability availability | **REAL CHECK SHIPPED** — reads proven against `DOMAIN_REGISTRY`; writes and all tools fail closed |
+| Activation availability proof | **ACCEPTED DELEGATION REQUIRED** — Mission-, version- and coverage-specific |
 | Manager → Workforce handoff | **NOT STARTED** |
 | Executive Intelligence Stage 1 | **STILL NOT COMPLETE** |
 
@@ -362,9 +548,10 @@ in its predicate and annotations correctly absent; the lineage index carrying
 `lifecycle_generation`; and the migration registered exactly once. No seed rows, no test rows,
 no backfill.
 
-**Still open, tracked for later EI-S1 increments:** the safe Manager/Workforce handoff
-(EI-S1.4C and EI-S1.4D), the remaining principal-scoped read hardening on the internal
-`CRON_SECRET` intelligence route, and the final FM.2 conformance review.
+**Still open, tracked for later EI-S1 increments:** the Manager to Workforce handoff
+(EI-S1.4D), the remaining principal-scoped read hardening on the internal `CRON_SECRET`
+intelligence route, and the final FM.2 conformance review. §20.75's workflow-version input
+remains not applicable until a Mission binds a workflow.
 
 Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does
 not persist that reviewer identity — a separate, narrowly scoped security follow-up),

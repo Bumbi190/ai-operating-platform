@@ -2220,6 +2220,7 @@ describe('R2 — canonical Ready means actually Ready (§20.101, §20.105)', () 
 
   it('production default proves nothing, by design', async () => {
     const result = await unprovenAvailability({
+      missionId: 'm-1', missionVersion: 1,
       projectId: PROJECT_P, tools: [{ tool: 't' }], dataScope: [{ resource: 'r', access: 'read' }],
     })
     expect(result.tools).toBe(false)

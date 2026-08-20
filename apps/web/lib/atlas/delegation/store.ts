@@ -42,13 +42,14 @@ interface Row {
   actor_id: string | null
   note: string | null
   revoked_reason: string | null
+  lineage_sequence: number
 }
 
 const COLS = [
   'record_id', 'envelope_id', 'project_id', 'act_type', 'occurred_at',
   'mission_id', 'mission_version', 'mission_bound_hash',
   'envelope', 'rejections', 'replan',
-  'actor_kind', 'actor_id', 'note', 'revoked_reason',
+  'actor_kind', 'actor_id', 'note', 'revoked_reason', 'lineage_sequence',
 ].join(', ')
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -70,6 +71,7 @@ function rowToRecord(row: Row): DelegationRecord {
     actorId:    row.actor_id,
     note:       row.note,
     revokedReason: (row.revoked_reason as DelegationRecord['revokedReason']) ?? null,
+    lineageSequence: row.lineage_sequence,
   }
 }
 
@@ -90,6 +92,7 @@ function recordToRow(record: DelegationRecord): Record<string, unknown> {
     actor_id:    record.actorId,
     note:        record.note,
     revoked_reason: record.revokedReason,
+    lineage_sequence: record.lineageSequence,
   }
 }
 
@@ -101,8 +104,9 @@ class PostgresDelegationLedgerStore implements DelegationLedgerStore {
   async append(record: DelegationRecord): Promise<DelegationRecord> {
     const { data, error } = await this.table().insert(recordToRow(record)).select(COLS).single()
     if (error) {
-      // 23505 is the partial unique index refusing a second deciding act. That
-      // is a conflict, not a failure: two decisions raced and exactly one won.
+      // 23505 is a unique index refusing the write: either a second deciding
+      // act, or two writers claiming the same lineage position. Both are
+      // conflicts rather than failures — exactly one writer won.
       const code = (error as { code?: string }).code
       if (code === '23505') throw new DelegationConflictError(error.message)
       throw new Error(`[atlas-delegation-ledger] append failed: ${error.message}`)
@@ -117,8 +121,7 @@ class PostgresDelegationLedgerStore implements DelegationLedgerStore {
       .eq('envelope_id', envelopeId)
       // Matches the pure core's canonical order. The core re-sorts regardless
       // — this is never the authority on ordering.
-      .order('occurred_at', { ascending: true })
-      .order('record_id', { ascending: true })
+      .order('lineage_sequence', { ascending: true })
     if (error) throw new Error(`[atlas-delegation-ledger] lineage failed: ${error.message}`)
     return ((data ?? []) as Row[]).map(rowToRecord)
   }

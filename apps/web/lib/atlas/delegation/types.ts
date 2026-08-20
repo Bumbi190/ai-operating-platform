@@ -192,6 +192,27 @@ export interface DelegationRecord {
   actType: DelegationActType
   occurredAt: string
 
+  /**
+   * §21.18 — this act's immutable position in its envelope's lineage.
+   *
+   * EVERY delegation act consumes one position: prepared is 0, and each later
+   * act takes the next. This is deliberately NOT the Mission ledger's
+   * `lifecycle_generation`, and the name says so. There, annotations record
+   * something ABOUT a mission without moving it, so they consume no generation.
+   * Here there are no annotations: a replan is an ordered institutional act by
+   * the Manager, and whether it happened before or after a revocation is
+   * exactly the question that must have one answer.
+   *
+   * It serves two jobs at once. As CAUSAL ORDER it replaces a wall-clock
+   * comparison that fell through to a random `recordId` — before EI-S1.4C-R2,
+   * a revocation and a replan stamped in the same millisecond had their order
+   * decided by whichever UUID sorted first, so the same two acts told two
+   * different stories. As OPTIMISTIC CONCURRENCY it is unique per envelope, so
+   * two writers who read the same lineage compute the same next position and
+   * exactly one of them can append.
+   */
+  lineageSequence: number
+
   missionId: string
   missionVersion: number
   missionBoundHash: string

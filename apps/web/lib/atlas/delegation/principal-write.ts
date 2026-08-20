@@ -43,12 +43,16 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolveMissionEvaluation, type MissionReadArgs } from '@/lib/atlas/mission/principal-read'
 import type { MissionEvaluation, MissionRequirement } from '@/lib/atlas/mission/types'
+import { isTerminalMissionStatus } from '@/lib/atlas/mission/derive'
 import type { MissionAvailability } from '@/lib/atlas/mission/capability'
 import { registryAvailability, capabilityFindings } from './availability'
 import { attenuate, envelopeIsContained, type AttenuationParent, type AttenuationViolation, type DelegationNarrowing } from './attenuate'
 import { missionBoundHash } from './binding'
 import { classifyChange, type ProposedChange } from './classify'
-import { deriveDelegationState, isDecidable, MalformedDelegationError, MANAGER_ACTOR_ID } from './derive'
+import {
+  deriveDelegationState, isDecidable, MalformedDelegationError, MANAGER_ACTOR_ID,
+  nextLineageSequence,
+} from './derive'
 import { createDelegationLedgerStore, DelegationConflictError, type DelegationLedgerStore } from './store'
 import type {
   DelegationEnvelope,
@@ -170,16 +174,6 @@ export function parentFromMission(evaluation: MissionEvaluation): AttenuationPar
 }
 
 /**
- * Mission lifecycle states in which no delegation may be prepared, decided or
- * used. §21.27 — the Mission ended, so anything derived from it ended with it.
- * Listed positively rather than inferred, so adding a status to the Mission
- * module cannot silently widen what is delegable.
- */
-const MISSION_ENDED: ReadonlySet<string> = new Set([
-  'cancelled', 'failed', 'superseded', 'archived', 'completed', 'partially_completed',
-])
-
-/**
  * Resolve the live Mission and fail closed unless it authorizes movement NOW.
  *
  * The availability seam is the real registry check, not the unproven default:
@@ -210,7 +204,10 @@ async function liveMission(
     return DENY('not_permitted')
   }
 
-  if (MISSION_ENDED.has(evaluation.state.status)) {
+  // §21.27 — the Mission ended, so anything derived from it ended with it.
+  // The predicate is the Mission domain's, not a local copy: EI-S1.4C-R1 kept
+  // its own six-status list here, and the read boundary had none at all.
+  if (isTerminalMissionStatus(evaluation.state.status)) {
     return DENY('mission_not_authorized', `mission_${evaluation.state.status}`)
   }
   if (!evaluation.authority.authorized) {
@@ -378,6 +375,8 @@ export async function prepareDelegation(
     actorId: principal.userId,
     note: args.note ?? null,
     revokedReason: null,
+    // The opening act of a lineage that does not yet exist.
+    lineageSequence: nextLineageSequence([]),
   }
 
   return commit(store, record, [])
@@ -619,6 +618,8 @@ export async function decideDelegation(
     actorId: MANAGER_ACTOR_ID,
     note: args.note ?? null,
     revokedReason: null,
+    // Claimed from the exact lineage this decision was made against.
+    lineageSequence: nextLineageSequence(records),
   }
 
   const result = await commit(store, record, records)
@@ -650,30 +651,62 @@ export async function revokeDelegation(
   // second time here opened a window where the session could change between the
   // authorization and the append, so the row would name a principal who never
   // passed the isolation check that let the read through.
-  const { principal, store, at, prior, records } = opened
+  const { principal, store, at } = opened
+  let prior = opened.prior
+  let records = opened.records
 
-  if (prior.status === 'revoked') return DENY('invalid_lifecycle', 'already_revoked')
-  if (prior.status === 'rejected') return DENY('invalid_lifecycle', 'already_rejected')
+  // §21.27 — REVOCATION IS AUTHORITY NARROWING, so losing a race must never be
+  // reported as success, and must never be silently dropped.
+  //
+  // A concurrent replan claims the position this revocation was aiming at. The
+  // replan does not enlarge authority — it only records a classification — so
+  // the right answer is to revoke at the NEXT position rather than to fail: the
+  // Executive asked for the delegation to stop, and a Manager's bookkeeping
+  // must not be able to defeat that by winning a millisecond.
+  //
+  // The retry re-reads the lineage and re-checks the lifecycle every time, so a
+  // concurrent REVOCATION is correctly seen as `already_revoked` instead of
+  // being written twice. It uses the principal established by `openFor` and
+  // NEVER re-authenticates: the session that passed the isolation check is the
+  // session that gets recorded (§21.19). Bounded, because an unbounded retry
+  // against a hostile writer is a spin, and after the bound the caller is told
+  // plainly that the revocation did NOT happen.
+  const ATTEMPTS = 3
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    if (prior.status === 'revoked') return DENY('invalid_lifecycle', 'already_revoked')
+    if (prior.status === 'rejected') return DENY('invalid_lifecycle', 'already_rejected')
 
-  const record: DelegationRecord = {
-    recordId: newId(),
-    envelopeId: prior.envelopeId,
-    projectId: prior.projectId,
-    actType: 'delegation.revoked',
-    occurredAt: at,
-    missionId: prior.missionId,
-    missionVersion: prior.missionVersion,
-    missionBoundHash: prior.missionBoundHash,
-    envelope: null,
-    rejections: [],
-    replan: null,
-    actorKind: 'executive_principal',
-    actorId: principal.userId,
-    note: args.note ?? null,
-    revokedReason: args.reason,
+    const record: DelegationRecord = {
+      recordId: newId(),
+      envelopeId: prior.envelopeId,
+      projectId: prior.projectId,
+      actType: 'delegation.revoked',
+      occurredAt: at,
+      missionId: prior.missionId,
+      missionVersion: prior.missionVersion,
+      missionBoundHash: prior.missionBoundHash,
+      envelope: null,
+      rejections: [],
+      replan: null,
+      actorKind: 'executive_principal',
+      actorId: principal.userId,
+      note: args.note ?? null,
+      revokedReason: args.reason,
+      lineageSequence: nextLineageSequence(records),
+    }
+
+    const result = await commit(store, record, records)
+    if (result.status !== 'conflict') return result
+
+    // Someone claimed the position. Re-read and try the next one.
+    const reopened = await openEnvelope(principal, store, args.envelopeId)
+    if ('status' in reopened) return reopened
+    prior = reopened.state
+    records = reopened.records
   }
 
-  return commit(store, record, records)
+  // Exhausted. The revocation did NOT happen, and says so.
+  return DENY('conflict', 'revocation_not_appended')
 }
 
 // Replan (Manager)
@@ -730,6 +763,7 @@ export async function recordDelegationReplan(
     actorId: MANAGER_ACTOR_ID,
     note: null,
     revokedReason: null,
+    lineageSequence: nextLineageSequence(records),
   }
 
   const result = await commit(store, record, records)

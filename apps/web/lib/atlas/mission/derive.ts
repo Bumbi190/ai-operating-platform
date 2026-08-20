@@ -88,6 +88,34 @@ export const MISSION_LIFECYCLE_ADVANCING: ReadonlySet<MissionActType> = new Set<
   'completed', 'partially_completed', 'failed', 'cancelled', 'superseded', 'archived',
 ])
 
+/**
+ * §20.92–§20.98 — the mission statuses from which nothing moves forward again.
+ *
+ * A mission in any of these has ENDED. `paused` is deliberately absent: §20.132
+ * pausing is reversible and `resumed` exists precisely to reverse it. `blocked`,
+ * `at_risk`, `ready` and `awaiting_*` are derived predicates, not endings.
+ *
+ * THE MISSION DOMAIN OWNS THIS. EI-S1.4C-R1 kept a private copy of the same six
+ * statuses inside the delegation write boundary, which is exactly how two lists
+ * of "what counts as finished" drift apart — and the read boundary had no copy
+ * at all, so a completed mission still authorized its delegations. One exported
+ * predicate, used by every boundary that asks the question.
+ *
+ * Being terminal is SEPARATE from holding authority. A completed mission can
+ * still carry an effective Authorization V1 proof, an unexpired deadline and an
+ * operational project mode — `evaluateMissionOperationalAuthority` would answer
+ * `authorized`, because it is answering a different question. Both must be
+ * asked, and a caller that asks only one gets a confident wrong answer.
+ */
+export const MISSION_TERMINAL_STATUSES: ReadonlySet<MissionStatus> = new Set<MissionStatus>([
+  'completed', 'partially_completed', 'failed', 'cancelled', 'superseded', 'archived',
+])
+
+/** Has this mission ended? Pure; no clock, no authority, no I/O. */
+export function isTerminalMissionStatus(status: MissionStatus): boolean {
+  return MISSION_TERMINAL_STATUSES.has(status)
+}
+
 /** The generation an act derived from this lineage belongs to. */
 export function missionLifecycleGenerationOf(records: MissionRecord[]): number {
   return records.reduce((n, r) => n + (MISSION_LIFECYCLE_ADVANCING.has(r.type) ? 1 : 0), 0)

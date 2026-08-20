@@ -25,6 +25,7 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolveMissionEvaluation, type MissionReadArgs } from '@/lib/atlas/mission/principal-read'
 import type { MissionAuthorityReason } from '@/lib/atlas/mission/types'
+import { isTerminalMissionStatus } from '@/lib/atlas/mission/derive'
 import { envelopeIsContained } from './attenuate'
 import { missionBoundHash } from './binding'
 import { registryAvailability } from './availability'
@@ -56,6 +57,14 @@ export type DelegationUnusableReason =
   | 'revoked'
   /** §21.14 — the parent Mission does not authorize movement. */
   | 'mission_not_authorized'
+  /**
+   * §21.27 — the parent Mission has ENDED (completed, partially completed,
+   * failed, cancelled, superseded or archived). Distinct from
+   * `mission_not_authorized`: a terminal Mission can still hold a perfectly
+   * effective authorization, so "not authorized" would be a false description
+   * of why the delegation stopped being usable.
+   */
+  | 'mission_ended'
   /** §21.15 — the Mission advanced past the pinned version. */
   | 'mission_version_changed'
   /** §21.15 — same version, but its delegable bounds no longer hash the same. */
@@ -159,6 +168,16 @@ export async function resolveDelegationEvaluation(
   // treating an unreadable parent as a permissive one.
   if (status !== 'ok' || !mission) return settle('invalidated', 'mission_unreadable', null)
 
+  // §21.27 — asked BEFORE authority, because a terminal Mission is the more
+  // precise and more actionable answer and it holds regardless of what the
+  // authorization seam says. A completed Mission whose Authorization V1 grant
+  // is still effective, whose deadline has not passed and whose project is
+  // still `active` reports `authorized` — and before EI-S1.4C-R2 that was
+  // enough to keep an accepted delegation usable, and to keep proving
+  // capability availability for a Mission that had already finished.
+  if (isTerminalMissionStatus(mission.state.status)) {
+    return settle('invalidated', 'mission_ended', mission.authority.reason)
+  }
   if (!mission.authority.authorized) {
     return settle('invalidated', 'mission_not_authorized', mission.authority.reason)
   }

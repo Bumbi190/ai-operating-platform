@@ -66,6 +66,15 @@
 --   act: V1 has no system act, and inventing one to populate the value would
 --   create an actor with no principal behind it.
 --
+--   ORDER IS A COLUMN, NOT A TIMESTAMP. §21.18 — every act claims one
+--   `lineage_sequence` position per envelope, unique and derived by the
+--   application from the exact lineage it read. That single column carries both
+--   causal order and optimistic concurrency, and it is deliberately NOT the
+--   mission ledger's `lifecycle_generation`: delegation has no annotations, so
+--   a replan consumes a position where a mission progress report would not.
+--   EI-S1.4C-R2 added it after a revocation and a replan were shown to race
+--   freely, with a random record_id deciding which came first.
+--
 --   NOTHING HERE EXECUTES ANYTHING. `tools` inside the envelope jsonb is a
 --   §21.13 MAXIMUM BOUND, not permission to invoke anything, and this migration
 --   creates no queue, no task, no trigger that dispatches work, and no path to
@@ -107,6 +116,30 @@ create table if not exists public.atlas_delegation_ledger (
     )),
 
   occurred_at         timestamptz not null default now(),
+
+  -- §21.18 — this act's immutable position in its envelope's lineage.
+  --
+  -- Every delegation act consumes one position: prepared is 0, and each later
+  -- act takes the next. DELIBERATELY NOT NAMED `lifecycle_generation`, because
+  -- it does not mean what that means on atlas_mission_ledger. There, an
+  -- annotation records something ABOUT a mission without moving it and consumes
+  -- no generation. Here there are no annotations: a Manager's replan is an
+  -- ordered institutional act, and whether it happened before or after an
+  -- Executive's revocation is exactly the question that must have one answer.
+  --
+  -- It does two jobs. As CAUSAL ORDER it replaces a wall-clock comparison that
+  -- fell through to a random record_id — before EI-S1.4C-R2 a revocation and a
+  -- replan written in the same millisecond had their order decided by whichever
+  -- UUID sorted first. As OPTIMISTIC CONCURRENCY the unique index below means
+  -- two writers who read the same lineage compute the same next position and
+  -- exactly one can append; the loser gets 23505, which the store surfaces as
+  -- `conflict`.
+  --
+  -- The APPLICATION derives it from the exact lineage it read. No caller
+  -- supplies it, and no default invents one: a position chosen by anyone who
+  -- did not read the lineage would defeat the whole invariant.
+  lineage_sequence    integer not null
+    constraint atlas_delegation_ledger_lineage_sequence_check check (lineage_sequence >= 0),
 
   -- ── The pin (§21.15) ────────────────────────────────────────────────────────
   -- WHICH mission, WHICH version, and WHAT that version said about the bounds
@@ -188,6 +221,14 @@ create table if not exists public.atlas_delegation_ledger (
     act_type <> 'delegation.rejected' or jsonb_array_length(rejections) > 0
   ),
 
+  -- §21.18 — the opening act of a lineage sits at position 0, and nothing else
+  -- does. Together with the unique index this makes "is this the first act"
+  -- answerable from one column instead of from a scan.
+  constraint atlas_delegation_ledger_prepared_position_check check (
+    (act_type = 'delegation.prepared' and lineage_sequence = 0)
+    or (act_type <> 'delegation.prepared' and lineage_sequence > 0)
+  ),
+
   -- §21.19 — a human act names its human; the Manager names itself. A row that
   -- claims an Executive acted without saying who is unattributable authority.
   constraint atlas_delegation_ledger_actor_shape_check check (
@@ -229,9 +270,9 @@ create table if not exists public.atlas_delegation_ledger (
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 
 -- Primary read: the ordered lineage of one envelope. Matches the pure core's
--- canonical order (occurred_at, then record_id).
+-- canonical order, which is the lineage position and nothing else.
 create index if not exists atlas_delegation_ledger_lineage_idx
-  on public.atlas_delegation_ledger (envelope_id, occurred_at, record_id);
+  on public.atlas_delegation_ledger (envelope_id, lineage_sequence);
 
 -- Project audit listing.
 create index if not exists atlas_delegation_ledger_project_idx
@@ -257,9 +298,24 @@ create index if not exists atlas_delegation_ledger_mission_idx
 -- The loser of any race gets a unique violation (23505), which the store
 -- surfaces as `conflict`, and no row is written.
 --
--- Replan acts are deliberately NOT serialized: they annotate an accepted
--- delegation without deciding anything, and two classifications recorded in the
--- same millisecond make no history less safe.
+-- EI-S1.4C-R2 corrected the gap those three indexes left. They serialized each
+-- act type against ITSELF and nothing against anything else, so a revocation
+-- and a replan raced freely: both persisted, and the derived order came down to
+-- a random record_id. Replans are NOT annotations — a Manager replanning after
+-- authority was withdrawn is a different history from replanning before — so
+-- the position index above serializes every act against every other act on the
+-- same envelope, and the three below remain as the type-specific invariants
+-- they always were.
+
+-- THE ORDERING INVARIANT. One writer per position, per envelope.
+--
+-- This is what makes a revocation and a replan mutually exclusive at the same
+-- point in history: both writers read the same lineage, both compute the same
+-- next position, and the database picks one. The loser re-reads and sees the
+-- act it did not know about, instead of appending beside it and leaving two
+-- rows whose order only a random identifier could decide.
+create unique index if not exists atlas_delegation_ledger_position_idx
+  on public.atlas_delegation_ledger (envelope_id, lineage_sequence);
 
 create unique index if not exists atlas_delegation_ledger_one_prepared_idx
   on public.atlas_delegation_ledger (envelope_id)

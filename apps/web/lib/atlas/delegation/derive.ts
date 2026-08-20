@@ -60,19 +60,32 @@ export const DELEGATION_DECIDING_ACTS: readonly DelegationActType[] = [
 ] as const
 
 /**
- * Deterministic order.
+ * Deterministic causal order.
  *
- * `occurredAt` first, then `recordId` as the tie-break. Two acts at the same
- * instant are a genuine ambiguity, so the tie-break is only ever applied to
- * ANNOTATION acts (replans), never to acts that decide authority — a same
- * instant collision between two deciding acts is rejected below rather than
- * settled by whichever identifier happens to sort first.
+ * `lineageSequence` FIRST, and it alone decides: it is unique per envelope, so
+ * the comparison is total before any other field is consulted. The remaining
+ * keys are unreachable stable tie-breaks, kept only so the sort never depends
+ * on input order if a lineage is ever read from somewhere that lost the
+ * uniqueness guarantee.
+ *
+ * WHY NOT `occurredAt` FIRST. A wall clock does not establish causality between
+ * two writers, and two acts stamped in the same millisecond fell through to
+ * `recordId` — a random UUID deciding whether a Manager's replan happened
+ * before or after an Executive's revocation. The sequence is derived from the
+ * lineage a writer actually READ, so it records what that writer knew, which is
+ * the only honest basis for "what came first".
  */
 export function orderDelegationRecords(records: DelegationRecord[]): DelegationRecord[] {
   return [...records].sort((a, b) => {
+    if (a.lineageSequence !== b.lineageSequence) return a.lineageSequence - b.lineageSequence
     if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? -1 : 1
     return a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : 0
   })
+}
+
+/** The position a new act must claim, given the exact lineage a writer read. */
+export function nextLineageSequence(records: DelegationRecord[]): number {
+  return records.length
 }
 
 export class MalformedDelegationError extends Error {}
@@ -93,6 +106,27 @@ export function deriveDelegationState(records: DelegationRecord[]): DerivedDeleg
 
   const ordered = orderDelegationRecords(records)
   const first = ordered[0]
+
+  // §21.18 — the positions must be exactly 0..n-1, each claimed once.
+  //
+  // Uniqueness is enforced by the database, and the write boundary derives each
+  // position from the lineage it read, so a gap or a duplicate cannot arise
+  // through the sanctioned path. Reaching one here means a row was written
+  // around that path, and a lineage whose causal order is ambiguous must stop
+  // the caller rather than hand back a plausible-looking envelope.
+  const seen = new Set<number>()
+  for (const r of ordered) {
+    if (!Number.isInteger(r.lineageSequence) || r.lineageSequence < 0) {
+      fail(`lineage sequence ${r.lineageSequence} is not a position`)
+    }
+    if (seen.has(r.lineageSequence)) fail(`lineage sequence ${r.lineageSequence} claimed twice`)
+    seen.add(r.lineageSequence)
+  }
+  for (let i = 0; i < ordered.length; i += 1) {
+    if (ordered[i].lineageSequence !== i) {
+      fail(`lineage sequence gap at position ${i}: found ${ordered[i].lineageSequence}`)
+    }
+  }
 
   if (first.actType !== 'delegation.prepared') {
     fail(`delegation lineage does not begin with prepared: ${first.actType}`)
@@ -176,6 +210,18 @@ export function deriveDelegationState(records: DelegationRecord[]): DerivedDeleg
   // A replan against an undecided or refused envelope has no work to replan.
   if (replans.length > 0 && decision?.actType !== 'delegation.accepted') {
     fail('replan recorded against a delegation that was never accepted')
+  }
+  // §21.27 — REVOCATION IS A HARD STOP. Authority ended at that position, so no
+  // Manager act may sit causally after it. Comparing positions rather than
+  // timestamps is the whole point: a replan stamped in the same millisecond as
+  // the revocation used to be ordered by a random identifier, which meant the
+  // same history could be read either way.
+  if (revocation) {
+    for (const r of replans) {
+      if (r.lineageSequence > revocation.lineageSequence) {
+        fail(`replan at position ${r.lineageSequence} follows revocation at ${revocation.lineageSequence}`)
+      }
+    }
   }
 
   let status: DelegationStatus = 'prepared'

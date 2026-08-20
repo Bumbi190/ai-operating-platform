@@ -41,6 +41,7 @@ import {
   activateMission,
   amendMission,
   approveMission,
+  failMission,
   observeMissionDependency,
   openMission,
   prepareMissionAct,
@@ -689,6 +690,71 @@ describe('live Mission invalidation collapses the proof (§21.14)', () => {
       store: delegations, mission: archived, source: toolRegistrySource,
     })
     expect((await proof(query(missionId))).tools).toBe(false)
+  })
+})
+
+describe('R2 — a terminal Mission ends the handoff (§21.27)', () => {
+  const query = (missionId: string) => ({
+    projectId: PROJECT_P, missionId, missionVersion: 1,
+    tools: BRIEF.tools, dataScope: BRIEF.dataScope,
+  })
+
+  it('a failed Mission makes the accepted delegation unusable', async () => {
+    const { store, missionId, approveGrant } = await approvedMission()
+    const delegations = new DelegationStore()
+    const mission = { store, projectMode, availability: toolRegistrySource }
+    const { envelopeId } = await acceptedDelegation(store, missionId, delegations)
+
+    const proof = availabilityFromAcceptedDelegation(envelopeId, {
+      store: delegations, mission, source: toolRegistrySource,
+    })
+    expect((await proof(query(missionId))).tools).toBe(true)
+
+    // §20.95 — the Mission ends. No delegation act is written; nothing revokes
+    // the envelope; the Manager's acceptance stays true of the past.
+    authorizationService([approveGrant])
+    const failed = await failMission({
+      missionId, reason: 'trial abandoned', store, now: T3, projectMode, availability: toolRegistrySource,
+    })
+    expect(`${failed.status}${failed.detail ? `:${failed.detail}` : ''}`).toBe('ok')
+
+    const after = await proof(query(missionId))
+    expect(after.tools).toBe(false)
+    expect(after.data).toBe(false)
+    expect(delegations.appended.length).toBe(2)
+    expect(delegations.appended.some(r => r.actType === 'delegation.revoked')).toBe(false)
+  })
+
+  it('and the delegation reports invalidated while staying historically accepted', async () => {
+    const { store, missionId, approveGrant } = await approvedMission()
+    const delegations = new DelegationStore()
+    const mission = { store, projectMode, availability: toolRegistrySource }
+    const { envelopeId } = await acceptedDelegation(store, missionId, delegations)
+
+    authorizationService([approveGrant])
+    await failMission({ missionId, reason: 'trial abandoned', store, now: T3, projectMode, availability: toolRegistrySource })
+
+    const pr = await import('@/lib/atlas/delegation/principal-read')
+    const { evaluation } = await pr.resolveDelegationEvaluation(envelopeId, { store: delegations, mission })
+    expect(evaluation!.lifecycleStatus).toBe('accepted')
+    expect(evaluation!.effectiveStatus).toBe('invalidated')
+    expect(evaluation!.reason).toBe('mission_ended')
+  })
+
+  it('a terminal Mission cannot be activated through the delegation proof', async () => {
+    const { store, missionId, approveGrant } = await approvedMission()
+    const delegations = new DelegationStore()
+    const { envelopeId } = await acceptedDelegation(store, missionId, delegations)
+
+    authorizationService([approveGrant])
+    await failMission({ missionId, reason: 'trial abandoned', store, now: T3, projectMode, availability: toolRegistrySource })
+
+    const proof = availabilityFromAcceptedDelegation(envelopeId, {
+      store: delegations, mission: { store, projectMode, availability: toolRegistrySource }, source: toolRegistrySource,
+    })
+    const activated = await tryActivate(store, missionId, proof, [approveGrant])
+    expect(activated.status).not.toBe('ok')
+    expect(store.appended.some(r => r.type === 'activated')).toBe(false)
   })
 })
 

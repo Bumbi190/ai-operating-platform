@@ -461,6 +461,35 @@ Canonical properties:
   `accepted` in the ledger while being unusable this second because the Mission behind it was
   cancelled, amended or expired (§21.27). Storing that would mean writing to an append-only
   ledger every time the world changed, so the live answer is computed on every read.
+- **A terminal Mission ends its delegations** (§21.27, EI-S1.4C-R2). Being *terminal* and
+  holding *authority* are different questions, and R1 asked only the second on the read path: a
+  completed, failed, cancelled, superseded, archived or partially-completed Mission whose
+  Authorization V1 grant was still effective, whose deadline had not passed and whose project
+  was still `active` reported `authorized` — so an accepted delegation stayed usable and kept
+  proving capability availability for a Mission that had already finished. `isTerminalMissionStatus`
+  now lives in the Mission domain and is asked by **both** delegation boundaries; the write
+  boundary's private six-status copy is gone. The historical acceptance is untouched:
+  `lifecycleStatus` stays `accepted`, `effectiveStatus` becomes `invalidated` with reason
+  `mission_ended`, and no revocation is fabricated to express that the work stopped.
+- **Order is a column, not a timestamp** (§21.18, EI-S1.4C-R2). Every act claims one
+  `lineage_sequence` position per envelope, unique and derived by the application from the exact
+  lineage it read. It is deliberately **not** the Mission ledger's `lifecycle_generation`: there,
+  annotations record something *about* a mission without moving it and consume no generation;
+  here there are no annotations, because whether a Manager's replan happened before or after an
+  Executive's revocation is precisely the question that must have one answer. Before R2 the two
+  raced freely — three indexes serialized each act type against *itself* and nothing against
+  anything else — and a revocation and a replan written in the same millisecond had their order
+  settled by whichever random `recordId` sorted first.
+- **Revocation is a hard stop** (§21.27). No Manager act may sit causally after it. The pure core
+  compares positions, not clocks, so the verdict cannot flip with a UUID; `accepted → replan →
+  revoked` remains valid history, and `accepted → revoked → replan` is refused.
+- **A revocation that loses a race still lands.** Authority narrowing must not be defeated by a
+  Manager winning a millisecond, so a revocation that collides with a concurrent replan retries
+  at the next position — bounded, re-reading and re-checking the lifecycle each time, and reusing
+  the principal `openFor` already established rather than re-authenticating. A collision with
+  another *revocation* is correctly seen as `already_revoked`. If the bound is exhausted the
+  caller is told plainly that the revocation did **not** happen (`conflict:
+  revocation_not_appended`) — it is never silently discarded and never reported as success.
 
 The existing Manager surface is unchanged: `planTasks(goal, projectId)` and every current
 caller behave exactly as before. The bounded path is new methods on the same `ManagerAgent` —
@@ -495,7 +524,8 @@ publishing and automatic project-mode changes.
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Mission schema | **APPLIED AND VERIFIED — BYTE_IDENTICAL** (ledger version `20260820054225`) |
 | Executive → Manager handoff | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
-| Delegation proof integrity | EI-S1.4C-R1 corrections applied |
+| Delegation proof integrity | EI-S1.4C-R1 and R2 corrections applied |
+| Delegation ordering | `lineage_sequence` — one writer per position per envelope |
 | Delegation migration | `apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql`, ledger name `atlas_delegation_ledger` |
 | Capability availability | **REAL CHECK SHIPPED** — reads proven against `DOMAIN_REGISTRY`; writes and all tools fail closed |
 | Activation availability proof | **ACCEPTED DELEGATION REQUIRED** — Mission-, version- and coverage-specific |

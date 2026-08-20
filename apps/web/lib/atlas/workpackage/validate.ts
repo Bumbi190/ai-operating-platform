@@ -31,6 +31,14 @@
 import { workPackageHash } from './binding'
 import type { StoredWorkPackage } from './store'
 
+/**
+ * The one value a canonical row's `source` may hold.
+ *
+ * Shared with the store's INSERT and with `LEGACY_TASK_FILTER` in the Manager,
+ * so the writer, the legacy exclusion and the re-proof cannot drift apart.
+ */
+export const WORK_PACKAGE_SOURCE = 'work_package'
+
 /** Why a persisted contract is not institutionally coherent. */
 export type StoredContractFault =
   | 'package_id_mismatch'
@@ -44,6 +52,10 @@ export type StoredContractFault =
   | 'hash_column_mismatch'
   | 'hash_recompute_mismatch'
   | 'project_missing'
+  /** The row does not identify itself as a canonical Work Package. */
+  | 'source_mismatch'
+  /** Its source key does not point back at its own package id. */
+  | 'source_key_mismatch'
 
 export interface StoredContractValidation {
   coherent: boolean
@@ -76,6 +88,18 @@ export function validateStoredWorkPackage(stored: StoredWorkPackage): StoredCont
   // §21.34 — WHO received it is part of the contract, so the column and the
   // payload must name the same role.
   if (json.assignedRole.roleId !== columns.workforceRoleId) faults.push('role_mismatch')
+
+  // EI-S1.4D-R3 — the persistence discriminator, re-proved institutionally.
+  //
+  // The database now enforces this with a NULL-safe CHECK, and that is not a
+  // reason to skip it here. Throughout Executive Stage 1 a structural DB
+  // invariant and a pure re-proof are expected to AGREE: the constraint governs
+  // rows written through Postgres, and this governs the object an authority
+  // decision is about to be made from. A canonical row that does not identify
+  // itself as one is excluded from legacy surfaces while claiming canonical
+  // status — or included in them while holding a contract.
+  if (columns.source !== WORK_PACKAGE_SOURCE) faults.push('source_mismatch')
+  if (columns.sourceKey !== columns.workPackageId) faults.push('source_key_mismatch')
 
   if (json.packageHash !== columns.workPackageHash) faults.push('hash_column_mismatch')
 

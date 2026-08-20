@@ -42,12 +42,12 @@ import {
 } from '@/lib/atlas/workpackage/attenuate'
 import { delegationBoundHash, workPackageHash } from '@/lib/atlas/workpackage/binding'
 import { evaluateRoleEligibility, type WorkforceRole } from '@/lib/atlas/workpackage/roles'
-import { validateStoredWorkPackage } from '@/lib/atlas/workpackage/validate'
+import { validateStoredWorkPackage, WORK_PACKAGE_SOURCE } from '@/lib/atlas/workpackage/validate'
 import { validateWorkPackageTerms, WORK_PACKAGE_V1_VERSION } from '@/lib/atlas/workpackage/attenuate'
-import { isCompleteCanonicalRow } from '@/lib/atlas/workpackage/store'
+import { assertAssignedContractCoherent, isCompleteCanonicalRow } from '@/lib/atlas/workpackage/store'
 import { assignWorkPackage, prepareWorkPackage } from '@/lib/atlas/workpackage/principal-write'
 import { isWorkPackageUsable, resolveWorkPackage, listProjectWorkPackages } from '@/lib/atlas/workpackage/principal-read'
-import type { StoredWorkPackage, WorkPackageStore } from '@/lib/atlas/workpackage/store'
+import type { StoredWorkPackage, StoredWorkPackageColumns, WorkPackageStore } from '@/lib/atlas/workpackage/store'
 import { WORK_PACKAGE_REJECTION_REASONS, type WorkPackage } from '@/lib/atlas/workpackage/types'
 
 const WP_DIR = resolve(__dirname, '../atlas/workpackage')
@@ -169,7 +169,7 @@ class FakeStore implements WorkPackageStore {
 }
 
 /** The relational half a coherent row would carry, derived from the JSON. */
-const columnsOf = (p: WorkPackage) => ({
+const columnsOf = (p: WorkPackage): StoredWorkPackageColumns => ({
   workPackageId: p.workPackageId,
   projectId: p.projectId,
   workPackageHash: p.packageHash,
@@ -179,6 +179,8 @@ const columnsOf = (p: WorkPackage) => ({
   missionVersion: p.missionVersion,
   missionBoundHash: p.missionBoundHash,
   workforceRoleId: p.assignedRole.roleId,
+  source: 'work_package',
+  sourceKey: p.workPackageId,
 })
 
 const roleReader = (roles: WorkforceRole[]) => async (id: string) => roles.find(r => r.roleId === id) ?? null
@@ -1084,7 +1086,7 @@ describe('R1 — the persisted contract must be internally coherent', () => {
     const { packageHash: _h, ...terms } = p
     return { ...p, packageHash: workPackageHash(terms as never) }
   }
-  const row = (p: WorkPackage, cols: Partial<ReturnType<typeof columnsOf>> = {}): StoredWorkPackage => ({
+  const row = (p: WorkPackage, cols: Partial<StoredWorkPackageColumns> = {}): StoredWorkPackage => ({
     taskId: 'task-1', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
     columns: { ...columnsOf(p), ...cols },
   })
@@ -1505,6 +1507,128 @@ describe('R2 — one assignment act, one authenticated principal (§21.19)', () 
   })
 })
 
+describe('R3 — the persistence discriminator is re-proved at read', () => {
+  const parent = envelopeOf()
+  const coherent = (): WorkPackage => {
+    const b = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+    if (!b.ok) throw new Error('fixture')
+    const withId = { ...b.package, workPackageId: 'wp-1' }
+    return { ...withId, packageHash: workPackageHash(withId) }
+  }
+  const row = (cols: Partial<StoredWorkPackageColumns> = {}): StoredWorkPackage => {
+    const p = coherent()
+    return {
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), ...cols },
+    }
+  }
+  const read = (stored: StoredWorkPackage) =>
+    resolveWorkPackage('wp-1', { store: new FakeStore([stored]), roleReader: roleReader([ROLE]) })
+
+  it('carries source and sourceKey through the persisted shape', () => {
+    const store = sources.find(s => s.file === 'store.ts')!.text
+    expect(store).toMatch(/source: string \| null/)
+    expect(store).toMatch(/sourceKey: string \| null/)
+    // And actually selects them, or they would always read back null.
+    expect(store).toMatch(/'workforce_role_id', 'assigned_at', 'source', 'source_key',/)
+    expect(store).toMatch(/source: row\.source/)
+    expect(store).toMatch(/sourceKey: row\.source_key/)
+  })
+
+  it('keeps them OUT of the Chapter 21 contract', () => {
+    // Persistence identity, not authority terms.
+    const types = readFileSync(resolve(WP_DIR, 'types.ts'), 'utf8')
+    const iface = types.slice(types.indexOf('export interface WorkPackage {'), types.indexOf('export type WorkPackageState'))
+    expect(iface).not.toMatch(/\bsource\b/)
+    expect(iface).not.toMatch(/sourceKey/)
+  })
+
+  it.each([
+    ['a NULL source', { source: null }],
+    ['a dream source', { source: 'dream' }],
+    ['a mismatched source key', { sourceKey: 'someone-elses-id' }],
+    ['a NULL source key', { sourceKey: null }],
+  ] as const)('REFUSES an otherwise-coherent row with %s', async (_name, cols) => {
+    const { evaluation, status } = await read(row(cols as never))
+    expect(status).toBe('malformed')
+    expect(evaluation).toBeNull()
+  })
+
+  it('names the specific fault', () => {
+    const p = coherent()
+    const v = validateStoredWorkPackage({
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), source: null, sourceKey: 'wrong' },
+    })
+    expect(v.coherent).toBe(false)
+    expect(v.faults).toContain('source_mismatch')
+    expect(v.faults).toContain('source_key_mismatch')
+  })
+
+  it('accepts the correct discriminator', async () => {
+    const { evaluation } = await read(row())
+    expect(evaluation!.usable).toBe(true)
+    expect(WORK_PACKAGE_SOURCE).toBe('work_package')
+  })
+
+  it('a foreign malformed row stays existence-oracle safe', async () => {
+    // Malformed AND in another project: the scope check comes first, so it is
+    // indistinguishable from a row that does not exist.
+    const stored = row({ projectId: PROJECT_Q, source: null })
+    const { evaluation, status } = await resolveWorkPackage('wp-1', {
+      store: new FakeStore([stored]), roleReader: roleReader([ROLE]),
+    })
+    expect(status).toBe('not_permitted')
+    expect(evaluation).toBeNull()
+  })
+
+  it('listings drop rows with a broken discriminator', async () => {
+    const store = new FakeStore([row({ source: 'dream' })])
+    const { packages } = await listProjectWorkPackages(PROJECT_P, { store })
+    expect(packages).toEqual([])
+  })
+
+  it('the writer, the legacy filter and the re-proof share one value', () => {
+    const store = sources.find(s => s.file === 'store.ts')!.text
+    const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
+    expect(store).toMatch(/source: 'work_package'/)
+    expect(store).toMatch(/source_key: p\.workPackageId/)
+    expect(manager).toMatch(/source\.neq\.work_package/)
+    expect(WORK_PACKAGE_SOURCE).toBe('work_package')
+  })
+
+  it('assignment re-proves the contract the database returned', () => {
+    const store = sources.find(s => s.file === 'store.ts')!.text
+    const assign = store.slice(store.indexOf('async assign('), store.indexOf('async byPackageId'))
+    expect(assign).toMatch(/assertAssignedContractCoherent\(stored\)/)
+  })
+
+  it.each([
+    ['a NULL source', { source: null }],
+    ['a mismatched source key', { sourceKey: 'wrong' }],
+    ['a drifted mission pin', { missionVersion: 9 }],
+  ] as const)('the return-path guard THROWS on %s', (_name, cols) => {
+    // Exercised directly: a source-text assertion cannot tell whether the guard
+    // still runs, and the fake store has its own `assign`.
+    expect(() => assertAssignedContractCoherent(row(cols as never)))
+      .toThrow(/incoherent contract/)
+  })
+
+  it('the return-path guard passes a coherent contract', () => {
+    expect(() => assertAssignedContractCoherent(row())).not.toThrow()
+  })
+
+  it('a real assignment produces a coherent, discriminated contract', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('ok')
+    const stored = store.assigned[0]
+    expect(stored.columns.source).toBe('work_package')
+    expect(stored.columns.sourceKey).toBe(stored.workPackage.workPackageId)
+    expect(validateStoredWorkPackage(stored).coherent).toBe(true)
+  })
+})
+
 describe('migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8')
 
@@ -1595,9 +1719,39 @@ describe('migration', () => {
     expect(sql).toMatch(/source = 'work_package' and source_key = work_package_id::text/)
   })
 
-  it('forbids a legacy row from CLAIMING to be a work package (R2)', () => {
-    const check = sql.slice(sql.indexOf('manager_tasks_work_package_source_check'))
-    expect(check.slice(0, 700)).toMatch(/else source is null or source <> 'work_package'/)
+  it('forbids a legacy row from CLAIMING to be a work package (R2/R3)', () => {
+    const check = sql.slice(sql.lastIndexOf('manager_tasks_work_package_source_check'))
+    // NULL-safe form: `IS DISTINCT FROM` never returns NULL, so the legacy
+    // branch cannot be satisfied by absence.
+    expect(check.slice(0, 700)).toMatch(/else source is distinct from 'work_package'/)
+  })
+
+  it('the canonical branch cannot be satisfied by NULL (R3)', () => {
+    // THE FINDING. A PostgreSQL CHECK rejects only FALSE — NULL satisfies it —
+    // so `source = 'work_package' and source_key = …` passed for a canonical row
+    // with a NULL source, because the comparison evaluated to NULL. `IS TRUE`
+    // collapses that to false. A regex alone cannot prove runtime SQL
+    // semantics, which is why the truth table was run against real PostgreSQL;
+    // this test exists to stop the protection being removed.
+    const check = sql.slice(sql.lastIndexOf('manager_tasks_work_package_source_check'))
+    const body = check.slice(0, 700)
+    expect(body).toMatch(/\(source = 'work_package' and source_key = work_package_id::text\) is true/)
+    // The bare, NULL-permitting form must not reappear.
+    expect(body).not.toMatch(/then source = 'work_package' and source_key = work_package_id::text\s*$/m)
+  })
+
+  it('neither CHECK branch can return NULL (R3)', () => {
+    const check = sql.slice(sql.lastIndexOf('manager_tasks_work_package_source_check'))
+    const body = check.slice(0, 700)
+    expect(body).toMatch(/is true/)                    // canonical branch
+    expect(body).toMatch(/is distinct from/)           // legacy branch
+  })
+
+  it('does not globally constrain legacy source_key (R3)', () => {
+    // A legacy row may keep any source_key, including NULL. Only the canonical
+    // branch ties it to the package id.
+    const check = sql.slice(sql.lastIndexOf('manager_tasks_work_package_source_check'))
+    expect(check.slice(0, 700)).not.toMatch(/else[\s\S]{0,120}source_key/)
   })
 
   it('leaves other legacy source values alone (R2)', () => {

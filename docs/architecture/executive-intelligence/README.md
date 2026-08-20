@@ -606,6 +606,14 @@ Canonical properties:
   `work_package_id`), frozen once written, and a legacy row may not CLAIM to be a Work Package
   without a complete contract. Other legacy `source` values — NULL, `dream`, anything else — are
   untouched.
+  The canonical branch is **NULL-safe** (EI-S1.4D-R3): a PostgreSQL CHECK rejects only FALSE, so
+  `source = 'work_package' AND source_key = …` *passed* for a canonical row with a NULL source,
+  because the comparison evaluated to NULL rather than false. `IS TRUE` and `IS DISTINCT FROM`
+  now make both branches total. Verified against real PostgreSQL, not by reading the SQL — and
+  the discriminator is re-proved institutionally at read as well, since a DB constraint governs
+  rows written through Postgres while the pure re-proof governs the object an authority decision
+  is about to be made from. `source`/`sourceKey` are persistence identity and are deliberately
+  **not** part of the Chapter 21 contract JSON.
 - **Assignment history is not deletable** (§21.42, EI-S1.4D-R2). `manager_tasks.project_id`
   references `projects(id)` **ON DELETE CASCADE** — verified against the production catalog — so
   deleting a project would have silently erased every Work Package assigned within it. A

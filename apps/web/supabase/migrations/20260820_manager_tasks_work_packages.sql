@@ -180,6 +180,27 @@ begin
   --
   -- Legacy `source` values are otherwise untouched: NULL, 'dream' and anything
   -- else stay exactly as valid as they were.
+  -- NULL-SAFETY IS THE WHOLE POINT HERE (EI-S1.4D-R3).
+  --
+  -- A PostgreSQL CHECK rejects only FALSE. NULL SATISFIES IT. The R2 form read
+  -- `source = 'work_package' and source_key = work_package_id::text`, which
+  -- evaluates to NULL — not false — when either column is NULL, so a canonical
+  -- row with no `source` at all passed the constraint and walked straight back
+  -- into the legacy ACTIVE MANAGER TASKS surface the discriminator exists to
+  -- keep it out of. Verified against real PostgreSQL rather than by reading:
+  --
+  --   canonical, source NULL       → NULL → passed   (now FALSE → rejected)
+  --   canonical, source_key NULL   → NULL → passed   (now FALSE → rejected)
+  --   canonical, both NULL         → NULL → passed   (now FALSE → rejected)
+  --   canonical, exact             → TRUE            (unchanged)
+  --   canonical, source 'dream'    → FALSE           (unchanged)
+  --   legacy, source NULL          → TRUE            (unchanged)
+  --   legacy, source 'dream'       → TRUE            (unchanged)
+  --   legacy, claims work_package  → FALSE           (unchanged)
+  --
+  -- `IS TRUE` collapses NULL to false on the canonical branch, and
+  -- `IS DISTINCT FROM` does the same for the legacy branch's NULL comparison.
+  -- Neither branch can return NULL for any row.
   if not exists (
     select 1 from pg_constraint
     where conrelid = 'public.manager_tasks'::regclass
@@ -189,8 +210,8 @@ begin
       add constraint manager_tasks_work_package_source_check check (
         case
           when work_package_id is not null
-            then source = 'work_package' and source_key = work_package_id::text
-          else source is null or source <> 'work_package'
+            then (source = 'work_package' and source_key = work_package_id::text) is true
+          else source is distinct from 'work_package'
         end
       );
   end if;

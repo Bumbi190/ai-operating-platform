@@ -32,6 +32,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { WorkPackage } from './types'
+import { validateStoredWorkPackage } from './validate'
 
 type AnyDb = any
 
@@ -49,6 +50,18 @@ type AnyDb = any
 export interface StoredWorkPackageColumns {
   workPackageId: string
   projectId: string | null
+  /**
+   * The persistence discriminator (EI-S1.4D-R3).
+   *
+   * NOT Chapter 21 authority terms — deliberately absent from the WorkPackage
+   * JSON. They are how the ROW identifies itself to the platform, and R2 made
+   * them load-bearing: legacy Manager surfaces exclude canonical rows by
+   * `source`, so a row that lost it would reappear as an ACTIVE MANAGER TASK.
+   * Carried here so the institutional re-proof can check them rather than
+   * trusting the database constraint alone.
+   */
+  source: string | null
+  sourceKey: string | null
   workPackageHash: string
   delegationEnvelopeId: string
   delegationBoundHash: string
@@ -103,6 +116,8 @@ interface Row {
   mission_bound_hash: string | null
   workforce_role_id: string | null
   assigned_at: string | null
+  source: string | null
+  source_key: string | null
 }
 
 const COLS = [
@@ -110,7 +125,7 @@ const COLS = [
   'work_package_id', 'work_package', 'work_package_hash',
   'delegation_envelope_id', 'delegation_bound_hash',
   'mission_id', 'mission_version', 'mission_bound_hash',
-  'workforce_role_id', 'assigned_at',
+  'workforce_role_id', 'assigned_at', 'source', 'source_key',
 ].join(', ')
 
 /**
@@ -173,6 +188,8 @@ function rowToStored(row: Row): StoredWorkPackage | null {
       missionVersion: row.mission_version,
       missionBoundHash: row.mission_bound_hash,
       workforceRoleId: row.workforce_role_id,
+      source: row.source,
+      sourceKey: row.source_key,
     },
     assignedAt: row.assigned_at ?? row.created_at ?? '',
     legacyStatus: row.status,
@@ -223,6 +240,8 @@ class PostgresWorkPackageStore implements WorkPackageStore {
     }
     const stored = rowToStored(data as Row)
     if (!stored) throw new Error('[manager-tasks-work-package] assign returned no contract')
+
+    assertAssignedContractCoherent(stored)
     return stored
   }
 
@@ -251,8 +270,33 @@ class PostgresWorkPackageStore implements WorkPackageStore {
   }
 }
 
+/**
+ * EI-S1.4D-R3 — prove what came BACK, not just what went in.
+ *
+ * The row is read back from the database anyway, so re-proving it costs one
+ * pure call. If a default, trigger or constraint ever produced a canonical row
+ * whose discriminator or pins did not agree with its contract, reporting that
+ * assignment as successful would put an incoherent package into circulation
+ * with a green result. Fail closed instead: the caller sees `unavailable`, and
+ * nothing has executed either way.
+ *
+ * Exported so the guard is exercised directly rather than only through a live
+ * query — a source-text assertion cannot tell whether it still runs.
+ */
+export function assertAssignedContractCoherent(stored: StoredWorkPackage): void {
+  const validation = validateStoredWorkPackage(stored)
+  if (!validation.coherent) {
+    throw new WorkPackageIncoherentError(
+      `[manager-tasks-work-package] assign produced an incoherent contract: ${validation.faults.join(',')}`,
+    )
+  }
+}
+
 /** Raised when the database refuses a duplicate canonical package. */
 export class WorkPackageConflictError extends Error {}
+
+/** Raised when a freshly written canonical row does not prove coherent. */
+export class WorkPackageIncoherentError extends Error {}
 
 export function createWorkPackageStore(): WorkPackageStore {
   return new PostgresWorkPackageStore()

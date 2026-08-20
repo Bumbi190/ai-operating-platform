@@ -45,6 +45,23 @@ import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+/**
+ * EI-S1.4D-R1 — the legacy/canonical discriminator for `manager_tasks`.
+ *
+ * Canonical Chapter 21 Work Packages are stored in this table with
+ * `source = 'work_package'`. Legacy surfaces that mean "operator-created or
+ * planTasks work the Manager is actively coordinating" must exclude them: a
+ * §21.42 assigned package has been RECEIVED and not started, and nothing in
+ * this codebase executes from a `manager_tasks` row, so surfacing one as an
+ * active task would be a claim the system cannot back.
+ *
+ * The NULL branch is load-bearing. Every legacy row predates the `source`
+ * column or was written without it, and `source <> 'work_package'` alone
+ * evaluates to NULL — not true — for those rows, silently hiding the entire
+ * existing task list. Written once here so no consumer can get it subtly wrong.
+ */
+export const LEGACY_TASK_FILTER = 'source.is.null,source.neq.work_package'
+
 // ─── System prompt ────────────────────────────────────────────────────────────
 
 const MANAGER_SYSTEM_PROMPT = `You are the Manager Agent of an AI Operating System — a platform that coordinates multiple AI-powered businesses and workflows.
@@ -166,6 +183,13 @@ export class ManagerAgent {
           .from('manager_tasks')
           .select('*')
           .in('status', ['pending', 'in_progress'])
+          // EI-S1.4D-R1: canonical Work Packages share this table but NOT its
+          // legacy semantics. A §21.42 `assigned` package has been RECEIVED and
+          // not started, so rendering it under "ACTIVE MANAGER TASKS" would tell
+          // the Manager work is in flight that nothing has begun.
+          // `source IS NULL OR source <> 'work_package'` — the null branch
+          // matters: every legacy row predates the column and must stay visible.
+          .or(`${LEGACY_TASK_FILTER}`)
           .order('created_at', { ascending: false })
           .limit(15), allowedProjectIds),
 
@@ -431,11 +455,21 @@ Return ONLY valid JSON:
 
   // ── DB operations (no LLM cost) ────────────────────────────────────────────
 
+  /**
+   * Legacy ACTIVE tasks — operator-created and `planTasks` work.
+   *
+   * Canonical Work Packages are excluded (EI-S1.4D-R1). They live in the same
+   * table but mean something different: §21.42 `assigned` is "received", not
+   * "in progress", and a caller asking for active legacy tasks is not asking
+   * about the Executive authority chain. `readWorkPackage` is the Work
+   * Package-aware path.
+   */
   async getActiveTasks(projectId?: string): Promise<ManagerTask[]> {
     let query = this.db
       .from('manager_tasks')
       .select('*')
       .in('status', ['pending', 'in_progress'])
+      .or(`${LEGACY_TASK_FILTER}`)
       .order('created_at', { ascending: false })
       .limit(20)
 

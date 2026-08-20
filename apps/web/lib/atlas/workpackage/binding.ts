@@ -69,7 +69,13 @@ export function workPackageBoundProjection(pkg: Omit<WorkPackage, 'packageHash'>
     projectId:           pkg.projectId,
     // §21.34 — WHO it was assigned to is part of the contract. Reassigning is a
     // different package, not an edit to this one.
-    assignedRole:        { roleId: pkg.assignedRole.roleId },
+    //
+    // The NAME is covered too (EI-S1.4D-R1). It authorizes nothing — `roleId` is
+    // what the registry resolves — but it is the label an auditor reads off the
+    // stored record, and hashing only the id left it silently editable by any
+    // writer that bypassed the database trigger. A contract whose audit label
+    // can drift from its authority is not fully sealed.
+    assignedRole:        { roleId: pkg.assignedRole.roleId, roleName: pkg.assignedRole.roleName },
 
     taskObjective:       pkg.taskObjective,
     inputs:              sorted(pkg.inputs),

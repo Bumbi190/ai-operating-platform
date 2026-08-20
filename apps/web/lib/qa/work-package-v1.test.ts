@@ -41,7 +41,9 @@ import {
   type WorkPackageRequest,
 } from '@/lib/atlas/workpackage/attenuate'
 import { delegationBoundHash, workPackageHash } from '@/lib/atlas/workpackage/binding'
-import { evaluateRoleFitness, type WorkforceRole } from '@/lib/atlas/workpackage/roles'
+import { evaluateRoleEligibility, type WorkforceRole } from '@/lib/atlas/workpackage/roles'
+import { validateStoredWorkPackage } from '@/lib/atlas/workpackage/validate'
+import { isCompleteCanonicalRow } from '@/lib/atlas/workpackage/store'
 import { assignWorkPackage, prepareWorkPackage } from '@/lib/atlas/workpackage/principal-write'
 import { isWorkPackageUsable, resolveWorkPackage, listProjectWorkPackages } from '@/lib/atlas/workpackage/principal-read'
 import type { StoredWorkPackage, WorkPackageStore } from '@/lib/atlas/workpackage/store'
@@ -156,6 +158,7 @@ class FakeStore implements WorkPackageStore {
     }
     const stored: StoredWorkPackage = {
       taskId: randomUUID(), workPackage: input.workPackage, assignedAt: input.at, legacyStatus: 'pending',
+      columns: columnsOf(input.workPackage),
     }
     this.assigned.push(stored); this.rows.push(stored); return stored
   }
@@ -163,6 +166,19 @@ class FakeStore implements WorkPackageStore {
   async byEnvelope(e: string) { return this.rows.filter(r => r.workPackage.envelopeId === e) }
   async byProject(p: string) { return this.rows.filter(r => r.workPackage.projectId === p) }
 }
+
+/** The relational half a coherent row would carry, derived from the JSON. */
+const columnsOf = (p: WorkPackage) => ({
+  workPackageId: p.workPackageId,
+  projectId: p.projectId,
+  workPackageHash: p.packageHash,
+  delegationEnvelopeId: p.envelopeId,
+  delegationBoundHash: p.delegationBoundHash,
+  missionId: p.missionId,
+  missionVersion: p.missionVersion,
+  missionBoundHash: p.missionBoundHash,
+  workforceRoleId: p.assignedRole.roleId,
+})
 
 const roleReader = (roles: WorkforceRole[]) => async (id: string) => roles.find(r => r.roleId === id) ?? null
 
@@ -525,19 +541,19 @@ describe('parent pin (§21.14/§21.15)', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('workforce role fitness', () => {
-  const fit = (over: Parameters<typeof evaluateRoleFitness>[0]) => evaluateRoleFitness(over)
+  const fit = (over: Parameters<typeof evaluateRoleEligibility>[0]) => evaluateRoleEligibility(over)
 
   it('accepts a real role in the right project with provable data', () => {
     const r = fit({
       role: ROLE, projectId: PROJECT_P, tools: [],
       dataScope: [{ resource: 'runs', access: 'read' }], provenTools: new Set(),
     })
-    expect(r.fit).toBe(true)
+    expect(r.eligible).toBe(true)
   })
 
   it('REFUSES an unknown role', () => {
     const r = fit({ role: null, projectId: PROJECT_P, tools: [], dataScope: [], provenTools: new Set() })
-    expect(r.fit).toBe(false)
+    expect(r.eligible).toBe(false)
     expect(r.reason).toBe('role_not_found')
   })
 
@@ -546,7 +562,7 @@ describe('workforce role fitness', () => {
       role: { ...ROLE, projectId: PROJECT_Q }, projectId: PROJECT_P,
       tools: [], dataScope: [], provenTools: new Set(),
     })
-    expect(r.fit).toBe(false)
+    expect(r.eligible).toBe(false)
     expect(r.reason).toBe('role_project_mismatch')
   })
 
@@ -555,8 +571,8 @@ describe('workforce role fitness', () => {
       role: ROLE, projectId: PROJECT_P, tools: [],
       dataScope: [{ resource: 'platform_tokens', access: 'read' }], provenTools: new Set(),
     })
-    expect(r.fit).toBe(false)
-    expect(r.reason).toBe('data_access_unprovable')
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('data_domain_unsanctioned')
   })
 
   it('REFUSES write access — the registry proves reads only', () => {
@@ -564,7 +580,7 @@ describe('workforce role fitness', () => {
       role: ROLE, projectId: PROJECT_P, tools: [],
       dataScope: [{ resource: 'runs', access: 'write' }], provenTools: new Set(),
     })
-    expect(r.fit).toBe(false)
+    expect(r.eligible).toBe(false)
   })
 
   it('REFUSES a tool the parent Delegation never proved', () => {
@@ -572,8 +588,8 @@ describe('workforce role fitness', () => {
       role: ROLE, projectId: PROJECT_P, tools: [{ tool: 'ssh' }],
       dataScope: [], provenTools: new Set(),
     })
-    expect(r.fit).toBe(false)
-    expect(r.reason).toBe('tool_access_unprovable')
+    expect(r.eligible).toBe(false)
+    expect(r.reason).toBe('tool_unproven_at_parent')
   })
 
   it('accepts a tool the parent Delegation already proved', () => {
@@ -581,13 +597,13 @@ describe('workforce role fitness', () => {
       role: ROLE, projectId: PROJECT_P, tools: [{ tool: 'repo_read', restriction: 'apps/web only' }],
       dataScope: [], provenTools: new Set(['repo_read apps/web only']),
     })
-    expect(r.fit).toBe(true)
+    expect(r.eligible).toBe(true)
   })
 
   it('never infers capability from declared skills', () => {
     const src = readFileSync(resolve(WP_DIR, 'roles.ts'), 'utf8')
     // `declaredSkills` is carried for reporting and must never gate fitness.
-    const fitnessFn = src.slice(src.indexOf('export function evaluateRoleFitness'))
+    const fitnessFn = src.slice(src.indexOf('export function evaluateRoleEligibility'))
     expect(fitnessFn).not.toMatch(/declaredSkills/)
   })
 
@@ -722,7 +738,10 @@ describe('the parent Delegation is the authority (§21.14)', () => {
       if (!b.ok) throw new Error('fixture')
       return { ...b.package, workPackageId: 'pred-1', packageHash: 'h', projectId: PROJECT_Q }
     })()) } as WorkPackage
-    const store = new FakeStore([{ taskId: 't', workPackage: foreignPkg, assignedAt: T0, legacyStatus: 'pending' }])
+    const store = new FakeStore([{
+      taskId: 't', workPackage: foreignPkg, assignedAt: T0, legacyStatus: 'pending',
+      columns: columnsOf(foreignPkg),
+    }])
     const r = await assignWorkPackage(writeArgs(store, {
       request: baseRequest({
         dependencies: [{
@@ -818,8 +837,14 @@ describe('assigned, and what unmakes it', () => {
   it('a moved Mission pin makes it unusable', async () => {
     const { store, id } = await assign()
     const stored = store.assigned[0].workPackage
-    // Force the stored package to disagree with a still-consistent envelope.
+    // Force the stored package to disagree with a still-consistent envelope,
+    // keeping the relational half in step so the R1 coherence seam is not what
+    // catches it — the mission-pin check must be.
     ;(stored as { missionVersion: number }).missionVersion = 99
+    store.assigned[0].columns = { ...columnsOf(stored), workPackageHash: stored.packageHash }
+    store.assigned[0].workPackage.packageHash = workPackageHash(
+      (({ packageHash: _h, ...t }) => t)(stored) as never)
+    store.assigned[0].columns.workPackageHash = store.assigned[0].workPackage.packageHash
     delegationSays(delegationEvaluation())
     const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
     // The pin is checked BEFORE containment, so the reported reason names the
@@ -833,6 +858,10 @@ describe('assigned, and what unmakes it', () => {
     const { store, id } = await assign()
     const stored = store.assigned[0].workPackage
     ;(stored as { allowedActions: { action: string }[] }).allowedActions = [{ action: 'deploy_production' }]
+    // Re-seal the contract so containment, not coherence, is what refuses it.
+    store.assigned[0].workPackage.packageHash = workPackageHash(
+      (({ packageHash: _h, ...t }) => t)(stored) as never)
+    store.assigned[0].columns = columnsOf(store.assigned[0].workPackage)
     delegationSays(delegationEvaluation())
     const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
     expect(evaluation!.reason).toBe('exceeds_delegation')
@@ -995,6 +1024,310 @@ describe('existing Manager surface is untouched', () => {
   })
 })
 
+// ────────────────────────────────────────────────────────────────────────────
+// 9. EI-S1.4D-R1 — persistence integrity and legacy isolation
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('R1 — canonical packages are isolated from legacy task semantics', () => {
+  const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
+
+  it('exports ONE discriminator, written once so no consumer gets it wrong', () => {
+    expect(manager).toMatch(/export const LEGACY_TASK_FILTER = 'source\.is\.null,source\.neq\.work_package'/)
+  })
+
+  it('the NULL branch is present — legacy rows predate the source column', () => {
+    // `source <> 'work_package'` alone is NULL, not true, for a legacy row, so
+    // omitting the null branch would silently hide the entire existing task list.
+    expect(manager).toMatch(/source\.is\.null/)
+  })
+
+  it('buildContext excludes canonical Work Packages', () => {
+    const ctx = manager.slice(manager.indexOf("from('manager_tasks')"))
+    const query = ctx.slice(0, 700)
+    expect(query).toMatch(/\.in\('status', \['pending', 'in_progress'\]\)/)
+    expect(query).toMatch(/LEGACY_TASK_FILTER/)
+  })
+
+  it('getActiveTasks excludes canonical Work Packages', () => {
+    const fn = manager.slice(manager.indexOf('async getActiveTasks'))
+    expect(fn.slice(0, 700)).toMatch(/LEGACY_TASK_FILTER/)
+  })
+
+  it('every legacy active-task query carries the filter', () => {
+    // Both places that select pending/in_progress must be covered; a third
+    // appearing later without the filter fails here.
+    const active = [...manager.matchAll(/\.in\('status', \['pending', 'in_progress'\]\)/g)]
+    expect(active.length).toBe(2)
+    for (const m of active) {
+      const window = manager.slice(m.index!, m.index! + 700)
+      expect(window).toMatch(/LEGACY_TASK_FILTER/)
+    }
+  })
+
+  it('the store still marks canonical rows with the discriminator', () => {
+    const store = sources.find(s => s.file === 'store.ts')!.text
+    expect(store).toMatch(/source: 'work_package'/)
+  })
+})
+
+describe('R1 — the persisted contract must be internally coherent', () => {
+  const parent = envelopeOf()
+  const built = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+  const coherent = (): WorkPackage => {
+    if (!built.ok) throw new Error('fixture')
+    const withId = { ...built.package, workPackageId: 'wp-1' }
+    return { ...withId, packageHash: workPackageHash(withId) }
+  }
+  /** Re-seal a tampered contract so its own hash is valid again. */
+  const reseal = (p: WorkPackage): WorkPackage => {
+    const { packageHash: _h, ...terms } = p
+    return { ...p, packageHash: workPackageHash(terms as never) }
+  }
+  const row = (p: WorkPackage, cols: Partial<ReturnType<typeof columnsOf>> = {}): StoredWorkPackage => ({
+    taskId: 'task-1', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+    columns: { ...columnsOf(p), ...cols },
+  })
+  const read = (stored: StoredWorkPackage) =>
+    resolveWorkPackage('wp-1', { store: new FakeStore([stored]), roleReader: roleReader([ROLE]) })
+
+  it('a well-formed persisted package remains usable', async () => {
+    const { evaluation, status } = await read(row(coherent()))
+    expect(status).toBe('ok')
+    expect(evaluation!.usable).toBe(true)
+  })
+
+  it.each([
+    ['work package id', { workPackageId: 'other-id' }],
+    ['project', { projectId: PROJECT_Q }],
+    ['delegation envelope', { delegationEnvelopeId: 'other-envelope' }],
+    ['delegation pin', { delegationBoundHash: 'a'.repeat(64) }],
+    ['mission id', { missionId: 'other-mission' }],
+    ['mission version', { missionVersion: 9 }],
+    ['mission pin', { missionBoundHash: 'b'.repeat(64) }],
+    ['assigned role', { workforceRoleId: ROLE_FOREIGN }],
+    ['package hash', { workPackageHash: 'c'.repeat(64) }],
+  ] as const)('REFUSES a row whose relational %s disagrees with the JSON', async (_name, cols) => {
+    const stored = row(coherent(), cols as never)
+    // The relational project is what decides access, so a project mismatch is
+    // refused as not-permitted; every other mismatch is a malformed own row.
+    const { evaluation, status } = await read(stored)
+    expect(evaluation).toBeNull()
+    expect(['malformed', 'not_permitted']).toContain(status)
+  })
+
+  it('REFUSES a row whose JSON claims a project its column does not', async () => {
+    // The dangerous direction: the row physically belongs to the caller's
+    // project, so scope lets it through — and only coherence can catch that its
+    // payload claims somewhere else. A foreign RELATIONAL project is refused
+    // earlier as not-permitted, so this is the case the fault code exists for.
+    const p = { ...coherent(), projectId: PROJECT_Q }
+    const { evaluation, status } = await read({
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), projectId: PROJECT_P, workPackageHash: p.packageHash },
+    })
+    expect(status).toBe('malformed')
+    expect(evaluation).toBeNull()
+    expect(validateStoredWorkPackage({
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), projectId: PROJECT_P },
+    }).faults).toContain('project_mismatch')
+  })
+
+  it('rejects an incomplete canonical row before it becomes an object', () => {
+    const complete = {
+      work_package: {}, work_package_id: 'wp-1', work_package_hash: 'h',
+      delegation_envelope_id: 'e', delegation_bound_hash: 'd',
+      mission_id: 'm', mission_version: 1, mission_bound_hash: 'mb',
+      workforce_role_id: 'r',
+    }
+    expect(isCompleteCanonicalRow(complete)).toBe(true)
+    // Every pin is load-bearing: dropping any one makes the row unparseable
+    // rather than a package with a missing field.
+    for (const key of Object.keys(complete)) {
+      const missing = { ...complete, [key]: key === 'mission_version' ? null : null }
+      expect(isCompleteCanonicalRow(missing as never), key).toBe(false)
+    }
+  })
+
+  it('a relational project mismatch never leaks the row', async () => {
+    const { status } = await read(row(coherent(), { projectId: PROJECT_Q }))
+    // Scope comes from the COLUMN, so this row is simply not the caller's.
+    expect(status).toBe('not_permitted')
+  })
+
+  it('a malformed own-project row is reported as malformed, never usable', async () => {
+    const { evaluation, status } = await read(row(coherent(), { missionVersion: 9 }))
+    expect(status).toBe('malformed')
+    expect(evaluation).toBeNull()
+  })
+})
+
+describe('R1 — the package self-hash is verified, not merely stored', () => {
+  const parent = envelopeOf()
+  const built = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+  const coherent = (): WorkPackage => {
+    if (!built.ok) throw new Error('fixture')
+    const withId = { ...built.package, workPackageId: 'wp-1' }
+    return { ...withId, packageHash: workPackageHash(withId) }
+  }
+  /** Tamper with a decomposition field WITHOUT recomputing the hash. */
+  const tamper = (over: Partial<WorkPackage>): StoredWorkPackage => {
+    const p = { ...coherent(), ...over }
+    return {
+      taskId: 'task-1', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      // Columns kept in step with the stale hash, so ONLY the recompute catches it.
+      columns: { ...columnsOf(p), workPackageHash: p.packageHash },
+    }
+  }
+  const read = (stored: StoredWorkPackage) =>
+    resolveWorkPackage('wp-1', { store: new FakeStore([stored]), roleReader: roleReader([ROLE]) })
+
+  it.each([
+    ['taskObjective', { taskObjective: 'Something nobody agreed to.' }],
+    ['inputs', { inputs: [{ inputId: 'in-9', description: 'rewritten', origin: 'delegation' as const }] }],
+    ['expectedOutput', { expectedOutput: [{ outputId: 'out-9', description: 'a different deliverable' }] }],
+    ['dependencies', { dependencies: [{ requiredInputs: [], expectedOutputs: [], owner: 'x', blockingState: 'y' }] }],
+    ['fallback', { fallback: 'invented fallback' }],
+    ['assigned role name', { assignedRole: { roleId: ROLE_R, roleName: 'someone else' } }],
+  ] as const)('REFUSES a stale hash after %s was changed', async (_name, over) => {
+    // Every case stays fully contained by the parent Delegation, so containment
+    // cannot be what refuses it — only the recomputed hash can.
+    const { evaluation, status } = await read(tamper(over as never))
+    expect(status).toBe('malformed')
+    expect(evaluation).toBeNull()
+  })
+
+  it('re-sealing the contract after an in-bounds edit makes it usable again', async () => {
+    // Proves the guard checks COHERENCE, not immutability-by-accident: a
+    // properly re-hashed contract is readable. (The database still forbids the
+    // UPDATE; this is about what the read path considers well-formed.)
+    const p = { ...coherent(), taskObjective: 'A narrower slice of the same work.' }
+    const { packageHash: _h, ...terms } = p
+    const resealed = { ...p, packageHash: workPackageHash(terms as never) }
+    const { evaluation } = await read({
+      taskId: 't', workPackage: resealed, assignedAt: T1, legacyStatus: 'pending',
+      columns: columnsOf(resealed),
+    })
+    expect(evaluation!.usable).toBe(true)
+  })
+
+  it('the validation seam reports every fault at once', () => {
+    const p = { ...coherent(), taskObjective: 'changed' }
+    const v = validateStoredWorkPackage({
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), missionVersion: 9, workforceRoleId: ROLE_FOREIGN },
+    })
+    expect(v.coherent).toBe(false)
+    expect(v.faults).toContain('mission_version_mismatch')
+    expect(v.faults).toContain('role_mismatch')
+    expect(v.faults).toContain('hash_recompute_mismatch')
+  })
+
+  it('a canonical package with a null relational project is incoherent', () => {
+    const p = coherent()
+    const v = validateStoredWorkPackage({
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), projectId: null },
+    })
+    expect(v.coherent).toBe(false)
+    expect(v.faults).toContain('project_missing')
+  })
+
+  it('listings drop incoherent rows rather than surfacing them', async () => {
+    const p = { ...coherent(), taskObjective: 'tampered' }
+    const store = new FakeStore([{
+      taskId: 't', workPackage: p, assignedAt: T1, legacyStatus: 'pending',
+      columns: { ...columnsOf(p), workPackageHash: p.packageHash },
+    }])
+    const { packages } = await listProjectWorkPackages(PROJECT_P, { store })
+    expect(packages).toEqual([])
+  })
+})
+
+describe('R1 — role eligibility claims only what the sources prove', () => {
+  it('reports verified and unverified dimensions separately', () => {
+    const r = evaluateRoleEligibility({
+      role: ROLE, projectId: PROJECT_P, tools: [],
+      dataScope: [{ resource: 'runs', access: 'read' }], provenTools: new Set(),
+    })
+    expect(r.eligible).toBe(true)
+    expect(r.verified).toEqual(['identity', 'project', 'platform_data_domain'])
+    // Role-specific dimensions have NO source in this repository and are never
+    // silently counted as passing.
+    expect(r.unverified).toContain('role_specific_capability')
+    expect(r.unverified).toContain('role_specific_data_permission')
+    expect(r.unverified).toContain('capacity')
+  })
+
+  it('never claims a role-specific permission it cannot prove', () => {
+    const r = evaluateRoleEligibility({
+      role: ROLE, projectId: PROJECT_P,
+      tools: [{ tool: 'repo_read', restriction: 'apps/web only' }],
+      dataScope: [], provenTools: new Set(['repo_read apps/web only']),
+    })
+    expect(r.eligible).toBe(true)
+    // The tool was proven AT THE PARENT, which is a different fact.
+    expect(r.verified).toContain('parent_tool_availability')
+    expect(r.verified).not.toContain('role_specific_tool_permission')
+    expect(r.unverified).toContain('role_specific_tool_permission')
+  })
+
+  it('a refusal reports the same honest unverified picture', () => {
+    const r = evaluateRoleEligibility({
+      role: null, projectId: PROJECT_P, tools: [], dataScope: [], provenTools: new Set(),
+    })
+    expect(r.eligible).toBe(false)
+    expect(r.verified).toEqual([])
+    expect(r.unverified).toContain('role_specific_capability')
+  })
+
+  it('the type no longer offers a bare "fit" claim', () => {
+    const src = sources.find(s => s.file === 'roles.ts')!.text
+    expect(src).not.toMatch(/\bfit:\s*boolean/)
+    expect(src).toMatch(/eligible:\s*boolean/)
+  })
+})
+
+describe('R1 — assignment re-checks the parent immediately before INSERT', () => {
+  it('refuses when the Delegation changes between prepare and write', async () => {
+    const store = new FakeStore()
+    let call = 0
+    vi.mocked(resolveDelegationEvaluation).mockImplementation(async () => {
+      call += 1
+      // First resolve (prepare) sees the real envelope; the re-check sees one
+      // whose bounds have moved, so the pin no longer matches.
+      const env = call <= 1
+        ? envelopeOf()
+        : { ...envelopeOf(), budget: { currency: 'SEK', limitMinor: 1 } }
+      return { evaluation: delegationEvaluation(env), status: 'ok' } as never
+    })
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('delegation_not_usable')
+    expect(r.detail).toBe('delegation_changed_during_assignment')
+    expect(store.assigned).toEqual([])
+  })
+
+  it('refuses when the Delegation is revoked between prepare and write', async () => {
+    const store = new FakeStore()
+    let call = 0
+    vi.mocked(resolveDelegationEvaluation).mockImplementation(async () => {
+      call += 1
+      const over = call <= 1 ? {} : { lifecycleStatus: 'revoked', usable: false, reason: 'revoked' }
+      return { evaluation: delegationEvaluation(envelopeOf(), over), status: 'ok' } as never
+    })
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('delegation_not_usable')
+    expect(store.assigned).toEqual([])
+  })
+
+  it('resolves the parent more than once for one assignment', async () => {
+    const store = new FakeStore()
+    vi.mocked(resolveDelegationEvaluation).mockClear()
+    await assignWorkPackage(writeArgs(store))
+    expect(vi.mocked(resolveDelegationEvaluation).mock.calls.length).toBeGreaterThan(1)
+  })
+})
+
 describe('migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8')
 
@@ -1036,8 +1369,10 @@ describe('migration', () => {
   it('makes the authority contract immutable without freezing the table', () => {
     expect(sql).toMatch(/create trigger manager_tasks_work_package_immutable/)
     expect(sql).toMatch(/before update on public\.manager_tasks/)
-    // Legacy operational columns must NOT appear in the frozen list.
-    const guard = sql.slice(sql.indexOf('if new.work_package_id'), sql.indexOf('raise exception'))
+    // Legacy operational columns must NOT appear in the frozen list. Sliced
+    // from the CANONICAL branch, which begins after the legacy-attachment guard.
+    const canonicalBranch = sql.slice(sql.indexOf('-- From here the row carries a contract'))
+    const guard = canonicalBranch.slice(0, canonicalBranch.indexOf('raise exception'))
     for (const legacy of ['status', 'result', 'run_id', 'workflow_id', 'priority', 'title', 'description']) {
       expect(guard, legacy).not.toMatch(new RegExp(`new\\.${legacy}\\b`))
     }
@@ -1047,8 +1382,31 @@ describe('migration', () => {
     }
   })
 
-  it('lets a legacy row pass the trigger untouched', () => {
-    expect(sql).toMatch(/if old\.work_package_id is null and new\.work_package_id is null then\s+return new;/)
+  it('lets a legacy row pass ONLY while it stays legacy (R1)', () => {
+    const legacyBranch = sql.slice(sql.indexOf('if old.work_package_id is null'),
+      sql.indexOf('-- From here the row carries a contract'))
+    // An ordinary legacy update still returns.
+    expect(legacyBranch).toMatch(/return new;/)
+    // But attaching ANY canonical field raises instead.
+    expect(legacyBranch).toMatch(/raise exception/)
+    for (const col of [
+      'work_package_id', 'work_package', 'work_package_hash',
+      'delegation_envelope_id', 'delegation_bound_hash',
+      'mission_id', 'mission_version', 'mission_bound_hash',
+      'workforce_role_id', 'assigned_at',
+    ]) {
+      expect(legacyBranch, col).toMatch(new RegExp(`new\\.${col}\\b`))
+    }
+  })
+
+  it('states both structural shapes — legacy all-null OR canonical complete', () => {
+    const shape = sql.slice(sql.indexOf('manager_tasks_work_package_shape_check'))
+    const check = shape.slice(0, shape.indexOf('end if;'))
+    // The legacy branch must require every canonical column to be NULL.
+    for (const col of ['work_package', 'work_package_hash', 'mission_id', 'workforce_role_id', 'assigned_at']) {
+      expect(check, col).toMatch(new RegExp(`${col}\\s+is null`))
+    }
+    expect(check).toMatch(/work_package_id\s+is not null/)
   })
 
   it('one canonical package per id, via a PARTIAL unique index', () => {

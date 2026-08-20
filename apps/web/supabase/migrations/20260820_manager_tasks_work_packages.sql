@@ -111,8 +111,16 @@ begin
       );
   end if;
 
-  -- A canonical package is complete or absent. A half-written contract would be
-  -- authority with a missing pin, which is worse than no contract at all.
+  -- ALL OR NONE. A row is structurally exactly one of two things.
+  --
+  -- EI-S1.4D-R1 corrected a one-directional check here. It required a complete
+  -- contract when `work_package_id` was present, but said nothing about the
+  -- other direction — so a row could carry a populated `work_package` JSON, a
+  -- Mission pin and a role while leaving `work_package_id` NULL. That row would
+  -- be invisible to every canonical index and lookup (all partial on
+  -- `work_package_id is not null`) while sitting in the table looking like
+  -- authority. Schema integrity, not policy: neither shape is a judgement about
+  -- what anyone may do, only about what a row IS.
   if not exists (
     select 1 from pg_constraint
     where conrelid = 'public.manager_tasks'::regclass
@@ -120,17 +128,31 @@ begin
   ) then
     alter table public.manager_tasks
       add constraint manager_tasks_work_package_shape_check check (
-        work_package_id is null
+        -- LEGACY: no canonical identity, and no canonical field populated.
+        (
+          work_package_id            is null
+          and work_package           is null
+          and work_package_hash      is null
+          and delegation_envelope_id is null
+          and delegation_bound_hash  is null
+          and mission_id             is null
+          and mission_version        is null
+          and mission_bound_hash     is null
+          and workforce_role_id      is null
+          and assigned_at            is null
+        )
+        -- CANONICAL: identity present, and every required field with it.
         or (
-          work_package           is not null
-          and work_package_hash  is not null
+          work_package_id            is not null
+          and work_package           is not null
+          and work_package_hash      is not null
           and delegation_envelope_id is not null
           and delegation_bound_hash  is not null
-          and mission_id         is not null
-          and mission_version    is not null
-          and mission_bound_hash is not null
-          and workforce_role_id  is not null
-          and assigned_at        is not null
+          and mission_id             is not null
+          and mission_version        is not null
+          and mission_bound_hash     is not null
+          and workforce_role_id      is not null
+          and assigned_at            is not null
         )
       );
   end if;
@@ -212,13 +234,34 @@ returns trigger
 language plpgsql
 as $$
 begin
-  -- Legacy rows: no contract before or after. Nothing to protect.
-  if old.work_package_id is null and new.work_package_id is null then
-    return new;
-  end if;
-
-  -- A contract may be attached exactly once, by the sanctioned write boundary.
+  -- A LEGACY ROW MAY NEVER BECOME CANONICAL BY UPDATE.
+  --
+  -- EI-S1.4D-R1 closed this. The first version returned early whenever the OLD
+  -- row had no contract, which permitted exactly the thing the design forbids:
+  -- take an existing legacy task, UPDATE a Work Package onto it, and it becomes
+  -- authority without ever passing the sanctioned write boundary — no parent
+  -- Delegation resolved, no attenuation, no role validation. A canonical Work
+  -- Package originates by INSERT or not at all.
+  --
+  -- Ordinary legacy updates still pass: status, result, run_id, title,
+  -- description and every other operational field move freely, so long as the
+  -- row stays legacy.
   if old.work_package_id is null then
+    if new.work_package_id            is not null
+       or new.work_package            is not null
+       or new.work_package_hash       is not null
+       or new.delegation_envelope_id  is not null
+       or new.delegation_bound_hash   is not null
+       or new.mission_id              is not null
+       or new.mission_version         is not null
+       or new.mission_bound_hash      is not null
+       or new.workforce_role_id       is not null
+       or new.assigned_at             is not null
+    then
+      raise exception
+        'manager_tasks: a Work Package contract may only be created by INSERT, never attached to an existing task (task %)', old.id
+        using errcode = 'restrict_violation';
+    end if;
     return new;
   end if;
 

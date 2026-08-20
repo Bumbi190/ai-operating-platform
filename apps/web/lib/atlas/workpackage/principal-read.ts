@@ -33,6 +33,7 @@ import {
 import { workPackageIsContained } from './attenuate'
 import { delegationBoundHash } from './binding'
 import { readWorkforceRole, type WorkforceRoleReader } from './roles'
+import { validateStoredWorkPackage } from './validate'
 import { createWorkPackageStore, type StoredWorkPackage, type WorkPackageStore } from './store'
 import type { WorkPackageEvaluation, WorkPackageUnusableReason } from './types'
 
@@ -42,6 +43,13 @@ export type WorkPackageReadStatus =
   | 'project_denied'
   /** Unknown OR foreign — deliberately indistinguishable. */
   | 'not_permitted'
+  /**
+   * The row exists in a project the caller owns, but its two stored
+   * representations disagree (EI-S1.4D-R1). Distinct from `not_permitted`
+   * because the caller is entitled to know their own data is corrupt — and
+   * distinct from `ok` because a corrupt contract must never become usable.
+   */
+  | 'malformed'
   | 'unavailable'
 
 export interface WorkPackageReadArgs {
@@ -73,9 +81,24 @@ export async function resolveWorkPackage(
   }
   // Unknown and foreign collapse to one class — no existence oracle.
   if (!stored) return { evaluation: null, status: 'not_permitted' }
-  if (!assertProjectAllowed(stored.workPackage.projectId, access.allowedProjectIds)) {
+
+  // ISOLATION ORDERING (EI-S1.4D-R1). Project access is decided from the
+  // RELATIONAL column, never from the JSON payload. The column is what the
+  // database indexes, constrains and joins on; the payload is data the row
+  // carries. Letting a corrupted JSON `projectId` answer "may this caller read
+  // this row?" would make the access decision depend on the very thing under
+  // suspicion — a row could name the caller's project in its payload while
+  // physically belonging to another.
+  const scope = stored.columns.projectId
+  if (scope === null || !assertProjectAllowed(scope, access.allowedProjectIds)) {
     return { evaluation: null, status: 'not_permitted' }
   }
+
+  // Only now that the caller is proven entitled to this row may its coherence
+  // be reported. A malformed row in someone ELSE's project stays behind
+  // `not_permitted` above, so this can never become an existence oracle.
+  const validation = validateStoredWorkPackage(stored)
+  if (!validation.coherent) return { evaluation: null, status: 'malformed' }
 
   const pkg = stored.workPackage
   const settle = (reason: WorkPackageUnusableReason) => ({
@@ -135,6 +158,8 @@ export async function isWorkPackageUsable(
 ): Promise<{ usable: boolean; reason: WorkPackageUnusableReason; status: WorkPackageReadStatus }> {
   const { evaluation, status } = await resolveWorkPackage(workPackageId, args)
   if (!evaluation) return { usable: false, reason: 'delegation_unreadable', status }
+  // `status` carries `malformed` when the stored contract is incoherent; the
+  // boolean is false either way, and the status names which it was.
   return { usable: evaluation.usable, reason: evaluation.reason, status: 'ok' }
 }
 
@@ -155,7 +180,10 @@ export async function listEnvelopeWorkPackages(
   try {
     const rows = await store.byEnvelope(envelopeId, args.limit)
     return {
-      packages: rows.filter(r => assertProjectAllowed(r.workPackage.projectId, access.allowedProjectIds)),
+      packages: rows.filter(r =>
+        r.columns.projectId !== null
+        && assertProjectAllowed(r.columns.projectId, access.allowedProjectIds)
+        && validateStoredWorkPackage(r).coherent),
       status: 'ok',
     }
   } catch {
@@ -175,7 +203,8 @@ export async function listProjectWorkPackages(
   }
   const store = args.store ?? createWorkPackageStore()
   try {
-    return { packages: await store.byProject(projectId, args.limit), status: 'ok' }
+    const rows = await store.byProject(projectId, args.limit)
+    return { packages: rows.filter(r => validateStoredWorkPackage(r).coherent), status: 'ok' }
   } catch {
     return { packages: [], status: 'unavailable' }
   }

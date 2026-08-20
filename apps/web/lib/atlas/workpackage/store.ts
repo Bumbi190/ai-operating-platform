@@ -35,10 +35,36 @@ import type { WorkPackage } from './types'
 
 type AnyDb = any
 
+/**
+ * The RELATIONAL half of a persisted contract.
+ *
+ * EI-S1.4D-R1 stopped discarding these. The row stores the contract twice —
+ * once as JSON, once as columns whose entire purpose is to pin it — and the
+ * first version read back only the JSON, so the two could disagree and nothing
+ * would notice. Both halves are now surfaced, and `validateStoredWorkPackage`
+ * is the single seam that decides whether they agree.
+ *
+ * No caller chooses which representation to trust.
+ */
+export interface StoredWorkPackageColumns {
+  workPackageId: string
+  projectId: string | null
+  workPackageHash: string
+  delegationEnvelopeId: string
+  delegationBoundHash: string
+  missionId: string
+  missionVersion: number
+  missionBoundHash: string
+  workforceRoleId: string
+}
+
 /** One persisted canonical assignment, plus the row identity carrying it. */
 export interface StoredWorkPackage {
   taskId: string
+  /** The JSON contract as stored. NOT authority until validated. */
   workPackage: WorkPackage
+  /** The relational pins as stored. Compared against the JSON before use. */
+  columns: StoredWorkPackageColumns
   assignedAt: string
   /** The operational shell's status. Legacy meaning; NOT canonical state. */
   legacyStatus: string
@@ -87,11 +113,67 @@ const COLS = [
   'workforce_role_id', 'assigned_at',
 ].join(', ')
 
+/**
+ * Is this row a COMPLETE canonical package?
+ *
+ * Mirrors the migration's all-or-none CHECK in application code, so a row
+ * written around the sanctioned path cannot be normalized into a
+ * plausible-looking object with missing pins. Exported so the rule is testable
+ * on its own rather than only through a live query.
+ */
+export interface CanonicalRowShape {
+  work_package: unknown
+  work_package_id: string | null
+  work_package_hash: string | null
+  delegation_envelope_id: string | null
+  delegation_bound_hash: string | null
+  mission_id: string | null
+  mission_version: number | null
+  mission_bound_hash: string | null
+  workforce_role_id: string | null
+}
+
+/** The same shape with every pin proven present, so callers need no casts. */
+export type CompleteCanonicalRow = CanonicalRowShape & {
+  work_package: unknown
+  work_package_id: string
+  work_package_hash: string
+  delegation_envelope_id: string
+  delegation_bound_hash: string
+  mission_id: string
+  mission_version: number
+  mission_bound_hash: string
+  workforce_role_id: string
+}
+
+export function isCompleteCanonicalRow<T extends CanonicalRowShape>(
+  row: T,
+): row is T & CompleteCanonicalRow {
+  return Boolean(
+    row.work_package && row.work_package_id && row.work_package_hash
+    && row.delegation_envelope_id && row.delegation_bound_hash
+    && row.mission_id && row.mission_version !== null && row.mission_bound_hash
+    && row.workforce_role_id,
+  )
+}
+
 function rowToStored(row: Row): StoredWorkPackage | null {
-  if (!row.work_package || !row.work_package_id) return null
+  if (!isCompleteCanonicalRow(row)) return null
+
   return {
     taskId: row.id,
     workPackage: row.work_package as WorkPackage,
+    columns: {
+      workPackageId: row.work_package_id,
+      projectId: row.project_id,
+      workPackageHash: row.work_package_hash,
+      delegationEnvelopeId: row.delegation_envelope_id,
+      delegationBoundHash: row.delegation_bound_hash,
+      missionId: row.mission_id,
+      missionVersion: row.mission_version,
+      missionBoundHash: row.mission_bound_hash,
+      workforceRoleId: row.workforce_role_id,
+    },
     assignedAt: row.assigned_at ?? row.created_at ?? '',
     legacyStatus: row.status,
   }

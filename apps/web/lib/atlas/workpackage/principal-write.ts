@@ -38,7 +38,7 @@ import {
   type WorkPackageViolation,
 } from './attenuate'
 import { delegationBoundHash, workPackageHash } from './binding'
-import { evaluateRoleFitness, readWorkforceRole, type WorkforceRoleReader } from './roles'
+import { evaluateRoleEligibility, readWorkforceRole, type WorkforceRoleReader } from './roles'
 import { createWorkPackageStore, WorkPackageConflictError, type WorkPackageStore } from './store'
 import type { WorkPackage, WorkPackageRejection } from './types'
 
@@ -160,7 +160,7 @@ export async function prepareWorkPackage(
   // §21.34/§21.35 — the role must be real, in this project, and able to reach
   // what the package needs on the evidence Stage 1 actually has.
   const role = await (args.roleReader ?? readWorkforceRole)(args.request.role.roleId)
-  const fitness = evaluateRoleFitness({
+  const eligibility = evaluateRoleEligibility({
     role,
     projectId: parent.envelope.projectId,
     tools: attenuated.package.tools,
@@ -170,17 +170,17 @@ export async function prepareWorkPackage(
     // proof; it never manufactures one.
     provenTools: new Set(parent.envelope.tools.map(t => `${t.tool} ${t.restriction ?? ''}`)),
   })
-  if (!fitness.fit) {
+  if (!eligibility.eligible) {
     const rejection: WorkPackageRejection = {
       reason:
-        fitness.reason === 'role_not_found' ? 'role_not_found' :
-        fitness.reason === 'role_project_mismatch' ? 'role_project_mismatch' :
-        fitness.reason === 'data_access_unprovable' ? 'input_unavailable' :
+        eligibility.reason === 'role_not_found' ? 'role_not_found' :
+        eligibility.reason === 'role_project_mismatch' ? 'role_project_mismatch' :
+        eligibility.reason === 'data_domain_unsanctioned' ? 'input_unavailable' :
         'role_capability_unproven',
-      subject: fitness.unprovable[0] ?? args.request.role.roleId,
-      detail: fitness.reason,
+      subject: eligibility.unprovable[0] ?? args.request.role.roleId,
+      detail: eligibility.reason,
     }
-    return DENY('role_not_eligible', fitness.reason, { rejections: [rejection] })
+    return DENY('role_not_eligible', eligibility.reason, { rejections: [rejection] })
   }
 
   // §21.158 — every dependency must stay inside this project. A predecessor in
@@ -233,12 +233,37 @@ export interface AssignWorkPackageArgs extends PrepareWorkPackageArgs {
 export async function assignWorkPackage(
   args: AssignWorkPackageArgs,
 ): Promise<WorkPackageWriteResult> {
+  const principal = await authenticate()
+  if ('status' in principal) return principal
+
   const prepared = await prepareWorkPackage(args)
   if (prepared.status !== 'ok' || !prepared.workPackage) return prepared
 
   const pkg = prepared.workPackage
   const store = args.store ?? createWorkPackageStore()
   const at = args.now ?? new Date().toISOString()
+
+  // RE-CHECK IMMEDIATELY BEFORE THE INSERT (EI-S1.4D-R1).
+  //
+  // `prepareWorkPackage` resolved the parent Delegation, then attenuation, role
+  // lookup and dependency checks all ran before the write — a window in which a
+  // revocation could land. This second resolve costs one read and narrows that
+  // window to a single read-then-insert, comparing the pin the package was
+  // actually cut from rather than merely re-asking whether the envelope is
+  // usable.
+  //
+  // IT DOES NOT CLOSE THE RACE, and is not presented as if it does. Closing it
+  // would need a transaction spanning the delegation ledger and manager_tasks,
+  // which is a cross-ledger architecture Stage 1 deliberately does not build.
+  // What makes the residual window safe is that assignment grants nothing:
+  // §21.42 `assigned` means RECEIVED, nothing executes from these rows, and
+  // `resolveWorkPackage` re-asks the live chain on every read — so a package
+  // written microseconds before a revocation reads back `invalidated` at once.
+  const recheck = await usableDelegation(principal, args.envelopeId, args)
+  if ('status' in recheck) return recheck
+  if (recheck.boundHash !== pkg.delegationBoundHash) {
+    return DENY('delegation_not_usable', 'delegation_changed_during_assignment')
+  }
 
   try {
     const stored = await store.assign({

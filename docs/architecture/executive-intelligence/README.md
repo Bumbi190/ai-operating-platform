@@ -575,6 +575,38 @@ Canonical properties:
 - **Legacy status is not canonical state.** §21.42 `assigned` is derived from the contract
   existing; `manager_tasks.status` keeps meaning exactly what it meant. Two mutable status
   sources over one row is how a ledger starts disagreeing with itself.
+- **Canonical packages are isolated from legacy task surfaces** (EI-S1.4D-R1). Sharing storage
+  must not mean sharing semantics. A canonical row is written with `source = 'work_package'`
+  and excluded from every legacy active-task query via one exported discriminator,
+  `source IS NULL OR source <> 'work_package'`. The NULL branch is load-bearing: `planTasks`
+  inserts without a `source`, so `source <> 'work_package'` alone evaluates to NULL — not true —
+  and would silently hide the entire existing task list. Nothing in this codebase executes from
+  a `manager_tasks` row (the run drain claims `runs` via `claim_runs`), so this was a
+  visibility defect rather than an execution one — but a §21.42 assigned package rendered as an
+  ACTIVE task is a claim the system cannot back.
+- **The persisted contract is verified, not trusted** (EI-S1.4D-R1). The row stores the contract
+  twice — as JSON and as relational pin columns — and one seam,
+  `validateStoredWorkPackage`, decides whether they agree before any authority use. Three things
+  must match: the recomputed package hash, the JSON `packageHash`, and the relational
+  `work_package_hash`. The recompute is what catches a rewritten task objective, inputs, outputs,
+  dependencies, fallback or role, because those are decomposition fields that containment
+  against the parent deliberately does not constrain. **Project access is decided from the
+  relational column, never the JSON payload** — letting a corrupted payload answer "may this
+  caller read this row?" would make the access decision depend on the very thing under suspicion.
+- **A legacy row can never become canonical by UPDATE** (EI-S1.4D-R1). A canonical Work Package
+  originates by INSERT through the sanctioned boundary or not at all; attaching one to an
+  existing task by UPDATE would bypass the parent Delegation, attenuation and role validation
+  entirely. Ordinary legacy updates still pass. The shape CHECK is now all-or-none in both
+  directions, so a row cannot carry a populated contract while leaving `work_package_id` NULL —
+  invisible to every partial index yet sitting in the table looking like authority.
+- **Role eligibility claims only what the sources prove** (EI-S1.4D-R1). The result is
+  deliberately not called `fit`. `agents` proves identity and project; `DOMAIN_REGISTRY` proves
+  a data domain is sanctioned *platform-wide*, not that this role may read it; Delegation
+  acceptance proves a tool was available *to the parent*, not that this role holds permission to
+  invoke it. So `verified` and `unverified` dimensions are both reported, and the unverified list
+  is never empty for a package with tools or data. That is honest rather than damaging, because
+  §21.42 assignment is not execution — the unverified dimensions are execution-time questions,
+  and Stage 1 builds no execution.
 - **Nothing executes.** No run, no queue, no dispatch, no tool call, no publishing, no model.
   The only table written is `manager_tasks`, and only by INSERT. Assignment is the final effect.
 - **Workforce → Agent (§21.10) is NOT started** and remains a future boundary.

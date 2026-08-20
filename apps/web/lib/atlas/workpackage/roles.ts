@@ -74,66 +74,120 @@ export const readWorkforceRole: WorkforceRoleReader = async roleId => {
   }
 }
 
-/** Why a role cannot receive a given package. */
-export type RoleFitnessReason =
-  | 'fit'
+/** Why a role may not RECEIVE a given package. */
+export type RoleEligibilityReason =
+  | 'eligible'
   | 'role_not_found'
   | 'role_project_mismatch'
-  | 'data_access_unprovable'
-  | 'tool_access_unprovable'
+  | 'data_domain_unsanctioned'
+  | 'tool_unproven_at_parent'
 
-export interface RoleFitness {
-  fit: boolean
-  reason: RoleFitnessReason
-  /** The specific tools/resources that could not be proven, for reporting. */
+/**
+ * The dimensions §21.35 role fitness could ask about, and what Stage 1 can
+ * actually answer. Naming them individually is the point: it is the difference
+ * between "this role is fit" and "these three things were checked".
+ */
+export type RoleDimension =
+  /** The role exists in the sanctioned registry. Proven by `agents`. */
+  | 'identity'
+  /** It belongs to this package's project. Proven by `agents.project_id`. */
+  | 'project'
+  /** The data domain is sanctioned platform-wide. Proven by DOMAIN_REGISTRY. */
+  | 'platform_data_domain'
+  /** The tool was proven available when the PARENT Delegation was accepted. */
+  | 'parent_tool_availability'
+  /** THIS role may personally use those tools. NO SOURCE EXISTS. */
+  | 'role_specific_tool_permission'
+  /** THIS role may personally read those resources. NO SOURCE EXISTS. */
+  | 'role_specific_data_permission'
+  /** THIS role has the skills the work needs. NO SOURCE EXISTS. */
+  | 'role_specific_capability'
+  /** THIS role has room to take the work. NO SOURCE EXISTS. */
+  | 'capacity'
+
+/**
+ * The result of asking §21.35 with Stage 1's evidence.
+ *
+ * DELIBERATELY NOT CALLED `fit`. EI-S1.4D-R1 corrected that overclaim. What the
+ * available sources establish is that a role is ELIGIBLE TO RECEIVE a package:
+ *
+ *   `agents`              proves the role exists and belongs to this project
+ *   `DOMAIN_REGISTRY`     proves a data domain is sanctioned platform-wide —
+ *                         that `leads` is readable through `get_records` at all,
+ *                         NOT that this particular role may read it
+ *   Delegation acceptance proves a tool was available to the PARENT, not that
+ *                         this role personally holds permission to invoke it
+ *
+ * So `verified` and `unverified` are both reported, and the unverified list is
+ * never empty for a package with tools or data. That is honest rather than
+ * damaging, because §21.42 ASSIGNMENT IS NOT EXECUTION: the role has received
+ * the package and nothing has started. The dimensions that remain unverified
+ * are execution-time questions, and Stage 1 builds no execution.
+ *
+ * Nothing here invents a Trust Score, a skill engine or a permission model to
+ * make the unverified list shorter.
+ */
+export interface RoleEligibility {
+  /** May this role RECEIVE the package? Not: may it execute the work. */
+  eligible: boolean
+  reason: RoleEligibilityReason
+  /** Dimensions an actual source answered. */
+  verified: RoleDimension[]
+  /** Dimensions no source in this repository can answer. Never faked. */
+  unverified: RoleDimension[]
+  /** The specific tools/resources behind a refusal, for reporting. */
   unprovable: string[]
 }
 
 const REGISTERED_DOMAINS = new Set(Object.keys(DOMAIN_REGISTRY))
 
 /**
- * §21.35 — can this role receive this package, on the evidence Stage 1 has?
+ * §21.35 — may this role RECEIVE this package, on the evidence Stage 1 has?
  *
  * Pure over its inputs: the caller supplies the role it already read, so this
- * function performs no I/O and can be exercised directly.
- *
- * Tools fail closed for the same reason they do in the Delegation path: no
- * enumerated tool registry exists in this codebase, so a declared tool cannot
- * be proven reachable by anyone. A package whose tools were already proven by
- * its parent Delegation's acceptance passes them in as `provenTools`, which is
- * the only way this returns fit with tools present — the proof is inherited
- * from the accepted Delegation, never manufactured here.
+ * performs no I/O and can be exercised directly.
  */
-export function evaluateRoleFitness(input: {
+export function evaluateRoleEligibility(input: {
   role: WorkforceRole | null
   projectId: string
   tools: MissionToolBound[]
   dataScope: MissionDataScope[]
   /** Tool keys the parent Delegation's acceptance already proved available. */
   provenTools: ReadonlySet<string>
-}): RoleFitness {
+}): RoleEligibility {
   const { role, projectId, tools, dataScope, provenTools } = input
 
-  if (!role) return { fit: false, reason: 'role_not_found', unprovable: [] }
+  // Every dimension no source can answer. Listed up front so a refusal and a
+  // success report the same honest picture of what was never checked.
+  const unverified: RoleDimension[] = ['role_specific_capability', 'capacity']
+  if (dataScope.length > 0) unverified.push('role_specific_data_permission')
+  if (tools.length > 0) unverified.push('role_specific_tool_permission')
+
+  const deny = (reason: RoleEligibilityReason, unprovable: string[] = []): RoleEligibility =>
+    ({ eligible: false, reason, verified: [], unverified, unprovable })
+
+  if (!role) return deny('role_not_found')
   // §21.158 — a role in another project is not a candidate, whatever else it
   // can do. This is the isolation boundary at the Manager → Workforce hop.
-  if (role.projectId !== projectId) {
-    return { fit: false, reason: 'role_project_mismatch', unprovable: [role.projectId] }
-  }
+  if (role.projectId !== projectId) return deny('role_project_mismatch', [role.projectId])
 
-  const unprovableData = dataScope
+  const verified: RoleDimension[] = ['identity', 'project']
+
+  // What DOMAIN_REGISTRY actually proves: the domain is sanctioned and readable
+  // through the platform's own `get_records` boundary. Not that this role is.
+  const unsanctioned = dataScope
     .filter(d => d.access !== 'read' || !REGISTERED_DOMAINS.has(d.resource))
     .map(d => `${d.resource}:${d.access}`)
-  if (unprovableData.length > 0) {
-    return { fit: false, reason: 'data_access_unprovable', unprovable: unprovableData }
-  }
+  if (unsanctioned.length > 0) return deny('data_domain_unsanctioned', unsanctioned)
+  if (dataScope.length > 0) verified.push('platform_data_domain')
 
-  const unprovableTools = tools
+  // What Delegation acceptance actually proves: the tool was available to the
+  // parent. Not that this role personally holds permission to invoke it.
+  const unproven = tools
     .map(t => `${t.tool} ${t.restriction ?? ''}`)
     .filter(key => !provenTools.has(key))
-  if (unprovableTools.length > 0) {
-    return { fit: false, reason: 'tool_access_unprovable', unprovable: unprovableTools }
-  }
+  if (unproven.length > 0) return deny('tool_unproven_at_parent', unproven)
+  if (tools.length > 0) verified.push('parent_tool_availability')
 
-  return { fit: true, reason: 'fit', unprovable: [] }
+  return { eligible: true, reason: 'eligible', verified, unverified, unprovable: [] }
 }

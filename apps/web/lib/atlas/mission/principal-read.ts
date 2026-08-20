@@ -168,7 +168,10 @@ export async function resolveMissionEvaluation(
   let available = { tools: false, data: false }
   try {
     const proven = await (args.availability ?? unprovenAvailability)({
-      projectId: read.state.projectId, tools: read.state.tools, dataScope: read.state.dataScope,
+      projectId: read.state.projectId,
+      missionId: read.state.missionId,
+      missionVersion: read.state.version,
+      tools: read.state.tools, dataScope: read.state.dataScope,
     })
     available = { tools: proven.tools, data: proven.data }
   } catch {

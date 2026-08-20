@@ -52,11 +52,19 @@
 --   accepted envelope cannot be widened after the fact even by a caller holding
 --   the service role.
 --
---   ACTORS ARE DISTINCT AND SERVER-DERIVED. §21.19 — `actor_kind` separates the
---   Executive principal (a human, recorded by user id), the Manager (a constant
---   agent identity, never a borrowed user id) and the system. The application
---   sets these; no caller supplies them. Conflating the three is how fake
---   provenance enters a ledger.
+--   ACTORS ARE DISTINCT, SERVER-DERIVED, AND BOUND TO THE ACT. §21.19 —
+--   `actor_kind` separates the Executive principal (a human, recorded by user
+--   id) from the Manager (a constant agent identity, never a borrowed user id).
+--   The application sets these; no caller supplies them. Conflating the two is
+--   how fake provenance enters a ledger.
+--
+--   EI-S1.4C-R1 went further: a CHECK now binds each act to the only actor that
+--   may perform it, mirroring DELEGATION_ACT_ACTOR in the domain. Before it, an
+--   Executive could record a Manager's acceptance and a Manager could record its
+--   own delegation, which is exactly the row a provenance ledger exists to make
+--   impossible. `system` remains in the actor_kind enum but is reachable by NO
+--   act: V1 has no system act, and inventing one to populate the value would
+--   create an actor with no principal behind it.
 --
 --   NOTHING HERE EXECUTES ANYTHING. `tools` inside the envelope jsonb is a
 --   §21.13 MAXIMUM BOUND, not permission to invoke anything, and this migration
@@ -183,7 +191,38 @@ create table if not exists public.atlas_delegation_ledger (
   -- §21.19 — a human act names its human; the Manager names itself. A row that
   -- claims an Executive acted without saying who is unattributable authority.
   constraint atlas_delegation_ledger_actor_shape_check check (
-    actor_kind <> 'executive_principal' or actor_id is not null
+    actor_kind <> 'executive_principal' or (actor_id is not null and length(btrim(actor_id)) > 0)
+  ),
+
+  -- §21.19 — WHICH actor may perform WHICH act.
+  --
+  -- The check above only guaranteed that an Executive act names someone. It did
+  -- not stop an Executive from recording a Manager's acceptance, or a Manager
+  -- from recording its own delegation, and those are precisely the rows that
+  -- make a provenance ledger worthless. The mapping mirrors
+  -- DELEGATION_ACT_ACTOR in lib/atlas/delegation/derive.ts exactly, and a test
+  -- compares the two so they cannot drift.
+  --
+  -- This is PROVENANCE SHAPE ONLY. It says who a row claims acted, never
+  -- whether they were entitled to — authorization lives in the application
+  -- boundary, and encoding policy in SQL would put a second, unreviewable
+  -- authority system in the database.
+  constraint atlas_delegation_ledger_act_actor_check check (
+    case
+      -- The Executive cuts and withdraws the envelope.
+      when act_type in ('delegation.prepared', 'delegation.revoked')
+        then actor_kind = 'executive_principal'
+      -- §21.16 — the Manager decides and replans, under its one identity.
+      when act_type in (
+        'delegation.accepted', 'delegation.rejected',
+        'delegation.replan.operational', 'delegation.replan.referred'
+      )
+        then actor_kind = 'manager' and actor_id = 'atlas.manager'
+      -- No V1 act is performed by 'system'. The kind stays reserved in the
+      -- domain type and is reachable by no row here; inventing a system act to
+      -- populate it would create an actor with no principal behind it.
+      else false
+    end
   )
 );
 

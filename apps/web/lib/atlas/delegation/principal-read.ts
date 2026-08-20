@@ -26,6 +26,7 @@ import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolveMissionEvaluation, type MissionReadArgs } from '@/lib/atlas/mission/principal-read'
 import type { MissionAuthorityReason } from '@/lib/atlas/mission/types'
 import { envelopeIsContained } from './attenuate'
+import { missionBoundHash } from './binding'
 import { registryAvailability } from './availability'
 import { deriveDelegationState, MalformedDelegationError } from './derive'
 import { parentFromMission } from './principal-write'
@@ -57,6 +58,8 @@ export type DelegationUnusableReason =
   | 'mission_not_authorized'
   /** §21.15 — the Mission advanced past the pinned version. */
   | 'mission_version_changed'
+  /** §21.15 — same version, but its delegable bounds no longer hash the same. */
+  | 'mission_bound_hash_changed'
   /** §6.39 — the envelope is no longer contained by its Mission. */
   | 'delegation_exceeds_mission'
   | 'mission_unreadable'
@@ -159,10 +162,17 @@ export async function resolveDelegationEvaluation(
   if (!mission.authority.authorized) {
     return settle('invalidated', 'mission_not_authorized', mission.authority.reason)
   }
-  if (mission.state.version !== state.missionVersion) {
+  const parent = parentFromMission(mission)
+  if (parent.version !== state.missionVersion) {
     return settle('invalidated', 'mission_version_changed', mission.authority.reason)
   }
-  const violations = envelopeIsContained(parentFromMission(mission), state.envelope)
+  // §21.15 — the pin is the version AND the hash. Version equality alone would
+  // let a same-version Mission whose bounds moved keep authorizing an envelope
+  // cut from the older bounds.
+  if (state.missionBoundHash !== missionBoundHash(parent)) {
+    return settle('invalidated', 'mission_bound_hash_changed', mission.authority.reason)
+  }
+  const violations = envelopeIsContained(parent, state.envelope)
   if (violations.length > 0) {
     return settle('invalidated', 'delegation_exceeds_mission', mission.authority.reason)
   }

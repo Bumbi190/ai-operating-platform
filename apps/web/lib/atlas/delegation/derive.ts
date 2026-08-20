@@ -19,12 +19,39 @@
  */
 
 import type {
+  DelegationActorKind,
   DelegationActType,
   DelegationRecord,
   DelegationReplan,
   DelegationStatus,
   DerivedDelegationState,
 } from './types'
+
+/** The Manager's one ledger identity. Duplicated nowhere: the write boundary imports it from here. */
+export const MANAGER_ACTOR_ID = 'atlas.manager'
+
+/**
+ * §21.19 — which actor may perform which act.
+ *
+ * Provenance is not decoration. "The Manager accepted this" is a claim the
+ * ledger makes about who bound themselves to a contract, and a lineage that
+ * lets an Executive record a Manager acceptance — or a Manager record its own
+ * delegation — is institutional history that cannot be trusted.
+ *
+ * `system` is deliberately absent from every entry. V1 has no system act, and
+ * inventing one to fill the enum would create an actor with no principal behind
+ * it. The kind stays reserved in the type and is invalid on all six acts.
+ */
+export const DELEGATION_ACT_ACTOR: Record<DelegationActType, DelegationActorKind> = {
+  // The Executive cuts and withdraws the envelope.
+  'delegation.prepared': 'executive_principal',
+  'delegation.revoked':  'executive_principal',
+  // The Manager decides and replans. §21.16 — acceptance is the Manager's act.
+  'delegation.accepted': 'manager',
+  'delegation.rejected': 'manager',
+  'delegation.replan.operational': 'manager',
+  'delegation.replan.referred':    'manager',
+}
 
 /** Acts that end the acceptance decision. At most one may ever appear. */
 export const DELEGATION_DECIDING_ACTS: readonly DelegationActType[] = [
@@ -72,6 +99,38 @@ export function deriveDelegationState(records: DelegationRecord[]): DerivedDeleg
   }
   const envelope = first.envelope
   if (!envelope) fail('prepared act carries no envelope')
+
+  // §21.19 — the envelope JSON must agree with the relational columns carrying
+  // it. A row whose columns say Mission A while its payload says Mission B is
+  // not a disagreement to resolve; it is corrupt institutional history, and the
+  // two halves would authorize different things depending on which one a reader
+  // happened to trust. Every later check in this file reads the COLUMNS, so an
+  // unchecked payload could quietly become the authority a caller acts on.
+  if (envelope.envelopeId !== first.envelopeId) fail('envelope id disagrees with its record')
+  if (envelope.projectId !== first.projectId) fail('envelope project disagrees with its record')
+  if (envelope.missionId !== first.missionId) fail('envelope mission disagrees with its record')
+  if (envelope.missionVersion !== first.missionVersion) fail('envelope mission version disagrees with its record')
+  if (envelope.missionBoundHash !== first.missionBoundHash) fail('envelope bound hash disagrees with its record')
+  // §3.5 — Stage 1 ships exactly one hop. A stored envelope naming any other
+  // recipient is either corrupt or from a stage that does not exist yet.
+  if (envelope.delegatedTo !== 'manager') fail(`envelope delegates to ${envelope.delegatedTo}, not manager`)
+
+  // §21.19 — every act is performed by the actor canon assigns to it.
+  for (const r of ordered) {
+    const expected = DELEGATION_ACT_ACTOR[r.actType]
+    if (!expected) fail(`unknown act type ${r.actType}`)
+    if (r.actorKind !== expected) {
+      fail(`${r.actType} recorded by ${r.actorKind}, expected ${expected}`)
+    }
+    if (expected === 'executive_principal') {
+      // A human act names its human. Unattributable authority is not authority.
+      if (!r.actorId || r.actorId.trim().length === 0) fail(`${r.actType} has no acting principal`)
+    } else if (r.actorId !== MANAGER_ACTOR_ID) {
+      // The Manager has exactly one identity. An arbitrary string here would let
+      // a row claim "some manager" accepted, which is not a party to anything.
+      fail(`${r.actType} manager identity is ${r.actorId}, expected ${MANAGER_ACTOR_ID}`)
+    }
+  }
 
   // Every act must agree on what it is an act ABOUT. A row that drifts on any
   // of these is not a later act in this lineage; it is a different delegation

@@ -43,11 +43,12 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolveMissionEvaluation, type MissionReadArgs } from '@/lib/atlas/mission/principal-read'
 import type { MissionEvaluation, MissionRequirement } from '@/lib/atlas/mission/types'
+import type { MissionAvailability } from '@/lib/atlas/mission/capability'
 import { registryAvailability, capabilityFindings } from './availability'
 import { attenuate, envelopeIsContained, type AttenuationParent, type AttenuationViolation, type DelegationNarrowing } from './attenuate'
 import { missionBoundHash } from './binding'
 import { classifyChange, type ProposedChange } from './classify'
-import { deriveDelegationState, isDecidable, MalformedDelegationError } from './derive'
+import { deriveDelegationState, isDecidable, MalformedDelegationError, MANAGER_ACTOR_ID } from './derive'
 import { createDelegationLedgerStore, DelegationConflictError, type DelegationLedgerStore } from './store'
 import type {
   DelegationEnvelope,
@@ -70,6 +71,12 @@ export type DelegationWriteStatus =
   | 'mission_not_authorized'
   /** §21.15 — the Mission moved to a new version; this envelope stays pinned. */
   | 'mission_version_changed'
+  /**
+   * §21.15 — the Mission's delegable bounds no longer hash to what this
+   * envelope was cut from, at the SAME version number. Distinct from a version
+   * change: the version says nothing moved, and the hash says something did.
+   */
+  | 'mission_bound_hash_changed'
   /** §6.39 — the requested envelope is not contained by the Mission. */
   | 'delegation_exceeds_mission'
   /** The act is not permitted from the envelope's current derived state. */
@@ -99,8 +106,11 @@ export interface DelegationWriteResult {
  * A constant, not a user id and not the service role. §21.19 — when the ledger
  * says the Manager accepted, that must be true of the Manager rather than of
  * whichever human happened to trigger the evaluation.
+ *
+ * Defined in the pure core and re-exported here, so the boundary that WRITES
+ * the identity and the invariant that VALIDATES it can never drift apart.
  */
-export const MANAGER_ACTOR_ID = 'atlas.manager'
+export { MANAGER_ACTOR_ID } from './derive'
 
 interface CommonArgs {
   store?: DelegationLedgerStore
@@ -289,6 +299,27 @@ async function commit(
 
 const newId = () => crypto.randomUUID()
 
+/**
+ * §21.15 — does this envelope's pin still describe the live Mission?
+ *
+ * TWO CHECKS, NOT ONE. The version number answers "did the Mission move to a
+ * new commitment", and the bound hash answers "does that version still say what
+ * this envelope was cut from". EI-S1.4C-R1 shipped the hash as provenance only,
+ * so a stored row whose `missionBoundHash` disagreed with the live Mission was
+ * still accepted and still reported usable as long as the version matched — the
+ * hash was written, carried and never consulted. A pin nobody reads is a
+ * comment, so it is read here on every operational use.
+ */
+function pinBroken(
+  pinnedVersion: number,
+  pinnedHash: string,
+  parent: AttenuationParent,
+): DelegationWriteStatus | null {
+  if (pinnedVersion !== parent.version) return 'mission_version_changed'
+  if (pinnedHash !== missionBoundHash(parent)) return 'mission_bound_hash_changed'
+  return null
+}
+
 // Prepare (Executive)
 
 export interface PrepareDelegationArgs extends CommonArgs {
@@ -398,6 +429,16 @@ export function delegationRejectionGrounds(
   parent: AttenuationParent,
   evaluation: MissionEvaluation,
   at: string,
+  /**
+   * What the capability source actually proved for THIS envelope's tools and
+   * data. Passed in rather than recomputed: EI-S1.4C-R1 first wired the
+   * registry's own logic in here directly, which made the Manager's §21.16 tool
+   * check un-injectable and — because no tool registry exists — permanently
+   * unable to accept any envelope that declared a tool. The Manager must decide
+   * against the same source the Mission will later be judged by, or acceptance
+   * and activation answer to two different truths.
+   */
+  proven: MissionAvailability,
 ): DelegationRejection[] {
   const grounds: DelegationRejection[] = []
   const push = (r: DelegationRejection) => {
@@ -460,18 +501,39 @@ export function delegationRejectionGrounds(
     push({ reason: 'escalation_missing', subject: 'escalationTriggers', detail: 'none declared' })
   }
 
-  // §21.16 "Required tools exist. Required data is reachable." The real check.
-  for (const f of capabilityFindings({ tools: envelope.tools, dataScope: envelope.dataScope })) {
-    push({
-      reason: f.kind === 'tool' ? 'tool_unavailable' : 'data_unavailable',
-      subject: f.subject,
-      detail: f.reason,
-    })
+  // §21.16 "Required tools exist. Required data is reachable." The real check,
+  // answered by the injected source. `capabilityFindings` is used only to NAME
+  // which subject failed, so a rejection points at a specific tool or resource
+  // instead of shrugging at the whole envelope.
+  if (!proven.tools || !proven.data) {
+    const findings = capabilityFindings({ tools: envelope.tools, dataScope: envelope.dataScope })
+    for (const f of findings) {
+      if (f.kind === 'tool' && proven.tools) continue
+      if (f.kind === 'data' && proven.data) continue
+      push({
+        reason: f.kind === 'tool' ? 'tool_unavailable' : 'data_unavailable',
+        subject: f.subject,
+        detail: f.reason,
+      })
+    }
+    // The source refused something the registry heuristics cannot name.
+    if (!proven.tools && !findings.some(f => f.kind === 'tool')) {
+      push({ reason: 'tool_unavailable', subject: 'tools', detail: 'source_unproven' })
+    }
+    if (!proven.data && !findings.some(f => f.kind === 'data')) {
+      push({ reason: 'data_unavailable', subject: 'dataScope', detail: 'source_unproven' })
+    }
   }
 
   // §21.16 "Dependencies are available" — a hard dependency with no recorded
   // observation is unproven, and unproven is not available.
   for (const requirement of evaluation.readiness.missing) {
+    // Capability gaps are answered above against THIS envelope's narrowed
+    // tools and data. The Mission's own readiness speaks about the Mission's
+    // full set, which a narrowed envelope is not required to cover, so those
+    // two requirements are deliberately not re-mapped here.
+    if (requirement === 'tool_availability' || requirement === 'data_availability') continue
+    if (requirement === 'tools' || requirement === 'data_scope') continue
     const reason = REQUIREMENT_TO_REASON[requirement]
     if (reason) push({ reason, subject: requirement, detail: 'mission readiness' })
   }
@@ -514,11 +576,29 @@ export async function decideDelegation(
   }
 
   // §21.15 — pinning is a hard stop before anything else is considered.
-  if (prior.missionVersion !== live.parent.version) {
-    return DENY('mission_version_changed', `pinned_v${prior.missionVersion}_now_v${live.parent.version}`)
+  const broken = pinBroken(prior.missionVersion, prior.missionBoundHash, live.parent)
+  if (broken) {
+    return DENY(broken, `pinned_v${prior.missionVersion}_now_v${live.parent.version}`)
   }
 
-  const grounds = delegationRejectionGrounds(prior.envelope, live.parent, live.evaluation, at)
+  // The Manager asks the SAME capability source the Mission is judged by, about
+  // the envelope's own (possibly narrowed) tools and data, under this Mission's
+  // exact identity.
+  const source = args.mission?.availability ?? registryAvailability
+  let proven: MissionAvailability
+  try {
+    proven = await source({
+      projectId: prior.projectId,
+      missionId: prior.missionId,
+      missionVersion: prior.missionVersion,
+      tools: prior.envelope.tools,
+      dataScope: prior.envelope.dataScope,
+    })
+  } catch {
+    proven = { tools: false, data: false }
+  }
+
+  const grounds = delegationRejectionGrounds(prior.envelope, live.parent, live.evaluation, at, proven)
   const accepted = grounds.length === 0
 
   const record: DelegationRecord = {
@@ -565,10 +645,12 @@ export async function revokeDelegation(
 ): Promise<DelegationWriteResult> {
   const opened = await openFor(args)
   if ('status' in opened) return opened
-  const { store, at, prior, records } = opened
-
-  const principal = await authenticate()
-  if ('status' in principal) return principal
+  // §21.19 — ONE identity for one institutional act. `openFor` already
+  // authenticated and used that principal to scope the lineage; resolving it a
+  // second time here opened a window where the session could change between the
+  // authorization and the append, so the row would name a principal who never
+  // passed the isolation check that let the read through.
+  const { principal, store, at, prior, records } = opened
 
   if (prior.status === 'revoked') return DENY('invalid_lifecycle', 'already_revoked')
   if (prior.status === 'rejected') return DENY('invalid_lifecycle', 'already_rejected')
@@ -623,8 +705,9 @@ export async function recordDelegationReplan(
   // under, however operational the change looks in isolation.
   const live = await liveMission(principal, prior.missionId, args, at)
   if ('status' in live) return live
-  if (prior.missionVersion !== live.parent.version) {
-    return DENY('mission_version_changed', `pinned_v${prior.missionVersion}_now_v${live.parent.version}`)
+  const replanPinBroken = pinBroken(prior.missionVersion, prior.missionBoundHash, live.parent)
+  if (replanPinBroken) {
+    return DENY(replanPinBroken, `pinned_v${prior.missionVersion}_now_v${live.parent.version}`)
   }
 
   const replan = classifyChange(prior.envelope, args.change)

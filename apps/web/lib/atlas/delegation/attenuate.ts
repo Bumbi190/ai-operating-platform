@@ -337,48 +337,153 @@ export function attenuate(
 }
 
 /**
+ * How each Delegation Envelope field relates to its parent Mission.
+ *
+ * EI-S1.4C-R1 made this explicit. Before it, `envelopeIsContained` re-proved
+ * nine fields and silently ignored the rest, so a stored envelope with a
+ * rewritten objective, an invented deliverable, or its inherited constraints
+ * and escalation triggers deleted re-proved clean and became authority.
+ * `prepareDelegation` constructs envelopes correctly — but a re-proof exists
+ * precisely for rows that did NOT come from it.
+ *
+ *   identity     the envelope's own coordinates; must match the parent exactly
+ *                (`envelopeId` is self-referential and checked in `derive.ts`
+ *                against the row carrying it)
+ *   exact        V1 permits no narrowing, so canonical equality is required
+ *   narrowable   a subset of the parent, per that field's own containment rule
+ *   restrictive  inherited in full; the child may add but never lose
+ *
+ * The guard test enumerates `DelegationEnvelope`'s keys against this map, so a
+ * field added later without a containment ruling fails a test rather than
+ * quietly defaulting to unchecked.
+ */
+export const ENVELOPE_FIELD_CLASS = {
+  envelopeId:         'identity',
+  projectId:          'identity',
+  missionId:          'identity',
+  missionVersion:     'identity',
+  missionBoundHash:   'identity',
+
+  delegatedTo:        'exact',
+  objective:          'exact',
+  expectedOutcome:    'exact',
+  // §20.62/§20.76 — V1's narrowing shape cannot touch these, so an envelope
+  // whose dependencies or reporting obligations differ from the Mission's did
+  // not come from `attenuate` and is not a delegation of that Mission.
+  dependencies:       'exact',
+  reporting:          'exact',
+
+  deliverables:       'narrowable',
+  successCriteria:    'narrowable',
+  inScope:            'narrowable',
+  authority:          'narrowable',
+  allowedActions:     'narrowable',
+  tools:              'narrowable',
+  dataScope:          'narrowable',
+  budget:             'narrowable',
+  deadline:           'narrowable',
+
+  outOfScope:         'restrictive',
+  forbiddenActions:   'restrictive',
+  constraints:        'restrictive',
+  approvalGates:      'restrictive',
+  escalationTriggers: 'restrictive',
+  stopConditions:     'restrictive',
+} as const satisfies Record<keyof DelegationEnvelope, 'identity' | 'exact' | 'narrowable' | 'restrictive'>
+
+/** Order-independent canonical form, so member order never decides equality. */
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).sort().join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value ?? null)
+}
+
+/** Structural equality for an `exact` field. Not object identity. */
+const requireExact = (
+  field: string,
+  parentValue: unknown,
+  childValue: unknown,
+  out: AttenuationViolation[],
+) => {
+  if (canonical(parentValue) !== canonical(childValue)) {
+    out.push({ field, element: canonical(childValue).slice(0, 120), rule: 'exceeds_parent' })
+  }
+}
+
+/** Every parent element must still be present downstream (restrictive fields). */
+const requireSuperset = <T>(
+  field: string,
+  parent: T[],
+  child: T[],
+  key: (v: T) => string,
+  out: AttenuationViolation[],
+) => {
+  const held = new Set(child.map(key))
+  for (const p of parent) {
+    if (!held.has(key(p))) {
+      out.push({ field, element: key(p), rule: 'removes_inherited' })
+    }
+  }
+}
+
+/**
  * Independent re-check that an existing envelope is still contained by a
  * Mission version. Used at ACCEPT and at USE, not only at PREPARE: an envelope
  * that was valid when cut must still prove itself against the Mission it claims
  * (§21.14), so a stored row can never become authority on its own.
+ *
+ * Covers EVERY field in `ENVELOPE_FIELD_CLASS`, in that classification's order.
  */
 export function envelopeIsContained(
   parent: AttenuationParent,
   envelope: DelegationEnvelope,
 ): AttenuationViolation[] {
   const v: AttenuationViolation[] = []
+
+  // identity
   if (envelope.projectId !== parent.projectId) {
     v.push({ field: 'projectId', element: envelope.projectId, rule: 'not_in_parent' })
   }
   if (envelope.missionId !== parent.missionId) {
     v.push({ field: 'missionId', element: envelope.missionId, rule: 'not_in_parent' })
   }
+  if (envelope.missionVersion !== parent.version) {
+    v.push({ field: 'missionVersion', element: String(envelope.missionVersion), rule: 'not_in_parent' })
+  }
+
+  // exact
+  if (envelope.delegatedTo !== 'manager') {
+    v.push({ field: 'delegatedTo', element: String(envelope.delegatedTo), rule: 'not_in_parent' })
+  }
+  requireExact('objective', parent.objective, envelope.objective, v)
+  requireExact('expectedOutcome', parent.expectedOutcome ?? null, envelope.expectedOutcome ?? null, v)
+  requireExact('dependencies', parent.dependencies, envelope.dependencies, v)
+  requireExact('reporting', parent.reporting, envelope.reporting, v)
+
+  // narrowable
+  containsAll(parent.deliverables, envelope.deliverables, s => s, 'deliverables', v)
+  containsAll(parent.successCriteria, envelope.successCriteria, criterionKey, 'successCriteria', v)
+  containsAll(parent.inScope, envelope.inScope, s => s, 'inScope', v)
   containsAll(parent.authority, envelope.authority, actionKey, 'authority', v)
   containsAll(parent.allowedActions, envelope.allowedActions, actionKey, 'allowedActions', v)
   containsAll(parent.tools, envelope.tools, toolKey, 'tools', v)
   containsDataScope(parent.dataScope, envelope.dataScope, v)
-  containsAll(parent.inScope, envelope.inScope, s => s, 'inScope', v)
   containsBudget(parent.budget, envelope.budget, v)
   containsDeadline(parent.deadline, envelope.deadline, v)
 
-  // Every prohibition the Mission carries must still be present downstream.
-  const held = new Set(envelope.forbiddenActions.map(actionKey))
-  for (const f of parent.forbiddenActions) {
-    if (!held.has(actionKey(f))) {
-      v.push({ field: 'forbiddenActions', element: actionKey(f), rule: 'removes_inherited' })
-    }
-  }
-  const gates = new Set(envelope.approvalGates.map(gateKey))
-  for (const g of parent.approvalGates) {
-    if (!gates.has(gateKey(g))) {
-      v.push({ field: 'approvalGates', element: gateKey(g), rule: 'removes_inherited' })
-    }
-  }
-  const stops = new Set(envelope.stopConditions.map(haltKey))
-  for (const s of parent.stopConditions) {
-    if (!stops.has(haltKey(s))) {
-      v.push({ field: 'stopConditions', element: haltKey(s), rule: 'removes_inherited' })
-    }
-  }
+  // restrictive — the child may have added more, but never lost one
+  requireSuperset('outOfScope', parent.outOfScope, envelope.outOfScope, s => s, v)
+  requireSuperset('forbiddenActions', parent.forbiddenActions, envelope.forbiddenActions, actionKey, v)
+  requireSuperset('constraints', parent.constraints, envelope.constraints, constraintKey, v)
+  requireSuperset('approvalGates', parent.approvalGates, envelope.approvalGates, gateKey, v)
+  requireSuperset('escalationTriggers', parent.escalationTriggers, envelope.escalationTriggers, triggerKey, v)
+  requireSuperset('stopConditions', parent.stopConditions, envelope.stopConditions, haltKey, v)
+
   return v
 }

@@ -394,6 +394,45 @@ Canonical properties:
   there is no enumerated tool registry in this codebase at all, so a declared tool cannot be
   proven available. Matching free-form tool strings against workflow or agent names would mean
   inventing a naming convention and then trusting it, which is not a source of truth.
+- **Manager acceptance IS the Mission's availability proof** (EI-S1.4C-R1). Before R1, capability
+  availability and Manager acceptance were two parallel facts: a Mission could be handed any
+  implementation answering "tools: true, data: true" and activate, while an accepted envelope sat
+  beside it proving nothing. `availabilityFromAcceptedDelegation` makes the chain sequential —
+  Mission → Envelope → Manager ACCEPT → accepted capability proof → **separate**
+  `mission.activate` Authorization V1 → Active. Manager acceptance is a NECESSARY input to
+  activation and never a sufficient one: it appends no Mission act, and withholding the activate
+  grant still leaves the Mission inactive.
+- **The capability seam carries server-derived Mission identity** (EI-S1.4C-R1). The query was
+  `{ projectId, tools, dataScope }`, which is enough for a capability-only lookup and *not*
+  enough for a proof derived from a specific artifact: a proof cut for Mission A would have
+  answered for Mission B in the same project merely because both wanted the same tools. The
+  query now carries `missionId` and `missionVersion`, populated by the Mission boundaries from
+  the lineage's own derived state — never from a caller parameter.
+- **Coverage runs the other way from attenuation** (§21.13, EI-S1.4C-R1). Attenuation guarantees
+  `delegation ⊆ mission`. Availability needs `queried ⊆ delegation`. A Manager that accepted an
+  envelope carrying tool A has proven A and said nothing about B, so a Mission requiring A + B
+  is not satisfied by that acceptance. The envelope is never widened to make a proof fit.
+- **The bound hash is an enforced pin, not provenance** (EI-S1.4C-R1). It shipped written,
+  carried and never consulted, so a stored envelope whose hash disagreed with the live Mission
+  was still accepted and still reported usable as long as the version matched. Prepare, decide,
+  replan and read now all compare it, and a same-version Mission whose delegable bounds moved
+  fails closed as `mission_bound_hash_changed`.
+- **The envelope must agree with the row carrying it** (EI-S1.4C-R1). A prepared row whose
+  relational columns said Mission A while its JSON payload said Mission B was accepted, and the
+  two halves would have authorized different things depending on which a reader trusted. Id,
+  project, mission, version, bound hash and `delegatedTo` are now checked in the pure core.
+- **Actor provenance is a lineage invariant** (§21.19, EI-S1.4C-R1). `DELEGATION_ACT_ACTOR` binds
+  each act to the only actor that may perform it — the Executive prepares and revokes, the
+  Manager decides and replans under exactly `atlas.manager` — enforced in the pure core AND
+  mirrored by a database CHECK, with a test comparing the two so they cannot drift. `system` is
+  reachable by no act; V1 has none, and inventing one would create an actor with no principal
+  behind it.
+- **Containment is re-proved across the whole contract** (EI-S1.4C-R1). The re-proof covered nine
+  fields and silently ignored the rest, so a stored envelope with a rewritten objective, an
+  invented deliverable, or its inherited constraints and escalation triggers deleted re-proved
+  clean. `ENVELOPE_FIELD_CLASS` now classifies every field as identity, exact, narrowable or
+  restrictive, a guard test enumerates the type's keys against it, and a field added later
+  without a containment ruling fails a test rather than defaulting to unchecked.
 - **The replanning boundary is classified, not negotiated** (§21.20–§21.26). Resequencing,
   decomposition and retrying inside the envelope are `operational_change` and belong to the
   Manager. Anything reaching past the envelope — an action outside the allowed set or inside
@@ -404,7 +443,10 @@ Canonical properties:
 - **Actors are not interchangeable** (§21.19). Preparing and revoking are Executive principal
   acts recording the acting human; deciding and replanning are Manager acts recording the
   Manager's own constant identity. The Manager never borrows the requesting human's id to make
-  the ledger look authoritative, and the service role is neither.
+  the ledger look authoritative, and the service role is neither. One institutional act resolves
+  the acting identity exactly once (EI-S1.4C-R1): revocation previously authenticated a second
+  time between the authorization and the append, so the row could name a principal who never
+  passed the isolation check that let the read through.
 - **Delegation ≠ Decision; acceptance ≠ Authorization** (§21.18). Nothing on this path writes to
   `atlas_decision_ledger`, `atlas_authorizations` or `atlas_mission_ledger`.
 - **Tools in the envelope are a maximum bound, not execution permission** (§21.13). Nothing
@@ -453,8 +495,10 @@ publishing and automatic project-mode changes.
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Mission schema | **APPLIED AND VERIFIED — BYTE_IDENTICAL** (ledger version `20260820054225`) |
 | Executive → Manager handoff | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
+| Delegation proof integrity | EI-S1.4C-R1 corrections applied |
 | Delegation migration | `apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql`, ledger name `atlas_delegation_ledger` |
 | Capability availability | **REAL CHECK SHIPPED** — reads proven against `DOMAIN_REGISTRY`; writes and all tools fail closed |
+| Activation availability proof | **ACCEPTED DELEGATION REQUIRED** — Mission-, version- and coverage-specific |
 | Manager → Workforce handoff | **NOT STARTED** |
 | Executive Intelligence Stage 1 | **STILL NOT COMPLETE** |
 

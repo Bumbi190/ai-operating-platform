@@ -32,6 +32,7 @@ import { resolveMissionEvaluation } from '@/lib/atlas/mission/principal-read'
 
 import {
   attenuate,
+  ENVELOPE_FIELD_CLASS,
   envelopeIsContained,
   type AttenuationParent,
   type DelegationNarrowing,
@@ -39,17 +40,18 @@ import {
 import { missionBoundHash, missionBoundProjectionForDelegation } from '@/lib/atlas/delegation/binding'
 import { classifyChange, requiresExecutiveReview } from '@/lib/atlas/delegation/classify'
 import {
+  DELEGATION_ACT_ACTOR,
   deriveDelegationState,
   isDecidable,
   isLive,
   MalformedDelegationError,
+  MANAGER_ACTOR_ID,
   orderDelegationRecords,
 } from '@/lib/atlas/delegation/derive'
 import { capabilityFindings, dataScopeIsProven, registryAvailability } from '@/lib/atlas/delegation/availability'
 import {
   decideDelegation,
   delegationRejectionGrounds,
-  MANAGER_ACTOR_ID,
   parentFromMission,
   prepareDelegation,
   recordDelegationReplan,
@@ -62,7 +64,12 @@ import {
   resolveDelegation,
   resolveDelegationEvaluation,
 } from '@/lib/atlas/delegation/principal-read'
-import { DELEGATION_REJECTION_REASONS, type DelegationEnvelope, type DelegationRecord } from '@/lib/atlas/delegation/types'
+import {
+  DELEGATION_ACT_TYPES,
+  DELEGATION_REJECTION_REASONS,
+  type DelegationEnvelope,
+  type DelegationRecord,
+} from '@/lib/atlas/delegation/types'
 import type { DelegationLedgerStore } from '@/lib/atlas/delegation/store'
 import type { MissionEvaluation } from '@/lib/atlas/mission/types'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
@@ -646,27 +653,41 @@ describe('replanning classifier', () => {
 // 3. Lineage reduction — pure
 // ────────────────────────────────────────────────────────────────────────────
 
-const act = (over: Partial<DelegationRecord>): DelegationRecord => ({
-  recordId: randomUUID(),
-  envelopeId: 'env-1',
-  projectId: PROJECT_P,
-  actType: 'delegation.prepared',
-  occurredAt: T0,
-  missionId: MISSION_M,
-  missionVersion: 1,
-  missionBoundHash: missionBoundHash(PARENT),
-  envelope: null,
-  rejections: [],
-  replan: null,
-  actorKind: 'executive_principal',
-  actorId: PRINCIPAL_A,
-  note: null,
-  revokedReason: null,
-  ...over,
-})
+/**
+ * Build one act with the canonical actor for its type (§21.19), unless a test
+ * deliberately overrides it. Defaulting every act to `executive_principal` would
+ * have made most fixtures below malformed once R1 made the actor a lineage
+ * invariant, and quietly re-labelling them would have hidden the invariant.
+ */
+const act = (over: Partial<DelegationRecord>): DelegationRecord => {
+  const actType = over.actType ?? 'delegation.prepared'
+  const kind = DELEGATION_ACT_ACTOR[actType]
+  return {
+    recordId: randomUUID(),
+    envelopeId: 'env-1',
+    projectId: PROJECT_P,
+    actType: 'delegation.prepared',
+    occurredAt: T0,
+    missionId: MISSION_M,
+    missionVersion: 1,
+    missionBoundHash: missionBoundHash(PARENT),
+    envelope: null,
+    rejections: [],
+    replan: null,
+    actorKind: kind,
+    actorId: kind === 'manager' ? MANAGER_ACTOR_ID : PRINCIPAL_A,
+    note: null,
+    revokedReason: null,
+    ...over,
+  }
+}
 
 const preparedAct = (over: Partial<DelegationRecord> = {}) =>
-  act({ actType: 'delegation.prepared', envelope: { ...envelopeOf(), envelopeId: 'env-1' }, ...over })
+  act({
+    actType: 'delegation.prepared',
+    envelope: { ...envelopeOf(), envelopeId: 'env-1' },
+    ...over,
+  })
 
 describe('lineage reduction', () => {
   it('derives prepared from a lone preparing act', () => {
@@ -805,7 +826,7 @@ describe('lineage reduction', () => {
 describe('capability availability', () => {
   it('is NOT a stub that returns true', async () => {
     const r = await registryAvailability({
-      projectId: PROJECT_P,
+      projectId: PROJECT_P, missionId: MISSION_M, missionVersion: 1,
       tools: [{ tool: 'anything' }],
       dataScope: [{ resource: 'anything', access: 'read' }],
     })
@@ -815,7 +836,7 @@ describe('capability availability', () => {
 
   it('proves a read scope on a registered domain', async () => {
     const r = await registryAvailability({
-      projectId: PROJECT_P, tools: [],
+      projectId: PROJECT_P, missionId: MISSION_M, missionVersion: 1, tools: [],
       dataScope: [{ resource: 'leads', access: 'read' }],
     })
     expect(r.data).toBe(true)
@@ -843,18 +864,18 @@ describe('capability availability', () => {
   })
 
   it('never proves a tool available — no tool registry exists to prove it from', async () => {
-    const r = await registryAvailability({ projectId: PROJECT_P, tools: [{ tool: 'repo_read' }], dataScope: [] })
+    const r = await registryAvailability({ projectId: PROJECT_P, missionId: MISSION_M, missionVersion: 1, tools: [{ tool: 'repo_read' }], dataScope: [] })
     expect(r.tools).toBe(false)
   })
 
   it('is vacuously satisfied when nothing is declared', async () => {
-    const r = await registryAvailability({ projectId: PROJECT_P, tools: [], dataScope: [] })
+    const r = await registryAvailability({ projectId: PROJECT_P, missionId: MISSION_M, missionVersion: 1, tools: [], dataScope: [] })
     expect(r.tools).toBe(true)
     expect(r.data).toBe(true)
   })
 
   it('performs no writes and returns the same answer twice', async () => {
-    const input = { projectId: PROJECT_P, tools: [], dataScope: [{ resource: 'runs', access: 'read' as const }] }
+    const input = { projectId: PROJECT_P, missionId: MISSION_M, missionVersion: 1, tools: [], dataScope: [{ resource: 'runs', access: 'read' as const }] }
     expect(await registryAvailability(input)).toEqual(await registryAvailability(input))
   })
 })
@@ -1100,7 +1121,9 @@ describe('decide: the caller never chooses the outcome (§21.16)', () => {
     const evaluation = missionEvaluation(PARENT, {
       readiness: { ready: false, missing: ['dependencies', 'unresolved_blocker'], unverified: [], satisfiedSoFar: [] },
     })
-    const grounds = delegationRejectionGrounds(envelopeOf(), PARENT, evaluation, T1)
+    const grounds = delegationRejectionGrounds(
+      envelopeOf(), PARENT, evaluation, T1, { tools: true, data: true },
+    )
     expect(grounds.some(g => g.reason === 'dependency_unavailable')).toBe(true)
   })
 
@@ -1150,11 +1173,26 @@ describe('decide: version pinning is a hard stop (§21.15)', () => {
     expect(r.status).toBe('mission_not_authorized')
   })
 
-  it('re-proves containment at decide time, not only at prepare time', async () => {
+  it('stops at the BOUND HASH when the mission narrows without a version bump', async () => {
     const store = new FakeStore()
     const id = await prepared(store)
-    // Same version, but the mission has since lost an action the envelope holds.
+    // Same version number, but a delegable bound moved. The version says nothing
+    // changed and the hash says something did — the hash wins.
     missionSays(missionEvaluation({ ...PARENT, allowedActions: [{ action: 'run_tests' }] }))
+    const r = await decideDelegation({ envelopeId: id, store, now: T1 })
+    expect(r.status).toBe('mission_bound_hash_changed')
+    expect(store.appended.length).toBe(1)
+  })
+
+  it('re-proves containment on a STORED malformed envelope, hash intact', async () => {
+    // The path the containment re-proof actually exists for: a row that did not
+    // come from prepareDelegation. The mission is untouched, so the pin holds
+    // and the re-proof is what has to catch the widened envelope.
+    const store = new FakeStore()
+    const id = await prepared(store)
+    const row = store.appended[0]
+    row.envelope = { ...row.envelope!, allowedActions: [{ action: 'deploy_production' }] }
+    missionSays(missionEvaluation())
     const r = await decideDelegation({ envelopeId: id, store, now: T1 })
     expect(r.state!.status).toBe('rejected')
     expect(r.rejections!.some(x => x.reason === 'delegation_exceeds_mission')).toBe(true)
@@ -1350,13 +1388,26 @@ describe('read boundary and invalidation (§21.27)', () => {
     expect(evaluation!.usable).toBe(false)
   })
 
-  it('INVALIDATES when the mission narrowed below the envelope', async () => {
+  it('INVALIDATES on bound-hash drift when the mission narrows at the same version', async () => {
     const store = new FakeStore()
     const id = await prepared(store)
     await decideDelegation({ envelopeId: id, store, now: T1 })
     missionSays(missionEvaluation({ ...PARENT, allowedActions: [] }))
     const { evaluation } = await resolveDelegationEvaluation(id, { store, now: T2 })
+    expect(evaluation!.effectiveStatus).toBe('invalidated')
+    expect(evaluation!.reason).toBe('mission_bound_hash_changed')
+  })
+
+  it('INVALIDATES a stored malformed envelope even with the pin intact', async () => {
+    const store = new FakeStore()
+    const id = await prepared(store)
+    await decideDelegation({ envelopeId: id, store, now: T1 })
+    const row = store.appended[0]
+    row.envelope = { ...row.envelope!, tools: [{ tool: 'ssh' }] }
+    missionSays(missionEvaluation())
+    const { evaluation } = await resolveDelegationEvaluation(id, { store, now: T2 })
     expect(evaluation!.reason).toBe('delegation_exceeds_mission')
+    expect(evaluation!.usable).toBe(false)
   })
 
   it('fails closed when the mission cannot be read at all', async () => {
@@ -1427,7 +1478,7 @@ describe('read boundary and invalidation (§21.27)', () => {
 // 8. Structural guards — what this phase must NOT do
 // ────────────────────────────────────────────────────────────────────────────
 
-const sources = ['types.ts', 'attenuate.ts', 'binding.ts', 'classify.ts', 'derive.ts', 'availability.ts', 'store.ts', 'principal-read.ts', 'principal-write.ts']
+const sources = ['types.ts', 'attenuate.ts', 'binding.ts', 'classify.ts', 'derive.ts', 'availability.ts', 'mission-availability.ts', 'store.ts', 'principal-read.ts', 'principal-write.ts']
   .map(f => ({ file: f, text: readFileSync(resolve(DELEGATION_DIR, f), 'utf8') }))
 
 /**
@@ -1513,6 +1564,382 @@ describe('structural guards', () => {
     }
     // No caller-supplied acceptance anywhere in the route.
     expect(route).not.toMatch(/body as \{[^}]*accepted/)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 9. EI-S1.4C-R1 — proof, lineage and provenance invariants
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('R1 — envelope agrees with the row carrying it (§21.19)', () => {
+  it('REFUSES an envelope naming a different envelopeId than its row', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'someone-else' },
+    })])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an envelope naming a different project than its row', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'env-1', projectId: PROJECT_Q },
+    })])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an envelope naming a different mission than its row', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'env-1', missionId: 'other-mission' },
+    })])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an envelope naming a different mission version than its row', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'env-1', missionVersion: 99 },
+    })])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an envelope carrying a different bound hash than its row', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'env-1', missionBoundHash: 'a'.repeat(64) },
+    })])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an envelope delegated to anything but the manager', () => {
+    expect(() => deriveDelegationState([preparedAct({
+      envelope: { ...envelopeOf(), envelopeId: 'env-1', delegatedTo: 'workforce' as never },
+    })])).toThrow(MalformedDelegationError)
+  })
+})
+
+describe('R1 — actor provenance is a lineage invariant (§21.19)', () => {
+  it('maps every act to exactly one canonical actor, and none to system', () => {
+    expect(Object.keys(DELEGATION_ACT_ACTOR).sort()).toEqual([...DELEGATION_ACT_TYPES].sort())
+    expect(Object.values(DELEGATION_ACT_ACTOR)).not.toContain('system')
+  })
+
+  it('REFUSES a decision made by "system" with no actor', () => {
+    expect(() => deriveDelegationState([
+      preparedAct(),
+      act({ actType: 'delegation.accepted', occurredAt: T1, actorKind: 'system', actorId: null }),
+    ])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES a rejection recorded by an executive principal', () => {
+    expect(() => deriveDelegationState([
+      preparedAct(),
+      act({
+        actType: 'delegation.rejected', occurredAt: T1,
+        actorKind: 'executive_principal', actorId: PRINCIPAL_A,
+        rejections: [{ reason: 'tool_unavailable' }],
+      }),
+    ])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES a preparation recorded by the manager', () => {
+    expect(() => deriveDelegationState([
+      preparedAct({ actorKind: 'manager', actorId: MANAGER_ACTOR_ID }),
+    ])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES a revocation recorded by the manager', () => {
+    expect(() => deriveDelegationState([
+      preparedAct(),
+      act({
+        actType: 'delegation.revoked', occurredAt: T1,
+        actorKind: 'manager', actorId: MANAGER_ACTOR_ID, revokedReason: 'executive_withdrew',
+      }),
+    ])).toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES a manager act under any identity but atlas.manager', () => {
+    expect(() => deriveDelegationState([
+      preparedAct(),
+      act({ actType: 'delegation.accepted', occurredAt: T1, actorKind: 'manager', actorId: 'rogue' }),
+    ])).toThrow(MalformedDelegationError)
+    expect(MANAGER_ACTOR_ID).toBe('atlas.manager')
+  })
+
+  it('REFUSES an executive act with a blank actor id', () => {
+    expect(() => deriveDelegationState([preparedAct({ actorId: '   ' })]))
+      .toThrow(MalformedDelegationError)
+    expect(() => deriveDelegationState([preparedAct({ actorId: null })]))
+      .toThrow(MalformedDelegationError)
+  })
+
+  it('REFUSES an operational replan recorded by an executive principal', () => {
+    expect(() => deriveDelegationState([
+      preparedAct(),
+      act({ actType: 'delegation.accepted', occurredAt: T1 }),
+      act({
+        actType: 'delegation.replan.operational', occurredAt: T2,
+        actorKind: 'executive_principal', actorId: PRINCIPAL_A,
+        replan: { changeClass: 'operational_change', exceeded: [], summary: 'x' },
+      }),
+    ])).toThrow(MalformedDelegationError)
+  })
+})
+
+describe('R1 — full containment re-proof (§6.39)', () => {
+  const envelope = () => ({ ...envelopeOf(), envelopeId: 'env-1' })
+
+  it('catches an altered objective', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), objective: 'Something else' })
+      .some(v => v.field === 'objective')).toBe(true)
+  })
+
+  it('catches an altered expected outcome', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), expectedOutcome: 'Different' })
+      .some(v => v.field === 'expectedOutcome')).toBe(true)
+  })
+
+  it('catches a widened deliverable', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), deliverables: [...PARENT.deliverables, 'INVENTED'] })
+      .some(v => v.field === 'deliverables')).toBe(true)
+  })
+
+  it('catches a changed success criterion', () => {
+    expect(envelopeIsContained(PARENT, {
+      ...envelope(), successCriteria: [{ criterion: 'Isolation validated', level: 'stretch' }],
+    }).some(v => v.field === 'successCriteria')).toBe(true)
+  })
+
+  it('catches altered dependencies', () => {
+    const withDeps: AttenuationParent = {
+      ...PARENT, dependencies: [{ kind: 'capability', reference: 'iso', hardness: 'hard' }],
+    }
+    expect(envelopeIsContained(withDeps, { ...envelope(), dependencies: [] })
+      .some(v => v.field === 'dependencies')).toBe(true)
+  })
+
+  it('catches altered reporting', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), reporting: [] })
+      .some(v => v.field === 'reporting')).toBe(true)
+  })
+
+  it('catches a dropped parent out-of-scope entry', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), outOfScope: [] })
+      .some(v => v.field === 'outOfScope' && v.rule === 'removes_inherited')).toBe(true)
+  })
+
+  it('catches a dropped parent constraint', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), constraints: [] })
+      .some(v => v.field === 'constraints' && v.rule === 'removes_inherited')).toBe(true)
+  })
+
+  it('catches a dropped parent escalation trigger', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), escalationTriggers: [] })
+      .some(v => v.field === 'escalationTriggers' && v.rule === 'removes_inherited')).toBe(true)
+  })
+
+  it('catches a mission-version disagreement', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), missionVersion: 7 })
+      .some(v => v.field === 'missionVersion')).toBe(true)
+  })
+
+  it('catches delegatedTo drift', () => {
+    expect(envelopeIsContained(PARENT, { ...envelope(), delegatedTo: 'workforce' as never })
+      .some(v => v.field === 'delegatedTo')).toBe(true)
+  })
+
+  it('compares exact fields structurally, not by object identity', () => {
+    // Same content, different object and different member order.
+    const reordered = {
+      ...envelope(),
+      reporting: [...PARENT.reporting].map(r => ({ ...r })),
+      dependencies: [...PARENT.dependencies].map(d => ({ ...d })),
+    }
+    expect(envelopeIsContained(PARENT, reordered)).toEqual([])
+  })
+
+  it('still passes a correctly attenuated envelope', () => {
+    expect(envelopeIsContained(PARENT, envelope())).toEqual([])
+    const narrowed = { ...envelopeOf({ allowedActions: [{ action: 'run_tests' }] }), envelopeId: 'env-1' }
+    expect(envelopeIsContained(PARENT, narrowed)).toEqual([])
+  })
+})
+
+describe('R1 — full-envelope containment guard', () => {
+  it('classifies EVERY DelegationEnvelope field, with none unruled', () => {
+    // The delegation equivalent of the Mission material-projection guard. A
+    // field added later without a containment ruling fails here rather than
+    // silently defaulting to unchecked.
+    const envelope = envelopeOf()
+    const fields = Object.keys(envelope).sort()
+    const classified = Object.keys(ENVELOPE_FIELD_CLASS).sort()
+    expect(classified).toEqual(fields)
+  })
+
+  it('assigns each field exactly one of the four classes', () => {
+    const allowed = ['identity', 'exact', 'narrowable', 'restrictive']
+    for (const [field, cls] of Object.entries(ENVELOPE_FIELD_CLASS)) {
+      expect(allowed, field).toContain(cls)
+    }
+  })
+
+  it('every restrictive field is actually re-proved as a superset', () => {
+    const restrictive = Object.entries(ENVELOPE_FIELD_CLASS)
+      .filter(([, c]) => c === 'restrictive').map(([f]) => f)
+    expect(restrictive.sort()).toEqual([
+      'approvalGates', 'constraints', 'escalationTriggers',
+      'forbiddenActions', 'outOfScope', 'stopConditions',
+    ])
+    for (const field of restrictive) {
+      const emptied = { ...envelopeOf(), envelopeId: 'env-1', [field]: [] } as never
+      expect(
+        envelopeIsContained(PARENT, emptied).some(v => v.field === field && v.rule === 'removes_inherited'),
+        field,
+      ).toBe(true)
+    }
+  })
+
+  it('every exact field is actually re-proved as equal', () => {
+    const exact = Object.entries(ENVELOPE_FIELD_CLASS)
+      .filter(([, c]) => c === 'exact').map(([f]) => f)
+    expect(exact.sort()).toEqual([
+      'delegatedTo', 'dependencies', 'expectedOutcome', 'objective', 'reporting',
+    ])
+  })
+})
+
+describe('R1 — the bound hash is an enforced pin, not provenance (§21.15)', () => {
+  const staleHash = 'f'.repeat(64)
+  const stale = () => {
+    const envelope = { ...envelopeOf(), envelopeId: 'env-1', missionBoundHash: staleHash }
+    return [preparedAct({ missionBoundHash: staleHash, envelope })]
+  }
+
+  it('REFUSES to decide an envelope whose hash no longer matches the mission', async () => {
+    const store = new FakeStore(stale())
+    const r = await decideDelegation({ envelopeId: 'env-1', store, now: T1 })
+    expect(r.status).toBe('mission_bound_hash_changed')
+    expect(store.appended).toEqual([])
+  })
+
+  it('INVALIDATES an accepted envelope whose hash no longer matches', async () => {
+    const rows = [
+      ...stale(),
+      act({ actType: 'delegation.accepted', occurredAt: T1, missionBoundHash: staleHash }),
+    ]
+    const { evaluation } = await resolveDelegationEvaluation('env-1', { store: new FakeStore(rows), now: T2 })
+    expect(evaluation!.usable).toBe(false)
+    expect(evaluation!.reason).toBe('mission_bound_hash_changed')
+  })
+
+  it('REFUSES to replan under a hash that no longer matches', async () => {
+    const rows = [
+      ...stale(),
+      act({ actType: 'delegation.accepted', occurredAt: T1, missionBoundHash: staleHash }),
+    ]
+    const store = new FakeStore(rows)
+    const r = await recordDelegationReplan({ envelopeId: 'env-1', store, now: T2, change: { summary: 'x' } })
+    expect(r.status).toBe('mission_bound_hash_changed')
+  })
+
+  it('does not fire when the mission changes something undelegable', async () => {
+    const store = new FakeStore()
+    const id = await prepared(store)
+    // Title is not a delegable bound, so the hash must not move.
+    const evaluation = missionEvaluation()
+    missionSays({ ...evaluation, state: { ...evaluation.state, title: 'Renamed' } } as never)
+    const r = await decideDelegation({ envelopeId: id, store, now: T1 })
+    expect(r.status).toBe('ok')
+  })
+})
+
+describe('R1 — revocation uses one authenticated principal (§21.19)', () => {
+  it('resolves the acting identity exactly once', async () => {
+    const store = new FakeStore()
+    const id = await prepared(store)
+    vi.mocked(resolveProjectAccess).mockClear()
+    await revokeDelegation({ envelopeId: id, reason: 'executive_withdrew', store, now: T1 })
+    expect(vi.mocked(resolveProjectAccess).mock.calls.length).toBe(1)
+  })
+
+  it('records the principal that opened the lineage, not a later one', async () => {
+    const store = new FakeStore()
+    const id = await prepared(store)
+    const OTHER = '99999999-9999-4999-8999-999999999999'
+    vi.mocked(resolveProjectAccess)
+      .mockResolvedValueOnce({ ok: true, userId: PRINCIPAL_A, allowedProjectIds: [PROJECT_P] } as never)
+      .mockResolvedValue({ ok: true, userId: OTHER, allowedProjectIds: [PROJECT_P] } as never)
+    await revokeDelegation({ envelopeId: id, reason: 'executive_withdrew', store, now: T1 })
+    const rev = store.appended.find(r => r.actType === 'delegation.revoked')!
+    expect(rev.actorId).toBe(PRINCIPAL_A)
+  })
+})
+
+describe('R1 — the decide note is carried, not discarded', () => {
+  it('reaches the appended record through the Manager path', () => {
+    const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
+    expect(manager).toMatch(/decideDelegation\(envelopeId: string, note\?: string\)/)
+    expect(manager).toMatch(/decideDelegation\(\{ envelopeId, note \}\)/)
+    const route = readFileSync(resolve(__dirname, '../../app/api/manager/route.ts'), 'utf8')
+    expect(route).toMatch(/manager\.decideDelegation\(envelope_id, note\)/)
+  })
+
+  it('is persisted on the decision act', async () => {
+    const store = new FakeStore()
+    const id = await prepared(store)
+    await decideDelegation({ envelopeId: id, store, now: T1, note: 'reviewed by ops' })
+    const decision = store.appended.find(r => r.actType === 'delegation.accepted')!
+    expect(decision.note).toBe('reviewed by ops')
+  })
+})
+
+describe('R1 — SQL actor mapping matches the domain', () => {
+  const sql = readFileSync(MIGRATION, 'utf8')
+
+  it('binds each act to its canonical actor', () => {
+    expect(sql).toMatch(/atlas_delegation_ledger_act_actor_check/)
+    for (const [actType, kind] of Object.entries(DELEGATION_ACT_ACTOR)) {
+      expect(sql, actType).toContain(`'${actType}'`)
+      expect(sql, kind).toContain(`'${kind}'`)
+    }
+  })
+
+  it('pins the manager identity to the same constant the domain uses', () => {
+    expect(sql).toContain(`actor_id = '${MANAGER_ACTOR_ID}'`)
+  })
+
+  it('groups exactly the executive acts together and the manager acts together', () => {
+    const exec = Object.entries(DELEGATION_ACT_ACTOR)
+      .filter(([, k]) => k === 'executive_principal').map(([a]) => a)
+    const mgr = Object.entries(DELEGATION_ACT_ACTOR)
+      .filter(([, k]) => k === 'manager').map(([a]) => a)
+    expect(exec.sort()).toEqual(['delegation.prepared', 'delegation.revoked'])
+    expect(mgr.sort()).toEqual([
+      'delegation.accepted', 'delegation.rejected',
+      'delegation.replan.operational', 'delegation.replan.referred',
+    ])
+    // Both groups appear in the CHECK, and `system` is reachable by no act.
+    expect(sql).toMatch(/when act_type in \('delegation\.prepared', 'delegation\.revoked'\)/)
+    expect(sql).toMatch(/else false/)
+  })
+
+  it('requires a non-blank executive principal id', () => {
+    expect(sql).toMatch(/length\(btrim\(actor_id\)\) > 0/)
+  })
+})
+
+describe('R1 — capability seam carries server-derived mission identity', () => {
+  it('the query type names the mission and its version', () => {
+    const capability = readFileSync(resolve(__dirname, '../atlas/mission/capability.ts'), 'utf8')
+    expect(capability).toMatch(/missionId: string/)
+    expect(capability).toMatch(/missionVersion: number/)
+  })
+
+  it('both mission boundaries pass identity from derived state, never a caller', () => {
+    const write = readFileSync(resolve(__dirname, '../atlas/mission/principal-write.ts'), 'utf8')
+    const read = readFileSync(resolve(__dirname, '../atlas/mission/principal-read.ts'), 'utf8')
+    expect(write).toMatch(/missionId: prior\.missionId/)
+    expect(write).toMatch(/missionVersion: prior\.version/)
+    expect(read).toMatch(/missionId: read\.state\.missionId/)
+    expect(read).toMatch(/missionVersion: read\.state\.version/)
+    // Scoped to the availability call itself: `args.missionId` is legitimate
+    // elsewhere (it names WHICH mission an act targets, then the lineage's own
+    // recorded scope authorizes it). What must never happen is a caller's
+    // identity reaching the capability query.
+    const callSite = (src: string) => src.slice(src.indexOf('unprovenAvailability)({'), src.indexOf('unprovenAvailability)({') + 400)
+    expect(callSite(write)).not.toMatch(/args\./)
+    expect(callSite(read)).not.toMatch(/args\.missionId|args\.missionVersion|args\.projectId/)
   })
 })
 

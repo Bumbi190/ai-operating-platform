@@ -541,8 +541,8 @@ Return ONLY valid JSON:
    * checks and appends whichever outcome they produce, so a caller cannot
    * assert an acceptance the conditions do not support.
    */
-  async decideDelegation(envelopeId: string): Promise<DelegationWriteResult> {
-    return decideDelegation({ envelopeId })
+  async decideDelegation(envelopeId: string, note?: string): Promise<DelegationWriteResult> {
+    return decideDelegation({ envelopeId, note })
   }
 
   /** §21.14 — is this envelope usable right now, given its live Mission? */

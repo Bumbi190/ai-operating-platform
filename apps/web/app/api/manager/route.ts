@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
         // Note what is NOT read from the body: any acceptance flag. The Manager
         // decides from the §21.16 checks (§21.16 — acceptance is earned, not
         // asserted), so a hostile caller has nothing here to lie with.
-        return delegationResponse(await manager.decideDelegation(envelope_id))
+        return delegationResponse(await manager.decideDelegation(envelope_id, note))
       }
 
       case 'read_delegation': {

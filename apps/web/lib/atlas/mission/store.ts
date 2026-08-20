@@ -64,6 +64,7 @@ interface Row {
   version: number
   authority_record: unknown
   decision_ref: unknown
+  decision_provenance: unknown
   project_mode: string | null
   report: unknown
   dependency_observation: unknown
@@ -86,7 +87,7 @@ const COLS = [
   'allowed_actions', 'forbidden_actions', 'tools', 'data_scope', 'dependencies',
   'assumptions', 'risks', 'approval_gates', 'deadline', 'reporting',
   'escalation_triggers', 'stop_conditions', 'pause_conditions', 'completion_conditions',
-  'evidence_requirements', 'version', 'authority_record', 'decision_ref',
+  'evidence_requirements', 'version', 'authority_record', 'decision_ref', 'decision_provenance',
   'project_mode', 'report', 'dependency_observation', 'gate_resolution',
   'blocker', 'clears_blocker_id', 'evidence', 'closure', 'review_note',
   'superseded_by', 'reason', 'lifecycle_generation',
@@ -135,6 +136,7 @@ function rowToRecord(row: Row): MissionRecord {
     version:    row.version,
     authorityRecord: (row.authority_record as MissionRecord['authorityRecord']) ?? null,
     decisionRef: (row.decision_ref as MissionRecord['decisionRef']) ?? null,
+    decisionProvenance: (row.decision_provenance as MissionRecord['decisionProvenance']) ?? null,
     projectMode: row.project_mode,
     report:     (row.report as MissionRecord['report']) ?? null,
     dependencyObservation: (row.dependency_observation as MissionRecord['dependencyObservation']) ?? null,
@@ -191,6 +193,7 @@ function recordToRow(record: MissionRecord): Record<string, unknown> {
     version:     record.version,
     authority_record: record.authorityRecord,
     decision_ref: record.decisionRef,
+    decision_provenance: record.decisionProvenance,
     project_mode: record.projectMode,
     report:      record.report,
     dependency_observation: record.dependencyObservation,

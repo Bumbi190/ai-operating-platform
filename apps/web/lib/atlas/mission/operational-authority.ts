@@ -36,6 +36,7 @@ import 'server-only'
 import { isAuthorizationEffective } from '@/lib/atlas/authorization/principal-read'
 import { resolveDecision } from '@/lib/atlas/decision-ledger/principal-read'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isExecutable, type AtlasMode } from '@/lib/atlas/lifecycle'
 import { isPastDeadline } from './derive'
 import type { DerivedMissionState, MissionOperationalAuthority } from './types'
 
@@ -85,24 +86,48 @@ export async function evaluateMissionOperationalAuthority(
     return { authorized: false, reason: 'deadline_expired', detail: state.deadline ?? undefined }
   }
 
-  // §20.75 — "…the project mode changes." Compare the mode snapshotted when the
-  // mission was last authorized against the live value. A mission approved
-  // while a project was `active` must not keep authorizing work after the
-  // project moved to observer, hibernate or archived.
-  if (state.projectMode) {
-    let currentMode: string | null
-    try {
-      currentMode = await (args.projectMode ?? readProjectMode)(state.projectId)
-    } catch {
-      // Cannot prove the mode is unchanged → cannot authorize.
-      return { authorized: false, reason: 'project_mode_changed', detail: 'unreadable' }
+  // §20.75 — the project mode. TWO separate questions, and R1 only answered the
+  // first:
+  //
+  //   1. did the mode CHANGE since the mission was authorized?
+  //   2. does the CURRENT mode permit movement toward execution at all?
+  //
+  // Equality alone let a mission approved in `observer` stay authorized forever,
+  // because nothing had changed. Omnira's own project-mode doctrine is explicit
+  // in two independent places — lib/atlas/lifecycle.ts and the atlas_mode column
+  // comment — and both say the same thing:
+  //
+  //   active    full pipeline INCLUDING execution
+  //   observer  collect and analyse, NO execution ("Observer projects must
+  //             never trigger execution — analysis only")
+  //   hibernate no collection, architecture-ready
+  //   archived  permanently retired
+  //
+  // `isExecutable` is the sanctioned predicate for exactly this, so it is reused
+  // rather than reimplemented, and no policy engine appears.
+  let currentMode: string | null
+  try {
+    currentMode = await (args.projectMode ?? readProjectMode)(state.projectId)
+  } catch {
+    // Cannot prove the mode → cannot authorize.
+    return { authorized: false, reason: 'project_mode_changed', detail: 'unreadable' }
+  }
+  // SUITABILITY FIRST, then change. A project that cannot execute right now is
+  // the more precise and more actionable answer, and it holds whether or not
+  // the mode also changed — a mission must never move while its project is in
+  // observer, hibernate or archived, however it got there.
+  if (!currentMode || !isExecutable(currentMode as AtlasMode)) {
+    return {
+      authorized: false,
+      reason: 'project_mode_not_operational',
+      detail: currentMode ?? 'unknown',
     }
-    if (currentMode !== state.projectMode) {
-      return {
-        authorized: false,
-        reason: 'project_mode_changed',
-        detail: `${state.projectMode}->${currentMode ?? 'unknown'}`,
-      }
+  }
+  if (state.projectMode && currentMode !== state.projectMode) {
+    return {
+      authorized: false,
+      reason: 'project_mode_changed',
+      detail: `${state.projectMode}->${currentMode ?? 'unknown'}`,
     }
   }
 

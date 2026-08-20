@@ -43,6 +43,7 @@ import {
   evaluateMissionOperationalAuthority,
   type ProjectModeReader,
 } from './operational-authority'
+import { unprovenAvailability, type MissionCapabilityAvailability } from './capability'
 import { createMissionLedgerStore, type MissionLedgerStore } from './store'
 import type {
   DerivedMissionState,
@@ -66,6 +67,11 @@ export interface MissionReadArgs {
   now?: string
   /** Injected §20.75 project-mode reader; production callers omit it. */
   projectMode?: ProjectModeReader
+  /**
+   * Injected §20.105 capability check. Omitted means `unprovenAvailability`,
+   * so a mission is never reported Ready on declaration alone.
+   */
+  availability?: MissionCapabilityAvailability
 }
 
 const DENY = <T>(status: MissionReadStatus, empty: T) => ({ ...empty, status })
@@ -157,7 +163,18 @@ export async function resolveMissionEvaluation(
   const authority = await evaluateMissionOperationalAuthority(read.state, {
     now: at, projectMode: args.projectMode,
   })
-  const readiness = missionReadiness(read.state, authority, at)
+  // §20.105 — availability is proven, never assumed. The default proves
+  // nothing, so `ready` stays false until EI-S1.4C supplies the real check.
+  let available = { tools: false, data: false }
+  try {
+    const proven = await (args.availability ?? unprovenAvailability)({
+      projectId: read.state.projectId, tools: read.state.tools, dataScope: read.state.dataScope,
+    })
+    available = { tools: proven.tools, data: proven.data }
+  } catch {
+    available = { tools: false, data: false }
+  }
+  const readiness = missionReadiness(read.state, authority, at, available)
   return {
     evaluation: {
       lifecycleStatus: read.state.status,

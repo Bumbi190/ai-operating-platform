@@ -198,9 +198,23 @@ export interface MissionDependencyObservation {
   /** Must match a `reference` in the mission's declared dependencies. */
   reference: string
   satisfied: boolean
-  /** Why this is believed — §20.81 evidence quality applies. */
+  /**
+   * Why this is believed — §20.81 evidence quality applies.
+   *
+   * REQUIRED for a positive observation against a HARD dependency, because
+   * that is the observation that unlocks activation (§20.63). Institutional
+   * history must be able to explain why a prerequisite was considered met;
+   * nothing here verifies the evidence, and nothing pretends to.
+   */
   evidence?: string | null
   note?: string | null
+}
+
+/** A dependency as it stands after derivation, with its observation history. */
+export interface ObservedMissionDependency extends MissionDependency {
+  satisfied: boolean
+  /** Contradictory observations at the same newest instant — fails closed. */
+  conflicted: boolean
 }
 
 /** §20.66/§20.67 — stated assumptions; the critical ones trigger escalation. */
@@ -252,13 +266,42 @@ export type MissionGateOutcome =
   | 'escalate'
 
 /**
- * §20.73 — an immutable record that a declared gate was actually resolved, and
- * how. Annotation only: resolving a gate does not move the mission's lifecycle.
+ * How each §20.73 outcome affects whether execution may proceed.
  *
- * "Gate exists" is never "gate is satisfied". §20.92 makes completion depend on
- * approvals actually being resolved, and a blocking outcome (reject, defer,
- * request more evidence, request alternative, escalate) stops the mission
- * (§20.103) rather than being quietly ignored.
+ * Only `approve` passes in V1. The two conditional outcomes are the reason this
+ * classification exists at all: a resolution ROW is an authority act that
+ * happened, not proof that its precondition was met.
+ *
+ *   PASSING                      execution may cross this gate
+ *   BLOCKING                     execution stops until resolved differently
+ *   CONDITIONALLY_UNVERIFIED     `approve_with_conditions` — FM.2 excludes the
+ *                                policy engine, so Stage 1 cannot verify that
+ *                                the attached conditions were met. Recording
+ *                                the act is honest; treating it as satisfied
+ *                                would be the §20.221 hidden-approval failure.
+ *   REQUIRES_MISSION_AMENDMENT   `edit_and_approve` — the approver asked for a
+ *                                change. If the edit is material it is a new
+ *                                version (§20.126), so the UNCHANGED version
+ *                                must not pass on the strength of an
+ *                                annotation. §20.128: no silent mission
+ *                                mutation.
+ */
+export type MissionGateOutcomeClass =
+  | 'passing'
+  | 'blocking'
+  | 'conditionally_unverified'
+  | 'requires_mission_amendment'
+
+/**
+ * §20.73 — an immutable record that a declared gate was actually resolved, and
+ * how. Annotation for lifecycle purposes (it moves nothing), but an AUTHORITY
+ * ACT for safety purposes: EI-S1.4B-R2 found that any authenticated project
+ * member could satisfy a gate simply by calling the boundary. Project
+ * membership is not approval authority (§20.55, no implied authority), so a
+ * resolution now carries its own exact Authorization V1 proof.
+ *
+ * "Gate exists" is never "gate is satisfied", and now neither is "somebody
+ * recorded an outcome".
  */
 export interface MissionGateResolution {
   gateId: string
@@ -268,6 +311,21 @@ export interface MissionGateResolution {
   /** Conditions attached by `approve_with_conditions`. */
   conditions?: string[]
   note?: string | null
+}
+
+/** A gate resolution as it stands after derivation, with its provenance. */
+export interface ResolvedMissionGate extends MissionGateResolution {
+  /** §20.126 — the exact mission version this resolution was made against. */
+  missionVersion: number
+  /** The human who resolved it, and under which proof. */
+  authority: MissionAuthorityRecord | null
+  outcomeClass: MissionGateOutcomeClass
+  /**
+   * Two contradictory resolutions for this gate share the newest instant, so no
+   * honest winner exists. Fails closed rather than letting a random record id
+   * decide whether execution may proceed.
+   */
+  conflicted: boolean
 }
 
 /** §20.84/§20.85 — when to escalate, and to whom. */
@@ -344,10 +402,33 @@ export interface MissionDecisionReference {
   decisionId: string
   /** §11.59 — which version of the decision authorized this direction. */
   decisionVersion: number
-  /** Must equal the mission's own project. */
+}
+
+/**
+ * Server-derived provenance about the governing decision.
+ *
+ * EI-S1.4B-R2 split this out of `MissionDecisionReference`. A caller used to
+ * supply `projectId`, `observedStatus` and `observedAt`, and the record kept
+ * them verbatim — so a mission could carry an observed status of
+ * "TOTALLY-FABRICATED" dated 1999 and still be approved. Institutional
+ * provenance that the caller writes is not provenance.
+ *
+ * Every field here is read from the Decision Ledger inside the sanctioned
+ * boundary. The project is the DECISION's own recorded scope, not a caller's
+ * claim about it, and it is verified to equal the mission's project (§6.117).
+ *
+ * Deliberately NOT part of the authorization binding: only `decisionId` and
+ * `decisionVersion` — what the human actually authorized — are material. An
+ * observation timestamp moving between `prepareMissionAct` and commit would
+ * otherwise make the binding unsatisfiable through no fault of the caller.
+ */
+export interface MissionDecisionProvenance {
+  /** The decision's own recorded project, read from the ledger. */
   projectId: string
-  /** The decision's derived status when this mission act was recorded. */
+  /** The decision's derived status at the moment this act was recorded. */
   observedStatus: string
+  /** The decision's version as actually read — equals the pinned version. */
+  observedVersion: number
   observedAt: string
 }
 
@@ -491,7 +572,10 @@ export interface MissionRecord {
 
   // ── Act-specific payloads ───────────────────────────────────────────────────
   authorityRecord:  MissionAuthorityRecord | null
+  /** §20.137 — material identity of the governing decision. Caller-supplied. */
   decisionRef:      MissionDecisionReference | null
+  /** Server-derived truth about that decision. Never caller-supplied. */
+  decisionProvenance: MissionDecisionProvenance | null
   /**
    * §20.75 — the project's `atlas_mode` when this act occurred.
    *
@@ -537,6 +621,12 @@ export type MissionAuthorityReason =
   | 'deadline_expired'
   /** §20.75 — the project mode changed since approval. */
   | 'project_mode_changed'
+  /**
+   * The project's current atlas_mode does not permit execution at all.
+   * Distinct from a CHANGE: a mission approved in `observer` never had a mode
+   * that allows movement, so equality alone would have let it through.
+   */
+  | 'project_mode_not_operational'
   | 'superseded_version'
 
 /** §20.106 — the canonical requirements an activation attempt can miss. */
@@ -563,6 +653,16 @@ export type MissionRequirement =
   | 'gate_unresolved'
   /** §20.60/§20.105 — no data scope declared. */
   | 'data_scope'
+  /** §20.105 — required tools are declared but not proven available. */
+  | 'tool_availability'
+  /** §20.105 — required data access is declared but not proven available. */
+  | 'data_availability'
+  /** The project's atlas_mode does not permit movement toward execution. */
+  | 'project_mode_not_operational'
+  /** Contradictory gate resolutions at the same instant — no honest winner. */
+  | 'gate_conflict'
+  /** Contradictory dependency observations at the same instant. */
+  | 'dependency_conflict'
 
 export interface DerivedMissionState {
   missionId:   MissionId
@@ -605,6 +705,7 @@ export interface DerivedMissionState {
   /** The authority proven for the CURRENT version's latest authority act. */
   authorityRecord: MissionAuthorityRecord | null
   decisionRef: MissionDecisionReference | null
+  decisionProvenance: MissionDecisionProvenance | null
   supersededBy: MissionId | null
   closure:     MissionClosure | null
 
@@ -614,9 +715,14 @@ export interface DerivedMissionState {
    * §20.101 — current dependency satisfaction, derived from the observation
    * history. A declared dependency with no observation is UNSATISFIED.
    */
-  dependencyState: Array<MissionDependency & { satisfied: boolean }>
-  /** §20.73 — the latest resolution recorded for each declared gate. */
-  gateResolutions: Array<MissionGateResolution & { gateId: string }>
+  dependencyState: ObservedMissionDependency[]
+  /**
+   * §20.73 — the latest resolution for each declared gate, SCOPED TO THE
+   * CURRENT MISSION VERSION. A resolution made against version N does not
+   * float forward to N+1: §20.126 makes N+1 a materially different commitment,
+   * so the approver never saw it.
+   */
+  gateResolutions: ResolvedMissionGate[]
   /** §20.80 — evidence recorded so far, in order. */
   evidence:    MissionEvidence[]
   reviewNotes: string[]
@@ -643,24 +749,27 @@ export interface MissionOperationalAuthority {
   detail?:    string
 }
 
-/**
- * What Mission V1 can and cannot prove about a mission being able to run.
- *
- * `unverified` is the honest half. §20.101 asks for "Required tools" to be
- * available, but Stage 1 has no capability-availability primitive to ask, so
- * Mission V1 proves only that the tools are DECLARED and narrowed. Actual tool
- * and data availability is a §21.16 Manager acceptance check and lands in
- * EI-S1.4C. Reporting `ready: true` without saying so would overclaim.
- */
+/** §20.101 inputs Stage 1 must prove rather than assume. */
 export type MissionUnverified = 'tool_availability' | 'data_availability'
 
-/** §20.101 — readiness is a predicate, never a stored flag. */
+/**
+ * §20.101 — readiness is a predicate, never a stored flag.
+ *
+ * EI-S1.4B-R2 corrected a contradiction: R1 reported `ready: true` alongside
+ * `unverified: ['tool_availability', 'data_availability']`, which cannot both
+ * be true of a canonical Ready Mission — §20.101 requires available tools, not
+ * declared ones. `ready` is now false whenever ANY canonical input remains
+ * unproven, and `unverified` says exactly which. `satisfiedSoFar` keeps the
+ * partial progress visible without ever labelling the mission Ready.
+ */
 export interface MissionReadiness {
-  /** Everything Mission V1 can actually prove is satisfied. */
+  /** True only when every canonical §20.101 input is actually proven. */
   ready:   boolean
   missing: MissionRequirement[]
-  /** Conditions Mission V1 deliberately does not claim to have verified. */
+  /** Canonical inputs that could not be proven in this evaluation. */
   unverified: MissionUnverified[]
+  /** Requirements that ARE proven — progress, never a readiness claim. */
+  satisfiedSoFar: MissionRequirement[]
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   type MissionConstraint,
   type MissionDataScope,
   type MissionDecisionReference,
+  type MissionDecisionProvenance,
   type MissionDependency,
   type MissionDependencyObservation,
   type MissionGateResolution,
@@ -108,19 +109,41 @@ function validateEvidence(evidence: MissionEvidence | null): MissionEvidence | n
   return evidence
 }
 
-function validateDecisionRef(ref: MissionDecisionReference | null, projectId: string): MissionDecisionReference | null {
+/**
+ * §20.137 — the MATERIAL identity of the governing decision: which decision,
+ * which version. Nothing else comes from the caller.
+ *
+ * EI-S1.4B-R2 removed `projectId`, `observedStatus` and `observedAt` from this
+ * shape. A caller used to write them and the record kept them verbatim, so an
+ * observed status of "TOTALLY-FABRICATED" dated 1999 passed approval. Those
+ * fields are now server-derived (`MissionDecisionProvenance`), read from the
+ * Decision Ledger inside the sanctioned boundary.
+ */
+function validateDecisionRef(ref: MissionDecisionReference | null): MissionDecisionReference | null {
   if (!ref) return null
   requireText(ref.decisionId, 'decision-reference-id-required')
   if (!Number.isInteger(ref.decisionVersion) || ref.decisionVersion < 1) {
     throw new MalformedMissionLineageError('decision-reference-version-positive')
   }
-  // §6.117 — a decision from another project can never back this mission.
-  if (ref.projectId !== projectId) {
-    throw new MalformedMissionLineageError('decision-reference-same-project', ref.projectId)
-  }
-  requireText(ref.observedStatus, 'decision-reference-status-required')
-  requireIsoTime(requireText(ref.observedAt, 'decision-reference-observed-at-required'), 'decision-reference-observed-at-valid')
   return ref
+}
+
+/** Server-derived provenance. Never accepted from a caller. */
+function validateDecisionProvenance(
+  provenance: MissionDecisionProvenance | null,
+  projectId: string,
+): MissionDecisionProvenance | null {
+  if (!provenance) return null
+  // §6.117 — the decision's own recorded scope must match this mission's.
+  if (provenance.projectId !== projectId) {
+    throw new MalformedMissionLineageError('decision-provenance-same-project', provenance.projectId)
+  }
+  requireText(provenance.observedStatus, 'decision-provenance-status-required')
+  if (!Number.isInteger(provenance.observedVersion) || provenance.observedVersion < 1) {
+    throw new MalformedMissionLineageError('decision-provenance-version-positive')
+  }
+  requireIsoTime(requireText(provenance.observedAt, 'decision-provenance-observed-at-required'), 'decision-provenance-observed-at-valid')
+  return provenance
 }
 
 function validateAuthorityRecord(record: MissionAuthorityRecord | null): MissionAuthorityRecord | null {
@@ -201,6 +224,8 @@ export interface BuildMissionRecordInput {
 
   authorityRecord?: MissionAuthorityRecord | null
   decisionRef?:     MissionDecisionReference | null
+  /** Server-derived; the sanctioned boundary supplies it, never a caller. */
+  decisionProvenance?: MissionDecisionProvenance | null
   /** §20.75 — the project's atlas_mode when this act occurred. */
   projectMode?:     string | null
   report?:          MissionProgressReport | null
@@ -272,7 +297,8 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
   }
 
   const budget = validateBudget(input.budget ?? null)
-  const decisionRef = validateDecisionRef(input.decisionRef ?? null, input.projectId)
+  const decisionRef = validateDecisionRef(input.decisionRef ?? null)
+  const decisionProvenance = validateDecisionProvenance(input.decisionProvenance ?? null, input.projectId)
   const authorityRecord = validateAuthorityRecord(input.authorityRecord ?? null)
   const closure = validateClosure(input.closure ?? null)
   const evidence = validateEvidence(input.evidence ?? null)
@@ -311,10 +337,20 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
   }
   if (input.type === 'reviewed') requireText(input.reviewNote, 'review-record-requires-note')
   if (input.type === 'dependency_observed') {
-    if (!input.dependencyObservation) throw new MalformedMissionLineageError('dependency-record-requires-observation')
-    requireText(input.dependencyObservation.reference, 'dependency-observation-reference-required')
-    if (typeof input.dependencyObservation.satisfied !== 'boolean') {
+    const observation = input.dependencyObservation
+    if (!observation) throw new MalformedMissionLineageError('dependency-record-requires-observation')
+    requireText(observation.reference, 'dependency-observation-reference-required')
+    if (typeof observation.satisfied !== 'boolean') {
       throw new MalformedMissionLineageError('dependency-observation-satisfied-boolean')
+    }
+    // §20.63/§20.81 — a positive observation against a HARD dependency is what
+    // unlocks activation, so institutional history must record why it was
+    // considered met. Nothing verifies the evidence and nothing pretends to;
+    // an unexplained unlock is simply not accepted. A negative observation
+    // needs no evidence: it only ever narrows what the mission may do.
+    const dependency = (input.dependencies ?? []).find(d => d.reference === observation.reference)
+    if (observation.satisfied && dependency?.hardness === 'hard' && !observation.evidence?.trim()) {
+      throw new MalformedMissionLineageError('hard-dependency-satisfaction-requires-evidence', observation.reference)
     }
   }
   if (input.type === 'gate_resolved') {
@@ -370,6 +406,7 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
     version:    input.version,
     authorityRecord,
     decisionRef,
+    decisionProvenance,
     projectMode: input.projectMode ?? null,
     report:     input.report ?? null,
     dependencyObservation: input.dependencyObservation ?? null,

@@ -34,7 +34,10 @@
 import {
   MalformedMissionLineageError,
   type MissionGateOutcome,
+  type MissionGateOutcomeClass,
   type MissionGateResolution,
+  type ObservedMissionDependency,
+  type ResolvedMissionGate,
   type DerivedMissionState,
   type MissionActType,
   type MissionBlocker,
@@ -43,6 +46,9 @@ import {
   type MissionProgressReport,
   type MissionReadiness,
   type MissionRecord,
+  type MissionUnverified,
+  type MissionAuthorityRecord,
+  type MissionDependencyObservation,
   type MissionRequirement,
   type MissionStatus,
 } from './types'
@@ -227,15 +233,19 @@ export function deriveMissionState(
   /** Authority for the CURRENT version only — an amendment retires the old. */
   let authorityRecord = null as MissionRecord['authorityRecord']
   let decisionRef = first.decisionRef
+  let decisionProvenance = first.decisionProvenance
 
   const blockers = new Map<string, MissionBlocker>()
   const evidence: MissionEvidence[] = []
   const reviewNotes: string[] = []
   const reports: MissionProgressReport[] = []
-  /** §20.101 — latest observed satisfaction per declared dependency. */
-  const dependencySatisfied = new Map<string, boolean>()
-  /** §20.73 — latest resolution per declared gate. */
-  const gateResolutions = new Map<string, MissionGateResolution>()
+  /**
+   * §20.101/§20.73 — every observation, kept whole so the fold can detect two
+   * contradictory records sharing the newest instant. A random record id must
+   * never decide whether authority or readiness passes.
+   */
+  const dependencyObservations: Array<{ at: string; observation: MissionDependencyObservation }> = []
+  const gateObservations: Array<{ at: string; version: number; resolution: MissionGateResolution; authority: MissionAuthorityRecord | null }> = []
 
   for (const [index, record] of ordered.entries()) {
     if (record.missionId !== missionId) {
@@ -255,8 +265,8 @@ export function deriveMissionState(
     }
 
     if (index === 0) {
-      if (record.decisionRef && record.decisionRef.projectId !== projectId) {
-        throw new MalformedMissionLineageError('decision-reference-same-project', record.recordId)
+      if (record.decisionProvenance && record.decisionProvenance.projectId !== projectId) {
+        throw new MalformedMissionLineageError('decision-provenance-same-project', record.recordId)
       }
       continue
     }
@@ -294,7 +304,7 @@ export function deriveMissionState(
           if (!current.dependencies.some(d => d.reference === observation.reference)) {
             throw new MalformedMissionLineageError('dependency-observation-declared', observation.reference)
           }
-          dependencySatisfied.set(observation.reference, observation.satisfied)
+          dependencyObservations.push({ at: record.occurredAt, observation })
           break
         }
         case 'gate_resolved': {
@@ -303,7 +313,10 @@ export function deriveMissionState(
           if (!current.approvalGates.some(g => g.gateId === resolution.gateId)) {
             throw new MalformedMissionLineageError('gate-resolution-declared', resolution.gateId)
           }
-          gateResolutions.set(resolution.gateId, resolution)
+          gateObservations.push({
+            at: record.occurredAt, version: record.version,
+            resolution, authority: record.authorityRecord,
+          })
           break
         }
       }
@@ -385,25 +398,56 @@ export function deriveMissionState(
         break
     }
 
-    if (record.decisionRef && record.decisionRef.projectId !== projectId) {
-      throw new MalformedMissionLineageError('decision-reference-same-project', record.recordId)
+    // §6.117 — the DECISION's own recorded scope must match this mission's.
+    if (record.decisionProvenance && record.decisionProvenance.projectId !== projectId) {
+      throw new MalformedMissionLineageError('decision-provenance-same-project', record.recordId)
     }
     if (record.decisionRef) decisionRef = record.decisionRef
+    if (record.decisionProvenance) decisionProvenance = record.decisionProvenance
     current = record
     if (!TERMINAL.has(record.type) && record.type !== 'archived') version = record.version
   }
 
   const missingRequirements = missingBriefRequirements(current)
+
   // §20.101 — a declared dependency with no observation is UNSATISFIED. Fail
   // closed: an unobserved prerequisite blocks rather than passes.
-  const dependencyState = current.dependencies.map(d => ({
-    ...d, satisfied: dependencySatisfied.get(d.reference) ?? false,
-  }))
+  const dependencyState: ObservedMissionDependency[] = current.dependencies.map(dependency => {
+    const forKey = dependencyObservations.filter(o => o.observation.reference === dependency.reference)
+    const latest = newestFor(forKey, o => o.at)
+    const conflicted = contradicts(latest, o => o.observation.satisfied)
+    return {
+      ...dependency,
+      // A contradiction resolves to UNSATISFIED, never to whichever record id
+      // sorted first.
+      satisfied: conflicted ? false : (latest[0]?.observation.satisfied ?? false),
+      conflicted,
+    }
+  })
+
+  // §20.73 — resolutions are SCOPED TO THE CURRENT VERSION. §20.126 makes N+1
+  // a materially different commitment, so an approval given against N was
+  // given against something the approver would no longer recognise.
+  const gateResolutions: ResolvedMissionGate[] = current.approvalGates.map(gate => {
+    const forKey = gateObservations.filter(o => o.resolution.gateId === gate.gateId && o.version === version)
+    const latest = newestFor(forKey, o => o.at)
+    const conflicted = contradicts(latest, o => o.resolution.outcome)
+    const chosen = latest[0]
+    return {
+      ...(chosen?.resolution ?? { gateId: gate.gateId, outcome: 'defer' as MissionGateOutcome }),
+      gateId: gate.gateId,
+      missionVersion: version,
+      authority: chosen?.authority ?? null,
+      outcomeClass: chosen ? GATE_OUTCOME_CLASS[chosen.resolution.outcome] : 'blocking',
+      conflicted,
+    }
+  }).filter((_, index) => gateObservations.some(o =>
+    o.resolution.gateId === current.approvalGates[index].gateId && o.version === version))
 
   return {
     missionId,
     status: derivePersistedStatus(
-      state, current, [...blockers.values()], [...gateResolutions.values()],
+      state, current, [...blockers.values()], gateResolutions,
       evidence, reviewNotes, reports, options.at),
     projectId,
     version,
@@ -440,11 +484,12 @@ export function deriveMissionState(
     evidenceRequirements: current.evidenceRequirements,
     authorityRecord,
     decisionRef,
+    decisionProvenance,
     supersededBy,
     closure,
     openBlockers: [...blockers.values()],
     dependencyState,
-    gateResolutions: [...gateResolutions.values()],
+    gateResolutions,
     evidence,
     reviewNotes,
     reports,
@@ -470,7 +515,7 @@ function derivePersistedStatus(
   state: LifecycleState,
   current: MissionRecord,
   openBlockers: MissionBlocker[],
-  gateResolutions: MissionGateResolution[],
+  gateResolutions: ResolvedMissionGate[],
   evidence: MissionEvidence[],
   reviewNotes: string[],
   reports: MissionProgressReport[],
@@ -482,7 +527,7 @@ function derivePersistedStatus(
   // §20.73 — a gate resolved with a blocking outcome stops the mission just as
   // an explicit blocker does. Ignoring a rejection would be the §20.221
   // hidden-approval failure mode.
-  if (gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))
+  if (gateResolutions.some(g => g.conflicted || GATE_OUTCOME_CLASS[g.outcome] === 'blocking')
       && (state === 'active' || state === 'approved')) return 'blocked'
 
   switch (state) {
@@ -526,14 +571,67 @@ export function isPastDeadline(deadline: string | null, at: string): boolean {
 }
 
 /**
- * §20.73 — outcomes that stop a mission rather than letting it proceed.
+ * §20.73 — how each canonical outcome affects whether execution may proceed.
  *
- * "Approve with conditions" and "edit and approve" both permit continuation;
- * the rest each demand something before execution may go on.
+ * EI-S1.4B-R2 replaced a two-way boolean with this. Under R1 both conditional
+ * outcomes counted as passing, so recording `approve_with_conditions` with an
+ * unmet condition, or `edit_and_approve` without making the edit, let a mission
+ * complete. A resolution row proves that an authority act happened; it does not
+ * prove the precondition attached to it was met.
+ *
+ * Only `approve` passes in V1, and that is a consequence of FM.2 rather than
+ * caution: verifying an attached condition needs the policy engine FM.2
+ * excludes, and proving an edit happened is precisely what the §20.126
+ * amendment path is for.
  */
-export const BLOCKING_GATE_OUTCOMES: ReadonlySet<MissionGateOutcome> = new Set<MissionGateOutcome>([
-  'reject', 'request_more_evidence', 'request_alternative', 'defer', 'escalate',
-])
+export const GATE_OUTCOME_CLASS: Readonly<Record<MissionGateOutcome, MissionGateOutcomeClass>> = {
+  approve:                'passing',
+  approve_with_conditions: 'conditionally_unverified',
+  edit_and_approve:       'requires_mission_amendment',
+  reject:                 'blocking',
+  request_more_evidence:  'blocking',
+  request_alternative:    'blocking',
+  defer:                  'blocking',
+  escalate:               'blocking',
+}
+
+/** Outcomes that stop the mission outright (§20.103). */
+export const BLOCKING_GATE_OUTCOMES: ReadonlySet<MissionGateOutcome> = new Set<MissionGateOutcome>(
+  (Object.keys(GATE_OUTCOME_CLASS) as MissionGateOutcome[])
+    .filter(o => GATE_OUTCOME_CLASS[o] === 'blocking'),
+)
+
+/** A gate only lets execution cross it when its outcome PASSES. */
+export function gatePasses(gate: ResolvedMissionGate): boolean {
+  return !gate.conflicted && GATE_OUTCOME_CLASS[gate.outcome] === 'passing'
+}
+
+/**
+ * The records sharing the newest instant for one operational key.
+ *
+ * Returning ALL of them — rather than picking one — is what makes a
+ * contradiction visible. Ordering by record id would silently choose a winner.
+ */
+function newestFor<T>(items: T[], at: (item: T) => string): T[] {
+  if (items.length === 0) return []
+  const newest = items.reduce((max, item) => (Date.parse(at(item)) > Date.parse(max) ? at(item) : max), at(items[0]))
+  return items.filter(item => at(item) === newest)
+}
+
+/**
+ * Do the records sharing the newest instant disagree?
+ *
+ * EI-S1.4B-R2: two gate resolutions for the same gate at the same millisecond —
+ * one `approve`, one `reject` — previously resolved by random UUID order, and
+ * over twelve runs `approve` won seven times. Whether a mission may proceed
+ * must never be decided that way. Genuine simultaneity has no honest winner, so
+ * the derivation reports a conflict and every consumer fails closed.
+ */
+function contradicts<T>(newest: T[], value: (item: T) => unknown): boolean {
+  if (newest.length < 2) return false
+  const first = JSON.stringify(value(newest[0]))
+  return newest.some(item => JSON.stringify(value(item)) !== first)
+}
 
 /** §20.80 — every declared evidence requirement has at least one matching record. */
 function evidenceSatisfied(current: MissionRecord, evidence: MissionEvidence[]): boolean {
@@ -569,8 +667,12 @@ export function missionCompletionGaps(
   // "Gate exists" is never "gate is satisfied" (§20.221 anti-hidden-approval).
   for (const gate of state.approvalGates) {
     const resolution = state.gateResolutions.find(r => r.gateId === gate.gateId)
-    if (!resolution) gaps.push(`gate_unresolved:${gate.gateId}`)
-    else if (BLOCKING_GATE_OUTCOMES.has(resolution.outcome)) gaps.push(`gate_blocked:${gate.gateId}`)
+    if (!resolution) { gaps.push(`gate_unresolved:${gate.gateId}`); continue }
+    if (resolution.conflicted) { gaps.push(`gate_conflict:${gate.gateId}`); continue }
+    // Only `approve` passes. `approve_with_conditions` is an authority act
+    // whose condition Stage 1 cannot verify, and `edit_and_approve` asks for a
+    // change that — if material — belongs in version N+1, not an annotation.
+    if (!gatePasses(resolution)) gaps.push(`gate_${GATE_OUTCOME_CLASS[resolution.outcome]}:${gate.gateId}`)
   }
   if (state.openBlockers.length > 0) gaps.push('open_blocker')
   // §20.195 — a completion review must have happened.
@@ -592,8 +694,15 @@ export function missionReadiness(
   state: DerivedMissionState,
   authority: MissionOperationalAuthority,
   at: string,
+  /**
+   * §20.105 — proof that the declared tools and data are actually AVAILABLE.
+   * Omitted means unproven, which means not Ready: Stage 1 has no capability
+   * primitive to consult, so absence can never read as availability.
+   */
+  availability: { tools: boolean; data: boolean } = { tools: false, data: false },
 ): MissionReadiness {
   const missing: MissionRequirement[] = [...state.missingRequirements]
+  const unverified: MissionUnverified[] = []
   // §20.101 "Valid authority" — present tense, so live authority decides.
   if (!authority.authorized) {
     missing.push(
@@ -607,21 +716,37 @@ export function missionReadiness(
   // §20.101 "Available dependencies" — §20.63: a hard dependency blocks
   // activation. Satisfaction comes from observations, never from the contract.
   if (state.dependencyState.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
-  // §20.101 "Required tools" — V1 proves DECLARATION only; see `unverified`.
+  // §20.101 "Required tools" — declaration first, then AVAILABILITY. R1
+  // reported `ready: true` while admitting availability was unverified, which
+  // cannot both be true of a canonical Ready Mission.
   if (state.tools.length === 0) missing.push('tools')
+  else if (!availability.tools) { missing.push('tool_availability'); unverified.push('tool_availability') }
+  if (state.dataScope.length === 0) missing.push('data_scope')
+  else if (!availability.data) { missing.push('data_availability'); unverified.push('data_availability') }
+
   if (state.openBlockers.length > 0) missing.push('unresolved_blocker')
-  // §20.73 — a gate resolved as reject/defer/escalate/request-more stops the
-  // mission until it is resolved differently.
-  if (state.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
+  // §20.101 — "No unresolved blocker". A contradiction is unresolved by
+  // definition.
+  if (state.dependencyState.some(d => d.conflicted)) missing.push('dependency_conflict')
+  if (state.gateResolutions.some(g => g.conflicted)) missing.push('gate_conflict')
+  // §20.73 — a blocking outcome stops the mission until resolved differently.
+  if (state.gateResolutions.some(g => GATE_OUTCOME_CLASS[g.outcome] === 'blocking')) missing.push('gate_blocked')
   // Only an approved mission can be Ready — §20.100 precedes §20.101.
   if (state.approvedAt == null) missing.push('authority')
+
+  const missingSet = new Set(missing)
+  const ALL: MissionRequirement[] = [
+    'project', 'objective', 'owner', 'success_criteria', 'authority', 'approval_gate',
+    'deadline', 'stop_condition', 'dependencies', 'tools', 'data_scope',
+    'tool_availability', 'data_availability', 'current_authorization',
+  ]
   return {
-    ready: missing.length === 0,
-    missing: [...new Set(missing)],
-    // Honest about what Stage 1 cannot check: there is no capability-
-    // availability primitive to ask, so declaration is not availability.
-    // §21.16 makes this a Manager acceptance check, landing in EI-S1.4C.
-    unverified: ['tool_availability', 'data_availability'],
+    // Canonical Ready: every required input actually proven. Nothing is
+    // labelled Ready while an input remains unverified.
+    ready: missingSet.size === 0,
+    missing: [...missingSet],
+    unverified,
+    satisfiedSoFar: ALL.filter(r => !missingSet.has(r)),
   }
 }
 
@@ -638,13 +763,24 @@ export function effectiveMissionStatus(
   authority: MissionOperationalAuthority,
   readiness: MissionReadiness,
 ): MissionStatus {
+  // A closed mission stays closed. Live authority says nothing about history,
+  // so a terminal status is never overwritten by an authority-driven `blocked`.
+  if (TERMINAL_STATUSES.has(state.status)) return state.status
   // An approved-or-running mission that may no longer move is blocked, and the
   // reason is explicit rather than silent (§20.87).
   if (!authority.authorized
       && (state.status === 'approved' || state.status === 'active' || state.status === 'at_risk')) {
     return 'blocked'
   }
-  // §20.101 — Ready sits between Approved and Active.
+  // §20.101 — Ready sits between Approved and Active, and appears ONLY when
+  // every canonical input is actually proven. R1 reported `ready` while
+  // admitting tool/data availability was unverified; a mission is not
+  // canonically Ready on declaration alone.
   if (state.status === 'approved' && readiness.ready) return 'ready'
   return state.status
 }
+
+/** §20.92–§20.98 — statuses that close a mission for good. */
+const TERMINAL_STATUSES: ReadonlySet<MissionStatus> = new Set<MissionStatus>([
+  'completed', 'partially_completed', 'failed', 'cancelled', 'superseded', 'archived',
+])

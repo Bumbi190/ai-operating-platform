@@ -40,6 +40,8 @@ import 'server-only'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { isAuthorizationEffective } from '@/lib/atlas/authorization/principal-read'
+import { resolveDecision } from '@/lib/atlas/decision-ledger/principal-read'
+import { isExecutable, type AtlasMode } from '@/lib/atlas/lifecycle'
 import {
   bindingForMissionCandidate,
   MISSION_ACTION,
@@ -49,12 +51,16 @@ import {
 } from './binding'
 import { buildMissionRecord, newMissionId, type BuildMissionRecordInput } from './build'
 import {
-  BLOCKING_GATE_OUTCOMES,
   deriveMissionState,
+  GATE_OUTCOME_CLASS,
   isPastDeadline,
   missionCompletionGaps,
   missionLifecycleGenerationOf,
 } from './derive'
+import {
+  unprovenAvailability,
+  type MissionCapabilityAvailability,
+} from './capability'
 import {
   evaluateGoverningDecision,
   evaluateMissionOperationalAuthority,
@@ -64,6 +70,7 @@ import {
 import { createMissionLedgerStore, type MissionLedgerStore } from './store'
 import type {
   DerivedMissionState,
+  MissionDecisionProvenance,
   MissionDependencyObservation,
   MissionGateResolution,
   MissionStatus,
@@ -106,6 +113,10 @@ export type MissionWriteStatus =
   | 'deadline_expired'
   /** §20.75 — the project's atlas_mode changed since the mission was approved. */
   | 'project_mode_changed'
+  /** The project's atlas_mode does not permit movement toward execution. */
+  | 'project_mode_not_operational'
+  /** §20.105 — declared tools/data could not be proven available. */
+  | 'capability_unavailable'
   /** The mission's current operational authority is no longer valid. */
   | 'authority_not_current'
   /** A competing transition won the race; the lineage is unchanged. */
@@ -133,6 +144,11 @@ interface CommonArgs {
   now?: string
   /** Injected §20.75 project-mode reader; production callers omit it. */
   projectMode?: ProjectModeReader
+  /**
+   * Injected §20.105 capability check. Production callers omit it, which means
+   * `unprovenAvailability` — availability is NOT assumed from declaration.
+   */
+  availability?: MissionCapabilityAvailability
 }
 
 /** The §20.244 brief content a caller supplies when opening or amending. */
@@ -231,6 +247,12 @@ export interface ObserveDependencyArgs extends CommonArgs {
 }
 export interface ResolveGateArgs extends CommonArgs {
   missionId: string
+  /**
+   * Authorization V1 proof for THIS gate decision. What it must cover — the
+   * project, mission, exact version, gate, outcome, conditions and evidence —
+   * is derived from the candidate; the caller cannot choose or weaken it.
+   */
+  authorizationId: string
   resolution: MissionGateResolution
 }
 
@@ -357,6 +379,68 @@ async function snapshotProjectMode(
 }
 
 /**
+ * §20.137 — read the governing decision and derive its provenance SERVER-SIDE.
+ *
+ * EI-S1.4B-R2: the caller used to supply `projectId`, `observedStatus` and
+ * `observedAt` inside `decisionRef`, and the immutable record kept them
+ * verbatim — a mission was approved carrying an observed status of
+ * "TOTALLY-FABRICATED" dated 1999. Institutional provenance a caller writes is
+ * not provenance. Only the decision's material identity (id + version) comes
+ * from the caller now; everything else is read from the ledger here.
+ *
+ * Returns the provenance, or a denial. The Decision Ledger is only read.
+ */
+async function deriveDecisionProvenance(
+  prior: DerivedMissionState,
+  at: string,
+): Promise<MissionDecisionProvenance | MissionWriteResult | null> {
+  if (prior.authoritySource?.kind !== 'decision_ledger' || !prior.decisionRef) return null
+
+  const decision = await resolveDecision(prior.decisionRef.decisionId, { now: at })
+  if (decision.status !== 'ok' || !decision.state) {
+    return DENY('governing_decision_invalid', 'unknown_or_foreign')
+  }
+  // §6.117 — the DECISION's own recorded scope, never a caller's claim.
+  if (decision.state.projectId !== prior.projectId) {
+    return DENY('governing_decision_invalid', 'unknown_or_foreign')
+  }
+  const stands = decision.state.status === 'approved' || decision.state.status === 'active'
+  if (!stands) return DENY('governing_decision_invalid', decision.state.status)
+  // §11.62 — an amended decision is a different commitment.
+  if (decision.state.version !== prior.decisionRef.decisionVersion) {
+    return DENY('governing_decision_invalid',
+      `version_drift:${prior.decisionRef.decisionVersion}->${decision.state.version}`)
+  }
+  return {
+    projectId: decision.state.projectId,
+    observedStatus: decision.state.status,
+    observedVersion: decision.state.version,
+    observedAt: at,
+  }
+}
+
+/**
+ * §20.105 — prove the declared tools and data are actually AVAILABLE.
+ *
+ * Declaration is not availability. The production default proves nothing, so a
+ * real mission stops at Approved until EI-S1.4C supplies the §21.16 Manager
+ * acceptance check. Nothing is lost: EI-S1.4B executes nothing.
+ */
+async function proveAvailability(
+  prior: DerivedMissionState,
+  reader: MissionCapabilityAvailability | undefined,
+): Promise<{ tools: boolean; data: boolean } | MissionWriteResult> {
+  try {
+    const result = await (reader ?? unprovenAvailability)({
+      projectId: prior.projectId, tools: prior.tools, dataScope: prior.dataScope,
+    })
+    return { tools: result.tools, data: result.data }
+  } catch {
+    return DENY('capability_unavailable', 'unreadable')
+  }
+}
+
+/**
  * Prove that a mission may move RIGHT NOW, BEFORE anything is appended.
  *
  * §20.106 — "No external execution begins" when requirements are incomplete, so
@@ -375,6 +459,7 @@ async function requireCurrentAuthority(
     case 'deadline_expired':           return DENY('deadline_expired', authority.detail)
     case 'project_mode_changed':       return DENY('project_mode_changed', authority.detail)
     case 'governing_decision_invalid': return DENY('governing_decision_invalid', authority.detail)
+    case 'project_mode_not_operational': return DENY('project_mode_not_operational', authority.detail)
     default:                           return DENY('authority_not_current', authority.detail)
   }
 }
@@ -509,6 +594,7 @@ type ActArgs =
   | ({ act: 'amend' } & Omit<AmendMissionArgs, 'authorizationId'>)
   | ({ act: 'cancel' } & Omit<CancelMissionArgs, 'authorizationId'>)
   | ({ act: 'supersede' } & Omit<SupersedeMissionArgs, 'authorizationId'>)
+  | ({ act: 'gateResolve' } & Omit<ResolveGateArgs, 'authorizationId'>)
 
 /**
  * Build the candidate act's content from the caller's terms and the prior state.
@@ -573,6 +659,15 @@ function planFor(args: ActArgs, prior: DerivedMissionState): CandidateInput {
         missionId: args.missionId,
         supersededBy: args.supersededBy,
         reason: args.reason ?? 'Superseded by a newer mission.',
+      }
+    case 'gateResolve':
+      // §20.73 — the gate, outcome, conditions and evidence are exactly what
+      // the human is approving, so all of them enter the binding.
+      return {
+        ...carried,
+        type: 'gate_resolved',
+        missionId: args.missionId,
+        gateResolution: args.resolution,
       }
   }
 }
@@ -696,18 +791,23 @@ export async function approveMission(args: ApproveMissionArgs): Promise<MissionW
   if (isPastDeadline(prior.deadline, open.at)) {
     return DENY('deadline_expired', prior.deadline ?? undefined, ['deadline_expired'])
   }
-  // §20.54 — when a Decision Ledger decision IS the authority source, it must
-  // be proven to exist, belong to this project and still govern at the pinned
-  // version BEFORE the irreversible append. The caller-supplied
-  // `decisionRef.projectId` proves nothing on its own.
-  const governing = await evaluateGoverningDecision(prior, open.at)
-  if (governing) return DENY('governing_decision_invalid', governing.detail)
+  // §20.54 — when a Decision Ledger decision IS the authority source it must be
+  // proven to exist, belong to this project by its OWN record, and still govern
+  // at the pinned version, BEFORE the irreversible append. The provenance
+  // written to the record is derived here, never accepted from the caller.
+  const provenance = await deriveDecisionProvenance(prior, open.at)
+  if (provenance && 'status' in provenance) return provenance
 
   const mode = await snapshotProjectMode(prior.projectId, args.projectMode)
   if (typeof mode !== 'string') return mode
+  // §20.75 — the mode must also PERMIT movement, not merely be unchanged.
+  if (!isExecutable(mode as AtlasMode)) return DENY('project_mode_not_operational', mode)
 
-  return commitAct(open, { ...planFor({ ...args, act: 'approve' }, prior), projectMode: mode },
-    { authorizationId: args.authorizationId, act: 'approve' })
+  return commitAct(open, {
+    ...planFor({ ...args, act: 'approve' }, prior),
+    projectMode: mode,
+    decisionProvenance: provenance ?? null,
+  }, { authorizationId: args.authorizationId, act: 'approve' })
 }
 
 /**
@@ -736,10 +836,21 @@ export async function activateMission(args: ActivateMissionArgs): Promise<Missio
   if (prior.tools.length === 0) missing.push('tools')
   if (prior.dataScope.length === 0) missing.push('data_scope')
   if (prior.openBlockers.length > 0) missing.push('unresolved_blocker')
-  // §20.73 — a gate already resolved with a blocking outcome stops the mission.
-  if (prior.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
+  // §20.73 — a gate already resolved with a blocking outcome, or contradicted
+  // at the same instant, stops the mission.
+  if (prior.gateResolutions.some(g => g.conflicted)) missing.push('gate_conflict')
+  if (prior.gateResolutions.some(g => GATE_OUTCOME_CLASS[g.outcome] === 'blocking')) missing.push('gate_blocked')
+  if (prior.dependencyState.some(d => d.conflicted)) missing.push('dependency_conflict')
   // §20.75 — a passed deadline expires the approval.
   if (isPastDeadline(prior.deadline, open.at)) missing.push('deadline_expired')
+
+  // §20.105 — "Tools. Data access." must be AVAILABLE, not merely declared.
+  // The production default proves nothing, so a real mission stops here.
+  const available = await proveAvailability(prior, args.availability)
+  if ('status' in available) return available
+  if (!available.tools) missing.push('tool_availability')
+  if (!available.data) missing.push('data_availability')
+
   if (missing.length > 0) {
     return DENY('activation_incomplete', 'requirements_incomplete', [...new Set(missing)])
   }
@@ -807,7 +918,11 @@ const SUCCESSOR_CHAIN_LIMIT = 64
  * becomes a cross-project mission-id oracle.
  */
 const SUCCESSOR_ELIGIBLE = new Set<MissionStatus>([
-  'proposed', 'awaiting_approval', 'approved', 'ready', 'active', 'blocked', 'at_risk', 'paused', 'awaiting_review',
+  // §20.100 — the successor must have crossed the approval boundary. A mere
+  // proposal is not an institutional Mission: §20.99 gives a draft no
+  // authority, and an unapproved proposal terminating an approved commitment
+  // would let anyone retire live direction by drafting a replacement.
+  'approved', 'ready', 'active', 'at_risk', 'paused', 'awaiting_review',
 ])
 
 export async function supersedeMission(args: SupersedeMissionArgs): Promise<MissionWriteResult> {
@@ -848,6 +963,16 @@ export async function supersedeMission(args: SupersedeMissionArgs): Promise<Miss
   if (!successorState || !SUCCESSOR_ELIGIBLE.has(successorState.status)) {
     return DENY('invalid_successor', 'unknown_or_foreign')
   }
+  // The successor must be able to carry the direction forward RIGHT NOW: a
+  // successor whose own authority has expired, whose project mode no longer
+  // permits execution, or whose governing decision has stopped standing cannot
+  // replace a live commitment.
+  const successorAuthority = await evaluateMissionOperationalAuthority(successorState, {
+    now: at, projectMode: args.projectMode,
+  })
+  if (!successorAuthority.authorized) {
+    return DENY('invalid_successor', `successor_${successorAuthority.reason}`)
+  }
 
   return commitAct(open, planFor({ ...args, act: 'supersede' }, prior),
     { authorizationId: args.authorizationId, act: 'supersede' })
@@ -880,8 +1005,15 @@ export async function resumeMission(args: ResumeMissionArgs): Promise<MissionWri
   // §20.133 — "Dependencies remain current."
   if (prior.dependencyState.some(d => d.hardness === 'hard' && !d.satisfied)) missing.push('dependencies')
   if (prior.openBlockers.length > 0) missing.push('unresolved_blocker')
-  if (prior.gateResolutions.some(g => BLOCKING_GATE_OUTCOMES.has(g.outcome))) missing.push('gate_blocked')
+  if (prior.gateResolutions.some(g => g.conflicted)) missing.push('gate_conflict')
+  if (prior.gateResolutions.some(g => GATE_OUTCOME_CLASS[g.outcome] === 'blocking')) missing.push('gate_blocked')
+  if (prior.dependencyState.some(d => d.conflicted)) missing.push('dependency_conflict')
   if (isPastDeadline(prior.deadline, open.at)) missing.push('deadline_expired')
+  // §20.133 — "Dependencies remain current"; availability is part of that.
+  const available = await proveAvailability(prior, args.availability)
+  if ('status' in available) return available
+  if (!available.tools) missing.push('tool_availability')
+  if (!available.data) missing.push('data_availability')
   if (missing.length > 0) return DENY('activation_incomplete', 'restart_requirements_incomplete', [...new Set(missing)])
 
   // §20.133 — "Authority remains valid." EI-S1.4B-R1: this is proven HERE, in
@@ -997,15 +1129,22 @@ export async function observeMissionDependency(args: ObserveDependencyArgs): Pro
 /**
  * §20.73 — record that a declared approval gate was resolved, and how.
  *
- * An annotation: resolving a gate does not move the mission's lifecycle. But
- * "gate exists" is never "gate is satisfied" — §20.92 makes completion depend
- * on approvals actually being resolved, and a blocking outcome stops the
- * mission (§20.103) instead of being quietly ignored (§20.221).
+ * An ANNOTATION for lifecycle purposes: it advances no generation, because
+ * resolving a gate does not move the mission. An AUTHORITY ACT for safety
+ * purposes: EI-S1.4B-R2 found that any authenticated project member could
+ * satisfy a gate by calling this. Project membership is not approval authority
+ * (§20.55, no implied authority), so the resolution now needs its own exact
+ * Authorization V1 proof, bound to the project, the mission, the EXACT version,
+ * the gate id, the outcome, the conditions and the evidence. Change any of
+ * them and the required grant changes.
  *
- * This is not the Full Approval Inbox, which FM.2 excludes, and it introduces
- * no second approval-authority system: the record names the resolving human
- * from the authenticated session, and any Authorization V1 proof a gate needs
- * is referenced through the mission's existing authority path.
+ * This is not the Full Approval Inbox, which FM.2 excludes, and adds no second
+ * approval-authority system: it reuses Explicit Human Authorization V1, and the
+ * approving human is the authorization's own principal — a service role or
+ * Atlas identity can never become the approver.
+ *
+ * "Gate exists" was never "gate is satisfied"; now neither is "somebody
+ * recorded an outcome".
  */
 export async function resolveMissionGate(args: ResolveGateArgs): Promise<MissionWriteResult> {
   const open = await openFor(args)
@@ -1013,7 +1152,7 @@ export async function resolveMissionGate(args: ResolveGateArgs): Promise<Mission
   return commitAct(open, {
     ...carryForward(open.prior), type: 'gate_resolved',
     missionId: args.missionId, gateResolution: args.resolution,
-  }, null)
+  }, { authorizationId: args.authorizationId, act: 'gateResolve' })
 }
 
 /** §20.195 — completion review. Required before a mission may close. */

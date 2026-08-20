@@ -224,10 +224,26 @@ Canonical properties:
   authority-driven `blocked` exist only there — no persisted act can produce either, and no
   caller can assert one instead of satisfying it. There is no mutable `status` column
   anywhere.
-- **Mission V1 is honest about what it cannot prove.** §20.101 asks for available tools and
-  data; Stage 1 has no capability-availability primitive, so readiness reports
-  `unverified: ['tool_availability', 'data_availability']` rather than implying otherwise.
-  Actual availability is a §21.16 Manager acceptance check and lands in EI-S1.4C.
+- **Canonical Ready means actually Ready.** §20.101 requires available tools, so a mission is
+  never reported Ready while availability is unproven. Stage 1 has no capability-availability
+  primitive, and the production default proves nothing — a real mission therefore stops at
+  **Approved**, with `unverified` naming exactly what could not be shown. Nothing is lost:
+  EI-S1.4B executes nothing either way, and EI-S1.4C's §21.16 Manager acceptance supplies the
+  real check.
+- **Approval gates carry their own authority.** §20.73 resolution is an authority act, not a
+  note: it needs an exact Authorization V1 proof bound to the project, mission, **exact
+  version**, gate id, outcome, conditions and evidence. Project membership is not approval
+  authority (§20.55), and a service identity can never become the approving human. Outcomes
+  are classified rather than treated as a boolean — only plain `approve` passes.
+  `approve_with_conditions` is **conditionally unverified** (FM.2 excludes the policy engine
+  that could check the condition) and `edit_and_approve` **requires a Mission amendment**
+  (§20.126), so neither lets an unchanged version through. A resolution made against version
+  N does not float forward to N+1.
+- **A random UUID never decides authority.** Two contradictory gate resolutions or dependency
+  observations sharing the newest instant have no honest winner, so the derivation reports a
+  conflict and every consumer fails closed. A positive observation unlocking a **hard**
+  dependency must carry evidence (§20.63, §20.81) — institutional history has to explain why
+  a prerequisite counted as met.
 - **Authority binds the exact prospective act.** The candidate record is built first and
   hashed over an explicit projection of every §20.126 material field and every other field
   whose post-approval change would alter what the human approved. Change the objective,
@@ -239,8 +255,12 @@ Canonical properties:
   makes Ready depend on valid authority in the present tense. Every §20.75 input Stage 1 can
   prove is enforced, in **one shared seam used by both boundaries**: material change (version
   N+1 + fresh authority), **deadline passed** (`deadline_expired`), and **project mode
-  changed** (`project_mode_changed`, comparing a snapshot of `projects.atlas_mode` against
-  the live value). §20.75's remaining input — workflow version — is **not applicable**: a
+  changed** (`project_mode_changed`). Project mode is asked two questions, not one: does the
+  current mode **permit** movement toward execution at all, and did it **change** since the
+  mission was authorized? Omnira's own doctrine — `lib/atlas/lifecycle.ts` and the
+  `atlas_mode` column comment, independently — says only `active` executes and observer is
+  "collect and analyse, NO execution", so `isExecutable` is reused as the sanctioned
+  predicate. §20.75's remaining input — workflow version — is **not applicable**: a
   Mission Brief binds no workflow, and inventing a field to satisfy a future clause would be
   fake authority. It lands with EI-S1.4D.
   History is never rewritten: the `activated` act stays exactly where it is (§20.128), and
@@ -250,10 +270,11 @@ Canonical properties:
   append.** Nothing is appended and then found invalid on a later read. Resume in particular
   re-proves authority in the write boundary itself, not by trusting that a caller consulted
   the read boundary first.
-- **The governing decision is proven exactly.** When a Decision Ledger decision is the
-  authority source, it must exist, belong to this project *by its own record* (a
-  caller-supplied `decisionRef.projectId` proves nothing), still govern, and match the
-  **exact pinned version** — §11.62 makes an amended decision a different commitment, so
+- **The governing decision is proven exactly, and its provenance is server-derived.** The
+  caller supplies only the decision's material identity — id and version. The project, status
+  and observation time are read from the Decision Ledger inside the boundary, because
+  provenance a caller writes is not provenance. The decision must exist, belong to this
+  project *by its own record*, still govern, and match the **exact pinned version** — §11.62 makes an amended decision a different commitment, so
   version drift stops new movement rather than silently authorizing the old mission.
   Unknown and foreign decisions deny identically. The Decision Ledger is never written.
 - **Approval gates must be resolved, not merely declared** (§20.73, §20.92). Gates carry
@@ -267,10 +288,11 @@ Canonical properties:
   has been met arrives as an immutable `dependency_observed` annotation, so a prerequisite
   finishing no longer requires a material amendment and fresh authority. A hard dependency
   is **unsatisfied until observed**. Replacing or removing a dependency is still material.
-- **Supersession proves the successor is real** (§20.97): it must exist, share the project,
-  be in a lifecycle state that can carry the direction forward, not be this mission, and not
-  close a cycle — checked by a bounded, fail-closed chain walk. Missing, foreign and
-  ineligible successors deny identically.
+- **Supersession proves the successor is real and empowered** (§20.97): it must exist, share
+  the project, have **crossed the approval boundary** (§20.100 — a mere proposal cannot
+  terminate an institutional Mission), hold valid **current** operational authority, not be
+  this mission, and not close a cycle — checked by a bounded, fail-closed chain walk. Missing,
+  foreign and ineligible successors deny identically.
 - **A material amendment creates version N+1 and expires the prior approval** (§20.126,
   §20.75). Version N stays in the immutable lineage; the old authorization does not float
   forward; the mission returns to `proposed` until it earns fresh, exact authority.
@@ -317,7 +339,7 @@ only** — calling them a Damage Boundary would be a lie.
 | Production initial row count | **0** |
 | Migration guard | **36 enforced / 0 missing**, no override, nothing grandfathered |
 | Executive Mission Brief V1 | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
-| Mission operational readiness | EI-S1.4B-R1 corrections applied |
+| Mission operational readiness | EI-S1.4B-R1 and R2 corrections applied |
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Executive → Manager handoff | **NOT STARTED** |
 | Manager → Workforce handoff | **NOT STARTED** |

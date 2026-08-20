@@ -209,18 +209,40 @@ create table if not exists public.atlas_mission_ledger (
   -- re-derived against live Authorization V1 state on every read.
   authority_record    jsonb,
 
-  -- §20.137 — the governing Decision Ledger decision, when one is the authority
-  -- source. Pinned with its version and observed state so the record explains
-  -- itself. No FK: the ledger's decision_id is a lineage key, not unique, and
-  -- this migration does not touch that table.
+  -- §20.137 — the MATERIAL identity of the governing decision: decision_id and
+  -- decision_version. Caller-supplied, and the only part a human authorizes.
+  -- No FK: the ledger's decision_id is a lineage key, not unique, and this
+  -- migration does not touch that table.
   decision_ref        jsonb,
+
+  -- SERVER-DERIVED provenance about that decision: its own recorded project,
+  -- its status and version as actually read from the Decision Ledger, and when
+  -- they were read.
+  --
+  -- EI-S1.4B-R2 split this out of `decision_ref`. A caller used to supply the
+  -- project, status and timestamp and the record kept them verbatim, so a
+  -- mission was approved carrying an observed status of "TOTALLY-FABRICATED"
+  -- dated 1999. Institutional provenance a caller writes is not provenance.
+  -- The project here is the DECISION's own scope (§6.117), verified equal to
+  -- the mission's — never a caller's claim about it. Deliberately outside the
+  -- authorization binding: only decision id + version are material, so a read
+  -- timestamp moving between preparation and commit cannot make a grant
+  -- unsatisfiable.
+  decision_provenance jsonb,
 
   -- §20.75 — "Approval should expire if… the project mode changes." The
   -- project's `atlas_mode` (active | observer | hibernate | archived, a real
   -- Stage 1 primitive on public.projects) as it stood when this authority act
-  -- occurred. Compared by equality against the live value before any new
-  -- activation, resume or handoff. One string, one comparison — not a policy
-  -- engine.
+  -- occurred.
+  --
+  -- TWO questions are asked of it, and EI-S1.4B-R1 only asked the first:
+  --   1. did the mode CHANGE since the mission was authorized? (equality)
+  --   2. does the CURRENT mode permit movement toward execution at all?
+  -- Equality alone let a mission approved in `observer` stay authorized
+  -- forever, because nothing had changed. Omnira's own doctrine is explicit in
+  -- lib/atlas/lifecycle.ts and in the atlas_mode column comment — observer is
+  -- "collect and analyse, NO execution" — so `isExecutable` is reused as the
+  -- sanctioned predicate. One string, two comparisons; no policy engine.
   --
   -- §20.75's remaining input, "the workflow version changes", is NOT
   -- APPLICABLE in V1: a Mission Brief binds no workflow, and inventing a
@@ -231,12 +253,45 @@ create table if not exists public.atlas_mission_ledger (
   -- §20.101 — a `dependency_observed` annotation: which declared dependency,
   -- whether it is now satisfied, and the evidence. A hard dependency is
   -- UNSATISFIED until observed, so an unobserved prerequisite blocks.
+  --
+  -- §20.63/§20.81 — a POSITIVE observation against a HARD dependency must carry
+  -- non-empty evidence, because that observation is what unlocks activation.
+  -- Nothing verifies the evidence and nothing pretends to; an unexplained
+  -- unlock is simply not accepted. Negative observations need none: they only
+  -- narrow what the mission may do.
+  --
+  -- Two contradictory observations for the same reference sharing the newest
+  -- instant have no honest winner, so the derivation reports a conflict and
+  -- every consumer fails closed. A random record id must never decide whether
+  -- a prerequisite counts as met.
   dependency_observation jsonb,
 
   -- §20.73 — a `gate_resolved` annotation: which declared gate, and which of
-  -- the eight canonical outcomes. A blocking outcome (reject, defer, request
-  -- more evidence, request alternative, escalate) stops the mission (§20.103)
-  -- instead of being quietly ignored. This is not the Full Approval Inbox,
+  -- the eight canonical outcomes.
+  --
+  -- An ANNOTATION for lifecycle purposes (it advances no generation) and an
+  -- AUTHORITY ACT for safety purposes: EI-S1.4B-R2 found any authenticated
+  -- project member could satisfy a gate simply by calling the boundary, so the
+  -- row now carries its own Authorization V1 proof in `authority_record`,
+  -- bound to the project, mission, EXACT version, gate id, outcome, conditions
+  -- and evidence. Project membership is not approval authority (§20.55), and a
+  -- service role can never become the approving human.
+  --
+  -- Outcome classes, because a resolution row proves an act happened and not
+  -- that its precondition was met:
+  --   approve                   PASSING
+  --   approve_with_conditions   CONDITIONALLY_UNVERIFIED — FM.2 excludes the
+  --                             policy engine, so Stage 1 cannot verify the
+  --                             attached conditions; it does not pass
+  --   edit_and_approve          REQUIRES_MISSION_AMENDMENT — a material edit
+  --                             belongs in version N+1 (§20.126), not an
+  --                             annotation (§20.128)
+  --   reject | defer | escalate | request_more_evidence | request_alternative
+  --                             BLOCKING
+  --
+  -- Resolutions are VERSION-SCOPED: one made against version N does not float
+  -- forward to N+1, because §20.126 makes N+1 a materially different
+  -- commitment the approver never saw. This is not the Full Approval Inbox,
   -- which FM.2 excludes, and introduces no second approval-authority system.
   gate_resolution     jsonb,
 

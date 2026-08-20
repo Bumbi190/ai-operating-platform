@@ -30,12 +30,14 @@ import { resolveDecision } from '@/lib/atlas/decision-ledger/principal-read'
 import { buildMissionRecord, newMissionId, MISSION_TYPES } from '@/lib/atlas/mission/build'
 import {
   deriveMissionState,
+  GATE_OUTCOME_CLASS,
   MISSION_AUTHORITY_ACTS,
   MISSION_LIFECYCLE_ADVANCING,
   missionLifecycleGenerationOf,
   missionReadiness,
   orderMissionRecords,
 } from '@/lib/atlas/mission/derive'
+import { unprovenAvailability } from '@/lib/atlas/mission/capability'
 import {
   bindingForMissionCandidate,
   MISSION_ACTION,
@@ -74,6 +76,7 @@ import {
 } from '@/lib/atlas/mission/principal-read'
 import type { MissionActType, MissionRecord, MissionStatus } from '@/lib/atlas/mission/types'
 import type { MissionLedgerStore } from '@/lib/atlas/mission/store'
+import { ATLAS_MODES, isExecutable } from '@/lib/atlas/lifecycle'
 
 const MISSION_DIR = resolve(__dirname, '../atlas/mission')
 const MIGRATION = resolve(__dirname, '../../supabase/migrations/20260819_atlas_mission_ledger.sql')
@@ -85,6 +88,8 @@ const PROJECT_Q = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const AUTH_A = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 const AUTH_B = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
 const AUTH_UNRELATED = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const AUTH_GATE = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const AUTH_SUCCESSOR = '99999999-9999-4999-8999-999999999999'
 
 const T0 = '2026-08-19T08:00:00.000Z'
 const T1 = '2026-08-19T09:00:00.000Z'
@@ -182,6 +187,10 @@ function frozenReader(live: FakeStore, snapshot: MissionRecord[]): MissionLedger
 let currentProjectMode = 'active'
 const projectMode = async () => currentProjectMode
 
+/** §20.105 — injected capability proof. Production default proves nothing. */
+let capabilityProven = true
+const availability = async () => ({ tools: capabilityProven, data: capabilityProven })
+
 const mockAccess = vi.mocked(resolveProjectAccess)
 const mockAuth = vi.mocked(isAuthorizationEffective)
 const mockDecision = vi.mocked(resolveDecision)
@@ -259,9 +268,47 @@ async function grantFor(
 async function proposedMission(store = new FakeStore()): Promise<{ store: FakeStore; missionId: string }> {
   authAs(PRINCIPAL_A, [PROJECT_P])
   authorizationService([])
-  const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, store, now: T0, projectMode })
+  const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, store, now: T0, projectMode, availability })
   expect(opened.status).toBe('ok')
   return { store, missionId: opened.state!.missionId }
+}
+
+/**
+ * §20.97/§20.100 — an APPROVED successor with valid current authority.
+ *
+ * Owner ruling: a mere proposal cannot replace an institutional Mission, so a
+ * successor must have crossed the approval boundary before it can terminate
+ * one.
+ */
+async function approvedSuccessor(store: FakeStore, project = PROJECT_P, now = T1): Promise<{ successorId: string; grant: Grant }> {
+  const opened = await openMission({ projectId: project, ...COMPLETE_BRIEF, store, now: T0, projectMode, availability })
+  const successorId = opened.state!.missionId
+  const prepared = await prepareMissionAct({ act: 'approve', missionId: successorId, store, now, projectMode, availability })
+  expect(prepared.status).toBe('ok')
+  const grant: Grant = {
+    id: AUTH_SUCCESSOR, projectId: prepared.binding!.projectId,
+    target: prepared.binding!.target, actionKind: prepared.binding!.actionKind, principalId: PRINCIPAL_A,
+  }
+  authorizationService([grant])
+  const approved = await approveMission({ missionId: successorId, authorizationId: AUTH_SUCCESSOR, store, now, projectMode, availability })
+  expect(`${approved.status}${approved.detail ? `:${approved.detail}` : ''}`).toBe('ok')
+  // The grant is returned because the successor's OWN operational authority is
+  // re-evaluated during the supersession — it must still be live then.
+  return { successorId, grant }
+}
+
+/** §20.73 — resolve a gate under its own exact Authorization V1 proof. */
+async function resolveGate(
+  store: FakeStore, missionId: string, resolution: Parameters<typeof resolveMissionGate>[0]['resolution'], now: string,
+) {
+  const prepared = await prepareMissionAct({ act: 'gateResolve', missionId, resolution, store, now, projectMode, availability } as never)
+  expect(prepared.status).toBe('ok')
+  const grant: Grant = {
+    id: AUTH_GATE, projectId: prepared.binding!.projectId,
+    target: prepared.binding!.target, actionKind: prepared.binding!.actionKind, principalId: PRINCIPAL_A,
+  }
+  authorizationService([grant])
+  return resolveMissionGate({ missionId, authorizationId: AUTH_GATE, resolution, store, now, projectMode, availability })
 }
 
 /** §20.101 — observe the declared hard dependency as satisfied. */
@@ -276,9 +323,9 @@ async function satisfyDependency(store: FakeStore, missionId: string, now = T1) 
 /** A mission approved at T1 under exact authority. */
 async function approvedMission(): Promise<{ store: FakeStore; missionId: string; grant: Grant }> {
   const { store, missionId } = await proposedMission()
-  const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+  const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
   authorizationService([grant])
-  const approved = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+  const approved = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
   expect(`${approved.status}${approved.detail ? `:${approved.detail}` : ''}`).toBe('ok')
   return { store, missionId, grant }
 }
@@ -287,9 +334,9 @@ async function approvedMission(): Promise<{ store: FakeStore; missionId: string;
 async function activatedMission(): Promise<{ store: FakeStore; missionId: string; grants: Grant[] }> {
   const { store, missionId, grant } = await approvedMission()
   await satisfyDependency(store, missionId, T1)
-  const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+  const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
   authorizationService([grant, activateGrant])
-  const activated = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+  const activated = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
   expect(`${activated.status}${activated.detail ? `:${activated.detail}` : ''}`).toBe('ok')
   return { store, missionId, grants: [grant, activateGrant] }
 }
@@ -297,6 +344,7 @@ async function activatedMission(): Promise<{ store: FakeStore; missionId: string
 beforeEach(() => {
   mockAccess.mockReset(); mockAuth.mockReset(); mockDecision.mockReset()
   currentProjectMode = 'active'
+  capabilityProven = true
 })
 
 // ── 1–3. Vocabulary ───────────────────────────────────────────────────────────
@@ -369,21 +417,21 @@ describe('Opening a mission grants nothing (§20.99)', () => {
     authAs(PRINCIPAL_A, [PROJECT_P])
     authorizationService([])
     const store = new FakeStore()
-    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, asDraft: true, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, asDraft: true, store, now: T0, projectMode, availability })
     expect(opened.status).toBe('ok')
     expect(opened.state?.status).toBe('draft')
     expect(opened.state?.approvedAt).toBeNull()
     expect(opened.state?.activatedAt).toBeNull()
     expect(opened.state?.authorityRecord).toBeNull()
 
-    const authority = await isMissionOperationallyAuthorized(opened.state!.missionId, { store, now: T1, projectMode })
+    const authority = await isMissionOperationallyAuthorized(opened.state!.missionId, { store, now: T1, projectMode, availability })
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('no_authority_act')
   })
 
   it('creates a proposal and derives awaiting_approval once the brief is complete', async () => {
     const { store, missionId } = await proposedMission()
-    const read = await resolveMission(missionId, { store, now: T1, projectMode })
+    const read = await resolveMission(missionId, { store, now: T1, projectMode, availability })
     // §20.172 — a complete brief is one a human can act on.
     expect(read.state?.status).toBe('awaiting_approval')
     expect(read.state?.briefComplete).toBe(true)
@@ -395,7 +443,7 @@ describe('Opening a mission grants nothing (§20.99)', () => {
     authorizationService([])
     const store = new FakeStore()
     const { missionOwner, successCriteria, approvalGates, deadline, stopConditions, ...thin } = COMPLETE_BRIEF
-    const opened = await openMission({ projectId: PROJECT_P, ...thin, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...thin, store, now: T0, projectMode, availability })
     expect(opened.state?.status).toBe('proposed')
     expect(opened.state?.missingRequirements.sort()).toEqual(
       ['approval_gate', 'deadline', 'owner', 'stop_condition', 'success_criteria'])
@@ -406,9 +454,9 @@ describe('Opening a mission grants nothing (§20.99)', () => {
     authorizationService([])
     const store = new FakeStore()
     const { deadline, ...thin } = COMPLETE_BRIEF
-    const opened = await openMission({ projectId: PROJECT_P, ...thin, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...thin, store, now: T0, projectMode, availability })
     const before = store.appended.length
-    const result = await approveMission({ missionId: opened.state!.missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId: opened.state!.missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('activation_incomplete')
     expect(result.missing).toContain('deadline')
     expect(store.appended).toHaveLength(before)
@@ -522,8 +570,10 @@ describe('Authority binds the exact prospective mission act (§20.126)', () => {
     expect(JSON.stringify(missionBoundProjection(noise as never))).toBe(original)
   })
 
-  it('binds a distinct action for each of the five authority acts', () => {
-    expect(new Set(Object.values(MISSION_ACTION)).size).toBe(5)
+  it('binds a distinct action for each of the six authority acts', () => {
+    // §20.73 — resolving an approval gate joined the set in EI-S1.4B-R2.
+    expect(new Set(Object.values(MISSION_ACTION)).size).toBe(6)
+    expect(MISSION_ACTION.gateResolve).toBe('mission.gate.resolve')
     expect([...MISSION_AUTHORITY_ACTS].sort()).toEqual(
       ['activated', 'amended', 'approved', 'cancelled', 'superseded'])
   })
@@ -543,7 +593,7 @@ describe('Authority binds the exact prospective mission act (§20.126)', () => {
 describe('Only an exact, current authorization approves a mission', () => {
   it('accepts the exact approved candidate that was authorized', async () => {
     const { store, missionId } = await approvedMission()
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.state?.status).toBe('approved')
     expect(read.state?.approvedAt).toBe(T1)
     expect(read.state?.authorityRecord?.actionKind).toBe(MISSION_ACTION.approve)
@@ -558,27 +608,27 @@ describe('Only an exact, current authorization approves a mission', () => {
       actionKind: 'publish_article', principalId: PRINCIPAL_A,
     }])
     const before = store.appended.length
-    const result = await approveMission({ missionId, authorizationId: AUTH_UNRELATED, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_UNRELATED, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(store.appended).toHaveLength(before)
   })
 
   it('refuses a wrong-project authorization', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A, { projectId: PROJECT_Q })
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A, { projectId: PROJECT_Q })
     authorizationService([grant])
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(result.detail).toContain('project_mismatch')
   })
 
   it('refuses a wrong-mission/version authorization', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A, {
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A, {
       target: { targetType: 'mission', targetId: newMissionId(), versionHash: 'a'.repeat(64) },
     })
     authorizationService([grant])
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(result.detail).toContain('version_mismatch')
   })
@@ -586,29 +636,29 @@ describe('Only an exact, current authorization approves a mission', () => {
   it('refuses a wrong-action authorization', async () => {
     const { store, missionId } = await proposedMission()
     // A grant to ACTIVATE cannot APPROVE.
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A,
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A,
       { actionKind: MISSION_ACTION.activate })
     authorizationService([grant])
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(result.detail).toContain('action_mismatch')
   })
 
   it('refuses when the authorization principal is not the acting caller (§20.55)', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A, { principalId: PRINCIPAL_B })
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A, { principalId: PRINCIPAL_B })
     authorizationService([grant])
     const before = store.appended.length
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_principal_mismatch')
     expect(store.appended).toHaveLength(before)
   })
 
   it('refuses a conditional-unverified authorization', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A, { conditionsUnverified: true })
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A, { conditionsUnverified: true })
     authorizationService([grant])
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(result.detail).toContain('conditions_unverified')
   })
@@ -619,24 +669,24 @@ describe('Only an exact, current authorization approves a mission', () => {
 describe('Mission authority is an operational gate, not a historical fact (§20.75)', () => {
   it('reports authorized while the grant is effective', async () => {
     const { store, missionId } = await approvedMission()
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(true)
     expect(authority.reason).toBe('authorized')
   })
 
   it('stops authorizing once the grant expires — unlike a Decision Ledger approval', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A, { expiresAt: T2 })
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A, { expiresAt: T2 })
     authorizationService([grant])
-    expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })).status).toBe('ok')
+    expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })).status).toBe('ok')
 
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T3, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T3, projectMode, availability })
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('authorization_invalid')
     expect(authority.detail).toContain('expired')
 
     // History is untouched: the approval act stands (§20.128).
-    const read = await resolveMission(missionId, { store, now: T3, projectMode })
+    const read = await resolveMission(missionId, { store, now: T3, projectMode, availability })
     expect(read.state?.approvedAt).toBe(T1)
     expect(read.state?.authorityRecord?.authorizationId).toBe(AUTH_A)
   })
@@ -644,7 +694,7 @@ describe('Mission authority is an operational gate, not a historical fact (§20.
   it('stops authorizing once the grant is revoked', async () => {
     const { store, missionId, grant } = await approvedMission()
     authorizationService([{ ...grant, revoked: true }])
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('authorization_invalid')
   })
@@ -652,11 +702,11 @@ describe('Mission authority is an operational gate, not a historical fact (§20.
   it('blocks a NEW activation once authority is no longer valid', async () => {
     const { store, missionId, grant } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     // Both grants revoked before the activation attempt.
     authorizationService([{ ...grant, revoked: true }, { ...activateGrant, revoked: true }])
     const before = store.appended.length
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     // EI-S1.4B-R1: the CURRENT authority is proven before the irreversible
     // append, so this now denies at the operational gate rather than at the
     // new grant — and either way appends nothing.
@@ -667,7 +717,7 @@ describe('Mission authority is an operational gate, not a historical fact (§20.
   it('makes an active mission non-ready when its authority later fails', async () => {
     const { store, missionId, grants } = await activatedMission()
     authorizationService(grants.map(g => ({ ...g, revoked: true })))
-    const readiness = await resolveMissionReadiness(missionId, { store, now: T3, projectMode })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T3, projectMode, availability })
     expect(readiness.authority?.authorized).toBe(false)
     expect(readiness.readiness?.ready).toBe(false)
     expect(readiness.readiness?.missing).toContain('current_authorization')
@@ -683,9 +733,9 @@ describe('Material amendment creates version N+1 and expires prior approval (§2
 
   it('creates N+1 under fresh exact authority and keeps N auditable', async () => {
     const { store, missionId } = await approvedMission()
-    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode }, AUTH_B)
+    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([amendGrant])
-    const result = await amendMission({ missionId, authorizationId: AUTH_B, ...AMENDMENT, store, now: T2, projectMode })
+    const result = await amendMission({ missionId, authorizationId: AUTH_B, ...AMENDMENT, store, now: T2, projectMode, availability })
     expect(`${result.status}${result.detail ? `:${result.detail}` : ''}`).toBe('ok')
     expect(result.state?.version).toBe(2)
     expect(result.state?.objective).toBe(AMENDMENT.objective)
@@ -696,18 +746,18 @@ describe('Material amendment creates version N+1 and expires prior approval (§2
 
   it('returns the mission to `proposed` — the prior approval expired (§20.75)', async () => {
     const { store, missionId } = await approvedMission()
-    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode }, AUTH_B)
+    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([amendGrant])
-    await amendMission({ missionId, authorizationId: AUTH_B, ...AMENDMENT, store, now: T2, projectMode })
+    await amendMission({ missionId, authorizationId: AUTH_B, ...AMENDMENT, store, now: T2, projectMode, availability })
 
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     // Complete brief → awaiting_approval, not approved and not active.
     expect(read.state?.status).toBe('awaiting_approval')
     expect(read.state?.approvedAt).toBeNull()
     expect(read.state?.activatedAt).toBeNull()
     expect(read.state?.authorityRecord).toBeNull()
 
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('no_authority_act')
   })
@@ -715,20 +765,20 @@ describe('Material amendment creates version N+1 and expires prior approval (§2
   it('refuses an amendment carrying only the approval authority', async () => {
     const { store, missionId } = await approvedMission()
     const before = store.appended.length
-    const result = await amendMission({ missionId, authorizationId: AUTH_A, ...AMENDMENT, store, now: T2, projectMode })
+    const result = await amendMission({ missionId, authorizationId: AUTH_A, ...AMENDMENT, store, now: T2, projectMode, availability })
     expect(result.status).toBe('authority_not_effective')
     expect(store.appended).toHaveLength(before)
   })
 
   it('a grant for amendment X cannot append amendment Y', async () => {
     const { store, missionId } = await approvedMission()
-    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode }, AUTH_B)
+    const amendGrant = await grantFor({ act: 'amend', missionId, ...AMENDMENT, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([amendGrant])
     const result = await amendMission({
       missionId, authorizationId: AUTH_B, reason: AMENDMENT.reason,
       objective: 'An entirely different and much wider commitment.',
       budget: { currency: 'SEK', limitMinor: 99999999 },
-      store, now: T2, projectMode,
+      store, now: T2, projectMode, availability,
     })
     expect(result.status).toBe('authority_not_effective')
     expect(store.appended.some(r => r.type === 'amended')).toBe(false)
@@ -759,13 +809,13 @@ describe('Approved, Ready and Active are distinct (§20.100, §20.101, §20.102)
       ...COMPLETE_BRIEF,
       dependencies: [{ kind: 'capability' as const, reference: 'not-yet', hardness: 'hard' as const, satisfied: false }],
     }
-    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode, availability })
     const missionId = opened.state!.missionId
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
-    expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })).status).toBe('ok')
+    expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })).status).toBe('ok')
 
-    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode, availability })
     expect(readiness.state?.status).toBe('approved')
     expect(readiness.readiness?.ready).toBe(false)
     expect(readiness.readiness?.missing).toContain('dependencies')
@@ -774,16 +824,16 @@ describe('Approved, Ready and Active are distinct (§20.100, §20.101, §20.102)
   it('derives ready only when every canonical requirement is satisfied', async () => {
     const { store, missionId } = await approvedMission()
     // §20.101 "Available dependencies" — unobserved means unsatisfied.
-    const beforeObservation = await resolveMissionReadiness(missionId, { store, now: T1, projectMode })
+    const beforeObservation = await resolveMissionReadiness(missionId, { store, now: T1, projectMode, availability })
     expect(beforeObservation.readiness?.ready).toBe(false)
     expect(beforeObservation.readiness?.missing).toContain('dependencies')
 
     await satisfyDependency(store, missionId, T1)
-    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode, availability })
+    // §20.101 — Ready only once availability is actually PROVEN.
     expect(readiness.readiness?.ready).toBe(true)
     expect(readiness.readiness?.missing).toEqual([])
-    // §20.101 "Required tools" is NOT claimed as verified.
-    expect(readiness.readiness?.unverified).toContain('tool_availability')
+    expect(readiness.readiness?.unverified).toEqual([])
   })
 
   it('refuses activation with missing requirements and appends nothing (§20.106)', async () => {
@@ -794,14 +844,14 @@ describe('Approved, Ready and Active are distinct (§20.100, §20.101, §20.102)
       ...COMPLETE_BRIEF,
       dependencies: [{ kind: 'capability' as const, reference: 'not-yet', hardness: 'hard' as const, satisfied: false }],
     }
-    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode, availability })
     const missionId = opened.state!.missionId
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
-    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
 
     const before = store.appended.length
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     expect(result.status).toBe('activation_incomplete')
     expect(result.missing).toContain('dependencies')
     // §20.106 — "The mission remains inactive… No external execution begins."
@@ -812,14 +862,14 @@ describe('Approved, Ready and Active are distinct (§20.100, §20.101, §20.102)
   it('cannot activate a mission that was never approved', async () => {
     const { store, missionId } = await proposedMission()
     authorizationService([])
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     expect(result.status).not.toBe('ok')
     expect(store.appended.some(r => r.type === 'activated')).toBe(false)
   })
 
   it('activates a ready mission under its own fresh authority', async () => {
     const { store, missionId } = await activatedMission()
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.state?.status).toBe('active')
     expect(read.state?.activatedAt).toBe(T2)
     expect(read.state?.authorityRecord?.actionKind).toBe(MISSION_ACTION.activate)
@@ -831,16 +881,16 @@ describe('Approved, Ready and Active are distinct (§20.100, §20.101, §20.102)
 describe('No invalid transition ever reaches the store', () => {
   it.each([
     ['approve a draft that was never proposed', async (store: FakeStore, id: string) =>
-      approveMission({ missionId: id, authorizationId: AUTH_A, store, now: T1, projectMode })],
+      approveMission({ missionId: id, authorizationId: AUTH_A, store, now: T1, projectMode, availability })],
     ['resume a mission that is not paused', async (store: FakeStore, id: string) =>
-      resumeMission({ missionId: id, store, now: T2, projectMode })],
+      resumeMission({ missionId: id, store, now: T2, projectMode, availability })],
     ['archive a mission that is not closed', async (store: FakeStore, id: string) =>
-      archiveMission({ missionId: id, store, now: T2, projectMode })],
+      archiveMission({ missionId: id, store, now: T2, projectMode, availability })],
   ])('refuses to %s, appending zero records', async (_label, act) => {
     authAs(PRINCIPAL_A, [PROJECT_P])
     authorizationService([])
     const store = new FakeStore()
-    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, asDraft: true, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, asDraft: true, store, now: T0, projectMode, availability })
     const before = store.appended.length
     const result = await act(store, opened.state!.missionId)
     expect(result.status).not.toBe('ok')
@@ -850,7 +900,7 @@ describe('No invalid transition ever reaches the store', () => {
   it('refuses to close an active mission that has not met its own contract', async () => {
     const { store, missionId } = await activatedMission()
     const before = store.appended.length
-    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T3, projectMode })
+    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T3, projectMode, availability })
     expect(result.status).toBe('completion_incomplete')
     // Missing declared evidence and the §20.195 completion review.
     expect(result.detail).toContain('evidence:test_output')
@@ -889,20 +939,17 @@ describe('No invalid transition ever reaches the store', () => {
 describe('Completion is judged, never assumed (§20.92, §20.93, §20.225)', () => {
   async function readyToClose() {
     const { store, missionId } = await activatedMission()
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    await reviewMission({ missionId, reviewNote: 'Objective achieved; criteria met; evidence sufficient.', store, now: T3, projectMode })
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Objective achieved; criteria met; evidence sufficient.', store, now: T3, projectMode, availability })
     // §20.92 — "Approvals are resolved." The declared gate must actually have
     // been resolved, not merely declared.
-    await resolveMissionGate({
-      missionId, resolution: { gateId: 'gate-publish', outcome: 'approve', evidence: 'founder sign-off' },
-      store, now: T3, projectMode,
-    })
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve', evidence: 'founder sign-off' }, T3)
     return { store, missionId }
   }
 
   it('completes once evidence, minimum criteria and a review all exist', async () => {
     const { store, missionId } = await readyToClose()
-    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode })
+    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
     expect(`${result.status}${result.detail ? `:${result.detail}` : ''}`).toBe('ok')
     expect(result.state?.status).toBe('completed')
     expect(result.state?.closure?.outcomeType).toBe('workflow_validated')
@@ -919,39 +966,39 @@ describe('Completion is judged, never assumed (§20.92, §20.93, §20.225)', () 
 
   it('distinguishes partial completion from completion (§20.94)', async () => {
     const { store, missionId } = await readyToClose()
-    const result = await closeMission({ missionId, closure: CLOSURE, partial: true, store, now: T4, projectMode })
+    const result = await closeMission({ missionId, closure: CLOSURE, partial: true, store, now: T4, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('partially_completed')
   })
 
   it('distinguishes failure, which needs no completion evidence (§20.95)', async () => {
     const { store, missionId } = await activatedMission()
-    const result = await failMission({ missionId, reason: 'Critical assumption failed.', store, now: T3, projectMode })
+    const result = await failMission({ missionId, reason: 'Critical assumption failed.', store, now: T3, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('failed')
   })
 
   it('distinguishes cancellation, which is an authority act (§20.96)', async () => {
     const { store, missionId } = await approvedMission()
-    const noGrant = await cancelMission({ missionId, authorizationId: AUTH_A, reason: 'Priority changed.', store, now: T2, projectMode })
+    const noGrant = await cancelMission({ missionId, authorizationId: AUTH_A, reason: 'Priority changed.', store, now: T2, projectMode, availability })
     expect(noGrant.status).toBe('authority_not_effective')
 
-    const grant = await grantFor({ act: 'cancel', missionId, reason: 'Priority changed.', store, now: T2, projectMode }, AUTH_B)
+    const grant = await grantFor({ act: 'cancel', missionId, reason: 'Priority changed.', store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([grant])
-    const result = await cancelMission({ missionId, authorizationId: AUTH_B, reason: 'Priority changed.', store, now: T2, projectMode })
+    const result = await cancelMission({ missionId, authorizationId: AUTH_B, reason: 'Priority changed.', store, now: T2, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('cancelled')
   })
 
   it('supersedes with a real successor and preserves history (§20.97)', async () => {
     const { store, missionId } = await approvedMission()
-    // §20.97 — "replaced by a NEWER MISSION". A ghost id is not one.
-    const successorOpen = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, store, now: T1, projectMode })
-    const successor = successorOpen.state!.missionId
+    // §20.97 — "replaced by a NEWER MISSION". A ghost id is not one, and
+    // neither is an unapproved proposal.
+    const { successorId: successor, grant: successorGrant } = await approvedSuccessor(store)
 
-    const grant = await grantFor({ act: 'supersede', missionId, supersededBy: successor, store, now: T2, projectMode }, AUTH_B)
-    authorizationService([grant])
-    const result = await supersedeMission({ missionId, supersededBy: successor, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const grant = await grantFor({ act: 'supersede', missionId, supersededBy: successor, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant, successorGrant])
+    const result = await supersedeMission({ missionId, supersededBy: successor, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('superseded')
     expect(result.state?.supersededBy).toBe(successor)
@@ -978,16 +1025,16 @@ describe('Decision Ledger linkage is optional and validated (§20.137)', () => {
   const withDecision = {
     ...COMPLETE_BRIEF,
     authoritySource: { kind: 'decision_ledger' as const, reference: 'dec-1 v1' },
-    decisionRef: { decisionId: 'dec-1', decisionVersion: 1, projectId: PROJECT_P, observedStatus: 'active', observedAt: T0 },
+    decisionRef: { decisionId: 'dec-1', decisionVersion: 1 },
   }
 
   it('allows a mission with no decision link when a decision is not the source', async () => {
     const { store, missionId } = await approvedMission()
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.state?.authoritySource?.kind).toBe('founder_instruction')
     expect(read.state?.decisionRef).toBeNull()
     // No decision was consulted at all.
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(true)
     expect(mockDecision).not.toHaveBeenCalled()
   })
@@ -1005,17 +1052,25 @@ describe('Decision Ledger linkage is optional and validated (§20.137)', () => {
       type: 'proposed', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
       occurredAt: T0, version: 1, lifecycleGeneration: 0,
       ...COMPLETE_BRIEF,
-      decisionRef: { decisionId: 'dec-1', decisionVersion: 1, projectId: PROJECT_P, observedStatus: 'active', observedAt: T0 },
+      decisionRef: { decisionId: 'dec-1', decisionVersion: 1 },
     })).toThrow(/decision-reference-requires-decision-authority/)
   })
 
-  it('refuses a foreign-project decision (§6.117)', () => {
+  it('refuses a foreign-project decision by its OWN recorded scope (§6.117)', () => {
+    // EI-S1.4B-R2: the project is no longer a caller field on `decisionRef`, so
+    // it cannot be forged there at all. The check moved to the server-derived
+    // provenance, which is read from the Decision Ledger.
+    const source = readFileSync(resolve(MISSION_DIR, 'types.ts'), 'utf8')
+    const block = source.match(/export interface MissionDecisionReference[\s\S]*?\n}/)![0]
+    expect(block).not.toMatch(/projectId|observedStatus|observedAt/)
+
     expect(() => buildMissionRecord({
       type: 'proposed', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
       occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
       authoritySource: { kind: 'decision_ledger', reference: 'dec-1' },
-      decisionRef: { decisionId: 'dec-1', decisionVersion: 1, projectId: PROJECT_Q, observedStatus: 'active', observedAt: T0 },
-    })).toThrow(/decision-reference-same-project/)
+      decisionRef: { decisionId: 'dec-1', decisionVersion: 1 },
+      decisionProvenance: { projectId: PROJECT_Q, observedStatus: 'active', observedVersion: 1, observedAt: T0 },
+    })).toThrow(/decision-provenance-same-project/)
   })
 
   it.each([['expired'], ['reversed'], ['superseded']])(
@@ -1024,15 +1079,15 @@ describe('Decision Ledger linkage is optional and validated (§20.137)', () => {
       authorizationService([])
       activeDecision(PROJECT_P, 'active')
       const store = new FakeStore()
-      const opened = await openMission({ projectId: PROJECT_P, ...withDecision, store, now: T0, projectMode })
+      const opened = await openMission({ projectId: PROJECT_P, ...withDecision, store, now: T0, projectMode, availability })
       const missionId = opened.state!.missionId
-      const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+      const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
       authorizationService([grant])
-      expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })).status).toBe('ok')
+      expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })).status).toBe('ok')
 
       // The decision later stops governing. Nothing mutates the ledger.
       activeDecision(PROJECT_P, status)
-      const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+      const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
       expect(authority.authorized).toBe(false)
       expect(authority.reason).toBe('governing_decision_invalid')
       expect(authority.detail).toBe(status)
@@ -1046,7 +1101,7 @@ describe('Project isolation (§6.117, §20.27)', () => {
     authAs(PRINCIPAL_A, [PROJECT_P])
     authorizationService([])
     const store = new FakeStore()
-    const result = await openMission({ projectId: PROJECT_Q, ...COMPLETE_BRIEF, store, now: T0, projectMode })
+    const result = await openMission({ projectId: PROJECT_Q, ...COMPLETE_BRIEF, store, now: T0, projectMode, availability })
     expect(result.status).toBe('project_denied')
     expect(store.appended).toHaveLength(0)
   })
@@ -1054,7 +1109,7 @@ describe('Project isolation (§6.117, §20.27)', () => {
   it('refuses to read a foreign-project mission', async () => {
     const { store, missionId } = await approvedMission()
     authAs(PRINCIPAL_B, [PROJECT_Q])
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.status).toBe('not_permitted')
     expect(read.state).toBeNull()
   })
@@ -1064,7 +1119,7 @@ describe('Project isolation (§6.117, §20.27)', () => {
     authAs(PRINCIPAL_B, [PROJECT_Q])
     authorizationService([])
     const before = store.appended.length
-    const result = await pauseMission({ missionId, reason: 'x', store, now: T2, projectMode })
+    const result = await pauseMission({ missionId, reason: 'x', store, now: T2, projectMode, availability })
     expect(result.status).toBe('not_permitted')
     expect(store.appended).toHaveLength(before)
   })
@@ -1072,8 +1127,8 @@ describe('Project isolation (§6.117, §20.27)', () => {
   it('makes unknown and foreign indistinguishable — no existence oracle', async () => {
     const { store, missionId } = await approvedMission()
     authAs(PRINCIPAL_B, [PROJECT_Q])
-    const foreign = await resolveMission(missionId, { store, now: T2, projectMode })
-    const unknown = await resolveMission(newMissionId(), { store, now: T2, projectMode })
+    const foreign = await resolveMission(missionId, { store, now: T2, projectMode, availability })
+    const unknown = await resolveMission(newMissionId(), { store, now: T2, projectMode, availability })
     expect(foreign.status).toBe(unknown.status)
     expect(foreign.state).toEqual(unknown.state)
   })
@@ -1113,9 +1168,9 @@ describe('Lifecycle concurrency and deterministic ordering', () => {
   it('counts lifecycle acts, not rows, and excludes annotations', async () => {
     const { store, missionId } = await activatedMission()
     const before = missionLifecycleGenerationOf(await store.lineage(missionId))
-    await reportMissionProgress({ missionId, report: { summary: 'Going well', atRisk: false }, store, now: T3, projectMode })
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    await reviewMission({ missionId, reviewNote: 'Looks right', store, now: T3, projectMode })
+    await reportMissionProgress({ missionId, report: { summary: 'Going well', atRisk: false }, store, now: T3, projectMode, availability })
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Looks right', store, now: T3, projectMode, availability })
     expect(missionLifecycleGenerationOf(await store.lineage(missionId))).toBe(before)
     for (const type of ['progress_reported', 'evidence_recorded', 'reviewed'] as MissionActType[]) {
       expect(MISSION_LIFECYCLE_ADVANCING.has(type)).toBe(false)
@@ -1130,16 +1185,16 @@ describe('Lifecycle concurrency and deterministic ordering', () => {
     // Writer A prepares a pause from the state it read.
     // A reviewer annotates in between — under a row-count token this would hand
     // the two writers different keys.
-    await reportMissionProgress({ missionId, report: { summary: 'Note', atRisk: false }, store, now: T3, projectMode })
+    await reportMissionProgress({ missionId, report: { summary: 'Note', atRisk: false }, store, now: T3, projectMode, availability })
     // proposed, approved, dependency_observed, activated, progress_reported
     expect((await store.lineage(missionId))).toHaveLength(5)
 
     // Writer B pauses first, from the live lineage.
     authorizationService(grants)
-    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode })).status).toBe('ok')
+    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode, availability })).status).toBe('ok')
 
     // Writer A now commits against its stale snapshot — and loses.
-    const result = await failMission({ missionId, reason: 'Assumption failed.', store: aView, now: T3, projectMode })
+    const result = await failMission({ missionId, reason: 'Assumption failed.', store: aView, now: T3, projectMode, availability })
     expect(result.status).toBe('conflict')
     const closes = (await store.lineage(missionId)).filter(r => r.type === 'failed' || r.type === 'paused')
     expect(closes.map(r => r.type)).toEqual(['paused'])
@@ -1147,8 +1202,8 @@ describe('Lifecycle concurrency and deterministic ordering', () => {
 
   it('lets two annotations coexist at the same generation', async () => {
     const { store, missionId } = await activatedMission()
-    expect((await reportMissionProgress({ missionId, report: { summary: 'one', atRisk: false }, store, now: T3, projectMode })).status).toBe('ok')
-    expect((await reportMissionProgress({ missionId, report: { summary: 'two', atRisk: false }, store, now: T3, projectMode })).status).toBe('ok')
+    expect((await reportMissionProgress({ missionId, report: { summary: 'one', atRisk: false }, store, now: T3, projectMode, availability })).status).toBe('ok')
+    expect((await reportMissionProgress({ missionId, report: { summary: 'two', atRisk: false }, store, now: T3, projectMode, availability })).status).toBe('ok')
     expect(store.rejected).toHaveLength(0)
   })
 
@@ -1183,45 +1238,45 @@ describe('Lifecycle concurrency and deterministic ordering', () => {
 describe('Derived predicates and the no-execution boundary', () => {
   it('derives blocked from an explicit unresolved blocker (§20.103, §20.87)', async () => {
     const { store, missionId } = await activatedMission()
-    await raiseMissionBlocker({ missionId, blocker: { blockerId: 'b-1', reason: 'Provider unstable' }, store, now: T3, projectMode })
-    expect((await resolveMission(missionId, { store, now: T3, projectMode })).state?.status).toBe('blocked')
+    await raiseMissionBlocker({ missionId, blocker: { blockerId: 'b-1', reason: 'Provider unstable' }, store, now: T3, projectMode, availability })
+    expect((await resolveMission(missionId, { store, now: T3, projectMode, availability })).state?.status).toBe('blocked')
 
-    await clearMissionBlocker({ missionId, blockerId: 'b-1', store, now: T4, projectMode })
-    expect((await resolveMission(missionId, { store, now: T4, projectMode })).state?.status).toBe('active')
+    await clearMissionBlocker({ missionId, blockerId: 'b-1', store, now: T4, projectMode, availability })
+    expect((await resolveMission(missionId, { store, now: T4, projectMode, availability })).state?.status).toBe('active')
   })
 
   it('derives at_risk once the deadline has passed (§20.104)', async () => {
     authAs(PRINCIPAL_A, [PROJECT_P])
     authorizationService([])
     const store = new FakeStore()
-    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, deadline: PAST_DEADLINE, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, deadline: PAST_DEADLINE, store, now: T0, projectMode, availability })
     const missionId = opened.state!.missionId
-    const approveGrant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const approveGrant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([approveGrant])
-    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([approveGrant, activateGrant])
     // §20.75 — the deadline is already past, so activation is refused outright.
-    const blocked = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const blocked = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     expect(blocked.status).toBe('activation_incomplete')
     expect(blocked.missing).toContain('deadline_expired')
   })
 
   it('derives awaiting_review once evidence is in and no review exists (§20.195)', async () => {
     const { store, missionId } = await activatedMission()
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    expect((await resolveMission(missionId, { store, now: T3, projectMode })).state?.status).toBe('awaiting_review')
-    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode })
-    expect((await resolveMission(missionId, { store, now: T3, projectMode })).state?.status).toBe('active')
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    expect((await resolveMission(missionId, { store, now: T3, projectMode, availability })).state?.status).toBe('awaiting_review')
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
+    expect((await resolveMission(missionId, { store, now: T3, projectMode, availability })).state?.status).toBe('active')
   })
 
   it('pauses and resumes without a NEW authority act, but with valid authority (§20.132, §20.133)', async () => {
     const { store, missionId, grants } = await activatedMission()
     authorizationService(grants)
-    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode })).state?.status).toBe('paused')
+    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode, availability })).state?.status).toBe('paused')
     // §20.133 — no new grant is minted; the existing authority must still hold.
-    expect((await resumeMission({ missionId, store, now: T4, projectMode })).state?.status).toBe('active')
+    expect((await resumeMission({ missionId, store, now: T4, projectMode, availability })).state?.status).toBe('active')
   })
 
   it('imports no tool, runner, Manager, workflow or dispatcher anywhere', () => {
@@ -1241,7 +1296,7 @@ describe('Derived predicates and the no-execution boundary', () => {
 
   it('treats budget as a boundary, never a spending capability (§20.52)', async () => {
     const { store, missionId } = await approvedMission()
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.state?.budget).toEqual({ currency: 'SEK', limitMinor: 500000 })
     // Nothing anywhere in the module can move money.
     for (const file of ['principal-write.ts', 'principal-read.ts', 'store.ts']) {
@@ -1252,7 +1307,7 @@ describe('Derived predicates and the no-execution boundary', () => {
 
   it('treats allowedActions and tools as declarative upper bounds only', async () => {
     const { store, missionId } = await approvedMission()
-    const read = await resolveMission(missionId, { store, now: T2, projectMode })
+    const read = await resolveMission(missionId, { store, now: T2, projectMode, availability })
     expect(read.state?.allowedActions.map(a => a.action)).toEqual(['inspect_code', 'run_tests'])
     expect(read.state?.forbiddenActions.map(a => a.action)).toEqual(['publish', 'deploy_production'])
     // §20.57 — an action cannot be both allowed and forbidden.
@@ -1280,7 +1335,7 @@ describe('R1 — resume must prove current authority in the WRITE boundary (§20
   async function pausedMission() {
     const { store, missionId, grants } = await activatedMission()
     authorizationService(grants)
-    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode })).state?.status).toBe('paused')
+    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode, availability })).state?.status).toBe('paused')
     return { store, missionId, grants }
   }
 
@@ -1288,7 +1343,7 @@ describe('R1 — resume must prove current authority in the WRITE boundary (§20
     const { store, missionId, grants } = await pausedMission()
     authorizationService(grants.map(g => ({ ...g, revoked: true })))
     const before = store.appended.length
-    const result = await resumeMission({ missionId, store, now: T4, projectMode })
+    const result = await resumeMission({ missionId, store, now: T4, projectMode, availability })
     expect(result.status).toBe('authority_not_current')
     expect(store.appended).toHaveLength(before)
     expect(store.appended.some(r => r.type === 'resumed')).toBe(false)
@@ -1297,7 +1352,7 @@ describe('R1 — resume must prove current authority in the WRITE boundary (§20
   it('refuses to resume when the authorization expired', async () => {
     const { store, missionId, grants } = await pausedMission()
     authorizationService(grants.map(g => ({ ...g, expiresAt: T3 })))
-    const result = await resumeMission({ missionId, store, now: T4, projectMode })
+    const result = await resumeMission({ missionId, store, now: T4, projectMode, availability })
     expect(result.status).toBe('authority_not_current')
     expect(result.detail).toContain('expired')
   })
@@ -1310,22 +1365,22 @@ describe('R1 — resume must prove current authority in the WRITE boundary (§20
     const brief = {
       ...COMPLETE_BRIEF,
       authoritySource: { kind: 'decision_ledger' as const, reference: 'dec-1 v1' },
-      decisionRef: { decisionId: 'dec-1', decisionVersion: 1, projectId: PROJECT_P, observedStatus: 'active', observedAt: T0 },
+      decisionRef: { decisionId: 'dec-1', decisionVersion: 1 },
     }
-    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...brief, store, now: T0, projectMode, availability })
     const missionId = opened.state!.missionId
-    const approveGrant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const approveGrant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([approveGrant])
-    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([approveGrant, activateGrant])
-    await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
-    await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode })
+    await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
+    await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode, availability })
 
     mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status: 'reversed', version: 1 }, lineage: [], status: 'ok' } as never)
     const before = store.appended.length
-    const result = await resumeMission({ missionId, store, now: T4, projectMode })
+    const result = await resumeMission({ missionId, store, now: T4, projectMode, availability })
     expect(result.status).toBe('governing_decision_invalid')
     expect(store.appended).toHaveLength(before)
   })
@@ -1333,7 +1388,7 @@ describe('R1 — resume must prove current authority in the WRITE boundary (§20
   it('resumes when current authority is still valid', async () => {
     const { store, missionId, grants } = await pausedMission()
     authorizationService(grants)
-    const result = await resumeMission({ missionId, store, now: T4, projectMode })
+    const result = await resumeMission({ missionId, store, now: T4, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('active')
   })
@@ -1351,7 +1406,7 @@ describe('R1 — a passed deadline expires approval (§20.75)', () => {
   ])('is expired %s = %s', async (_label, at, expired) => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: at, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: at, projectMode, availability })
     expect(authority.authorized).toBe(!expired)
     if (expired) expect(authority.reason).toBe('deadline_expired')
   })
@@ -1359,7 +1414,7 @@ describe('R1 — a passed deadline expires approval (§20.75)', () => {
   it('prevents readiness once the deadline has passed', async () => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const readiness = await resolveMissionReadiness(missionId, { store, now: AFTER_DEADLINE, projectMode })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: AFTER_DEADLINE, projectMode, availability })
     expect(readiness.readiness?.ready).toBe(false)
     expect(readiness.readiness?.missing).toContain('deadline_expired')
   })
@@ -1367,10 +1422,10 @@ describe('R1 — a passed deadline expires approval (§20.75)', () => {
   it('prevents activation once the deadline has passed, appending nothing', async () => {
     const { store, missionId, grant } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([grant, activateGrant])
     const before = store.appended.length
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: AFTER_DEADLINE, projectMode })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: AFTER_DEADLINE, projectMode, availability })
     expect(result.status).toBe('activation_incomplete')
     expect(result.missing).toContain('deadline_expired')
     expect(store.appended).toHaveLength(before)
@@ -1379,18 +1434,18 @@ describe('R1 — a passed deadline expires approval (§20.75)', () => {
   it('prevents resume once the deadline has passed', async () => {
     const { store, missionId, grants } = await activatedMission()
     authorizationService(grants)
-    await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode })
-    const result = await resumeMission({ missionId, store, now: AFTER_DEADLINE, projectMode })
+    await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode, availability })
+    const result = await resumeMission({ missionId, store, now: AFTER_DEADLINE, projectMode, availability })
     expect(result.status).toBe('activation_incomplete')
     expect(result.missing).toContain('deadline_expired')
   })
 
   it('prevents approval of a mission whose deadline already passed', async () => {
     const { store, missionId } = await proposedMission()
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
     const before = store.appended.length
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: AFTER_DEADLINE, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: AFTER_DEADLINE, projectMode, availability })
     expect(result.status).toBe('deadline_expired')
     expect(store.appended).toHaveLength(before)
   })
@@ -1405,24 +1460,29 @@ describe('R1 — project mode change expires approval (§20.75)', () => {
   it('stops authorizing once the project mode changes', async () => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    expect((await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })).authorized).toBe(true)
+    expect((await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })).authorized).toBe(true)
 
     currentProjectMode = 'observer'
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(false)
-    expect(authority.reason).toBe('project_mode_changed')
-    expect(authority.detail).toBe('active->observer')
+    // EI-S1.4B-R2 ordered SUITABILITY before CHANGE. Under today's doctrine
+    // only `active` is executable (lib/atlas/lifecycle.ts), so every move away
+    // from active is also a suitability failure and reports the more precise
+    // reason. The equality check remains as defence in depth for a future in
+    // which more than one mode executes.
+    expect(authority.reason).toBe('project_mode_not_operational')
+    expect(authority.detail).toBe('observer')
   })
 
   it('blocks activation after a project-mode change, appending nothing', async () => {
     const { store, missionId, grant } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([grant, activateGrant])
     currentProjectMode = 'hibernate'
     const before = store.appended.length
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
-    expect(result.status).toBe('project_mode_changed')
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
+    expect(result.status).toBe('project_mode_not_operational')
     expect(store.appended).toHaveLength(before)
   })
 
@@ -1434,6 +1494,19 @@ describe('R1 — project mode change expires approval (§20.75)', () => {
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('project_mode_changed')
     expect(authority.detail).toBe('unreadable')
+  })
+
+  it('keeps the change check as defence in depth beyond current doctrine', () => {
+    const source = readFileSync(resolve(MISSION_DIR, 'operational-authority.ts'), 'utf8')
+    // Both questions are asked, suitability first.
+    const suitability = source.indexOf('project_mode_not_operational')
+    const change = source.indexOf('project_mode_changed', suitability)
+    expect(suitability).toBeGreaterThan(-1)
+    expect(change).toBeGreaterThan(suitability)
+    // Today only `active` executes, so a change away from it is caught by
+    // suitability. If a second executable mode is ever introduced, the equality
+    // check is what still expires an approval made under the other one.
+    expect(ATLAS_MODES.filter(isExecutable)).toEqual(['active'])
   })
 
   it('does not bind the mode into the authorization hash', () => {
@@ -1451,7 +1524,7 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
   const withDecision = (version = 1) => ({
     ...COMPLETE_BRIEF,
     authoritySource: { kind: 'decision_ledger' as const, reference: `dec-1 v${version}` },
-    decisionRef: { decisionId: 'dec-1', decisionVersion: version, projectId: PROJECT_P, observedStatus: 'active', observedAt: T0 },
+    decisionRef: { decisionId: 'dec-1', decisionVersion: version },
   })
 
   async function missionOnDecision(version = 1) {
@@ -1459,19 +1532,19 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
     authorizationService([])
     mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status: 'active', version }, lineage: [], status: 'ok' } as never)
     const store = new FakeStore()
-    const opened = await openMission({ projectId: PROJECT_P, ...withDecision(version), store, now: T0, projectMode })
+    const opened = await openMission({ projectId: PROJECT_P, ...withDecision(version), store, now: T0, projectMode, availability })
     return { store, missionId: opened.state!.missionId }
   }
 
   it('refuses when the current decision version drifted from the pinned one', async () => {
     const { store, missionId } = await missionOnDecision(1)
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
-    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
 
     // §11.62 — a material amendment makes N+1 a different commitment.
     mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status: 'active', version: 2 }, lineage: [], status: 'ok' } as never)
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
     expect(authority.authorized).toBe(false)
     expect(authority.reason).toBe('governing_decision_invalid')
     expect(authority.detail).toBe('version_drift:1->2')
@@ -1480,10 +1553,10 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
   it('refuses to APPROVE against a nonexistent decision, appending nothing', async () => {
     const { store, missionId } = await missionOnDecision(1)
     mockDecision.mockResolvedValue({ state: null, lineage: [], status: 'not_permitted' } as never)
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
     const before = store.appended.length
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('governing_decision_invalid')
     expect(result.detail).toBe('unknown_or_foreign')
     expect(store.appended).toHaveLength(before)
@@ -1494,9 +1567,9 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
     const { store, missionId } = await missionOnDecision(1)
     // The reference CLAIMS project P; the decision itself belongs to Q.
     mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_Q, status: 'active', version: 1 }, lineage: [], status: 'ok' } as never)
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
-    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     expect(result.status).toBe('governing_decision_invalid')
     // Foreign and unknown deny identically — no cross-project oracle.
     expect(result.detail).toBe('unknown_or_foreign')
@@ -1507,10 +1580,10 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
     'refuses to approve against a %s decision before any append', async (status) => {
       const { store, missionId } = await missionOnDecision(1)
       mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status, version: 1 }, lineage: [], status: 'ok' } as never)
-      const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+      const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
       authorizationService([grant])
       const before = store.appended.length
-      const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+      const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
       expect(result.status).toBe('governing_decision_invalid')
       expect(result.detail).toBe(status)
       expect(store.appended).toHaveLength(before)
@@ -1518,16 +1591,16 @@ describe('R1 — governing Decision is proven exactly, and before any append (§
 
   it('refuses to ACTIVATE once the decision stops governing, appending nothing', async () => {
     const { store, missionId } = await missionOnDecision(1)
-    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode }, AUTH_A)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([grant])
-    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode })
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
     await satisfyDependency(store, missionId, T1)
-    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode }, AUTH_B)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
     authorizationService([grant, activateGrant])
 
     mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status: 'expired', version: 1 }, lineage: [], status: 'ok' } as never)
     const before = store.appended.length
-    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
     expect(result.status).toBe('governing_decision_invalid')
     expect(store.appended).toHaveLength(before)
     expect(store.appended.some(r => r.type === 'activated')).toBe(false)
@@ -1538,9 +1611,7 @@ describe('R1 — approval gates must be resolved, not merely declared (§20.73, 
   it('is an append-only annotation that consumes no lifecycle generation', async () => {
     const { store, missionId } = await activatedMission()
     const before = missionLifecycleGenerationOf(await store.lineage(missionId))
-    const result = await resolveMissionGate({
-      missionId, resolution: { gateId: 'gate-publish', outcome: 'approve' }, store, now: T3, projectMode,
-    })
+    const result = await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
     expect(result.status).toBe('ok')
     expect(missionLifecycleGenerationOf(await store.lineage(missionId))).toBe(before)
     expect(MISSION_LIFECYCLE_ADVANCING.has('gate_resolved' as MissionActType)).toBe(false)
@@ -1550,19 +1621,17 @@ describe('R1 — approval gates must be resolved, not merely declared (§20.73, 
 
   it('refuses a resolution naming a gate the mission never declared', async () => {
     const { store, missionId } = await activatedMission()
-    const result = await resolveMissionGate({
-      missionId, resolution: { gateId: 'no-such-gate', outcome: 'approve' }, store, now: T3, projectMode,
-    })
+    const result = await resolveGate(store, missionId, { gateId: 'no-such-gate', outcome: 'approve' }, T3)
     expect(result.status).toBe('invalid_lifecycle')
     expect(result.detail).toContain('gate-resolution-declared')
   })
 
   it('refuses completion while a declared gate is unresolved (§20.92)', async () => {
     const { store, missionId } = await activatedMission()
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode })
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
     const before = store.appended.length
-    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode })
+    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
     expect(result.status).toBe('completion_incomplete')
     expect(result.detail).toContain('gate_unresolved:gate-publish')
     expect(store.appended).toHaveLength(before)
@@ -1570,28 +1639,23 @@ describe('R1 — approval gates must be resolved, not merely declared (§20.73, 
 
   it('blocks a mission whose gate was rejected, and refuses completion', async () => {
     const { store, missionId } = await activatedMission()
-    await resolveMissionGate({
-      missionId, resolution: { gateId: 'gate-publish', outcome: 'reject', note: 'Not safe yet.' },
-      store, now: T3, projectMode,
-    })
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'reject', note: 'Not safe yet.' }, T3)
     // §20.73 — a blocking outcome stops the mission (§20.103).
-    expect((await resolveMission(missionId, { store, now: T3, projectMode })).state?.status).toBe('blocked')
+    expect((await resolveMission(missionId, { store, now: T3, projectMode, availability })).state?.status).toBe('blocked')
 
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode })
-    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode })
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
+    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
     expect(result.status).toBe('completion_incomplete')
-    expect(result.detail).toContain('gate_blocked:gate-publish')
+    expect(result.detail).toContain('gate_blocking:gate-publish')
   })
 
   it('permits completion once the gate is resolved as approved', async () => {
     const { store, missionId } = await activatedMission()
-    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode })
-    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode })
-    await resolveMissionGate({
-      missionId, resolution: { gateId: 'gate-publish', outcome: 'approve' }, store, now: T3, projectMode,
-    })
-    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode })
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
+    const result = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
     expect(result.status).toBe('ok')
     expect(result.state?.status).toBe('completed')
   })
@@ -1600,10 +1664,10 @@ describe('R1 — approval gates must be resolved, not merely declared (§20.73, 
 describe('R1 — dependency definition vs observation (§20.101)', () => {
   it('does not require a material amendment to record false→true', async () => {
     const { store, missionId } = await approvedMission()
-    const versionBefore = (await resolveMission(missionId, { store, now: T1, projectMode })).state!.version
+    const versionBefore = (await resolveMission(missionId, { store, now: T1, projectMode, availability })).state!.version
     const result = await observeMissionDependency({
       missionId, observation: { reference: 'isolation-primitives', satisfied: true, evidence: 'run-1' },
-      store, now: T1, projectMode,
+      store, now: T1, projectMode, availability,
     })
     expect(result.status).toBe('ok')
     // Same version, same approval, no fresh authority demanded.
@@ -1645,13 +1709,13 @@ describe('R1 — dependency definition vs observation (§20.101)', () => {
     const { store, missionId } = await activatedMission()
     const before = missionLifecycleGenerationOf(await store.lineage(missionId))
     await observeMissionDependency({
-      missionId, observation: { reference: 'isolation-primitives', satisfied: false }, store, now: T3, projectMode,
+      missionId, observation: { reference: 'isolation-primitives', satisfied: false }, store, now: T3, projectMode, availability,
     })
     expect(missionLifecycleGenerationOf(await store.lineage(missionId))).toBe(before)
     expect(MISSION_LIFECYCLE_ADVANCING.has('dependency_observed' as MissionActType)).toBe(false)
 
     const bogus = await observeMissionDependency({
-      missionId, observation: { reference: 'never-declared', satisfied: true }, store, now: T3, projectMode,
+      missionId, observation: { reference: 'never-declared', satisfied: true }, store, now: T3, projectMode, availability,
     })
     expect(bogus.status).toBe('invalid_lifecycle')
     expect(bogus.detail).toContain('dependency-observation-declared')
@@ -1661,15 +1725,15 @@ describe('R1 — dependency definition vs observation (§20.101)', () => {
 describe('R1 — supersession successor integrity (§20.97)', () => {
   async function successorIn(store: FakeStore, project: string, close?: 'cancel' | 'draft') {
     const opened = await openMission({
-      projectId: project, ...COMPLETE_BRIEF, asDraft: close === 'draft', store, now: T1, projectMode,
+      projectId: project, ...COMPLETE_BRIEF, asDraft: close === 'draft', store, now: T1, projectMode, availability,
     })
     return opened.state!.missionId
   }
 
   async function attempt(store: FakeStore, missionId: string, successor: string, now = T2) {
-    const grant = await grantFor({ act: 'supersede', missionId, supersededBy: successor, store, now, projectMode }, AUTH_B)
+    const grant = await grantFor({ act: 'supersede', missionId, supersededBy: successor, store, now, projectMode, availability }, AUTH_B)
     authorizationService([grant])
-    return supersedeMission({ missionId, supersededBy: successor, authorizationId: AUTH_B, store, now, projectMode })
+    return supersedeMission({ missionId, supersededBy: successor, authorizationId: AUTH_B, store, now, projectMode, availability })
   }
 
   it('refuses a nonexistent successor', async () => {
@@ -1697,9 +1761,9 @@ describe('R1 — supersession successor integrity (§20.97)', () => {
   it('refuses a cancelled successor', async () => {
     const { store, missionId } = await approvedMission()
     const successor = await successorIn(store, PROJECT_P)
-    const cancelGrant = await grantFor({ act: 'cancel', missionId: successor, reason: 'Dropped.', store, now: T1, projectMode }, AUTH_A)
+    const cancelGrant = await grantFor({ act: 'cancel', missionId: successor, reason: 'Dropped.', store, now: T1, projectMode, availability }, AUTH_A)
     authorizationService([cancelGrant])
-    await cancelMission({ missionId: successor, authorizationId: AUTH_A, reason: 'Dropped.', store, now: T1, projectMode })
+    await cancelMission({ missionId: successor, authorizationId: AUTH_A, reason: 'Dropped.', store, now: T1, projectMode, availability })
     const result = await attempt(store, missionId, successor)
     expect(result.status).toBe('invalid_successor')
   })
@@ -1743,12 +1807,38 @@ describe('R1 — supersession successor integrity (§20.97)', () => {
     expect(result.detail).toBe('cycle')
   })
 
-  it('accepts a real, acyclic, same-project successor', async () => {
+  it('accepts a real, approved, acyclic, same-project successor', async () => {
     const { store, missionId } = await approvedMission()
-    const successor = await successorIn(store, PROJECT_P)
-    const result = await attempt(store, missionId, successor)
-    expect(result.status).toBe('ok')
-    expect(result.state?.supersededBy).toBe(successor)
+    const { successorId, grant: successorGrant } = await approvedSuccessor(store)
+    const prepared = await grantFor({ act: 'supersede', missionId, supersededBy: successorId, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([prepared, successorGrant])
+    const result = await supersedeMission({ missionId, supersededBy: successorId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
+    expect(`${result.status}${result.detail ? `:${result.detail}` : ''}`).toBe('ok')
+    expect(result.state?.supersededBy).toBe(successorId)
+  })
+
+  it('refuses a merely PROPOSED successor — owner ruling, §20.100', async () => {
+    const { store, missionId } = await approvedMission()
+    // Awaiting approval is not approved: an unauthorised proposal must not
+    // terminate a live institutional commitment.
+    const proposal = await successorIn(store, PROJECT_P)
+    expect((await resolveMission(proposal, { store, now: T2, projectMode, availability })).state?.status)
+      .toBe('awaiting_approval')
+    const result = await attempt(store, missionId, proposal)
+    expect(result.status).toBe('invalid_successor')
+    expect(store.appended.some(r => r.type === 'superseded')).toBe(false)
+  })
+
+  it('refuses an approved successor whose own authority has expired', async () => {
+    const { store, missionId } = await approvedMission()
+    const { successorId } = await approvedSuccessor(store)
+    // Only the supersede grant survives: the successor's own approval grant is
+    // gone, so it can no longer carry the direction forward.
+    const grant = await grantFor({ act: 'supersede', missionId, supersededBy: successorId, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant])
+    const result = await supersedeMission({ missionId, supersededBy: successorId, authorizationId: AUTH_B, store, now: T2, projectMode, availability })
+    expect(result.status).toBe('invalid_successor')
+    expect(result.detail).toContain('successor_')
   })
 })
 
@@ -1756,7 +1846,7 @@ describe('R1 — one unambiguous public evaluation surface', () => {
   it('never reports active and unauthorized without saying blocked', async () => {
     const { store, missionId, grants } = await activatedMission()
     authorizationService(grants.map(g => ({ ...g, revoked: true })))
-    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T3, projectMode })
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T3, projectMode, availability })
     // The immutable record still says the mission was activated…
     expect(evaluation?.lifecycleStatus).toBe('active')
     // …but the status a human is shown is unambiguous.
@@ -1768,7 +1858,7 @@ describe('R1 — one unambiguous public evaluation surface', () => {
   it('surfaces `ready` — a status no persisted act can produce', async () => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode })
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode, availability })
     expect(evaluation?.lifecycleStatus).toBe('approved')
     expect(evaluation?.effectiveStatus).toBe('ready')
     expect(evaluation?.readiness.ready).toBe(true)
@@ -1778,18 +1868,520 @@ describe('R1 — one unambiguous public evaluation surface', () => {
   it('is honest about what Stage 1 does not verify', async () => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode })
-    // §20.101 asks for available tools; Stage 1 can only prove they are declared.
-    expect(evaluation?.readiness.unverified).toEqual(['tool_availability', 'data_availability'])
+    // With availability injected as proven, nothing remains unverified…
+    const proven = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode, availability })
+    expect(proven.evaluation?.readiness.unverified).toEqual([])
+    expect(proven.evaluation?.readiness.ready).toBe(true)
+
+    // …and with the PRODUCTION default, which proves nothing, it is not Ready.
+    const unproven = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode })
+    expect(unproven.evaluation?.readiness.unverified).toEqual(['tool_availability', 'data_availability'])
+    expect(unproven.evaluation?.readiness.ready).toBe(false)
+    expect(unproven.evaluation?.effectiveStatus).not.toBe('ready')
   })
 
   it('agrees with the focused accessors', async () => {
     const { store, missionId } = await approvedMission()
     await satisfyDependency(store, missionId, T1)
-    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode })
-    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode })
-    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T1, projectMode })
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode, availability })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode, availability })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T1, projectMode, availability })
     expect(readiness.readiness).toEqual(evaluation?.readiness)
     expect(authority.authorized).toBe(evaluation?.authority.authorized)
+  })
+})
+
+// ── EI-S1.4B-R2 regressions ───────────────────────────────────────────────────
+// Each block reproduces a defect confirmed against b60f17d before the fix.
+
+describe('R2 — gate resolution is an authority act (§20.55, §20.73)', () => {
+  it('refuses a project member with no gate authorization, appending nothing', async () => {
+    const { store, missionId } = await activatedMission()
+    authorizationService([])   // authenticated, project access, no grant
+    const before = store.appended.length
+    const result = await resolveMissionGate({
+      missionId, authorizationId: AUTH_GATE,
+      resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T3, projectMode, availability,
+    })
+    expect(result.status).toBe('authority_not_effective')
+    expect(store.appended).toHaveLength(before)
+    expect(store.appended.some(r => r.type === 'gate_resolved')).toBe(false)
+  })
+
+  it('accepts the exact gate authorization and records its provenance', async () => {
+    const { store, missionId } = await activatedMission()
+    const result = await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve', evidence: 'sign-off' }, T3)
+    expect(result.status).toBe('ok')
+    const row = store.appended.find(r => r.type === 'gate_resolved')!
+    expect(row.authorityRecord).toMatchObject({
+      authorizationId: AUTH_GATE, principalId: PRINCIPAL_A, actionKind: MISSION_ACTION.gateResolve,
+    })
+    expect(row.authorityRecord?.boundVersionHash).toMatch(/^[a-f0-9]{64}$/)
+    // The resolution carries the mission version it was made against.
+    const state = (await resolveMission(missionId, { store, now: T3, projectMode, availability })).state!
+    expect(state.gateResolutions[0].missionVersion).toBe(state.version)
+    expect(state.gateResolutions[0].authority?.principalId).toBe(PRINCIPAL_A)
+  })
+
+  it('refuses a grant issued for a different gate', async () => {
+    const { store, missionId } = await activatedMission()
+    const prepared = await prepareMissionAct({
+      act: 'gateResolve', missionId, resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T3, projectMode, availability,
+    } as never)
+    const grant: Grant = {
+      id: AUTH_GATE, projectId: prepared.binding!.projectId,
+      target: prepared.binding!.target, actionKind: prepared.binding!.actionKind, principalId: PRINCIPAL_A,
+    }
+    authorizationService([grant])
+    // Same gate id, DIFFERENT outcome — a different act entirely.
+    const result = await resolveMissionGate({
+      missionId, authorizationId: AUTH_GATE,
+      resolution: { gateId: 'gate-publish', outcome: 'reject' },
+      store, now: T3, projectMode, availability,
+    })
+    expect(result.status).toBe('authority_not_effective')
+  })
+
+  it('refuses a grant prepared against a different mission version', async () => {
+    const { store, missionId } = await approvedMission()
+    const prepared = await prepareMissionAct({
+      act: 'gateResolve', missionId, resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T1, projectMode, availability,
+    } as never)
+    const grant: Grant = {
+      id: AUTH_GATE, projectId: prepared.binding!.projectId,
+      target: prepared.binding!.target, actionKind: prepared.binding!.actionKind, principalId: PRINCIPAL_A,
+    }
+    // Materially amend to N+1 — the grant was for N.
+    const AM = { reason: 'Widen.', objective: 'A materially wider commitment.' }
+    const amendGrant = await grantFor({ act: 'amend', missionId, ...AM, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([amendGrant])
+    await amendMission({ missionId, authorizationId: AUTH_B, ...AM, store, now: T2, projectMode, availability })
+
+    authorizationService([grant])
+    const result = await resolveMissionGate({
+      missionId, authorizationId: AUTH_GATE,
+      resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T3, projectMode, availability,
+    })
+    expect(result.status).toBe('authority_not_effective')
+  })
+
+  it('never lets a service identity become the approving human', async () => {
+    const { store, missionId } = await activatedMission()
+    const prepared = await prepareMissionAct({
+      act: 'gateResolve', missionId, resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T3, projectMode, availability,
+    } as never)
+    authorizationService([{
+      id: AUTH_GATE, projectId: prepared.binding!.projectId,
+      target: prepared.binding!.target, actionKind: prepared.binding!.actionKind,
+      principalId: PRINCIPAL_B,   // grant belongs to someone else
+    }])
+    const result = await resolveMissionGate({
+      missionId, authorizationId: AUTH_GATE,
+      resolution: { gateId: 'gate-publish', outcome: 'approve' },
+      store, now: T3, projectMode, availability,
+    })
+    expect(result.status).toBe('authority_principal_mismatch')
+  })
+})
+
+describe('R2 — gate outcome classification (§20.73)', () => {
+  it.each([
+    ['approve', 'passing'],
+    ['approve_with_conditions', 'conditionally_unverified'],
+    ['edit_and_approve', 'requires_mission_amendment'],
+    ['reject', 'blocking'],
+    ['request_more_evidence', 'blocking'],
+    ['request_alternative', 'blocking'],
+    ['defer', 'blocking'],
+    ['escalate', 'blocking'],
+  ])('classifies %s as %s', (outcome, klass) => {
+    expect(GATE_OUTCOME_CLASS[outcome as keyof typeof GATE_OUTCOME_CLASS]).toBe(klass)
+  })
+
+  it('has exactly one passing outcome in V1', () => {
+    const passing = Object.entries(GATE_OUTCOME_CLASS).filter(([, k]) => k === 'passing')
+    expect(passing.map(([o]) => o)).toEqual(['approve'])
+  })
+
+  async function closedWith(outcome: string) {
+    const { store, missionId } = await activatedMission()
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: outcome as never, conditions: ['fix X'] }, T3)
+    return closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
+  }
+
+  it('refuses completion on approve_with_conditions — Stage 1 cannot verify a condition', async () => {
+    const result = await closedWith('approve_with_conditions')
+    expect(result.status).toBe('completion_incomplete')
+    expect(result.detail).toContain('gate_conditionally_unverified:gate-publish')
+  })
+
+  it('refuses completion on edit_and_approve without a Mission amendment', async () => {
+    const result = await closedWith('edit_and_approve')
+    expect(result.status).toBe('completion_incomplete')
+    expect(result.detail).toContain('gate_requires_mission_amendment:gate-publish')
+  })
+
+  it('permits completion only on a plain approve', async () => {
+    expect((await closedWith('approve')).status).toBe('ok')
+  })
+})
+
+describe('R2 — gate resolutions are version-scoped (§20.126)', () => {
+  it('does not float a version-N resolution forward to N+1', async () => {
+    const { store, missionId } = await approvedMission()
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T1)
+    const before = (await resolveMission(missionId, { store, now: T1, projectMode, availability })).state!
+    expect(before.version).toBe(1)
+    expect(before.gateResolutions).toHaveLength(1)
+
+    const AM = { reason: 'Widen.', objective: 'A materially wider commitment.' }
+    const amendGrant = await grantFor({ act: 'amend', missionId, ...AM, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([amendGrant])
+    expect((await amendMission({ missionId, authorizationId: AUTH_B, ...AM, store, now: T2, projectMode, availability })).status).toBe('ok')
+
+    // §20.126 — N+1 is a materially different commitment the approver never saw.
+    const after = (await resolveMission(missionId, { store, now: T2, projectMode, availability })).state!
+    expect(after.version).toBe(2)
+    expect(after.gateResolutions).toHaveLength(0)
+  })
+})
+
+describe('R2 — identifier uniqueness fails closed at build time', () => {
+  it('refuses duplicate gate ids within one version', () => {
+    expect(() => buildMissionRecord({
+      type: 'drafted', missionId: 'm', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
+      approvalGates: [{ gateId: 'g', gate: 'A' }, { gateId: 'g', gate: 'B' }],
+    })).toThrow(/approval-gate-id-unique/)
+  })
+
+  it('refuses duplicate dependency references within one version', () => {
+    expect(() => buildMissionRecord({
+      type: 'drafted', missionId: 'm', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
+      dependencies: [
+        { kind: 'capability', reference: 'd', hardness: 'hard' },
+        { kind: 'data', reference: 'd', hardness: 'soft' },
+      ],
+    })).toThrow(/dependency-reference-unique/)
+  })
+})
+
+describe('R2 — a random uuid never decides authority (§20.87)', () => {
+  it('fails closed on contradictory gate resolutions at the same instant', async () => {
+    const { store, missionId } = await activatedMission()
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'reject' }, T3)
+
+    const state = (await resolveMission(missionId, { store, now: T3, projectMode, availability })).state!
+    const gate = state.gateResolutions.find(g => g.gateId === 'gate-publish')!
+    expect(gate.conflicted).toBe(true)
+    // §20.103 — unresolved means blocked, not "whichever id sorted first".
+    expect(state.status).toBe('blocked')
+
+    await recordMissionEvidence({ missionId, evidence: EVIDENCE, store, now: T3, projectMode, availability })
+    await reviewMission({ missionId, reviewNote: 'Reviewed.', store, now: T3, projectMode, availability })
+    const closed = await closeMission({ missionId, closure: CLOSURE, store, now: T4, projectMode, availability })
+    expect(closed.status).toBe('completion_incomplete')
+    expect(closed.detail).toContain('gate_conflict:gate-publish')
+  })
+
+  it('is deterministic across repeated derivations of the same records', async () => {
+    const { store, missionId } = await activatedMission()
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'reject' }, T3)
+    const lineage = await store.lineage(missionId)
+    for (let trial = 0; trial < 20; trial += 1) {
+      const shuffled = [...lineage].sort(() => Math.random() - 0.5)
+      const state = deriveMissionState(shuffled, { at: T3 })
+      expect(state.gateResolutions[0].conflicted).toBe(true)
+      expect(state.status).toBe('blocked')
+    }
+  })
+
+  it('fails closed on contradictory dependency observations at the same instant', async () => {
+    const { store, missionId } = await approvedMission()
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: false },
+      store, now: T1, projectMode, availability,
+    })
+    const state = (await resolveMission(missionId, { store, now: T1, projectMode, availability })).state!
+    const dependency = state.dependencyState.find(d => d.reference === 'isolation-primitives')!
+    expect(dependency.conflicted).toBe(true)
+    // A contradiction resolves to UNSATISFIED, never to a coin flip.
+    expect(dependency.satisfied).toBe(false)
+
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T1, projectMode, availability })
+    expect(readiness.readiness?.ready).toBe(false)
+    expect(readiness.readiness?.missing).toContain('dependency_conflict')
+  })
+
+  it('lets a later observation settle an earlier contradiction', async () => {
+    const { store, missionId } = await approvedMission()
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: false },
+      store, now: T1, projectMode, availability,
+    })
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: true, evidence: 'run-2' },
+      store, now: T2, projectMode, availability,
+    })
+    const state = (await resolveMission(missionId, { store, now: T2, projectMode, availability })).state!
+    const dependency = state.dependencyState.find(d => d.reference === 'isolation-primitives')!
+    expect(dependency.conflicted).toBe(false)
+    expect(dependency.satisfied).toBe(true)
+  })
+})
+
+describe('R2 — hard dependency satisfaction must explain itself (§20.63, §20.81)', () => {
+  it('refuses a positive hard-dependency observation with no evidence', async () => {
+    const { store, missionId } = await approvedMission()
+    const before = store.appended.length
+    const result = await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: true },
+      store, now: T1, projectMode, availability,
+    })
+    expect(result.status).toBe('invalid_request')
+    expect(result.detail).toContain('hard-dependency-satisfaction-requires-evidence')
+    expect(store.appended).toHaveLength(before)
+  })
+
+  it('accepts a negative observation without evidence — it only narrows', async () => {
+    const { store, missionId } = await approvedMission()
+    const result = await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: false },
+      store, now: T1, projectMode, availability,
+    })
+    expect(result.status).toBe('ok')
+  })
+})
+
+describe('R2 — canonical Ready means actually Ready (§20.101, §20.105)', () => {
+  it('is not Ready while tool/data availability is unproven', async () => {
+    const { store, missionId } = await approvedMission()
+    await satisfyDependency(store, missionId, T1)
+    // PRODUCTION default: nothing proven.
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T1, projectMode })
+    expect(evaluation?.readiness.ready).toBe(false)
+    expect(evaluation?.readiness.missing).toEqual(expect.arrayContaining(['tool_availability', 'data_availability']))
+    expect(evaluation?.readiness.unverified).toEqual(['tool_availability', 'data_availability'])
+    expect(evaluation?.effectiveStatus).toBe('approved')
+    expect(evaluation?.effectiveStatus).not.toBe('ready')
+    // Progress is still visible without claiming readiness.
+    expect(evaluation?.readiness.satisfiedSoFar).toContain('objective')
+  })
+
+  it('refuses activation when tool availability is unproven, appending nothing', async () => {
+    const { store, missionId, grant } = await approvedMission()
+    await satisfyDependency(store, missionId, T1)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant, activateGrant])
+    const before = store.appended.length
+    // No availability reader → production default → nothing proven.
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode })
+    expect(result.status).toBe('activation_incomplete')
+    expect(result.missing).toEqual(expect.arrayContaining(['tool_availability', 'data_availability']))
+    expect(store.appended).toHaveLength(before)
+  })
+
+  it('refuses activation when only data availability is unproven', async () => {
+    const { store, missionId, grant } = await approvedMission()
+    await satisfyDependency(store, missionId, T1)
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant, activateGrant])
+    const toolsOnly = async () => ({ tools: true, data: false })
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T2, projectMode, availability: toolsOnly })
+    expect(result.status).toBe('activation_incomplete')
+    expect(result.missing).toContain('data_availability')
+    expect(result.missing).not.toContain('tool_availability')
+  })
+
+  it('activates once availability is proven and everything else passes', async () => {
+    const { store, missionId } = await activatedMission()
+    expect((await resolveMission(missionId, { store, now: T2, projectMode, availability })).state?.status).toBe('active')
+  })
+
+  it('production default proves nothing, by design', async () => {
+    const result = await unprovenAvailability({
+      projectId: PROJECT_P, tools: [{ tool: 't' }], dataScope: [{ resource: 'r', access: 'read' }],
+    })
+    expect(result.tools).toBe(false)
+    expect(result.data).toBe(false)
+  })
+})
+
+describe('R2 — project mode must PERMIT execution, not merely be unchanged (§20.75)', () => {
+  it.each([
+    ['active', true],
+    ['observer', false],
+    ['hibernate', false],
+    ['archived', false],
+  ])('mode %s permits operational movement = %s', async (mode, permitted) => {
+    currentProjectMode = mode
+    authAs(PRINCIPAL_A, [PROJECT_P])
+    authorizationService([])
+    const store = new FakeStore()
+    const opened = await openMission({ projectId: PROJECT_P, ...COMPLETE_BRIEF, store, now: T0, projectMode, availability })
+    const missionId = opened.state!.missionId
+    const prepared = await prepareMissionAct({ act: 'approve', missionId, store, now: T1, projectMode, availability })
+    const grant: Grant = {
+      id: AUTH_A, projectId: prepared.binding!.projectId,
+      target: prepared.binding!.target, actionKind: prepared.binding!.actionKind, principalId: PRINCIPAL_A,
+    }
+    authorizationService([grant])
+    const approved = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
+    if (permitted) {
+      expect(approved.status).toBe('ok')
+    } else {
+      // lib/atlas/lifecycle.ts: only `active` is executable. Observer is
+      // "collect and analyse, NO execution".
+      expect(approved.status).toBe('project_mode_not_operational')
+      expect(approved.detail).toBe(mode)
+      expect(store.appended.some(r => r.type === 'approved')).toBe(false)
+    }
+  })
+
+  it('blocks readiness and resume when the mode stops permitting execution', async () => {
+    const { store, missionId, grants } = await activatedMission()
+    authorizationService(grants)
+    await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode, availability })
+
+    currentProjectMode = 'observer'
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T4, projectMode, availability })
+    expect(authority.authorized).toBe(false)
+    // Suitability outranks change: "this project cannot execute right now" is
+    // the precise answer, and it holds however the mode got there.
+    expect(authority.reason).toBe('project_mode_not_operational')
+    expect(authority.detail).toBe('observer')
+
+    const before = store.appended.length
+    const result = await resumeMission({ missionId, store, now: T4, projectMode, availability })
+    expect(result.status).not.toBe('ok')
+    expect(store.appended).toHaveLength(before)
+  })
+})
+
+describe('R2 — decision provenance is server-derived (§20.137)', () => {
+  const withDecision = {
+    ...COMPLETE_BRIEF,
+    authoritySource: { kind: 'decision_ledger' as const, reference: 'dec-1 v1' },
+    decisionRef: { decisionId: 'dec-1', decisionVersion: 1 },
+  }
+
+  async function missionOnDecision(store = new FakeStore()) {
+    authAs(PRINCIPAL_A, [PROJECT_P])
+    authorizationService([])
+    mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_P, status: 'active', version: 1 }, lineage: [], status: 'ok' } as never)
+    const opened = await openMission({ projectId: PROJECT_P, ...withDecision, store, now: T0, projectMode, availability })
+    return { store, missionId: opened.state!.missionId }
+  }
+
+  it('accepts only decisionId and decisionVersion from the caller', () => {
+    const source = readFileSync(resolve(MISSION_DIR, 'types.ts'), 'utf8')
+    const block = source.match(/export interface MissionDecisionReference[\s\S]*?\n}/)![0]
+    expect(block).toContain('decisionId')
+    expect(block).toContain('decisionVersion')
+    // The forgeable fields are gone from the caller surface entirely.
+    expect(block).not.toMatch(/projectId|observedStatus|observedAt/)
+  })
+
+  it('writes provenance read from the ledger, not from the caller', async () => {
+    const { store, missionId } = await missionOnDecision()
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
+    authorizationService([grant])
+    expect((await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })).status).toBe('ok')
+
+    const row = store.appended.find(r => r.type === 'approved')!
+    expect(row.decisionProvenance).toEqual({
+      projectId: PROJECT_P,
+      observedStatus: 'active',
+      observedVersion: 1,
+      observedAt: T1,          // the server clock of the act, not a caller value
+    })
+    // Material identity is still exactly version-pinned.
+    expect(row.decisionRef).toEqual({ decisionId: 'dec-1', decisionVersion: 1 })
+  })
+
+  it('keeps observational provenance out of the authorization binding', () => {
+    const base = buildMissionRecord({
+      type: 'approved', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 1, ...withDecision,
+      decisionProvenance: { projectId: PROJECT_P, observedStatus: 'active', observedVersion: 1, observedAt: T0 },
+      authorityRecord: { authorizationId: 'x', principalId: PRINCIPAL_A, actionKind: 'mission.approve', boundVersionHash: 'h', authorityActAt: T0 },
+    })
+    const laterRead = {
+      ...base,
+      decisionProvenance: { projectId: PROJECT_P, observedStatus: 'active', observedVersion: 1, observedAt: T4 },
+    }
+    // A read timestamp moving between preparation and commit must not make the
+    // grant unsatisfiable…
+    expect(JSON.stringify(missionBoundProjection(laterRead)))
+      .toBe(JSON.stringify(missionBoundProjection(base)))
+    // …while the material identity still binds.
+    const otherVersion = { ...base, decisionRef: { decisionId: 'dec-1', decisionVersion: 2 } }
+    expect(JSON.stringify(missionBoundProjection(otherVersion)))
+      .not.toBe(JSON.stringify(missionBoundProjection(base)))
+  })
+
+  it('derives the project from the decision, refusing a foreign one', async () => {
+    const { store, missionId } = await missionOnDecision()
+    mockDecision.mockResolvedValue({ state: { decisionId: 'dec-1', projectId: PROJECT_Q, status: 'active', version: 1 }, lineage: [], status: 'ok' } as never)
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
+    authorizationService([grant])
+    const result = await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
+    expect(result.status).toBe('governing_decision_invalid')
+    expect(result.detail).toBe('unknown_or_foreign')
+    expect(store.appended.some(r => r.type === 'approved')).toBe(false)
+  })
+})
+
+describe('R2 — one coherent effective status', () => {
+  it('never overwrites a terminal status with authority-driven blocked', async () => {
+    const { store, missionId, grants } = await activatedMission()
+    authorizationService(grants)
+    await pauseMission({ missionId, reason: 'Stopping.', store, now: T3, projectMode, availability })
+    const failed = await failMission({ missionId, reason: 'Assumption failed.', store, now: T3, projectMode, availability })
+    expect(failed.state?.status).toBe('failed')
+
+    // Authority now invalid — a closed mission stays closed.
+    authorizationService(grants.map(g => ({ ...g, revoked: true })))
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T4, projectMode, availability })
+    expect(evaluation?.lifecycleStatus).toBe('failed')
+    expect(evaluation?.effectiveStatus).toBe('failed')
+  })
+
+  it('agrees across every public accessor', async () => {
+    const { store, missionId } = await activatedMission()
+    const { evaluation } = await resolveMissionEvaluation(missionId, { store, now: T2, projectMode, availability })
+    const readiness = await resolveMissionReadiness(missionId, { store, now: T2, projectMode, availability })
+    const authority = await isMissionOperationallyAuthorized(missionId, { store, now: T2, projectMode, availability })
+    const resolved = await resolveMission(missionId, { store, now: T2, projectMode, availability })
+    expect(readiness.readiness).toEqual(evaluation?.readiness)
+    expect(authority.authorized).toBe(evaluation?.authority.authorized)
+    expect(resolved.state?.status).toBe(evaluation?.lifecycleStatus)
+  })
+
+  it('still executes nothing', () => {
+    for (const file of ['types.ts', 'derive.ts', 'build.ts', 'binding.ts', 'store.ts',
+      'principal-write.ts', 'principal-read.ts', 'operational-authority.ts', 'capability.ts']) {
+      const source = readFileSync(resolve(MISSION_DIR, file), 'utf8')
+      expect(source).not.toMatch(
+        /ai\/manager|planTasks|manager_tasks|workflow-executor|executeRunSteps|lib\/ai\/runner|runStep|publishArticle|sendEmail|brevo|stripe|atlasActions/)
+    }
   })
 })

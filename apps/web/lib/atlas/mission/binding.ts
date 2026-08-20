@@ -52,11 +52,16 @@ import type { MissionRecord } from './types'
  * add ceremony without adding safety.
  */
 export const MISSION_ACTION = {
-  approve:   'mission.approve',    // §20.100
-  activate:  'mission.activate',   // §20.105
-  amend:     'mission.amend',      // §20.126
-  cancel:    'mission.cancel',     // §20.96
-  supersede: 'mission.supersede',  // §20.97
+  approve:      'mission.approve',       // §20.100
+  activate:     'mission.activate',      // §20.105
+  amend:        'mission.amend',         // §20.126
+  cancel:       'mission.cancel',        // §20.96
+  supersede:    'mission.supersede',     // §20.97
+  // §20.73 — resolving an approval gate decides whether execution may cross it,
+  // so it is an authority act in its own right. EI-S1.4B-R2: before this, any
+  // authenticated project member could satisfy a gate. Project membership is
+  // not approval authority (§20.55).
+  gateResolve:  'mission.gate.resolve',
 } as const
 
 export type MissionAct = keyof typeof MISSION_ACTION
@@ -71,7 +76,12 @@ export const MISSION_UNBOUND_FIELDS = [
   //                          check the operational gate already performs
   //   dependencyObservation  §20.101 — a prerequisite's real state
   //   gateResolution         §20.73 — how a declared gate was resolved
-  'projectMode', 'dependencyObservation', 'gateResolution',
+  'projectMode', 'dependencyObservation',
+  // §20.137 — server-derived observation about the governing decision. Only the
+  // decision's material identity (id + version) is what a human authorizes;
+  // binding an observation timestamp would make the grant unsatisfiable if the
+  // ledger were read a millisecond later.
+  'decisionProvenance',
 ] as const
 
 function canonicalJson(value: unknown): string {
@@ -149,8 +159,14 @@ export function missionBoundProjection(candidate: MissionRecord): Record<string,
     // §20.92/§20.80 — how completion will be judged and proven.
     completionConditions: [...candidate.completionConditions].sort(),
     evidenceRequirements: sorted(candidate.evidenceRequirements),
-    // §20.137 — which decision this implements, if any.
+    // §20.137 — WHICH decision and WHICH version this implements. Material
+    // identity only; the observed status/time are server-derived provenance and
+    // deliberately unbound (see MISSION_UNBOUND_FIELDS).
     decisionRef:  candidate.decisionRef ?? null,
+    // §20.73 — for a gate resolution, the gate, the outcome, the conditions and
+    // the evidence are exactly what the human is approving. Null on every other
+    // act, so no other binding changes.
+    gateResolution: candidate.gateResolution ?? null,
     // §20.97 — WHICH mission replaces this one.
     supersededBy: candidate.supersededBy ?? null,
     // §20.126/§20.129 — the recorded reason for the act.

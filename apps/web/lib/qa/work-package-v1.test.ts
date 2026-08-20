@@ -1,0 +1,1065 @@
+/**
+ * Manager → Workforce Bounded Work Package V1 (EI-S1.4D).
+ *
+ * ADVERSARIAL BY CONSTRUCTION. Almost every test is an attempt to obtain
+ * authority the chain never granted: widen a bound, drop a prohibition, assign
+ * to a role that does not exist or belongs to another project, keep using a
+ * package whose Delegation was revoked, or make assignment mean execution.
+ *
+ * The Delegation evaluation seam is doubled, not stubbed permissively: it
+ * returns a real `DelegationEvaluation` and every test that depends on the
+ * authority chain sets it explicitly. A blanket "always usable" double would
+ * hide the §21.14 gate, which is the most important thing at this hop.
+ *
+ * The role registry is injected rather than mocked globally, so the tests
+ * exercise the real `evaluateRoleFitness` logic against controlled rows.
+ *
+ * Filesystem/local only: no database, no network, no credentials, and — asserted
+ * below — no runner, executor, publisher, task dispatch or model of any kind.
+ */
+
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/lib/auth/project-access', () => ({ resolveProjectAccess: vi.fn() }))
+vi.mock('@/lib/atlas/delegation/principal-read', () => ({ resolveDelegationEvaluation: vi.fn() }))
+
+import { resolveProjectAccess } from '@/lib/auth/project-access'
+import { resolveDelegationEvaluation } from '@/lib/atlas/delegation/principal-read'
+
+import { attenuate } from '@/lib/atlas/delegation/attenuate'
+import { missionBoundHash } from '@/lib/atlas/delegation/binding'
+import type { AttenuationParent } from '@/lib/atlas/delegation/attenuate'
+import type { DelegationEnvelope } from '@/lib/atlas/delegation/types'
+
+import {
+  attenuateWorkPackage,
+  workPackageIsContained,
+  WORK_PACKAGE_FIELD_CLASS,
+  type WorkPackageRequest,
+} from '@/lib/atlas/workpackage/attenuate'
+import { delegationBoundHash, workPackageHash } from '@/lib/atlas/workpackage/binding'
+import { evaluateRoleFitness, type WorkforceRole } from '@/lib/atlas/workpackage/roles'
+import { assignWorkPackage, prepareWorkPackage } from '@/lib/atlas/workpackage/principal-write'
+import { isWorkPackageUsable, resolveWorkPackage, listProjectWorkPackages } from '@/lib/atlas/workpackage/principal-read'
+import type { StoredWorkPackage, WorkPackageStore } from '@/lib/atlas/workpackage/store'
+import { WORK_PACKAGE_REJECTION_REASONS, type WorkPackage } from '@/lib/atlas/workpackage/types'
+
+const WP_DIR = resolve(__dirname, '../atlas/workpackage')
+const MIGRATION = resolve(__dirname, '../../supabase/migrations/20260820_manager_tasks_work_packages.sql')
+
+const PRINCIPAL_A = '11111111-1111-4111-8111-111111111111'
+const PROJECT_P = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const PROJECT_Q = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const MISSION_M = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const ENVELOPE_E = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const ROLE_R = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+const ROLE_FOREIGN = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+
+const T0 = '2026-08-20T08:00:00.000Z'
+const T1 = '2026-08-20T09:00:00.000Z'
+const DEADLINE = '2026-09-20T08:00:00.000Z'
+
+/**
+ * A Delegation whose capabilities are actually provable in Stage 1: read-only
+ * scopes on REGISTERED domains, and no tools — because no tool registry exists,
+ * so a declared tool can never be proven and would make every fixture vacuous.
+ */
+const MISSION_PARENT: AttenuationParent = {
+  missionId: MISSION_M, projectId: PROJECT_P, version: 1,
+  objective: 'Make the short-news workflow safe enough for a bounded trial.',
+  expectedOutcome: 'A validated short-news path.',
+  deliverables: ['Validation report'],
+  successCriteria: [{ criterion: 'Isolation validated', level: 'minimum' }],
+  inScope: ['short-news workflow', 'isolation review'],
+  outOfScope: ['newsletter sending'],
+  constraints: [{ kind: 'governance', statement: 'Sending stays approval-gated.' }],
+  authority: [{ action: 'prepare' }, { action: 'create_drafts' }],
+  allowedActions: [{ action: 'inspect_code' }, { action: 'run_tests' }],
+  forbiddenActions: [{ action: 'publish' }, { action: 'deploy_production' }],
+  tools: [],
+  dataScope: [
+    { resource: 'website_content', access: 'read' },
+    { resource: 'runs', access: 'read' },
+  ],
+  budget: { currency: 'SEK', limitMinor: 500000 },
+  deadline: DEADLINE,
+  approvalGates: [{ gateId: 'gate-publish', gate: 'Before publishing' }],
+  escalationTriggers: [{ trigger: 'Critical assumption fails', destination: 'founder' }],
+  stopConditions: [{ condition: 'Wrong-project access observed' }],
+  reporting: [{ cadence: 'on_change', audience: 'executive' }],
+  dependencies: [],
+}
+
+function envelopeOf(parent: AttenuationParent = MISSION_PARENT): DelegationEnvelope {
+  const r = attenuate(parent)
+  if (!r.ok) throw new Error(`fixture: ${JSON.stringify(r.violations)}`)
+  return { ...r.envelope, envelopeId: ENVELOPE_E, missionBoundHash: missionBoundHash(parent) }
+}
+
+const ROLE: WorkforceRole = {
+  roleId: ROLE_R, roleName: 'short-news-specialist', projectId: PROJECT_P,
+  declaredSkills: ['writing'],
+}
+
+const baseRequest = (over: Partial<WorkPackageRequest> = {}): WorkPackageRequest => ({
+  taskObjective: 'Validate isolation across the short-news workflow.',
+  role: { roleId: ROLE_R, roleName: 'short-news-specialist' },
+  inputs: [
+    { inputId: 'in-1', description: 'Current workflow definition', origin: 'delegation' },
+    { inputId: 'in-2', description: 'Recent runs', origin: 'data_scope', resource: 'runs' },
+  ],
+  expectedOutput: [
+    { outputId: 'out-1', description: 'Isolation validation notes', verification: 'test output attached' },
+  ],
+  ...over,
+})
+
+function delegationEvaluation(
+  envelope: DelegationEnvelope = envelopeOf(),
+  over: Record<string, unknown> = {},
+) {
+  return {
+    lifecycleStatus: 'accepted',
+    effectiveStatus: 'accepted',
+    usable: true,
+    reason: 'usable',
+    missionAuthority: 'authorized',
+    state: {
+      envelopeId: envelope.envelopeId,
+      projectId: envelope.projectId,
+      status: 'accepted',
+      envelope,
+      missionId: envelope.missionId,
+      missionVersion: envelope.missionVersion,
+      missionBoundHash: envelope.missionBoundHash,
+      preparedAt: T0,
+      decidedAt: T1,
+      rejections: [],
+      revokedReason: null,
+      referrals: [],
+    },
+    ...over,
+  }
+}
+
+/** DB-faithful to the migration: one canonical package per id; contract immutable. */
+class FakeStore implements WorkPackageStore {
+  assigned: StoredWorkPackage[] = []
+  constructor(private rows: StoredWorkPackage[] = []) {}
+  async assign(input: { workPackage: WorkPackage; title: string; description: string | null; at: string }) {
+    if (this.rows.some(r => r.workPackage.workPackageId === input.workPackage.workPackageId)) {
+      const { WorkPackageConflictError } = await import('@/lib/atlas/workpackage/store')
+      throw new WorkPackageConflictError('duplicate key (23505)')
+    }
+    const stored: StoredWorkPackage = {
+      taskId: randomUUID(), workPackage: input.workPackage, assignedAt: input.at, legacyStatus: 'pending',
+    }
+    this.assigned.push(stored); this.rows.push(stored); return stored
+  }
+  async byPackageId(id: string) { return this.rows.find(r => r.workPackage.workPackageId === id) ?? null }
+  async byEnvelope(e: string) { return this.rows.filter(r => r.workPackage.envelopeId === e) }
+  async byProject(p: string) { return this.rows.filter(r => r.workPackage.projectId === p) }
+}
+
+const roleReader = (roles: WorkforceRole[]) => async (id: string) => roles.find(r => r.roleId === id) ?? null
+
+const asPrincipal = (userId: string, projects: string[]) =>
+  vi.mocked(resolveProjectAccess).mockResolvedValue({ ok: true, userId, allowedProjectIds: projects } as never)
+
+const delegationSays = (evaluation: unknown, status = 'ok') =>
+  vi.mocked(resolveDelegationEvaluation).mockResolvedValue({ evaluation, status } as never)
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  asPrincipal(PRINCIPAL_A, [PROJECT_P])
+  delegationSays(delegationEvaluation())
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 1. Attenuation core — pure, no mocks
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('attenuation: WorkPackage ⊆ Delegation (§6.39)', () => {
+  const parent = envelopeOf()
+  const hash = delegationBoundHash(parent)
+  const attenuateReq = (over: Partial<WorkPackageRequest> = {}) =>
+    attenuateWorkPackage(parent, baseRequest(over), hash)
+
+  it('inherits every bound when nothing is narrowed', () => {
+    const r = attenuateReq()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.package.allowedActions).toEqual(parent.allowedActions)
+    expect(r.package.forbiddenActions).toEqual(parent.forbiddenActions)
+    expect(r.package.budget).toEqual(parent.budget)
+    expect(r.package.deadline).toBe(DEADLINE)
+  })
+
+  it('accepts a narrower package', () => {
+    const r = attenuateReq({
+      allowedActions: [{ action: 'run_tests' }],
+      dataScope: [{ resource: 'runs', access: 'read' }],
+      budget: { currency: 'SEK', limitMinor: 1000 },
+      deadline: '2026-09-01T00:00:00.000Z',
+      inScope: ['short-news workflow'],
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('accepts equal bounds', () => {
+    const r = attenuateReq({
+      allowedActions: parent.allowedActions,
+      dataScope: parent.dataScope,
+      budget: parent.budget,
+      deadline: parent.deadline,
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('REFUSES adding an action the Delegation lacks', () => {
+    const r = attenuateReq({ allowedActions: [{ action: 'deploy_production' }] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.field === 'allowedActions')).toBe(true)
+  })
+
+  it('REFUSES adding an authority bound the Delegation lacks', () => {
+    expect(attenuateReq({ authority: [{ action: 'sign_contracts' }] }).ok).toBe(false)
+  })
+
+  it('REFUSES adding a tool outside the Delegation', () => {
+    expect(attenuateReq({ tools: [{ tool: 'ssh' }] }).ok).toBe(false)
+  })
+
+  it('REFUSES dropping a tool restriction', () => {
+    const restricted = envelopeOf({ ...MISSION_PARENT, tools: [{ tool: 'publish', restriction: 'draft only' }] })
+    const r = attenuateWorkPackage(restricted, baseRequest({ tools: [{ tool: 'publish' }] }),
+      delegationBoundHash(restricted))
+    expect(r.ok).toBe(false)
+  })
+
+  it('REFUSES widening data access from read to write', () => {
+    const r = attenuateReq({ dataScope: [{ resource: 'runs', access: 'write' }] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.element === 'runs:write')).toBe(true)
+  })
+
+  it('REFUSES a resource the Delegation never scoped', () => {
+    expect(attenuateReq({ dataScope: [{ resource: 'platform_tokens', access: 'read' }] }).ok).toBe(false)
+  })
+
+  it('REFUSES increasing the budget', () => {
+    const r = attenuateReq({ budget: { currency: 'SEK', limitMinor: 500001 } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations[0].rule).toBe('exceeds_parent')
+  })
+
+  it('REFUSES a currency swap', () => {
+    expect(attenuateReq({ budget: { currency: 'USD', limitMinor: 1 } }).ok).toBe(false)
+  })
+
+  it('REFUSES extending the deadline', () => {
+    const r = attenuateReq({ deadline: '2026-12-01T00:00:00.000Z' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations[0].rule).toBe('exceeds_parent')
+  })
+
+  it('REFUSES dropping an inherited deadline', () => {
+    const r = attenuateReq({ deadline: null })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations[0].rule).toBe('removes_inherited')
+  })
+
+  it('keeps every inherited prohibition, and removing one is UNREPRESENTABLE', () => {
+    const r = attenuateReq({ addForbiddenActions: [{ action: 'send_email' }] })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.package.forbiddenActions.map(a => a.action))
+        .toEqual(['publish', 'deploy_production', 'send_email'])
+    }
+    // The request type has no `forbiddenActions` key at all — only `add…`.
+    const keys: (keyof WorkPackageRequest)[] = [
+      'taskObjective', 'role', 'inputs', 'expectedOutput',
+      'authority', 'allowedActions', 'tools', 'dataScope', 'inScope', 'budget', 'deadline',
+      'addForbiddenActions', 'addConstraints', 'addEscalationTriggers',
+      'addStopConditions', 'addApprovalGates', 'addOutOfScope', 'addReporting',
+      'dependencies', 'fallback',
+    ]
+    expect(keys).not.toContain('forbiddenActions' as never)
+    expect(keys).not.toContain('projectId' as never)
+    expect(keys).not.toContain('missionId' as never)
+    expect(keys).not.toContain('envelopeId' as never)
+  })
+
+  it('inherits constraints, gates, stop conditions and escalation', () => {
+    const r = attenuateReq()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.package.constraints).toEqual(parent.constraints)
+    expect(r.package.approvalGates).toEqual(parent.approvalGates)
+    expect(r.package.stopConditions).toEqual(parent.stopConditions)
+    expect(r.package.escalationTriggers).toEqual(parent.escalationTriggers)
+  })
+
+  it('takes project, mission and delegation identity from the parent only', () => {
+    const r = attenuateReq()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.package.projectId).toBe(PROJECT_P)
+    expect(r.package.missionId).toBe(MISSION_M)
+    expect(r.package.envelopeId).toBe(ENVELOPE_E)
+    expect(r.package.missionVersion).toBe(1)
+  })
+
+  it('reports EVERY violation, not just the first', () => {
+    const r = attenuateReq({
+      allowedActions: [{ action: 'publish' }],
+      tools: [{ tool: 'ssh' }],
+      budget: { currency: 'SEK', limitMinor: 999999 },
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2. Decomposition (§21.28)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('decomposition is bounded, not free (§21.28)', () => {
+  const parent = envelopeOf()
+  const hash = delegationBoundHash(parent)
+  const req = (over: Partial<WorkPackageRequest> = {}) =>
+    attenuateWorkPackage(parent, baseRequest(over), hash)
+
+  it('allows a task objective that differs from the Delegation objective', () => {
+    const r = req({ taskObjective: 'Only re-run the isolation suite and record results.' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.package.taskObjective).not.toBe(parent.objective)
+  })
+
+  it('REFUSES an empty objective', () => {
+    expect(req({ taskObjective: '   ' }).ok).toBe(false)
+  })
+
+  it('REFUSES a package with no declared output — nothing verifiable', () => {
+    expect(req({ expectedOutput: [] }).ok).toBe(false)
+  })
+
+  it('REFUSES work in explicitly out-of-scope territory', () => {
+    const r = req({ inScope: ['newsletter sending'] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.field === 'inScope')).toBe(true)
+  })
+
+  it('REFUSES scope the Delegation never held', () => {
+    expect(req({ inScope: ['billing migration'] }).ok).toBe(false)
+  })
+
+  it('REFUSES an item the parent lists as BOTH in and out of scope', () => {
+    // The out-of-scope guard is redundant with subset-containment for ordinary
+    // parents, and load-bearing only for a self-contradictory one. An exclusion
+    // must win over an inclusion naming the same thing, so a Manager cannot
+    // pick the reading that suits it.
+    const contradictory = envelopeOf({
+      ...MISSION_PARENT,
+      inScope: [...MISSION_PARENT.inScope, 'newsletter sending'],
+    })
+    const r = attenuateWorkPackage(
+      contradictory,
+      baseRequest({ inScope: ['newsletter sending'] }),
+      delegationBoundHash(contradictory),
+    )
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.field === 'inScope')).toBe(true)
+  })
+
+  it('REFUSES a data_scope input naming a resource the package cannot read', () => {
+    const r = req({
+      dataScope: [{ resource: 'runs', access: 'read' }],
+      inputs: [{ inputId: 'in-1', description: 'Site copy', origin: 'data_scope', resource: 'website_content' }],
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.field === 'inputs')).toBe(true)
+  })
+
+  it('REFUSES a dependency requiring an input the package does not declare', () => {
+    const r = req({
+      dependencies: [{
+        requiredInputs: ['in-missing'], expectedOutputs: [], owner: 'role-x',
+        blockingState: 'missing upstream artifact',
+      }],
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.violations.some(v => v.field === 'dependencies')).toBe(true)
+  })
+
+  it('records dependencies as contract data with no scheduling', () => {
+    const r = req({
+      dependencies: [{
+        predecessorPackageId: null, requiredInputs: ['in-1'], expectedOutputs: ['out-1'],
+        owner: 'role-x', blockingState: 'upstream not delivered', fallback: 'escalate to Manager',
+      }],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.package.dependencies[0].blockingState).toBe('upstream not delivered')
+  })
+
+  it('the task objective carries no authority of its own', () => {
+    // Objective prose asks for something the bounds forbid; the bounds win.
+    const r = req({ taskObjective: 'Publish the short-news digest to production immediately.' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.package.allowedActions.map(a => a.action)).not.toContain('publish')
+    expect(r.package.forbiddenActions.map(a => a.action)).toContain('publish')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 3. Field classification guard
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Work Package field-classification guard', () => {
+  const parent = envelopeOf()
+  const built = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+
+  it('classifies EVERY WorkPackage field, with none unruled', () => {
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    const pkg: WorkPackage = { ...built.package, workPackageId: 'x', packageHash: 'y' }
+    expect(Object.keys(WORK_PACKAGE_FIELD_CLASS).sort()).toEqual(Object.keys(pkg).sort())
+  })
+
+  it('assigns each field exactly one of the six classes', () => {
+    const allowed = ['pin', 'assigned', 'decomposed', 'narrowable', 'restrictive', 'derived']
+    for (const [field, cls] of Object.entries(WORK_PACKAGE_FIELD_CLASS)) {
+      expect(allowed, field).toContain(cls)
+    }
+  })
+
+  it('every restrictive field is actually re-proved as a superset', () => {
+    if (!built.ok) return
+    const restrictive = Object.entries(WORK_PACKAGE_FIELD_CLASS)
+      .filter(([, c]) => c === 'restrictive').map(([f]) => f)
+    expect(restrictive.sort()).toEqual([
+      'approvalGates', 'constraints', 'escalationTriggers',
+      'forbiddenActions', 'outOfScope', 'reporting', 'stopConditions',
+    ])
+    for (const field of restrictive) {
+      const emptied = { ...built.package, workPackageId: 'x', packageHash: 'y', [field]: [] } as never
+      expect(
+        workPackageIsContained(parent, emptied).some(v => v.field === field && v.rule === 'removes_inherited'),
+        field,
+      ).toBe(true)
+    }
+  })
+
+  it('every pin field is re-proved against the parent', () => {
+    if (!built.ok) return
+    const base: WorkPackage = { ...built.package, workPackageId: 'x', packageHash: 'y' }
+    expect(workPackageIsContained(parent, { ...base, projectId: PROJECT_Q }).some(v => v.field === 'projectId')).toBe(true)
+    expect(workPackageIsContained(parent, { ...base, missionId: 'other' }).some(v => v.field === 'missionId')).toBe(true)
+    expect(workPackageIsContained(parent, { ...base, envelopeId: 'other' }).some(v => v.field === 'envelopeId')).toBe(true)
+    expect(workPackageIsContained(parent, { ...base, missionVersion: 9 }).some(v => v.field === 'missionVersion')).toBe(true)
+    expect(workPackageIsContained(parent, { ...base, missionBoundHash: 'a'.repeat(64) })
+      .some(v => v.field === 'missionBoundHash')).toBe(true)
+  })
+
+  it('a correctly attenuated package re-proves clean', () => {
+    if (!built.ok) return
+    expect(workPackageIsContained(parent, { ...built.package, workPackageId: 'x', packageHash: 'y' })).toEqual([])
+  })
+
+  it('every typed rejection reason is declared once', () => {
+    expect(new Set(WORK_PACKAGE_REJECTION_REASONS).size).toBe(WORK_PACKAGE_REJECTION_REASONS.length)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 4. Pins and hashes
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('parent pin (§21.14/§21.15)', () => {
+  it('the delegation bound hash is stable across member order', () => {
+    const a = envelopeOf()
+    const b: DelegationEnvelope = {
+      ...a,
+      allowedActions: [...a.allowedActions].reverse(),
+      dataScope: [...a.dataScope].reverse(),
+    }
+    expect(delegationBoundHash(b)).toBe(delegationBoundHash(a))
+  })
+
+  it('changes when a delegable bound moves', () => {
+    const a = envelopeOf()
+    const wider: DelegationEnvelope = { ...a, budget: { currency: 'SEK', limitMinor: 999999 } }
+    expect(delegationBoundHash(wider)).not.toBe(delegationBoundHash(a))
+  })
+
+  it('does NOT change when only prose moves', () => {
+    const a = envelopeOf()
+    const reworded: DelegationEnvelope = { ...a, objective: 'Completely different wording.' }
+    expect(delegationBoundHash(reworded)).toBe(delegationBoundHash(a))
+  })
+
+  it('the package hash covers the assigned role', () => {
+    const parent = envelopeOf()
+    const built = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    const base = { ...built.package, workPackageId: 'wp-1' }
+    const reassigned = { ...base, assignedRole: { roleId: ROLE_FOREIGN, roleName: 'other' } }
+    expect(workPackageHash(reassigned)).not.toBe(workPackageHash(base))
+  })
+
+  it('both hashes are sha256 hex', () => {
+    const parent = envelopeOf()
+    expect(delegationBoundHash(parent)).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5. Role registry and fitness (§21.34/§21.35)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('workforce role fitness', () => {
+  const fit = (over: Parameters<typeof evaluateRoleFitness>[0]) => evaluateRoleFitness(over)
+
+  it('accepts a real role in the right project with provable data', () => {
+    const r = fit({
+      role: ROLE, projectId: PROJECT_P, tools: [],
+      dataScope: [{ resource: 'runs', access: 'read' }], provenTools: new Set(),
+    })
+    expect(r.fit).toBe(true)
+  })
+
+  it('REFUSES an unknown role', () => {
+    const r = fit({ role: null, projectId: PROJECT_P, tools: [], dataScope: [], provenTools: new Set() })
+    expect(r.fit).toBe(false)
+    expect(r.reason).toBe('role_not_found')
+  })
+
+  it('REFUSES a role from another project (§21.158)', () => {
+    const r = fit({
+      role: { ...ROLE, projectId: PROJECT_Q }, projectId: PROJECT_P,
+      tools: [], dataScope: [], provenTools: new Set(),
+    })
+    expect(r.fit).toBe(false)
+    expect(r.reason).toBe('role_project_mismatch')
+  })
+
+  it('REFUSES unprovable data access', () => {
+    const r = fit({
+      role: ROLE, projectId: PROJECT_P, tools: [],
+      dataScope: [{ resource: 'platform_tokens', access: 'read' }], provenTools: new Set(),
+    })
+    expect(r.fit).toBe(false)
+    expect(r.reason).toBe('data_access_unprovable')
+  })
+
+  it('REFUSES write access — the registry proves reads only', () => {
+    const r = fit({
+      role: ROLE, projectId: PROJECT_P, tools: [],
+      dataScope: [{ resource: 'runs', access: 'write' }], provenTools: new Set(),
+    })
+    expect(r.fit).toBe(false)
+  })
+
+  it('REFUSES a tool the parent Delegation never proved', () => {
+    const r = fit({
+      role: ROLE, projectId: PROJECT_P, tools: [{ tool: 'ssh' }],
+      dataScope: [], provenTools: new Set(),
+    })
+    expect(r.fit).toBe(false)
+    expect(r.reason).toBe('tool_access_unprovable')
+  })
+
+  it('accepts a tool the parent Delegation already proved', () => {
+    const r = fit({
+      role: ROLE, projectId: PROJECT_P, tools: [{ tool: 'repo_read', restriction: 'apps/web only' }],
+      dataScope: [], provenTools: new Set(['repo_read apps/web only']),
+    })
+    expect(r.fit).toBe(true)
+  })
+
+  it('never infers capability from declared skills', () => {
+    const src = readFileSync(resolve(WP_DIR, 'roles.ts'), 'utf8')
+    // `declaredSkills` is carried for reporting and must never gate fitness.
+    const fitnessFn = src.slice(src.indexOf('export function evaluateRoleFitness'))
+    expect(fitnessFn).not.toMatch(/declaredSkills/)
+  })
+
+  it('implements no Trust Score, Autonomy Licence or Damage Boundary', () => {
+    const src = readFileSync(resolve(WP_DIR, 'roles.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+    expect(src).not.toMatch(/trust[_ ]?score/i)
+    expect(src).not.toMatch(/autonomy[_ ]?licen/i)
+    expect(src).not.toMatch(/damage[_ ]?boundary/i)
+    expect(src).not.toMatch(/performance[_ ]?intelligence/i)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 6. Write boundary — parent authority, isolation, assignment
+// ────────────────────────────────────────────────────────────────────────────
+
+const writeArgs = (store: FakeStore, over: Record<string, unknown> = {}) => ({
+  envelopeId: ENVELOPE_E,
+  request: baseRequest(),
+  store,
+  now: T1,
+  roleReader: roleReader([ROLE]),
+  ...over,
+})
+
+describe('the parent Delegation is the authority (§21.14)', () => {
+  it('creates a package from an accepted usable Delegation', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(`${r.status}${r.detail ? `:${r.detail}` : ''}`).toBe('ok')
+    expect(store.assigned.length).toBe(1)
+  })
+
+  it.each([
+    ['rejected', { lifecycleStatus: 'rejected', usable: false, reason: 'rejected' }],
+    ['revoked', { lifecycleStatus: 'revoked', usable: false, reason: 'revoked' }],
+    ['invalidated', { effectiveStatus: 'invalidated', usable: false, reason: 'mission_not_authorized' }],
+    ['mission ended', { effectiveStatus: 'invalidated', usable: false, reason: 'mission_ended' }],
+    ['mission version stale', { effectiveStatus: 'invalidated', usable: false, reason: 'mission_version_changed' }],
+    ['bound hash stale', { effectiveStatus: 'invalidated', usable: false, reason: 'mission_bound_hash_changed' }],
+    ['no longer contained', { effectiveStatus: 'invalidated', usable: false, reason: 'delegation_exceeds_mission' }],
+  ] as const)('REFUSES to create a package when the Delegation is %s', async (_name, over) => {
+    delegationSays(delegationEvaluation(envelopeOf(), over as Record<string, unknown>))
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('delegation_not_usable')
+    expect(store.assigned).toEqual([])
+  })
+
+  it('REFUSES a Delegation whose lifecycle is not accepted, even if it claims usable', async () => {
+    // Defensive by design: the EI-S1.4C boundary only reports `usable` for an
+    // accepted envelope, so this pairing cannot arise today. It is asserted
+    // anyway, because this hop must not inherit that guarantee as an
+    // assumption from a module it does not control.
+    delegationSays(delegationEvaluation(envelopeOf(), {
+      lifecycleStatus: 'rejected', usable: true, reason: 'usable',
+    }))
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('delegation_not_usable')
+    expect(r.detail).toBe('delegation_rejected')
+    expect(store.assigned).toEqual([])
+  })
+
+  it('REFUSES without a principal', async () => {
+    vi.mocked(resolveProjectAccess).mockResolvedValue({ ok: false } as never)
+    const r = await assignWorkPackage(writeArgs(new FakeStore()))
+    expect(r.status).toBe('no_principal')
+  })
+
+  it('REFUSES a Delegation in a project the caller does not own', async () => {
+    asPrincipal(PRINCIPAL_A, [PROJECT_Q])
+    const r = await assignWorkPackage(writeArgs(new FakeStore()))
+    expect(r.status).toBe('not_permitted')
+  })
+
+  it('gives an unknown envelope the same denial as a foreign one', async () => {
+    delegationSays(null, 'not_permitted')
+    const unknown = await assignWorkPackage(writeArgs(new FakeStore()))
+    delegationSays(delegationEvaluation())
+    asPrincipal(PRINCIPAL_A, [PROJECT_Q])
+    const foreign = await assignWorkPackage(writeArgs(new FakeStore()))
+    expect(unknown.status).toBe('not_permitted')
+    expect(foreign.status).toBe('not_permitted')
+  })
+
+  it('takes the project from the chain, and a caller cannot supply one', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store, { projectId: PROJECT_Q } as never))
+    expect(r.workPackage!.projectId).toBe(PROJECT_P)
+  })
+
+  it('a canonical package can never carry a null project', async () => {
+    const store = new FakeStore()
+    await assignWorkPackage(writeArgs(store))
+    expect(store.assigned[0].workPackage.projectId).toBe(PROJECT_P)
+    expect(store.assigned[0].workPackage.projectId).toBeTruthy()
+  })
+
+  it('REFUSES a package that exceeds the Delegation, and writes nothing', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store, {
+      request: baseRequest({ allowedActions: [{ action: 'deploy_production' }] }),
+    }))
+    expect(r.status).toBe('exceeds_delegation')
+    expect(r.violations!.length).toBeGreaterThan(0)
+    expect(store.assigned).toEqual([])
+  })
+
+  it('REFUSES an unknown role and writes nothing', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store, { roleReader: roleReader([]) }))
+    expect(r.status).toBe('role_not_eligible')
+    expect(r.rejections![0].reason).toBe('role_not_found')
+    expect(store.assigned).toEqual([])
+  })
+
+  it('REFUSES a role from another project', async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store, {
+      roleReader: roleReader([{ ...ROLE, projectId: PROJECT_Q }]),
+    }))
+    expect(r.status).toBe('role_not_eligible')
+    expect(r.rejections![0].reason).toBe('role_project_mismatch')
+  })
+
+  it('REFUSES a cross-project dependency predecessor (§21.158)', async () => {
+    const foreignPkg = { ...(await (async () => {
+      const parent = envelopeOf()
+      const b = attenuateWorkPackage(parent, baseRequest(), delegationBoundHash(parent))
+      if (!b.ok) throw new Error('fixture')
+      return { ...b.package, workPackageId: 'pred-1', packageHash: 'h', projectId: PROJECT_Q }
+    })()) } as WorkPackage
+    const store = new FakeStore([{ taskId: 't', workPackage: foreignPkg, assignedAt: T0, legacyStatus: 'pending' }])
+    const r = await assignWorkPackage(writeArgs(store, {
+      request: baseRequest({
+        dependencies: [{
+          predecessorPackageId: 'pred-1', requiredInputs: ['in-1'], expectedOutputs: [],
+          owner: 'role-x', blockingState: 'upstream pending',
+        }],
+      }),
+    }))
+    expect(r.status).toBe('invalid_request')
+    expect(r.rejections![0].reason).toBe('dependency_project_mismatch')
+  })
+
+  it('prepare validates without persisting anything', async () => {
+    const store = new FakeStore()
+    const r = await prepareWorkPackage(writeArgs(store))
+    expect(r.status).toBe('ok')
+    expect(r.workPackage).not.toBeNull()
+    expect(store.assigned).toEqual([])
+    expect(r.taskId).toBeUndefined()
+  })
+
+  it('assignment creates exactly ONE canonical row', async () => {
+    const store = new FakeStore()
+    await assignWorkPackage(writeArgs(store))
+    expect(store.assigned.length).toBe(1)
+    expect(store.assigned[0].workPackage.packageHash).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 7. Effective state and live invalidation (§21.42)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('assigned, and what unmakes it', () => {
+  const assign = async () => {
+    const store = new FakeStore()
+    const r = await assignWorkPackage(writeArgs(store))
+    expect(r.status).toBe('ok')
+    return { store, id: r.workPackage!.workPackageId }
+  }
+
+  it('an assigned package reads back as assigned and usable', async () => {
+    const { store, id } = await assign()
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    expect(evaluation!.lifecycleState).toBe('assigned')
+    expect(evaluation!.effectiveState).toBe('assigned')
+    expect(evaluation!.usable).toBe(true)
+  })
+
+  it('assigned does NOT imply executing — no execution state exists at all', async () => {
+    const { store, id } = await assign()
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    const states = [evaluation!.lifecycleState, evaluation!.effectiveState]
+    for (const forbidden of ['executing', 'waiting', 'blocked', 'escalated', 'paused', 'completed', 'failed', 'quarantined']) {
+      expect(states).not.toContain(forbidden)
+    }
+    // The legacy shell status is untouched and is NOT canonical state.
+    expect(store.assigned[0].legacyStatus).toBe('pending')
+  })
+
+  it('a revoked parent Delegation makes it unusable, history intact', async () => {
+    const { store, id } = await assign()
+    delegationSays(delegationEvaluation(envelopeOf(), {
+      lifecycleStatus: 'revoked', usable: false, reason: 'revoked',
+    }))
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    expect(evaluation!.lifecycleState).toBe('assigned')
+    expect(evaluation!.effectiveState).toBe('invalidated')
+    expect(evaluation!.reason).toBe('delegation_unusable')
+    expect(evaluation!.assignedAt).toBe(T1)
+  })
+
+  it('a terminal Mission behind the Delegation makes it unusable', async () => {
+    const { store, id } = await assign()
+    delegationSays(delegationEvaluation(envelopeOf(), {
+      effectiveStatus: 'invalidated', usable: false, reason: 'mission_ended',
+    }))
+    const { usable, reason } = await isWorkPackageUsable(id, { store, roleReader: roleReader([ROLE]) })
+    expect(usable).toBe(false)
+    expect(reason).toBe('delegation_unusable')
+  })
+
+  it('a drifted Delegation pin makes it unusable', async () => {
+    const { store, id } = await assign()
+    // Same envelope id, but a delegable bound moved → hash differs.
+    const moved = { ...envelopeOf(), budget: { currency: 'SEK', limitMinor: 1 } }
+    delegationSays(delegationEvaluation(moved))
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    expect(evaluation!.reason).toBe('delegation_pin_changed')
+    expect(evaluation!.usable).toBe(false)
+  })
+
+  it('a moved Mission pin makes it unusable', async () => {
+    const { store, id } = await assign()
+    const stored = store.assigned[0].workPackage
+    // Force the stored package to disagree with a still-consistent envelope.
+    ;(stored as { missionVersion: number }).missionVersion = 99
+    delegationSays(delegationEvaluation())
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    // The pin is checked BEFORE containment, so the reported reason names the
+    // drift rather than its downstream symptom. Containment would also catch
+    // this, which is exactly why the precedence is pinned here.
+    expect(evaluation!.reason).toBe('mission_pin_changed')
+    expect(evaluation!.usable).toBe(false)
+  })
+
+  it('a stored package that exceeds its Delegation is refused at read time', async () => {
+    const { store, id } = await assign()
+    const stored = store.assigned[0].workPackage
+    ;(stored as { allowedActions: { action: string }[] }).allowedActions = [{ action: 'deploy_production' }]
+    delegationSays(delegationEvaluation())
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([ROLE]) })
+    expect(evaluation!.reason).toBe('exceeds_delegation')
+  })
+
+  it('a role that no longer resolves makes it unusable', async () => {
+    const { store, id } = await assign()
+    delegationSays(delegationEvaluation())
+    const { evaluation } = await resolveWorkPackage(id, { store, roleReader: roleReader([]) })
+    expect(evaluation!.reason).toBe('role_unavailable')
+  })
+
+  it('an unreadable Delegation fails closed', async () => {
+    const { store, id } = await assign()
+    delegationSays(null, 'unavailable')
+    const { usable, reason } = await isWorkPackageUsable(id, { store, roleReader: roleReader([ROLE]) })
+    expect(usable).toBe(false)
+    expect(reason).toBe('delegation_unreadable')
+  })
+
+  it('an unknown and a foreign package deny identically', async () => {
+    const { store, id } = await assign()
+    const unknown = await resolveWorkPackage(randomUUID(), { store })
+    asPrincipal(PRINCIPAL_A, [PROJECT_Q])
+    const foreign = await resolveWorkPackage(id, { store })
+    expect(unknown.status).toBe('not_permitted')
+    expect(foreign.status).toBe('not_permitted')
+  })
+
+  it('project listings are scoped to the caller', async () => {
+    const { store } = await assign()
+    const mine = await listProjectWorkPackages(PROJECT_P, { store })
+    const theirs = await listProjectWorkPackages(PROJECT_Q, { store })
+    expect(mine.packages.length).toBe(1)
+    expect(theirs.status).toBe('project_denied')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 8. Structural guards — what EI-S1.4D must NOT do
+// ────────────────────────────────────────────────────────────────────────────
+
+const sources = ['types.ts', 'attenuate.ts', 'binding.ts', 'roles.ts', 'store.ts', 'principal-read.ts', 'principal-write.ts']
+  .map(f => ({ file: f, text: readFileSync(resolve(WP_DIR, f), 'utf8') }))
+
+/** Strip comments: the files DOCUMENT what they deliberately do not do. */
+const codeOf = (text: string) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+
+describe('no execution (§21.42)', () => {
+  it('imports no runner, executor, dispatcher or publisher', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/executeRunSteps|runStep\b/)
+      expect(code, file).not.toMatch(/workflow-(runner|executor)/)
+      expect(code, file).not.toMatch(/\brun-create\b/)
+      expect(code, file).not.toMatch(/lib\/publishing/)
+      expect(code, file).not.toMatch(/nodemailer|resend/i)
+    }
+  })
+
+  it('calls no model and no external API', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/@anthropic-ai\/sdk/)
+      expect(code, file).not.toMatch(/\bfetch\s*\(/)
+    }
+  })
+
+  it('never calls planTasks', () => {
+    for (const { file, text } of sources) {
+      expect(codeOf(text), file).not.toMatch(/\bplanTasks\b/)
+    }
+  })
+
+  it('creates no run and starts nothing', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/from\(['"]runs['"]\)/)
+      expect(code, file).not.toMatch(/from\(['"]workflows['"]\)/)
+    }
+  })
+
+  it('builds no Workforce → Agent object (§21.10 stays future)', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/agentDelegation|AgentDelegation|agent_delegation/)
+    }
+    // The only `agents` contact is READING the role registry.
+    const roles = codeOf(sources.find(s => s.file === 'roles.ts')!.text)
+    expect(roles).toMatch(/from\('agents'\)/)
+    expect(roles).toMatch(/\.select\(/)
+    expect(roles).not.toMatch(/\.insert\(|\.update\(|\.delete\(/)
+  })
+
+  it('writes to no Authorization, Decision or Mission ledger', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/atlas_authorizations/)
+      expect(code, file).not.toMatch(/atlas_decision_ledger/)
+      expect(code, file).not.toMatch(/atlas_mission_ledger/)
+      expect(code, file).not.toMatch(/atlas_delegation_ledger/)
+    }
+  })
+
+  it('the only table it writes is manager_tasks, and only by insert', () => {
+    const store = codeOf(sources.find(s => s.file === 'store.ts')!.text)
+    expect(store).toMatch(/from\('manager_tasks'\)/)
+    expect(store).toMatch(/\.insert\(/)
+    expect(store).not.toMatch(/\.update\(|\.delete\(|\.upsert\(/)
+  })
+
+  it('moves no status', () => {
+    const store = codeOf(sources.find(s => s.file === 'store.ts')!.text)
+    // It reads status for reporting but never sets one.
+    expect(store).not.toMatch(/status:\s*['"]/)
+  })
+
+  it('has no scheduler for dependencies', () => {
+    for (const { file, text } of sources) {
+      const code = codeOf(text)
+      expect(code, file).not.toMatch(/setTimeout|setInterval|cron/i)
+    }
+  })
+})
+
+describe('existing Manager surface is untouched', () => {
+  const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
+
+  it('keeps planTasks and every legacy method', () => {
+    expect(manager).toMatch(/async planTasks\(goal: string, projectId: string\)/)
+    expect(manager).toMatch(/async getActiveTasks\(/)
+    expect(manager).toMatch(/async updateTask\(/)
+    expect(manager).toMatch(/async retryFailedRun\(/)
+  })
+
+  it('adds the canonical path to the SAME agent, with no V2', () => {
+    expect(manager).not.toMatch(/ManagerAgentV2|WorkforceManagerV2/)
+    expect(manager).toMatch(/async assignWorkPackage\(/)
+    expect(manager).toMatch(/async prepareWorkPackage\(/)
+    expect(manager).toMatch(/async readWorkPackage\(/)
+  })
+
+  it('the canonical path never routes through planTasks', () => {
+    const canonical = manager.slice(manager.indexOf('async prepareWorkPackage'))
+    expect(canonical).not.toMatch(/planTasks/)
+  })
+
+  it('the route accepts no caller-asserted authority', () => {
+    const route = codeOf(readFileSync(resolve(__dirname, '../../app/api/manager/route.ts'), 'utf8'))
+    expect(route).not.toMatch(/CRON_SECRET/)
+    expect(route).toMatch(/supabase\.auth\.getUser\(\)/)
+    for (const action of ['prepare_work_package', 'assign_work_package', 'read_work_package']) {
+      expect(route).toContain(action)
+    }
+    // No caller-supplied project or assignment flag on the work-package actions.
+    const wpBlock = route.slice(route.indexOf("case 'prepare_work_package'"), route.indexOf("case 'read_work_package'"))
+    expect(wpBlock).not.toMatch(/project_id/)
+    expect(wpBlock).not.toMatch(/assigned|authority:/)
+  })
+})
+
+describe('migration', () => {
+  const sql = readFileSync(MIGRATION, 'utf8')
+
+  it('is additive only — no destructive statement anywhere', () => {
+    expect(sql).not.toMatch(/\bdrop table\b/i)
+    expect(sql).not.toMatch(/\bdelete from\b/i)
+    expect(sql).not.toMatch(/\btruncate\b/i)
+    expect(sql).not.toMatch(/\bupdate public\.manager_tasks\b/i)
+    expect(sql).not.toMatch(/\binsert into\b/i)
+    expect(sql).not.toMatch(/drop column/i)
+  })
+
+  it('never makes the legacy project column globally NOT NULL', () => {
+    expect(sql).not.toMatch(/alter column project_id set not null/i)
+    // Instead the requirement is conditional on a canonical package existing.
+    expect(sql).toMatch(/work_package_id is null or project_id is not null/)
+  })
+
+  it('adds every canonical column as nullable, so legacy rows are unaffected', () => {
+    for (const col of [
+      'work_package_id', 'work_package', 'work_package_hash',
+      'delegation_envelope_id', 'delegation_bound_hash',
+      'mission_id', 'mission_version', 'mission_bound_hash',
+      'workforce_role_id', 'assigned_at',
+    ]) {
+      expect(sql, col).toMatch(new RegExp(`add column if not exists ${col}\\b`))
+    }
+    expect(sql).not.toMatch(/add column if not exists \w+ +\w+ +not null/i)
+  })
+
+  it('requires a complete contract or none at all', () => {
+    expect(sql).toMatch(/manager_tasks_work_package_shape_check/)
+  })
+
+  it('binds the role to the sanctioned registry with ON DELETE RESTRICT', () => {
+    expect(sql).toMatch(/foreign key \(workforce_role_id\) references public\.agents\(id\) on delete restrict/)
+  })
+
+  it('makes the authority contract immutable without freezing the table', () => {
+    expect(sql).toMatch(/create trigger manager_tasks_work_package_immutable/)
+    expect(sql).toMatch(/before update on public\.manager_tasks/)
+    // Legacy operational columns must NOT appear in the frozen list.
+    const guard = sql.slice(sql.indexOf('if new.work_package_id'), sql.indexOf('raise exception'))
+    for (const legacy of ['status', 'result', 'run_id', 'workflow_id', 'priority', 'title', 'description']) {
+      expect(guard, legacy).not.toMatch(new RegExp(`new\\.${legacy}\\b`))
+    }
+    // And the authority columns must.
+    for (const owned of ['work_package', 'work_package_hash', 'mission_id', 'workforce_role_id', 'project_id']) {
+      expect(guard, owned).toMatch(new RegExp(`new\\.${owned}\\b`))
+    }
+  })
+
+  it('lets a legacy row pass the trigger untouched', () => {
+    expect(sql).toMatch(/if old\.work_package_id is null and new\.work_package_id is null then\s+return new;/)
+  })
+
+  it('one canonical package per id, via a PARTIAL unique index', () => {
+    expect(sql).toMatch(/create unique index if not exists manager_tasks_work_package_id_idx[\s\S]{0,120}where work_package_id is not null/)
+  })
+
+  it('creates no queue, cron or dispatch machinery', () => {
+    // The header DOCUMENTS that it creates no queue and no cron, so the guard
+    // reads executable SQL rather than the sentence promising the absence.
+    const ddl = sql.replace(/^\s*--.*$/gm, ' ')
+    expect(ddl).not.toMatch(/pg_cron|pg_net|\bhttp\b|queue/i)
+    expect(ddl).not.toMatch(/create trigger[\s\S]{0,80}after (insert|update)/i)
+  })
+})

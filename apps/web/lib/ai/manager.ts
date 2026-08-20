@@ -31,6 +31,17 @@ import {
   type DelegationReadStatus,
 } from '@/lib/atlas/delegation/principal-read'
 import type { ProposedChange } from '@/lib/atlas/delegation/classify'
+import {
+  assignWorkPackage,
+  prepareWorkPackage,
+  type WorkPackageWriteResult,
+} from '@/lib/atlas/workpackage/principal-write'
+import {
+  resolveWorkPackage,
+  type WorkPackageReadStatus,
+} from '@/lib/atlas/workpackage/principal-read'
+import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
+import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -560,6 +571,48 @@ Return ONLY valid JSON:
    */
   async replanDelegation(envelopeId: string, change: ProposedChange): Promise<DelegationWriteResult> {
     return recordDelegationReplan({ envelopeId, change })
+  }
+
+  // ─── Bounded Work Packages (EI-S1.4D, Chapter 21 §21.9) ─────────────────────
+  //
+  // The Manager → Workforce hop, and the last one Stage 1 builds. It shares
+  // nothing with `planTasks` above:
+  //
+  //   planTasks takes a goal STRING, asks an LLM to invent work, and writes
+  //   manager_tasks rows with no authority chain behind them. It stays exactly
+  //   as it is for the operator-driven flows that already call it.
+  //
+  //   The methods below take an accepted DELEGATION ENVELOPE, consult no model,
+  //   and produce a structured contract whose every bound is proven a subset of
+  //   that Delegation. §21.28 decomposition is the Manager's to do; authority is
+  //   not, and no prompt decides it.
+  //
+  // ASSIGNMENT IS NOT EXECUTION (§21.42). Assigning means the Workforce role has
+  // RECEIVED the package. Nothing starts it, and nothing here can: no runner, no
+  // executor, no dispatcher, no tool call.
+
+  /** §21.28 — validate a decomposition without persisting it. */
+  async prepareWorkPackage(envelopeId: string, request: WorkPackageRequest): Promise<WorkPackageWriteResult> {
+    return prepareWorkPackage({ envelopeId, request })
+  }
+
+  /**
+   * §21.42 — assign a bounded Work Package to a Workforce role.
+   *
+   * There is no `assigned` or `authority` parameter. The parent Delegation and
+   * the deterministic validation decide what may be persisted.
+   */
+  async assignWorkPackage(
+    envelopeId: string, request: WorkPackageRequest, title?: string,
+  ): Promise<WorkPackageWriteResult> {
+    return assignWorkPackage({ envelopeId, request, title })
+  }
+
+  /** §21.14 — is this package usable right now, given its live authority chain? */
+  async readWorkPackage(
+    workPackageId: string,
+  ): Promise<{ evaluation: WorkPackageEvaluation | null; status: WorkPackageReadStatus }> {
+    return resolveWorkPackage(workPackageId)
   }
 }
 

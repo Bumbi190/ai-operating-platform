@@ -234,7 +234,10 @@ Canonical properties:
   note: it needs an exact Authorization V1 proof bound to the project, mission, **exact
   version**, gate id, outcome, conditions and evidence. Project membership is not approval
   authority (§20.55), and a service identity can never become the approving human. Outcomes
-  are classified rather than treated as a boolean — only plain `approve` passes.
+  are classified rather than treated as a boolean — only plain `approve` passes. Being
+  authority-bearing and being lifecycle-advancing are **separate dimensions**: a gate
+  resolution requires authority provenance in the pure core, in the builder and in a database
+  CHECK, while still consuming no lifecycle generation.
   `approve_with_conditions` is **conditionally unverified** (FM.2 excludes the policy engine
   that could check the condition) and `edit_and_approve` **requires a Mission amendment**
   (§20.126), so neither lets an unchanged version through. A resolution made against version
@@ -244,6 +247,12 @@ Canonical properties:
   conflict and every consumer fails closed. A positive observation unlocking a **hard**
   dependency must carry evidence (§20.63, §20.81) — institutional history has to explain why
   a prerequisite counted as met.
+- **Both observation families are version-scoped.** A gate resolution *and* a dependency
+  observation made against version N say nothing about N+1: §20.126 makes the amended version
+  a new operational contract, where the same dependency reference may now be hard where it
+  was soft. The current version starts unresolved and needs fresh observations; the old ones
+  remain immutable audit history. Deliberately conservative — V1 does not try to judge which
+  old-world observations survive a material change.
 - **Authority binds the exact prospective act.** The candidate record is built first and
   hashed over an explicit projection of every §20.126 material field and every other field
   whose post-approval change would alter what the human approved. Change the objective,
@@ -339,7 +348,7 @@ only** — calling them a Damage Boundary would be a lie.
 | Production initial row count | **0** |
 | Migration guard | **36 enforced / 0 missing**, no override, nothing grandfathered |
 | Executive Mission Brief V1 | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
-| Mission operational readiness | EI-S1.4B-R1 and R2 corrections applied |
+| Mission operational readiness | EI-S1.4B-R1, R2 and R3 corrections applied |
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Executive → Manager handoff | **NOT STARTED** |
 | Manager → Workforce handoff | **NOT STARTED** |

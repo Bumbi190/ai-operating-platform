@@ -260,10 +260,19 @@ create table if not exists public.atlas_mission_ledger (
   -- unlock is simply not accepted. Negative observations need none: they only
   -- narrow what the mission may do.
   --
-  -- Two contradictory observations for the same reference sharing the newest
-  -- instant have no honest winner, so the derivation reports a conflict and
-  -- every consumer fails closed. A random record id must never decide whether
-  -- a prerequisite counts as met.
+  -- Observations are VERSION-SCOPED, exactly as gate resolutions are
+  -- (EI-S1.4B-R3). §20.126 makes N+1 a new operational contract: the same
+  -- `reference` may now be a hard dependency where it was soft, or carry a
+  -- different kind or owner, so an observation made against N says nothing
+  -- about N+1. The current version starts unresolved and needs a fresh
+  -- observation; old ones remain immutable audit history. Deliberately
+  -- conservative, and it avoids a dependency-fingerprint scheme this stage has
+  -- no reason to build.
+  --
+  -- Two contradictory observations for the same reference and version sharing
+  -- the newest instant have no honest winner, so the derivation reports a
+  -- conflict and every consumer fails closed. A random record id must never
+  -- decide whether a prerequisite counts as met.
   dependency_observation jsonb,
 
   -- §20.73 — a `gate_resolved` annotation: which declared gate, and which of
@@ -293,6 +302,9 @@ create table if not exists public.atlas_mission_ledger (
   -- forward to N+1, because §20.126 makes N+1 a materially different
   -- commitment the approver never saw. This is not the Full Approval Inbox,
   -- which FM.2 excludes, and introduces no second approval-authority system.
+  --
+  -- `authority_record` is REQUIRED for this type by the constraint at the end
+  -- of the table, even though the row consumes no lifecycle generation.
   gate_resolution     jsonb,
 
   -- §20.78 — a progress report. §20.103 — an explicit blocker, and the act that
@@ -318,7 +330,31 @@ create table if not exists public.atlas_mission_ledger (
   lifecycle_generation integer not null default 0
     constraint atlas_mission_ledger_lifecycle_generation_check check (lifecycle_generation >= 0),
 
-  created_at          timestamptz not null default now()
+  created_at          timestamptz not null default now(),
+
+  -- ── Authority provenance is structural ──────────────────────────────────────
+  -- An authority-requiring act may not exist without a proof. The pure core is
+  -- authoritative on semantic detail — which action kind, which principal,
+  -- which bound version — and the sanctioned write boundary resolves
+  -- Authorization V1 effectiveness live. This constraint exists so the
+  -- append-only table itself cannot accept an obviously authority-less
+  -- authority act, whatever writes to it.
+  --
+  -- `gate_resolved` is in this list even though it is NOT lifecycle-advancing:
+  -- authority-bearing and lifecycle-advancing are separate dimensions (§20.73
+  -- makes resolving a gate an authority act; concurrency keeps it an
+  -- annotation). EI-S1.4B-R3 added it after a `gate_resolved` row with no proof
+  -- at all was found to build, fold and satisfy a gate.
+  --
+  -- Kept deliberately structural: a NOT NULL test, not JSON policy in SQL.
+  -- The list matches `MISSION_AUTHORITY_REQUIRED` in
+  -- lib/atlas/mission/derive.ts, and a test compares the two.
+  constraint atlas_mission_ledger_authority_required_check check (
+    record_type not in (
+      'approved', 'activated', 'amended', 'cancelled', 'superseded', 'gate_resolved'
+    )
+    or authority_record is not null
+  )
 );
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────

@@ -31,7 +31,9 @@ import { buildMissionRecord, newMissionId, MISSION_TYPES } from '@/lib/atlas/mis
 import {
   deriveMissionState,
   GATE_OUTCOME_CLASS,
+  GATE_RESOLVE_ACTION,
   MISSION_AUTHORITY_ACTS,
+  MISSION_AUTHORITY_REQUIRED,
   MISSION_LIFECYCLE_ADVANCING,
   missionLifecycleGenerationOf,
   missionReadiness,
@@ -2383,5 +2385,300 @@ describe('R2 — one coherent effective status', () => {
       expect(source).not.toMatch(
         /ai\/manager|planTasks|manager_tasks|workflow-executor|executeRunSteps|lib\/ai\/runner|runStep|publishArticle|sendEmail|brevo|stripe|atlasActions/)
     }
+  })
+})
+
+// ── EI-S1.4B-R3 regressions ───────────────────────────────────────────────────
+// Both defects were confirmed against 8c9adec before the fix.
+
+describe('R3 — a gate resolution may not exist without authority provenance', () => {
+  const RESOLUTION = { gateId: 'gate-publish', outcome: 'approve' as const }
+  const GATE_PROOF = {
+    authorizationId: AUTH_GATE, principalId: PRINCIPAL_A,
+    actionKind: MISSION_ACTION.gateResolve, boundVersionHash: 'a'.repeat(64), authorityActAt: T3,
+  }
+  const gateRecord = (overrides: Record<string, unknown> = {}) => buildMissionRecord({
+    type: 'gate_resolved', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+    occurredAt: T3, version: 1, lifecycleGeneration: 2, ...COMPLETE_BRIEF,
+    gateResolution: RESOLUTION, authorityRecord: GATE_PROOF, ...overrides,
+  })
+
+  it('is rejected by the builder when the proof is missing', () => {
+    expect(() => gateRecord({ authorityRecord: null }))
+      .toThrow(/gate-resolution-requires-authority/)
+  })
+
+  it('is rejected by the pure core when the proof is missing', () => {
+    // Bypass the builder to construct the historically impossible row.
+    const proposal = buildMissionRecord({
+      type: 'proposed', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
+    })
+    const unauthorised = { ...gateRecord(), authorityRecord: null }
+    expect(() => deriveMissionState([proposal, unauthorised], { at: T3 }))
+      .toThrow(/authority-act-requires-proof/)
+  })
+
+  it('is rejected when the proof claims a different action kind', () => {
+    expect(() => gateRecord({ authorityRecord: { ...GATE_PROOF, actionKind: MISSION_ACTION.approve } }))
+      .toThrow(/gate-authority-action-kind/)
+  })
+
+  it.each([
+    ['principalId', 'gate-authority-principal'],
+    ['boundVersionHash', 'gate-authority-bound-version'],
+  ])('is rejected by the pure core when %s is absent', (field, invariant) => {
+    const proposal = buildMissionRecord({
+      type: 'proposed', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
+    })
+    const record = { ...gateRecord(), authorityRecord: { ...GATE_PROOF, [field]: '' } }
+    expect(() => deriveMissionState([proposal, record], { at: T3 }))
+      .toThrow(new RegExp(invariant))
+  })
+
+  it('accepts a resolution carrying full gate authority provenance', () => {
+    const proposal = buildMissionRecord({
+      type: 'proposed', missionId: 'm-1', projectId: PROJECT_P, principalId: PRINCIPAL_A,
+      occurredAt: T0, version: 1, lifecycleGeneration: 0, ...COMPLETE_BRIEF,
+    })
+    const state = deriveMissionState([proposal, gateRecord()], { at: T3 })
+    const gate = state.gateResolutions.find(g => g.gateId === 'gate-publish')!
+    expect(gate.outcome).toBe('approve')
+    expect(gate.authority?.actionKind).toBe(MISSION_ACTION.gateResolve)
+    expect(gate.authority?.principalId).toBe(PRINCIPAL_A)
+  })
+
+  it('is authority-REQUIRING but not lifecycle-ADVANCING', () => {
+    // Two separate dimensions, and conflating them was the R3 defect.
+    expect(MISSION_AUTHORITY_REQUIRED.has('gate_resolved' as MissionActType)).toBe(true)
+    expect(MISSION_LIFECYCLE_ADVANCING.has('gate_resolved' as MissionActType)).toBe(false)
+    // The lifecycle authority set stays exactly the five lifecycle acts.
+    expect([...MISSION_AUTHORITY_ACTS].sort())
+      .toEqual(['activated', 'amended', 'approved', 'cancelled', 'superseded'])
+    expect([...MISSION_AUTHORITY_REQUIRED].sort())
+      .toEqual(['activated', 'amended', 'approved', 'cancelled', 'gate_resolved', 'superseded'])
+  })
+
+  it('still consumes no lifecycle generation when it carries authority', async () => {
+    const { store, missionId } = await activatedMission()
+    const before = missionLifecycleGenerationOf(await store.lineage(missionId))
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
+    const row = store.appended.find(r => r.type === 'gate_resolved')!
+    expect(row.authorityRecord).not.toBeNull()
+    expect(missionLifecycleGenerationOf(await store.lineage(missionId))).toBe(before)
+  })
+
+  it('agrees with the binding module on the action kind', () => {
+    expect(GATE_RESOLVE_ACTION).toBe(MISSION_ACTION.gateResolve)
+    expect(GATE_RESOLVE_ACTION).toBe('mission.gate.resolve')
+  })
+})
+
+describe('R3 — the database refuses an authority-less authority act', () => {
+  const sql = () => readFileSync(MIGRATION, 'utf8')
+
+  it('requires authority_record for every authority-requiring type', () => {
+    const migration = sql()
+    const from = migration.indexOf('atlas_mission_ledger_authority_required_check')
+    expect(from).toBeGreaterThan(-1)
+    const constraint = migration.slice(from, from + migration.slice(from).indexOf('\n  )'))
+    expect(constraint).toContain('authority_record is not null')
+    for (const type of MISSION_AUTHORITY_REQUIRED) expect(constraint).toContain(`'${type}'`)
+  })
+
+  it('keeps the SQL list aligned with the domain authority-required set', () => {
+    const migration = sql()
+    const from = migration.indexOf('atlas_mission_ledger_authority_required_check')
+    const constraint = migration.slice(from, from + migration.slice(from).indexOf('\n  )'))
+    const listed = [...constraint.matchAll(/'(\w+)'/g)].map(m => m[1]).sort()
+    expect(listed).toEqual([...MISSION_AUTHORITY_REQUIRED].sort())
+  })
+
+  it('includes gate_resolved in the CHECK but not in the lifecycle index', () => {
+    const migration = sql()
+    const from = migration.indexOf('atlas_mission_ledger_one_advance_idx')
+    const index = migration.slice(from, from + migration.slice(from).indexOf(';'))
+    expect(index).not.toContain("'gate_resolved'")
+    expect(index).not.toContain("'dependency_observed'")
+    const check = migration.slice(migration.indexOf('atlas_mission_ledger_authority_required_check'))
+    expect(check.slice(0, 400)).toContain("'gate_resolved'")
+  })
+})
+
+describe('R3 — dependency observations are version-scoped (§20.126)', () => {
+  const softDep = { kind: 'capability' as const, reference: 'dep-A', hardness: 'soft' as 'hard' | 'soft' }
+  const hardDep = { kind: 'capability' as const, reference: 'dep-A', hardness: 'hard' as 'hard' | 'soft' }
+
+  type DepList = Array<{ kind: 'capability'; reference: string; hardness: 'hard' | 'soft' }>
+
+  async function missionWith(dependencies: DepList) {
+    authAs(PRINCIPAL_A, [PROJECT_P]); authorizationService([])
+    const store = new FakeStore()
+    const opened = await openMission({
+      projectId: PROJECT_P, ...COMPLETE_BRIEF, dependencies, store, now: T0, projectMode, availability,
+    })
+    const missionId = opened.state!.missionId
+    const grant = await grantFor({ act: 'approve', missionId, store, now: T1, projectMode, availability }, AUTH_A)
+    authorizationService([grant])
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T1, projectMode, availability })
+    return { store, missionId }
+  }
+
+  async function amendTo(store: FakeStore, missionId: string, dependencies: DepList) {
+    const AM = { reason: 'Tighten the prerequisite.', dependencies }
+    const grant = await grantFor({ act: 'amend', missionId, ...AM, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant])
+    const result = await amendMission({ missionId, authorizationId: AUTH_B, ...AM, store, now: T2, projectMode, availability })
+    expect(`${result.status}${result.detail ? `:${result.detail}` : ''}`).toBe('ok')
+  }
+
+  it('does not carry a version-N satisfaction into N+1', async () => {
+    const { store, missionId } = await missionWith([softDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    const v1 = (await resolveMission(missionId, { store, now: T1, projectMode, availability })).state!
+    expect(v1.version).toBe(1)
+    expect(v1.dependencyState[0].satisfied).toBe(true)
+
+    // Same reference, materially different definition: soft becomes hard.
+    await amendTo(store, missionId, [hardDep])
+    const v2 = (await resolveMission(missionId, { store, now: T2, projectMode, availability })).state!
+    expect(v2.version).toBe(2)
+    expect(v2.dependencyState[0].hardness).toBe('hard')
+    // §20.126 — N+1 is a new operational contract; the old observation says
+    // nothing about it.
+    expect(v2.dependencyState[0].satisfied).toBe(false)
+  })
+
+  it('leaves an unchanged reference unresolved on N+1 too', async () => {
+    const { store, missionId } = await missionWith([hardDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    // Amend something else entirely; the dependency definition is identical.
+    const AM = { reason: 'Widen scope.', objective: 'A materially wider commitment.' }
+    const grant = await grantFor({ act: 'amend', missionId, ...AM, store, now: T2, projectMode, availability }, AUTH_B)
+    authorizationService([grant])
+    await amendMission({ missionId, authorizationId: AUTH_B, ...AM, store, now: T2, projectMode, availability })
+
+    const v2 = (await resolveMission(missionId, { store, now: T2, projectMode, availability })).state!
+    expect(v2.version).toBe(2)
+    // Conservative by design: V1 does not try to judge which old-world
+    // observations survive a material change.
+    expect(v2.dependencyState[0].satisfied).toBe(false)
+  })
+
+  it('is satisfied again by a fresh N+1 observation', async () => {
+    const { store, missionId } = await missionWith([softDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await amendTo(store, missionId, [hardDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-2' },
+      store, now: T3, projectMode, availability,
+    })
+    const v2 = (await resolveMission(missionId, { store, now: T3, projectMode, availability })).state!
+    expect(v2.dependencyState[0].satisfied).toBe(true)
+  })
+
+  it('keeps the old observation as audit history, not current readiness', async () => {
+    const { store, missionId } = await missionWith([softDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await amendTo(store, missionId, [hardDep])
+    const v2 = (await resolveMission(missionId, { store, now: T2, projectMode, availability })).state!
+    // The record is still in the immutable lineage…
+    expect(v2.lineage.some(l => l.type === 'dependency_observed' && l.version === 1)).toBe(true)
+    // …but it does not satisfy the new contract.
+    expect(v2.dependencyState[0].satisfied).toBe(false)
+  })
+
+  it('blocks activation on N+1 until a fresh observation exists', async () => {
+    const { store, missionId } = await missionWith([hardDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await amendTo(store, missionId, [hardDep])
+    // Re-approve N+1, then try to activate without a fresh observation.
+    const approveGrant = await grantFor({ act: 'approve', missionId, store, now: T3, projectMode, availability }, AUTH_A)
+    authorizationService([approveGrant])
+    await approveMission({ missionId, authorizationId: AUTH_A, store, now: T3, projectMode, availability })
+    const activateGrant = await grantFor({ act: 'activate', missionId, store, now: T3, projectMode, availability }, AUTH_B)
+    authorizationService([approveGrant, activateGrant])
+    const before = store.appended.length
+    const result = await activateMission({ missionId, authorizationId: AUTH_B, store, now: T3, projectMode, availability })
+    expect(result.status).toBe('activation_incomplete')
+    expect(result.missing).toContain('dependencies')
+    expect(store.appended).toHaveLength(before)
+  })
+
+  it('still fails closed on same-instant conflicting CURRENT-version observations', async () => {
+    const { store, missionId } = await missionWith([hardDep])
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: true, evidence: 'run-1' },
+      store, now: T1, projectMode, availability,
+    })
+    await observeMissionDependency({
+      missionId, observation: { reference: 'dep-A', satisfied: false },
+      store, now: T1, projectMode, availability,
+    })
+    const state = (await resolveMission(missionId, { store, now: T1, projectMode, availability })).state!
+    expect(state.dependencyState[0].conflicted).toBe(true)
+    expect(state.dependencyState[0].satisfied).toBe(false)
+  })
+})
+
+describe('R3 — annotation and lifecycle concurrency are unchanged', () => {
+  it('still collides two lifecycle writers separated by a gate resolution', async () => {
+    const { store, missionId, grants } = await activatedMission()
+    const stale = store.snapshot(missionId)
+    const aView = frozenReader(store, stale)
+
+    // An authority-BEARING annotation lands between the two reads.
+    await resolveGate(store, missionId, { gateId: 'gate-publish', outcome: 'approve' }, T3)
+
+    authorizationService(grants)
+    expect((await pauseMission({ missionId, reason: 'Founder review pending.', store, now: T3, projectMode, availability })).status).toBe('ok')
+
+    const result = await failMission({ missionId, reason: 'Assumption failed.', store: aView, now: T3, projectMode, availability })
+    expect(result.status).toBe('conflict')
+    const lifecycleActs = (await store.lineage(missionId)).filter(r => r.type === 'failed' || r.type === 'paused')
+    expect(lifecycleActs.map(r => r.type)).toEqual(['paused'])
+  })
+
+  it('still collides two lifecycle writers separated by a dependency observation', async () => {
+    const { store, missionId, grants } = await activatedMission()
+    const stale = store.snapshot(missionId)
+    const aView = frozenReader(store, stale)
+
+    await observeMissionDependency({
+      missionId, observation: { reference: 'isolation-primitives', satisfied: false },
+      store, now: T3, projectMode, availability,
+    })
+
+    authorizationService(grants)
+    expect((await pauseMission({ missionId, reason: 'Waiting.', store, now: T3, projectMode, availability })).status).toBe('ok')
+    const result = await failMission({ missionId, reason: 'Failed.', store: aView, now: T3, projectMode, availability })
+    expect(result.status).toBe('conflict')
+  })
+
+  it('keeps both observation families out of the lifecycle generation', () => {
+    for (const type of ['dependency_observed', 'gate_resolved'] as MissionActType[]) {
+      expect(MISSION_LIFECYCLE_ADVANCING.has(type)).toBe(false)
+    }
+    const migration = readFileSync(MIGRATION, 'utf8')
+    const from = migration.indexOf('atlas_mission_ledger_one_advance_idx')
+    const index = migration.slice(from, from + migration.slice(from).indexOf(';'))
+    const listed = [...index.matchAll(/'(\w+)'/g)].map(m => m[1]).sort()
+    expect(listed).toEqual([...MISSION_LIFECYCLE_ADVANCING].sort())
   })
 })

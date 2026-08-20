@@ -172,10 +172,39 @@ const LEGAL_SOURCE: Record<string, ReadonlySet<LifecycleState>> = {
   archived:  new Set<LifecycleState>(['completed', 'partially_completed', 'failed', 'cancelled', 'superseded']),
 }
 
-/** Which acts require their own Authorization V1 proof. */
+/** Which LIFECYCLE acts require their own Authorization V1 proof. */
 export const MISSION_AUTHORITY_ACTS: ReadonlySet<MissionActType> = new Set<MissionActType>([
   'approved', 'activated', 'amended', 'cancelled', 'superseded',
 ])
+
+/**
+ * Every act that may not exist without authority provenance.
+ *
+ * AUTHORITY-BEARING AND LIFECYCLE-ADVANCING ARE SEPARATE DIMENSIONS, and
+ * EI-S1.4B-R3 exists because the domain conflated them. `gate_resolved` is an
+ * annotation for concurrency — it consumes no lifecycle generation, and must
+ * not, or two lifecycle writers separated by a gate resolution would stop
+ * colliding (the EI-S1.3B-R3 row-count bug). But §20.73 makes it an authority
+ * act: deciding whether execution may cross a gate is exactly the kind of thing
+ * §20.55 forbids inferring.
+ *
+ * R2 enforced that in the sanctioned write boundary only. A `gate_resolved`
+ * record with no `authorityRecord` at all still built, folded, and satisfied
+ * the gate — so the pure institutional lineage would have accepted a history
+ * that cannot have happened. The rule belongs here, where every reader of the
+ * ledger benefits from it.
+ */
+export const MISSION_AUTHORITY_REQUIRED: ReadonlySet<MissionActType> = new Set<MissionActType>([
+  ...MISSION_AUTHORITY_ACTS, 'gate_resolved',
+])
+
+/**
+ * §20.73 — the action kind a gate resolution's proof must carry.
+ *
+ * Stated here rather than imported so the pure core keeps no dependency on the
+ * binding module; a test asserts the two agree.
+ */
+export const GATE_RESOLVE_ACTION = 'mission.gate.resolve'
 
 // ── Brief completeness (§20.172) ──────────────────────────────────────────────
 
@@ -244,7 +273,7 @@ export function deriveMissionState(
    * contradictory records sharing the newest instant. A random record id must
    * never decide whether authority or readiness passes.
    */
-  const dependencyObservations: Array<{ at: string; observation: MissionDependencyObservation }> = []
+  const dependencyObservations: Array<{ at: string; version: number; observation: MissionDependencyObservation }> = []
   const gateObservations: Array<{ at: string; version: number; resolution: MissionGateResolution; authority: MissionAuthorityRecord | null }> = []
 
   for (const [index, record] of ordered.entries()) {
@@ -259,9 +288,22 @@ export function deriveMissionState(
     if (!record.principalId) {
       throw new MalformedMissionLineageError('principal-required', record.recordId)
     }
-    // Every authority act must carry the proof that was verified for it.
-    if (MISSION_AUTHORITY_ACTS.has(record.type) && !record.authorityRecord) {
+    // Every authority-requiring act must carry the proof that was verified for
+    // it — including `gate_resolved`, which is an annotation for lifecycle
+    // purposes but an authority act for safety purposes.
+    if (MISSION_AUTHORITY_REQUIRED.has(record.type) && !record.authorityRecord) {
       throw new MalformedMissionLineageError('authority-act-requires-proof', record.recordId)
+    }
+    // §20.73 — a resolution claiming gate authority must carry gate authority.
+    // The pure core cannot check effectiveness (no I/O, and the write boundary
+    // already resolves it live); it only rejects a historically impossible row.
+    if (record.type === 'gate_resolved') {
+      const proof = record.authorityRecord!
+      if (proof.actionKind !== GATE_RESOLVE_ACTION) {
+        throw new MalformedMissionLineageError('gate-authority-action-kind', proof.actionKind)
+      }
+      if (!proof.principalId) throw new MalformedMissionLineageError('gate-authority-principal', record.recordId)
+      if (!proof.boundVersionHash) throw new MalformedMissionLineageError('gate-authority-bound-version', record.recordId)
     }
 
     if (index === 0) {
@@ -304,7 +346,7 @@ export function deriveMissionState(
           if (!current.dependencies.some(d => d.reference === observation.reference)) {
             throw new MalformedMissionLineageError('dependency-observation-declared', observation.reference)
           }
-          dependencyObservations.push({ at: record.occurredAt, observation })
+          dependencyObservations.push({ at: record.occurredAt, version: record.version, observation })
           break
         }
         case 'gate_resolved': {
@@ -412,8 +454,18 @@ export function deriveMissionState(
 
   // §20.101 — a declared dependency with no observation is UNSATISFIED. Fail
   // closed: an unobserved prerequisite blocks rather than passes.
+  //
+  // Observations are SCOPED TO THE CURRENT MATERIAL VERSION, exactly as gate
+  // resolutions are. §20.126 makes N+1 a new operational contract: the same
+  // `reference` string may now be a hard dependency where it was soft, or carry
+  // a different kind or owner, so an observation made against N says nothing
+  // about N+1. Rather than trying to judge which old-world observations survive
+  // a material change — which would need a dependency-fingerprint scheme this
+  // stage has no reason to build — the current version simply starts
+  // unresolved. Old observations remain immutable audit history.
   const dependencyState: ObservedMissionDependency[] = current.dependencies.map(dependency => {
-    const forKey = dependencyObservations.filter(o => o.observation.reference === dependency.reference)
+    const forKey = dependencyObservations.filter(o =>
+      o.observation.reference === dependency.reference && o.version === version)
     const latest = newestFor(forKey, o => o.at)
     const conflicted = contradicts(latest, o => o.observation.satisfied)
     return {

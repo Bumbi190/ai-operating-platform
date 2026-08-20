@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { GATE_RESOLVE_ACTION } from './derive'
 import {
   MalformedMissionLineageError,
   type MissionActType,
@@ -355,6 +356,14 @@ export function buildMissionRecord(input: BuildMissionRecordInput): MissionRecor
   }
   if (input.type === 'gate_resolved') {
     if (!input.gateResolution) throw new MalformedMissionLineageError('gate-record-requires-resolution')
+    // §20.73/§20.55 — a gate resolution decides whether execution may cross the
+    // gate, so it may not exist without authority provenance. Lifecycle-wise it
+    // stays an annotation; authority-wise it is an act.
+    const proof = authorityRecord
+    if (!proof) throw new MalformedMissionLineageError('gate-resolution-requires-authority')
+    if (proof.actionKind !== GATE_RESOLVE_ACTION) {
+      throw new MalformedMissionLineageError('gate-authority-action-kind', proof.actionKind)
+    }
     requireText(input.gateResolution.gateId, 'gate-resolution-id-required')
     const outcomes = [
       'approve', 'approve_with_conditions', 'edit_and_approve', 'reject',

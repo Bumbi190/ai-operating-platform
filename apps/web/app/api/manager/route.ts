@@ -19,6 +19,17 @@
  *   revoke_delegation  — Executive withdraws an envelope
  *   replan_delegation  — classify a Manager-side change (§21.20–§21.26)
  *
+ * Chapter 21 §21.9 Work Packages (EI-S1.4D) — none of these execute anything:
+ *   prepare_work_package — validate a bounded decomposition, persist nothing
+ *   assign_work_package  — assign to a Workforce role. §21.42 "assigned" means
+ *                          RECEIVED; no run, no queue, no tool call. There is NO
+ *                          `assigned`/`authority` parameter: the accepted parent
+ *                          Delegation decides what may be persisted.
+ *   read_work_package    — is this package usable right now
+ *
+ * `project_id` is never accepted for these: the project comes from the Mission
+ * → Delegation authority chain, so a caller cannot widen scope by asking.
+ *
  * Every delegation action authenticates as a human through the same session
  * gate as the rest of this route. CRON_SECRET is not accepted anywhere here and
  * is not user authorization: a shared machine secret cannot stand in for a
@@ -35,6 +46,35 @@ import { prepareDelegation, revokeDelegation, type DelegationWriteResult } from 
 import type { DelegationNarrowing } from '@/lib/atlas/delegation/attenuate'
 import type { DelegationRevocationReason } from '@/lib/atlas/delegation/types'
 import type { ProposedChange } from '@/lib/atlas/delegation/classify'
+import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
+import type { WorkPackageWriteResult } from '@/lib/atlas/workpackage/principal-write'
+
+/**
+ * Map a Work Package boundary status to HTTP without inventing detail.
+ *
+ * `not_permitted` covers both "no such package" and "one you may not see", and
+ * both must render as the SAME 404.
+ */
+function workPackageResponse(result: WorkPackageWriteResult): NextResponse {
+  const body = {
+    status: result.status,
+    work_package: result.workPackage,
+    ...(result.taskId ? { task_id: result.taskId } : {}),
+    ...(result.detail ? { detail: result.detail } : {}),
+    ...(result.violations ? { violations: result.violations } : {}),
+    ...(result.rejections ? { rejections: result.rejections } : {}),
+  }
+  const code =
+    result.status === 'ok' ? 200 :
+    result.status === 'no_principal' ? 401 :
+    result.status === 'not_permitted' ? 404 :
+    result.status === 'project_denied' ? 403 :
+    result.status === 'invalid_request' ? 400 :
+    result.status === 'conflict' ? 409 :
+    result.status === 'unavailable' ? 503 :
+    422
+  return NextResponse.json(body, { status: code })
+}
 
 /**
  * Map a delegation boundary status to HTTP without inventing detail.
@@ -266,6 +306,45 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'envelope_id och change.summary krävs' }, { status: 400 })
         }
         return delegationResponse(await manager.replanDelegation(envelope_id, change))
+      }
+
+      // ── Chapter 21 §21.9 Work Packages ───────────────────────────────────
+      //
+      // Project isolation is enforced inside the boundary from the DELEGATION's
+      // own recorded project — never from a caller-supplied project_id, which
+      // is why none of these accepts one.
+
+      case 'prepare_work_package': {
+        const { envelope_id, request } = body as { envelope_id?: string; request?: WorkPackageRequest }
+        if (!envelope_id || !request?.taskObjective || !request?.role?.roleId) {
+          return NextResponse.json(
+            { error: 'envelope_id, request.taskObjective och request.role.roleId krävs' }, { status: 400 })
+        }
+        return workPackageResponse(await manager.prepareWorkPackage(envelope_id, request))
+      }
+
+      case 'assign_work_package': {
+        const { envelope_id, request, title } = body as {
+          envelope_id?: string; request?: WorkPackageRequest; title?: string
+        }
+        if (!envelope_id || !request?.taskObjective || !request?.role?.roleId) {
+          return NextResponse.json(
+            { error: 'envelope_id, request.taskObjective och request.role.roleId krävs' }, { status: 400 })
+        }
+        // Note what is NOT read from the body: any assigned/authority flag.
+        // §21.42 — assignment is earned from the parent Delegation, not asserted.
+        return workPackageResponse(await manager.assignWorkPackage(envelope_id, request, title))
+      }
+
+      case 'read_work_package': {
+        const { work_package_id } = body as { work_package_id?: string }
+        if (!work_package_id) {
+          return NextResponse.json({ error: 'work_package_id krävs' }, { status: 400 })
+        }
+        const { evaluation, status } = await manager.readWorkPackage(work_package_id)
+        if (status === 'no_principal') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        if (status !== 'ok' || !evaluation) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        return NextResponse.json({ evaluation })
       }
 
       default:

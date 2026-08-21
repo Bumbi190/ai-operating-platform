@@ -510,10 +510,155 @@ dispatch, the policy engine, Damage Boundary, Trust Score, Autonomy Licensing, P
 Intelligence, Crisis Mode, Emergency Brake, autonomy levels L4–L6, automatic spending, automatic
 publishing and automatic project-mode changes.
 
-> The `atlas_delegation_ledger` migration is committed in the canonical guarded directory but
-> **not yet applied**, so `check-migrations.mjs` will fail a Vercel build until a separately
+The `atlas_delegation_ledger` migration was subsequently applied through the controlled
+EI-S1.4C-R4 rollout (ledger version `20260820091102`), byte-identical to its repository file,
+and PR #64 merged as `821192c59aef1c70531e78dac50e714da30b444d`.
+**Executive → Manager Bounded Handoff V1 = COMPLETE / PRODUCTION.**
+
+**Delivered by EI-S1.4D:** **Chapter 21 §21.9 Work Package V1** — the Manager to Workforce
+bounded handoff, in `lib/atlas/workpackage/`, persisted additively on `manager_tasks`.
+
+> "Delegation is not instruction. It is the transfer of BOUNDED authority." (§21.12) — one hop
+> further down.
+
+Canonical properties:
+
+- **The parent is the DELEGATION, not the Mission.** Authority reaches a Work Package only
+  through an accepted, currently usable Delegation Envelope, and narrows at every hop:
+  `Mission ⊇ Delegation ⊇ Work Package`. The Mission is the grandparent, carried for §21.28
+  traceability.
+- **Structured, not a prompt.** No `goal: string`, no `prompt: string`. The §21.9 field names
+  are the public model — mission reference, project, task objective, inputs, expected output,
+  authority, constraints, deadline, reporting, escalation — plus §21.29 dependencies.
+- **Attenuation is pure and deterministic** (§6.39). Permissive fields narrow; restrictive
+  fields are inherited in full and may only be added to. Removing an inherited prohibition is
+  **unrepresentable** in the request type. `WORK_PACKAGE_FIELD_CLASS` classifies all 28 fields
+  and a guard test fails if a future field arrives without a containment ruling.
+- **Decomposition is bounded, not free** (§21.28). The Manager may choose a `taskObjective` the
+  Delegation never spells out — that is what decomposition *is* — so it is recorded as
+  **operational intent** while every authority question is answered by the structured fields
+  around it. What is proven is structural: non-empty objective, declared outputs, scope inside
+  the parent's, nothing in out-of-scope, inputs mapping to permitted origins, and every action,
+  tool, datum, budget and deadline a subset. What is **not** claimed is semantic subordination —
+  no deterministic function can read two sentences and decide one serves the other, and asking
+  a model would put authority back in a prompt.
+- **The Workforce role registry is `public.agents`, and it was not invented.** It is real (35
+  production rows), project-scoped (`project_id` NOT NULL + FK), and the actual runtime
+  authority — `workflow-executor.ts` and `workflow-runner.ts` resolve `step.agent_id` there and
+  fail when it is absent. `workflows` was rejected: a workflow is a procedure, not a party.
+- **Role fitness answers only what Stage 1 can prove** (§21.35). Role existence and project
+  availability: yes. Data access: yes, via the shipped `DOMAIN_REGISTRY`. Capability: **no** —
+  `agents.skill_ids` resolves against nothing, because no `skills` table exists in the
+  repository or in production, so a declared skill is an uninterpreted label and never gates
+  fitness. Tools: proven only where the parent Delegation's acceptance already proved them.
+  Capacity: no source, so not guessed. No Trust Score, Autonomy Licensing, Damage Boundary or
+  Performance Intelligence — their absence is reported as absence, never as a passing default.
+- **Two pins, two questions.** `delegationBoundHash` (new in EI-S1.4D) answers "does the
+  accepted Delegation still say what this package was cut from?"; `packageHash` answers "have
+  this package's own authority terms been altered since assignment?". Both cover delegable terms
+  only, so an editorial reword does not masquerade as an authority change.
+- **`assigned` is the ceiling** (§21.42). A successfully assigned package means the role has
+  **RECEIVED** it and nothing has started. `Executing`, `Waiting`, `Blocked`, `Escalated`,
+  `Paused`, `Completed`, `Failed` and `Quarantined` are deliberately not representable: each
+  needs real execution and monitoring semantics this increment does not build, and inventing a
+  value would be a state the system cannot observe.
+- **`invalidated` is derived, never stored.** A package can be permanently, truthfully assigned
+  and unusable this second because its Delegation was revoked or its Mission ended. History is
+  not rewritten to pretend the assignment never happened.
+- **Additive persistence on `manager_tasks`, with the row split in two.** The operational shell
+  (title, status, result, run_id) stays mutable and legacy flows are untouched; the canonical
+  contract (the package, its hash, the Mission/Delegation pins, the assigned role) is immutable
+  once written, enforced by a trigger that guards only those columns. `project_id` stays
+  **globally nullable** — the requirement is conditional on a canonical package existing —
+  because making it NOT NULL would rewrite the meaning of legacy rows nobody reviewed. No
+  backfill, no rewrite, no parallel task system.
+- **Legacy status is not canonical state.** §21.42 `assigned` is derived from the contract
+  existing; `manager_tasks.status` keeps meaning exactly what it meant. Two mutable status
+  sources over one row is how a ledger starts disagreeing with itself.
+- **Canonical packages are isolated from legacy task surfaces** (EI-S1.4D-R1). Sharing storage
+  must not mean sharing semantics. A canonical row is written with `source = 'work_package'`
+  and excluded from every legacy active-task query via one exported discriminator,
+  `source IS NULL OR source <> 'work_package'`. The NULL branch is load-bearing: `planTasks`
+  inserts without a `source`, so `source <> 'work_package'` alone evaluates to NULL — not true —
+  and would silently hide the entire existing task list. Nothing in this codebase executes from
+  a `manager_tasks` row (the run drain claims `runs` via `claim_runs`), so this was a
+  visibility defect rather than an execution one — but a §21.42 assigned package rendered as an
+  ACTIVE task is a claim the system cannot back.
+- **The persisted contract is verified, not trusted** (EI-S1.4D-R1). The row stores the contract
+  twice — as JSON and as relational pin columns — and one seam,
+  `validateStoredWorkPackage`, decides whether they agree before any authority use. Three things
+  must match: the recomputed package hash, the JSON `packageHash`, and the relational
+  `work_package_hash`. The recompute is what catches a rewritten task objective, inputs, outputs,
+  dependencies, fallback or role, because those are decomposition fields that containment
+  against the parent deliberately does not constrain. **Project access is decided from the
+  relational column, never the JSON payload** — letting a corrupted payload answer "may this
+  caller read this row?" would make the access decision depend on the very thing under suspicion.
+- **A legacy row can never become canonical by UPDATE** (EI-S1.4D-R1). A canonical Work Package
+  originates by INSERT through the sanctioned boundary or not at all; attaching one to an
+  existing task by UPDATE would bypass the parent Delegation, attenuation and role validation
+  entirely. Ordinary legacy updates still pass. The shape CHECK is now all-or-none in both
+  directions, so a row cannot carry a populated contract while leaving `work_package_id` NULL —
+  invisible to every partial index yet sitting in the table looking like authority.
+- **The canonical discriminator is part of the contract** (EI-S1.4D-R2). R1 made
+  `source = 'work_package'` load-bearing for legacy isolation, but nothing required a canonical
+  row to carry it and the immutability trigger did not freeze it — so a package could lose its
+  discriminator and reappear as an ACTIVE MANAGER TASK. It is now required (`source_key` tied to
+  `work_package_id`), frozen once written, and a legacy row may not CLAIM to be a Work Package
+  without a complete contract. Other legacy `source` values — NULL, `dream`, anything else — are
+  untouched.
+  The canonical branch is **NULL-safe** (EI-S1.4D-R3): a PostgreSQL CHECK rejects only FALSE, so
+  `source = 'work_package' AND source_key = …` *passed* for a canonical row with a NULL source,
+  because the comparison evaluated to NULL rather than false. `IS TRUE` and `IS DISTINCT FROM`
+  now make both branches total. Verified against real PostgreSQL, not by reading the SQL — and
+  the discriminator is re-proved institutionally at read as well, since a DB constraint governs
+  rows written through Postgres while the pure re-proof governs the object an authority decision
+  is about to be made from. `source`/`sourceKey` are persistence identity and are deliberately
+  **not** part of the Chapter 21 contract JSON.
+- **Assignment history is not deletable** (§21.42, EI-S1.4D-R2). `manager_tasks.project_id`
+  references `projects(id)` **ON DELETE CASCADE** — verified against the production catalog — so
+  deleting a project would have silently erased every Work Package assigned within it. A
+  conditional BEFORE DELETE trigger now blocks the delete of any row carrying a contract, and
+  because a child trigger fires on cascades too, one guard closes both the direct delete and the
+  cascade **without** rewriting the foreign key or touching project lifecycle. Legacy rows keep
+  their existing delete semantics exactly; the table does **not** become append-only.
+- **Coherence and validity are different proofs** (EI-S1.4D-R2). R1 proved a stored contract had
+  not *changed* (pins agree, hash recomputes). It did not prove the terms were *valid*: a package
+  could be tampered with, re-sealed, stay fully contained by its parent, and still be usable with
+  an empty objective, no declared output, a dependency on an undeclared input, or a
+  `packageVersion` V1 never issues. One shared pure seam, `validateWorkPackageTerms`, now holds
+  every parent-independent structural rule and is called by **both** the creation and the read
+  path — with an alignment test running the same malformed terms through both ends, so a rule
+  can never be enforced at only one.
+- **A dependency predecessor is validated before it is trusted** (EI-S1.4D-R2). The check read
+  the predecessor's JSON `projectId`, so a row physically in another project could claim this one
+  and carry a dependency across the §21.158 boundary. It now requires stored-contract coherence
+  first and compares the **relational** project.
+- **One assignment act, one authenticated principal** (§21.19, EI-S1.4D-R2). `assignWorkPackage`
+  authenticated and then called `prepareWorkPackage`, which authenticated again — so a session
+  changing mid-act could have one principal establish scope and another complete the assignment.
+  An internal prepared-with-principal seam fixes this while `prepareWorkPackage` remains a
+  normally authenticated public boundary on its own.
+- **Role eligibility claims only what the sources prove** (EI-S1.4D-R1). The result is
+  deliberately not called `fit`. `agents` proves identity and project; `DOMAIN_REGISTRY` proves
+  a data domain is sanctioned *platform-wide*, not that this role may read it; Delegation
+  acceptance proves a tool was available *to the parent*, not that this role holds permission to
+  invoke it. So `verified` and `unverified` dimensions are both reported, and the unverified list
+  is never empty for a package with tools or data. That is honest rather than damaging, because
+  §21.42 assignment is not execution — the unverified dimensions are execution-time questions,
+  and Stage 1 builds no execution.
+- **Nothing executes.** No run, no queue, no dispatch, no tool call, no publishing, no model.
+  The only table written is `manager_tasks`, and only by INSERT. Assignment is the final effect.
+- **Workforce → Agent (§21.10) is NOT started** and remains a future boundary.
+
+The existing Manager surface is unchanged: `planTasks(goal, projectId)`, `getActiveTasks`,
+`updateTask` and `retryFailedRun` behave exactly as before. The canonical path is new methods on
+the same `ManagerAgent` — no `ManagerAgentV2`, no parallel coordinator — and never routes
+through `planTasks`.
+
+> The `manager_tasks_work_packages` migration is committed in the canonical guarded directory
+> but **not yet applied**, so `check-migrations.mjs` will fail a Vercel build until a separately
 > authorized rollout applies it — deployment blocked by design. Until then:
-> **Executive → Manager Bounded Handoff V1 = CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET
+> **Manager → Workforce Work Package V1 = CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT
 > PRODUCTION-OPERATIONAL.**
 
 **Deployment status (EI-S1.4B-R4 verified; EI-S1.4C pending rollout):**
@@ -525,13 +670,17 @@ publishing and automatic project-mode changes.
 | Decision Ledger migration | `apps/web/supabase/migrations/20260819_atlas_decision_ledger.sql`, ledger name `atlas_decision_ledger` |
 | Schema | **APPLIED AND VERIFIED — SCHEMA_EQUIVALENT** |
 | Production initial row count | **0** |
-| Migration guard (main, before this branch) | **37 enforced / 0 missing**, no override, nothing grandfathered |
-| Migration guard (this branch) | **38 enforced / 1 missing** — `atlas_delegation_ledger`, unapplied by design |
+| Migration guard (main) | **38 enforced / 0 missing**, no override, nothing grandfathered |
+| Migration guard (this branch) | **39 enforced / 1 missing** — `manager_tasks_work_packages`, unapplied by design |
 | Executive Mission Brief V1 | **IMPLEMENTED / SCHEMA APPLIED** |
 | Mission operational readiness | EI-S1.4B-R1, R2 and R3 corrections applied |
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Mission schema | **APPLIED AND VERIFIED — BYTE_IDENTICAL** (ledger version `20260820054225`) |
-| Executive → Manager handoff | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT YET PRODUCTION-OPERATIONAL** |
+| Executive → Manager handoff | **COMPLETE / PRODUCTION** — merged `821192c5`, schema applied `20260820091102`, BYTE_IDENTICAL |
+| Manager → Workforce Work Package | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT PRODUCTION-OPERATIONAL** |
+| Work Package migration | `apps/web/supabase/migrations/20260820_manager_tasks_work_packages.sql` (additive on `manager_tasks`) |
+| Workforce role registry | `public.agents` — real, project-scoped, runtime-resolved |
+| Workforce → Agent (§21.10) | **NOT STARTED / OUTSIDE STAGE 1 HANDOFF** |
 | Delegation proof integrity | EI-S1.4C-R1 and R2 corrections applied |
 | Delegation ordering | `lineage_sequence` — one writer per position per envelope |
 | Delegation migration | `apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql`, ledger name `atlas_delegation_ledger` |
@@ -548,9 +697,9 @@ in its predicate and annotations correctly absent; the lineage index carrying
 `lifecycle_generation`; and the migration registered exactly once. No seed rows, no test rows,
 no backfill.
 
-**Still open, tracked for later EI-S1 increments:** the Manager to Workforce handoff
-(EI-S1.4D), the remaining principal-scoped read hardening on the internal `CRON_SECRET`
-intelligence route, and the final FM.2 conformance review. §20.75's workflow-version input
+**Still open, tracked for later EI-S1 increments:** the controlled rollout of the Work Package
+schema, the remaining principal-scoped read hardening on the internal `CRON_SECRET` intelligence
+route, and the final FM.2 conformance review. §20.75's workflow-version input
 remains not applicable until a Mission binds a workflow.
 
 Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does

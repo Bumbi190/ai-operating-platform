@@ -43,6 +43,7 @@ import {
   assertSameOrigin, readJsonBody, reservedFieldIn, pick, isUuid, isText,
   badRequest, unknownAction, mapFailure, type DomainResult,
 } from '@/lib/atlas/executive/http'
+import * as M from '@/lib/atlas/executive/canonical-mission'
 
 export const dynamic = 'force-dynamic'
 
@@ -112,59 +113,84 @@ type _OpenFieldsInventNothing = AssertNever<ExtraOpenField>
 const MISSION_OPEN_EXEMPT = ['authority'] as const
 
 /**
- * Validate AND normalize a `MissionActionBound[]` transport field.
+ * STRUCTURED TRANSPORT MAP (EI-HTTP-DTO-01).
  *
- * `build.ts:validateActionBounds` checks that each `action` is non-empty and
- * unique and then **returns the caller's own array**. It never strips extra
- * keys and never validates `note`. Because a Mission record is immutable and
- * hash-bound, anything riding on those objects would be written verbatim and
- * persist forever, contributing to the authorization binding. HTTP JSON has no
- * types, so the adapter is the only place that can stop it.
+ * Every object-valued field a client may send to `open` is reconstructed into
+ * its exact documented domain shape before it reaches the principal-write
+ * boundary. `missionBoundProjection` folds the material ones into the hash a
+ * human authorization is bound to, so an unknown nested key here would become
+ * permanent, authority-bound institutional data.
  *
- * ONE VALIDATOR, THREE FIELDS. `validateActionBounds` is called for `authority`
- * (build.ts:271), `allowedActions` (:272) AND `forbiddenActions` (:273). An
- * earlier fix normalized only `authority`, leaving the identical gap open on
- * the other two — `forbiddenActions` especially, since a prohibition list is a
- * safety boundary. This normalizer covers all three.
- *
- * Each entry is rebuilt as exactly `{ action }` or `{ action, note }`; nothing
- * else survives. Reconstruction, not filtering, so an unknown key cannot ride
- * along on an object we merely inspected.
+ * The parsers live in `lib/atlas/executive/canonical-mission.ts` and rebuild
+ * objects rather than filtering them, so nothing can ride along on an object we
+ * merely inspected.
  */
-function normalizeMissionActionBounds(
-  value: unknown,
-  options: { refuseRequestedAuthority: boolean },
-): { action: string; note?: string | null }[] | null {
-  if (!Array.isArray(value)) return null
+const OPEN_STRUCTURED = {
+  deliverables:         M.arrayOfStr,
+  successCriteria:      M.arrayOf(M.successCriterion),
+  inScope:              M.arrayOfStr,
+  outOfScope:           M.arrayOfStr,
+  constraints:          M.arrayOf(M.constraint),
+  budget:               M.nullable(M.budget),
+  // `authority` refuses a RequestedAuthority masquerade by name; the other two
+  // share the same canonical shape and simply never reconstruct those keys.
+  authority:            M.arrayOf(M.authorityActionBound),
+  authoritySource:      M.nullable(M.authoritySource),
+  allowedActions:       M.arrayOf(M.actionBound),
+  forbiddenActions:     M.arrayOf(M.actionBound),
+  tools:                M.arrayOf(M.toolBound),
+  dataScope:            M.arrayOf(M.dataScope),
+  dependencies:         M.arrayOf(M.dependency),
+  assumptions:          M.arrayOf(M.assumption),
+  risks:                M.arrayOf(M.risk),
+  approvalGates:        M.arrayOf(M.approvalGate),
+  reporting:            M.arrayOf(M.reportingRequirement),
+  escalationTriggers:   M.arrayOf(M.escalationTrigger),
+  stopConditions:       M.arrayOf(M.haltCondition),
+  pauseConditions:      M.arrayOf(M.haltCondition),
+  completionConditions: M.arrayOfStr,
+  evidenceRequirements: M.arrayOf(M.evidenceRequirement),
+  decisionRef:          M.nullable(M.decisionRef),
+} as const
 
-  const out: { action: string; note?: string | null }[] = []
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
-    const candidate = entry as Record<string, unknown>
+/**
+ * FINITE COVERAGE GUARD.
+ *
+ * `StructuredKeys` selects exactly the object-valued keys of the domain's own
+ * open argument type — arrays included, since an array is an object. If the
+ * domain gains another structured client-supplied field, `UnhandledStructured`
+ * stops being `never` and the build fails until it is adjudicated above. That
+ * is what stops this from becoming whack-a-mole: a new field cannot silently
+ * bypass transport canonicalization.
+ */
+type StructuredKeys<T> = {
+  [K in keyof T]-?: NonNullable<T[K]> extends object ? K : never
+}[keyof T]
+type MissionOpenStructuredKey = Extract<StructuredKeys<Parameters<typeof openMission>[0]>, MissionOpenDomainKey>
+type UnhandledStructured = Exclude<MissionOpenStructuredKey, keyof typeof OPEN_STRUCTURED>
+type OverreachingStructured = Exclude<keyof typeof OPEN_STRUCTURED, MissionOpenStructuredKey>
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _StructuredCoversDomain = AssertNever<UnhandledStructured>
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _StructuredInventsNothing = AssertNever<OverreachingStructured>
 
-    if (typeof candidate.action !== 'string' || candidate.action.trim().length === 0) return null
-
-    // Only `authority` collides with the raw RequestedAuthority name, so only
-    // it refuses that masquerade outright. Elsewhere those keys are simply not
-    // reconstructed — same outcome, without a misleading error.
-    if (options.refuseRequestedAuthority
-        && ('actionKind' in candidate || 'description' in candidate)) {
-      return null
-    }
-
-    if ('note' in candidate) {
-      const note = candidate.note
-      if (note !== null && typeof note !== 'string') return null
-      out.push({ action: candidate.action, note })
-    } else {
-      out.push({ action: candidate.action })
-    }
+/**
+ * Canonicalize every structured field present on the request, in place of the
+ * caller's own objects. Returns the offending field name on rejection so the
+ * 400 names what was wrong without echoing caller input back.
+ */
+function canonicalizeOpen(
+  body: Record<string, unknown>,
+  args: Record<string, unknown>,
+): string | null {
+  for (const [field, parser] of Object.entries(OPEN_STRUCTURED)) {
+    if (body[field] === undefined) continue
+    const parsed = (parser as (v: unknown) => unknown)(body[field])
+    if (M.isRejected(parsed)) return field
+    args[field] = parsed
   }
-  return out
+  return null
 }
-
-/** The three canonical fields that flow through `validateActionBounds`. */
-const ACTION_BOUND_FIELDS = ['authority', 'allowedActions', 'forbiddenActions'] as const
 
 const APPROVE_FIELDS  = ['missionId', 'authorizationId'] as const
 const ACTIVATE_FIELDS = ['missionId', 'authorizationId'] as const
@@ -213,16 +239,10 @@ export async function POST(request: Request) {
     if (!isText(body.executiveOwner, 200)) return badRequest('executiveOwner')
     if (body.asDraft !== undefined && typeof body.asDraft !== 'boolean') return badRequest('asDraft')
     const args = pick<Parameters<typeof openMission>[0]>(body, OPEN_FIELDS)
-    // Every action-bound field is rebuilt; the caller's objects never reach the
-    // domain, so no unknown key can land in the immutable record.
-    for (const field of ACTION_BOUND_FIELDS) {
-      if (body[field] === undefined) continue
-      const bounds = normalizeMissionActionBounds(body[field], {
-        refuseRequestedAuthority: field === 'authority',
-      })
-      if (!bounds) return badRequest(field)
-      args[field] = bounds
-    }
+    // Every structured field is REBUILT; the caller's nested objects never reach
+    // the domain, so no unknown key can land in the immutable record.
+    const bad = canonicalizeOpen(body, args as unknown as Record<string, unknown>)
+    if (bad) return badRequest(bad)
     const result = await openMission(args)
     if (result.status !== 'ok') return mapFailure(result)
     return NextResponse.json({ ok: true, mission: result.state }, { status: 200 })
@@ -297,19 +317,25 @@ export async function POST(request: Request) {
         pick<Parameters<typeof resumeMission>[0]>(body, RESUME_FIELDS),
       )
       break
-    case 'close':
-      if (!body.closure || typeof body.closure !== 'object') return badRequest('closure')
+    case 'close': {
+      // `closure` lands in the immutable Mission record, so it is reconstructed
+      // rather than type-checked and forwarded (EI-HTTP-DTO-01).
+      const canonicalClosure = M.closure(body.closure)
+      if (M.isRejected(canonicalClosure)) return badRequest('closure')
       if (body.partial !== undefined && typeof body.partial !== 'boolean') return badRequest('partial')
-      result = await closeMission(
-        pick<Parameters<typeof closeMission>[0]>(body, CLOSE_FIELDS),
-      )
+      const closeArgs = pick<Parameters<typeof closeMission>[0]>(body, CLOSE_FIELDS)
+      closeArgs.closure = canonicalClosure
+      result = await closeMission(closeArgs)
       break
-    case 'evidence':
-      if (!body.evidence || typeof body.evidence !== 'object') return badRequest('evidence')
-      result = await recordMissionEvidence(
-        pick<Parameters<typeof recordMissionEvidence>[0]>(body, EVIDENCE_FIELDS),
-      )
+    }
+    case 'evidence': {
+      const canonicalEvidence = M.evidence(body.evidence)
+      if (M.isRejected(canonicalEvidence)) return badRequest('evidence')
+      const evidenceArgs = pick<Parameters<typeof recordMissionEvidence>[0]>(body, EVIDENCE_FIELDS)
+      evidenceArgs.evidence = canonicalEvidence
+      result = await recordMissionEvidence(evidenceArgs)
       break
+    }
     case 'review':
       if (!isText(body.reviewNote)) return badRequest('reviewNote')
       result = await reviewMission(

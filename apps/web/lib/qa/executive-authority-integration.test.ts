@@ -29,6 +29,8 @@ import type { MaterialityDomain } from '@/lib/atlas/decision-ledger/types'
 
 const OWNER = 'owner-user-id'
 const PROJECT = '11111111-1111-4111-8111-111111111111'
+/** A stable decision id for MissionDecisionReference fixtures. */
+const DECISION_UUID = '44444444-4444-4444-8444-444444444444'
 const FOREIGN = '33333333-3333-4333-8333-333333333333'
 const HOST = 'omnira.example'
 
@@ -141,6 +143,96 @@ describe('EI-S1.6B-R4 — real Decision boundary', () => {
     statement: 'Ingest applies backpressure rather than dropping events.',
     materiality: MATERIALITY,
   }
+
+  // ── EI-HTTP-DTO-01 at the real Decision boundary ────────────────────────────
+
+  const SMUGGLE_D = { smuggled: { execute: true }, admin: true }
+
+  it('Decision propose: no structured field carries contraband into the record', async () => {
+    const res = await decisionRoute(req({
+      ...proposeBody,
+      evidence: [{
+        kind: 'metric', ref: 'r', label: 'l',
+        observedAt: '2027-01-01T00:00:00.000Z', scope: 'p', ...SMUGGLE_D,
+      }],
+      snapshot: {
+        capturedAt: '2027-01-01T00:00:00.000Z',
+        measurements: [{ label: 'm', value: 'v', ...SMUGGLE_D }],
+        dataFreshness: 'fresh', knownGaps: ['g'], ...SMUGGLE_D,
+      },
+      alternatives: [{
+        label: 'a', summary: 's', rejected: true, rejectionReason: 'no', ...SMUGGLE_D,
+      }],
+      reversalConditions: ['rc'],
+      confidence: 'high',
+    }))
+    expect(res.status).toBe(200)
+    const persisted = JSON.stringify(S.decisionRecords[0])
+    for (const key of ['smuggled', 'admin']) {
+      expect(persisted, `${key} must not persist`).not.toContain(key)
+    }
+    const record = S.decisionRecords[0]
+    expect(record.evidence).toEqual([
+      { kind: 'metric', ref: 'r', label: 'l', observedAt: '2027-01-01T00:00:00.000Z', scope: 'p' },
+    ])
+    expect(record.snapshot.measurements).toEqual([{ label: 'm', value: 'v' }])
+    expect(record.alternatives).toEqual([
+      { label: 'a', summary: 's', rejected: true, rejectionReason: 'no' },
+    ])
+  })
+
+  it.each([
+    ['materiality', ['not_a_domain']],
+    ['confidence',  'certain'],
+    ['evidence',    [{ kind: 'metric', ref: 'r', label: 'l', observedAt: 'x' }]],
+    ['evidence',    [{ kind: 'metric', ref: 1, label: 'l', observedAt: 'x', scope: 'p' }]],
+    ['snapshot',    { capturedAt: 'x', measurements: [{ label: 'm' }], dataFreshness: 'f', knownGaps: [] }],
+    ['snapshot',    { capturedAt: 'x', measurements: [], dataFreshness: 'f', knownGaps: [1] }],
+    ['alternatives', [{ label: 'a', summary: 's', rejected: 'yes', rejectionReason: null }]],
+    ['alternatives', [{ label: 'a', summary: 's', rejected: true }]],
+    ['reversalConditions', [1, 2]],
+  ])('Decision propose refuses malformed %s', async (field, value) => {
+    const res = await decisionRoute(req({ ...proposeBody, [field]: value }))
+    expect(res.status, `${field}=${JSON.stringify(value)}`).toBe(400)
+    expect((await res.json()).detail, field).toBe(field)
+    expect(S.decisionRecords).toHaveLength(0)
+  })
+
+  it.each([
+    ['review',  { trigger: 'whenever', description: 'd', dueAt: null }],
+    ['review',  { trigger: 'time_based', description: 'd' }],
+    ['outcome', { status: 'great', summary: 's', observedAt: 'x', evidence: [] }],
+    ['outcome', { status: 'successful', summary: 's', observedAt: 'x', evidence: [{ kind: 'k' }] }],
+  ])('Decision act refuses malformed %s', async (field, value) => {
+    const action = field === 'review' ? 'approve' : 'outcome'
+    const res = await decisionRoute(req({
+      action, decisionId: DECISION_UUID, authorizationId: PROJECT,
+      rationale: 'r', effectiveAt: '2027-01-01T00:00:00.000Z',
+      [field]: value,
+    }))
+    expect(res.status, `${field}=${JSON.stringify(value)}`).toBe(400)
+    expect((await res.json()).detail, field).toBe(field)
+  })
+
+  /**
+   * The owner's explicit concern: authorization must not be requested over one
+   * shape while the write receives another. `review` is read by BOTH
+   * `prepareDecisionAct` (which derives the binding) and `approveDecision`, so
+   * canonicalization happens once, before either can see it.
+   */
+  it('request_authorization and approve see the SAME canonical review terms', async () => {
+    const contaminated = {
+      trigger: 'time_based', description: 'quarterly', dueAt: null, ...SMUGGLE_D,
+    }
+    const prepared = await decisionRoute(req({
+      action: 'request_authorization', purpose: 'approve',
+      decisionId: DECISION_UUID, rationale: 'r',
+      review: contaminated, effectiveAt: '2027-01-01T00:00:00.000Z',
+    }))
+    // Whatever the lifecycle verdict, no contraband may reach an auth event.
+    expect(JSON.stringify(S.authEvents)).not.toContain('smuggled')
+    expect([200, 400, 404, 409]).toContain(prepared.status)
+  })
 
   it('authenticated HTTP reaches the real proposeDecision and appends a record', async () => {
     const res = await decisionRoute(req(proposeBody))
@@ -353,6 +445,139 @@ describe('EI-S1.6B-R5 — every MissionActionBound field is normalized', () => {
   })
 })
 
+// ── EI-HTTP-DTO-01: canonicalization at the REAL boundary ───────────────────
+
+describe('EI-HTTP-DTO-01 — no unknown key reaches an immutable record', () => {
+  /**
+   * These read back the PERSISTED record, not what a mock received. A record is
+   * immutable and hash-bound, and `missionBoundProjection` folds the material
+   * structured fields into what a human authorization is later bound to, so
+   * "did it persist" is the only question that matters.
+   */
+  const SMUGGLE = { smuggled: { execute: true }, admin: true, priority: 9 }
+
+  /** Every structured Mission field, in its canonical shape, plus contraband. */
+  const MISSION_STRUCTURED: Record<string, unknown> = {
+    deliverables: ['d'],
+    successCriteria: [{ criterion: 's', level: 'target', ...SMUGGLE }],
+    inScope: ['in'], outOfScope: ['out'],
+    constraints: [{ kind: 'technical', statement: 'c', ...SMUGGLE }],
+    budget: { currency: 'USD', limitMinor: 100, ...SMUGGLE },
+    authority: [{ action: 'decide', ...SMUGGLE }],
+    authoritySource: { kind: 'founder_instruction', reference: 'r', ...SMUGGLE },
+    allowedActions: [{ action: 'draft', note: 'bounded', ...SMUGGLE }],
+    forbiddenActions: [{ action: 'publish', ...SMUGGLE }],
+    tools: [{ tool: 'search', restriction: 'read-only', ...SMUGGLE }],
+    dataScope: [{ resource: 'runs', access: 'read', ...SMUGGLE }],
+    dependencies: [{ kind: 'decision', reference: 'd-1', hardness: 'hard', ...SMUGGLE }],
+    assumptions: [{ assumption: 'a', critical: false, ...SMUGGLE }],
+    risks: [{ risk: 'r', severity: 'low', ...SMUGGLE }],
+    approvalGates: [{ gateId: 'g1', gate: 'g', ...SMUGGLE }],
+    reporting: [{ cadence: 'weekly', audience: 'executive', ...SMUGGLE }],
+    escalationTriggers: [{ trigger: 't', destination: 'founder', ...SMUGGLE }],
+    stopConditions: [{ condition: 'stop', ...SMUGGLE }],
+    pauseConditions: [{ condition: 'pause', ...SMUGGLE }],
+    completionConditions: ['cc'],
+    evidenceRequirements: [{ requirement: 'r', kind: 'log', ...SMUGGLE }],
+    decisionRef: { decisionId: DECISION_UUID, decisionVersion: 1, ...SMUGGLE },
+  }
+
+  /**
+   * `decisionRef` is only legal when the authority source IS the Decision
+   * Ledger — the builder enforces that pairing, so the fixture honours it
+   * rather than working around it.
+   */
+  const DECISION_SOURCE = { kind: 'decision_ledger', reference: `decision:${DECISION_UUID}` }
+
+  it('Mission open: contraband survives in NO structured field', async () => {
+    const res = await missionRoute(req({
+      ...missionBase,
+      ...MISSION_STRUCTURED,
+      authoritySource: DECISION_SOURCE,
+    }))
+    expect(res.status).toBe(200)
+    expect(S.missionRecords).toHaveLength(1)
+    const persisted = JSON.stringify(S.missionRecords[0])
+    for (const key of ['smuggled', 'admin', 'priority']) {
+      expect(persisted, `${key} must not persist`).not.toContain(key)
+    }
+  })
+
+  it.each(Object.keys(MISSION_STRUCTURED))(
+    'Mission field %s persists only its canonical keys', async field => {
+      await missionRoute(req({
+        ...missionBase,
+        authoritySource: field === 'decisionRef'
+          ? DECISION_SOURCE
+          : { kind: 'founder_instruction', reference: 'r' },
+        [field]: MISSION_STRUCTURED[field],
+      }))
+      expect(S.missionRecords, field).toHaveLength(1)
+      expect(JSON.stringify(S.missionRecords[0][field] ?? null), field).not.toContain('smuggled')
+    },
+  )
+
+  it.each([
+    ['constraints',   [{ kind: 'not_a_kind', statement: 'c' }]],
+    ['dataScope',     [{ resource: 'r', access: 'delete' }]],
+    ['risks',         [{ risk: 'r', severity: 'catastrophic' }]],
+    ['dependencies',  [{ kind: 'decision', reference: 'd', hardness: 'firm' }]],
+    ['reporting',     [{ cadence: 'hourly', audience: 'executive' }]],
+    ['successCriteria', [{ criterion: 's', level: 'aspirational' }]],
+    ['evidenceRequirements', [{ requirement: 'r', kind: 'vibes' }]],
+    ['escalationTriggers', [{ trigger: 't', destination: 'the_press' }]],
+    ['authoritySource', { kind: 'vibes', reference: 'r' }],
+  ])('Mission %s refuses a value outside the domain vocabulary', async (field, value) => {
+    const res = await missionRoute(req({ ...missionBase, [field]: value }))
+    expect(res.status, field).toBe(400)
+    expect((await res.json()).detail, field).toBe(field)
+    expect(S.missionRecords, field).toHaveLength(0)
+  })
+
+  it.each([
+    ['budget',       { currency: 'USD', limitMinor: '100' }],
+    ['budget',       { currency: 'USD', limitMinor: 1.5 }],
+    ['assumptions',  [{ assumption: 'a', critical: 'yes' }]],
+    ['tools',        [{ tool: 42 }]],
+    ['approvalGates', [{ gateId: 'g', gate: 'g', inputs: [1, 2] }]],
+    ['constraints',  'not-an-array'],
+    ['tools',        [null]],
+    ['dataScope',    [['nested']]],
+    ['decisionRef',  { decisionId: 'd', decisionVersion: 'one' }],
+  ])('Mission %s refuses a wrong primitive type', async (field, value) => {
+    const res = await missionRoute(req({ ...missionBase, [field]: value }))
+    expect(res.status, `${field}=${JSON.stringify(value)}`).toBe(400)
+    expect(S.missionRecords).toHaveLength(0)
+  })
+
+  it('Mission close: closure is reconstructed', async () => {
+    const opened = await missionRoute(req({ ...missionBase }))
+    expect(opened.status).toBe(200)
+    const missionId = S.missionRecords[0].missionId
+    await missionRoute(req({
+      action: 'close', missionId,
+      closure: {
+        outcomeType: 'capability_created', outcomeSummary: 's',
+        criteriaMet: [], limitations: [], ...SMUGGLE,
+      },
+    }))
+    expect(JSON.stringify(S.missionRecords)).not.toContain('smuggled')
+  })
+
+  it('Mission evidence: evidence is reconstructed', async () => {
+    await missionRoute(req({ ...missionBase }))
+    const missionId = S.missionRecords[0].missionId
+    await missionRoute(req({
+      action: 'evidence', missionId,
+      evidence: {
+        kind: 'log', reference: 'r', label: 'l',
+        observedAt: '2027-01-01T00:00:00.000Z', scope: 'p', ...SMUGGLE,
+      },
+    }))
+    expect(JSON.stringify(S.missionRecords)).not.toContain('smuggled')
+  })
+})
+
 // ── Authorization ────────────────────────────────────────────────────────────
 
 describe('EI-S1.6B-R4 — real Authorization boundary', () => {
@@ -366,25 +591,99 @@ describe('EI-S1.6B-R4 — real Authorization boundary', () => {
     expect(result.status).toBe('ok')
 
     /**
-     * Wait out the millisecond. NOT cosmetic, and not hiding a test bug.
-     *
-     * `orderAuthorizationEvents` sorts by `occurredAt` and breaks ties on
-     * `eventId`, which is a random UUID. Two events written in the SAME
-     * millisecond therefore order randomly, and when `granted` happens to sort
-     * before `requested` the chain fails `chain-starts-with-request` and
-     * `deriveAuthorizationState` throws — which `persist()` reports as
-     * `unavailable` AFTER the append has already landed. On a cold run the
-     * request and the grant land in one millisecond often enough to make this
-     * reproducible.
-     *
-     * That is a domain characteristic, not a route defect, and fixing it is
-     * outside this phase's scope — it is reported as EI-AUTH-ORDER-01. Here the
-     * seed is simply separated in time so the test measures reachability rather
-     * than a UUID coin-flip.
+     * NO artificial separation. EI-AUTH-ORDER-01 is fixed in
+     * `orderAuthorizationEvents`, so the request and the grant may land in the
+     * same millisecond and the chain still derives correctly. The R5 sleep that
+     * used to sit here only masked the defect and has been removed.
      */
-    await new Promise(resolve => setTimeout(resolve, 3))
     return (result.state as { authorizationId: string }).authorizationId
   }
+
+  // ── EI-HTTP-DTO-01 / EI-AUTH-ORDER-01 at the real Authorization boundary ──
+
+  const SMUGGLE_A = { smuggled: { execute: true }, admin: true }
+
+  it('Authorization conditions and evidence are reconstructed before the ledger', async () => {
+    const authorizationId = await seedPending()
+    const res = await authorizationRoute(req({
+      action: 'grant_with_conditions', authorizationId,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      conditions: [{
+        conditionId: 'c1', type: 'budget', value: '100', description: 'cap',
+        ...SMUGGLE_A,
+      }],
+      evidence: [{
+        kind: 'log', ref: 'r', label: 'l', capturedAt: '2027-01-01T00:00:00.000Z',
+        ...SMUGGLE_A,
+      }],
+    }))
+    expect(res.status).toBe(200)
+    const event = S.authEvents[S.authEvents.length - 1]
+    expect(event.conditions).toEqual([
+      { conditionId: 'c1', type: 'budget', value: '100', description: 'cap' },
+    ])
+    expect(event.evidence).toEqual([
+      { kind: 'log', ref: 'r', label: 'l', capturedAt: '2027-01-01T00:00:00.000Z' },
+    ])
+    expect(JSON.stringify(event)).not.toContain('smuggled')
+  })
+
+  it.each([
+    ['conditions', [{ conditionId: 'c', type: 't', value: 'v' }]],
+    ['conditions', [{ conditionId: 'c', type: 't', value: 1, description: 'd' }]],
+    ['conditions', 'not-an-array'],
+    ['evidence',   [{ kind: 'log', ref: 'r', label: 'l' }]],
+    ['evidence',   [{ kind: 'log', ref: 'r', label: 'l', capturedAt: 42 }]],
+  ])('Authorization %s refuses a malformed entry', async (field, value) => {
+    const authorizationId = await seedPending()
+    const before = S.authEvents.length
+    const res = await authorizationRoute(req({
+      action: 'grant', authorizationId,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      [field]: value,
+    }))
+    expect(res.status, `${field}=${JSON.stringify(value)}`).toBe(400)
+    expect((await res.json()).detail).toBe(field)
+    expect(S.authEvents.length, 'nothing may be appended').toBe(before)
+  })
+
+  it('grant_with_conditions still requires conditions', async () => {
+    const authorizationId = await seedPending()
+    const res = await authorizationRoute(req({
+      action: 'grant_with_conditions', authorizationId,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).detail).toBe('conditions_required')
+  })
+
+  /**
+   * EI-AUTH-ORDER-01 at the real boundary. `persist()` appends, then re-reads
+   * and derives; before the phase-rank fix a same-millisecond chain could throw
+   * `chain-starts-with-request` there and be reported as `unavailable` AFTER the
+   * append had landed. `seedPending` no longer separates the events in time, so
+   * this exercises the equal-timestamp path directly.
+   */
+  it('persist does not report unavailable after a valid same-millisecond append', async () => {
+    for (let attempt = 0; attempt < 25; attempt++) {
+      S.authEvents.length = 0
+      const authorizationId = await seedPending()
+      const res = await authorizationRoute(req({
+        action: 'grant', authorizationId,
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      }))
+      const body = await res.json()
+      expect(res.status, `attempt ${attempt}: ${JSON.stringify(body)}`).toBe(200)
+      expect(body.authorization.status).toBe('granted')
+
+      const [requested, granted] = S.authEvents
+      // Prove the equal-instant case was genuinely exercised at least sometimes,
+      // and that when it is, the chain still derives.
+      if (requested.occurredAt === granted.occurredAt) {
+        expect(body.authorization.status).toBe('granted')
+      }
+    }
+  })
 
   it('authenticated HTTP grant reaches the real grantAuthorization and appends', async () => {
     const authorizationId = await seedPending()

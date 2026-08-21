@@ -38,6 +38,8 @@ import {
   assertSameOrigin, readJsonBody, reservedFieldIn, pick, isUuid,
   badRequest, unknownAction, mapFailure, type DomainResult,
 } from '@/lib/atlas/executive/http'
+import * as A from '@/lib/atlas/executive/canonical-authorization'
+import { arrayOf, isRejected } from '@/lib/atlas/executive/canonicalize'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +48,23 @@ type Action = (typeof ACTIONS)[number]
 
 /** Exactly the fields `DecideAuthorizationArgs` accepts, minus injection. */
 const DECIDE_FIELDS = ['authorizationId', 'expiresAt', 'conditions', 'evidence', 'reason'] as const
+
+/**
+ * STRUCTURED TRANSPORT MAP (EI-HTTP-DTO-01).
+ *
+ * An Authorization event IS the authority record. The builder validates some
+ * condition fields and then persists the caller's own condition objects and
+ * evidence, so without reconstruction an unknown key would become part of an
+ * immutable, append-only grant.
+ *
+ * Shape only. `grant_with_conditions` still requires conditions — that rule
+ * stays with the domain and with the explicit check below — and conditions
+ * remain recorded rather than execution-effective in Stage 1.
+ */
+const AUTHORIZATION_STRUCTURED = {
+  conditions: arrayOf(A.condition),
+  evidence:   arrayOf(A.evidenceReference),
+} as const
 
 export async function POST(request: Request) {
   const origin = assertSameOrigin(request)
@@ -74,6 +93,15 @@ export async function POST(request: Request) {
   }
   if (action === 'grant_with_conditions' && !Array.isArray(body.conditions)) {
     return badRequest('conditions_required')
+  }
+
+  // Reconstruct the structured fields; the caller's own objects never reach the
+  // append-only ledger (EI-HTTP-DTO-01).
+  for (const [field, parser] of Object.entries(AUTHORIZATION_STRUCTURED)) {
+    if (body[field] === undefined) continue
+    const parsed = (parser as (v: unknown) => unknown)(body[field])
+    if (isRejected(parsed)) return badRequest(field)
+    body[field] = parsed
   }
 
   const args = pick<Parameters<typeof grantAuthorization>[0]>(body, DECIDE_FIELDS)

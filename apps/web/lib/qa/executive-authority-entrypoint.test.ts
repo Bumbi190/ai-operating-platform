@@ -425,7 +425,7 @@ describe('EI-S1.6B — purpose-scoped authorization is server-atomic', () => {
   it('Decision: derives the binding server-side and requests in the same call', async () => {
     const res = await decisionRoute(req({
       action: 'request_authorization', purpose: 'approve', decisionId: UUID_B,
-      rationale: 'because', review: { trigger: 'time', description: 'q', dueAt: null },
+      rationale: 'because', review: { trigger: 'time_based', description: 'q', dueAt: null },
       effectiveAt: '2027-01-01T00:00:00.000Z',
     }))
     expect(res.status).toBe(200)
@@ -668,7 +668,7 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
       { action: 'cancel', missionId: UUID_B, authorizationId: UUID_A, reason: 'r' },
       { action: 'pause', missionId: UUID_B, reason: 'r' },
       { action: 'resume', missionId: UUID_B },
-      { action: 'close', missionId: UUID_B, closure: { outcomeType: 'achieved', outcomeSummary: 's', criteriaMet: [], limitations: [] } },
+      { action: 'close', missionId: UUID_B, closure: { outcomeType: 'capability_created', outcomeSummary: 's', criteriaMet: [], limitations: [] } },
       { action: 'evidence', missionId: UUID_B, evidence: { kind: 'log', reference: 'r', label: 'l', observedAt: '2027-01-01T00:00:00.000Z', scope: 'p' } },
       { action: 'review', missionId: UUID_B, reviewNote: 'n' },
     ]
@@ -686,14 +686,23 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
       projectId: UUID_A, asDraft: false,
       title: 't', missionType: MISSION_TYPE, executiveOwner: 'atlas', missionOwner: 'owner',
       objective: 'o', strategicContext: 'ctx', expectedOutcome: 'out',
-      deliverables: ['d'], successCriteria: ['s'], inScope: ['in'], outOfScope: ['out'],
-      constraints: ['c'], budget: { ceiling: 1, currency: 'USD' },
+      deliverables: ['d'],
+      successCriteria: [{ criterion: 's', level: 'target' }],
+      inScope: ['in'], outOfScope: ['out'],
+      constraints: [{ kind: 'technical', statement: 'c' }],
+      budget: { currency: 'USD', limitMinor: 1 },
       authority: [{ action: 'a' }], authoritySource: { kind: 'founder_instruction', reference: 'r' },
       allowedActions: [{ action: 'x' }], forbiddenActions: [{ action: 'y' }],
-      tools: [{ tool: 't' }], dataScope: ['ds'],
-      dependencies: ['dep'], assumptions: ['as'], risks: ['rk'], approvalGates: ['g'],
-      deadline: '2027-01-01T00:00:00.000Z', reporting: 'weekly',
-      escalationTriggers: ['e'], stopConditions: ['stop'], pauseConditions: ['pause'],
+      tools: [{ tool: 't' }],
+      dataScope: [{ resource: 'ds', access: 'read' }],
+      dependencies: [{ kind: 'decision', reference: 'dep', hardness: 'hard' }],
+      assumptions: [{ assumption: 'as', critical: false }],
+      risks: [{ risk: 'rk', severity: 'low' }],
+      approvalGates: [{ gateId: 'g1', gate: 'g' }],
+      deadline: '2027-01-01T00:00:00.000Z',
+      reporting: [{ cadence: 'weekly', audience: 'executive' }],
+      escalationTriggers: [{ trigger: 'e', destination: 'founder' }],
+      stopConditions: [{ condition: 'stop' }], pauseConditions: [{ condition: 'pause' }],
       completionConditions: ['cc'], evidenceRequirements: [{ requirement: 'r', kind: 'log' }],
       decisionRef: null,
       // Unknown extras must not survive.
@@ -715,10 +724,10 @@ describe('EI-S1.6B — REQUIRED acts reach their domain boundary', () => {
   it('Decision: all six', async () => {
     const d = UUID_B
     await decisionRoute(req({ action: 'propose', projectId: UUID_A, title: 't', statement: 's', materiality: ['strategy'] }))
-    await decisionRoute(req({ action: 'approve', decisionId: d, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
+    await decisionRoute(req({ action: 'approve', decisionId: d, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time_based', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
     await decisionRoute(req({ action: 'reject', decisionId: d, authorizationId: UUID_A, reason: 'no' }))
     await decisionRoute(req({ action: 'review', decisionId: d, reviewNote: 'note' }))
-    await decisionRoute(req({ action: 'outcome', decisionId: d, outcome: { status: 'succeeded', summary: 's', observedAt: '2027-01-01T00:00:00.000Z', evidence: [] } }))
+    await decisionRoute(req({ action: 'outcome', decisionId: d, outcome: { status: 'successful', summary: 's', observedAt: '2027-01-01T00:00:00.000Z', evidence: [] } }))
     await decisionRoute(req({ action: 'complete', decisionId: d, reason: 'done' }))
     expect(calls.map(c => c.fn)).toEqual([
       'proposeDecision', 'approveDecision', 'rejectDecision',
@@ -735,7 +744,7 @@ describe('EI-S1.6B — REQUIRED acts reach their domain boundary', () => {
     await missionRoute(req({ action: 'cancel', missionId: m, authorizationId: UUID_A, reason: 'stop' }))
     await missionRoute(req({ action: 'pause', missionId: m, reason: 'hold' }))
     await missionRoute(req({ action: 'resume', missionId: m }))
-    await missionRoute(req({ action: 'close', missionId: m, closure: { outcomeType: 'achieved', outcomeSummary: 's', criteriaMet: [], limitations: [] } }))
+    await missionRoute(req({ action: 'close', missionId: m, closure: { outcomeType: 'capability_created', outcomeSummary: 's', criteriaMet: [], limitations: [] } }))
     await missionRoute(req({ action: 'evidence', missionId: m, evidence: { kind: 'log', reference: 'r', label: 'l', observedAt: '2027-01-01T00:00:00.000Z', scope: 'p' } }))
     await missionRoute(req({ action: 'review', missionId: m, reviewNote: 'note' }))
     expect(calls.map(c => c.fn)).toEqual([
@@ -774,10 +783,10 @@ describe('EI-S1.6B — REQUIRED acts reach their domain boundary', () => {
 describe('EI-S1.6B — unknown and foreign are indistinguishable', () => {
   it('returns a byte-identical 404 for not_permitted and project_denied', async () => {
     decision.approveDecision.mockResolvedValueOnce({ status: 'not_permitted', state: null } as any)
-    const unknown = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
+    const unknown = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time_based', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
 
     decision.approveDecision.mockResolvedValueOnce({ status: 'project_denied', state: null } as any)
-    const foreign = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
+    const foreign = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time_based', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
 
     expect(unknown.status).toBe(404)
     expect(foreign.status).toBe(404)
@@ -788,7 +797,7 @@ describe('EI-S1.6B — unknown and foreign are indistinguishable', () => {
     decision.approveDecision.mockResolvedValueOnce({
       status: 'not_permitted', state: null, detail: 'row exists in project 9999 owned by someone-else',
     } as any)
-    const res = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
+    const res = await decisionRoute(req({ action: 'approve', decisionId: UUID_B, authorizationId: UUID_A, rationale: 'r', review: { trigger: 'time_based', description: 'x', dueAt: null }, effectiveAt: '2027-01-01T00:00:00.000Z' }))
     const text = await res.text()
     expect(text).toBe('{"error":"Not found"}')
     for (const leak of ['exists', 'project', 'owner', '9999', 'someone-else']) {
@@ -819,6 +828,15 @@ describe('EI-S1.6B — unknown and foreign are indistinguishable', () => {
 
 describe('EI-S1.6B — the routes cannot execute anything', () => {
   const files = ['authorization/route.ts', 'decision/route.ts', 'mission/route.ts']
+  /**
+   * The canonicalization modules are part of the route surface, so they are held
+   * to the same execution-safety rules: pure shape parsers, no store, no client,
+   * no direct table access.
+   */
+  const canonicalFiles = [
+    'canonicalize.ts', 'canonical-mission.ts', 'canonical-decision.ts',
+    'canonical-authorization.ts',
+  ]
   const codeOf = (f: string) =>
     readFileSync(resolve(ROUTE_DIR, f), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
@@ -846,12 +864,29 @@ describe('EI-S1.6B — the routes cannot execute anything', () => {
     }
   })
 
+  it('the canonicalization modules are pure — no store, client or table access', () => {
+    const CANONICAL_DIR = resolve(REPO_ROOT, 'apps/web/lib/atlas/executive')
+    for (const f of canonicalFiles) {
+      const code = readFileSync(resolve(CANONICAL_DIR, f), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+      for (const forbidden of [
+        'createAdminClient', 'createClient', 'supabase', 'fetch(',
+        'atlas_authorizations', 'atlas_decision_ledger', 'atlas_mission_ledger',
+      ]) {
+        expect(code, `${f} must stay a pure shape parser`).not.toContain(forbidden)
+      }
+      // Reconstruction, never filtering: no spread of caller input.
+      expect(code, `${f} must not spread caller input`).not.toMatch(/\.\.\.[a-z]/)
+    }
+  })
+
   it('imports only the sanctioned domain boundaries', () => {
     for (const f of files) {
       const imports = codeOf(f).match(/from '([^']+)'/g) ?? []
       for (const imp of imports) {
         expect(imp).toMatch(
-          /next\/server|atlas\/(authorization|decision-ledger|mission)\/principal-write|atlas\/executive\/http/,
+          /next\/server|atlas\/(authorization|decision-ledger|mission)\/principal-write|atlas\/executive\/(http|canonicalize|canonical-(mission|decision|authorization))/,
         )
       }
     }

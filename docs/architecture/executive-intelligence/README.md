@@ -846,11 +846,41 @@ authenticated HTTP request reaches the genuine `principal-write` function, which
 runs the canonical builder and derive path and appends to an in-memory ledger.
 Only the edges are faked — the session seam, the store factories, the project
 mode reader and the sanctioned governing-decision read. No production ledger is
-touched and no institutional history is invented. All three Mission action-bound fields —
-`authority`, `allowedActions` and `forbiddenActions` — are normalized at the
-adapter to exactly `{ action, note? }`, because the single domain validator they
-share returns the caller's own array and anything riding on it would persist
-verbatim in an immutable, hash-bound record.
+touched and no institutional history is invented. **EI-HTTP-DTO-01 — transport canonicalization.** Every structured field the
+three Executive routes accept is RECONSTRUCTED at the adapter into the exact
+shape its domain interface documents, then handed to the principal-write
+boundary. Reconstruction, never filtering: a parser builds a fresh object
+holding only the keys its spec names, so an unknown property cannot survive by
+riding on an object that was merely inspected. The domain validators
+(`validateActionBounds`, `validateSuccessCriteria`, `validateEvidence`,
+`validateSnapshot`, `validateAlternatives`, `validateReview`, `validateOutcome`,
+and Authorization's condition checks) verify selected properties and then return
+the caller's own object — correct for trusted in-process callers, insufficient
+for HTTP, where JSON has no types and an `as` cast asserts a shape rather than
+establishing one.
+
+This matters because `missionBoundProjection` and the Decision authority binding
+fold the material structured fields into the hash a later human authorization is
+bound to. An unknown nested key would therefore become permanent, authority-bound
+institutional data rather than transport noise.
+
+The parsers live in `lib/atlas/executive/canonicalize.ts` and the three
+`canonical-*.ts` modules. Their enum vocabularies are asserted EQUAL to the
+domain unions at compile time, and a `StructuredKeys` guard fails the build if
+the domain gains a structured client-supplied field that the adapter has not
+adjudicated — so this cannot regress into whack-a-mole. Shape only: lifecycle
+and authority semantics stay with the domain.
+
+**EI-AUTH-ORDER-01 — equal-timestamp ordering.** `orderAuthorizationEvents` now
+sorts by `occurredAt`, then by LIFECYCLE PHASE (requested → decision → reversal),
+and only then by `eventId`. Previously the tie-break at an equal instant was
+`eventId`, a random UUID, so two events written in the same millisecond received
+a random lifecycle order; when a `granted` UUID sorted below its own `requested`,
+derivation threw `chain-starts-with-request` after the append had already landed
+in an append-only ledger. The phase map is exhaustive over
+`AuthorizationEventType`, so a new event type fails to compile until its phase is
+stated. Ordering decides sequence, not validity — an impossible chain still fails
+closed. No schema change.
 
 The three routes are registered in `tests/isolation/route-manifest.json`, the
 repository's official source of truth for API route classification, as

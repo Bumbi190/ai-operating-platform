@@ -42,6 +42,8 @@ import {
   assertSameOrigin, readJsonBody, reservedFieldIn, pick, isUuid, isText,
   badRequest, unknownAction, mapFailure, type DomainResult,
 } from '@/lib/atlas/executive/http'
+import * as D from '@/lib/atlas/executive/canonical-decision'
+import { isRejected } from '@/lib/atlas/executive/canonicalize'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,6 +72,47 @@ const PREPARE_FIELDS: Record<Purpose, readonly string[]> = {
   reject:  ['decisionId', 'reason'],
 }
 
+/**
+ * STRUCTURED TRANSPORT MAP (EI-HTTP-DTO-01).
+ *
+ * The Decision authority binding includes these structures, so their exact
+ * shape is part of what a human authorization is bound to. The domain's
+ * `validateEvidence` / `validateSnapshot` / `validateAlternatives` /
+ * `validateReview` / `validateOutcome` check selected properties and then
+ * return the caller's own object, so the adapter is the only place an unknown
+ * nested key can be stopped.
+ */
+const DECISION_STRUCTURED = {
+  materiality:        D.materiality,
+  evidence:           D.arrayOf(D.evidenceReference),
+  snapshot:           D.nullable(D.snapshot),
+  alternatives:       D.arrayOf(D.alternative),
+  confidence:         D.nullable(D.confidence),
+  reversalConditions: D.arrayOfStr,
+  review:             D.reviewCondition,
+  outcome:            D.outcome,
+} as const
+
+/**
+ * Canonicalize IN PLACE, before any act branches.
+ *
+ * `review` is read by BOTH `prepareDecisionAct` (which derives the
+ * authorization binding) and `approveDecision` (which writes). Canonicalizing
+ * once, on the single parsed body both paths read, makes a mismatch between the
+ * authorized terms and the written terms structurally impossible — there is
+ * only one representation after this runs. `body` is this request's own parsed
+ * JSON and is not shared.
+ */
+function canonicalizeDecisionBody(body: Record<string, unknown>): string | null {
+  for (const [field, parser] of Object.entries(DECISION_STRUCTURED)) {
+    if (body[field] === undefined) continue
+    const parsed = (parser as (v: unknown) => unknown)(body[field])
+    if (isRejected(parsed)) return field
+    body[field] = parsed
+  }
+  return null
+}
+
 /** §27.20 — structured provenance, server-derived. Never caller text. */
 const describe = (purpose: Purpose) => `Executive Decision: ${purpose}`
 
@@ -87,6 +130,11 @@ export async function POST(request: Request) {
   if (typeof action !== 'string' || !(ACTIONS as readonly string[]).includes(action)) {
     return unknownAction()
   }
+
+  // Reconstruct every structured field ONCE, so `prepare` and the write path
+  // can only ever see the same canonical terms.
+  const badStructured = canonicalizeDecisionBody(body)
+  if (badStructured) return badRequest(badStructured)
 
   // ── Open a decision (§11.49 draft / §11.50 proposal) ───────────────────────
   if (action === 'propose') {

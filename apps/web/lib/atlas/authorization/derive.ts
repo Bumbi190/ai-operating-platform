@@ -27,6 +27,7 @@ import {
   type AuthorityBasis,
   type AuthorizationEffectivenessResult,
   type AuthorizationEvent,
+  type AuthorizationEventType,
   type AuthorizationStatus,
   type AuthorizationTarget,
   type DerivedAuthorizationState,
@@ -44,6 +45,32 @@ const CLOSING = new Set<AuthorizationEvent['type']>(['revoked', 'superseded', 'e
  * never reorder between reads. Duplicate event ids are collapsed, which makes a
  * retried append idempotent rather than a contradiction.
  */
+/**
+ * Lifecycle phase of each authorization event type (EI-AUTH-ORDER-01).
+ *
+ * A request must precede its decision, and a decision must precede a later
+ * reversal, even when a whole chain is written inside one millisecond. The
+ * mapping is `Record<AuthorizationEventType, number>` and therefore EXHAUSTIVE:
+ * a new event type fails to compile until its phase is stated, rather than
+ * silently defaulting to an arbitrary rank.
+ *
+ * This orders equal-instant events; it does not decide validity. An impossible
+ * chain still fails closed in `deriveAuthorizationState` — sorting a `granted`
+ * first does not invent the `requested` it needs.
+ */
+const LIFECYCLE_PHASE: Record<AuthorizationEventType, number> = {
+  // 0 — the chain must start here.
+  requested:               0,
+  // 1 — the human decision on that request.
+  granted:                 1,
+  granted_with_conditions: 1,
+  denied:                  1,
+  // 2 — reversal or expiry of a decision already made.
+  revoked:                 2,
+  superseded:              2,
+  expired:                 2,
+}
+
 export function orderAuthorizationEvents(events: AuthorizationEvent[]): AuthorizationEvent[] {
   const unique = new Map<string, AuthorizationEvent>()
   for (const event of events) {
@@ -59,7 +86,17 @@ export function orderAuthorizationEvents(events: AuthorizationEvent[]): Authoriz
     if (Number.isNaN(at) || Number.isNaN(bt)) {
       throw new MalformedAuthorizationChainError('event-timestamp-valid')
     }
-    return at - bt || (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0)
+    // EI-AUTH-ORDER-01 — at an equal instant, LIFECYCLE PHASE decides, never
+    // random identity. `eventId` is a random UUID, so using it to order two
+    // same-millisecond events made lifecycle order a coin-flip: when a
+    // `granted` UUID happened to sort below its own `requested`, the chain
+    // failed `chain-starts-with-request` and derivation threw — after the
+    // append had already landed, in an append-only ledger that cannot be
+    // repaired. `eventId` survives only as the final deterministic tie-break
+    // WITHIN a phase, where it decides nothing about meaning.
+    return at - bt
+      || LIFECYCLE_PHASE[a.type] - LIFECYCLE_PHASE[b.type]
+      || (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0)
   })
 }
 

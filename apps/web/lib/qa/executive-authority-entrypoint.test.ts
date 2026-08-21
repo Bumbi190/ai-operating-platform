@@ -104,6 +104,15 @@ function req(body: unknown, headers: Record<string, string> = {}): Request {
   })
 }
 
+/** Full control over url + headers, for origin-comparison cases. */
+function rawReq(url: string, headers: Record<string, string>, body: unknown = { action: 'nope' }): Request {
+  return new Request(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  })
+}
+
 const argsFor = (fn: string) => calls.filter(c => c.fn === fn).map(c => c.args)
 
 beforeEach(() => { calls.length = 0 })
@@ -158,6 +167,126 @@ describe('EI-S1.6B — same-origin gate', () => {
   })
 })
 
+// ── Full-origin comparison (EI-S1.6B-R3 blocker 1) ───────────────────────────
+
+describe('EI-S1.6B-R3 — same-origin compares the FULL origin, not just the host', () => {
+  const routes: [string, (r: Request) => Promise<Response>][] = [
+    ['authorization', authorizationRoute], ['decision', decisionRoute], ['mission', missionRoute],
+  ]
+  /** 400 means it got past the edge to action validation; 403 means refused. */
+  const ALLOWED = 400
+  const REFUSED = 403
+
+  for (const [name, route] of routes) {
+    it(`${name}: https request + https same host → allowed`, async () => {
+      const res = await route(rawReq(`https://${HOST}/x`, { host: HOST, origin: `https://${HOST}` }))
+      expect(res.status).toBe(ALLOWED)
+    })
+
+    /**
+     * The blocker. `URL.host` carries the port but never the scheme, so a
+     * host-only comparison let a plaintext page post to the HTTPS authority
+     * endpoint. Scheme is part of the origin.
+     */
+    it(`${name}: https request + http same host → 403`, async () => {
+      const res = await route(rawReq(`https://${HOST}/x`, { host: HOST, origin: `http://${HOST}` }))
+      expect(res.status).toBe(REFUSED)
+    })
+
+    it(`${name}: http request + https same host → 403`, async () => {
+      const res = await route(rawReq(`http://${HOST}/x`, { host: HOST, origin: `https://${HOST}` }))
+      expect(res.status).toBe(REFUSED)
+    })
+
+    it(`${name}: same scheme and host, different port → 403`, async () => {
+      const res = await route(rawReq(`https://${HOST}:8443/x`, {
+        host: `${HOST}:8443`, origin: `https://${HOST}:9443`,
+      }))
+      expect(res.status).toBe(REFUSED)
+    })
+
+    it(`${name}: exact same explicit port → allowed`, async () => {
+      const res = await route(rawReq(`https://${HOST}:8443/x`, {
+        host: `${HOST}:8443`, origin: `https://${HOST}:8443`,
+      }))
+      expect(res.status).toBe(ALLOWED)
+    })
+
+    it(`${name}: different host → 403`, async () => {
+      const res = await route(rawReq(`https://${HOST}/x`, { host: HOST, origin: 'https://evil.example' }))
+      expect(res.status).toBe(REFUSED)
+    })
+
+    it(`${name}: missing Origin → 403`, async () => {
+      expect((await route(rawReq(`https://${HOST}/x`, { host: HOST }))).status).toBe(REFUSED)
+    })
+
+    it(`${name}: malformed Origin → 403`, async () => {
+      for (const origin of ['not-a-url', '://', 'https://', ' ']) {
+        expect((await route(rawReq(`https://${HOST}/x`, { host: HOST, origin }))).status).toBe(REFUSED)
+      }
+    })
+
+    it(`${name}: non-http(s) Origin → 403`, async () => {
+      for (const origin of ['javascript:alert(1)', 'file:///etc/passwd', 'data:text/html,x', 'ftp://x.example']) {
+        expect((await route(rawReq(`https://${HOST}/x`, { host: HOST, origin }))).status).toBe(REFUSED)
+      }
+    })
+
+    it(`${name}: valid proxy-forwarded origin → allowed`, async () => {
+      const res = await route(rawReq('http://internal.vercel/x', {
+        host: 'internal.vercel', 'x-forwarded-host': HOST, 'x-forwarded-proto': 'https',
+        origin: `https://${HOST}`,
+      }))
+      expect(res.status).toBe(ALLOWED)
+    })
+
+    it(`${name}: forwarded protocol mismatch → 403`, async () => {
+      const res = await route(rawReq('http://internal.vercel/x', {
+        host: 'internal.vercel', 'x-forwarded-host': HOST, 'x-forwarded-proto': 'http',
+        origin: `https://${HOST}`,
+      }))
+      expect(res.status).toBe(REFUSED)
+    })
+
+    it(`${name}: malformed forwarded values fail closed`, async () => {
+      const bad: Record<string, string>[] = [
+        { 'x-forwarded-proto': 'gopher' },
+        { 'x-forwarded-proto': '' },
+        { 'x-forwarded-host': '' },
+        { 'x-forwarded-host': 'omnira.example/evil' },
+        { 'x-forwarded-host': 'omnira.example?x=1' },
+      ]
+      for (const extra of bad) {
+        const res = await route(rawReq('http://internal.vercel/x', {
+          host: 'internal.vercel', 'x-forwarded-host': HOST, 'x-forwarded-proto': 'https',
+          origin: `https://${HOST}`, ...extra,
+        }))
+        expect(res.status, JSON.stringify(extra)).toBe(REFUSED)
+      }
+    })
+
+    it(`${name}: only the FIRST forwarded hop is trusted`, async () => {
+      // A later proxy appending an attacker-influenced value must not win.
+      const res = await route(rawReq('http://internal.vercel/x', {
+        host: 'internal.vercel',
+        'x-forwarded-host': `${HOST}, evil.example`,
+        'x-forwarded-proto': 'https, http',
+        origin: `https://${HOST}`,
+      }))
+      expect(res.status).toBe(ALLOWED)
+    })
+  }
+
+  it('touches no domain code on any refusal', async () => {
+    for (const [, route] of routes) {
+      await route(rawReq(`https://${HOST}/x`, { host: HOST, origin: `http://${HOST}` },
+        { action: 'grant', authorizationId: UUID_A }))
+    }
+    expect(calls).toEqual([])
+  })
+})
+
 // ── Reserved fields ───────────────────────────────────────────────────────────
 
 describe('EI-S1.6B — the HTTP caller cannot supply privileged fields', () => {
@@ -185,14 +314,32 @@ describe('EI-S1.6B — the HTTP caller cannot supply privileged fields', () => {
     ['versionHash', 'f'.repeat(64)],
     ['actionKind', 'spend'],
     ['binding', { projectId: UUID_A }],
+    // Server-derived Mission provenance — set by the domain from the resolved
+    // decision, never written by a caller. `pick()` would drop them silently;
+    // reserving them makes misuse visible instead.
+    ['decisionProvenance', { projectId: UUID_A, decisionId: UUID_B }],
+    ['authorityRecord', { basis: 'founder_owner' }],
+  ]
+
+  /**
+   * A VALID action per route, so the reserved sweep is what refuses — not the
+   * action allowlist. The Mission route resolves its action first (its one
+   * exemption is action-scoped), so an invalid action there would mask the
+   * reserved check rather than exercise it. `review` is used because it is a
+   * real Mission action that carries NO exemption.
+   */
+  const validAction: [string, (r: Request) => Promise<Response>, Record<string, unknown>][] = [
+    ['authorization', authorizationRoute, { action: 'grant', authorizationId: UUID_A, expiresAt: '2030-01-01T00:00:00.000Z' }],
+    ['decision', decisionRoute, { action: 'propose', projectId: UUID_A, title: 't', statement: 's', materiality: ['strategy'] }],
+    ['mission', missionRoute, { action: 'review', missionId: UUID_B, reviewNote: 'n' }],
   ]
 
   for (const [field, value] of cases) {
     it(`rejects \`${field}\` on every Executive route`, async () => {
-      for (const route of [authorizationRoute, decisionRoute, missionRoute]) {
-        const res = await route(req({ action: 'grant', authorizationId: UUID_A, [field]: value }))
-        expect(res.status).toBe(400)
-        expect((await res.json()).detail).toBe(`reserved_field:${field}`)
+      for (const [name, route, base] of validAction) {
+        const res = await route(req({ ...base, [field]: value }))
+        expect(res.status, name).toBe(400)
+        expect((await res.json()).detail, name).toBe(`reserved_field:${field}`)
       }
       expect(calls, 'nothing may reach the domain').toEqual([])
     })
@@ -373,6 +520,144 @@ describe('EI-S1.6B — purpose-scoped authorization is server-atomic', () => {
       expect(res.status).toBe(400)
     }
     expect(calls).toEqual([])
+  })
+})
+
+// ── Mission open parity (EI-S1.6B-R3 blocker 2) ──────────────────────────────
+
+describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () => {
+  const openBase = {
+    action: 'open', projectId: UUID_A, title: 't', objective: 'o',
+    missionType: 'delivery', executiveOwner: 'atlas',
+  }
+
+  /**
+   * The four fields the first implementation dropped. `decisionRef` is the one
+   * that mattered most: the builder throws when `authoritySource.kind` is
+   * `decision_ledger` and no reference is present, so a Decision-backed Mission
+   * could not be opened over HTTP at all.
+   */
+  it('forwards authority, completionConditions, evidenceRequirements and decisionRef', async () => {
+    const authority = [{ action: 'draft_copy', note: 'no publishing' }]
+    const completionConditions = ['all criteria met']
+    const evidenceRequirements = [{ requirement: 'tests pass', kind: 'test_output' }]
+    const decisionRef = { decisionId: UUID_B, version: 1 }
+
+    await missionRoute(req({ ...openBase, authority, completionConditions, evidenceRequirements, decisionRef }))
+    const [args] = argsFor('openMission')
+    expect(args.authority).toEqual(authority)
+    expect(args.completionConditions).toEqual(completionConditions)
+    expect(args.evidenceRequirements).toEqual(evidenceRequirements)
+    expect(args.decisionRef).toEqual(decisionRef)
+  })
+
+  it('makes a Decision-backed Mission reachable end to end', async () => {
+    const authoritySource = { kind: 'decision_ledger', reference: `decision:${UUID_B}` }
+    const decisionRef = { decisionId: UUID_B, version: 2 }
+    const res = await missionRoute(req({ ...openBase, authoritySource, decisionRef }))
+    expect(res.status).toBe(200)
+    const [args] = argsFor('openMission')
+    expect(args.authoritySource).toEqual(authoritySource)
+    expect(args.decisionRef).toEqual(decisionRef)
+  })
+
+  it('never lets the caller invent decisionProvenance', async () => {
+    const res = await missionRoute(req({
+      ...openBase,
+      authoritySource: { kind: 'decision_ledger', reference: 'x' },
+      decisionRef: { decisionId: UUID_B, version: 1 },
+      decisionProvenance: { projectId: '99999999-9999-4999-8999-999999999999', decisionId: UUID_B },
+    }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).detail).toBe('reserved_field:decisionProvenance')
+    expect(calls).toEqual([])
+  })
+
+  it('accepts a valid Mission authority array', async () => {
+    const res = await missionRoute(req({ ...openBase, authority: [{ action: 'a' }, { action: 'b', note: 'n' }] }))
+    expect(res.status).toBe(200)
+  })
+
+  it('refuses a RequestedAuthority-shaped object wearing the Mission name', async () => {
+    for (const bad of [
+      { actionKind: 'spend', description: 'anything' },
+      [{ actionKind: 'spend', description: 'anything' }],
+      [{ action: 'ok', actionKind: 'spend' }],
+      [{ action: 'ok', description: 'grant me' }],
+      ['plain-string'],
+      [{ note: 'no action' }],
+      'not-an-array',
+    ]) {
+      const res = await missionRoute(req({ ...openBase, authority: bad }))
+      expect(res.status, JSON.stringify(bad)).toBe(400)
+      expect((await res.json()).detail).toBe('authority')
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('keeps raw `authority` forbidden on the Decision and Authorization routes', async () => {
+    const d = await decisionRoute(req({
+      action: 'propose', projectId: UUID_A, title: 't', statement: 's', materiality: ['strategy'],
+      authority: [{ action: 'a' }],
+    }))
+    expect(d.status).toBe(400)
+    expect((await d.json()).detail).toBe('reserved_field:authority')
+
+    const a = await authorizationRoute(req({
+      action: 'grant', authorizationId: UUID_A, expiresAt: '2030-01-01T00:00:00.000Z',
+      authority: [{ action: 'a' }],
+    }))
+    expect(a.status).toBe(400)
+    expect((await a.json()).detail).toBe('reserved_field:authority')
+    expect(calls).toEqual([])
+  })
+
+  it('keeps `authority` forbidden on every non-open Mission action', async () => {
+    const nonOpen: Record<string, unknown>[] = [
+      { action: 'propose', missionId: UUID_B },
+      { action: 'request_authorization', purpose: 'activate', missionId: UUID_B },
+      { action: 'approve', missionId: UUID_B, authorizationId: UUID_A },
+      { action: 'activate', missionId: UUID_B, authorizationId: UUID_A },
+      { action: 'cancel', missionId: UUID_B, authorizationId: UUID_A, reason: 'r' },
+      { action: 'pause', missionId: UUID_B, reason: 'r' },
+      { action: 'resume', missionId: UUID_B },
+      { action: 'close', missionId: UUID_B, closure: { outcomeType: 'achieved', outcomeSummary: 's', criteriaMet: [], limitations: [] } },
+      { action: 'evidence', missionId: UUID_B, evidence: { kind: 'log', reference: 'r', label: 'l', observedAt: '2027-01-01T00:00:00.000Z', scope: 'p' } },
+      { action: 'review', missionId: UUID_B, reviewNote: 'n' },
+    ]
+    for (const base of nonOpen) {
+      const res = await missionRoute(req({ ...base, authority: [{ action: 'a' }] }))
+      expect(res.status, String(base.action)).toBe(400)
+      expect((await res.json()).detail, String(base.action)).toBe('reserved_field:authority')
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('forwards every supported open field and invents nothing', async () => {
+    const full = {
+      action: 'open',
+      projectId: UUID_A, asDraft: false,
+      title: 't', missionType: 'delivery', executiveOwner: 'atlas', missionOwner: 'owner',
+      objective: 'o', strategicContext: 'ctx', expectedOutcome: 'out',
+      deliverables: ['d'], successCriteria: ['s'], inScope: ['in'], outOfScope: ['out'],
+      constraints: ['c'], budget: { ceiling: 1, currency: 'USD' },
+      authority: [{ action: 'a' }], authoritySource: { kind: 'founder_instruction', reference: 'r' },
+      allowedActions: ['x'], forbiddenActions: ['y'], tools: [{ tool: 't' }], dataScope: ['ds'],
+      dependencies: ['dep'], assumptions: ['as'], risks: ['rk'], approvalGates: ['g'],
+      deadline: '2027-01-01T00:00:00.000Z', reporting: 'weekly',
+      escalationTriggers: ['e'], stopConditions: ['stop'], pauseConditions: ['pause'],
+      completionConditions: ['cc'], evidenceRequirements: [{ requirement: 'r', kind: 'log' }],
+      decisionRef: null,
+      // Unknown extras must not survive.
+      smuggled: 'nope', extra: { deep: true },
+    }
+    await missionRoute(req(full))
+    const [args] = argsFor('openMission')
+    const expected = Object.keys(full).filter(k => !['action', 'smuggled', 'extra'].includes(k))
+    expect(Object.keys(args).sort()).toEqual(expected.sort())
+    expect(args).not.toHaveProperty('smuggled')
+    expect(args).not.toHaveProperty('extra')
+    expect(args).not.toHaveProperty('action')
   })
 })
 

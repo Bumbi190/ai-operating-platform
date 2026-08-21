@@ -828,8 +828,11 @@ POST /api/atlas/executive/mission          open · propose · request_authorizat
   and their own HTTP helper. Manager and Workforce are untouched and still
   reached only through `/api/manager`.
 - **Same-origin protection.** These three authority-writing routes require an
-  `Origin` matching the request's own host. It is edge protection layered on the
-  Supabase cookie's inherited `SameSite=Lax`, not a replacement for session
+  `Origin` equal to the request's own full origin — scheme, host **and** port,
+  with proxy-forwarded values parsed defensively and failing closed. Comparing
+  hosts alone would not be a same-origin check: `http://` and `https://` on the
+  same host are different origins. It is edge protection layered on the Supabase
+  cookie's inherited `SameSite=Lax`, not a replacement for session
   authentication or project authority.
 - **No UI requirement.** FM.2 Stage 1 excludes the full Approval Inbox and
   Executive Graph interfaces; authenticated API reachability plus the live Atlas

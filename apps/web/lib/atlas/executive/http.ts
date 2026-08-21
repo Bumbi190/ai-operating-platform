@@ -48,10 +48,27 @@ export const RESERVED_FIELDS = [
   'store', 'now', 'projectMode', 'availability',
   'principalId', 'userId', 'ownerId', 'actorId', 'humanId',
   'target', 'authority', 'targetType', 'targetId', 'versionHash', 'actionKind', 'binding',
+  'decisionProvenance', 'authorityRecord',
 ] as const
 
-export function reservedFieldIn(body: Record<string, unknown>): string | null {
+/**
+ * `exempt` exists for exactly one collision, and is deliberately awkward to use.
+ *
+ * `authority` names two unrelated things. On the Authorization and Decision
+ * routes it would be a raw `RequestedAuthority` — `{ actionKind, description }`
+ * — which must never be client-supplied. But `MissionBriefInput.authority` is
+ * `MissionActionBound[]` — `{ action, note? }` — a legitimate part of a Mission
+ * Brief that a human writes. Dropping `authority` from the reserved list
+ * globally would weaken Decision and Authorization to fix Mission, so the
+ * exemption is granted per-request, only by the Mission route, and only for
+ * `open`.
+ */
+export function reservedFieldIn(
+  body: Record<string, unknown>,
+  exempt: readonly string[] = [],
+): string | null {
   for (const key of RESERVED_FIELDS) {
+    if (exempt.includes(key)) continue
     if (Object.prototype.hasOwnProperty.call(body, key)) return key
   }
   return null
@@ -95,21 +112,73 @@ export function assertSameOrigin(request: Request): NextResponse | null {
   const origin = request.headers.get('origin')
   if (!origin) return forbidden()
 
-  let originHost: string
+  let claimed: string
   try {
     const parsed = new URL(origin)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return forbidden()
-    originHost = parsed.host
+    // `URL.origin` is scheme + host + non-default port, already normalized.
+    claimed = parsed.origin
   } catch {
     return forbidden()
   }
 
-  // The request's own effective host. Behind Vercel's proxy the forwarded host
-  // is the user-facing one, so it is preferred over the internal Host header.
-  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
-  if (!host || originHost !== host) return forbidden()
+  const effective = effectiveOrigin(request)
+  if (!effective || claimed !== effective) return forbidden()
 
   return null
+}
+
+/**
+ * The request's own origin — scheme AND host AND port.
+ *
+ * Comparing hosts alone is not a same-origin check: `http://omnira.example`
+ * and `https://omnira.example` share a host and are different origins, so a
+ * plaintext page could have posted to the HTTPS authority endpoint. `URL.host`
+ * carries the port but never the scheme, which is exactly the gap.
+ *
+ * Behind Vercel the user-facing scheme and host arrive in `x-forwarded-proto`
+ * and `x-forwarded-host`, so they are preferred — but parsed defensively. A
+ * forwarded header may legitimately be a comma-separated list when several
+ * proxies append to it, and the value a caller can most easily influence is the
+ * LAST one; only the first hop is trustworthy here. Anything malformed, empty
+ * or unexpected fails closed rather than falling back to a weaker comparison.
+ */
+function effectiveOrigin(request: Request): string | null {
+  const firstHop = (value: string | null): string | null => {
+    if (value === null) return null
+    const first = value.split(',')[0].trim()
+    return first.length > 0 ? first : null
+  }
+
+  const forwardedProto = firstHop(request.headers.get('x-forwarded-proto'))
+  const forwardedHost = firstHop(request.headers.get('x-forwarded-host'))
+
+  let scheme: string
+  if (forwardedProto !== null) {
+    if (forwardedProto !== 'http' && forwardedProto !== 'https') return null
+    scheme = forwardedProto
+  } else {
+    try {
+      const self = new URL(request.url)
+      if (self.protocol !== 'http:' && self.protocol !== 'https:') return null
+      scheme = self.protocol.slice(0, -1)
+    } catch {
+      return null
+    }
+  }
+
+  const host = forwardedHost ?? firstHop(request.headers.get('host'))
+  if (!host) return null
+
+  try {
+    const normalized = new URL(`${scheme}://${host}`)
+    // A host header carrying anything but authority is malformed for this use.
+    if (normalized.pathname !== '/' || normalized.search || normalized.hash) return null
+    if (normalized.host !== host.toLowerCase()) return null
+    return normalized.origin
+  } catch {
+    return null
+  }
 }
 
 const forbidden = () => NextResponse.json({ error: 'Forbidden' }, { status: 403 })

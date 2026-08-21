@@ -54,16 +54,74 @@ const ACTIONS = [
 const AUTHORITY_PURPOSES = ['approve', 'activate', 'cancel'] as const
 type Purpose = (typeof AUTHORITY_PURPOSES)[number]
 
-/** `MissionBriefInput` plus scope — every field named, none inferred. */
+/**
+ * Every client-supplied key of `OpenMissionArgs`, named explicitly.
+ *
+ * `authority` here is `MissionActionBound[]` — the Mission Brief's action
+ * bounds — NOT a raw `RequestedAuthority`. The two share a name and nothing
+ * else; see `MISSION_OPEN_EXEMPT` below.
+ *
+ * `decisionRef` is load-bearing rather than decorative: the builder throws
+ * `decision-authority-requires-reference` when `authoritySource.kind` is
+ * `decision_ledger` and no reference is present, so omitting it here made a
+ * Decision-backed Mission impossible to open over HTTP at all.
+ */
 const OPEN_FIELDS = [
   'projectId', 'asDraft',
   'title', 'missionType', 'executiveOwner', 'missionOwner', 'objective',
   'strategicContext', 'expectedOutcome', 'deliverables', 'successCriteria',
-  'inScope', 'outOfScope', 'constraints', 'budget', 'authoritySource',
+  'inScope', 'outOfScope', 'constraints', 'budget', 'authority', 'authoritySource',
   'allowedActions', 'forbiddenActions', 'tools', 'dataScope', 'dependencies',
   'assumptions', 'risks', 'approvalGates', 'deadline', 'reporting',
   'escalationTriggers', 'stopConditions', 'pauseConditions',
+  'completionConditions', 'evidenceRequirements', 'decisionRef',
 ] as const
+
+/**
+ * COMPILE-TIME PARITY GUARD.
+ *
+ * The first version of this route omitted four genuine Mission Brief fields —
+ * `authority`, `completionConditions`, `evidenceRequirements`, `decisionRef` —
+ * and nothing caught it, because a missing key just silently never arrives.
+ * These types make the omission a build failure instead: if the domain gains
+ * another client-supplied field, `Missing` stops being `never` and TypeScript
+ * refuses to compile until this adapter explicitly adjudicates it.
+ *
+ * The four excluded names are the dependency-injection seams, which are
+ * server/test-only and must never be reachable from HTTP.
+ */
+type MissionOpenDomainKey = Exclude<
+  keyof Parameters<typeof openMission>[0],
+  'store' | 'now' | 'projectMode' | 'availability'
+>
+type MissingOpenField = Exclude<MissionOpenDomainKey, (typeof OPEN_FIELDS)[number]>
+type ExtraOpenField = Exclude<(typeof OPEN_FIELDS)[number], MissionOpenDomainKey>
+type AssertNever<T extends never> = T
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _OpenFieldsCoverDomain = AssertNever<MissingOpenField>
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _OpenFieldsInventNothing = AssertNever<ExtraOpenField>
+
+/**
+ * `authority` is globally reserved because a raw `RequestedAuthority` must
+ * never be client-supplied. Mission `open` is the one place the same name means
+ * something a human legitimately writes, so the exemption is granted here and
+ * nowhere else — not for request_authorization, approve, activate, cancel,
+ * pause, resume, close, evidence or review.
+ */
+const MISSION_OPEN_EXEMPT = ['authority'] as const
+
+/** Transport shape only; the domain stays authoritative for semantics. */
+function isMissionActionBounds(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  return value.every(entry =>
+    !!entry && typeof entry === 'object' && !Array.isArray(entry)
+    && typeof (entry as { action?: unknown }).action === 'string'
+    // A `RequestedAuthority` masquerading as an action bound is refused.
+    && !('actionKind' in (entry as object))
+    && !('description' in (entry as object)),
+  )
+}
 
 const APPROVE_FIELDS  = ['missionId', 'authorizationId'] as const
 const ACTIVATE_FIELDS = ['missionId', 'authorizationId'] as const
@@ -89,13 +147,17 @@ export async function POST(request: Request) {
   const body = await readJsonBody(request)
   if (body instanceof NextResponse) return body
 
-  const reserved = reservedFieldIn(body)
-  if (reserved) return badRequest(`reserved_field:${reserved}`)
-
+  // The action is resolved BEFORE the reserved-field sweep, because the one
+  // exemption is action-scoped. An unknown action is still refused first, so
+  // nothing can smuggle a reserved field in under an unrecognised action.
   const action = body.action
   if (typeof action !== 'string' || !(ACTIONS as readonly string[]).includes(action)) {
     return unknownAction()
   }
+
+  const exempt = action === 'open' ? MISSION_OPEN_EXEMPT : []
+  const reserved = reservedFieldIn(body, exempt)
+  if (reserved) return badRequest(`reserved_field:${reserved}`)
 
   // ── Open a mission (§20.99 draft / §20.98 proposal) ────────────────────────
   // `asDraft` carries the distinction the domain already draws; there is no
@@ -107,6 +169,9 @@ export async function POST(request: Request) {
     if (!isText(body.missionType, 200)) return badRequest('missionType')
     if (!isText(body.executiveOwner, 200)) return badRequest('executiveOwner')
     if (body.asDraft !== undefined && typeof body.asDraft !== 'boolean') return badRequest('asDraft')
+    if (body.authority !== undefined && !isMissionActionBounds(body.authority)) {
+      return badRequest('authority')
+    }
     const result = await openMission(
       pick<Parameters<typeof openMission>[0]>(body, OPEN_FIELDS),
     )

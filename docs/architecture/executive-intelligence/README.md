@@ -692,7 +692,7 @@ through `planTasks`.
 | Executive Brief generation | **LIVE** — scheduled `0 7 * * *` UTC; one controlled smoke produced 4 current briefs |
 | Migration guard | **42 enforced / 0 missing** |
 | `EI-SCHEMA-01` | **CLOSED** |
-| `EI-REACH-01` | **OPEN** — no human-reachable entry point for Authorization / Decision / Mission |
+| `EI-REACH-01` | **IMPLEMENTED / AWAITING MERGE** — three authenticated Executive routes; not closed until merged and production-verified |
 | Executive Intelligence Stage 1 | **STILL NOT COMPLETE** — blocked on `EI-REACH-01` |
 
 Verified read-only against the production catalogs after application: `lifecycle_generation`
@@ -780,6 +780,64 @@ trailing newline), **§11.61 non-material Decision Ledger corrections deferred**
 the same ruling: every mission amendment is material and takes the full authority path), and
 physical deletion of `lib/atlas/executive.ts` once the UI branch migrates.
 
+### Human authority reachability (EI-S1.6B)
+
+`EI-REACH-01` recorded that Authorization V1, Decision Ledger V1 and Executive
+Mission Brief V1 were fully implemented and completely unreachable: their
+sanctioned principal-write boundaries had no route, server action, script or UI
+able to call them, so four FM.2 capabilities existed without being exercisable.
+
+Three authenticated routes now reach them, and nothing else changed:
+
+```
+POST /api/atlas/executive/authorization    grant · grant_with_conditions · deny · revoke
+POST /api/atlas/executive/decision         propose · request_authorization · approve ·
+                                           reject · review · outcome · complete
+POST /api/atlas/executive/mission          open · propose · request_authorization · approve ·
+                                           activate · cancel · pause · resume · close ·
+                                           evidence · review
+```
+
+- **Purpose-scoped authorization only.** The raw `AuthorizationTarget` and
+  `RequestedAuthority` are free-form strings validated against no registry, so
+  exposing them would let a human mint a grant naming any action kind at all —
+  including the spending and publishing Stage 1 excludes. Nothing would execute
+  today, which is exactly the danger: the rows are immutable and would wait in
+  the ledger for a future consumer. The Authorization route therefore acts only
+  on authorizations that already exist.
+- **Server-atomic prepare → request.** An authorization request is created only
+  by `request_authorization` on the Decision or Mission route: candidate terms →
+  `prepareDecisionAct` / `prepareMissionAct` → binding → `requestAuthorization`,
+  all inside one server call. The binding never reaches the client, and the
+  client cannot supply `target`, `authority`, `targetType`, `targetId`,
+  `versionHash`, `actionKind` or `binding`. Preparation stays advisory: the
+  write path independently rebuilds the candidate and recomputes the binding,
+  so changed terms fail `authority_not_effective`.
+- **The principal remains session-derived.** Routes may return 401 early for
+  ordinary HTTP semantics, but `principal-write` resolves the human from the
+  session itself. No identity is ever read from the request body, and a
+  service-role or `CRON_SECRET` caller has no session and fails closed.
+- **No injection from HTTP.** The domain arg types carry test-only seams —
+  `store`, `now`, `projectMode`, `availability` — and `now` is a plain JSON
+  string feeding authorization effectiveness. No request object is forwarded:
+  domain args are built by an explicit key pick, and those names are rejected
+  outright.
+- **Mission activation is not execution.** `activate` proves authority and
+  appends one lifecycle record. It creates no run, task, Work Package, tool call
+  or delegation, and the routes import nothing but the three write boundaries
+  and their own HTTP helper. Manager and Workforce are untouched and still
+  reached only through `/api/manager`.
+- **Same-origin protection.** These three authority-writing routes require an
+  `Origin` matching the request's own host. It is edge protection layered on the
+  Supabase cookie's inherited `SameSite=Lax`, not a replacement for session
+  authentication or project authority.
+- **No UI requirement.** FM.2 Stage 1 excludes the full Approval Inbox and
+  Executive Graph interfaces; authenticated API reachability plus the live Atlas
+  brief surface is sufficient. UI vNext is untouched.
+
+Unknown and foreign ids remain externally indistinguishable: both map to an
+identical `404 {"error":"Not found"}`.
+
 **EI-CRON-OBS-01 — Executive Brief cron observability.** Observed during the EI-S1.6A-R2
 controlled smoke: `omnira_cron.call_vercel` dispatched the request successfully, but the pg_net
 client response **timed out at ~5 seconds** while Executive generation continued server-side and
@@ -791,8 +849,7 @@ limitation, not a demonstrated generation failure**. Classified **NON-BLOCKING O
 to be re-adjudicated in the final FM.2 review**. Deliberately not fixed here: neither the cron
 timeout nor the schedule was altered.
 
-**Executive Intelligence Stage 1 is still NOT complete.** `EI-SCHEMA-01` is closed, but
-`EI-REACH-01` remains open: the Authorization, Decision Ledger and Mission principal-write
-boundaries exist, are correct and are schema-backed, yet no route, server action, script or UI
-can reach them, so those FM.2 capabilities are not exercisable. Stage 1 completion also still
-requires the final FM.2 conformance review.
+**Executive Intelligence Stage 1 is still NOT complete.** `EI-SCHEMA-01` is closed and
+`EI-REACH-01` is implemented but **not yet closed** — it closes only once the entrypoints are
+merged and verified in production. Stage 1 completion also still requires the final FM.2
+conformance review.

@@ -256,6 +256,103 @@ describe('EI-S1.6B-R4 — Decision-backed Mission through the real builder', () 
   })
 })
 
+// ── Action-bound normalization, all three fields (EI-S1.6B-R5) ──────────────
+
+describe('EI-S1.6B-R5 — every MissionActionBound field is normalized', () => {
+  /**
+   * `build.ts:validateActionBounds` serves three fields and returns the
+   * caller's array in all of them. R4 normalized only `authority`, so this
+   * proves the whole class at the REAL boundary, on the persisted record.
+   */
+  const FIELDS = ['authority', 'allowedActions', 'forbiddenActions'] as const
+
+  for (const field of FIELDS) {
+    it(`${field}: a canonical entry persists exactly`, async () => {
+      await missionRoute(req({ ...missionBase, [field]: [{ action: 'draft_copy' }] }))
+      expect(S.missionRecords).toHaveLength(1)
+      expect(S.missionRecords[0][field]).toEqual([{ action: 'draft_copy' }])
+    })
+
+    it(`${field}: a string note persists`, async () => {
+      await missionRoute(req({ ...missionBase, [field]: [{ action: 'a', note: 'bounded' }] }))
+      expect(S.missionRecords[0][field]).toEqual([{ action: 'a', note: 'bounded' }])
+    })
+
+    it(`${field}: note = null persists`, async () => {
+      await missionRoute(req({ ...missionBase, [field]: [{ action: 'a', note: null }] }))
+      expect(S.missionRecords[0][field]).toEqual([{ action: 'a', note: null }])
+    })
+
+    it(`${field}: a non-string note is refused`, async () => {
+      for (const note of [42, { deep: true }, ['x'], true]) {
+        const res = await missionRoute(req({ ...missionBase, [field]: [{ action: 'a', note }] }))
+        expect(res.status, JSON.stringify(note)).toBe(400)
+        expect((await res.json()).detail).toBe(field)
+      }
+      expect(S.missionRecords).toHaveLength(0)
+    })
+
+    it(`${field}: a blank or missing action is refused`, async () => {
+      for (const entry of [{ action: '' }, { action: '   ' }, { note: 'x' }, {}, 'str', null]) {
+        const res = await missionRoute(req({ ...missionBase, [field]: [entry] }))
+        expect(res.status, JSON.stringify(entry)).toBe(400)
+      }
+      expect(S.missionRecords).toHaveLength(0)
+    })
+
+    it(`${field}: an arbitrary nested key does not persist`, async () => {
+      await missionRoute(req({
+        ...missionBase,
+        [field]: [{ action: 'draft_copy', note: 'bounded', smuggled: { execute: true } }],
+      }))
+      expect(S.missionRecords[0][field]).toEqual([{ action: 'draft_copy', note: 'bounded' }])
+      expect(JSON.stringify(S.missionRecords[0])).not.toContain('smuggled')
+    })
+
+    it(`${field}: an arbitrary scalar key does not persist`, async () => {
+      await missionRoute(req({ ...missionBase, [field]: [{ action: 'a', priority: 9, admin: true }] }))
+      expect(S.missionRecords[0][field]).toEqual([{ action: 'a' }])
+      expect(JSON.stringify(S.missionRecords[0])).not.toContain('priority')
+    })
+
+    it(`${field}: the persisted record holds only canonical keys`, async () => {
+      await missionRoute(req({
+        ...missionBase,
+        [field]: [{ action: 'a', note: 'n', x: 1 }, { action: 'b', y: 2 }],
+      }))
+      for (const entry of S.missionRecords[0][field] as Record<string, unknown>[]) {
+        expect(Object.keys(entry).sort().every(k => k === 'action' || k === 'note')).toBe(true)
+      }
+    })
+  }
+
+  it('only `authority` refuses a RequestedAuthority masquerade by name', async () => {
+    const bad = [{ action: 'a', actionKind: 'spend', description: 'x' }]
+    const auth = await missionRoute(req({ ...missionBase, authority: bad }))
+    expect(auth.status).toBe(400)
+    expect((await auth.json()).detail).toBe('authority')
+
+    // The other two simply do not reconstruct those keys — same outcome.
+    S.missionRecords.length = 0
+    await missionRoute(req({ ...missionBase, allowedActions: bad }))
+    expect(S.missionRecords[0].allowedActions).toEqual([{ action: 'a' }])
+  })
+
+  it('all three normalize together in one request', async () => {
+    await missionRoute(req({
+      ...missionBase,
+      authority: [{ action: 'decide', smuggled: 1 }],
+      allowedActions: [{ action: 'draft_copy', note: 'bounded', smuggled: 2 }],
+      forbiddenActions: [{ action: 'publish', smuggled: 3 }],
+    }))
+    const r = S.missionRecords[0]
+    expect(r.authority).toEqual([{ action: 'decide' }])
+    expect(r.allowedActions).toEqual([{ action: 'draft_copy', note: 'bounded' }])
+    expect(r.forbiddenActions).toEqual([{ action: 'publish' }])
+    expect(JSON.stringify(r)).not.toContain('smuggled')
+  })
+})
+
 // ── Authorization ────────────────────────────────────────────────────────────
 
 describe('EI-S1.6B-R4 — real Authorization boundary', () => {
@@ -267,6 +364,25 @@ describe('EI-S1.6B-R4 — real Authorization boundary', () => {
       authority: { actionKind: 'decision.approve', description: 'Executive Decision: approve' },
     })
     expect(result.status).toBe('ok')
+
+    /**
+     * Wait out the millisecond. NOT cosmetic, and not hiding a test bug.
+     *
+     * `orderAuthorizationEvents` sorts by `occurredAt` and breaks ties on
+     * `eventId`, which is a random UUID. Two events written in the SAME
+     * millisecond therefore order randomly, and when `granted` happens to sort
+     * before `requested` the chain fails `chain-starts-with-request` and
+     * `deriveAuthorizationState` throws — which `persist()` reports as
+     * `unavailable` AFTER the append has already landed. On a cold run the
+     * request and the grant land in one millisecond often enough to make this
+     * reproducible.
+     *
+     * That is a domain characteristic, not a route defect, and fixing it is
+     * outside this phase's scope — it is reported as EI-AUTH-ORDER-01. Here the
+     * seed is simply separated in time so the test measures reachability rather
+     * than a UUID coin-flip.
+     */
+    await new Promise(resolve => setTimeout(resolve, 3))
     return (result.state as { authorizationId: string }).authorizationId
   }
 

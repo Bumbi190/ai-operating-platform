@@ -846,10 +846,19 @@ authenticated HTTP request reaches the genuine `principal-write` function, which
 runs the canonical builder and derive path and appends to an in-memory ledger.
 Only the edges are faked — the session seam, the store factories, the project
 mode reader and the sanctioned governing-decision read. No production ledger is
-touched and no institutional history is invented. Mission action bounds are
-normalized at the adapter to exactly `{ action, note? }`, because the domain
-validator returns the caller's own array and anything riding on it would persist
+touched and no institutional history is invented. All three Mission action-bound fields —
+`authority`, `allowedActions` and `forbiddenActions` — are normalized at the
+adapter to exactly `{ action, note? }`, because the single domain validator they
+share returns the caller's own array and anything riding on it would persist
 verbatim in an immutable, hash-bound record.
+
+The three routes are registered in `tests/isolation/route-manifest.json`, the
+repository's official source of truth for API route classification, as
+`class: U`, `auth: User`, `serviceRole: true`, `scope: project_id`,
+`risk: Medium`, `verified: true`. Because `tests/isolation/**` is outside the
+default Vitest include, a normal-suite assertion in
+`lib/qa/executive-authority-entrypoint.test.ts` fails if any Executive route
+drifts out of the manifest again.
 
 **EI-CRON-OBS-01 — Executive Brief cron observability.** Observed during the EI-S1.6A-R2
 controlled smoke: `omnira_cron.call_vercel` dispatched the request successfully, but the pg_net

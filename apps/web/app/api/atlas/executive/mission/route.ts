@@ -112,21 +112,28 @@ type _OpenFieldsInventNothing = AssertNever<ExtraOpenField>
 const MISSION_OPEN_EXEMPT = ['authority'] as const
 
 /**
- * Validate AND normalize the Mission action bounds.
+ * Validate AND normalize a `MissionActionBound[]` transport field.
  *
- * Normalization is not cosmetic here. `build.ts:validateActionBounds` checks
- * that each `action` is non-empty and unique and then **returns the caller's
- * own array**, so anything else riding on those objects is written verbatim
- * into a record that is immutable and hash-bound — it would persist forever and
- * contribute to the authorization binding. HTTP JSON has no types, so the
- * adapter is the only place that can stop it.
+ * `build.ts:validateActionBounds` checks that each `action` is non-empty and
+ * unique and then **returns the caller's own array**. It never strips extra
+ * keys and never validates `note`. Because a Mission record is immutable and
+ * hash-bound, anything riding on those objects would be written verbatim and
+ * persist forever, contributing to the authorization binding. HTTP JSON has no
+ * types, so the adapter is the only place that can stop it.
  *
- * Each entry is therefore rebuilt as exactly `{ action }` or `{ action, note }`.
- * A `RequestedAuthority` masquerading as an action bound is refused outright
- * rather than silently stripped, so the attempt stays visible.
+ * ONE VALIDATOR, THREE FIELDS. `validateActionBounds` is called for `authority`
+ * (build.ts:271), `allowedActions` (:272) AND `forbiddenActions` (:273). An
+ * earlier fix normalized only `authority`, leaving the identical gap open on
+ * the other two — `forbiddenActions` especially, since a prohibition list is a
+ * safety boundary. This normalizer covers all three.
+ *
+ * Each entry is rebuilt as exactly `{ action }` or `{ action, note }`; nothing
+ * else survives. Reconstruction, not filtering, so an unknown key cannot ride
+ * along on an object we merely inspected.
  */
 function normalizeMissionActionBounds(
   value: unknown,
+  options: { refuseRequestedAuthority: boolean },
 ): { action: string; note?: string | null }[] | null {
   if (!Array.isArray(value)) return null
 
@@ -134,8 +141,17 @@ function normalizeMissionActionBounds(
   for (const entry of value) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
     const candidate = entry as Record<string, unknown>
+
     if (typeof candidate.action !== 'string' || candidate.action.trim().length === 0) return null
-    if ('actionKind' in candidate || 'description' in candidate) return null
+
+    // Only `authority` collides with the raw RequestedAuthority name, so only
+    // it refuses that masquerade outright. Elsewhere those keys are simply not
+    // reconstructed — same outcome, without a misleading error.
+    if (options.refuseRequestedAuthority
+        && ('actionKind' in candidate || 'description' in candidate)) {
+      return null
+    }
+
     if ('note' in candidate) {
       const note = candidate.note
       if (note !== null && typeof note !== 'string') return null
@@ -146,6 +162,9 @@ function normalizeMissionActionBounds(
   }
   return out
 }
+
+/** The three canonical fields that flow through `validateActionBounds`. */
+const ACTION_BOUND_FIELDS = ['authority', 'allowedActions', 'forbiddenActions'] as const
 
 const APPROVE_FIELDS  = ['missionId', 'authorizationId'] as const
 const ACTIVATE_FIELDS = ['missionId', 'authorizationId'] as const
@@ -194,11 +213,15 @@ export async function POST(request: Request) {
     if (!isText(body.executiveOwner, 200)) return badRequest('executiveOwner')
     if (body.asDraft !== undefined && typeof body.asDraft !== 'boolean') return badRequest('asDraft')
     const args = pick<Parameters<typeof openMission>[0]>(body, OPEN_FIELDS)
-    if (body.authority !== undefined) {
-      const bounds = normalizeMissionActionBounds(body.authority)
-      if (!bounds) return badRequest('authority')
-      // The normalized copy replaces the caller's objects entirely.
-      args.authority = bounds
+    // Every action-bound field is rebuilt; the caller's objects never reach the
+    // domain, so no unknown key can land in the immutable record.
+    for (const field of ACTION_BOUND_FIELDS) {
+      if (body[field] === undefined) continue
+      const bounds = normalizeMissionActionBounds(body[field], {
+        refuseRequestedAuthority: field === 'authority',
+      })
+      if (!bounds) return badRequest(field)
+      args[field] = bounds
     }
     const result = await openMission(args)
     if (result.status !== 'ok') return mapFailure(result)

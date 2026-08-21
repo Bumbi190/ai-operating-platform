@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const REPO_ROOT = resolve(__dirname, '../../../..')
@@ -689,7 +689,8 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
       deliverables: ['d'], successCriteria: ['s'], inScope: ['in'], outOfScope: ['out'],
       constraints: ['c'], budget: { ceiling: 1, currency: 'USD' },
       authority: [{ action: 'a' }], authoritySource: { kind: 'founder_instruction', reference: 'r' },
-      allowedActions: ['x'], forbiddenActions: ['y'], tools: [{ tool: 't' }], dataScope: ['ds'],
+      allowedActions: [{ action: 'x' }], forbiddenActions: [{ action: 'y' }],
+      tools: [{ tool: 't' }], dataScope: ['ds'],
       dependencies: ['dep'], assumptions: ['as'], risks: ['rk'], approvalGates: ['g'],
       deadline: '2027-01-01T00:00:00.000Z', reporting: 'weekly',
       escalationTriggers: ['e'], stopConditions: ['stop'], pauseConditions: ['pause'],
@@ -871,5 +872,76 @@ describe('EI-S1.6B — the routes cannot execute anything', () => {
     for (const sym of ['approveDecision', 'activateMission', 'grantAuthorization']) {
       expect(manager).not.toContain(sym)
     }
+  })
+})
+
+// ── Isolation route manifest registration (EI-S1.6B-R5) ─────────────────────
+
+describe('EI-S1.6B-R5 — the Executive routes are in the official isolation manifest', () => {
+  /**
+   * `tests/isolation/route-manifest.json` calls itself the official source of
+   * truth for API route classification, and its own note records that
+   * middleware lets every /api route through — so a route absent from the
+   * manifest is a route nobody classified.
+   *
+   * This assertion lives in `lib/qa/` deliberately: `tests/isolation/**` is NOT
+   * in the Vitest include, `routes.test.ts` is manifest-driven and skip-gated,
+   * and `route-drift.ts` is measurement-only with exit 0. Nothing in the default
+   * suite would have noticed the omission — which is exactly how three
+   * authority-writing routes came to sit outside the registry.
+   */
+  const manifest = JSON.parse(
+    readFileSync(resolve(REPO_ROOT, 'apps/web/tests/isolation/route-manifest.json'), 'utf8'),
+  ) as { routes: Record<string, unknown>[] }
+
+  const EXPECTED = [
+    '/atlas/executive/authorization',
+    '/atlas/executive/decision',
+    '/atlas/executive/mission',
+  ]
+
+  it('registers each route exactly once', () => {
+    for (const path of EXPECTED) {
+      expect(manifest.routes.filter(r => r.path === path)).toHaveLength(1)
+    }
+  })
+
+  it('carries the reviewed classification', () => {
+    for (const path of EXPECTED) {
+      const row = manifest.routes.find(r => r.path === path)!
+      expect(row.class, path).toBe('U')
+      expect(row.auth, path).toBe('User')
+      // Every write reaches an append-only ledger through createAdminClient.
+      expect(row.serviceRole, path).toBe(true)
+      expect(row.scope, path).toBe('project_id')
+      expect(row.verified, path).toBe(true)
+    }
+  })
+
+  it('does not let risk be downgraded', () => {
+    for (const path of EXPECTED) {
+      const row = manifest.routes.find(r => r.path === path)!
+      expect(['Medium', 'High'], `${path} risk must not fall below Medium`).toContain(row.risk)
+    }
+  })
+
+  it('holds no duplicate paths anywhere in the manifest', () => {
+    const paths = manifest.routes.map(r => r.path as string)
+    expect(new Set(paths).size).toBe(paths.length)
+  })
+
+  it('leaves the PR #69 /runs/[id] hardening intact', () => {
+    const row = manifest.routes.find(r => r.path === '/runs/[id]')!
+    expect(row).toBeTruthy()
+    expect(row.verified).toBe(true)
+    expect(row.auth).toBe('User')
+    expect(String(row.note)).toContain('B5 (2026-08-21)')
+  })
+
+  it('declares every route this PR adds — no Executive route may drift out', () => {
+    const onDisk = readdirSync(resolve(REPO_ROOT, 'apps/web/app/api/atlas/executive'))
+      .map(d => `/atlas/executive/${d}`)
+    const declared = new Set(manifest.routes.map(r => r.path as string))
+    for (const path of onDisk) expect(declared, path).toContain(path)
   })
 })

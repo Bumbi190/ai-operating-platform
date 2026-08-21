@@ -702,9 +702,19 @@ no backfill.
 
 Three facts, and the distinction between them is the whole point:
 
-- **Generation may be scheduler-triggered.** `POST /api/atlas/intelligence/cron/brief` produces
-  briefs on a `pg_cron` schedule and authenticates with the shared `CRON_SECRET`. That is
-  correct: a scheduler proving it is the scheduler, in order to run a producer.
+- **Generation may be scheduler-triggered.** `GET /api/atlas/intelligence/cron/brief` is the
+  producer route and authenticates with the shared `CRON_SECRET`. That is correct: a scheduler
+  proving it is the scheduler, in order to run a producer.
+
+  **Correction (EI-S1.6A).** An earlier revision of this section stated that the route "produces
+  briefs on a `pg_cron` schedule", and named it `POST`. Both were wrong. The route is `GET`, and
+  the EI-S1.5B conformance review found **no such schedule exists in production**: `cron.job`
+  holds 34 jobs and none targets this path. The schedule migration — like the
+  `atlas_intelligence` and `atlas_entities` tables it depends on — lives in the repo-root
+  `supabase/migrations/`, which the migration guard does not scan, so "39 enforced / 0 missing"
+  was truthful and blind to it at the same time. No Executive Brief has ever been produced in
+  production. EI-S1.6A brings all three into the guarded directory; they remain **unapplied**
+  until a controlled rollout.
 - **Human reads are principal-scoped.** Every user-facing Executive Brief read goes through
   `lib/atlas/intelligence/principal-read.ts`, which resolves a real user principal, enforces
   project ownership, and requires whole-portfolio authority before releasing the world brief

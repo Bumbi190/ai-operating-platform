@@ -9,7 +9,7 @@
  * Supabase client is ever constructed and no credential is read.
  */
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -704,5 +704,143 @@ describe('Apex Executive Brief — boundaries and legacy retirement', () => {
     const route = readFileSync(resolve(REPO_ROOT, 'apps/web/app/api/atlas/intelligence/cron/brief/route.ts'), 'utf8')
     expect(route).toContain('runExecutiveBriefProducer')
     expect(route.indexOf('runAssessmentProducer(')).toBeLessThan(route.indexOf('runExecutiveBriefProducer('))
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// EI-S1.5A — the shared-secret Executive Brief read surface is retired
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('EI-S1.5A — no shared-secret Executive Brief read surface exists', () => {
+  const APP = resolve(REPO_ROOT, 'apps/web/app')
+  const LIB = resolve(REPO_ROOT, 'apps/web/lib')
+
+  /** Every file under a root, so a guard cannot miss a new directory. */
+  const walk = (dir: string): string[] => {
+    const out: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name)
+      if (entry.isDirectory()) out.push(...walk(full))
+      else if (/\.(ts|tsx)$/.test(entry.name)) out.push(full)
+    }
+    return out
+  }
+
+  it('the route file is gone', () => {
+    expect(existsSync(resolve(APP, 'api/atlas/intelligence/brief/route.ts'))).toBe(false)
+    expect(existsSync(resolve(APP, 'api/atlas/intelligence/brief'))).toBe(false)
+  })
+
+  /**
+   * Executable code only.
+   *
+   * The retirement is DOCUMENTED in several module headers — that prose has to
+   * name the route it retired to be worth reading. A guard that matched comment
+   * text would force the explanation to be deleted to stay green, which is the
+   * wrong trade: the point is that no code CALLS it, not that no one may
+   * mention it.
+   */
+  const codeOf = (file: string): string =>
+    readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+
+  it('no live code references the retired read path', () => {
+    const offenders = [...walk(APP), ...walk(LIB)]
+      .filter(f => !f.endsWith('executive-brief-apex.test.ts'))
+      .filter(f => /['"`][^'"`]*\/api\/atlas\/intelligence\/brief(?!-)/.test(codeOf(f)))
+    expect(offenders).toEqual([])
+  })
+
+  it('no fetch anywhere targets it', () => {
+    const offenders = [...walk(APP), ...walk(LIB)]
+      .filter(f => /fetch\([^)]*intelligence\/brief(?!-)/.test(codeOf(f)))
+    expect(offenders).toEqual([])
+  })
+
+  /**
+   * THE NARROW GUARD (EI-S1.5A gate N).
+   *
+   * `CRON_SECRET` is legitimate scheduler authentication and is NOT banned —
+   * generation routes still use it. What must never return is an Executive
+   * Intelligence READ surface whose authorization is the shared secret, because
+   * a reusable infrastructure secret is not a principal, project ownership or
+   * portfolio authority. Scoped to Executive Intelligence read routes only.
+   */
+  it('no Executive Intelligence READ route authorizes on the shared secret', () => {
+    const eiRoutes = walk(resolve(APP, 'api/atlas/intelligence'))
+      .filter(f => f.endsWith('route.ts'))
+    expect(eiRoutes.length).toBeGreaterThan(0)
+
+    for (const file of eiRoutes) {
+      const text = readFileSync(file, 'utf8')
+      const usesSharedSecret = /CRON_SECRET/.test(text)
+      const isGenerationRoute = /\/cron\//.test(file)
+      // A shared-secret route under this tree may only be a generation route.
+      if (usesSharedSecret) {
+        expect(isGenerationRoute, `${file} authorizes on CRON_SECRET but is not a cron route`).toBe(true)
+      }
+      // And no route here may read intelligence without a principal.
+      if (/queryIntelligence\s*\(/.test(text)) {
+        expect(
+          /resolveProjectAccess|readExecutiveBriefForPrincipal|assertProjectAllowed/.test(text),
+          `${file} reads intelligence without the principal boundary`,
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('the GENERATION cron route is untouched and still shared-secret authenticated', () => {
+    const cron = resolve(APP, 'api/atlas/intelligence/cron/brief/route.ts')
+    expect(existsSync(cron)).toBe(true)
+    const text = readFileSync(cron, 'utf8')
+    expect(text).toContain('CRON_SECRET')
+    expect(text).toContain('runExecutiveBriefProducer')
+    // It generates; it is not a read surface.
+    expect(text).not.toMatch(/queryIntelligence\s*\(/)
+  })
+
+  it('the pg_cron schedule still targets the generation path, not the read path', () => {
+    const sql = readFileSync(
+      resolve(REPO_ROOT, 'supabase/migrations/20260629_200000_atlas_intelligence_cron.sql'), 'utf8')
+    expect(sql).toContain('/api/atlas/intelligence/cron/brief')
+    expect(sql).not.toMatch(/call_vercel\('\/api\/atlas\/intelligence\/brief'\)/)
+  })
+
+  it('no Vercel cron entry references any intelligence brief endpoint', () => {
+    const vercelJson = JSON.parse(readFileSync(resolve(REPO_ROOT, 'apps/web/vercel.json'), 'utf8'))
+    const paths: string[] = (vercelJson.crons ?? []).map((c: { path: string }) => c.path)
+    expect(paths.some(p => p.includes('intelligence/brief'))).toBe(false)
+  })
+
+  /**
+   * Gate G, stated as a test. Retiring one route must not turn into a repo-wide
+   * purge: `CRON_SECRET` is the scheduler's legitimate authentication for
+   * dozens of unrelated jobs, and generation is one of them. What EI-S1.5A
+   * removed is the use of that secret to authorize a user-facing DATA READ.
+   */
+  it('leaves CRON_SECRET intact for unrelated scheduler routes', () => {
+    const users = walk(resolve(APP, 'api'))
+      .filter(f => f.endsWith('route.ts') && /CRON_SECRET/.test(readFileSync(f, 'utf8')))
+    expect(users.length).toBeGreaterThan(20)
+    // ...including scheduler routes with nothing to do with Executive Intelligence.
+    expect(users.some(f => f.includes('media/cron/heartbeat'))).toBe(true)
+    expect(users.some(f => f.includes('bugscanner/scan-all'))).toBe(true)
+  })
+
+  it('introduces no Executive Intelligence write or external side effect', () => {
+    // The retirement deleted a GET. Nothing in the read boundary may write.
+    const code = codeOf(resolve(LIB, 'atlas/intelligence/principal-read.ts'))
+    expect(code).not.toMatch(/\.insert\(|\.update\(|\.upsert\(|\.delete\(/)
+    expect(code).not.toMatch(/\bfetch\(/)
+    expect(code).not.toMatch(/persistIntelligence|writeIntelligence/)
+  })
+
+  it('no replacement shared-secret / system-principal model was introduced', () => {
+    const code = codeOf(resolve(LIB, 'atlas/intelligence/principal-read.ts'))
+    expect(code).not.toMatch(/CRON_SECRET/)
+    expect(code).not.toMatch(/API_KEY|api_key|systemPrincipal|SYSTEM_PRINCIPAL/)
+    // Still the real principal boundary.
+    expect(code).toMatch(/resolveProjectAccess|getAllowedProjectIds/)
   })
 })

@@ -677,7 +677,7 @@ through `planTasks`.
 | Mission migration | `apps/web/supabase/migrations/20260819_atlas_mission_ledger.sql`, ledger name `atlas_mission_ledger` |
 | Mission schema | **APPLIED AND VERIFIED — BYTE_IDENTICAL** (ledger version `20260820054225`) |
 | Executive → Manager handoff | **COMPLETE / PRODUCTION** — merged `821192c5`, schema applied `20260820091102`, BYTE_IDENTICAL |
-| Manager → Workforce Work Package | **CODE IMPLEMENTED / SCHEMA UNAPPLIED / NOT PRODUCTION-OPERATIONAL** |
+| Manager → Workforce Work Package | **CODE IMPLEMENTED / SCHEMA APPLIED** — migration registered as `20260820184619`, byte-identical to its repository file |
 | Work Package migration | `apps/web/supabase/migrations/20260820_manager_tasks_work_packages.sql` (additive on `manager_tasks`) |
 | Workforce role registry | `public.agents` — real, project-scoped, runtime-resolved |
 | Workforce → Agent (§21.10) | **NOT STARTED / OUTSIDE STAGE 1 HANDOFF** |
@@ -686,7 +686,8 @@ through `planTasks`.
 | Delegation migration | `apps/web/supabase/migrations/20260820_atlas_delegation_ledger.sql`, ledger name `atlas_delegation_ledger` |
 | Capability availability | **REAL CHECK SHIPPED** — reads proven against `DOMAIN_REGISTRY`; writes and all tools fail closed |
 | Activation availability proof | **ACCEPTED DELEGATION REQUIRED** — Mission-, version- and coverage-specific |
-| Manager → Workforce handoff | **NOT STARTED** |
+| Manager → Workforce handoff | **BOUNDED WORK PACKAGE V1 SHIPPED** — stops at §21.42 `assigned`; no execution |
+| Executive Brief read surface | **PRINCIPAL-SCOPED ONLY** — no shared-secret HTTP read route exists |
 | Executive Intelligence Stage 1 | **STILL NOT COMPLETE** |
 
 Verified read-only against the production catalogs after application: `lifecycle_generation`
@@ -697,10 +698,33 @@ in its predicate and annotations correctly absent; the lineage index carrying
 `lifecycle_generation`; and the migration registered exactly once. No seed rows, no test rows,
 no backfill.
 
-**Still open, tracked for later EI-S1 increments:** the controlled rollout of the Work Package
-schema, the remaining principal-scoped read hardening on the internal `CRON_SECRET` intelligence
-route, and the final FM.2 conformance review. §20.75's workflow-version input
-remains not applicable until a Mission binds a workflow.
+### The Executive Brief read boundary (EI-S1.5A)
+
+Three facts, and the distinction between them is the whole point:
+
+- **Generation may be scheduler-triggered.** `POST /api/atlas/intelligence/cron/brief` produces
+  briefs on a `pg_cron` schedule and authenticates with the shared `CRON_SECRET`. That is
+  correct: a scheduler proving it is the scheduler, in order to run a producer.
+- **Human reads are principal-scoped.** Every user-facing Executive Brief read goes through
+  `lib/atlas/intelligence/principal-read.ts`, which resolves a real user principal, enforces
+  project ownership, and requires whole-portfolio authority before releasing the world brief
+  (`project_id IS NULL`). There is no second way in.
+- **No `CRON_SECRET`-only Executive Brief read surface exists.** `GET /api/atlas/intelligence/brief`
+  was retired. It authorized on the shared secret alone and then read through a service-role,
+  RLS-bypassing client — so holding one reusable infrastructure secret returned any project's
+  artifacts, the platform-global world brief, or, with `projectId` omitted, every project at
+  once. The audit found it had no live caller: no `fetch`, no `vercel.json` cron entry, and the
+  `pg_cron` schedule points at the generation path, not this one. It was deleted rather than
+  re-authorized.
+
+`CRON_SECRET` remains in use by 38 unrelated scheduler routes and was **not** globally removed.
+It is infrastructure authentication: it is not a principal, not project ownership, and not
+portfolio authority, and it must never again become a parallel data-authorization model. A
+narrowly scoped regression guard in `lib/qa/executive-brief-apex.test.ts` fails if an Executive
+Intelligence read route ever authorizes on it again.
+
+**Still open, tracked for later EI-S1 increments:** the final FM.2 conformance review.
+§20.75's workflow-version input remains not applicable until a Mission binds a workflow.
 
 Carried forward: **AUTH-GAP-01** (the general approval route authenticates the reviewer but does
 not persist that reviewer identity — a separate, narrowly scoped security follow-up),

@@ -3,10 +3,21 @@
  * Principal-scoped read boundary for Executive Intelligence artifacts.
  *
  * WHY THIS EXISTS
- * The internal route `GET /api/atlas/intelligence/brief` authenticates with the
- * shared `CRON_SECRET` and, called without `projectId`, returns artifacts across
- * every project. That is acceptable for a cron-only internal surface and must
- * never back a user-facing page. The EI-S1.0 audit recorded it as a gap.
+ * There was an internal route, `GET /api/atlas/intelligence/brief`, that
+ * authenticated with the shared `CRON_SECRET` and — called without `projectId` —
+ * returned artifacts across every project through a service-role client. The
+ * EI-S1.0 audit recorded it as a gap and this module was the answer for
+ * user-facing reads.
+ *
+ * EI-S1.5A finished the job: the audit found the route had no live caller —
+ * no `fetch`, no Vercel cron entry, no pg_cron schedule (that schedules
+ * `/api/atlas/intelligence/cron/brief`, which GENERATES briefs and is a
+ * different endpoint) — so it was RETIRED rather than re-authenticated. A
+ * reusable shared infrastructure secret must never become a parallel data
+ * authorization model, and an unused privileged endpoint is best removed
+ * rather than hardened.
+ *
+ * This module is therefore the ONLY Executive Brief read path.
  *
  * This module is the minimal alternative: a server-side read bound to an
  * authenticated principal, reusing the existing isolation boundary

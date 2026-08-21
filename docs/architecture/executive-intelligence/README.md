@@ -841,6 +841,16 @@ POST /api/atlas/executive/mission          open · propose · request_authorizat
 Unknown and foreign ids remain externally indistinguishable: both map to an
 identical `404 {"error":"Not found"}`.
 
+Reachability is proven against the **real** boundary, not a mock: an
+authenticated HTTP request reaches the genuine `principal-write` function, which
+runs the canonical builder and derive path and appends to an in-memory ledger.
+Only the edges are faked — the session seam, the store factories, the project
+mode reader and the sanctioned governing-decision read. No production ledger is
+touched and no institutional history is invented. Mission action bounds are
+normalized at the adapter to exactly `{ action, note? }`, because the domain
+validator returns the caller's own array and anything riding on it would persist
+verbatim in an immutable, hash-bound record.
+
 **EI-CRON-OBS-01 — Executive Brief cron observability.** Observed during the EI-S1.6A-R2
 controlled smoke: `omnira_cron.call_vercel` dispatched the request successfully, but the pg_net
 client response **timed out at ~5 seconds** while Executive generation continued server-side and

@@ -111,16 +111,40 @@ type _OpenFieldsInventNothing = AssertNever<ExtraOpenField>
  */
 const MISSION_OPEN_EXEMPT = ['authority'] as const
 
-/** Transport shape only; the domain stays authoritative for semantics. */
-function isMissionActionBounds(value: unknown): boolean {
-  if (!Array.isArray(value)) return false
-  return value.every(entry =>
-    !!entry && typeof entry === 'object' && !Array.isArray(entry)
-    && typeof (entry as { action?: unknown }).action === 'string'
-    // A `RequestedAuthority` masquerading as an action bound is refused.
-    && !('actionKind' in (entry as object))
-    && !('description' in (entry as object)),
-  )
+/**
+ * Validate AND normalize the Mission action bounds.
+ *
+ * Normalization is not cosmetic here. `build.ts:validateActionBounds` checks
+ * that each `action` is non-empty and unique and then **returns the caller's
+ * own array**, so anything else riding on those objects is written verbatim
+ * into a record that is immutable and hash-bound — it would persist forever and
+ * contribute to the authorization binding. HTTP JSON has no types, so the
+ * adapter is the only place that can stop it.
+ *
+ * Each entry is therefore rebuilt as exactly `{ action }` or `{ action, note }`.
+ * A `RequestedAuthority` masquerading as an action bound is refused outright
+ * rather than silently stripped, so the attempt stays visible.
+ */
+function normalizeMissionActionBounds(
+  value: unknown,
+): { action: string; note?: string | null }[] | null {
+  if (!Array.isArray(value)) return null
+
+  const out: { action: string; note?: string | null }[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+    const candidate = entry as Record<string, unknown>
+    if (typeof candidate.action !== 'string' || candidate.action.trim().length === 0) return null
+    if ('actionKind' in candidate || 'description' in candidate) return null
+    if ('note' in candidate) {
+      const note = candidate.note
+      if (note !== null && typeof note !== 'string') return null
+      out.push({ action: candidate.action, note })
+    } else {
+      out.push({ action: candidate.action })
+    }
+  }
+  return out
 }
 
 const APPROVE_FIELDS  = ['missionId', 'authorizationId'] as const
@@ -169,12 +193,14 @@ export async function POST(request: Request) {
     if (!isText(body.missionType, 200)) return badRequest('missionType')
     if (!isText(body.executiveOwner, 200)) return badRequest('executiveOwner')
     if (body.asDraft !== undefined && typeof body.asDraft !== 'boolean') return badRequest('asDraft')
-    if (body.authority !== undefined && !isMissionActionBounds(body.authority)) {
-      return badRequest('authority')
+    const args = pick<Parameters<typeof openMission>[0]>(body, OPEN_FIELDS)
+    if (body.authority !== undefined) {
+      const bounds = normalizeMissionActionBounds(body.authority)
+      if (!bounds) return badRequest('authority')
+      // The normalized copy replaces the caller's objects entirely.
+      args.authority = bounds
     }
-    const result = await openMission(
-      pick<Parameters<typeof openMission>[0]>(body, OPEN_FIELDS),
-    )
+    const result = await openMission(args)
     if (result.status !== 'ok') return mapFailure(result)
     return NextResponse.json({ ok: true, mission: result.state }, { status: 200 })
   }

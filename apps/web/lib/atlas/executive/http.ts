@@ -136,12 +136,16 @@ export function assertSameOrigin(request: Request): NextResponse | null {
  * plaintext page could have posted to the HTTPS authority endpoint. `URL.host`
  * carries the port but never the scheme, which is exactly the gap.
  *
- * Behind Vercel the user-facing scheme and host arrive in `x-forwarded-proto`
- * and `x-forwarded-host`, so they are preferred — but parsed defensively. A
- * forwarded header may legitimately be a comma-separated list when several
- * proxies append to it, and the value a caller can most easily influence is the
- * LAST one; only the first hop is trustworthy here. Anything malformed, empty
- * or unexpected fails closed rather than falling back to a weaker comparison.
+ * ENVIRONMENT CONTRACT. This app is deployed on Vercel, which documents
+ * `x-forwarded-host` as the domain the client accessed (identical to `host`)
+ * and `x-forwarded-proto` as the original protocol. Both arrive as singular
+ * authoritative values, so in this deployment there is no proxy chain to
+ * reason about.
+ *
+ * The leading-value split below is therefore defensive coding against a
+ * malformed or unexpected header, not a claim about multi-proxy trust
+ * ordering. Anything malformed, empty or unexpected fails closed rather than
+ * falling back to a weaker comparison.
  */
 function effectiveOrigin(request: Request): string | null {
   const firstHop = (value: string | null): string | null => {

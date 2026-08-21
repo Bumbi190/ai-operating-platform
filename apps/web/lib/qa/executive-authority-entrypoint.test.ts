@@ -89,6 +89,18 @@ import { POST as authorizationRoute } from '@/app/api/atlas/executive/authorizat
 import { POST as decisionRoute } from '@/app/api/atlas/executive/decision/route'
 import { POST as missionRoute } from '@/app/api/atlas/executive/mission/route'
 import { RESERVED_FIELDS } from '@/lib/atlas/executive/http'
+import type { MissionDecisionReference, MissionType } from '@/lib/atlas/mission/types'
+
+/**
+ * CANONICAL FIXTURES, compile-time enforced.
+ *
+ * An earlier revision used `{ decisionId, version }` and `missionType:
+ * 'delivery'`. Neither is canonical — the type is `decisionVersion`, and
+ * `delivery` is not in the `MissionType` union — and both passed only because
+ * this suite mocks `principal-write`. `satisfies` makes that class of drift a
+ * TypeScript error instead of a green test.
+ */
+const MISSION_TYPE = 'operational' satisfies MissionType
 
 // ── Request helpers ───────────────────────────────────────────────────────────
 
@@ -528,7 +540,7 @@ describe('EI-S1.6B — purpose-scoped authorization is server-atomic', () => {
 describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () => {
   const openBase = {
     action: 'open', projectId: UUID_A, title: 't', objective: 'o',
-    missionType: 'delivery', executiveOwner: 'atlas',
+    missionType: MISSION_TYPE, executiveOwner: 'atlas',
   }
 
   /**
@@ -541,7 +553,7 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
     const authority = [{ action: 'draft_copy', note: 'no publishing' }]
     const completionConditions = ['all criteria met']
     const evidenceRequirements = [{ requirement: 'tests pass', kind: 'test_output' }]
-    const decisionRef = { decisionId: UUID_B, version: 1 }
+    const decisionRef = { decisionId: UUID_B, decisionVersion: 1 } satisfies MissionDecisionReference
 
     await missionRoute(req({ ...openBase, authority, completionConditions, evidenceRequirements, decisionRef }))
     const [args] = argsFor('openMission')
@@ -551,9 +563,15 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
     expect(args.decisionRef).toEqual(decisionRef)
   })
 
-  it('makes a Decision-backed Mission reachable end to end', async () => {
+  /**
+   * NOT end-to-end — `openMission` is mocked in this suite, so this proves the
+   * ADAPTER forwards a canonical contract unchanged. The real-boundary proof
+   * lives in `executive-authority-integration.test.ts`, which does not mock
+   * principal-write. The earlier name overstated what this test could show.
+   */
+  it('forwards a canonical Decision-backed Mission contract to principal-write', async () => {
     const authoritySource = { kind: 'decision_ledger', reference: `decision:${UUID_B}` }
-    const decisionRef = { decisionId: UUID_B, version: 2 }
+    const decisionRef = { decisionId: UUID_B, decisionVersion: 2 } satisfies MissionDecisionReference
     const res = await missionRoute(req({ ...openBase, authoritySource, decisionRef }))
     expect(res.status).toBe(200)
     const [args] = argsFor('openMission')
@@ -565,7 +583,7 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
     const res = await missionRoute(req({
       ...openBase,
       authoritySource: { kind: 'decision_ledger', reference: 'x' },
-      decisionRef: { decisionId: UUID_B, version: 1 },
+      decisionRef: { decisionId: UUID_B, decisionVersion: 1 },
       decisionProvenance: { projectId: '99999999-9999-4999-8999-999999999999', decisionId: UUID_B },
     }))
     expect(res.status).toBe(400)
@@ -587,12 +605,41 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
       ['plain-string'],
       [{ note: 'no action' }],
       'not-an-array',
+      [{ action: '   ' }],
+      [{ action: 'ok', note: { nested: true } }],
+      [{ action: 'ok', note: 42 }],
+      [[{ action: 'ok' }]],
     ]) {
       const res = await missionRoute(req({ ...openBase, authority: bad }))
       expect(res.status, JSON.stringify(bad)).toBe(400)
       expect((await res.json()).detail).toBe('authority')
     }
     expect(calls).toEqual([])
+  })
+
+  /**
+   * `build.ts:validateActionBounds` returns the caller's own array, so anything
+   * riding on those objects lands verbatim in an immutable, hash-bound record.
+   * The adapter rebuilds each entry, because HTTP JSON has no types.
+   */
+  it('normalizes action bounds to exactly { action, note? }', async () => {
+    await missionRoute(req({
+      ...openBase,
+      authority: [
+        { action: 'draft_copy', note: 'no publishing', smuggled: 'nope', __proto__mark: 1 },
+        { action: 'read_metrics' },
+        { action: 'review', note: null },
+      ],
+    }))
+    const [args] = argsFor('openMission')
+    expect(args.authority).toEqual([
+      { action: 'draft_copy', note: 'no publishing' },
+      { action: 'read_metrics' },
+      { action: 'review', note: null },
+    ])
+    for (const entry of args.authority as Record<string, unknown>[]) {
+      expect(Object.keys(entry).every(k => k === 'action' || k === 'note')).toBe(true)
+    }
   })
 
   it('keeps raw `authority` forbidden on the Decision and Authorization routes', async () => {
@@ -637,7 +684,7 @@ describe('EI-S1.6B-R3 — Mission open carries the whole canonical brief', () =>
     const full = {
       action: 'open',
       projectId: UUID_A, asDraft: false,
-      title: 't', missionType: 'delivery', executiveOwner: 'atlas', missionOwner: 'owner',
+      title: 't', missionType: MISSION_TYPE, executiveOwner: 'atlas', missionOwner: 'owner',
       objective: 'o', strategicContext: 'ctx', expectedOutcome: 'out',
       deliverables: ['d'], successCriteria: ['s'], inScope: ['in'], outOfScope: ['out'],
       constraints: ['c'], budget: { ceiling: 1, currency: 'USD' },
@@ -680,7 +727,7 @@ describe('EI-S1.6B — REQUIRED acts reach their domain boundary', () => {
 
   it('Mission: all ten', async () => {
     const m = UUID_B
-    await missionRoute(req({ action: 'open', projectId: UUID_A, title: 't', objective: 'o', missionType: 'delivery', executiveOwner: 'atlas' }))
+    await missionRoute(req({ action: 'open', projectId: UUID_A, title: 't', objective: 'o', missionType: MISSION_TYPE, executiveOwner: 'atlas' }))
     await missionRoute(req({ action: 'propose', missionId: m }))
     await missionRoute(req({ action: 'approve', missionId: m, authorizationId: UUID_A }))
     await missionRoute(req({ action: 'activate', missionId: m, authorizationId: UUID_A }))

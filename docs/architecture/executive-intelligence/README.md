@@ -688,7 +688,12 @@ through `planTasks`.
 | Activation availability proof | **ACCEPTED DELEGATION REQUIRED** — Mission-, version- and coverage-specific |
 | Manager → Workforce handoff | **BOUNDED WORK PACKAGE V1 SHIPPED** — stops at §21.42 `assigned`; no execution |
 | Executive Brief read surface | **PRINCIPAL-SCOPED ONLY** — no shared-secret HTTP read route exists |
-| Executive Intelligence Stage 1 | **STILL NOT COMPLETE** |
+| EI artifact store / entity registry | **LIVE IN PRODUCTION** — `atlas_intelligence` + `atlas_entities` applied EI-S1.6A |
+| Executive Brief generation | **LIVE** — scheduled `0 7 * * *` UTC; one controlled smoke produced 4 current briefs |
+| Migration guard | **42 enforced / 0 missing** |
+| `EI-SCHEMA-01` | **CLOSED** |
+| `EI-REACH-01` | **OPEN** — no human-reachable entry point for Authorization / Decision / Mission |
+| Executive Intelligence Stage 1 | **STILL NOT COMPLETE** — blocked on `EI-REACH-01` |
 
 Verified read-only against the production catalogs after application: `lifecycle_generation`
 present and no stale `base_record_count`; the append-only BEFORE UPDATE and BEFORE DELETE reject
@@ -702,9 +707,41 @@ no backfill.
 
 Three facts, and the distinction between them is the whole point:
 
-- **Generation may be scheduler-triggered.** `POST /api/atlas/intelligence/cron/brief` produces
-  briefs on a `pg_cron` schedule and authenticates with the shared `CRON_SECRET`. That is
-  correct: a scheduler proving it is the scheduler, in order to run a producer.
+- **Generation may be scheduler-triggered.** `GET /api/atlas/intelligence/cron/brief` is the
+  producer route and authenticates with the shared `CRON_SECRET`. That is correct: a scheduler
+  proving it is the scheduler, in order to run a producer.
+
+  **Correction (EI-S1.6A).** An earlier revision of this section named the route `POST` and said
+  it "produces briefs on a `pg_cron` schedule". Both were wrong. The route is `GET`, and at the
+  time of writing no such schedule existed.
+
+  **What EI-S1.5B found (historical, 2026-08-21, now remediated).** `public.atlas_intelligence`
+  was absent, `public.atlas_entities` was absent, `cron.job` held 34 jobs and none targeted this
+  path, and **no Executive Brief had ever been produced in production**. The cause was not a
+  missing file: all three migrations existed, in the repo-root `supabase/migrations/`, which the
+  guard does not scan. Its `MIGRATIONS_DIR` is `apps/web/supabase/migrations/` only. So
+  "39 enforced / 0 missing" was **truthful for the directory it enforced and blind to the
+  historical Executive Intelligence directory at the same time** — the guard did not fail; it
+  reported accurately on a scope that did not include these migrations.
+
+  **What EI-S1.6A did (current state).** Canonicalized exactly those three migrations — the
+  audited dependency closure — into the guarded directory, taking the guard from **39 → 42
+  enforced**, and applied all three through a controlled production rollout with byte-verified
+  provenance. Production now has:
+
+  | | |
+  |---|---|
+  | `public.atlas_intelligence` | **LIVE** |
+  | `public.atlas_entities` | **LIVE** |
+  | Executive Brief schedule | **LIVE** — `omnira_atlas_intelligence_brief`, `GET /api/atlas/intelligence/cron/brief`, `0 7 * * *` UTC |
+  | Migration guard | **42 enforced / 0 missing** |
+
+  One controlled generation smoke then ran and succeeded, persisting **21 EI artifacts**,
+  of which **4 are current, non-superseded `executive_brief` artifacts** (1 platform-global
+  world scope, 3 project-scoped), plus **9 entity-registry rows**. Principal-scoped human reads
+  were verified to remain intact and unchanged.
+
+  **`EI-SCHEMA-01`: CLOSED.**
 - **Human reads are principal-scoped.** Every user-facing Executive Brief read goes through
   `lib/atlas/intelligence/principal-read.ts`, which resolves a real user principal, enforces
   project ownership, and requires whole-portfolio authority before releasing the world brief
@@ -718,10 +755,18 @@ Three facts, and the distinction between them is the whole point:
   re-authorized.
 
 `CRON_SECRET` remains in use by 38 unrelated scheduler routes and was **not** globally removed.
-It is infrastructure authentication: it is not a principal, not project ownership, and not
-portfolio authority, and it must never again become a parallel data-authorization model. A
-narrowly scoped regression guard in `lib/qa/executive-brief-apex.test.ts` fails if an Executive
-Intelligence read route ever authorizes on it again.
+It is infrastructure authentication, and since EI-S1.6A made the generation schedule live the
+distinction is load-bearing rather than theoretical:
+
+- `CRON_SECRET` authenticates the **scheduler** to the **generation** route, and nothing else.
+- It is **not** a human principal, **not** project ownership, **not** portfolio authority, and
+  **not** permission to read an Executive Brief.
+- Every human Executive Brief read goes through the principal-scoped boundary in
+  `lib/atlas/intelligence/principal-read.ts`. There is no second path, and no HTTP read route.
+
+It must never again become a parallel data-authorization model. A narrowly scoped regression
+guard in `lib/qa/executive-brief-apex.test.ts` fails if an Executive Intelligence read route ever
+authorizes on it again.
 
 **Still open, tracked for later EI-S1 increments:** the final FM.2 conformance review.
 §20.75's workflow-version input remains not applicable until a Mission binds a workflow.
@@ -735,4 +780,19 @@ trailing newline), **§11.61 non-material Decision Ledger corrections deferred**
 the same ruling: every mission amendment is material and takes the full authority path), and
 physical deletion of `lib/atlas/executive.ts` once the UI branch migrates.
 
-**Executive Intelligence Stage 1 is still NOT complete.**
+**EI-CRON-OBS-01 — Executive Brief cron observability.** Observed during the EI-S1.6A-R2
+controlled smoke: `omnira_cron.call_vercel` dispatched the request successfully, but the pg_net
+client response **timed out at ~5 seconds** while Executive generation continued server-side and
+completed in **~13 seconds**, persisting real artifacts. The generation did not fail; pg_net
+simply stopped waiting for it. The consequence is that the 07:00 UTC scheduled run will record a
+timeout every morning whether it succeeded or not, so a genuine future failure would be
+indistinguishable from a success in the scheduler's own record. This is an **observability
+limitation, not a demonstrated generation failure**. Classified **NON-BLOCKING OPERATIONAL DEBT,
+to be re-adjudicated in the final FM.2 review**. Deliberately not fixed here: neither the cron
+timeout nor the schedule was altered.
+
+**Executive Intelligence Stage 1 is still NOT complete.** `EI-SCHEMA-01` is closed, but
+`EI-REACH-01` remains open: the Authorization, Decision Ledger and Mission principal-write
+boundaries exist, are correct and are schema-backed, yet no route, server action, script or UI
+can reach them, so those FM.2 capabilities are not exercisable. Stage 1 completion also still
+requires the final FM.2 conformance review.

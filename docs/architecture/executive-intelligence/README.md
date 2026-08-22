@@ -692,8 +692,10 @@ through `planTasks`.
 | Executive Brief generation | **LIVE** — scheduled `0 7 * * *` UTC; one controlled smoke produced 4 current briefs |
 | Migration guard | **42 enforced / 0 missing** |
 | `EI-SCHEMA-01` | **CLOSED** |
-| `EI-REACH-01` | **IMPLEMENTED / AWAITING MERGE** — three authenticated Executive routes; not closed until merged and production-verified |
-| Executive Intelligence Stage 1 | **STILL NOT COMPLETE** — blocked on `EI-REACH-01` |
+| `EI-REACH-01` | **CLOSED** — three authenticated Executive routes merged in PR #68 and production-verified at `0bcef68` |
+| `EI-HTTP-DTO-01` | **CLOSED** — structured HTTP transport canonicalised across all three routes (EI-S1.6B-R6) |
+| `EI-AUTH-ORDER-01` | **CLOSED** — equal-timestamp Authorization ordering uses lifecycle phase, never random UUID (EI-S1.6B-R6) |
+| Executive Intelligence Stage 1 | **COMPLETE** — final FM.2 conformance review PASS; all ten required capabilities proven. See *Current canonical status* at the end of this document |
 
 Verified read-only against the production catalogs after application: `lifecycle_generation`
 present and no stale `base_record_count`; the append-only BEFORE UPDATE and BEFORE DELETE reject
@@ -901,7 +903,101 @@ limitation, not a demonstrated generation failure**. Classified **NON-BLOCKING O
 to be re-adjudicated in the final FM.2 review**. Deliberately not fixed here: neither the cron
 timeout nor the schedule was altered.
 
-**Executive Intelligence Stage 1 is still NOT complete.** `EI-SCHEMA-01` is closed and
-`EI-REACH-01` is implemented but **not yet closed** — it closes only once the entrypoints are
-merged and verified in production. Stage 1 completion also still requires the final FM.2
-conformance review.
+*Re-adjudicated in the final FM.2 conformance review: **NON_BLOCKING_BEFORE_STAGE_2**. The
+observability limitation stands and is still unfixed, but it was independently falsified as a
+generation failure — `atlas_intelligence` grew from 21 to 45 rows in production while the
+schedule remained active, so briefs are demonstrably being generated. The scheduler's own record
+remains an unreliable success signal.*
+
+> **HISTORICAL FINDING (pre-merge, EI-S1.6B).** At the time the section above was written,
+> Stage 1 was not complete: `EI-SCHEMA-01` was closed but `EI-REACH-01` was implemented and not
+> yet closed, because it could close only once the entrypoints were merged and verified in
+> production, and the final FM.2 conformance review had not yet run. **Both conditions have since
+> been satisfied.** The record is kept here deliberately; it is history, not current state.
+
+---
+
+## Current canonical status
+
+**Executive Intelligence Stage 1 — COMPLETE.**
+
+The basis is the **final FM.2 conformance review**, which returned PASS with all ten required
+Stage-1 capabilities proven against runtime, schema, route, test and production evidence rather
+than documentation:
+
+1. Executive Context · 2. Daily Executive Brief · 3. Decision Ledger V1 ·
+4. Executive Mission Brief V1 · 5. Explicit human authorization ·
+6. Safe Executive → Manager handoff · 7. Safe Manager → Workforce handoff ·
+8. Project-scoped status and evidence · 9. Basic traceability and review ·
+10. Recommendation-first / human-authorized operation
+
+### Production basis
+
+| | |
+|---|---|
+| Merge | PR #68, merge commit `0bcef6897ebd75cfe15f9de75d265b3377dbd9e8` |
+| Production deployment | `dpl_7ckdByZTYYBAyHpEuq7PprrTBfoN` — READY, `target: production`, exact SHA `0bcef68` |
+| Migration guard | 42 enforced / 0 missing |
+| Static generation | 50 / 50 |
+| Full safe suite | 1983 passed / 8 known unrelated baseline failures |
+| Focused suites | 1113 passed |
+| Mutation testing | 38 / 38 killed |
+| Typecheck | clean |
+
+Executive routes deployed and reachable in the production route table:
+
+- `/api/atlas/executive/authorization`
+- `/api/atlas/executive/decision`
+- `/api/atlas/executive/mission`
+- `/api/atlas/intelligence/cron/brief`
+
+The retired `/api/atlas/intelligence/brief` remains **absent** — a shared-secret read
+authorization model has not returned.
+
+### Blocker history
+
+These blockers were real and are recorded here so the audit trail survives. None is being
+rewritten as though it never existed.
+
+| Blocker | What it was | Closed by | Status |
+|---|---|---|---|
+| `EI-SCHEMA-01` | The Executive authority ledgers were not applied in production, so the domains had no schema to write to | EI-S1.6A schema application; migration guard reached 42 / 0 | **CLOSED** |
+| `EI-REACH-01` | Authorization V1, Decision Ledger V1 and Mission V1 existed but no authenticated human entrypoint reached them, so the authority chain was unreachable in production | EI-S1.6B, merged as PR #68 and verified in production at `0bcef68` | **CLOSED** |
+| `EI-HTTP-DTO-01` | Structured HTTP inputs were forwarded as caller-owned objects, so an unknown nested key could persist verbatim into an immutable, authority-bound record | EI-S1.6B-R6 transport canonicalization: every structured field is reconstructed into its exact domain shape, with a compile-time coverage guard | **CLOSED** |
+| `EI-AUTH-ORDER-01` | `orderAuthorizationEvents` tie-broke equal `occurredAt` on a random `eventId`, so two events written in the same millisecond could receive random lifecycle order and leave a chain permanently underivable | EI-S1.6B-R6 lifecycle-phase ordering, exhaustive over `AuthorizationEventType` | **CLOSED** |
+
+### Carried debts
+
+Adjudicated in the final FM.2 review. These are **not** resolved — they are carried with an
+explicit verdict.
+
+| Debt | Verdict |
+|---|---|
+| `AK-PRELIVE-01` — Architecture Knowledge index/memory optimisation before live grounding | NON_BLOCKING_BEFORE_STAGE_2 |
+| `AUTH-GAP-01` — the general approval route authenticates the reviewer but does not persist that identity (outside the Executive surface, which does persist `principalId`) | NON_BLOCKING_BEFORE_STAGE_2 |
+| `R2-PROV-01` — migration payload schema-equivalent but not byte-identical to its repository file | NON_BLOCKING_BEFORE_STAGE_2 |
+| Decision Ledger §11.61 — non-material corrections deferred beyond V1; Mission V1 makes the same ruling | NON_BLOCKING_BEFORE_STAGE_2 |
+| `EI-CRON-OBS-01` — Executive Brief cron observability; the scheduler records a timeout whether or not generation succeeded | NON_BLOCKING_BEFORE_STAGE_2 |
+| legacy `apps/web/lib/atlas/executive.ts` — now provably unreferenced on `main` and on the UI branch | NON_BLOCKING / READY FOR SEPARATE CLEANUP (deliberately not deleted here) |
+| temporary/test leak debt | OBSOLETE — no such debt is recorded in the current documentation |
+| stale branches / worktrees | NON_BLOCKING HOUSEKEEPING |
+
+### What Stage 1 COMPLETE does not mean
+
+Stage 1 completion is a statement about a **bounded, recommendation-first, human-authorized**
+system. It does not mean any Stage-2 capability exists. All of the following remain **out of
+scope and unimplemented**, and their absence is enforced structurally — the Executive HTTP
+surface imports only `next/server`, the three `principal-write` modules, their types, and its own
+transport helpers:
+
+Full Approval Inbox · full policy engine · Damage Boundary · Trust Score ·
+Autonomy Licensing · automatic autonomy progression · full Executive Graph interfaces ·
+full Performance Intelligence · Crisis Mode · Emergency Brake · L4–L6 autonomy
+
+Stage 1 therefore **cannot** autonomously spend money, publish externally, change project mode,
+grant itself authority, advance an autonomy level, or execute Work Packages outside the bounded
+Manager/Workforce chain. Conditional grants are recorded but remain **not execution-effective**:
+`deriveAuthorizationState` reports `conditions_unverified`, because V1 has no condition
+enforcement engine and none was built.
+
+Technical capability elsewhere in the platform is not Executive authority.

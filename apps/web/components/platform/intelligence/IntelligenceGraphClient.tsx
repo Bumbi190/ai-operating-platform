@@ -6,7 +6,7 @@
  * Three modes:
  *   System Map      — static architecture (Graphify import), progressive levels
  *                     Overview (communities) → Community (drilldown)
- *   Live Operations — read-only runtime graph from real Omnira tables
+ *   Operations Snapshot — read-only runtime graph from real Omnira tables
  *   Execution Replay— honestly disabled (per-step event data is not granular
  *                     enough yet; see docs/intelligence-graph.md)
  *
@@ -21,6 +21,7 @@ import type {
   IntelligenceGraphEdge,
   IntelligenceGraphMeta,
   IntelligenceGraphNode,
+  OperationsSnapshotMeta,
 } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas, nodeColor, type GraphCameraCommand } from './GraphCanvas'
 import type { GraphViewBox, GraphZoomLevel } from './graph-readability'
@@ -35,6 +36,14 @@ import {
   type GraphScope,
 } from './graph-navigation'
 import { parseGraphUrlState, serializeGraphUrlState } from './graph-url-state'
+import {
+  buildOperationsSnapshotUrl,
+  getOperationsSnapshotScopeKey,
+  getOperationsSnapshotTopologyKey,
+  OperationsSnapshotLifecycle,
+  reconcileOperationsSnapshot,
+  type OperationsSnapshotScope,
+} from './operations-snapshot-state'
 import { NodeInspector } from './NodeInspector'
 
 type Mode = 'system' | 'operations' | 'replay'
@@ -51,6 +60,7 @@ interface GraphPayload {
   nodes?: IntelligenceGraphNode[]
   edges?: IntelligenceGraphEdge[]
   projects?: Array<{ id: string; name: string; slug: string; color: string }>
+  snapshot?: OperationsSnapshotMeta
 }
 
 interface SearchHit {
@@ -90,6 +100,105 @@ const TIME_FILTERS = [
   { hours: 24 * 30, label: '30 d' },
 ] as const
 
+export type OperationsSnapshotUiState = 'loading' | 'unavailable' | 'available' | 'empty-authorized-scope' | 'empty-runs'
+
+export function getOperationsSnapshotUiState({
+  loading,
+  payload,
+  nodes,
+}: {
+  loading: boolean
+  payload: GraphPayload | null
+  nodes: IntelligenceGraphNode[]
+}): OperationsSnapshotUiState {
+  const snapshot = payload?.available === true ? payload.snapshot : undefined
+  if (!snapshot) return loading ? 'loading' : 'unavailable'
+  if (snapshot.authorizedProjectIds.length === 0) return 'empty-authorized-scope'
+  return nodes.some(node => node.kind === 'run') ? 'available' : 'empty-runs'
+}
+
+export function getOperationsSnapshotStateCopy(state: OperationsSnapshotUiState): { title: string; body?: string } | null {
+  switch (state) {
+    case 'loading':
+      return { title: 'Hämtar operationssnapshot…' }
+    case 'unavailable':
+      return {
+        title: 'Operationssnapshot är inte tillgänglig.',
+        body: 'Ingen bekräftad operationssnapshot finns att visa.',
+      }
+    case 'empty-authorized-scope':
+      return { title: 'Tom operationssnapshot', body: 'Ingen operationsdata i behörig scope.' }
+    case 'empty-runs':
+      return { title: 'Tom operationssnapshot', body: 'Inga körningar i vald scope och tidsperiod.' }
+    case 'available':
+      return null
+  }
+}
+
+export function shouldRenderOperationsSnapshotGraph({
+  state,
+  snapshot,
+  nodes,
+}: {
+  state: OperationsSnapshotUiState
+  snapshot: OperationsSnapshotMeta | undefined
+  nodes: IntelligenceGraphNode[]
+}): boolean {
+  return state === 'available' && Boolean(snapshot) && nodes.length > 0
+}
+
+export function OperationsSnapshotStateMessage({ state }: { state: OperationsSnapshotUiState }) {
+  const copy = getOperationsSnapshotStateCopy(state)
+  if (!copy) return null
+  return <StateMessage title={copy.title} body={copy.body ?? ''} tone={state === 'unavailable' ? 'error' : 'default'} />
+}
+
+export function formatOperationsSnapshotGeneratedAt(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const generatedAt = new Date(value)
+  if (Number.isNaN(generatedAt.getTime())) return null
+  return generatedAt.toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+export function OperationsSnapshotStatus({ snapshot }: { snapshot: OperationsSnapshotMeta }) {
+  const generatedAt = formatOperationsSnapshotGeneratedAt(snapshot.generatedAt)
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]" role="status" aria-label="Operationssnapshotstatus">
+      <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-indigo-200">Snapshot</span>
+      <span className="text-slate-400">Källfärskhet: okänd</span>
+      <span className="text-slate-500">Senast bekräftade snapshot: {generatedAt ?? 'okänd'}</span>
+    </div>
+  )
+}
+
+export function getOperationsSnapshotRefreshMessage({
+  refreshing,
+  failed,
+  hasSnapshot,
+}: {
+  refreshing: boolean
+  failed: boolean
+  hasSnapshot: boolean
+}): { text: string; tone: 'neutral' | 'warning' } | null {
+  if (!hasSnapshot) return null
+  if (refreshing) return { text: 'Hämtar ny snapshot…', tone: 'neutral' }
+  if (failed) return { text: 'Kunde inte hämta ny snapshot. Visar senast bekräftade snapshot.', tone: 'warning' }
+  return null
+}
+
+export function OperationsSnapshotRefreshButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-white/[0.07]"
+    >
+      Hämta ny snapshot
+    </button>
+  )
+}
+
 export function IntelligenceGraphClient() {
   const rootRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -103,7 +212,7 @@ export function IntelligenceGraphClient() {
   // System Map state
   const [communityId, setCommunityId] = useState<number | null>(null)
 
-  // Live Operations state
+  // Operations Snapshot state
   const [projectFilter, setProjectFilter] = useState<string>('all')
   const [hours, setHours] = useState<number>(24)
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
@@ -112,6 +221,8 @@ export function IntelligenceGraphClient() {
   const [data, setData] = useState<GraphPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [operationsRefreshing, setOperationsRefreshing] = useState(false)
+  const [operationsRefreshFailed, setOperationsRefreshFailed] = useState(false)
   const [selected, setSelected] = useState<IntelligenceGraphNode | null>(null)
   const [fitSignal, setFitSignal] = useState(0)
   const [kindFilter, setKindFilter] = useState<Set<string>>(new Set())
@@ -131,6 +242,13 @@ export function IntelligenceGraphClient() {
   const [navigationPending, setNavigationPending] = useState(false)
   const searchAbort = useRef<AbortController | null>(null)
   const pendingNavigation = useRef<PendingNavigationResolution | null>(null)
+  const operationsLifecycle = useRef<OperationsSnapshotLifecycle | null>(null)
+  const modeRef = useRef<Mode>(mode)
+  const operationsScopeRef = useRef<OperationsSnapshotScope>({ projectId: null, hours })
+  const selectedRef = useRef<IntelligenceGraphNode | null>(null)
+  const searchResultIdRef = useRef<string | null>(null)
+  const drillScopeRef = useRef<GraphScope | null>(null)
+  const isolateScopeRef = useRef<GraphScope | null>(null)
 
   const queuePendingNavigation = useCallback((pending: PendingNavigationResolution) => {
     pendingNavigation.current = pending
@@ -143,27 +261,88 @@ export function IntelligenceGraphClient() {
     setNavigationPending(false)
   }, [])
 
-  const url = useMemo(() => {
-    if (mode === 'system') {
-      return communityId === null
-        ? '/api/intelligence/graph/system?level=overview'
-        : `/api/intelligence/graph/system?level=community&community=${communityId}`
-    }
-    if (mode === 'operations') {
-      const params = new URLSearchParams({ hours: String(hours) })
-      if (projectFilter !== 'all') params.set('project', projectFilter)
-      return `/api/intelligence/graph/operations?${params}`
-    }
-    return null
-  }, [mode, communityId, projectFilter, hours])
+  const operationsScope = useMemo<OperationsSnapshotScope>(() => ({
+    projectId: projectFilter === 'all' ? null : projectFilter,
+    hours,
+  }), [projectFilter, hours])
+  const operationsScopeKey = getOperationsSnapshotScopeKey(operationsScope)
+  modeRef.current = mode
+  operationsScopeRef.current = operationsScope
+  selectedRef.current = selected
+  searchResultIdRef.current = searchResultId
+  drillScopeRef.current = drillScope
+  isolateScopeRef.current = isolateScope
 
-  // ── Data fetch ──
+  const systemUrl = useMemo(() => {
+    if (mode !== 'system') return null
+    return communityId === null
+      ? '/api/intelligence/graph/system?level=overview'
+      : `/api/intelligence/graph/system?level=community&community=${communityId}`
+  }, [mode, communityId])
+
+  if (!operationsLifecycle.current) {
+    operationsLifecycle.current = new OperationsSnapshotLifecycle({
+      getCurrentScope: () => operationsScopeRef.current,
+      canRun: () => modeRef.current === 'operations',
+      isVisible: () => typeof document !== 'undefined' && document.visibilityState === 'visible',
+      fetchSnapshot: async (scope, signal) => {
+        const response = await fetch(buildOperationsSnapshotUrl(scope), { signal })
+        if (response.status === 401) throw new Error('Du är inte inloggad.')
+        if (!response.ok) throw new Error(`Grafen kunde inte hämtas (${response.status}).`)
+        return response.json()
+      },
+      onStart: ({ hasConfirmedSnapshot }) => {
+        if (hasConfirmedSnapshot) {
+          setOperationsRefreshing(true)
+          setOperationsRefreshFailed(false)
+          setError(null)
+        } else {
+          setLoading(true)
+          setError(null)
+          setOperationsRefreshFailed(false)
+        }
+      },
+      onAccepted: ({ payload }) => {
+        const reconciliation = reconcileOperationsSnapshot({
+          nodes: payload.nodes,
+          selectedId: selectedRef.current?.id ?? null,
+          searchResultId: searchResultIdRef.current,
+          drillId: drillScopeRef.current?.rootId ?? null,
+          isolateId: isolateScopeRef.current?.rootId ?? null,
+        })
+        const resolved = resolveGraphNavigationIntent(payload.nodes, payload.edges, reconciliation)
+        setData(payload)
+        setSelected(resolved.selected)
+        setSearchResultId(reconciliation.searchResultId)
+        setDrillScope(resolved.drillScope)
+        setIsolateScope(resolved.isolateScope)
+        if (!resolved.isolateScope) isolateCamera.current = null
+        setLoading(false)
+        setOperationsRefreshing(false)
+        setOperationsRefreshFailed(false)
+        setError(null)
+      },
+      onFailure: ({ error: requestError, hasConfirmedSnapshot }) => {
+        setLoading(false)
+        setOperationsRefreshing(false)
+        if (hasConfirmedSnapshot) {
+          setOperationsRefreshFailed(true)
+          setError(null)
+        } else {
+          setData(null)
+          setError(requestError instanceof Error ? requestError.message : 'Okänt fel.')
+        }
+      },
+    })
+  }
+
+  // ── System Map fetch remains one-shot; Operations Snapshot has its own bounded lifecycle. ──
   useEffect(() => {
-    if (!url) return
+    if (!systemUrl) return
     const controller = new AbortController()
     setLoading(true)
     setError(null)
-    fetch(url, { signal: controller.signal })
+    fetch(systemUrl, { signal: controller.signal })
       .then(async res => {
         if (res.status === 401) throw new Error('Du är inte inloggad.')
         if (!res.ok) throw new Error(`Grafen kunde inte hämtas (${res.status}).`)
@@ -187,7 +366,33 @@ export function IntelligenceGraphClient() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [url])
+  }, [systemUrl])
+
+  // ── Operations Snapshot: visible-only, chained full snapshots. ──
+  useEffect(() => {
+    if (mode !== 'operations') return
+    const scope = operationsScope
+    const lifecycle = operationsLifecycle.current!
+    const confirmed = lifecycle.activate(scope)
+    if (confirmed) {
+      setData(confirmed)
+      setLoading(false)
+    } else {
+      setData(null)
+      setLoading(true)
+      setOperationsRefreshing(false)
+      setOperationsRefreshFailed(false)
+      setError(null)
+    }
+
+    const resumeVisibleSnapshotWork = () => lifecycle.resume(scope)
+    document.addEventListener('visibilitychange', resumeVisibleSnapshotWork)
+    resumeVisibleSnapshotWork()
+    return () => {
+      document.removeEventListener('visibilitychange', resumeVisibleSnapshotWork)
+      lifecycle.dispose()
+    }
+  }, [mode, operationsScopeKey, operationsScope])
 
   // ── Search (System Map only) ──
   useEffect(() => {
@@ -212,6 +417,9 @@ export function IntelligenceGraphClient() {
 
   const nodes = allNodes
   const edges = allEdges
+  const operationsTopologyKey = useMemo(() => mode === 'operations'
+    ? getOperationsSnapshotTopologyKey(allNodes, allEdges)
+    : undefined, [mode, allNodes, allEdges])
   const filterState = useMemo(() => computeGraphFilterState(allNodes, {
     kinds: kindFilter,
     statuses: mode === 'operations' ? statusFilter : new Set<string>(),
@@ -473,6 +681,8 @@ export function IntelligenceGraphClient() {
 
   const switchMode = useCallback((next: Mode) => {
     cancelPendingNavigation()
+    setLoading(true)
+    setError(null)
     setMode(next)
     setCommunityId(null)
     setDrillScope(null)
@@ -489,6 +699,23 @@ export function IntelligenceGraphClient() {
   )
 
   const unavailable = data && data.available === false
+  const operationsSnapshot = mode === 'operations' && data?.available === true ? data.snapshot : undefined
+  const operationsUiState = mode === 'operations'
+    ? getOperationsSnapshotUiState({ loading, payload: data, nodes })
+    : null
+  const hasOperationsSnapshot = Boolean(operationsSnapshot)
+  const operationsStateCopy = operationsUiState ? getOperationsSnapshotStateCopy(operationsUiState) : null
+  const operationsRefreshMessage = getOperationsSnapshotRefreshMessage({
+    refreshing: operationsRefreshing,
+    failed: operationsRefreshFailed,
+    hasSnapshot: hasOperationsSnapshot,
+  })
+  const refreshOperationsSnapshot = useCallback(() => {
+    if (mode === 'operations') operationsLifecycle.current?.request(operationsScope, 'manual')
+  }, [mode, operationsScope])
+  const operationsUnavailable = mode === 'operations' && !loading && operationsUiState === 'unavailable'
+  const operationsEmpty = mode === 'operations'
+    && (operationsUiState === 'empty-authorized-scope' || operationsUiState === 'empty-runs')
 
   return (
     <div
@@ -499,7 +726,7 @@ export function IntelligenceGraphClient() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-white/[0.07] bg-white/[0.03] p-0.5">
           <TabButton active={mode === 'system'} onClick={() => switchMode('system')}>System Map</TabButton>
-          <TabButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Live Operations</TabButton>
+          <TabButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Operations Snapshot</TabButton>
           <TabButton active={false} disabled title="Kräver mer granulär eventdata (per-steg-tidslinje). Se docs/intelligence-graph.md.">
             Execution Replay
           </TabButton>
@@ -572,6 +799,8 @@ export function IntelligenceGraphClient() {
         <span className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2 py-0.5 text-indigo-200">
           Zoom {zoomLevel}
         </span>
+        {operationsSnapshot && operationsUiState === 'available' && <OperationsSnapshotStatus snapshot={operationsSnapshot} />}
+        {operationsRefreshMessage && <span className={operationsRefreshMessage.tone === 'warning' ? 'text-amber-300' : 'text-slate-400'} role="status">{operationsRefreshMessage.text}</span>}
         {isolateScope && (
           <span className="flex items-center gap-2 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1 text-amber-200">
             Isolated: {isolateScope.label}
@@ -602,6 +831,8 @@ export function IntelligenceGraphClient() {
                 <TabButton key={t.hours} active={hours === t.hours} onClick={() => setHours(t.hours)} small>{t.label}</TabButton>
               ))}
             </div>
+
+            <OperationsSnapshotRefreshButton onClick={refreshOperationsSnapshot} />
 
             <div className="flex flex-wrap gap-1.5">
               {RUN_STATUS_FILTERS.map(s => (
@@ -677,16 +908,18 @@ export function IntelligenceGraphClient() {
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
               <div className="flex items-center gap-2 text-sm text-slate-300">
-                <Loader2 className="h-4 w-4 animate-spin" /> Laddar graf…
+                <Loader2 className="h-4 w-4 animate-spin" /> {mode === 'operations' && !hasOperationsSnapshot ? operationsStateCopy?.title : 'Laddar graf…'}
               </div>
             </div>
           )}
 
-          {error && !loading && (
+          {operationsUnavailable && <OperationsSnapshotStateMessage state="unavailable" />}
+
+          {error && !loading && !operationsUnavailable && (
             <StateMessage title="Grafen kunde inte laddas" body={error} tone="error" />
           )}
 
-          {unavailable && !loading && !error && (
+          {unavailable && !loading && !error && !operationsUnavailable && (
             <StateMessage
               title={mode === 'system' ? 'Ingen System Map-artifact ännu' : 'Ingen driftdata'}
               body={mode === 'system'
@@ -695,13 +928,10 @@ export function IntelligenceGraphClient() {
             />
           )}
 
-          {!loading && !error && !unavailable && nodes.length === 0 && (
-            <StateMessage
-              title="Tom graf"
-              body={mode === 'operations'
-                ? 'Inga körningar i det valda tidsfönstret. Justera tids- eller projektfiltret.'
-                : 'Inga noder matchar de aktiva filtren.'}
-            />
+          {!loading && !error && !unavailable && ((mode === 'operations' && operationsEmpty) || (mode !== 'operations' && nodes.length === 0)) && (
+            mode === 'operations'
+              ? <OperationsSnapshotStateMessage state={operationsUiState!} />
+              : <StateMessage title="Tom graf" body="Inga noder matchar de aktiva filtren." />
           )}
 
           {!loading && !error && !unavailable && filtersActive && filterState.matchCount === 0 && nodes.length > 0 && (
@@ -710,7 +940,11 @@ export function IntelligenceGraphClient() {
             </div>
           )}
 
-          {!error && !unavailable && nodes.length > 0 && (
+          {!error && !unavailable && nodes.length > 0 && (mode !== 'operations' || shouldRenderOperationsSnapshotGraph({
+            state: operationsUiState!,
+            snapshot: operationsSnapshot,
+            nodes,
+          })) && (
             <GraphCanvas
               nodes={nodes}
               edges={edges}
@@ -718,6 +952,7 @@ export function IntelligenceGraphClient() {
               onSelect={node => { setSelected(node); if (!node) setSearchResultId(null) }}
               onOpen={drillIn}
               fitSignal={fitSignal}
+              topologyKey={operationsTopologyKey}
               mode={mode === 'operations' ? 'operations' : 'system'}
               semanticContext={drillScope?.kind === 'run' ? 'execution' : communityId !== null || drillScope ? 'detail' : 'auto'}
               dimmedIds={dimmedIds}

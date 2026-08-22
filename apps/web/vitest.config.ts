@@ -21,6 +21,7 @@ export default defineConfig({
       "lib/intelligence/**/*.test.ts",
       "lib/architecture-knowledge/**/*.test.ts",
       "components/platform/intelligence/**/*.test.ts",
+      "components/platform/intelligence/**/*.test.tsx",
     ],
   },
 });

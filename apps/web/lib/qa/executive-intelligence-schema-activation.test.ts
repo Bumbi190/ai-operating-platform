@@ -58,11 +58,23 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     expect(applied[applied.length - 1]).toBe(CRON)
   })
 
-  it('adds exactly three enforced migrations — 39 → 42', () => {
+  /**
+   * TRIPWIRE, not a delta assertion.
+   *
+   * Despite its original name this pins the ABSOLUTE number of enforced
+   * migrations, so any migration added anywhere in the repository fails it
+   * until the number is raised deliberately. That is worth keeping: a new
+   * enforced migration is production state the build guard will demand, and it
+   * should never arrive unnoticed. Raising the number is an acknowledgement.
+   *
+   * 42 → 43: `project_api_credentials` (Security Credential Phase 1).
+   */
+  it('enforces exactly the expected number of migrations — currently 43', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(42)
-    // ...and the delta is entirely this bundle.
-    expect(enforced - BUNDLE.length).toBe(39)
+    expect(enforced).toBe(43)
+    // The EI-S1.6A bundle is still exactly three of them, all canonical.
+    expect(BUNDLE).toHaveLength(3)
+    expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)
   })
 
   it('does not newly enforce any unrelated legacy migration', () => {

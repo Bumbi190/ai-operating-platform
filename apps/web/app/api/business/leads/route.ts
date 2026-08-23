@@ -4,24 +4,27 @@
  *
  * Body (POST): { project_id | project_slug, name?, email?, source?, status?, value_sek? }
  *
- * ── PHASE 2: THREE AUTH CLASSES, TWO BODY CONTRACTS ──────────────────────────
+ * ── TWO AUTH CLASSES, TWO BODY CONTRACTS (after Phase 4B3) ───────────────────
  *
- * A project credential holding `business.leads.create` may now create a lead.
- * The session and legacy-key paths are unchanged, including their body handling
- * — the UI (`QuickAdd`) sends `project_id` and Familje-Stunden's
- * `send-pyssel-lead` sends a project reference, and both remain legitimate.
+ * A logged-in user, or a project credential holding `business.leads.create`.
+ * The global `AIOPS_API_KEY` class is gone — 4B3 removed the last HTTP surface
+ * that accepted it. A bearer token that is not in the `omn_` namespace is now
+ * simply unauthenticated.
  *
- * The credential path does NOT share that contract. Its project comes from the
- * credential row and from nowhere else, and naming a project in the body is
- * refused outright rather than compared. Presence is the refusal because a
- * comparison is one `??` away from becoming a fallback, and because a caller
- * supplying a project id has misunderstood what the credential is — saying so
- * is better than silently ignoring it.
+ * The two remaining classes do NOT share a body contract, and the difference is
+ * the point rather than an inconsistency.
  *
- * The asymmetry is deliberate and is the point of the phase: the legacy paths
- * keep the semantics they already had, the new path gets the semantics we
- * actually want, and migrating a caller is therefore a real security change
- * rather than a rename.
+ * SESSION callers name their project (`QuickAdd` sends `project_id`), and that
+ * name is authorized against the caller's own allow-list before any write. The
+ * insert then uses the VERIFIED id, never the body value that was checked, so
+ * the two cannot drift apart.
+ *
+ * CREDENTIAL callers do not name a project at all. It comes from the credential
+ * row and from nowhere else, and naming one in the body is refused outright
+ * rather than compared. Presence is the refusal because a comparison is one
+ * `??` away from becoming a fallback, and because a caller supplying a project
+ * id has misunderstood what the credential is — saying so beats silently
+ * ignoring it.
  */
 import { NextResponse } from 'next/server'
 import { resolveLeadsAuth, resolveSessionLeadProject } from '@/lib/business/leads-auth'
@@ -130,13 +133,15 @@ export async function POST(request: Request) {
       return NextResponse.json(lead, { status: 201 })
     }
 
-    // Legacy global-key path — contract unchanged. TRANSITIONAL SECURITY DEBT:
-    // this path still accepts any project the caller names, exactly as before,
-    // because Familje-Stunden's send-pyssel-lead depends on it until it is
-    // migrated onto a scoped credential. It is knowingly left open for that one
-    // step and must be closed when the migration lands.
-    const lead = await createLead(body)
-    return NextResponse.json(lead, { status: 201 })
+    // Unreachable: `LeadsAuth` has exactly the two kinds handled above, and the
+    // assignment below fails to compile if a third is ever added without a
+    // branch here. The runtime 401 is not redundant with that check — the build
+    // ignores type errors, so a compile-time proof alone would let a new auth
+    // class fall through to whatever came next. Denying is the safe direction;
+    // this is where a write used to live.
+    const unhandled: never = auth.auth
+    void unhandled
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   } catch (e) {
     const err = e as BusinessError
     return NextResponse.json({ error: err.message }, { status: err.status ?? 500 })

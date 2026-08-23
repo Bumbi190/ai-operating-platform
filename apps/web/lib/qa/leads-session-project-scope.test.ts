@@ -382,19 +382,19 @@ describe('canonical boundary', () => {
 // ── 6. The other two paths are untouched ─────────────────────────────────────
 
 describe('other auth paths unchanged', () => {
-  it('legacy key keeps its whole-body contract, including a foreign project', async () => {
+  it('legacy key no longer has a whole-body contract — it has no contract', async () => {
     sessionUser = null
     const body = { project_slug: 'beta', name: 'X', source: 'pyssel' }
     const res = await POST(post(body, LEGACY_KEY))
-    expect(res.status).toBe(201)
-    // TRANSITIONAL SECURITY DEBT — deliberately unscoped until the migration.
-    expect(createLeadCalls).toEqual([body])
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('legacy key still writes a project the session user could not', async () => {
+  it('legacy key can no longer write a project the session user could not', async () => {
     sessionUser = null
     const res = await POST(post({ project_id: PROJ_B, name: 'X' }, LEGACY_KEY))
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
   it('legacy key is still rejected when wrong', async () => {
@@ -404,8 +404,10 @@ describe('other auth paths unchanged', () => {
     expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('records the transitional debt in the source', () => {
-    expect(read(ROUTE_PATH)).toContain('TRANSITIONAL SECURITY DEBT')
+  it('no longer records transitional debt, because there is none', () => {
+    const src = read(ROUTE_PATH)
+    expect(src).not.toContain('TRANSITIONAL SECURITY DEBT')
+    expect(src).not.toContain('legacy_api_key')
   })
 
   it('leaves the credential branch untouched by the session change', () => {

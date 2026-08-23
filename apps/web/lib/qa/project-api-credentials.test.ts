@@ -710,8 +710,8 @@ describe('inertness — Phase 1 changes no existing auth', () => {
       expect(src).not.toContain('project-api-credentials')
       expect(src).not.toContain('leads-auth')
     }
-    // Leads is the ONLY route left that reaches the global helper.
-    expect(read('lib/business/leads-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
+    // After 4B3 no route reaches the global helper at all — including leads.
+    expect(read('lib/business/leads-auth.ts')).not.toContain("from '@/lib/api-auth'")
   })
 
   it('reaches the primitive from leads only through the scoped resolver', () => {

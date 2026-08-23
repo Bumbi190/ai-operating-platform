@@ -133,21 +133,23 @@ describe('auth-kärnan behålls — Familje-Stunden är beroende av den', () => 
     expect(typeof auth.requireUserOrApiKey).toBe('function')
   })
 
-  it('/api/business/leads finns kvar och accepterar API-nyckel', () => {
-    // Phase 2 (2026-08-22) flyttade routen till lib/business/leads-auth.ts, som
-    // anropar requireApiKey OFÖRÄNDRAD för legacy-vägen. Den egenskap det här
-    // testet äger är att Familje-Stundens nyckelväg fortfarande finns — inte
-    // vilket importnamn routen råkar använda. Kedjan asserteras därför hela
-    // vägen ned till requireApiKey; beteendet självt är låst i
-    // lib/qa/leads-dual-accept.test.ts.
+  it('/api/business/leads finns kvar med en fungerande maskinväg', () => {
+    // Egenskapen detta test äger är att Familje-Stunden fortfarande KAN skriva
+    // en lead maskinellt — inte vilken auth-klass som bär den. Phase 4B3 bytte
+    // bäraren: den globala nyckelvägen är borta, och den scopade
+    // project-credential-vägen är kvar. Kedjan asserteras därför ned till
+    // credential-verifieraren i stället för till requireApiKey. Beteendet
+    // självt är låst i lib/qa/leads-dual-accept.test.ts.
     const src = readFileSync(join(API_ROOT, 'business', 'leads', 'route.ts'), 'utf8')
     expect(src).toMatch(/export async function POST/)
     expect(src).toContain("from '@/lib/business/leads-auth'")
 
     const resolver = readFileSync(
       join(API_ROOT, '..', '..', 'lib', 'business', 'leads-auth.ts'), 'utf8')
-    expect(resolver).toContain("import { requireApiKey } from '@/lib/api-auth'")
-    expect(resolver).toContain('requireApiKey(request)')
+    expect(resolver).toContain('requireProjectApiScope')
+    expect(resolver).toContain('CREDENTIAL_TOKEN_PREFIX')
+    // och den når inte längre den globala nyckeln
+    expect(resolver).not.toContain("from '@/lib/api-auth'")
   })
 
   for (const p of ['/business/leads', '/business/campaigns', '/business/revenue', '/chat/tts']) {

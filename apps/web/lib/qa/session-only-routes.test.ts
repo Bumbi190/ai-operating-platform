@@ -394,23 +394,27 @@ describe('source invariants', () => {
 
   // ── LEADS MUST KEEP ITS LEGACY BRANCH UNTIL 4B3 ──────────────────────────
 
-  it('leads still has all three auth classes', () => {
+  it('leads has exactly TWO auth classes after 4B3', () => {
     const auth = read(LEADS_AUTH)
-    expect(auth).toContain("kind: 'legacy_api_key'")
-    expect(auth).toContain("import { requireApiKey } from '@/lib/api-auth'")
-    expect(auth).toContain('requireApiKey(request)')
     expect(auth).toContain("kind: 'user'")
     expect(auth).toContain("kind: 'project_credential'")
+    expect(auth).not.toContain("kind: 'legacy_api_key'")
+    expect(auth).not.toContain("from '@/lib/api-auth'")
+    expect(auth).not.toContain('requireApiKey(request)')
   })
 
-  it('the leads route still branches on all three classes', () => {
+  it('the leads route branches on both classes and writes on neither tail', () => {
     const src = read(LEADS)
     expect(src).toContain("auth.auth.kind === 'project_credential'")
     expect(src).toContain("auth.auth.kind === 'user'")
-    expect(src).toContain('TRANSITIONAL SECURITY DEBT')
+    expect(src).not.toContain('TRANSITIONAL SECURITY DEBT')
+    // The old fallthrough was `const lead = await createLead(body)`. What
+    // replaces it must deny, not write.
+    expect(src).not.toMatch(/createLead\(body\)/)
+    expect(src).toContain('const unhandled: never = auth.auth')
   })
 
-  it('api-auth.ts is untouched — leads depends on it until 4B3', () => {
+  it('api-auth.ts is left in place even though nothing reaches it now', () => {
     const src = read('lib/api-auth.ts')
     expect(src).toContain('export function requireApiKey')
     expect(src).toContain('export async function requireUserOrApiKey')
@@ -445,6 +449,7 @@ describe('source invariants', () => {
       return false
     }).map(f => f.replace(`${WEB_ROOT}/app/api`, '').replace('/route.ts', ''))
 
-    expect(reaching).toEqual(['/business/leads'])
+    // 4B3: ZERO. Not "leads only" — nothing in the whole route tree.
+    expect(reaching).toEqual([])
   })
 })

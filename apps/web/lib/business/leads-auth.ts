@@ -1,55 +1,66 @@
 /**
  * Authentication for /api/business/leads — and ONLY that route.
  *
- * SECURITY CREDENTIAL PHASE 2. This adds a third way to authenticate a lead
- * create: a `project_api_credentials` principal holding the exact scope
- * `business.leads.create`. The two existing ways are untouched.
+ * TWO CLASSES, after Phase 4B3: a logged-in user, or a
+ * `project_api_credentials` principal holding the exact scope
+ * `business.leads.create`. There is no third.
  *
  * DELIBERATELY NOT A GENERAL "dual auth" HELPER. It lives under `lib/business/`
  * and names leads in its own identifiers because the blast radius of a generic
  * one is the whole API: campaigns, revenue, chat/tts and runs would inherit
  * project-credential access the moment someone reached for the convenient
- * import. Phase 2 is leads-create and nothing else, so the code says so.
+ * import.
+ *
+ * ── WHAT 4B3 REMOVED, AND WHY IT COULD GO ────────────────────────────────────
+ *
+ * This route was the last HTTP surface that accepted the global
+ * `AIOPS_API_KEY`. That class is gone. Holding a shared secret proved
+ * possession and established no principal, so there was no subject to scope —
+ * which is why that path wrote to whatever project the body named, and why it
+ * was carried as acknowledged, time-boxed debt rather than defended.
+ *
+ * It could go because its one real consumer moved off it. Familje-Stunden's
+ * `send-pyssel-lead` now authenticates with a scoped credential, proven
+ * end-to-end in production on 2026-08-23: the credential's `last_used_at` was
+ * stamped and the lead landed on the credential's own project.
  *
  * ── WHY A UNION AND NOT `{ ok: true }` ───────────────────────────────────────
  *
- * `requireUserOrApiKey` answers "may this request proceed" and discards which
- * of the two paths said yes. That is exactly the loss of information this phase
- * cannot afford: the credential path must scope the write to one project, while
- * the legacy path must keep its existing unscoped behaviour. A boolean cannot
- * express that difference, so the caller is handed the auth CLASS and has to
- * decide per class.
+ * A boolean answers "may this proceed" and discards WHICH path said yes. The
+ * credential path must scope the write to exactly one project, and the session
+ * path must authorize the project the caller named against that user's own
+ * allow-list. Those are different obligations, so the caller is handed the auth
+ * CLASS and has to decide per class. Adding a class later forces every consumer
+ * to consider it rather than inheriting someone else's default.
  *
- * The legacy path is `legacy_api_key`, never `project_credential`. Holding the
- * global key still proves possession of a shared secret and establishes no
- * principal — calling it a principal in the type system would be a lie that
- * later code would act on.
+ * ── PRECEDENCE ───────────────────────────────────────────────────────────────
  *
- * ── PRECEDENCE, AND WHY THE NAMESPACE CHECK COMES FIRST ──────────────────────
- *
- *   1. A valid Supabase session   → user
+ *   1. A valid Supabase session            → user
  *   2. Bearer token in the `omn_` namespace → credential path, or DENY
- *   3. Any other bearer token     → legacy AIOPS_API_KEY
+ *   3. Anything else                        → 401
  *
- * Step 2 never falls through to step 3. A token that announces itself as a
- * project credential and then fails — malformed, unknown prefix, wrong secret,
- * revoked, expired, wrong scope — is denied outright. Allowing fallback would
- * mean an attacker could probe the credential surface for free and still get a
- * second attempt at the global key, and it would make a revoked credential
- * behave differently depending on what else the caller knew.
+ * Step 2 never falls through to step 3, and step 3 no longer verifies anything:
+ * it denies. A token that announces itself as a project credential and then
+ * fails — malformed, unknown prefix, wrong secret, revoked, disabled, expired,
+ * wrong scope — is denied outright. Fallback would let an attacker probe the
+ * credential surface for free, and would make a revoked credential behave
+ * differently depending on what else the caller knew.
  *
- * The namespace test uses the SAME token extraction as `requireApiKey`
- * (`replace(/^Bearer\s+/i, '').trim()`), not a stricter one. With a stricter
- * matcher, a header of bare `omn_…` with no `Bearer ` would fail the namespace
- * test, fall to the legacy branch, and be compared against the global key —
- * quietly re-opening the fallback this module exists to close.
+ * The namespace test keeps the LOOSE token extraction
+ * (`replace(/^Bearer\s+/i, '').trim()`) rather than the strict
+ * `^Bearer\s+(\S+)$` the verifier uses. That asymmetry is deliberate and
+ * fail-closed: a bare `omn_…` header with no `Bearer ` prefix is CLAIMED by
+ * this branch and then refused by the verifier, instead of slipping past the
+ * namespace test into the generic tail. Tightening the matcher here would move
+ * such a token from "denied as a bad credential" to "denied as an unknown
+ * bearer" — the same 401 today, but it would quietly re-open the shape of the
+ * hole this module exists to close if a third class is ever added.
  */
 
 import 'server-only'
 
 import { NextResponse } from 'next/server'
 
-import { requireApiKey } from '@/lib/api-auth'
 import { createClient } from '@/lib/supabase/server'
 import {
   requireProjectApiScope,
@@ -66,7 +77,6 @@ export const CREDENTIAL_TOKEN_PREFIX = 'omn_'
  */
 export type LeadsAuth =
   | { kind: 'user'; userId: string }
-  | { kind: 'legacy_api_key' }
   | { kind: 'project_credential'; principal: ProjectApiPrincipal }
 
 export type LeadsAuthResult =
@@ -74,8 +84,8 @@ export type LeadsAuthResult =
   | { ok: false; response: NextResponse }
 
 /**
- * Token exactly as `requireApiKey` would see it. Shared on purpose — see the
- * header note about why a stricter matcher would re-open the legacy fallback.
+ * The presented token, extracted loosely on purpose — see the header note on
+ * why this must stay looser than the verifier's own matcher.
  */
 function presentedToken(request: Request): string | null {
   const header = request.headers.get('authorization')
@@ -95,15 +105,13 @@ const unauthorized = () => NextResponse.json({ error: 'Unauthorized' }, { status
  * Resolve who is calling /api/business/leads.
  *
  * `credentialScope` is the scope the project-credential path must hold for this
- * operation, or `null` when no such scope exists yet. V1 defines only
+ * operation, or `null` when no such scope exists. V1 defines only
  * `business.leads.create`; there is no read scope, so GET passes `null` and a
- * credential token is denied rather than silently tried as the global key.
+ * credential token is denied there rather than being tried as something else.
  *
- * The session branch reproduces `requireUserOrApiKey`'s exact shape, including
- * the swallowed throw, so an unauthenticated browser still falls through to key
- * auth precisely as it does today. The legacy branch calls `requireApiKey`
- * itself rather than reimplementing it, so its 401 body and its 500-on-missing-
- * env remain byte-identical.
+ * Fails closed on every path. The session read's throw is swallowed because an
+ * unauthenticated browser is not an error — it simply has no session, and must
+ * continue to the token branches rather than surface a 500.
  */
 export async function resolveLeadsAuth(
   request: Request,
@@ -115,7 +123,7 @@ export async function resolveLeadsAuth(
     const { data: { user } } = await supabase.auth.getUser()
     if (user) return { ok: true, auth: { kind: 'user', userId: user.id } }
   } catch {
-    // No session — fall through to token auth, exactly as api-auth does.
+    // No session — fall through to token auth.
   }
 
   const token = presentedToken(request)
@@ -130,10 +138,8 @@ export async function resolveLeadsAuth(
     return { ok: true, auth: { kind: 'project_credential', principal: result.principal } }
   }
 
-  // 3. Legacy global key, unchanged.
-  const legacy = requireApiKey(request)
-  if (!legacy.ok) return { ok: false, response: legacy.response }
-  return { ok: true, auth: { kind: 'legacy_api_key' } }
+  // 3. Anything else. No global key, no verifier, no second chance — 401.
+  return { ok: false, response: unauthorized() }
 }
 
 // ── Session project authorization (LEADS_SESSION_PROJECT_SCOPE) ──────────────

@@ -125,6 +125,29 @@ beforeEach(() => {
   lookupPrefixes = []; updates = []
 })
 
+/**
+ * Files under `dir` containing `pattern`.
+ *
+ * `execFileSync` with an argument vector, never a shell string: the repository
+ * path contains spaces ("AI Operating Platform"), so an interpolated
+ * `grep -rl x ${dir}` word-splits into non-existent paths, grep errors, and a
+ * `|| true` turns that into an empty result. An assertion built that way
+ * reports "nothing imports this" whether or not anything does — it cannot fail.
+ * That is exactly how this check first passed while being broken.
+ */
+function filesContaining(pattern: string, dir: string): string[] {
+  const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
+  try {
+    return execFileSync('grep', ['-rl', pattern, dir], { encoding: 'utf8' })
+      .trim().split('\n').filter(Boolean)
+  } catch (e) {
+    // grep exits 1 on no match — that is a real empty result, not a failure.
+    const err = e as { status?: number }
+    if (err.status === 1) return []
+    throw e
+  }
+}
+
 // ── 1. Token format ──────────────────────────────────────────────────────────
 
 describe('token format', () => {
@@ -657,14 +680,16 @@ describe('migration', () => {
 // ── 11. Inertness ────────────────────────────────────────────────────────────
 
 describe('inertness — Phase 1 changes no existing auth', () => {
-  it('is imported by no route', () => {
-    // A source scan is the only way to prove absence of a caller.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
-    const hits = execSync(
-      `grep -rl "auth/project-api-credentials" ${WEB_ROOT}/app ${WEB_ROOT}/lib || true`,
-      { encoding: 'utf8' },
-    ).trim().split('\n').filter(Boolean)
-    expect(hits).toEqual([])
+  it('is imported by no route directly — only via the leads-scoped resolver', () => {
+    // Phase 1 asserted "no consumer at all". Phase 2 gave it exactly one, and
+    // this is the assertion that keeps that number at one: no route may reach
+    // the primitive without going through a route-scoped resolver, so a second
+    // route cannot quietly acquire credential auth by adding an import.
+    expect(filesContaining('auth/project-api-credentials', `${WEB_ROOT}/app`)).toEqual([])
+
+    const libConsumers = filesContaining('auth/project-api-credentials', `${WEB_ROOT}/lib`)
+      .filter(f => !f.endsWith('lib/auth/project-api-credentials.ts') && !f.includes('/qa/'))
+    expect(libConsumers).toEqual([`${WEB_ROOT}/lib/business/leads-auth.ts`])
   })
 
   it('leaves lib/api-auth.ts exporting both helpers unchanged in shape', () => {
@@ -674,9 +699,23 @@ describe('inertness — Phase 1 changes no existing auth', () => {
     expect(src).toContain('process.env.AIOPS_API_KEY')
   })
 
-  it('leaves the business routes on their existing helper', () => {
+  it('leaves campaigns and revenue without credential access', () => {
+    // 4B1 session-scoped them via business-auth. They still must not gain a
+    // project-credential path, and must not import the leads resolver.
+    for (const name of ['campaigns', 'revenue']) {
+      const src = read(`app/api/business/${name}/route.ts`)
+      expect(src).toContain("from '@/lib/business/business-auth'")
+      expect(src).not.toContain('project-api-credentials')
+      expect(src).not.toContain('leads-auth')
+    }
+    // The legacy class still terminates in the unchanged global helper.
+    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
+  })
+
+  it('reaches the primitive from leads only through the scoped resolver', () => {
     const leads = read('app/api/business/leads/route.ts')
-    expect(leads).toContain("import { requireUserOrApiKey } from '@/lib/api-auth'")
+    expect(leads).toContain("from '@/lib/business/leads-auth'")
+    // The route never touches the primitive itself.
     expect(leads).not.toContain('project-api-credentials')
     expect(leads).not.toContain('requireProjectApiScope')
   })

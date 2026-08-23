@@ -134,9 +134,20 @@ describe('auth-kärnan behålls — Familje-Stunden är beroende av den', () => 
   })
 
   it('/api/business/leads finns kvar och accepterar API-nyckel', () => {
+    // Phase 2 (2026-08-22) flyttade routen till lib/business/leads-auth.ts, som
+    // anropar requireApiKey OFÖRÄNDRAD för legacy-vägen. Den egenskap det här
+    // testet äger är att Familje-Stundens nyckelväg fortfarande finns — inte
+    // vilket importnamn routen råkar använda. Kedjan asserteras därför hela
+    // vägen ned till requireApiKey; beteendet självt är låst i
+    // lib/qa/leads-dual-accept.test.ts.
     const src = readFileSync(join(API_ROOT, 'business', 'leads', 'route.ts'), 'utf8')
-    expect(src).toContain('requireUserOrApiKey')
     expect(src).toMatch(/export async function POST/)
+    expect(src).toContain("from '@/lib/business/leads-auth'")
+
+    const resolver = readFileSync(
+      join(API_ROOT, '..', '..', 'lib', 'business', 'leads-auth.ts'), 'utf8')
+    expect(resolver).toContain("import { requireApiKey } from '@/lib/api-auth'")
+    expect(resolver).toContain('requireApiKey(request)')
   })
 
   for (const p of ['/business/leads', '/business/campaigns', '/business/revenue', '/chat/tts']) {

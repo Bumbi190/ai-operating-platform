@@ -702,14 +702,16 @@ describe('inertness — Phase 1 changes no existing auth', () => {
   it('leaves campaigns and revenue without credential access', () => {
     // 4B1 session-scoped them via business-auth. They still must not gain a
     // project-credential path, and must not import the leads resolver.
+    // 4B2 made them session-only; neither may gain a credential path, and
+    // neither may borrow the leads resolver.
     for (const name of ['campaigns', 'revenue']) {
       const src = read(`app/api/business/${name}/route.ts`)
-      expect(src).toContain("from '@/lib/business/business-auth'")
+      expect(src).toContain("from '@/lib/auth/session'")
       expect(src).not.toContain('project-api-credentials')
       expect(src).not.toContain('leads-auth')
     }
-    // The legacy class still terminates in the unchanged global helper.
-    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
+    // Leads is the ONLY route left that reaches the global helper.
+    expect(read('lib/business/leads-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
   })
 
   it('reaches the primitive from leads only through the scoped resolver', () => {

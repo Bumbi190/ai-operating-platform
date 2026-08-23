@@ -6,21 +6,23 @@
  *
  * Exempel: en Stripe-webhook postar hit varje gång en betalning lyckas.
  *
- * ── BUSINESS_SESSION_PROJECT_SCOPE (4B1) ─────────────────────────────────────
+ * ── SESSION ONLY (4B2) ───────────────────────────────────────────────────────
  *
- * The session path is now scoped to the caller's own projects. Before this, a
- * GET with no filter returned EVERY revenue event in EVERY project — the
- * service-role query had no project predicate — and a POST took the project
- * from the body verbatim. Revenue is the most sensitive of the three business
- * tables to read across tenants, since the rows are amounts.
+ * This route accepts a logged-in user and nothing else. The global
+ * AIOPS_API_KEY no longer grants access. The 4A inventory found zero external
+ * callers and zero rows ever written, so the safe target was removing machine
+ * auth rather than replacing it with a credential — and revenue is the most
+ * sensitive of the three business tables to read across tenants, since the
+ * rows are amounts.
  *
- * Reads are scoped at the query boundary, never post-filtered after a
- * service-role fetch. The legacy AIOPS_API_KEY path is deliberately UNCHANGED
- * — transitional debt, removed in 4B2 with the auth class itself.
+ * The 4B1 project scoping is unchanged: reads are scoped at the QUERY
+ * boundary, never post-filtered after a service-role fetch, and a write uses
+ * the VERIFIED project id with an allow-listed payload.
  */
 import { NextResponse } from 'next/server'
+import { requireUserSession } from '@/lib/auth/session'
 import {
-  resolveBusinessAuth, resolveSessionScope, resolveSessionProject,
+  resolveSessionScope, resolveSessionProject,
 } from '@/lib/business/business-auth'
 import { logRevenue, listRevenue, BusinessError, type RevenueInput } from '@/lib/business/store'
 
@@ -33,17 +35,14 @@ export const dynamic = 'force-dynamic'
 const SESSION_REVENUE_FIELDS = ['amount_sek', 'currency', 'source', 'description', 'occurred_at'] as const
 
 export async function GET(request: Request) {
-  const auth = await resolveBusinessAuth(request)
+  const auth = await requireUserSession()
   if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(request.url)
 
-  let allowedProjectIds: string[] | undefined
-  if (auth.auth.kind === 'user') {
-    const scope = await resolveSessionScope(auth.auth.userId)
-    if (!scope.ok) return scope.response
-    allowedProjectIds = scope.allowedProjectIds
-  }
+  const scope = await resolveSessionScope(auth.userId)
+  if (!scope.ok) return scope.response
+  const allowedProjectIds = scope.allowedProjectIds
 
   try {
     const data = await listRevenue({
@@ -60,31 +59,24 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await resolveBusinessAuth(request)
+  const auth = await requireUserSession()
   if (!auth.ok) return auth.response
 
   try {
     const body = await request.json()
-
-    if (auth.auth.kind === 'user') {
-      if (!body || typeof body !== 'object' || Array.isArray(body)) {
-        return NextResponse.json({ error: 'invalid_request', detail: 'body_must_be_object' }, { status: 400 })
-      }
-      const project = await resolveSessionProject(body as Record<string, unknown>, auth.auth.userId)
-      if (!project.ok) return project.response
-
-      const input = { project_id: project.projectId } as RevenueInput
-      for (const field of SESSION_REVENUE_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(body, field)) {
-          (input as unknown as Record<string, unknown>)[field] = body[field]
-        }
-      }
-      const event = await logRevenue(input)
-      return NextResponse.json(event, { status: 201 })
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'invalid_request', detail: 'body_must_be_object' }, { status: 400 })
     }
+    const project = await resolveSessionProject(body as Record<string, unknown>, auth.userId)
+    if (!project.ok) return project.response
 
-    // Legacy global-key path — contract unchanged. TRANSITIONAL SECURITY DEBT.
-    const event = await logRevenue(body)
+    const input = { project_id: project.projectId } as RevenueInput
+    for (const field of SESSION_REVENUE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        (input as unknown as Record<string, unknown>)[field] = body[field]
+      }
+    }
+    const event = await logRevenue(input)
     return NextResponse.json(event, { status: 201 })
   } catch (e) {
     const err = e as BusinessError

@@ -121,6 +121,25 @@
   --omnira-text-3: rgba(255,255,255,0.60);  /* was 0.38 — meta (~6.9:1)      */
   --omnira-text-4: rgba(255,255,255,0.18);  /* decorative only               */
 
+  /* ── OS accent indirection ──────────────────────────────────────────────
+     The one accent the shared os/ surface chrome speaks through. Defaults
+     resolve to today's exact legacy indigo, so nothing moves until a
+     generation scope overrides them.
+
+     Consumed today: --os-accent-rgb, --os-accent-edge, --os-accent-tint-rgb.
+     --os-accent and --os-accent-soft are the declared solid-colour contract
+     and have no consumer yet: the remaining solid-accent sites (HeroStat,
+     Instrument, AgentCard) build colours by hex concatenation (`${color}14`),
+     which var() cannot satisfy without restructuring those components.
+
+     --os-accent-rgb must stay the channel form of --os-accent; CSS cannot
+     derive one from the other. */
+  --os-accent:          var(--omnira-indigo);       /* #6366f1 */
+  --os-accent-soft:     var(--omnira-indigo-soft);  /* #818cf8 */
+  --os-accent-rgb:      99 102 241;                 /* channels of --os-accent */
+  --os-accent-tint-rgb: 165 180 252;                /* indigo-300 — eyebrow tint */
+  --os-accent-edge:     rgb(var(--os-accent-rgb) / 0.18);
+
   /* Spacing rhythm */
   --rhythm-1: 4px;
   --rhythm-2: 8px;
@@ -358,8 +377,14 @@
       0 1px 0 rgba(255,255,255,0.06) inset,
       0 30px 70px -16px rgba(0,0,0,0.65),
       0 8px 22px -6px rgba(0,0,0,0.45),
-      0 0 40px -20px rgba(99,102,241,0.16);
+      0 0 40px -20px rgb(var(--os-accent-rgb) / 0.16);
   }
+  /* Eyebrow label colour — shared by PanelHeader and SectionHeader.
+     Computes to rgb(165 180 252 / 0.7), identical to text-indigo-300/70. */
+  .os-eyebrow-accent {
+    color: rgb(var(--os-accent-tint-rgb) / 0.7);
+  }
+
   .panel-quiet {
     background: rgba(255,255,255,0.015);
     border: 1px solid rgba(255,255,255,0.04);
@@ -368,12 +393,12 @@
   }
   .panel-feature {
     background:
-      linear-gradient(180deg, rgba(99,102,241,0.06) 0%, rgba(255,255,255,0.01) 60%);
-    border: 1px solid rgba(99,102,241,0.18);
+      linear-gradient(180deg, rgb(var(--os-accent-rgb) / 0.06) 0%, rgba(255,255,255,0.01) 60%);
+    border: 1px solid var(--os-accent-edge);
     border-radius: 22px;
     box-shadow:
       0 1px 0 rgba(255,255,255,0.06) inset,
-      0 32px 80px -20px rgba(99,102,241,0.30),
+      0 32px 80px -20px rgb(var(--os-accent-rgb) / 0.30),
       0 10px 28px -8px rgba(0,0,0,0.55);
   }
 

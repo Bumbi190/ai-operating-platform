@@ -10,6 +10,7 @@ import { ATLAS_MODE_LABELS } from '@/lib/atlas/lifecycle'
 import type { AtlasHomeProjectSummary, AtlasHomeViewModel } from '@/lib/atlas/home-view-model'
 import { presentationForProject } from '@/lib/atlas/project-presentation'
 import { resolveProjectRailKeyAction } from '@/lib/atlas/project-rail-keyboard'
+import { centeringScrollLeft, nearestCardIndex, wrapIndex } from '@/lib/atlas/project-rail-geometry'
 import {
   markAtlasProjectRailOpen,
   takeAtlasProjectRailRestoreFocus,
@@ -39,6 +40,12 @@ export function ProjectRail({ projects, generatedAt, availability }: ProjectRail
   const [selectedIndex, setSelectedIndex] = useState(initialIndex)
   const railRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
+  // Focus lives on the button; measurement lives on the card element.
+  const cardElementRefs = useRef<Array<HTMLElement | null>>([])
+  // Ignore scroll-driven reselection while we are animating a centring, so the
+  // intermediate frames cannot drag the selection back to the previous card.
+  const programmaticScroll = useRef(false)
+  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout>>()
   const scrollFrame = useRef<number>()
   const initializedRef = useRef(false)
   const selectedProject = projects[selectedIndex]
@@ -57,17 +64,26 @@ export function ProjectRail({ projects, generatedAt, availability }: ProjectRail
 
   const centerCard = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
     const rail = railRef.current
-    const card = cardRefs.current[index]
+    const card = cardElementRefs.current[index]
     if (!rail || !card) return
-    rail.scrollTo({
-      left: card.offsetLeft - (rail.clientWidth - card.offsetWidth) / 2,
-      behavior,
+
+    const left = centeringScrollLeft({
+      railScrollLeft: rail.scrollLeft,
+      railScrollWidth: rail.scrollWidth,
+      rail: rail.getBoundingClientRect(),
+      card: card.getBoundingClientRect(),
     })
+
+    programmaticScroll.current = true
+    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current)
+    programmaticScrollTimer.current = setTimeout(() => { programmaticScroll.current = false }, 420)
+
+    rail.scrollTo({ left, behavior })
   }, [])
 
   const selectProject = useCallback((index: number, options?: { center?: boolean; focus?: boolean }) => {
     if (projects.length === 0) return
-    const nextIndex = (index + projects.length) % projects.length
+    const nextIndex = wrapIndex(index, projects.length)
     setSelectedIndex(nextIndex)
     replaceProjectQuery(projects[nextIndex].slug)
     if (options?.center !== false) centerCard(nextIndex)
@@ -111,16 +127,11 @@ export function ProjectRail({ projects, generatedAt, availability }: ProjectRail
     if (scrollFrame.current) cancelAnimationFrame(scrollFrame.current)
     const rail = event.currentTarget
     scrollFrame.current = requestAnimationFrame(() => {
-      const center = rail.scrollLeft + rail.clientWidth / 2
-      let nearest = selectedIndex
-      let nearestDistance = Number.POSITIVE_INFINITY
-      cardRefs.current.forEach((card, index) => {
-        if (!card) return
-        const distance = Math.abs(card.offsetLeft + card.offsetWidth / 2 - center)
-        if (distance < nearestDistance) {
-          nearest = index
-          nearestDistance = distance
-        }
+      if (programmaticScroll.current) return
+      const nearest = nearestCardIndex({
+        rail: rail.getBoundingClientRect(),
+        cards: cardElementRefs.current.map((card) => card?.getBoundingClientRect() ?? null),
+        fallback: selectedIndex,
       })
       if (nearest !== selectedIndex) selectProject(nearest, { center: false })
     })
@@ -166,6 +177,7 @@ export function ProjectRail({ projects, generatedAt, availability }: ProjectRail
           return (
             <article
               key={project.id}
+              ref={(node) => { cardElementRefs.current[index] = node }}
               className={styles.projectCard}
               data-selected={selected || undefined}
               aria-label={`${presentation.shortLabel}, projekt ${index + 1} av ${projects.length}`}

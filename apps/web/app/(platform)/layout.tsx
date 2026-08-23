@@ -209,7 +209,13 @@ export default async function PlatformLayout({
         />
 
         {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}
-        <main className="relative overflow-y-auto scrollbar-thin os-stage os-grain">
+        {/* The operating canvas is the narrowest boundary that scopes every OS
+            page surface. The sidebar sits outside it and keeps the vNext skin
+            it already resolves from A1, so it is not themed twice. */}
+        <main
+          data-ui-generation={uiGeneration}
+          className="relative overflow-y-auto scrollbar-thin os-stage os-grain"
+        >
           {/* Ambient backdrop — grid + orbs + scan line                        */}
           <div className="os-grid" aria-hidden />
           <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>

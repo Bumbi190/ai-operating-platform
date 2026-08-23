@@ -155,13 +155,66 @@
    STAGE · atmospheric Interstellar interior
 ═══════════════════════════════════════════════════════════════════════════ */
 
-.os-stage {
-  position: relative;
-  background:
+/* ═══════════════════════════════════════════════════════════════════════════
+   GENERATION SCOPE · vNext theme
+   The one block that retints the shared OS surfaces for the vNext generation.
+   Every value is derived from the owner-approved Atlas Home, not invented:
+   backgrounds from its .page gradient stops, surfaces and edges from its panel
+   rgba values composited over that ground, text from its .page colour.
+
+   Scoped to the platform canvas, so legacy is untouched by construction — the
+   selector simply cannot match when the generation is legacy. Atlas Home itself
+   renders inside this scope but consumes none of these variables, so it stays
+   pixel-identical.
+
+   Status semantics (--destructive) and shadcn's component semantics
+   (--primary, --secondary, --accent) are deliberately NOT overridden: the first
+   carries meaning, the second is unused by the OS pages.
+═══════════════════════════════════════════════════════════════════════════ */
+
+[data-ui-generation='vnext'] {
+  /* Accent — the A2.1 contract, retuned to the approved cyan/aqua. */
+  --os-accent:          var(--omnira-cyan);       /* #22d3ee */
+  --os-accent-soft:     var(--omnira-cyan-soft);  /* #67e8f9 */
+  --os-accent-rgb:      34 211 238;               /* channels of --os-accent */
+  --os-accent-tint-rgb: 103 232 249;              /* channels of --os-accent-soft */
+
+  /* Stage ground — same geometry as legacy, Atlas's teal palette and bases. */
+  --os-stage-background:
+    radial-gradient(ellipse 90% 60% at 18% 0%,   rgba(34,211,238,0.050) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 50% at 88% 100%, rgba(45,212,191,0.035) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 50% 40%,  rgba(67,56,202,0.030)  0%, transparent 60%),
+    linear-gradient(180deg, #01060e 0%, #020c17 50%, #020711 100%);
+
+  /* Theme semantics. Derived by compositing Atlas Home's own surface rgba over
+     its page ground; contrast was measured, not assumed — foreground 18.47:1,
+     muted-foreground 7.53:1 on card, both AAA and both above the legacy 5.45:1. */
+  --background:          211 84% 5%;
+  --foreground:          218 100% 98%;
+  --card:                208 78% 7%;
+  --card-foreground:     218 100% 98%;
+  --popover:             208 78% 7%;
+  --popover-foreground:  218 100% 98%;
+  --muted:               209 78% 7%;
+  --muted-foreground:    200 15% 64%;
+  --border:              206 45% 11%;
+  --input:               205 54% 9%;
+  --ring:                187 92% 69%;
+}
+
+/* The stage ground is a variable so a generation scope can retint it without
+   rewriting the geometry. The default below is the legacy value verbatim. */
+:root {
+  --os-stage-background:
     radial-gradient(ellipse 90% 60% at 18% 0%,   rgba(99,102,241,0.06)  0%, transparent 55%),
     radial-gradient(ellipse 50% 50% at 88% 100%, rgba(212,165,116,0.04) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 50% 40%,  rgba(139,92,246,0.025) 0%, transparent 60%),
     linear-gradient(180deg, #050714 0%, #060919 50%, #050714 100%);
+}
+
+.os-stage {
+  position: relative;
+  background: var(--os-stage-background);
   min-height: 100vh;
 }
 

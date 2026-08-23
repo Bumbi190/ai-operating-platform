@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
@@ -28,6 +28,7 @@ import {
   Network,
 } from 'lucide-react'
 import vnextStyles from './SidebarVNext.module.css'
+import { DEFAULT_UI_GENERATION, isVNext, type OmniraUiGeneration } from '@/lib/ui/generation'
 
 interface Project {
   id: string
@@ -47,6 +48,8 @@ interface SidebarProps {
   userEmail?: string
   operatorName?: string
   recentConversations?: RecentConversation[]
+  /** Resolved server-side by the platform layout — never parsed here. */
+  uiGeneration?: OmniraUiGeneration
 }
 
 // P0: 14 → 9 poster; Intelligence Graph-epicen adderade en 10:e (medvetet).
@@ -80,11 +83,18 @@ const mediaProjectNav = [
   { href: '/scripts',  label: 'Manuskriptkö',   icon: FileText },
 ]
 
-export function Sidebar({ projects, userEmail, operatorName, recentConversations = [] }: SidebarProps) {
+export function Sidebar({
+  projects,
+  userEmail,
+  operatorName,
+  recentConversations = [],
+  uiGeneration = DEFAULT_UI_GENERATION,
+}: SidebarProps) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const router = useRouter()
-  const isAtlasVNext = pathname === '/atlas' && searchParams.get('ui') === 'vnext'
+  // The generation arrives resolved from the server layout, so the shell keeps
+  // its vNext identity across navigation instead of only on /atlas?ui=vnext.
+  const isVNextShell = isVNext(uiGeneration)
   const isChatActive = pathname.startsWith('/chat')
   const activeSlug = pathname.match(/\/projects\/([^/]+)/)?.[1]
 
@@ -110,12 +120,12 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
     <aside
       className={cn(
         'relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden',
-        isAtlasVNext && vnextStyles.sidebar,
+        isVNextShell && vnextStyles.sidebar,
       )}
-      data-atlas-vnext={isAtlasVNext || undefined}
+      data-atlas-vnext={isVNextShell || undefined}
       style={{
         background:
-          isAtlasVNext
+          isVNextShell
             ? 'radial-gradient(ellipse 120% 52% at 50% 0%, rgba(34,211,238,0.10) 0%, transparent 64%), linear-gradient(180deg, #020b16 0%, #03101a 46%, #020813 100%)'
             : 'radial-gradient(ellipse 100% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 60%), linear-gradient(180deg, #060a18 0%, #050714 45%, #060a18 100%)',
       }}
@@ -125,7 +135,7 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
         className="absolute inset-x-0 top-0 h-44 pointer-events-none"
         style={{
           background:
-            isAtlasVNext
+            isVNextShell
               ? 'radial-gradient(ellipse 90% 80% at 50% 0%, rgba(34,211,238,0.12) 0%, transparent 72%)'
               : 'radial-gradient(ellipse 80% 80% at 50% 0%, rgba(99,102,241,0.14) 0%, transparent 70%)',
         }}
@@ -146,10 +156,10 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
               <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
             </span>
             <span className="eyebrow !text-[8.5px] !text-emerald-300/85 !tracking-[0.22em]">
-              {isAtlasVNext ? `${projects.length} projekt kopplade` : 'Alla system nominella'}
+              {isVNextShell ? `${projects.length} projekt kopplade` : 'Alla system nominella'}
             </span>
           </div>
-          <span className="caption-mono text-[9px] text-faint">{isAtlasVNext ? 'ATLAS' : 'v4.2'}</span>
+          <span className="caption-mono text-[9px] text-faint">{isVNextShell ? 'ATLAS' : 'v4.2'}</span>
         </div>
       </div>
 
@@ -172,28 +182,28 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
                 return (
                   <Link
                     key={item.href}
-                    href={isAtlasVNext ? '/atlas?ui=vnext' : item.href}
+                    href={isVNextShell ? '/atlas?ui=vnext' : item.href}
                     className={cn(
                       'relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all ease-os overflow-hidden group',
-                      isAtlasVNext && vnextStyles.primaryNav,
+                      isVNextShell && vnextStyles.primaryNav,
                       isActive
                         ? 'text-white'
                         : 'text-indigo-200/80 hover:text-white',
                     )}
                     style={isActive
                       ? {
-                          background: isAtlasVNext
+                          background: isVNextShell
                             ? 'linear-gradient(105deg, rgba(18,184,202,0.18), rgba(37,99,235,0.08) 72%, transparent)'
                             : 'linear-gradient(180deg, rgba(99,102,241,0.24) 0%, rgba(99,102,241,0.10) 100%)',
-                          border: isAtlasVNext ? '1px solid rgba(72,218,226,0.28)' : '1px solid rgba(99,102,241,0.40)',
+                          border: isVNextShell ? '1px solid rgba(72,218,226,0.28)' : '1px solid rgba(99,102,241,0.40)',
                           boxShadow:
-                            isAtlasVNext
+                            isVNextShell
                               ? '0 12px 34px -18px rgba(34,211,238,0.62), inset 0 1px 0 rgba(255,255,255,0.06)'
                               : '0 10px 28px -12px rgba(99,102,241,0.55), inset 0 1px 0 rgba(255,255,255,0.07)',
                         }
                       : {
-                          background: isAtlasVNext ? 'rgba(34,211,238,0.025)' : 'rgba(99,102,241,0.04)',
-                          border: isAtlasVNext ? '1px solid rgba(34,211,238,0.08)' : '1px solid rgba(99,102,241,0.10)',
+                          background: isVNextShell ? 'rgba(34,211,238,0.025)' : 'rgba(99,102,241,0.04)',
+                          border: isVNextShell ? '1px solid rgba(34,211,238,0.08)' : '1px solid rgba(99,102,241,0.10)',
                         }
                     }
                   >
@@ -360,7 +370,7 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
           <div
             className={cn(
               'flex items-center gap-2.5 px-3 py-2 rounded-xl group cursor-default mt-2',
-              isAtlasVNext && vnextStyles.operatorCard,
+              isVNextShell && vnextStyles.operatorCard,
             )}
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))',
@@ -370,18 +380,18 @@ export function Sidebar({ projects, userEmail, operatorName, recentConversations
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 chrome-edge"
               style={{
-                background: isAtlasVNext
+                background: isVNextShell
                   ? 'linear-gradient(135deg, rgba(34,211,238,0.32), rgba(37,99,235,0.24) 72%, rgba(139,92,246,0.24))'
                   : 'linear-gradient(135deg, rgba(99,102,241,0.42) 0%, rgba(139,92,246,0.30) 100%)',
-                border: isAtlasVNext ? '1px solid rgba(103,232,249,0.30)' : '1px solid rgba(99,102,241,0.40)',
-                boxShadow: isAtlasVNext ? '0 4px 16px -5px rgba(34,211,238,0.55)' : '0 4px 12px -4px rgba(99,102,241,0.5)',
+                border: isVNextShell ? '1px solid rgba(103,232,249,0.30)' : '1px solid rgba(99,102,241,0.40)',
+                boxShadow: isVNextShell ? '0 4px 16px -5px rgba(34,211,238,0.55)' : '0 4px 12px -4px rgba(99,102,241,0.5)',
               }}
             >
               <span className="text-[10px] font-bold text-white">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-white/90 truncate font-medium tracking-tight">
-                {isAtlasVNext ? humanName : emailHandle}
+                {isVNextShell ? humanName : emailHandle}
               </p>
               <p className="eyebrow !text-[8.5px] !text-meta !tracking-[0.20em] mt-0.5">Operatör</p>
             </div>

@@ -98,6 +98,14 @@
   --omnira-violet-soft: #a78bfa;
   --omnira-cyan:        #22d3ee;
   --omnira-cyan-soft:   #67e8f9;
+
+  /* vNext aqua/teal — the accent family introduced by the owner-approved Atlas
+     Home. Promoted verbatim from that CSS module so the approved surface and
+     the rest of the platform share one source of truth. Values are unchanged. */
+  --omnira-teal:        #2dd4bf;
+  --omnira-teal-soft:   #5eead4;
+  --omnira-aqua:        #a5f3fc;
+  --omnira-aqua-bright: #ecfeff;
   --omnira-gold:        #d4a574;       /* warm gold (Interstellar) */
   --omnira-gold-soft:   #e8c89a;
   --omnira-emerald:     #34d399;

@@ -24,6 +24,8 @@ import { getMorningBugDigest } from '@/lib/bugs/digest'
 import { AlertTriangle, ArrowRight, Clock } from 'lucide-react'
 import { loadAtlasHomeViewModel } from '@/lib/atlas/home-view-model'
 import { AtlasHomeVNext } from '@/components/platform/vnext/AtlasHomeVNext'
+import { cookies } from 'next/headers'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,8 +38,15 @@ interface AtlasHomeProps {
 }
 
 export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
-  const ui = Array.isArray(searchParams?.ui) ? searchParams?.ui[0] : searchParams?.ui
-  if (ui === 'vnext') {
+  // ?ui= still wins for the request that enters Atlas, exactly as before; the
+  // cookie only decides when no explicit choice is present. Both are read
+  // through the one canonical resolver rather than compared inline.
+  const uiCookies = await cookies()
+  const generation = resolveUiGeneration({
+    query: searchParams?.ui,
+    cookie: uiCookies.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
+  if (isVNext(generation)) {
     const model = await loadAtlasHomeViewModel()
     if (!model) redirect('/login')
     return <AtlasHomeVNext model={model} />

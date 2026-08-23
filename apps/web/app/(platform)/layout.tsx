@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
@@ -11,6 +12,7 @@ import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
+import { OMNIRA_UI_COOKIE, resolveUiGeneration } from '@/lib/ui/generation'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -31,6 +33,15 @@ export default async function PlatformLayout({
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Which UI generation this request renders. Middleware has already written a
+  // valid ?ui= choice onto the request, so the first request that enters vNext
+  // resolves correctly here without a redirect. Selection only — never an auth
+  // or authorization input.
+  const cookieStore = await cookies()
+  const uiGeneration = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
 
   const db = createAdminClient()
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
@@ -194,6 +205,7 @@ export default async function PlatformLayout({
           userEmail={user.email ?? ''}
           operatorName={OPERATOR_DISPLAY_NAME}
           recentConversations={conversations}
+          uiGeneration={uiGeneration}
         />
 
         {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}

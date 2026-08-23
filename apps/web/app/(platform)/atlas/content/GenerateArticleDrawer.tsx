@@ -86,25 +86,25 @@ export function GenerateArticleDrawer({ newsItems }: { newsItems: NewsItemForPic
           onKeyDown={(e) => e.key === 'Escape' && close()}
         >
           <div
-            className="w-full max-w-xl bg-zinc-950 border-l border-zinc-800 h-full overflow-y-auto flex flex-col"
+            className="w-full max-w-xl bg-background border-l border-border h-full overflow-y-auto flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="flex items-center justify-between p-4 border-b border-zinc-800 shrink-0">
-              <h2 className="text-sm font-semibold text-zinc-100 inline-flex items-center gap-2">
+            <header className="flex items-center justify-between p-4 border-b border-border shrink-0">
+              <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-400" /> Generate Article
               </h2>
               <button
                 onClick={close}
                 disabled={busy}
                 aria-label="Close"
-                className="text-zinc-500 hover:text-zinc-200 disabled:opacity-50"
+                className="text-meta hover:text-foreground disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
               </button>
             </header>
 
             {/* Tier */}
-            <section className="p-4 border-b border-zinc-800 space-y-2 shrink-0">
+            <section className="p-4 border-b border-border space-y-2 shrink-0">
               <p className="text-[10px] font-mono uppercase text-meta">Length tier</p>
               <div className="flex gap-2">
                 {(['breaking', 'standard', 'deep'] as const).map((t) => (
@@ -116,7 +116,7 @@ export function GenerateArticleDrawer({ newsItems }: { newsItems: NewsItemForPic
                       'flex-1 px-3 py-2 rounded text-xs font-medium border transition-colors disabled:opacity-50',
                       tier === t
                         ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300'
-                        : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/70',
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground hover:bg-card/70',
                     ].join(' ')}
                   >
                     {t}
@@ -148,14 +148,14 @@ export function GenerateArticleDrawer({ newsItems }: { newsItems: NewsItemForPic
                             'w-full text-left rounded border p-3 transition-colors disabled:opacity-50',
                             selected
                               ? 'border-emerald-500/60 bg-emerald-500/10'
-                              : 'border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900',
+                              : 'border-border bg-card/40 hover:bg-card',
                           ].join(' ')}
                         >
-                          <p className="text-sm font-medium text-zinc-100 line-clamp-2">{n.title}</p>
+                          <p className="text-sm font-medium text-foreground line-clamp-2">{n.title}</p>
                           <div className="mt-1 flex items-center gap-3 text-[11px] text-secondary">
                             <span>{n.source_name ?? '—'}</span>
                             <span>
-                              Virality: <span className="text-zinc-300">{n.virality_score ?? '—'}</span>
+                              Virality: <span className="text-secondary">{n.virality_score ?? '—'}</span>
                             </span>
                             <span>{new Date(n.created_at).toLocaleDateString('sv-SE')}</span>
                           </div>
@@ -168,7 +168,7 @@ export function GenerateArticleDrawer({ newsItems }: { newsItems: NewsItemForPic
             </section>
 
             {/* Footer */}
-            <footer className="sticky bottom-0 p-4 border-t border-zinc-800 bg-zinc-950 space-y-2 shrink-0">
+            <footer className="sticky bottom-0 p-4 border-t border-border bg-background space-y-2 shrink-0">
               {error && <p className="text-xs text-rose-400">{error}</p>}
               <button
                 onClick={generate}

@@ -42,7 +42,7 @@ export function ReviewActions({ id }: { id: string }) {
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Rejection reason (optional)"
-        className="w-full text-xs bg-zinc-950 border border-zinc-800 rounded p-2 text-zinc-300 resize-none h-16 focus:outline-none focus:border-zinc-600"
+        className="w-full text-xs bg-background border border-border rounded p-2 text-secondary resize-none h-16 focus:outline-none focus:border-ring"
       />
       <div className="flex gap-2">
         <button
@@ -56,7 +56,7 @@ export function ReviewActions({ id }: { id: string }) {
         <button
           onClick={() => act('reject')}
           disabled={busy !== null}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium disabled:opacity-50"
         >
           {busy === 'reject' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
           Reject

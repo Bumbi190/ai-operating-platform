@@ -68,22 +68,22 @@ export function HeroImageActions({
         <h2 className="text-xs font-mono uppercase tracking-wide text-sky-300/80 inline-flex items-center gap-1.5">
           <ImageIcon className="w-3.5 h-3.5" /> Hero image
         </h2>
-        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">
+        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-muted text-secondary">
           {status}
         </span>
       </div>
 
       {/* Prompt — always shown when present so operator knows what's being generated */}
       {heroImagePrompt && (
-        <div className="rounded border border-zinc-800 bg-zinc-950 p-2.5">
+        <div className="rounded border border-border bg-background p-2.5">
           <p className="text-[10px] font-mono uppercase text-meta mb-1">Hero image prompt</p>
-          <p className="text-xs text-zinc-300 leading-relaxed">{heroImagePrompt}</p>
+          <p className="text-xs text-secondary leading-relaxed">{heroImagePrompt}</p>
         </div>
       )}
 
       {/* Image preview (visible whenever a URL is set, regardless of status) */}
       {heroImageUrl && (
-        <div className="rounded border border-zinc-800 overflow-hidden bg-zinc-950">
+        <div className="rounded border border-border overflow-hidden bg-background">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={heroImageUrl}
@@ -151,7 +151,7 @@ export function HeroImageActions({
           <button
             onClick={trigger}
             disabled={isBusy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium disabled:opacity-50"
           >
             {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
             Regenerate Hero Image

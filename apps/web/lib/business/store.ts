@@ -69,9 +69,32 @@ export async function createLead(input: LeadInput) {
   return data
 }
 
-export async function listLeads(opts: { project_id?: string; status?: LeadStatus; limit?: number } = {}) {
+/**
+ * List leads within an explicit project allow-list.
+ *
+ * `allowedProjectIds` is REQUIRED, not optional. After 4B3 there is no
+ * legitimate global read path to this table — the one production caller is the
+ * session-scoped GET route — so `undefined = unscoped` would be a footgun with
+ * nothing left to justify it. Making it required means a future caller cannot
+ * read every tenant's leads by simply forgetting an argument; it has to be
+ * written on purpose.
+ *
+ * An explicit `project_id` NARROWS within the allow-list and can never widen
+ * it: the scope predicate is applied independently, so naming a foreign
+ * project yields no rows rather than that project's rows.
+ */
+export async function listLeads(opts: {
+  project_id?: string
+  status?: LeadStatus
+  limit?: number
+  allowedProjectIds: string[]
+}) {
   const db = createAdminClient()
   let q = (db.from('leads') as any).select('*').order('created_at', { ascending: false }).limit(opts.limit ?? 100)
+  // Scoped at the query boundary, never by post-filtering a service-role read.
+  // An empty allow-list becomes the impossible id, so it yields zero rows
+  // rather than every row.
+  q = applyProjectScope(q, opts.allowedProjectIds)
   if (opts.project_id) q = q.eq('project_id', opts.project_id)
   if (opts.status)     q = q.eq('status', opts.status)
   const { data, error } = await q

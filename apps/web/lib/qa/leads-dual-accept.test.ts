@@ -168,59 +168,85 @@ beforeEach(() => {
 
 afterEach(() => { vi.restoreAllMocks() })
 
-// ── 1. Legacy AIOPS_API_KEY — must not regress ───────────────────────────────
+// ── 1. Legacy AIOPS_API_KEY — REMOVED (Phase 4B3) ───────────────────────────
 
-describe('legacy AIOPS_API_KEY path', () => {
-  it('creates a lead with the whole body, exactly as before Phase 2', async () => {
+/**
+ * The inversion of what this block used to assert.
+ *
+ * Every case here uses a VALID legacy key — the exact value the server has in
+ * `AIOPS_API_KEY`, the one that returned 201 before 4B3. A wrong-key test would
+ * prove only that a wrong value is refused, which was already true and would
+ * stay true if the whole legacy branch came back. Using the working key is what
+ * makes these tests fail the moment the capability is restored.
+ */
+describe('legacy AIOPS_API_KEY path is gone', () => {
+  it('refuses a valid legacy key on POST, and writes nothing', async () => {
     const body = { project_slug: 'familje-stunden', name: 'A', email: 'a@b.c', source: 'pyssel' }
     const res = await POST(post(body, LEGACY_KEY))
-    expect(res.status).toBe(201)
-    expect(createLeadCalls).toEqual([body])
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('still accepts project_id in the body', async () => {
-    const body = { project_id: PROJECT_B, name: 'B' }
-    const res = await POST(post(body, LEGACY_KEY))
-    expect(res.status).toBe(201)
-    expect(createLeadCalls[0]).toEqual(body)
+  it('refuses a valid legacy key naming a project id outright', async () => {
+    const res = await POST(post({ project_id: PROJECT_B, name: 'B' }, LEGACY_KEY))
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('rejects a wrong key with 401', async () => {
+  it('refuses a valid legacy key on GET, and reads nothing', async () => {
+    const res = await GET(get(LEGACY_KEY))
+    expect(res.status).toBe(401)
+    expect(listLeadsCalls).toHaveLength(0)
+  })
+
+  it('refuses a wrong key too', async () => {
     const res = await POST(post({ project_id: PROJECT_A }, 'not-the-key'))
     expect(res.status).toBe(401)
     expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('rejects a missing key with 401', async () => {
+  it('refuses a missing key', async () => {
     const res = await POST(post({ project_id: PROJECT_A }))
     expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('preserves the 500 when AIOPS_API_KEY is unset on the server', async () => {
+  /**
+   * The discriminator that proves the route no longer REACHES `requireApiKey`.
+   *
+   * With the env var unset, the old code answered 500 "AIOPS_API_KEY is not
+   * configured on the server" — a server-config error, distinguishable from a
+   * denial. If any path still reached that helper, this would be 500. It is a
+   * plain 401, which no other refactor produces by accident.
+   */
+  it('answers 401, not the old 500, when AIOPS_API_KEY is unset', async () => {
     delete process.env.AIOPS_API_KEY
     const res = await POST(post({ project_id: PROJECT_A }, 'anything'))
-    expect(res.status).toBe(500)
-    expect((await res.json()).error).toContain('AIOPS_API_KEY')
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('preserves the legacy 401 body verbatim', async () => {
+  it('no longer emits the legacy 401 body', async () => {
     const res = await POST(post({}, 'wrong'))
-    expect((await res.json()).error).toBe(
-      'Unauthorized — provide a valid API key via Authorization: Bearer <key>',
-    )
+    expect((await res.json()).error).toBe('Unauthorized')
   })
 
-  it('never touches project_api_credentials', async () => {
+  /** A credential must still work with no global key present at all. */
+  it('leaves the credential path working when AIOPS_API_KEY is unset', async () => {
+    delete process.env.AIOPS_API_KEY
+    const token = seedCredential()
+    const res = await POST(post({ email: 'a@b.c' }, token))
+    expect(res.status).toBe(201)
+    expect(createLeadCalls).toEqual([{ project_id: PROJECT_A, email: 'a@b.c' }])
+  })
+
+  it('never touches project_api_credentials for a non-omn token', async () => {
     await POST(post({ project_slug: 'x' }, LEGACY_KEY))
     expect(credentialUpdates).toHaveLength(0)
   })
-
-  it('lists leads on GET', async () => {
-    const res = await GET(get(LEGACY_KEY))
-    expect(res.status).toBe(200)
-    expect(listLeadsCalls).toHaveLength(1)
-  })
 })
+
 
 // ── 2. Session — must not regress ────────────────────────────────────────────
 
@@ -243,15 +269,26 @@ describe('user session path', () => {
     expect(res.status).toBe(201)
   })
 
-  it('falls through to key auth when there is no session', async () => {
+  it('does NOT fall through to key auth when there is no session', async () => {
     sessionUser = null
     const res = await POST(post({ project_id: PROJECT_A }, LEGACY_KEY))
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('falls through to key auth when the session lookup throws', async () => {
+  it('denies when the session lookup throws and only a legacy key is offered', async () => {
+    // The throw is still swallowed — it must not become a 500 — but there is no
+    // longer a key path underneath it to land on.
     sessionThrows = true
     const res = await POST(post({ project_id: PROJECT_A }, LEGACY_KEY))
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
+  })
+
+  it('still reaches the credential path when the session lookup throws', async () => {
+    sessionThrows = true
+    const token = seedCredential()
+    const res = await POST(post({ email: 'a@b.c' }, token))
     expect(res.status).toBe(201)
   })
 
@@ -497,9 +534,12 @@ describe('namespace separation', () => {
     expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('lets a non-omn_ token continue to the legacy path', async () => {
+  it('denies a non-omn_ token instead of continuing anywhere', async () => {
     const res = await POST(post({ project_slug: 'x' }, LEGACY_KEY))
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(401)
+    expect(createLeadCalls).toHaveLength(0)
+    // and it never reached the credential verifier either
+    expect(credentialUpdates).toHaveLength(0)
   })
 
   it('classifies namespace membership by prefix alone', () => {
@@ -569,12 +609,15 @@ describe('containment', () => {
     // assertion owns is that they gained no project-credential capability and
     // did not borrow the leads resolver — the legacy class still reaches
     // requireApiKey through the shared business resolver.
+    // 4B2 made these session-only. The durable property is that they gained no
+    // project-credential capability and did not borrow the leads resolver.
     const src = read(`app/api/business/${name}/route.ts`)
-    expect(src).toContain("from '@/lib/business/business-auth'")
+    expect(src).toContain("from '@/lib/auth/session'")
     expect(src).not.toContain('leads-auth')
     expect(src).not.toContain('project-api-credentials')
     expect(src).not.toContain('business.leads.create')
-    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
+    // And they can no longer reach the global key at all.
+    expect(src).not.toMatch(/from '@\/lib\/api-auth'/)
   })
 
   it('leaves /api/chat/tts untouched by the credential surface', () => {
@@ -680,7 +723,7 @@ describe('resolveLeadsAuth', () => {
 
     sessionUser = null
     const r2 = await resolveLeadsAuth(post({}, LEGACY_KEY), 'business.leads.create')
-    expect(r2.ok && r2.auth).toEqual({ kind: 'legacy_api_key' })
+    expect(r2.ok).toBe(false)
 
     const token = seedCredential()
     const r3 = await resolveLeadsAuth(post({}, token), 'business.leads.create')

@@ -482,60 +482,16 @@ describe('fail closed', () => {
   })
 })
 
-// ── Legacy must not regress ─────────────────────────────────────────────────
-
-describe('legacy AIOPS_API_KEY — unchanged in 4B1', () => {
-  it('campaigns GET is unscoped for legacy, exactly as before', async () => {
-    sessionUser = null
-    const res = await campaignsRoute.GET(getC('', LEGACY_KEY))
-    expect(res.status).toBe(200)
-    expect((await res.json() as unknown[]).length).toBe(2)
-    // No allow-list predicate at all on the legacy path.
-    expect(scopeOf('campaigns')).toBeUndefined()
-  })
-
-  it('campaigns POST still takes the project from the body', async () => {
-    sessionUser = null
-    const res = await campaignsRoute.POST(postC({ project_id: PROJ_B, name: 'x' }, LEGACY_KEY))
-    expect(res.status).toBe(201)
-    expect(inserts[0].row.project_id).toBe(PROJ_B)
-  })
-
-  it('campaigns PATCH still targets by id alone', async () => {
-    sessionUser = null
-    const res = await campaignsRoute.PATCH(patchC({ id: CAMP_B, name: 'legacy-ändrad' }, LEGACY_KEY))
-    expect(res.status).toBe(200)
-    expect(updates[0].filters.__inVals).toBeUndefined()
-  })
-
-  it('revenue GET and POST unchanged for legacy', async () => {
-    sessionUser = null
-    const g = await revenueRoute.GET(getR('', LEGACY_KEY))
-    expect((await g.json() as unknown[]).length).toBe(2)
-    const p = await revenueRoute.POST(postR({ project_id: PROJ_B, amount_sek: 3 }, LEGACY_KEY))
-    expect(p.status).toBe(201)
-    expect(inserts[0].row.project_id).toBe(PROJ_B)
-  })
-
-  it('a wrong key is still 401 on every method', async () => {
-    sessionUser = null
-    for (const r of [
-      campaignsRoute.GET(getC('', 'wrong')),
-      campaignsRoute.POST(postC({ name: 'x' }, 'wrong')),
-      campaignsRoute.PATCH(patchC({ id: CAMP_A }, 'wrong')),
-      revenueRoute.GET(getR('', 'wrong')),
-      revenueRoute.POST(postR({ amount_sek: 1 }, 'wrong')),
-    ]) expect((await r).status).toBe(401)
-  })
-
-  it('an unset verifier secret still yields the old 500', async () => {
-    sessionUser = null
-    delete process.env.AIOPS_API_KEY
-    const res = await campaignsRoute.GET(getC('', 'anything'))
-    expect(res.status).toBe(500)
-    expect((await res.json()).error).toContain('AIOPS_API_KEY')
-  })
-})
+// ── Legacy is gone as of 4B2 ────────────────────────────────────────────────
+//
+// This file used to pin the legacy path's behaviour: unscoped reads, a
+// body-supplied project, a PATCH targeting by id alone. 4B2 removed the auth
+// class entirely, so those assertions describe something that no longer
+// exists. The question "can the global key still reach these routes" now
+// belongs to lib/qa/session-only-routes.test.ts, which proves the negative
+// with a VALID key fixture and a missing-env case.
+//
+// What stays here is what this file owns: the project scoping itself.
 
 // ── Structure ───────────────────────────────────────────────────────────────
 
@@ -566,16 +522,18 @@ describe('structure', () => {
   })
 
   it('builds session writes by pick, never by spread', () => {
+    // 4B2 made these routes session-only, so the POST handler IS the session
+    // path — there is no branch to slice to any more.
     for (const p of [CAMPAIGNS_ROUTE, REVENUE_ROUTE]) {
       const src = read(p)
-      const at = src.indexOf("if (auth.auth.kind === 'user')")
-      const body = src.slice(at, src.indexOf('// Legacy global-key path', at))
+      const at = src.indexOf('export async function POST')
+      const body = src.slice(at, src.indexOf('\n}', at))
       expect(body).not.toContain('...body')
       expect(body).toContain('project.projectId')
     }
   })
 
-  it('never reads a project out of the body in a session write branch', () => {
+  it('never reads a project out of the body in a session write path', () => {
     // The resolver already validated body.project_id against the allow-list, so
     // a `body.project_id ?? project.projectId` fallback is equivalent TODAY and
     // therefore invisible to a behavioural test. Assert it at the source so the
@@ -583,8 +541,8 @@ describe('structure', () => {
     // the validation, at which point it would silently become live.
     for (const p of [CAMPAIGNS_ROUTE, REVENUE_ROUTE]) {
       const src = read(p)
-      const at = src.indexOf("if (auth.auth.kind === 'user')")
-      const body = src.slice(at, src.indexOf('// Legacy global-key path', at))
+      const at = src.indexOf('export async function POST')
+      const body = src.slice(at, src.indexOf('\n}', at))
       expect(body).not.toMatch(/body\.project_id/)
       expect(body).not.toMatch(/body\.project_slug/)
       expect(body).not.toMatch(/body\[['"]project_/)
@@ -596,12 +554,9 @@ describe('structure', () => {
     // comment, which belongs to POST — so it never inspected PATCH at all, and
     // that is exactly how the mass-assignment hole survived review. This one
     // anchors on the PATCH function itself.
+    // 4B2: PATCH is session-only, so the whole handler is the session path.
     const src = read(CAMPAIGNS_ROUTE)
-    const patchFn = src.slice(src.indexOf('export async function PATCH'))
-    const sessionBranch = patchFn.slice(
-      patchFn.indexOf("if (auth.auth.kind === 'user')"),
-      patchFn.indexOf('// Legacy global-key path'),
-    )
+    const sessionBranch = src.slice(src.indexOf('export async function PATCH'))
     expect(sessionBranch.length).toBeGreaterThan(100)
 
     // Rebuilt from the documented field list, never handed the raw rest-spread.
@@ -609,8 +564,13 @@ describe('structure', () => {
     expect(sessionBranch).toContain('safePatch')
     expect(sessionBranch).toMatch(/updateCampaign\(\s*id,\s*safePatch,/)
     expect(sessionBranch).not.toMatch(/updateCampaign\(\s*id,\s*patch\b/)
-    expect(sessionBranch).not.toContain('...patch')
-    expect(sessionBranch).not.toContain('...body')
+    // `const { id, ...patch }` is a destructuring REST and is fine — it is how
+    // the id is separated. What must never happen is that rest being spread
+    // into an object or handed to the store, which is the mass-assignment
+    // shape. Assert the dangerous forms, not the harmless one.
+    expect(sessionBranch).not.toMatch(/\{\s*\.\.\.patch/)
+    expect(sessionBranch).not.toMatch(/\{\s*\.\.\.body/)
+    expect(sessionBranch).not.toMatch(/updateCampaign\([^)]*,\s*patch\s*[,)]/)
     expect(sessionBranch).not.toMatch(/body\.project_/)
     expect(sessionBranch).not.toMatch(/patch\.project_/)
 
@@ -622,16 +582,11 @@ describe('structure', () => {
     }
   })
 
-  it('keeps chat/tts untouched by this phase', () => {
+  it('keeps chat/tts free of project scoping — it is not project-bound', () => {
     const tts = read('app/api/chat/tts/route.ts')
-    expect(tts).toContain('requireUserOrApiKey')
     expect(tts).not.toContain('business-auth')
-  })
-
-  it('records the legacy debt in both routes', () => {
-    for (const p of [CAMPAIGNS_ROUTE, REVENUE_ROUTE]) {
-      expect(read(p)).toContain('TRANSITIONAL SECURITY DEBT')
-    }
+    expect(tts).not.toContain('resolveSessionScope')
+    expect(tts).not.toContain('project_id')
   })
 
   it('leaves lib/api-auth.ts unchanged in shape', () => {

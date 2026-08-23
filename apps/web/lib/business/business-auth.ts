@@ -10,15 +10,16 @@
  *
  * ── SCOPE OF THIS MODULE ─────────────────────────────────────────────────────
  *
- * It classifies the caller and resolves an authorized project. It grants
- * NOTHING: no credential path, no new capability, no widening. The legacy
- * `AIOPS_API_KEY` class is returned as `legacy_api_key` and deliberately left
- * with the behaviour it already had — that is transitional debt scheduled for
- * removal, not something to paper over here.
+ * It resolves an authorized PROJECT for an already-authenticated user. It does
+ * not authenticate — `requireUserSession` owns that — and it grants nothing:
+ * no credential path, no new capability, no widening.
  *
- * It is named for the business routes and lives beside them. It is not the
- * general "dual auth for every route" helper: `chat/tts` is not project-bound
- * and must not import this.
+ * 4B2 removed the auth classification that used to live here. Campaigns and
+ * revenue are session-only now, so nothing needs to tell a user apart from a
+ * machine caller, and this module no longer knows the global key exists.
+ *
+ * It is named for the business routes and lives beside them. `chat/tts` is not
+ * project-bound and must not import it.
  *
  * ── ONE IMPLEMENTATION, NOT TWO ──────────────────────────────────────────────
  *
@@ -33,8 +34,6 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 
-import { requireApiKey } from '@/lib/api-auth'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   resolveProjectAccess, assertProjectAllowed, projectForbidden,
@@ -43,40 +42,6 @@ import { scopeToProjects } from '@/lib/atlas/isolation'
 
 /** Repository escape hatch for tables outside the generated Database type. */
 type AnyDb = any // eslint-disable-line @typescript-eslint/no-explicit-any
-
-/**
- * Which class of caller this is. A boolean would lose exactly the distinction
- * this phase needs: the session path gets scoping, the legacy path keeps its
- * existing unscoped behaviour until it is deleted.
- */
-export type BusinessAuth =
-  | { kind: 'user'; userId: string }
-  | { kind: 'legacy_api_key' }
-
-export type BusinessAuthResult =
-  | { ok: true; auth: BusinessAuth }
-  | { ok: false; response: NextResponse }
-
-/**
- * Resolve who is calling a business route.
- *
- * Reproduces `requireUserOrApiKey`'s exact order and its swallowed throw, and
- * calls `requireApiKey` itself for the legacy branch so that path's 401 body
- * and its 500-on-missing-env stay byte-identical.
- */
-export async function resolveBusinessAuth(request: Request): Promise<BusinessAuthResult> {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) return { ok: true, auth: { kind: 'user', userId: user.id } }
-  } catch {
-    // No session — fall through to key auth, exactly as api-auth does.
-  }
-
-  const legacy = requireApiKey(request)
-  if (!legacy.ok) return { ok: false, response: legacy.response }
-  return { ok: true, auth: { kind: 'legacy_api_key' } }
-}
 
 // ── Reads: the allow-list a query must be scoped to ─────────────────────────
 

@@ -321,6 +321,72 @@ describe('campaigns PATCH — the target must be owned', () => {
     expect(campaigns.find(c => c.id === CAMP_A)!.name).toBe('A-kampanj')
   })
 
+  // ── MASS ASSIGNMENT ────────────────────────────────────────────────────────
+  //
+  // Scoping the UPDATE protects WHICH ROW is selected. It says nothing about
+  // WHAT THE ROW BECOMES. `{ id, ...patch }` carried every remaining body key
+  // into the update payload, so an owned campaign could be MOVED into a
+  // project the caller does not own: the `.in('project_id', allowed)` predicate
+  // matches the row's value BEFORE the write, and the write then changes it.
+
+  it('cannot move an owned campaign into a project the caller does not own', async () => {
+    const res = await campaignsRoute.PATCH(patchC({ id: CAMP_A, project_id: PROJ_B, name: 'moved' }))
+    expect(res.status).toBe(200)
+    // The row must stay where it was.
+    expect(campaigns.find(c => c.id === CAMP_A)!.project_id).toBe(PROJ_A)
+    // And the project must never have reached the update payload at all.
+    expect(updates[0].patch.project_id).toBeUndefined()
+  })
+
+  it('never passes project_slug into the update payload', async () => {
+    await campaignsRoute.PATCH(patchC({ id: CAMP_A, project_slug: 'beta', name: 'x' }))
+    expect(updates[0].patch.project_slug).toBeUndefined()
+  })
+
+  it('drops arbitrary injected fields from the update payload', async () => {
+    await campaignsRoute.PATCH(patchC({
+      id: CAMP_A, name: 'x', injected: 'evil', created_at: '1999-01-01', id_forged: 'y',
+    }))
+    const patch = updates[0].patch
+    expect(patch.injected).toBeUndefined()
+    expect(patch.created_at).toBeUndefined()
+    expect(patch.id_forged).toBeUndefined()
+    expect(patch.id).toBeUndefined()
+  })
+
+  it('still applies the documented campaign fields', async () => {
+    await campaignsRoute.PATCH(patchC({
+      id: CAMP_A, name: 'nytt', channel: 'email', status: 'paused',
+      started_at: '2026-01-01', ended_at: null,
+    }))
+    expect(updates[0].patch).toEqual({
+      name: 'nytt', channel: 'email', status: 'paused',
+      started_at: '2026-01-01', ended_at: null,
+    })
+    expect(campaigns.find(c => c.id === CAMP_A)!.name).toBe('nytt')
+  })
+
+  it('a foreign campaign with an owned project in the body still writes nothing', async () => {
+    const res = await campaignsRoute.PATCH(patchC({ id: CAMP_B, project_id: PROJ_A, name: 'kapad' }))
+    expect(res.status).toBe(404)
+    expect(campaigns.find(c => c.id === CAMP_B)!.name).toBe('B-kampanj')
+    expect(campaigns.find(c => c.id === CAMP_B)!.project_id).toBe(PROJ_B)
+  })
+
+  it('a foreign campaign with a foreign project in the body writes nothing', async () => {
+    const res = await campaignsRoute.PATCH(patchC({ id: CAMP_B, project_id: PROJ_B, name: 'kapad' }))
+    expect(res.status).toBe(404)
+    expect(campaigns.find(c => c.id === CAMP_B)!.name).toBe('B-kampanj')
+  })
+
+  it('empty project access writes nothing even with a project in the body', async () => {
+    sessionUser = { id: 'nobody' }
+    const res = await campaignsRoute.PATCH(patchC({ id: CAMP_A, project_id: PROJ_A, name: 'x' }))
+    expect(res.status).toBe(404)
+    expect(campaigns.find(c => c.id === CAMP_A)!.name).toBe('A-kampanj')
+    expect(campaigns.find(c => c.id === CAMP_A)!.project_id).toBe(PROJ_A)
+  })
+
   it('still requires an id', async () => {
     const res = await campaignsRoute.PATCH(patchC({ name: 'x' }))
     expect(res.status).toBe(400)
@@ -522,6 +588,37 @@ describe('structure', () => {
       expect(body).not.toMatch(/body\.project_id/)
       expect(body).not.toMatch(/body\.project_slug/)
       expect(body).not.toMatch(/body\[['"]project_/)
+    }
+  })
+
+  it('the campaigns PATCH session branch builds an allow-listed patch', () => {
+    // The earlier assertion sliced from the FIRST "Legacy global-key path"
+    // comment, which belongs to POST — so it never inspected PATCH at all, and
+    // that is exactly how the mass-assignment hole survived review. This one
+    // anchors on the PATCH function itself.
+    const src = read(CAMPAIGNS_ROUTE)
+    const patchFn = src.slice(src.indexOf('export async function PATCH'))
+    const sessionBranch = patchFn.slice(
+      patchFn.indexOf("if (auth.auth.kind === 'user')"),
+      patchFn.indexOf('// Legacy global-key path'),
+    )
+    expect(sessionBranch.length).toBeGreaterThan(100)
+
+    // Rebuilt from the documented field list, never handed the raw rest-spread.
+    expect(sessionBranch).toContain('SESSION_CAMPAIGN_FIELDS')
+    expect(sessionBranch).toContain('safePatch')
+    expect(sessionBranch).toMatch(/updateCampaign\(\s*id,\s*safePatch,/)
+    expect(sessionBranch).not.toMatch(/updateCampaign\(\s*id,\s*patch\b/)
+    expect(sessionBranch).not.toContain('...patch')
+    expect(sessionBranch).not.toContain('...body')
+    expect(sessionBranch).not.toMatch(/body\.project_/)
+    expect(sessionBranch).not.toMatch(/patch\.project_/)
+
+    // The allow-list itself must not contain a project or identity key.
+    const list = src.slice(src.indexOf('const SESSION_CAMPAIGN_FIELDS'))
+      .slice(0, src.slice(src.indexOf('const SESSION_CAMPAIGN_FIELDS')).indexOf('\n'))
+    for (const forbidden of ['project_id', 'project_slug', 'id', 'created_at']) {
+      expect(list).not.toContain(`'${forbidden}'`)
     }
   })
 

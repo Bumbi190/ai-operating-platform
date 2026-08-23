@@ -115,11 +115,31 @@ export async function PATCH(request: Request) {
     if (auth.auth.kind === 'user') {
       const scope = await resolveSessionScope(auth.auth.userId)
       if (!scope.ok) return scope.response
-      // The UPDATE is scoped by the allow-list, so a campaign outside it simply
-      // matches no row. A body-supplied project cannot widen that — it is not
-      // consulted at all, which is why claiming project A while targeting a
-      // campaign in B changes nothing.
-      const campaign = await updateCampaign(id, patch, scope.allowedProjectIds)
+
+      // ── TWO SEPARATE GUARDS, BOTH REQUIRED ──────────────────────────────
+      //
+      // Scoping the UPDATE decides WHICH ROW is selected — it matches the
+      // row's project BEFORE the write. It says nothing about WHAT THE ROW
+      // BECOMES. Passing the raw rest-spread through meant an owned campaign
+      // could be MOVED into a project the caller does not own: the predicate
+      // matched on the old value and the write then changed it.
+      //
+      // TypeScript did not catch this. `updateCampaign`'s parameter type is a
+      // compile-time constraint at the call site, and `patch` came from
+      // `await request.json()` as `any` — so nothing was checked, and even an
+      // exact type is erased before runtime sees the object.
+      //
+      // The patch is therefore REBUILT from the documented fields. A key that
+      // is never written cannot move a row, so `project_id`, `project_slug`,
+      // `id` and anything else a caller invents are absent by construction
+      // rather than filtered out afterwards.
+      const safePatch: Record<string, unknown> = {}
+      for (const field of SESSION_CAMPAIGN_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(patch, field)) {
+          safePatch[field] = (patch as Record<string, unknown>)[field]
+        }
+      }
+      const campaign = await updateCampaign(id, safePatch, scope.allowedProjectIds)
       return NextResponse.json(campaign)
     }
 

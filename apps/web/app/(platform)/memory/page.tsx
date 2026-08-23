@@ -19,7 +19,7 @@ import {
   STAGE1_THE_PROMPT_SEED_ACTION,
   isThePromptSeedProject,
 } from '@/lib/ai/memory/stage1-foundation'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, Panel, PanelHeader, EmptyState, SectionHeader } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,11 +79,11 @@ export default async function MemoryPage() {
   if (!project) {
     return (
       <OSPage>
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <Brain className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Inget projekt hittades</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Skapa ett projekt för att börja bygga minne</p>
-        </div>
+        <EmptyState
+          icon={<Brain className="w-8 h-8" />}
+          title="Inget projekt hittades"
+          body="Skapa ett projekt för att börja bygga minne"
+        />
       </OSPage>
     )
   }
@@ -166,14 +166,13 @@ export default async function MemoryPage() {
       <OSLayer layer="intelligence" className="grid grid-cols-1 lg:grid-cols-2 3xl:grid-cols-3 gap-4 lg:gap-5">
 
         {/* ── Rejection triggers ── */}
-        <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-red-400" />
-            <h2 className="text-sm font-semibold">Avvisningsutlösare</h2>
-            <span className="text-[10px] text-muted-foreground ml-auto">
-              {memorySummary.byCategory.rejection_triggers} mönster
-            </span>
-          </div>
+        <Panel className="p-5 space-y-4">
+          <PanelHeader
+            icon={<ShieldAlert className="w-4 h-4 text-red-400" />}
+            title="Avvisningsutlösare"
+            right={<span className="text-[10px] text-muted-foreground">{memorySummary.byCategory.rejection_triggers} mönster</span>}
+            className="mb-0"
+          />
           {memorySummary.topRejectionTriggers.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
               Inga mönster ännu — avvisa innehåll för att bygga minne
@@ -194,17 +193,16 @@ export default async function MemoryPage() {
               ))}
             </div>
           )}
-        </section>
+        </Panel>
 
         {/* ── Avoided phrases ── */}
-        <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-semibold">Undvikna fraser</h2>
-            <span className="text-[10px] text-muted-foreground ml-auto">
-              {memorySummary.byCategory.avoided_phrases} mönster
-            </span>
-          </div>
+        <Panel className="p-5 space-y-4">
+          <PanelHeader
+            icon={<TrendingDown className="w-4 h-4 text-amber-400" />}
+            title="Undvikna fraser"
+            right={<span className="text-[10px] text-muted-foreground">{memorySummary.byCategory.avoided_phrases} mönster</span>}
+            className="mb-0"
+          />
           {memorySummary.topAvoidedPhrases.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
               Inga undvikna fraser ännu — revidera innehåll för att bygga minne
@@ -225,15 +223,16 @@ export default async function MemoryPage() {
               ))}
             </div>
           )}
-        </section>
+        </Panel>
 
         {/* ── Pattern frequency stats ── */}
-        <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-indigo-400" />
-            <h2 className="text-sm font-semibold">Mönsterfrekvens</h2>
-            <span className="text-[10px] text-muted-foreground ml-auto">från feedback</span>
-          </div>
+        <Panel className="p-5 space-y-4">
+          <PanelHeader
+            icon={<BarChart2 className="w-4 h-4 text-indigo-400" />}
+            title="Mönsterfrekvens"
+            right={<span className="text-[10px] text-muted-foreground">från feedback</span>}
+            className="mb-0"
+          />
           {patternStats.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
               Inga mönster detekterade ännu
@@ -264,15 +263,16 @@ export default async function MemoryPage() {
               ))}
             </div>
           )}
-        </section>
+        </Panel>
 
         {/* ── High-confidence items ── */}
-        <section className="rounded-xl border border-border bg-card/50 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-yellow-400" />
-            <h2 className="text-sm font-semibold">Högkonfidenta mönster</h2>
-            <span className="text-[10px] text-muted-foreground ml-auto">≥ 65%</span>
-          </div>
+        <Panel className="p-5 space-y-4">
+          <PanelHeader
+            icon={<Lightbulb className="w-4 h-4 text-yellow-400" />}
+            title="Högkonfidenta mönster"
+            right={<span className="text-[10px] text-muted-foreground">≥ 65%</span>}
+            className="mb-0"
+          />
           {memorySummary.highConfidenceItems.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">
               Mönster stärks med mer feedback — fortsätt granska
@@ -301,21 +301,19 @@ export default async function MemoryPage() {
               ))}
             </div>
           )}
-        </section>
+        </Panel>
       </OSLayer>
 
       {/* ── FOOTER · recent feedback log archive ── */}
       <OSLayer layer="footer" className="space-y-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-          Senaste feedbacklogg
-        </h2>
+        <SectionHeader eyebrow="Arkiv" title="Senaste feedbacklogg" />
         {recentFeedback.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border p-8 text-center">
-            <Brain className="w-6 h-6 text-muted-foreground/20 mx-auto mb-2" />
-            <p className="text-xs text-muted-foreground/60">
-              Ingen feedback ännu. Godkänn eller avvisa innehåll på granskningssidan för att börja bygga minne.
-            </p>
-          </div>
+          <EmptyState
+            variant="silent"
+            icon={<Brain className="w-6 h-6" />}
+            title="Ingen feedback ännu"
+            body="Godkänn eller avvisa innehåll på granskningssidan för att börja bygga minne."
+          />
         ) : (
           <div className="space-y-2">
             {recentFeedback.map(fb => (

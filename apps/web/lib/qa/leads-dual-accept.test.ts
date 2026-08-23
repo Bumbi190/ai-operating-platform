@@ -33,7 +33,9 @@ let sessionUser: { id: string } | null = null
 let sessionThrows = false
 
 let credentialRow: Record<string, unknown> | null = null
-let projectRow: Record<string, unknown> | null = null
+/** Every project that exists, with its owner. Ownership drives allowedProjectIds. */
+let allProjects: { id: string; slug: string; owner_id: string }[] = []
+let projectsError: unknown = null
 let credentialError: unknown = null
 let credentialUpdates: { patch: Record<string, unknown>; id: unknown }[] = []
 
@@ -61,7 +63,27 @@ vi.mock('@/lib/supabase/admin', () => ({
         }
       }
       if (table === 'projects') {
-        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: projectRow, error: null }) }) }) }
+        // Supports both chains the code uses:
+        //   getAllowedProjectIds : .select('id').eq('owner_id', u)      → awaited
+        //   scoped slug lookup   : .select('id').eq('slug', s).in('id', […]).maybeSingle()
+        //   credential check     : .select('id').eq('id', p).maybeSingle()
+        const f: Record<string, unknown> = {}
+        const rows = () => allProjects.filter(p =>
+          (f.owner_id === undefined || p.owner_id === f.owner_id) &&
+          (f.slug === undefined || p.slug === f.slug) &&
+          (f.id === undefined || p.id === f.id) &&
+          (f.__inVals === undefined || (f.__inVals as string[]).includes(
+            p[f.__inCol as 'id' | 'slug'] as string)))
+        const b: Record<string, unknown> = {
+          select: () => b,
+          eq: (c: string, v: unknown) => { f[c] = v; return b },
+          in: (c: string, v: string[]) => { f.__inCol = c; f.__inVals = v; return b },
+          maybeSingle: async () => ({ data: projectsError ? null : (rows()[0] ?? null), error: projectsError }),
+          then: (res: (x: unknown) => unknown, rej: (x: unknown) => unknown) =>
+            Promise.resolve({ data: projectsError ? null : rows().map(p => ({ id: p.id })), error: projectsError })
+              .then(res, rej),
+        }
+        return b
       }
       throw new Error(`unexpected table: ${table}`)
     },
@@ -95,7 +117,7 @@ function seedCredential(overrides: Record<string, unknown> = {}, project = PROJE
     expires_at: null,
     ...overrides,
   }
-  projectRow = { id: project }
+  allProjects = [{ id: project, slug: 'cred-project', owner_id: 'someone-else' }]
   return cred.token
 }
 
@@ -139,7 +161,7 @@ function filesContaining(pattern: string, dir: string): string[] {
 
 beforeEach(() => {
   sessionUser = null; sessionThrows = false
-  credentialRow = null; projectRow = null; credentialError = null
+  credentialRow = null; allProjects = []; credentialError = null; projectsError = null
   credentialUpdates = []; createLeadCalls = []; listLeadsCalls = []
   process.env.AIOPS_API_KEY = LEGACY_KEY
 })
@@ -203,16 +225,20 @@ describe('legacy AIOPS_API_KEY path', () => {
 // ── 2. Session — must not regress ────────────────────────────────────────────
 
 describe('user session path', () => {
-  it('creates a lead with the whole body, including project_id from the UI', async () => {
+  it('creates a lead when the UI names a project the user owns', async () => {
     sessionUser = { id: 'user-1' }
-    const body = { project_id: PROJECT_A, name: 'C', email: null, source: 'manual' }
-    const res = await POST(post(body))
+    allProjects = [{ id: PROJECT_A, slug: 'a', owner_id: 'user-1' }]
+    const res = await POST(post({ project_id: PROJECT_A, name: 'C', email: null, source: 'manual' }))
     expect(res.status).toBe(201)
-    expect(createLeadCalls).toEqual([body])
+    // The verified id is written; the body's project key never reaches the store.
+    expect(createLeadCalls).toEqual([
+      { project_id: PROJECT_A, name: 'C', email: null, source: 'manual' },
+    ])
   })
 
   it('takes precedence over a bearer token', async () => {
     sessionUser = { id: 'user-1' }
+    allProjects = [{ id: PROJECT_A, slug: 'a', owner_id: 'user-1' }]
     const res = await POST(post({ project_id: PROJECT_A }, 'anything-at-all'))
     expect(res.status).toBe(201)
   })
@@ -236,15 +262,22 @@ describe('user session path', () => {
     expect(createLeadCalls).toHaveLength(0)
   })
 
-  it('does not widen project access — the body still decides, as before', async () => {
+  it('refuses a project the user does not own', async () => {
+    // This assertion used to encode the vulnerability itself: it asserted that
+    // the body decided the project. LEADS_SESSION_PROJECT_SCOPE inverted it.
     sessionUser = { id: 'user-1' }
-    await POST(post({ project_id: PROJECT_B, name: 'D' }))
-    // Unchanged semantics: Phase 2 neither tightens nor loosens the session path.
-    expect(createLeadCalls[0]).toEqual({ project_id: PROJECT_B, name: 'D' })
+    allProjects = [
+      { id: PROJECT_A, slug: 'a', owner_id: 'user-1' },
+      { id: PROJECT_B, slug: 'b', owner_id: 'someone-else' },
+    ]
+    const res = await POST(post({ project_id: PROJECT_B, name: 'D' }))
+    expect(res.status).toBe(403)
+    expect(createLeadCalls).toHaveLength(0)
   })
 
   it('never touches project_api_credentials', async () => {
     sessionUser = { id: 'user-1' }
+    allProjects = [{ id: PROJECT_A, slug: 'a', owner_id: 'user-1' }]
     await POST(post({ project_id: PROJECT_A }))
     expect(credentialUpdates).toHaveLength(0)
   })
@@ -413,7 +446,7 @@ describe('project credential — fail closed', () => {
 
   it('denies when the project no longer exists', async () => {
     const token = seedCredential()
-    projectRow = null
+    allProjects = []
     const res = await POST(post({ name: 'X' }, token))
     expect(res.status).toBe(401)
   })
@@ -636,6 +669,7 @@ describe('secret containment', () => {
 describe('resolveLeadsAuth', () => {
   it('reports the auth class rather than a bare ok', async () => {
     sessionUser = { id: 'user-9' }
+    allProjects = [{ id: PROJECT_A, slug: 'a', owner_id: 'user-9' }]
     const r1 = await resolveLeadsAuth(post({}), 'business.leads.create')
     expect(r1.ok && r1.auth).toEqual({ kind: 'user', userId: 'user-9' })
 

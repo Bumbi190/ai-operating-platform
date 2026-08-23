@@ -51,6 +51,11 @@ import { NextResponse } from 'next/server'
 
 import { requireApiKey } from '@/lib/api-auth'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  resolveProjectAccess, assertProjectAllowed, projectForbidden,
+} from '@/lib/auth/project-access'
+import { scopeToProjects } from '@/lib/atlas/isolation'
 import {
   requireProjectApiScope,
   type ProjectApiPrincipal,
@@ -133,4 +138,105 @@ export async function resolveLeadsAuth(
   const legacy = requireApiKey(request)
   if (!legacy.ok) return { ok: false, response: legacy.response }
   return { ok: true, auth: { kind: 'legacy_api_key' } }
+}
+
+// ── Session project authorization (LEADS_SESSION_PROJECT_SCOPE) ──────────────
+
+/**
+ * The project a session user may write this lead to.
+ *
+ * ── THE HOLE THIS CLOSES ─────────────────────────────────────────────────────
+ *
+ * Authenticating a user is not authorizing a project. Before this, the session
+ * path proved only that SOMEONE was logged in and then handed the body straight
+ * to `createLead`, whose `resolveProjectId` takes `project_id` verbatim and
+ * resolves `project_slug` service-role with no owner filter. Any logged-in user
+ * could therefore write a lead into any tenant's project by naming it.
+ *
+ * ── WHY 403 AND NOT A COLLAPSED 404 ──────────────────────────────────────────
+ *
+ * `/api/leads` — the closest precedent, and the other route that writes this
+ * same table — answers `projectForbidden()`. The Executive routes collapse
+ * foreign and unknown into one 404 because they act on specific record ids
+ * whose existence is itself sensitive. Nothing like that applies here:
+ * `assertProjectAllowed` is pure set membership against the caller's OWN
+ * projects and never looks the target up, so an unknown uuid and another
+ * tenant\'s uuid are already indistinguishable — both are simply absent from
+ * the allow-list. 403 leaks nothing that the caller could not derive from
+ * their own project list.
+ *
+ * ── THE SLUG IS THE DANGEROUS ONE ────────────────────────────────────────────
+ *
+ * A slug MUST be resolved to be checked, and a naive "resolve globally, then
+ * authorize" would answer differently for an unknown slug than for a real slug
+ * the caller does not own — an existence oracle over every tenant\'s project
+ * names. So the lookup itself is scoped with `scopeToProjects`, whose
+ * `scopeProjectFilter` substitutes an impossible id for an empty allow-list.
+ * Unknown and foreign both return zero rows and therefore the identical 403,
+ * and a user who owns nothing can never match anything.
+ *
+ * ── ONE SESSION, NOT TWO ─────────────────────────────────────────────────────
+ *
+ * `resolveProjectAccess()` performs its own canonical session lookup, so this
+ * cross-checks its `userId` against the one the auth resolver already
+ * established. Two independent reads that disagree mean the session changed
+ * mid-request; that is denied rather than resolved in the caller\'s favour.
+ */
+/** Repository escape hatch for tables outside the generated Database type. */
+type AnyDb = any // eslint-disable-line @typescript-eslint/no-explicit-any
+
+export type SessionProjectResult =
+  | { ok: true; projectId: string }
+  | { ok: false; response: NextResponse }
+
+/** Message and status preserved verbatim from the pre-existing store error. */
+const NO_PROJECT = () => NextResponse.json(
+  { error: 'Okänt projekt — ange project_id eller giltig project_slug' },
+  { status: 400 },
+)
+
+export async function resolveSessionLeadProject(
+  body: Record<string, unknown>,
+  sessionUserId: string,
+): Promise<SessionProjectResult> {
+  const access = await resolveProjectAccess()
+  if (!access.ok) return { ok: false, response: access.response }
+
+  // Two canonical session reads must agree. A mismatch is denied, never merged.
+  if (access.userId !== sessionUserId) return { ok: false, response: projectForbidden() }
+
+  const rawId = body.project_id
+  if (rawId !== undefined && rawId !== null) {
+    if (typeof rawId !== 'string') return { ok: false, response: projectForbidden() }
+    if (!assertProjectAllowed(rawId, access.allowedProjectIds)) {
+      return { ok: false, response: projectForbidden() }
+    }
+    return { ok: true, projectId: rawId }
+  }
+
+  const rawSlug = body.project_slug
+  if (rawSlug !== undefined && rawSlug !== null) {
+    if (typeof rawSlug !== 'string' || rawSlug.length === 0) {
+      return { ok: false, response: projectForbidden() }
+    }
+    try {
+      // Repository convention for tables absent from the generated types
+      // (see lib/atlas/*/store.ts): cast once at the client boundary.
+      const db = createAdminClient() as AnyDb
+      // Scoped by `id`, so the lookup can only ever see the caller's own
+      // projects — an unknown slug and a foreign slug both return zero rows.
+      const { data, error } = await scopeToProjects(
+        db.from('projects').select('id').eq('slug', rawSlug),
+        access.allowedProjectIds,
+        'id',
+      ).maybeSingle()
+      // Unknown slug, foreign slug and a lookup failure are one response.
+      if (error || !data?.id) return { ok: false, response: projectForbidden() }
+      return { ok: true, projectId: data.id as string }
+    } catch {
+      return { ok: false, response: projectForbidden() }
+    }
+  }
+
+  return { ok: false, response: NO_PROJECT() }
 }

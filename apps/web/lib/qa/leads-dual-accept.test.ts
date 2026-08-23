@@ -564,12 +564,17 @@ describe('containment', () => {
     expect(hits).toEqual([])
   })
 
-  it.each(['campaigns', 'revenue'])('leaves /api/business/%s on requireUserOrApiKey', name => {
+  it.each(['campaigns', 'revenue'])('gives /api/business/%s no credential access', name => {
+    // 4B1 moved these to resolveBusinessAuth for SESSION scoping. What this
+    // assertion owns is that they gained no project-credential capability and
+    // did not borrow the leads resolver — the legacy class still reaches
+    // requireApiKey through the shared business resolver.
     const src = read(`app/api/business/${name}/route.ts`)
-    expect(src).toContain('requireUserOrApiKey')
+    expect(src).toContain("from '@/lib/business/business-auth'")
     expect(src).not.toContain('leads-auth')
     expect(src).not.toContain('project-api-credentials')
     expect(src).not.toContain('business.leads.create')
+    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
   })
 
   it('leaves /api/chat/tts untouched by the credential surface', () => {

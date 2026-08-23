@@ -699,14 +699,17 @@ describe('inertness — Phase 1 changes no existing auth', () => {
     expect(src).toContain('process.env.AIOPS_API_KEY')
   })
 
-  it('leaves campaigns and revenue on the legacy helper', () => {
-    // Phase 2 moved ONLY leads. These two must not have followed it.
+  it('leaves campaigns and revenue without credential access', () => {
+    // 4B1 session-scoped them via business-auth. They still must not gain a
+    // project-credential path, and must not import the leads resolver.
     for (const name of ['campaigns', 'revenue']) {
       const src = read(`app/api/business/${name}/route.ts`)
-      expect(src).toContain("import { requireUserOrApiKey } from '@/lib/api-auth'")
+      expect(src).toContain("from '@/lib/business/business-auth'")
       expect(src).not.toContain('project-api-credentials')
       expect(src).not.toContain('leads-auth')
     }
+    // The legacy class still terminates in the unchanged global helper.
+    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
   })
 
   it('reaches the primitive from leads only through the scoped resolver', () => {

@@ -14,6 +14,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { applyProjectScope } from '@/lib/atlas/isolation'
 
 // ─── Projektupplösning ────────────────────────────────────────────────────────
 // Anropare får ange antingen project_id (uuid) eller project_slug (t.ex. "gainpilot").
@@ -109,18 +110,41 @@ export async function createCampaign(input: CampaignInput) {
   return data
 }
 
-export async function updateCampaign(id: string, patch: Partial<Pick<CampaignInput, 'name' | 'channel' | 'status' | 'started_at' | 'ended_at'>>) {
+/**
+ * `allowedProjectIds` scopes the UPDATE itself at the database boundary.
+ *
+ *  - `undefined` → unscoped, the pre-existing behaviour for legacy callers.
+ *  - `string[]`  → the row must also live in one of those projects; an EMPTY
+ *                  array yields an impossible id and therefore no row.
+ *
+ * Selecting a campaign by `id` alone was the hole: knowing an id was enough to
+ * update another tenant's campaign. Scoping the write, rather than checking a
+ * caller-supplied project first, means the row that gets updated is the row
+ * that was authorized — the two cannot disagree.
+ */
+export async function updateCampaign(
+  id: string,
+  patch: Partial<Pick<CampaignInput, 'name' | 'channel' | 'status' | 'started_at' | 'ended_at'>>,
+  allowedProjectIds?: string[],
+) {
   const db = createAdminClient()
   const update: Record<string, unknown> = { ...patch }
   if (patch.status === 'ended' && !patch.ended_at) update.ended_at = new Date().toISOString()
-  const { data, error } = await (db.from('campaigns') as any).update(update).eq('id', id).select().single()
+  const q = applyProjectScope(
+    (db.from('campaigns') as any).update(update).eq('id', id),
+    allowedProjectIds,
+  )
+  const { data, error } = await q.select().maybeSingle()
   if (error) throw new BusinessError(error.message, 500)
+  if (!data) throw new BusinessError('Kampanjen finns inte', 404)
   return data
 }
 
-export async function listCampaigns(opts: { project_id?: string; status?: CampaignStatus; limit?: number } = {}) {
+export async function listCampaigns(opts: { project_id?: string; status?: CampaignStatus; limit?: number; allowedProjectIds?: string[] } = {}) {
   const db = createAdminClient()
   let q = (db.from('campaigns') as any).select('*').order('created_at', { ascending: false }).limit(opts.limit ?? 100)
+  // Scoped at the query boundary, never by post-filtering a service-role read.
+  q = applyProjectScope(q, opts.allowedProjectIds)
   if (opts.project_id) q = q.eq('project_id', opts.project_id)
   if (opts.status)     q = q.eq('status', opts.status)
   const { data, error } = await q
@@ -159,9 +183,11 @@ export async function logRevenue(input: RevenueInput) {
   return data
 }
 
-export async function listRevenue(opts: { project_id?: string; sinceISO?: string; limit?: number } = {}) {
+export async function listRevenue(opts: { project_id?: string; sinceISO?: string; limit?: number; allowedProjectIds?: string[] } = {}) {
   const db = createAdminClient()
   let q = (db.from('revenue_events') as any).select('*').order('occurred_at', { ascending: false }).limit(opts.limit ?? 200)
+  // Scoped at the query boundary, never by post-filtering a service-role read.
+  q = applyProjectScope(q, opts.allowedProjectIds)
   if (opts.project_id) q = q.eq('project_id', opts.project_id)
   if (opts.sinceISO)   q = q.gte('occurred_at', opts.sinceISO)
   const { data, error } = await q

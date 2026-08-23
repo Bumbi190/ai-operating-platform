@@ -24,6 +24,7 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const ROUTE_PATH = 'app/api/business/leads/route.ts'
 const AUTH_PATH  = 'lib/business/leads-auth.ts'
+const SHARED_AUTH_PATH = 'lib/business/business-auth.ts'
 
 const LEGACY_KEY = 'legacy-global-key'
 const USER       = 'user-owner-1'
@@ -337,15 +338,20 @@ describe('store boundary', () => {
 
 describe('canonical boundary', () => {
   it('authorizes through resolveProjectAccess and assertProjectAllowed', () => {
-    const src = read(AUTH_PATH)
-    expect(src).toContain("from '@/lib/auth/project-access'")
-    expect(src).toContain('resolveProjectAccess()')
-    expect(src).toContain('assertProjectAllowed(')
-    expect(src).toContain('projectForbidden()')
+    // 4B1 moved the resolver into lib/business/business-auth.ts so campaigns
+    // and revenue share ONE implementation with leads. The property is
+    // unchanged — leads must still authorize through the canonical boundary —
+    // so the assertion follows the delegation instead of pinning a location.
+    expect(read(AUTH_PATH)).toContain("from '@/lib/business/business-auth'")
+    const shared = read(SHARED_AUTH_PATH)
+    expect(shared).toContain("from '@/lib/auth/project-access'")
+    expect(shared).toContain('resolveProjectAccess()')
+    expect(shared).toContain('assertProjectAllowed(')
+    expect(shared).toContain('projectForbidden()')
   })
 
   it('scopes the slug lookup with the canonical isolation primitive', () => {
-    const src = read(AUTH_PATH)
+    const src = read(SHARED_AUTH_PATH)
     expect(src).toContain("from '@/lib/atlas/isolation'")
     expect(src).toContain('scopeToProjects(')
     // A bare global slug lookup would be the oracle this exists to prevent.
@@ -353,13 +359,13 @@ describe('canonical boundary', () => {
   })
 
   it('implements no parallel ownership check', () => {
-    const src = read(AUTH_PATH)
+    const src = read(SHARED_AUTH_PATH)
     expect(src).not.toContain('owner_id')
     expect(src).not.toContain('getAllowedProjectIds(')
   })
 
   it('cross-checks the two session reads instead of trusting either alone', () => {
-    const src = read(AUTH_PATH)
+    const src = read(SHARED_AUTH_PATH)
     expect(src).toContain('access.userId !== sessionUserId')
   })
 

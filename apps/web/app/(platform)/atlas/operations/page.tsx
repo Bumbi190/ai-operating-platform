@@ -48,9 +48,9 @@ export default async function AtlasOperations() {
 
       <OSLayer layer="hero">
         <div>
-          <p className="eyebrow eyebrow-accent mb-3">Atlas · Ledningscentral</p>
+          <p className="eyebrow os-eyebrow-accent mb-3">Atlas · Ledningscentral</p>
           <h1 className="text-2xl 2xl:text-3xl font-bold tracking-tight">Operations Center</h1>
-          <p className="text-sm text-zinc-400 mt-2">Hela verksamheten på ett ställe — vad som hänt, vad som pågår, vad som väntar och vad som behöver din uppmärksamhet. Uppdateras live.</p>
+          <p className="text-sm text-muted-foreground mt-2">Hela verksamheten på ett ställe — vad som hänt, vad som pågår, vad som väntar och vad som behöver din uppmärksamhet. Uppdateras live.</p>
         </div>
       </OSLayer>
 
@@ -59,11 +59,11 @@ export default async function AtlasOperations() {
         <SectionHeader eyebrow="The Prompt" title="AI-nyhetsvideor" flag={promptAttention ? `${o.prompt.failed24h} fel 24h` : undefined} />
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
           <Metric icon={CheckCircle2} color="text-emerald-400" label="Publicerade idag" value={nf(o.prompt.publishedToday)} />
-          <Metric icon={Clock}        color="text-zinc-300"   label="Väntar på render" value={nf(o.prompt.waitingRender)} />
-          <Metric icon={Loader2}      color="text-indigo-300" label="Rendering pågår" value={nf(o.prompt.rendering)} />
+          <Metric icon={Clock}        color="text-secondary"   label="Väntar på render" value={nf(o.prompt.waitingRender)} />
+          <Metric icon={Loader2}      color="text-[rgb(var(--os-accent-tint-rgb))]" label="Rendering pågår" value={nf(o.prompt.rendering)} />
           <Metric icon={Send}         color="text-amber-300"  label="Väntar publicering" value={nf(o.prompt.waitingPublish)} hint="färska ≤4 dagar" />
           <Metric icon={XCircle}      color={o.prompt.failed24h ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.prompt.failed24h)} />
-          <Metric icon={Archive}      color="text-zinc-400"   label="Arkiverade (gammal news)" value={nf(o.prompt.archived)} hint=">4 dagar — publiceras ej" />
+          <Metric icon={Archive}      color="text-muted-foreground"   label="Arkiverade (gammal news)" value={nf(o.prompt.archived)} hint=">4 dagar — publiceras ej" />
           <Metric icon={RefreshCw}    color={o.prompt.retrying ? 'text-amber-300' : 'text-secondary'} label="Återförsöker" value={nf(o.prompt.retrying)} hint="självläker" />
           <Metric icon={AlertTriangle} color={o.prompt.pipelineErrors ? 'text-red-400' : 'text-secondary'} label="Fastnade fel" value={nf(o.prompt.pipelineErrors)} hint="kräver åtgärd" />
         </div>
@@ -74,7 +74,7 @@ export default async function AtlasOperations() {
         </div>
         {o.prompt.latestPublished && (
           <div className="rounded-xl border border-border bg-card p-4 flex items-start gap-3">
-            <Clapperboard className="w-4 h-4 text-indigo-300 mt-0.5 shrink-0" />
+            <Clapperboard className="w-4 h-4 text-[rgb(var(--os-accent-tint-rgb))] mt-0.5 shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-[11px] text-muted-foreground">Senaste publicerade video · {rel(o.prompt.latestPublished.at)}</p>
               <p className="text-sm font-medium truncate">{o.prompt.latestPublished.hook}</p>
@@ -94,7 +94,7 @@ export default async function AtlasOperations() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <Metric icon={Users}      color="text-emerald-400" label="Aktiva prenumeranter" value={o.familje.activeSubscribers === null ? '—' : nf(o.familje.activeSubscribers)} hint={o.familje.activeSubscribers === null ? 'Stripe-snapshot saknas' : undefined} />
           <Metric icon={DollarSign} color="text-emerald-400" label="MRR" value={o.familje.mrrSek === null ? '—' : `${nf(o.familje.mrrSek)} kr`} />
-          <Metric icon={Sparkles}   color="text-indigo-300"  label="Nya denna månad" value={o.familje.newSubscribers === null ? '—' : nf(o.familje.newSubscribers)} />
+          <Metric icon={Sparkles}   color="text-[rgb(var(--os-accent-tint-rgb))]"  label="Nya denna månad" value={o.familje.newSubscribers === null ? '—' : nf(o.familje.newSubscribers)} />
           <Metric icon={Clock}      color="text-amber-300"   label="Trial" value={o.familje.trialing === null ? '—' : nf(o.familje.trialing)} />
           <Metric icon={XCircle}    color={(o.familje.churnRatePct ?? 0) > 0 ? 'text-red-400' : 'text-secondary'} label="Churn" value={o.familje.churnRatePct === null ? '—' : `${o.familje.churnRatePct}%`} />
           <Metric icon={Sparkles}   color="text-yellow-400"  label="Leads" value={nf(o.familje.leads)} />
@@ -105,7 +105,7 @@ export default async function AtlasOperations() {
       <OSLayer layer="intelligence" className="space-y-3">
         <SectionHeader eyebrow="GainPilot" title="B2B-leads & produkt" flag={o.gainpilot.failed24h > 0 ? `${o.gainpilot.failed24h} fel 24h` : undefined} />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Metric icon={Users}    color="text-indigo-300" label="Beta-användare" value={o.gainpilot.betaUsers === null ? '—' : nf(o.gainpilot.betaUsers)} hint={o.gainpilot.betaUsers === null ? 'Ingen datakälla ännu' : undefined} />
+          <Metric icon={Users}    color="text-[rgb(var(--os-accent-tint-rgb))]" label="Beta-användare" value={o.gainpilot.betaUsers === null ? '—' : nf(o.gainpilot.betaUsers)} hint={o.gainpilot.betaUsers === null ? 'Ingen datakälla ännu' : undefined} />
           <Metric icon={Activity} color="text-emerald-400" label="Aktiva användare" value={o.gainpilot.activeUsers === null ? '—' : nf(o.gainpilot.activeUsers)} hint={o.gainpilot.activeUsers === null ? 'Ingen datakälla ännu' : undefined} />
           <Metric icon={Sparkles} color="text-yellow-400" label="Leads" value={nf(o.gainpilot.leads)} />
           <Metric icon={XCircle}  color={o.gainpilot.failed24h ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.gainpilot.failed24h)} />
@@ -118,7 +118,7 @@ export default async function AtlasOperations() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
           <Metric icon={DollarSign} color="text-emerald-400" label="API-kostnad idag" value={`${nf(o.system.costTodaySek)} kr`} />
           <Metric icon={DollarSign} color="text-emerald-400" label="API-kostnad månad" value={`${nf(o.system.costMonthSek)} kr`} />
-          <Metric icon={Loader2}    color="text-indigo-300"  label="Aktiva workflows" value={nf(o.system.activeWorkflows)} />
+          <Metric icon={Loader2}    color="text-[rgb(var(--os-accent-tint-rgb))]"  label="Aktiva workflows" value={nf(o.system.activeWorkflows)} />
           <Metric icon={AlertTriangle} color={o.system.stuckWorkflows ? 'text-amber-400' : 'text-secondary'} label="Fastnade workflows" value={nf(o.system.stuckWorkflows)} />
           <Metric icon={XCircle}    color={o.system.failedWorkflows ? 'text-red-400' : 'text-secondary'} label="Misslyckade 24h" value={nf(o.system.failedWorkflows)} />
         </div>
@@ -150,7 +150,7 @@ export default async function AtlasOperations() {
           ) : o.tokens.map(t => {
             const dot = t.status === 'ok' ? 'bg-emerald-400'
               : t.status === 'warning' ? 'bg-amber-400'
-              : t.status === 'unknown' ? 'bg-zinc-500' : 'bg-red-400'
+              : t.status === 'unknown' ? 'bg-muted-foreground/50' : 'bg-red-400'
             const expiry = t.daysLeft !== null ? `utgång om ${t.daysLeft} dagar`
               : t.status === 'ok' ? 'långlivat / utgång okänd' : t.status
             return (
@@ -185,8 +185,8 @@ export default async function AtlasOperations() {
             const dot = h.status === 'ok' ? 'bg-emerald-400'
               : h.status === 'late' ? 'bg-amber-400'
               : h.status === 'endpoint_failing' ? 'bg-orange-400'
-              : h.status === 'pending_first_run' ? 'bg-zinc-500'
-              : h.status === 'dead' ? 'bg-red-400' : 'bg-zinc-500'
+              : h.status === 'pending_first_run' ? 'bg-muted-foreground/50'
+              : h.status === 'dead' ? 'bg-red-400' : 'bg-muted-foreground/50'
             return (
               <div key={h.jobname} className="flex items-center gap-3 px-4 py-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
@@ -244,7 +244,7 @@ function Metric({ icon: Icon, color, label, value, hint }: {
 function PostLink({ href, label }: { href: string; label: string }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline">
+      className="inline-flex items-center gap-1 text-[11px] text-[var(--os-accent-soft)] hover:text-[rgb(var(--os-accent-tint-rgb))] hover:underline">
       {label} <ExternalLink className="w-2.5 h-2.5 opacity-60" />
     </a>
   )

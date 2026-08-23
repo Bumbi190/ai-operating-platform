@@ -144,7 +144,7 @@ export function PlanningBoard() {
                         if (e.key === 'Escape') { setAddingIn(null); setNewTitle('') }
                       }}
                       placeholder="Titel..."
-                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[rgb(var(--os-accent-rgb))]"
                     />
                     <div className="flex gap-1">
                       <select
@@ -169,7 +169,7 @@ export function PlanningBoard() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => addItem(col.id)}
-                        className="flex-1 rounded bg-indigo-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-indigo-600 transition-colors"
+                        className="flex-1 rounded bg-[rgb(var(--os-accent-rgb))] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90 transition-opacity"
                       >
                         Lägg till
                       </button>

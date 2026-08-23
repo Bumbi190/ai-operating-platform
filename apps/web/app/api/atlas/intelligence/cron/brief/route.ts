@@ -4,8 +4,12 @@
  * Atlas EI daily brief cron — Epic 1.
  *
  * Wires the conformant EI producer chain to a live cron trigger. Each run:
- *   1. Global scope: brief → trend → insight → assessment
- *   2. Per active project: brief → trend → insight → assessment
+ *   1. Global scope: brief → trend → insight → assessment → executive_brief
+ *   2. Per active project: brief → trend → insight → assessment → executive_brief
+ *
+ * The apex executive_brief runs LAST in each scope: it synthesises the
+ * artifacts the four steps above have just persisted (§13.1), so it must not
+ * move earlier in the chain.
  *
  * Entirely deterministic — no LLM calls. Idempotent: re-running produces
  * a new artifact and supersedes the prior one (append-only store).
@@ -18,7 +22,6 @@
  * issues HTTP GET requests. The plan specifies POST but the existing call_vercel
  * helper uses net.http_get — GET is the correct choice for this infrastructure.
  *
- * No changes to executive.ts or atlas/page.tsx (Epic 1 scope).
  * Canonical refs: §5 (cognitive cycle trigger), §3 (Memory write cycle).
  */
 
@@ -28,6 +31,7 @@ import { runBriefProducer } from '@/lib/atlas/intelligence/producers/brief-orche
 import { runTrendProducer } from '@/lib/atlas/intelligence/producers/trend-orchestrator'
 import { runInsightProducer } from '@/lib/atlas/intelligence/producers/insight-orchestrator'
 import { runAssessmentProducer } from '@/lib/atlas/intelligence/producers/assessment-orchestrator'
+import { runExecutiveBriefProducer } from '@/lib/atlas/intelligence/producers/executive-brief-orchestrator'
 import { createIntelligenceStore } from '@/lib/atlas/intelligence/postgres-store'
 
 export const dynamic     = 'force-dynamic'
@@ -63,6 +67,10 @@ export async function GET(request: Request) {
       const { risk, opportunity } = await runAssessmentProducer({ projectId, store })
       if (risk)        produced.push(`risk:${scope}:${risk.id}`)
       if (opportunity) produced.push(`opportunity:${scope}:${opportunity.id}`)
+
+      // Apex last: reads what this run just persisted (EI-S1.2).
+      const executiveBrief = await runExecutiveBriefProducer({ projectId, store })
+      produced.push(`executive_brief:${scope}:${executiveBrief.id}`)
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)

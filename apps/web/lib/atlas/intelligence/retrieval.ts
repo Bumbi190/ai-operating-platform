@@ -48,9 +48,18 @@ function getEntities(): EntityRegistry {
  * Query EI cognitive artifacts. Newest first. Non-superseded only by default.
  *
  * Used by:
- *   - API read routes (GET /api/atlas/intelligence/brief)
- *   - Voice/UX surfaces to render EI output
- *   - Manager (polling for delegation/knowledge requests in Epic 7)
+ *   - `principal-read.ts`, the sanctioned principal-scoped Executive Brief
+ *     boundary — the only path a human-facing surface may read through
+ *   - Voice/UX surfaces, via that boundary
+ *
+ * NOT used by an HTTP read route. EI-S1.5A retired
+ * `GET /api/atlas/intelligence/brief`: it authorized on the shared
+ * `CRON_SECRET` alone, which is scheduler authentication and not a principal,
+ * project ownership or portfolio authority. Holding that one secret returned
+ * any project's artifacts, the platform-global world brief, or — with
+ * `projectId` omitted — every project at once, through a service-role client.
+ * It had no live caller, so it was removed rather than re-authenticated: the
+ * safest unused privileged endpoint is no endpoint.
  *
  * EI orchestrators do NOT call this. They receive prior artifacts via injection.
  */

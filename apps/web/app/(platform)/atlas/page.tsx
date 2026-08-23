@@ -11,7 +11,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { gatherAtlasContext } from '@/lib/atlas/context'
-import { atlasExecutiveSummary } from '@/lib/atlas/executive'
+import { readExecutiveBriefForPrincipal } from '@/lib/atlas/intelligence/principal-read'
+import { executiveBriefColumns } from '@/lib/atlas/intelligence/brief-view'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { collectAttentionItems } from '@/lib/os/attention'
 import { formatEta } from '@/lib/os/priority'
@@ -50,8 +51,16 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
   const ctx       = await gatherAtlasContext(db)
   const bugDigest = await getMorningBugDigest(db)
 
-  // Executive summary
-  const exec = await atlasExecutiveSummary(db)
+  // Executive Brief — conformant apex artifact (EI-S1.2).
+  //
+  // Read through the principal-scoped boundary, never through the shared-secret
+  // internal cron route: a signed-in principal only ever sees a brief they are
+  // authorised for, and an unauthorised or not-yet-produced brief degrades to a
+  // notice rather than to unscoped data. The legacy executive-summary path is
+  // gone: it recomputed its own data on every render (P1/P6) and carried no
+  // evidence chain, confidence or provenance.
+  const executive = await readExecutiveBriefForPrincipal({ db, userId: user.id })
+  const briefColumns = executive.brief ? executiveBriefColumns(executive.brief.body) : null
 
   // Attention items
   const { data: projectsRaw } = await supabase
@@ -178,11 +187,14 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
         </div>
 
         {/* ── Briefing-kolumner ────────────────────────────────────────── */}
+        {!briefColumns ? (
+          <ExecutiveBriefNotice status={executive.status} />
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {([
-            { title: 'Vad funkade',          items: exec.whatWorked,     dot: 'bg-emerald-400' },
-            { title: 'Vad föll',             items: exec.whatFailed,     dot: 'bg-red-400'     },
-            { title: 'Kräver uppmärksamhet', items: exec.needsAttention, dot: 'bg-amber-400'   },
+            { title: 'Vad funkade',          items: briefColumns.whatWorked,     dot: 'bg-emerald-400' },
+            { title: 'Vad föll',             items: briefColumns.whatFailed,     dot: 'bg-red-400'     },
+            { title: 'Kräver uppmärksamhet', items: briefColumns.needsAttention, dot: 'bg-amber-400'   },
           ] as const).map((col) => (
             <div
               key={col.title}
@@ -200,6 +212,7 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
             </div>
           ))}
         </div>
+        )}
 
       </div>
     </div>
@@ -207,6 +220,29 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
 }
 
 // ── Hjälpkomponenter ──────────────────────────────────────────────────────────
+
+/**
+ * Static notice shown when no Executive Brief is available to this principal.
+ * Deliberately a static message and never a live recomputation: falling back to
+ * a direct data call is exactly the P1/P6 violation this migration removed.
+ */
+function ExecutiveBriefNotice({ status }: { status: string }) {
+  const message =
+    status === 'not_produced'
+      ? 'Executive Brief genereras 06:00 UTC. Ingen brief finns ännu för perioden.'
+      : status === 'portfolio_denied' || status === 'project_denied'
+        ? 'Executive Brief är inte tillgänglig för ditt konto.'
+        : 'Executive Brief är tillfälligt otillgänglig.'
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600 font-mono">
+        Executive Brief
+      </p>
+      <p className="mt-2 text-[12px] text-zinc-500 leading-relaxed">{message}</p>
+    </div>
+  )
+}
 
 function PulseStat({
   label, value, accent = 'muted', icon,

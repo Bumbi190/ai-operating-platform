@@ -1,30 +1,35 @@
 {
   "artifactChecksums": {
-    "chunks.jsonl": "d1f14d94af9b1f2b1822cfb7a5cfd60efebbffe270c1d790cbd1db1220f8c987",
-    "lexical-index.json": "943f3ea9a291f0d837cc68dccec250b4a6ac6539b2add570d5a1c4aa5a2f64e7",
-    "sections.jsonl": "36c4794ea329bf93237e4dbfede83cd9acb65e94953478f1089e43483d5a585c",
-    "sources.json": "f5bf635b024dada67c60f5054da2195f0a9d28a4360a3b189d7820233a26cae7"
+    "chunks.jsonl": "fa36bb9335b8a60d20b339d32c53e0eb9e1af079a8290ada1fd8d3d2cb1800f5",
+    "lexical-index.json": "face40beda2e312dd832eb004fb74b8d3314df297508fbb21916eab33d32f6d0",
+    "sections.jsonl": "f6989fd246548caadeb9bd56d2ed56baa891cbd7f4b419975a2e489e40edaaaa",
+    "sources.json": "cda4afa0c6221873962f787827cdc39456fe3a222fbb9f52140f46bb5547d694"
   },
-  "builderVersion": "akr-stage1-builder-v1",
-  "chapterCount": 70,
-  "chunkCount": 2276,
+  "builderVersion": "akr-stage1-builder-v2",
+  "canonicalSectionCount": 25461,
+  "chapterCount": 102,
+  "chunkCount": 3000,
+  "frontMatterCount": 4,
   "indexVersion": "lexical-v1",
-  "registryChecksum": "c40b93dec44f521ae86e0da715823d89049c671e17b153144dcc79e78f5e5413",
+  "registryChecksum": "37f6af73dc16082b48ef0fd6b60d1308e0d653ea113d2fe98f6607cabee02d91",
   "retrievalAlgorithmVersion": "lexical-bm25-v1",
   "schemaVersion": "1.0",
-  "sectionCount": 18756,
+  "sectionCount": 25465,
   "sourceChecksums": {
+    "omnira-executive-intelligence-v1.0": "ee85a1a09968c585530869bcc8d06eda16e4e12a8d5b6f856af362e10fa555b8",
     "omnira-intelligence-fabric-v1.0": "2f8a7c0b519c2ba7f7ebbcbe140f808ddeafa03e16d3b2602b2d06111cf25649",
     "omnira-intelligence-graph-v1.0": "5747cdf284732a7b80272f09fe63700eb0f42d3eb80da41df6fb22eafea211fe",
     "omnira-mobile-intelligence-v1.0": "db9185a6396254476ae6acc445dd4427eab5132047dd904275636cc27ced0aac"
   },
-  "sourceCount": 3,
+  "sourceCount": 4,
   "sourceIds": [
+    "omnira-executive-intelligence-v1.0",
     "omnira-intelligence-fabric-v1.0",
     "omnira-intelligence-graph-v1.0",
     "omnira-mobile-intelligence-v1.0"
   ],
   "sourceVersions": {
+    "omnira-executive-intelligence-v1.0": "v1.0",
     "omnira-intelligence-fabric-v1.0": "v1.0",
     "omnira-intelligence-graph-v1.0": "v1.0",
     "omnira-mobile-intelligence-v1.0": "v1.0"

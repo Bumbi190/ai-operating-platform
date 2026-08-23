@@ -2,7 +2,7 @@
   "_meta": {
     "purpose": "Official source of truth for API route classification. Consumed by the PR-0 route-drift CI check and the isolation leak-test (routes.test.ts). Derived from actual code; rows with verified=false are signal-derived and must be confirmed during PR-0 build.",
     "legend": {
-      "class": { "U": "User-data", "S": "System/cron", "W": "Webhook", "A": "Admin/dangerous", "X": "External API (v1)" },
+      "class": { "U": "User-data", "S": "System/cron", "W": "Webhook", "A": "Admin/dangerous", "X": "External API (borttagen 2026-08-21 — se _meta.removed)" },
       "auth": ["User", "User/API-key", "Cron-secret", "Signature", "API-key", "None"],
       "serviceRole": "true = uses createAdminClient (bypasses RLS)",
       "scope": ["project_id", "via-run", "via-script", "via-news", "via-render", "business-param", "global", "none"],
@@ -10,8 +10,9 @@
       "risk": ["Low", "Medium", "High"]
     },
     "note_middleware": "middleware.ts lets ALL /api routes pass — every route must self-auth; the auth field is the only gate.",
-    "generated_from": "apps/web/app/api/**/route.ts (93 routes)",
-    "status": "pending build of leak-test + route-drift; manifest content approved by operator"
+    "generated_from": "apps/web/app/api/**/route.ts (95 of 110 routes on disk declared; the previous \"93 routes\" was stale \u2014 corrected EI-S1.6B-R5. 15 pre-existing routes remain unclassified; run tests/isolation/route-drift.ts)",
+    "status": "pending build of leak-test + route-drift; manifest content approved by operator",
+    "removed": "2026-08-21: /v1/runs, /v1/runs/[id] and /v1/workflows deleted. They were class-X external routes on the shared global AIOPS_API_KEY with service-role and NO project scoping — cross-project read plus cross-project workflow execution. Audit found zero internal callers, zero Vercel runtime hits in 30 days, and the only consumer (Hermes skill ai-ops-platform) was configured against localhost and never reached production. AIOPS_API_KEY itself is retained: /api/business/leads still serves Familje-Stunden send-pyssel-lead."
   },
 
   "routes": [
@@ -23,7 +24,7 @@
     { "path": "/projects/[slug]/workflows/[id]", "class": "U", "auth": "User", "serviceRole": false, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": false },
     { "path": "/projects/[slug]/dream", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
     { "path": "/runs", "class": "U", "auth": "User", "serviceRole": false, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": false },
-    { "path": "/runs/[id]", "class": "U", "auth": "User", "serviceRole": false, "scope": "via-run", "killSwitch": "na", "risk": "Low", "verified": false },
+    { "path": "/runs/[id]", "class": "U", "auth": "User", "serviceRole": false, "scope": "via-run", "killSwitch": "na", "risk": "Low", "verified": true, "note": "B5 (2026-08-21): PATCH removed - it mutated runs.status with no transition guard, no claim fencing and no ownership assert, and had zero callers. GET now asserts project ownership on top of RLS and answers 404 (never 403) for a foreign run, so it is not an existence oracle. Methods are GET + DELETE only. Locked by lib/qa/b5-runs-route.test.ts. DELETE status-guard and the approvals ON DELETE CASCADE question are deliberately out of scope - see PR body." },
     { "path": "/runs/[id]/ebook", "class": "U", "auth": "User", "serviceRole": false, "scope": "via-run", "killSwitch": "na", "risk": "Low", "verified": false },
     { "path": "/runs/[id]/monthly-pdf", "class": "U", "auth": "User", "serviceRole": false, "scope": "via-run", "killSwitch": "na", "risk": "Low", "verified": false },
     { "path": "/runs/[id]/mp3-manus", "class": "U", "auth": "User", "serviceRole": false, "scope": "via-run", "killSwitch": "na", "risk": "Low", "verified": false },
@@ -109,12 +110,12 @@
     { "path": "/seed", "class": "A", "auth": "Cron-secret/User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "must-be-locked" },
     { "path": "/media/debug/subscribe-webhooks", "class": "A", "auth": "Cron-secret", "serviceRole": false, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "debug-endpoint" },
 
-    { "path": "/v1/runs", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
-    { "path": "/v1/runs/[id]", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "none", "killSwitch": "na", "risk": "Medium", "verified": false, "flag": "scope-confirm" },
-    { "path": "/v1/workflows", "class": "X", "auth": "API-key", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": false },
 
     { "path": "/intelligence/graph/system", "class": "U", "auth": "User", "serviceRole": false, "scope": "none", "killSwitch": "na", "risk": "Low", "verified": false, "flag": "static-code-graph-no-project-data" },
-    { "path": "/intelligence/graph/operations", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": false }
+    { "path": "/intelligence/graph/operations", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": false },
+    { "path": "/atlas/executive/authorization", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "EI-S1.6B: Executive authority write surface. Session principal via resolveProjectAccess (service-role used only to enumerate ownership and to reach the append-only ledger); project asserted by assertProjectAllowed. Appends immutable institutional records through the sanctioned principal-write boundary only - never a direct table write. Creates no run, task, tool call, publication or spend, so risk is Medium under this manifest's convention that High denotes execution/external effect. Unknown and foreign ids collapse to an identical 404. Locked by lib/qa/executive-authority-entrypoint.test.ts and lib/qa/executive-authority-integration.test.ts. Acts on an existing authorization only (grant/grant_with_conditions/deny/revoke); raw AuthorizationTarget is never exposed to HTTP." },
+    { "path": "/atlas/executive/decision", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "EI-S1.6B: Executive authority write surface. Session principal via resolveProjectAccess (service-role used only to enumerate ownership and to reach the append-only ledger); project asserted by assertProjectAllowed. Appends immutable institutional records through the sanctioned principal-write boundary only - never a direct table write. Creates no run, task, tool call, publication or spend, so risk is Medium under this manifest's convention that High denotes execution/external effect. Unknown and foreign ids collapse to an identical 404. Locked by lib/qa/executive-authority-entrypoint.test.ts and lib/qa/executive-authority-integration.test.ts. request_authorization is server-atomic: the binding is derived by prepareDecisionAct and is never client-supplied." },
+    { "path": "/atlas/executive/mission", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "EI-S1.6B: Executive authority write surface. Session principal via resolveProjectAccess (service-role used only to enumerate ownership and to reach the append-only ledger); project asserted by assertProjectAllowed. Appends immutable institutional records through the sanctioned principal-write boundary only - never a direct table write. Creates no run, task, tool call, publication or spend, so risk is Medium under this manifest's convention that High denotes execution/external effect. Unknown and foreign ids collapse to an identical 404. Locked by lib/qa/executive-authority-entrypoint.test.ts and lib/qa/executive-authority-integration.test.ts. activate is a lifecycle state transition, NOT execution. request_authorization is server-atomic via prepareMissionAct." }
   ],
 
   "cleanup": [

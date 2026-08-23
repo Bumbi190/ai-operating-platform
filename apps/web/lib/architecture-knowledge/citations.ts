@@ -17,6 +17,8 @@ export function sourceReferenceFromChunk(chunk: KnowledgeChunk): KnowledgeSource
     anchor: chunk.anchors[0] ?? '',
     canonicalPath: chunk.canonicalPath,
     sourceChecksum: chunk.sourceChecksum,
+    secondarySourceChecksum: chunk.secondarySourceChecksum,
+    recordClass: chunk.recordClass,
     textChecksum: chunk.textChecksum,
     effectiveAt: chunk.effectiveAt,
   }

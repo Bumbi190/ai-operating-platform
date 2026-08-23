@@ -121,8 +121,29 @@ export function loadKnowledgeRegistry(repoRoot = findRepositoryRoot()): Knowledg
   return validateKnowledgeRegistry(raw, repoRoot)
 }
 
+/**
+ * The single definition of "may this source appear in a built artifact?".
+ *
+ * Generic and book-agnostic on purpose: the builder selects sources with it and
+ * the verifier re-checks every source the artifact actually carries against it,
+ * so a source can never reach the artifact through a path the other side did
+ * not sanction. Returns the failed reason (not a boolean) so the verifier can
+ * report which eligibility rule was broken.
+ */
+export function artifactEligibilityFailure(source: KnowledgeSource): string | null {
+  if (source.activationStatus !== 'active') return `activationStatus=${source.activationStatus}`
+  if (!source.current) return 'current=false'
+  if (!['approved', 'verified'].includes(source.canonicalStatus)) return `canonicalStatus=${source.canonicalStatus}`
+  if (['local_only', 'prohibited'].includes(source.classification)) return `classification=${source.classification}`
+  return null
+}
+
+export function isArtifactEligibleSource(source: KnowledgeSource): boolean {
+  return artifactEligibilityFailure(source) === null
+}
+
 export function activeKnowledgeSources(registry: KnowledgeSourceRegistry): KnowledgeSource[] {
   return registry.sources
-    .filter(source => source.activationStatus === 'active' && source.current)
+    .filter(isArtifactEligibleSource)
     .sort((a, b) => a.knowledgeSourceId.localeCompare(b.knowledgeSourceId))
 }

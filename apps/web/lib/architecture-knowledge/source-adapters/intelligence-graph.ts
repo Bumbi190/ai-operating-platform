@@ -172,6 +172,8 @@ export const intelligenceGraphAdapter: KnowledgeSourceAdapter = {
       ordinal: section.ordinal,
       text: section.text,
       textChecksum: sha256(section.text),
+      recordClass: 'canonical_section',
+      secondarySourceChecksum: null,
     }))
     return {
       source,

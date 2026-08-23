@@ -20,8 +20,47 @@ import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
 import { toJson } from '@/lib/supabase/json'
 import type { Json } from '@/lib/supabase/database.types'
+import {
+  decideDelegation,
+  recordDelegationReplan,
+  type DelegationWriteResult,
+} from '@/lib/atlas/delegation/principal-write'
+import {
+  resolveDelegationEvaluation,
+  type DelegationEvaluation,
+  type DelegationReadStatus,
+} from '@/lib/atlas/delegation/principal-read'
+import type { ProposedChange } from '@/lib/atlas/delegation/classify'
+import {
+  assignWorkPackage,
+  prepareWorkPackage,
+  type WorkPackageWriteResult,
+} from '@/lib/atlas/workpackage/principal-write'
+import {
+  resolveWorkPackage,
+  type WorkPackageReadStatus,
+} from '@/lib/atlas/workpackage/principal-read'
+import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
+import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+/**
+ * EI-S1.4D-R1 — the legacy/canonical discriminator for `manager_tasks`.
+ *
+ * Canonical Chapter 21 Work Packages are stored in this table with
+ * `source = 'work_package'`. Legacy surfaces that mean "operator-created or
+ * planTasks work the Manager is actively coordinating" must exclude them: a
+ * §21.42 assigned package has been RECEIVED and not started, and nothing in
+ * this codebase executes from a `manager_tasks` row, so surfacing one as an
+ * active task would be a claim the system cannot back.
+ *
+ * The NULL branch is load-bearing. Every legacy row predates the `source`
+ * column or was written without it, and `source <> 'work_package'` alone
+ * evaluates to NULL — not true — for those rows, silently hiding the entire
+ * existing task list. Written once here so no consumer can get it subtly wrong.
+ */
+export const LEGACY_TASK_FILTER = 'source.is.null,source.neq.work_package'
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
@@ -144,6 +183,13 @@ export class ManagerAgent {
           .from('manager_tasks')
           .select('*')
           .in('status', ['pending', 'in_progress'])
+          // EI-S1.4D-R1: canonical Work Packages share this table but NOT its
+          // legacy semantics. A §21.42 `assigned` package has been RECEIVED and
+          // not started, so rendering it under "ACTIVE MANAGER TASKS" would tell
+          // the Manager work is in flight that nothing has begun.
+          // `source IS NULL OR source <> 'work_package'` — the null branch
+          // matters: every legacy row predates the column and must stay visible.
+          .or(`${LEGACY_TASK_FILTER}`)
           .order('created_at', { ascending: false })
           .limit(15), allowedProjectIds),
 
@@ -409,11 +455,21 @@ Return ONLY valid JSON:
 
   // ── DB operations (no LLM cost) ────────────────────────────────────────────
 
+  /**
+   * Legacy ACTIVE tasks — operator-created and `planTasks` work.
+   *
+   * Canonical Work Packages are excluded (EI-S1.4D-R1). They live in the same
+   * table but mean something different: §21.42 `assigned` is "received", not
+   * "in progress", and a caller asking for active legacy tasks is not asking
+   * about the Executive authority chain. `readWorkPackage` is the Work
+   * Package-aware path.
+   */
   async getActiveTasks(projectId?: string): Promise<ManagerTask[]> {
     let query = this.db
       .from('manager_tasks')
       .select('*')
       .in('status', ['pending', 'in_progress'])
+      .or(`${LEGACY_TASK_FILTER}`)
       .order('created_at', { ascending: false })
       .limit(20)
 
@@ -505,6 +561,92 @@ Return ONLY valid JSON:
     } catch {
       return null
     }
+  }
+
+  // ─── Bounded delegation (EI-S1.4C, Chapter 21) ──────────────────────────────
+  //
+  // The canonical Executive → Manager path. It deliberately shares NOTHING with
+  // `planTasks` above:
+  //
+  //   planTasks takes a goal STRING, asks an LLM to invent work, and writes
+  //   manager_tasks. That is fine for the operator-driven flows that already
+  //   call it, and it stays exactly as it is.
+  //
+  //   The methods below take an ENVELOPE ID, consult no model whatsoever, and
+  //   write no task. Authority questions are answered by deterministic code in
+  //   lib/atlas/delegation, because an authority check that a prompt can talk
+  //   its way past is not a check. The Manager here decides whether it can
+  //   accept bounded work — it does not decide what the work is, and it does
+  //   not start any.
+
+  /**
+   * §21.16/§21.17 — evaluate a prepared envelope and record the decision.
+   *
+   * There is no `accept` parameter. The delegation boundary runs the acceptance
+   * checks and appends whichever outcome they produce, so a caller cannot
+   * assert an acceptance the conditions do not support.
+   */
+  async decideDelegation(envelopeId: string, note?: string): Promise<DelegationWriteResult> {
+    return decideDelegation({ envelopeId, note })
+  }
+
+  /** §21.14 — is this envelope usable right now, given its live Mission? */
+  async readDelegation(
+    envelopeId: string,
+  ): Promise<{ evaluation: DelegationEvaluation | null; status: DelegationReadStatus }> {
+    return resolveDelegationEvaluation(envelopeId)
+  }
+
+  /**
+   * §21.20–§21.26 — classify a proposed change against the accepted envelope.
+   *
+   * Recording is not permission. A material change is referred to the Executive
+   * and stops here; nothing in this method executes either class of change.
+   */
+  async replanDelegation(envelopeId: string, change: ProposedChange): Promise<DelegationWriteResult> {
+    return recordDelegationReplan({ envelopeId, change })
+  }
+
+  // ─── Bounded Work Packages (EI-S1.4D, Chapter 21 §21.9) ─────────────────────
+  //
+  // The Manager → Workforce hop, and the last one Stage 1 builds. It shares
+  // nothing with `planTasks` above:
+  //
+  //   planTasks takes a goal STRING, asks an LLM to invent work, and writes
+  //   manager_tasks rows with no authority chain behind them. It stays exactly
+  //   as it is for the operator-driven flows that already call it.
+  //
+  //   The methods below take an accepted DELEGATION ENVELOPE, consult no model,
+  //   and produce a structured contract whose every bound is proven a subset of
+  //   that Delegation. §21.28 decomposition is the Manager's to do; authority is
+  //   not, and no prompt decides it.
+  //
+  // ASSIGNMENT IS NOT EXECUTION (§21.42). Assigning means the Workforce role has
+  // RECEIVED the package. Nothing starts it, and nothing here can: no runner, no
+  // executor, no dispatcher, no tool call.
+
+  /** §21.28 — validate a decomposition without persisting it. */
+  async prepareWorkPackage(envelopeId: string, request: WorkPackageRequest): Promise<WorkPackageWriteResult> {
+    return prepareWorkPackage({ envelopeId, request })
+  }
+
+  /**
+   * §21.42 — assign a bounded Work Package to a Workforce role.
+   *
+   * There is no `assigned` or `authority` parameter. The parent Delegation and
+   * the deterministic validation decide what may be persisted.
+   */
+  async assignWorkPackage(
+    envelopeId: string, request: WorkPackageRequest, title?: string,
+  ): Promise<WorkPackageWriteResult> {
+    return assignWorkPackage({ envelopeId, request, title })
+  }
+
+  /** §21.14 — is this package usable right now, given its live authority chain? */
+  async readWorkPackage(
+    workPackageId: string,
+  ): Promise<{ evaluation: WorkPackageEvaluation | null; status: WorkPackageReadStatus }> {
+    return resolveWorkPackage(workPackageId)
   }
 }
 

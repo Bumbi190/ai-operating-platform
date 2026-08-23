@@ -1,4 +1,23 @@
 /**
+ * @deprecated RETIRED FROM EVERY LIVE SURFACE — EI-S1.2. Do not import.
+ *
+ * Superseded by the conformant apex path:
+ *   producers/executive-brief-producer.ts   (pure core)
+ *   producers/executive-brief-orchestrator.ts (shell)
+ *   intelligence/principal-read.ts          (principal-scoped read)
+ *
+ * This module violates the canonical architecture: it collects its own data
+ * (P1), calls six downstream services and `createAdminClient()` directly (P6),
+ * and emits raw strings with no evidence chain, confidence or provenance (P3,
+ * P4). It has no callers in this repository and powers no live surface.
+ *
+ * It is kept on disk only because the in-flight `feat/omnira-ui-vnext` branch
+ * still imports it from its own uncommitted Atlas page. Deleting the file now
+ * would break that work the moment it merges main. Delete it once that branch
+ * has migrated to the apex path — see the EI-S1.2 report.
+ *
+ * A regression test asserts no live module imports this file.
+ *
  * Atlas Executive Brain — Daily Briefing (Fas 5, Feature 1).
  *
  * Affärssyntesen Atlas resonerar kring. Läser Context Brain + agentaktivitet +

@@ -24,7 +24,7 @@
  * rather than a rename.
  */
 import { NextResponse } from 'next/server'
-import { resolveLeadsAuth } from '@/lib/business/leads-auth'
+import { resolveLeadsAuth, resolveSessionLeadProject } from '@/lib/business/leads-auth'
 import { createLead, listLeads, BusinessError, type LeadStatus, type LeadInput } from '@/lib/business/store'
 
 export const dynamic = 'force-dynamic'
@@ -44,6 +44,17 @@ const CREDENTIAL_LEAD_FIELDS = ['name', 'email', 'source', 'status', 'value_sek'
 
 /** Project-naming keys refused on the credential path. */
 const PROJECT_KEYS = ['project_id', 'project_slug'] as const
+
+/**
+ * Lead fields a SESSION caller may supply.
+ *
+ * Identical to the credential list, and for the same reason: the project is
+ * decided before this runs and is written from the verified id, so a body key
+ * naming a project must not be able to ride along into the insert. Picking
+ * rather than spreading is what makes that structural — `createLead` can only
+ * ever receive the project this route authorized.
+ */
+const SESSION_LEAD_FIELDS = CREDENTIAL_LEAD_FIELDS
 
 export async function GET(request: Request) {
   const auth = await resolveLeadsAuth(request, NO_READ_SCOPE)
@@ -95,7 +106,35 @@ export async function POST(request: Request) {
       return NextResponse.json(lead, { status: 201 })
     }
 
-    // Session and legacy-key paths — contract unchanged from before Phase 2.
+    if (auth.auth.kind === 'user') {
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return NextResponse.json(
+          { error: 'invalid_request', detail: 'body_must_be_object' },
+          { status: 400 },
+        )
+      }
+      // LEADS_SESSION_PROJECT_SCOPE: authenticate is not authorize. The project
+      // the caller named is checked against their own allow-list BEFORE any
+      // write, and the insert then uses the verified id — never the body value
+      // that was checked, so the two cannot drift apart.
+      const project = await resolveSessionLeadProject(body as Record<string, unknown>, auth.auth.userId)
+      if (!project.ok) return project.response
+
+      const input: LeadInput = { project_id: project.projectId }
+      for (const field of SESSION_LEAD_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(body, field)) {
+          (input as Record<string, unknown>)[field] = body[field]
+        }
+      }
+      const lead = await createLead(input)
+      return NextResponse.json(lead, { status: 201 })
+    }
+
+    // Legacy global-key path — contract unchanged. TRANSITIONAL SECURITY DEBT:
+    // this path still accepts any project the caller names, exactly as before,
+    // because Familje-Stunden's send-pyssel-lead depends on it until it is
+    // migrated onto a scoped credential. It is knowingly left open for that one
+    // step and must be closed when the migration lands.
     const lead = await createLead(body)
     return NextResponse.json(lead, { status: 201 })
   } catch (e) {

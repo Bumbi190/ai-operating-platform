@@ -569,12 +569,15 @@ describe('containment', () => {
     // assertion owns is that they gained no project-credential capability and
     // did not borrow the leads resolver — the legacy class still reaches
     // requireApiKey through the shared business resolver.
+    // 4B2 made these session-only. The durable property is that they gained no
+    // project-credential capability and did not borrow the leads resolver.
     const src = read(`app/api/business/${name}/route.ts`)
-    expect(src).toContain("from '@/lib/business/business-auth'")
+    expect(src).toContain("from '@/lib/auth/session'")
     expect(src).not.toContain('leads-auth')
     expect(src).not.toContain('project-api-credentials')
     expect(src).not.toContain('business.leads.create')
-    expect(read('lib/business/business-auth.ts')).toContain("import { requireApiKey } from '@/lib/api-auth'")
+    // And they can no longer reach the global key at all.
+    expect(src).not.toMatch(/from '@\/lib\/api-auth'/)
   })
 
   it('leaves /api/chat/tts untouched by the credential surface', () => {

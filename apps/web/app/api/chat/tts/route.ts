@@ -16,15 +16,21 @@
  *   alloy   — neutral
  */
 
-import { requireUserOrApiKey } from '@/lib/api-auth'
+import { requireUserSession } from '@/lib/auth/session'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
 
 export async function POST(request: Request) {
-  // Kräver inloggad användare ELLER giltig API-nyckel. Utan detta kunde vem
-  // som helst anropa endpointen och bränna OpenAI TTS-krediter.
-  const auth = await requireUserOrApiKey(request)
+  // SESSION ONLY (4B2). Kräver inloggad användare — den globala AIOPS_API_KEY
+  // ger inte längre åtkomst och läses inte här.
+  //
+  // Auth sker FÖRST, före all body-parsning och före varje OpenAI-anrop. Den
+  // ordningen är själva skyddet: routen spenderar pengar hos OpenAI, så en
+  // oautentiserad request får aldrig hinna kosta något. Routen är inte
+  // projektbunden och har därför medvetet ingen project credential — den
+  // saknar projektdimension att scopa mot.
+  const auth = await requireUserSession()
   if (!auth.ok) return auth.response
 
   const apiKey = process.env.OPENAI_API_KEY

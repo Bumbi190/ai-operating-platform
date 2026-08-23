@@ -17,6 +17,7 @@
  */
 
 import { requireUserOrApiKey } from '@/lib/api-auth'
+import { getAtlasServiceErrorMessage } from '@/lib/atlas/provider-errors'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -27,9 +28,13 @@ export async function POST(request: Request) {
   const auth = await requireUserOrApiKey(request)
   if (!auth.ok) return auth.response
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
-    return Response.json({ error: 'OPENAI_API_KEY saknas' }, { status: 500 })
+    const code = 'ATLAS_TTS_NOT_CONFIGURED' as const
+    return Response.json(
+      { code, error: getAtlasServiceErrorMessage(code) },
+      { status: 503 },
+    )
   }
 
   const {
@@ -67,8 +72,12 @@ export async function POST(request: Request) {
   })
 
   if (!res.ok) {
-    const err = await res.text().catch(() => 'unknown')
-    return Response.json({ error: `OpenAI TTS ${res.status}: ${err}` }, { status: 502 })
+    const code = 'ATLAS_TTS_REQUEST_FAILED' as const
+    console.error('[atlas-tts] OpenAI request failed', { status: res.status })
+    return Response.json(
+      { code, error: getAtlasServiceErrorMessage(code) },
+      { status: 502 },
+    )
   }
 
   const audio = await res.arrayBuffer()

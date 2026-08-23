@@ -1,0 +1,33 @@
+.sidebar {
+  border-right-color: rgba(72, 205, 220, 0.11) !important;
+  box-shadow: inset -1px 0 rgba(125, 211, 252, 0.025), 22px 0 70px rgba(0, 5, 14, 0.16);
+}
+
+.sidebar nav {
+  scrollbar-color: rgba(45, 212, 191, 0.14) transparent;
+}
+
+.sidebar :global(.nav-pill) {
+  color: rgba(187, 210, 220, 0.58);
+}
+
+.sidebar :global(.nav-pill:hover),
+.sidebar :global(.nav-pill[data-active='true']) {
+  color: rgba(235, 251, 255, 0.94);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.065), transparent 88%);
+}
+
+.primaryNav::after {
+  content: '';
+  position: absolute;
+  inset: 20% auto 20% 0;
+  width: 2px;
+  border-radius: 999px;
+  background: #5eead4;
+  box-shadow: 0 0 12px rgba(94, 234, 212, 0.8);
+}
+
+.operatorCard {
+  background: linear-gradient(115deg, rgba(11, 41, 53, 0.72), rgba(4, 18, 31, 0.64)) !important;
+  border-color: rgba(103, 232, 249, 0.1) !important;
+}

@@ -8,6 +8,9 @@ import {
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
+import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -30,6 +33,9 @@ export default async function PlatformLayout({
   if (!user) redirect('/login')
 
   const db = createAdminClient()
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const scopedProjectIds = scopeProjectFilter(allowedProjectIds)
+  const allowedProjects = new Set(allowedProjectIds)
 
   const [projectsRes, conversationsRes, runsRes, approvalsRes] = await Promise.allSettled([
     supabase
@@ -43,26 +49,38 @@ export default async function PlatformLayout({
       .order('updated_at', { ascending: false })
       .limit(8),
     (db.from('runs') as any)
-      .select('id, status, created_at, finished_at, workflows(name), projects(name, color, slug)')
+      .select('id, project_id, status, created_at, finished_at, workflows(name)')
+      .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(12),
     (db.from('approvals') as any)
-      .select('id, status, output_key, created_at, reviewed_at, runs(workflows(name), projects:projects(name, color, slug))')
+      .select('id, project_id, status, output_key, created_at, reviewed_at')
+      .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(8),
   ])
 
-  const projects   = projectsRes.status      === 'fulfilled' ? (projectsRes.value.data ?? [])       : []
+  const projectsRaw = projectsRes.status === 'fulfilled' ? (projectsRes.value.data ?? []) : []
+  // Final pre-serialization guard: a service-role query can never expand the
+  // shell beyond the authenticated user's project allow-list.
+  const projects = projectsRaw.filter((project: any) => allowedProjects.has(project.id))
+  const projectById = new Map(projects.map((project: any) => [project.id, project]))
   const conversations = conversationsRes.status === 'fulfilled' ? (conversationsRes.value.data ?? []) : []
-  const runs       = runsRes.status          === 'fulfilled' ? ((runsRes.value as any).data ?? [])  : []
-  const approvals  = approvalsRes.status     === 'fulfilled' ? ((approvalsRes.value as any).data ?? []) : []
+  const runs = runsRes.status === 'fulfilled'
+    ? (((runsRes.value as any).data ?? []) as any[]).filter((run) => allowedProjects.has(run.project_id))
+    : []
+  const approvals = approvalsRes.status === 'fulfilled'
+    ? (((approvalsRes.value as any).data ?? []) as any[]).filter((approval) => (
+        approval.project_id && allowedProjects.has(approval.project_id)
+      ))
+    : []
 
   const events: ActivityEvent[] = []
 
   // Människospråkiga, affärsfokuserade, åtgärdsinriktade händelser.
   for (const r of runs as any[]) {
     const w = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
-    const p = Array.isArray(r.projects)  ? r.projects[0]  : r.projects
+    const p = projectById.get(r.project_id) as any
     const wf = w?.name ?? 'Ett arbetsflöde'
     if (r.status === 'failed') {
       events.push({
@@ -102,8 +120,7 @@ export default async function PlatformLayout({
   }
 
   for (const a of approvals as any[]) {
-    const run = Array.isArray(a.runs) ? a.runs[0] : a.runs
-    const p   = run ? (Array.isArray(run.projects)  ? run.projects[0]  : run.projects)  : null
+    const p = projectById.get(a.project_id) as any
     if (a.status === 'pending') {
       events.push({
         id: `appr-${a.id}-pending`,
@@ -161,6 +178,7 @@ export default async function PlatformLayout({
   return (
     <AtlasRuntimeProvider projects={projects}>
     <OperatorModeProvider>
+      <AtlasProjectReturnShortcut />
       <div
         className="
           relative h-screen overflow-hidden
@@ -174,6 +192,7 @@ export default async function PlatformLayout({
         <Sidebar
           projects={projects}
           userEmail={user.email ?? ''}
+          operatorName={OPERATOR_DISPLAY_NAME}
           recentConversations={conversations}
         />
 

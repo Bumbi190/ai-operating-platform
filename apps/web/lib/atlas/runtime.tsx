@@ -18,10 +18,19 @@ import {
   useState,
   useEffect,
   useRef,
+  useSyncExternalStore,
 } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient }           from '@/lib/supabase/client'
 import { buildChatRequestBody }   from '@/lib/atlas/view-client'
+import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
+import {
+  ATLAS_ACTION_TOOL_NAMES,
+  interpretAtlasToolResult,
+  resolveAtlasServiceWarning,
+  type AtlasOrbCompletionEvent,
+  type AtlasOrbRuntimeSignal,
+} from './orb-state'
 import { resolveWorkspace, resolveActiveProject } from './workspace-registry'
 
 // ── Typer ────────────────────────────────────────────────────────────────────
@@ -71,6 +80,10 @@ export interface AtlasValue {
 
   // ── Exekutivt läge ────────────────────────────────────────────────────
   executiveState: ExecutiveState
+  execution: AtlasOrbRuntimeSignal | null
+  awaitingApproval: AtlasOrbRuntimeSignal | null
+  warning: AtlasOrbRuntimeSignal | null
+  completionEvent: AtlasOrbCompletionEvent | null
 
   // ── Session ───────────────────────────────────────────────────────────
   isSessionActive: boolean
@@ -95,12 +108,20 @@ export interface AtlasValue {
 // ── Context ──────────────────────────────────────────────────────────────────
 
 const AtlasContext = createContext<AtlasValue | null>(null)
+const AtlasAudioLevelContext = createContext<AtlasAudioLevelStore | null>(null)
 
 /** Konsumera Atlas-runtime. Kastar om komponenten är utanför AtlasRuntimeProvider. */
 export function useAtlas(): AtlasValue {
   const ctx = useContext(AtlasContext)
   if (!ctx) throw new Error('useAtlas() måste användas inuti AtlasRuntimeProvider')
   return ctx
+}
+
+/** Subscribe only the visual consumer to the high-frequency Web Audio level. */
+export function useAtlasAudioLevel(): number {
+  const store = useContext(AtlasAudioLevelContext)
+  if (!store) throw new Error('useAtlasAudioLevel() måste användas inuti AtlasRuntimeProvider')
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
 }
 
 // ── Provider ─────────────────────────────────────────────────────────────────
@@ -136,6 +157,12 @@ export function AtlasRuntimeProvider({
 
   // ── Executive state ──────────────────────────────────────────────────────
   const [executiveState, setExecutiveState] = useState<ExecutiveState>('idle')
+  const [execution, setExecution] = useState<AtlasOrbRuntimeSignal | null>(null)
+  const [awaitingApproval, setAwaitingApproval] = useState<AtlasOrbRuntimeSignal | null>(null)
+  const [warning, setWarning] = useState<AtlasOrbRuntimeSignal | null>(null)
+  const [completionEvent, setCompletionEvent] = useState<AtlasOrbCompletionEvent | null>(null)
+  const executionRef = useRef<AtlasOrbRuntimeSignal | null>(null)
+  const completionIdRef = useRef(0)
 
   // ── Röstinnehåll ─────────────────────────────────────────────────────────
   const [transcript, setTranscript] = useState('')
@@ -171,6 +198,9 @@ export function AtlasRuntimeProvider({
   // ── Voice-refs ────────────────────────────────────────────────────────────
   const recRef       = useRef<any>(null)
   const audioRef     = useRef<HTMLAudioElement | null>(null)
+  const finishAudioRef = useRef<(() => void) | null>(null)
+  const audioLevelStoreRef = useRef<AtlasAudioLevelStore | null>(null)
+  const audioAnalyserRef = useRef<AtlasAudioAnalyser | null>(null)
   const silenceRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelRef    = useRef(false)
   const closedRef    = useRef(true)   // startar stängt (inaktivt)
@@ -178,6 +208,51 @@ export function AtlasRuntimeProvider({
   const recActiveRef = useRef(false)
   const marksRef     = useRef<Record<string, number>>({})
   const ttsMsRef     = useRef(0)
+
+  if (!audioLevelStoreRef.current) audioLevelStoreRef.current = new AtlasAudioLevelStore()
+
+  useEffect(() => () => {
+    finishAudioRef.current?.()
+    void audioAnalyserRef.current?.dispose()
+  }, [])
+
+  function getAudioAnalyser(): AtlasAudioAnalyser {
+    audioAnalyserRef.current ??= new AtlasAudioAnalyser({ store: audioLevelStoreRef.current! })
+    return audioAnalyserRef.current
+  }
+
+  function beginExecution(toolName: string) {
+    const signal = { active: true, toolName }
+    executionRef.current = signal
+    setExecution(signal)
+    setAwaitingApproval(null)
+    setWarning(null)
+    setExecutiveState('delegating')
+  }
+
+  function finishExecution(toolName: string, result: Record<string, unknown> | null) {
+    executionRef.current = null
+    setExecution(null)
+    const outcome = interpretAtlasToolResult(result)
+    if (outcome.kind === 'awaiting_approval') {
+      setAwaitingApproval({
+        active: true,
+        toolName,
+        detail: outcome.detail,
+      })
+      return
+    }
+    if (outcome.kind === 'warning') {
+      setWarning({
+        active: true,
+        toolName,
+        detail: outcome.detail,
+      })
+      return
+    }
+    completionIdRef.current += 1
+    setCompletionEvent({ id: completionIdRef.current, toolName })
+  }
 
   // ── Inaktivitetstimer ─────────────────────────────────────────────────────
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -325,32 +400,46 @@ export function AtlasRuntimeProvider({
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────
-  async function fetchTTSUrl(sentence: string): Promise<string | null> {
+  async function fetchTTSUrl(sentence: string): Promise<{ url: string | null; errorCode?: unknown }> {
     try {
       const res = await fetch('/api/chat/tts', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ text: sentence, voice: 'onyx' }),
       })
-      if (!res.ok) return null
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { code?: unknown } | null
+        return { url: null, errorCode: payload?.code }
+      }
       const ms = Number(res.headers.get('x-tts-ms') || 0)
       if (ms) ttsMsRef.current += ms
       const blob = await res.blob()
-      return URL.createObjectURL(blob)
-    } catch { return null }
+      return { url: URL.createObjectURL(blob) }
+    } catch {
+      return { url: null, errorCode: 'ATLAS_TTS_REQUEST_FAILED' }
+    }
   }
 
   function playUrl(url: string): Promise<void> {
     return new Promise((resolve) => {
       const audio = new Audio(url)
       audioRef.current = audio
-      audio.onended = () => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        getAudioAnalyser().disconnect()
         try { URL.revokeObjectURL(url) } catch { /* ignore */ }
-        audioRef.current = null
+        if (audioRef.current === audio) audioRef.current = null
+        if (finishAudioRef.current === finish) finishAudioRef.current = null
         resolve()
       }
-      audio.onerror = () => resolve()
-      audio.play().catch(() => resolve())
+      finishAudioRef.current = finish
+      audio.onended = finish
+      audio.onerror = finish
+      void getAudioAnalyser().connect(audio).finally(() => {
+        audio.play().catch(finish)
+      })
     })
   }
 
@@ -369,6 +458,8 @@ export function AtlasRuntimeProvider({
   function activate() {
     closedRef.current    = false
     cancelRef.current    = false
+    setAwaitingApproval(null)
+    setWarning(null)
     setIsSessionActive(true)
     resetInactivityTimer()
     listeningRef.current = true
@@ -385,13 +476,19 @@ export function AtlasRuntimeProvider({
     setTranscript('')
     setIsSessionActive(false)
     setExecutiveState('idle')
+    executionRef.current = null
+    setExecution(null)
+    setAwaitingApproval(null)
+    setWarning(null)
     if (silenceRef.current)         clearTimeout(silenceRef.current)
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current)
   }
 
   function stopAudio() {
     cancelRef.current = true
-    try { audioRef.current?.pause(); audioRef.current = null } catch { /* ignore */ }
+    try { audioRef.current?.pause() } catch { /* ignore */ }
+    finishAudioRef.current?.()
+    getAudioAnalyser().disconnect()
     setVoicePhase('idle')
     if (!closedRef.current) {
       listeningRef.current = true
@@ -414,6 +511,10 @@ export function AtlasRuntimeProvider({
     setPerf(null)
     cancelRef.current = false
     ttsMsRef.current  = 0
+    executionRef.current = null
+    setExecution(null)
+    setAwaitingApproval(null)
+    setWarning(null)
 
     // ExecutiveState: avgörs av konversationsdjup — ren tillståndsmaskin
     const isFirstMessage = historyRef.current.length === 0
@@ -424,15 +525,15 @@ export function AtlasRuntimeProvider({
     historyRef.current = [...historyRef.current, { role: 'user', content: text }]
     setHistory(h => [...h, { role: 'user', content: text }])
 
-    const urlQueue: Promise<string | null>[] = []
+    const urlQueue: Promise<{ url: string | null; errorCode?: unknown }>[] = []
     let reply         = ''
     let processedLen  = 0
     let streamDone    = false
     let playerStarted = false
+    let ttsFailureReported = false
     let serverTiming: { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number } | undefined
 
     const player = async () => {
-      setVoicePhase('speaking')
       let idx = 0
       while (!cancelRef.current) {
         if (idx >= urlQueue.length) {
@@ -440,15 +541,33 @@ export function AtlasRuntimeProvider({
           await new Promise(r => setTimeout(r, 50))
           continue
         }
-        const url = await urlQueue[idx]; idx++
-        if (cancelRef.current) break
+        const tts = await urlQueue[idx]; idx++
+        const url = tts.url
+        if (tts.errorCode && !ttsFailureReported) {
+          ttsFailureReported = true
+          setWarning(resolveAtlasServiceWarning(tts.errorCode))
+        }
+        if (cancelRef.current) {
+          if (url) try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+          break
+        }
         if (url) {
+          // `speaking` begins only after a real TTS blob exists. While the
+          // network request is pending Atlas truthfully remains `thinking`.
+          setVoicePhase('speaking')
           if (!marksRef.current.firstAudio) {
             marksRef.current.firstAudio = performance.now()
             logLatency(serverTiming)
           }
           await playUrl(url)
         }
+      }
+      if (cancelRef.current && idx < urlQueue.length) {
+        void Promise.all(urlQueue.slice(idx)).then((results) => {
+          results.forEach(({ url: queuedUrl }) => {
+            if (queuedUrl) try { URL.revokeObjectURL(queuedUrl) } catch { /* ignore */ }
+          })
+        })
       }
       if (!cancelRef.current) {
         setVoicePhase('idle')
@@ -496,7 +615,15 @@ export function AtlasRuntimeProvider({
         ),
       })
 
-      if (res.ok && res.body) {
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { code?: unknown } | null
+        setWarning(resolveAtlasServiceWarning(payload?.code))
+        streamDone = true
+        setVoicePhase('idle')
+        return
+      }
+
+      if (res.body) {
         const reader  = res.body.getReader()
         const decoder = new TextDecoder()
         let   buf     = ''
@@ -536,9 +663,25 @@ export function AtlasRuntimeProvider({
                   openWorkspace(href)
                 }
 
-              } else if (d.event === 'tool_call' && d.name === 'trigger_workflow') {
-                // Atlas delegerar till en agent
-                setExecutiveState('delegating')
+              } else if (d.event === 'tool_call' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
+                beginExecution(d.tool)
+
+              } else if (d.event === 'tool_result' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
+                const result = d.result && typeof d.result === 'object'
+                  ? d.result as Record<string, unknown>
+                  : null
+                finishExecution(d.tool, result)
+
+              } else if (d.event === 'error') {
+                executionRef.current = null
+                setExecution(null)
+                setWarning(resolveAtlasServiceWarning(d.code))
+
+              } else if (d.event === 'done' && executionRef.current) {
+                // Defensive cleanup for a truncated stream. A completion pulse
+                // is never fabricated without the corresponding tool_result.
+                executionRef.current = null
+                setExecution(null)
               }
             } catch { /* ignorera felaktiga SSE-frames */ }
           }
@@ -557,6 +700,9 @@ export function AtlasRuntimeProvider({
       }
     } catch {
       streamDone = true
+      executionRef.current = null
+      setExecution(null)
+      setWarning({ active: true, detail: 'Anslutningen till Atlas avbröts.' })
       setVoicePhase('idle')
       setTimeout(() => { if (!cancelRef.current) startListeningRef.current() }, 350)
     }
@@ -575,6 +721,10 @@ export function AtlasRuntimeProvider({
     response,
     perf,
     executiveState,
+    execution,
+    awaitingApproval,
+    warning,
+    completionEvent,
     isSessionActive,
     lastActiveAt,
     history,
@@ -589,8 +739,10 @@ export function AtlasRuntimeProvider({
   }
 
   return (
-    <AtlasContext.Provider value={value}>
-      {children}
-    </AtlasContext.Provider>
+    <AtlasAudioLevelContext.Provider value={audioLevelStoreRef.current}>
+      <AtlasContext.Provider value={value}>
+        {children}
+      </AtlasContext.Provider>
+    </AtlasAudioLevelContext.Provider>
   )
 }

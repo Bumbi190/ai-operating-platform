@@ -18,6 +18,10 @@ import { getManager } from '@/lib/ai/manager'
 import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
+import {
+  classifyAnthropicError,
+  getAtlasServiceErrorMessage,
+} from '@/lib/atlas/provider-errors'
 import { gatherAtlasContext } from '@/lib/atlas/context'
 import { contentScore } from '@/lib/atlas/content-score'
 import { listOpportunities } from '@/lib/atlas/opportunities'
@@ -532,7 +536,6 @@ const TOOLS: Anthropic.Tool[] = [
 ]
 
 export async function POST(request: Request) {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   // Auth check
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -540,6 +543,16 @@ export async function POST(request: Request) {
   // Capture as local — the `!user` narrowing above doesn't survive into the
   // streaming closure further down.
   const userId = user.id
+
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
+  if (!anthropicApiKey) {
+    const code = 'ATLAS_PROVIDER_NOT_CONFIGURED' as const
+    return NextResponse.json(
+      { code, error: getAtlasServiceErrorMessage(code) },
+      { status: 503 },
+    )
+  }
+  const anthropic = new Anthropic({ apiKey: anthropicApiKey })
 
   const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -885,7 +898,14 @@ export async function POST(request: Request) {
       try {
         await runConversation(messages)
       } catch (err) {
-        send('error', { message: err instanceof Error ? err.message : 'Okänt fel' })
+        const code = classifyAnthropicError(err)
+        console.error(`[atlas-chat] Anthropic request failed (${code})`, {
+          name: err instanceof Error ? err.name : 'UnknownError',
+          status: typeof (err as { status?: unknown } | null)?.status === 'number'
+            ? (err as { status: number }).status
+            : undefined,
+        })
+        send('error', { code, message: getAtlasServiceErrorMessage(code) })
         controller.close()
       }
     },

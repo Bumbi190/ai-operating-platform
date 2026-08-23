@@ -21,6 +21,8 @@ import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
 import { AlertTriangle, ArrowRight, Clock } from 'lucide-react'
+import { loadAtlasHomeViewModel } from '@/lib/atlas/home-view-model'
+import { AtlasHomeVNext } from '@/components/platform/vnext/AtlasHomeVNext'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +30,18 @@ function fmtSEK(n: number): string {
   return new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' kr'
 }
 
-export default async function AtlasHome() {
+interface AtlasHomeProps {
+  searchParams?: { ui?: string | string[] }
+}
+
+export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
+  const ui = Array.isArray(searchParams?.ui) ? searchParams?.ui[0] : searchParams?.ui
+  if (ui === 'vnext') {
+    const model = await loadAtlasHomeViewModel()
+    if (!model) redirect('/login')
+    return <AtlasHomeVNext model={model} />
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

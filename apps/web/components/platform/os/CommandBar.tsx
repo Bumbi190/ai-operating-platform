@@ -21,10 +21,11 @@ interface CommandBarProps {
  */
 export function CommandBar({ operator, projects = [] }: CommandBarProps) {
   const pathname = usePathname()
-  const [now, setNow] = useState(() => new Date())
+  const [now, setNow] = useState<Date | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
+    setNow(new Date())
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
@@ -49,12 +50,12 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
       href: '/' + all.slice(0, i + 1).join('/'),
     }))
 
-  const hh = now.getHours().toString().padStart(2, '0')
-  const mm = now.getMinutes().toString().padStart(2, '0')
-  const ss = now.getSeconds().toString().padStart(2, '0')
-  const dateLabel = now.toLocaleDateString('en-US', {
+  const hh = now ? now.getHours().toString().padStart(2, '0') : '--'
+  const mm = now ? now.getMinutes().toString().padStart(2, '0') : '--'
+  const ss = now ? now.getSeconds().toString().padStart(2, '0') : '--'
+  const dateLabel = now ? now.toLocaleDateString('en-US', {
     weekday: 'short', day: 'numeric', month: 'short',
-  }).toUpperCase()
+  }).toUpperCase() : '—'
   const initials = operator?.split('@')[0].slice(0, 2).toUpperCase() ?? '••'
 
   // På /atlas är orben det primära gränssnittet — CommandBar distraherar.

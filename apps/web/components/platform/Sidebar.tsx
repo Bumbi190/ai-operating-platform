@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
@@ -27,6 +27,7 @@ import {
   Megaphone,
   Network,
 } from 'lucide-react'
+import vnextStyles from './SidebarVNext.module.css'
 
 interface Project {
   id: string
@@ -44,6 +45,7 @@ interface RecentConversation {
 interface SidebarProps {
   projects: Project[]
   userEmail?: string
+  operatorName?: string
   recentConversations?: RecentConversation[]
 }
 
@@ -78,9 +80,11 @@ const mediaProjectNav = [
   { href: '/scripts',  label: 'Manuskriptkö',   icon: FileText },
 ]
 
-export function Sidebar({ projects, userEmail, recentConversations = [] }: SidebarProps) {
+export function Sidebar({ projects, userEmail, operatorName, recentConversations = [] }: SidebarProps) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const router = useRouter()
+  const isAtlasVNext = pathname === '/atlas' && searchParams.get('ui') === 'vnext'
   const isChatActive = pathname.startsWith('/chat')
   const activeSlug = pathname.match(/\/projects\/([^/]+)/)?.[1]
 
@@ -91,16 +95,29 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
     router.refresh()
   }
 
-  const initials = userEmail
-    ? userEmail.split('@')[0].slice(0, 2).toUpperCase()
+  const emailHandle = userEmail?.split('@')[0] ?? ''
+  const displayName = emailHandle
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase('sv-SE') + part.slice(1))
+    .join(' ')
+  const humanName = operatorName?.trim() || displayName
+  const initials = humanName
+    ? humanName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('sv-SE')
     : '?'
 
   return (
     <aside
-      className="relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden"
+      className={cn(
+        'relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden',
+        isAtlasVNext && vnextStyles.sidebar,
+      )}
+      data-atlas-vnext={isAtlasVNext || undefined}
       style={{
         background:
-          'radial-gradient(ellipse 100% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 60%), linear-gradient(180deg, #060a18 0%, #050714 45%, #060a18 100%)',
+          isAtlasVNext
+            ? 'radial-gradient(ellipse 120% 52% at 50% 0%, rgba(34,211,238,0.10) 0%, transparent 64%), linear-gradient(180deg, #020b16 0%, #03101a 46%, #020813 100%)'
+            : 'radial-gradient(ellipse 100% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 60%), linear-gradient(180deg, #060a18 0%, #050714 45%, #060a18 100%)',
       }}
     >
       {/* Top ambient orb */}
@@ -108,7 +125,9 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
         className="absolute inset-x-0 top-0 h-44 pointer-events-none"
         style={{
           background:
-            'radial-gradient(ellipse 80% 80% at 50% 0%, rgba(99,102,241,0.14) 0%, transparent 70%)',
+            isAtlasVNext
+              ? 'radial-gradient(ellipse 90% 80% at 50% 0%, rgba(34,211,238,0.12) 0%, transparent 72%)'
+              : 'radial-gradient(ellipse 80% 80% at 50% 0%, rgba(99,102,241,0.14) 0%, transparent 70%)',
         }}
       />
 
@@ -127,10 +146,10 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
               <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
             </span>
             <span className="eyebrow !text-[8.5px] !text-emerald-300/85 !tracking-[0.22em]">
-              Alla system nominella
+              {isAtlasVNext ? `${projects.length} projekt kopplade` : 'Alla system nominella'}
             </span>
           </div>
-          <span className="caption-mono text-[9px] text-faint">v4.2</span>
+          <span className="caption-mono text-[9px] text-faint">{isAtlasVNext ? 'ATLAS' : 'v4.2'}</span>
         </div>
       </div>
 
@@ -153,24 +172,28 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={isAtlasVNext ? '/atlas?ui=vnext' : item.href}
                     className={cn(
                       'relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all ease-os overflow-hidden group',
+                      isAtlasVNext && vnextStyles.primaryNav,
                       isActive
                         ? 'text-white'
                         : 'text-indigo-200/80 hover:text-white',
                     )}
                     style={isActive
                       ? {
-                          background:
-                            'linear-gradient(180deg, rgba(99,102,241,0.24) 0%, rgba(99,102,241,0.10) 100%)',
-                          border: '1px solid rgba(99,102,241,0.40)',
+                          background: isAtlasVNext
+                            ? 'linear-gradient(105deg, rgba(18,184,202,0.18), rgba(37,99,235,0.08) 72%, transparent)'
+                            : 'linear-gradient(180deg, rgba(99,102,241,0.24) 0%, rgba(99,102,241,0.10) 100%)',
+                          border: isAtlasVNext ? '1px solid rgba(72,218,226,0.28)' : '1px solid rgba(99,102,241,0.40)',
                           boxShadow:
-                            '0 10px 28px -12px rgba(99,102,241,0.55), inset 0 1px 0 rgba(255,255,255,0.07)',
+                            isAtlasVNext
+                              ? '0 12px 34px -18px rgba(34,211,238,0.62), inset 0 1px 0 rgba(255,255,255,0.06)'
+                              : '0 10px 28px -12px rgba(99,102,241,0.55), inset 0 1px 0 rgba(255,255,255,0.07)',
                         }
                       : {
-                          background: 'rgba(99,102,241,0.04)',
-                          border: '1px solid rgba(99,102,241,0.10)',
+                          background: isAtlasVNext ? 'rgba(34,211,238,0.025)' : 'rgba(99,102,241,0.04)',
+                          border: isAtlasVNext ? '1px solid rgba(34,211,238,0.08)' : '1px solid rgba(99,102,241,0.10)',
                         }
                     }
                   >
@@ -335,7 +358,10 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
 
         {userEmail && (
           <div
-            className="flex items-center gap-2.5 px-3 py-2 rounded-xl group cursor-default mt-2"
+            className={cn(
+              'flex items-center gap-2.5 px-3 py-2 rounded-xl group cursor-default mt-2',
+              isAtlasVNext && vnextStyles.operatorCard,
+            )}
             style={{
               background: 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))',
               border: '1px solid rgba(255,255,255,0.05)',
@@ -344,16 +370,18 @@ export function Sidebar({ projects, userEmail, recentConversations = [] }: Sideb
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 chrome-edge"
               style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.42) 0%, rgba(139,92,246,0.30) 100%)',
-                border: '1px solid rgba(99,102,241,0.40)',
-                boxShadow: '0 4px 12px -4px rgba(99,102,241,0.5)',
+                background: isAtlasVNext
+                  ? 'linear-gradient(135deg, rgba(34,211,238,0.32), rgba(37,99,235,0.24) 72%, rgba(139,92,246,0.24))'
+                  : 'linear-gradient(135deg, rgba(99,102,241,0.42) 0%, rgba(139,92,246,0.30) 100%)',
+                border: isAtlasVNext ? '1px solid rgba(103,232,249,0.30)' : '1px solid rgba(99,102,241,0.40)',
+                boxShadow: isAtlasVNext ? '0 4px 16px -5px rgba(34,211,238,0.55)' : '0 4px 12px -4px rgba(99,102,241,0.5)',
               }}
             >
               <span className="text-[10px] font-bold text-white">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-white/90 truncate font-medium tracking-tight">
-                {userEmail.split('@')[0]}
+                {isAtlasVNext ? humanName : emailHandle}
               </p>
               <p className="eyebrow !text-[8.5px] !text-meta !tracking-[0.20em] mt-0.5">Operatör</p>
             </div>

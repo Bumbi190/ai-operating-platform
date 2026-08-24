@@ -303,7 +303,13 @@ export function Sidebar({
                     <ChevronRight
                       className={cn(
                         'w-3 h-3 shrink-0 transition-all ease-os text-faint',
-                        isActive ? 'rotate-90 text-zinc-400' : 'group-hover:text-secondary',
+                        // Names the readable text token directly. The shorthand
+                        // form is deliberately avoided: Tailwind emits that
+                        // variant at (0,3,0) from the dark `secondary` SURFACE
+                        // token, which rendered this chevron at ~1.08:1 — an
+                        // invisible hover. (Spelling it out here would also keep
+                        // the dead utility alive, since the JIT scans comments.)
+                        isActive ? 'rotate-90 text-zinc-400' : 'group-hover:text-[var(--omnira-text-2)]',
                       )}
                     />
                   </Link>

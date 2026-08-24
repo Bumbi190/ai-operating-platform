@@ -316,8 +316,12 @@
     font-family: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
     color: rgba(255,255,255,0.60);  /* was 0.45 — eyebrows now legible (~6.9:1) */
   }
+  /* Accent eyebrow. Routed through the OS accent contract so it follows the
+     generation instead of pinning legacy indigo. --os-accent-tint-rgb defaults
+     to `165 180 252`, so the legacy colour is unchanged; the 0.75 alpha is
+     deliberately kept distinct from .os-eyebrow-accent's 0.70. */
   .eyebrow-accent {
-    color: rgba(165,180,252,0.75);
+    color: rgb(var(--os-accent-tint-rgb) / 0.75);
   }
   .eyebrow-gold {
     color: rgba(212,165,116,0.85);
@@ -1472,6 +1476,16 @@ body.mode-maintenance .orb { opacity: 0.45; }
    (the shadcn `secondary` theme color, which is near-black in dark mode).
 ═══════════════════════════════════════════════════════════════════════════ */
 
-.text-secondary { color: var(--omnira-text-2); }   /* 0.72 · ~9.8:1 — supporting copy, labels  */
+/* `.text-secondary` is claimed by two systems. Tailwind emits it from the
+   `secondary` theme colour, which is a dark SURFACE token; Omnira has long used
+   the same name for a readable text-hierarchy token. Both rules are a single
+   class, so with equal specificity only source order decided the winner — and a
+   reordered or re-layered stylesheet would silently flip 117 usages across 37
+   files to near-black text.
+   `:root` is a pseudo-class, so this selector scores (0,2,0) against the
+   utility's (0,1,0) and wins on specificity rather than on position. No
+   !important, and Tailwind's higher-specificity variants still take precedence.
+   A rename to an unambiguous token remains future hygiene. */
+:root .text-secondary { color: var(--omnira-text-2); }   /* 0.72 · ~9.8:1 — supporting copy, labels  */
 .text-meta      { color: var(--omnira-text-3); }   /* 0.60 · ~6.9:1 — metadata, timestamps      */
 .text-faint     { color: rgba(255,255,255,0.52); } /* ~5.3:1 — most de-emphasized readable text  */

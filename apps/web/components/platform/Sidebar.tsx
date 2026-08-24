@@ -6,29 +6,20 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
 import {
-  Bot,
-  GitBranch,
-  Play,
-  FileOutput,
   Settings,
   ChevronRight,
   LogOut,
   Plus,
   MessageSquare,
-  ShieldCheck,
-  Lightbulb,
-  Radio,
-  Newspaper,
-  FileText,
-  Video,
   Activity,
-  TrendingUp,
-  Sparkles,
-  Megaphone,
-  Network,
 } from 'lucide-react'
 import vnextStyles from './SidebarVNext.module.css'
 import { DEFAULT_UI_GENERATION, isVNext, type OmniraUiGeneration } from '@/lib/ui/generation'
+import {
+  LEGACY_GLOBAL_NAV as globalNav,
+  LEGACY_MEDIA_PROJECT_NAV as mediaProjectNav,
+  LEGACY_PROJECT_NAV as projectNav,
+} from '@/lib/nav/legacy-nav'
 
 interface Project {
   id: string
@@ -52,36 +43,6 @@ interface SidebarProps {
   uiGeneration?: OmniraUiGeneration
 }
 
-// P0: 14 → 9 poster; Intelligence Graph-epicen adderade en 10:e (medvetet).
-// /manager, /planning och /atlas/operations är DOLDA (nås via URL/Atlas, inte
-// via nav). /dashboard, /action-center, /atlas/actions och /atlas/activity är
-// redirects och har därför ingen nav-post.
-// Marknadsgranskning + Content Center flyttar till projektscope i P2.
-const globalNav = [
-  { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
-  { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },
-  { href: '/atlas/content',  label: 'Content Center',    icon: Newspaper },
-  { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },
-  { href: '/agent-activity', label: 'Aktivitet',    icon: Activity },
-  { href: '/chat',           label: 'Chat',              icon: MessageSquare },
-  { href: '/approvals',      label: 'Granskningar',      icon: ShieldCheck },
-  { href: '/memory',         label: 'Minne',             icon: Lightbulb },
-  { href: '/intelligence/graph', label: 'Intelligence Graph', icon: Network },
-]
-
-const projectNav = [
-  { href: '/agents',    label: 'Agenter',       icon: Bot },
-  { href: '/workflows', label: 'Arbetsflöden',  icon: GitBranch },
-  { href: '/runs',      label: 'Körningar',     icon: Play },
-  { href: '/outputs',   label: 'Utdata',        icon: FileOutput },
-]
-
-const mediaProjectNav = [
-  { href: '/media',    label: 'Mediepipeline',  icon: Radio },
-  { href: '/generate', label: 'Generera',        icon: Video },
-  { href: '/news',     label: 'Nyhetsflöde',    icon: Newspaper },
-  { href: '/scripts',  label: 'Manuskriptkö',   icon: FileText },
-]
 
 export function Sidebar({
   projects,

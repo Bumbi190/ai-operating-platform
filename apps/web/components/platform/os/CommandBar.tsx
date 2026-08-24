@@ -168,7 +168,12 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
               >
                 <span className="text-[8.5px] font-bold text-white">{initials}</span>
               </div>
-              <span className="eyebrow !text-[9px] !text-secondary !tracking-[0.18em] hidden xl:inline">
+              {/* Names the readable text token directly. The bare shorthand is
+                  ambiguous — Tailwind also emits it from the dark `secondary`
+                  SURFACE token, and with the important modifier that beats the
+                  specificity-based fix in globals.css, rendering this eyebrow
+                  at ~1.10:1. */}
+              <span className="eyebrow !text-[9px] !text-[var(--omnira-text-2)] !tracking-[0.18em] hidden xl:inline">
                 Operator
               </span>
             </div>

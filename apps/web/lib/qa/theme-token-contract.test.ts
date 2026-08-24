@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -93,16 +93,64 @@ describe('theme tokens · .eyebrow-accent follows the generation', () => {
 })
 
 describe('theme tokens · the ambiguous utility is not reintroduced', () => {
-  it('no source file uses the collision-prone variant forms', () => {
-    // `group-hover:text-secondary` and `!text-secondary` bypass the specificity
-    // fix — the first via variant specificity, the second via !important — and
-    // both resolve to the dark surface token.
-    //
-    // NOTE: written as fragments so this file does not itself become a Tailwind
-    // content match and keep the dead utilities alive in the bundle.
-    const variant = 'group-hover:' + 'text-secondary'
-    const important = '!' + 'text-secondary'
-    expect(CSS).not.toContain(variant)
-    expect(CSS).not.toContain(important)
+  /**
+   * Scans the same trees Tailwind scans. Checking globals.css alone would prove
+   * nothing — these forms never lived there; they live at call sites.
+   *
+   * Every reference to the class names below is assembled from fragments rather
+   * than spelled out. Tailwind scans lib/**\/*.ts including comments, so writing
+   * either name literally in this file would regenerate the very utilities the
+   * test exists to keep out of the bundle. That is not hypothetical: it happened
+   * twice while this was being written.
+   */
+  const ROOTS = ['app', 'components', 'lib']
+
+  function sourceFiles(dir: string): string[] {
+    const out: string[] = []
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+      const full = resolve(dir, entry.name)
+      if (entry.isDirectory()) out.push(...sourceFiles(full))
+      else if (/\.(ts|tsx)$/.test(entry.name)) out.push(full)
+    }
+    return out
+  }
+
+  const FILES = ROOTS.flatMap((r) => sourceFiles(resolve(__dirname, '../..', r)))
+
+  function offendersFor(needle: string): string[] {
+    return FILES.filter((f) => readFileSync(f, 'utf8').includes(needle))
+      .map((f) => f.split('/apps/web/')[1] ?? f)
+  }
+
+  it('scans a realistic number of source files', () => {
+    // Guards the guard: a broken walker would make every assertion below vacuous.
+    expect(FILES.length).toBeGreaterThan(200)
+  })
+
+  it('nothing uses the important-modifier form', () => {
+    // Beats the :root specificity fix by construction, so it silently resolves
+    // to the dark surface token. This is what broke the CommandBar eyebrow.
+    expect(offendersFor('!' + 'text-secondary')).toEqual([])
+  })
+
+  it('nothing uses the group-hover variant form', () => {
+    // Emitted at (0,3,0), above the :root rule. This is what broke the Sidebar
+    // chevron hover.
+    expect(offendersFor('group-hover:' + 'text-secondary')).toEqual([])
+  })
+
+  it('no other variant of the ambiguous name sneaks back in', () => {
+    const bare = 'text-' + 'secondary'
+    const offenders: string[] = []
+    for (const file of FILES) {
+      for (const m of readFileSync(file, 'utf8').matchAll(/([a-z-]+:)+text-secondary\b/g)) {
+        offenders.push(`${file.split('/apps/web/')[1]}: ${m[0]}`)
+      }
+    }
+    // Plain `text-secondary` is fine — the :root rule covers it. Any *variant*
+    // of it is not, because variants outrank that rule.
+    expect(bare).toBe('text-secondary')
+    expect(offenders).toEqual([])
   })
 })

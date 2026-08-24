@@ -140,7 +140,7 @@ describe('the cron class survived the deletion', () => {
     expect(src).toContain('interface AuthFail')
   })
 
-  it('cron routes still read CRON_SECRET — the class is in use', () => {
+  it('cron routes still use CRON_SECRET directly', () => {
     const cron = routeFiles().filter(f => /process\.env\.CRON_SECRET/.test(readFileSync(f, 'utf8')))
     expect(cron.length).toBeGreaterThan(10)
   })

@@ -3,10 +3,17 @@
 > **HISTORISKT SNAPSHOT (uppdaterad not 2026-08-24).** Dokumentet genererades
 > när kodbasen hade 93 `route.ts`; den har nu 110. Auth-modellen nedan är
 > överspelad: `requireUserOrApiKey` och hela den globala `AIOPS_API_KEY`-klassen
-> är borttagna (Phase 4B–4E). Aktuellt läge är session-auth överallt, plus en
-> scoped project credential på `/api/business/leads`. Läs manifestet som en
-> ögonblicksbild, inte som gällande dokumentation — `apps/web/tests/isolation/route-manifest.json`
-> är den maskinläsbara källan som hålls aktuell.
+> är borttagna (Phase 4B–4E).
+>
+> Aktuellt läge: de user-facing business-routes är session-scopade, och
+> `/api/business/leads` stöder dessutom en scoped project credential.
+> Cron-routes och webhook-routes använder sina **separata** security classes —
+> `CRON_SECRET` respektive provider-signaturer — och berörs inte av
+> ovanstående.
+>
+> Läs resten som ögonblicksbild, inte som gällande dokumentation.
+> `apps/web/tests/isolation/route-manifest.json` är den maskinläsbara källan
+> som hålls aktuell.
 
 
 _PR-0-artefakt, plannivå. Väntar på din granskning/godkännande **innan** PR-0 byggs. Genererat ur faktisk kod: 93 `route.ts` + 2 stray-dubbletter. Auth/service-role/scope härledda ur import- och anropssignaler i varje fil (`createAdminClient`, `supabase/server`, `requireUserOrApiKey`/`lib/api-auth`, `CRON_SECRET`, webhook-signatur). **PR-0:s `route-drift`-jobb verifierar manifestet mot faktiskt beteende — markeringar med ⚠ ska bekräftas per route under bygget.**_

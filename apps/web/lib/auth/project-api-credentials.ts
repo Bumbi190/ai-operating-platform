@@ -1,9 +1,13 @@
 /**
  * Project API credentials — least-privilege machine authentication.
  *
- * This is the ONLY machine authentication the platform has.
- * `/api/business/leads` is its one consumer, and Familje-Stunden's
- * `send-pyssel-lead` its one production caller.
+ * This is the only machine-to-machine credential class that establishes a
+ * PROJECT PRINCIPAL and scopes external project actions to it. Other machine
+ * and security classes exist and are unrelated: cron authenticates over
+ * `CRON_SECRET`, and the webhook routes verify provider signatures.
+ *
+ * `/api/business/leads` is this credential path's current consumer, and
+ * Familje-Stunden's `send-pyssel-lead` its current production caller.
  *
  * ── WHAT THIS FIXED ──────────────────────────────────────────────────────────
  *

@@ -28,6 +28,7 @@
  */
 import { NextResponse } from 'next/server'
 import { resolveLeadsAuth, resolveSessionLeadProject } from '@/lib/business/leads-auth'
+import { resolveSessionScope } from '@/lib/business/business-auth'
 import { createLead, listLeads, BusinessError, type LeadStatus, type LeadInput } from '@/lib/business/store'
 
 export const dynamic = 'force-dynamic'
@@ -63,12 +64,25 @@ export async function GET(request: Request) {
   const auth = await resolveLeadsAuth(request, NO_READ_SCOPE)
   if (!auth.ok) return auth.response
 
+  // NO_READ_SCOPE denies the credential class, and no other class exists, so
+  // this can only be a session. Checked rather than assumed: if that ever stops
+  // holding, the safe answer is a denial, not an unscoped read.
+  if (auth.auth.kind !== 'user') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // A caller may only ever see their own projects. An explicit project_id
+  // filter narrows within that set; it can never widen it.
+  const scope = await resolveSessionScope(auth.auth.userId)
+  if (!scope.ok) return scope.response
+
   const { searchParams } = new URL(request.url)
   try {
     const data = await listLeads({
       project_id: searchParams.get('project_id') ?? undefined,
       status:     (searchParams.get('status') as LeadStatus) ?? undefined,
       limit:      searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined,
+      allowedProjectIds: scope.allowedProjectIds,
     })
     return NextResponse.json(data)
   } catch (e) {

@@ -414,12 +414,14 @@ describe('source invariants', () => {
     expect(src).toContain('const unhandled: never = auth.auth')
   })
 
-  it('api-auth.ts is left in place even though nothing reaches it now', () => {
+  it('api-auth.ts now holds cron auth only', () => {
+    // 4B2 left the global helpers in place as rollback material. 4E2 removed
+    // them once the secrets were retired, so the assertion inverts.
     const src = read('lib/api-auth.ts')
-    expect(src).toContain('export function requireApiKey')
-    expect(src).toContain('export async function requireUserOrApiKey')
+    expect(src).not.toContain('export function requireApiKey')
+    expect(src).not.toContain('export async function requireUserOrApiKey')
+    expect(src).not.toContain('process.env.AIOPS_API_KEY')
     expect(src).toContain('export function requireCronAuth')
-    expect(src).toContain('process.env.AIOPS_API_KEY')
   })
 
   it('no route imports requireUserOrApiKey any more', () => {

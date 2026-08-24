@@ -1,15 +1,19 @@
 /**
  * Project API credentials — least-privilege machine authentication.
  *
- * SECURITY CREDENTIAL PHASE 1. Nothing imports this yet. `AIOPS_API_KEY`,
- * `requireApiKey` and `requireUserOrApiKey` are untouched, and every existing
- * route authenticates exactly as it did before.
+ * This is the only machine-to-machine credential class that establishes a
+ * PROJECT PRINCIPAL and scopes external project actions to it. Other machine
+ * and security classes exist and are unrelated: cron authenticates over
+ * `CRON_SECRET`, and the webhook routes verify provider signatures.
  *
- * ── WHAT THIS FIXES ──────────────────────────────────────────────────────────
+ * `/api/business/leads` is this credential path's current consumer, and
+ * Familje-Stunden's `send-pyssel-lead` its current production caller.
  *
- * `requireApiKey` returns `{ ok: true }`. It proves that the caller holds the
- * one global secret and establishes no principal, so there is no subject to
- * scope and no project to bind to. This module returns a
+ * ── WHAT THIS FIXED ──────────────────────────────────────────────────────────
+ *
+ * The global-key helper it replaced returned `{ ok: true }`. It proved that the
+ * caller held the one shared secret and established no principal, so there was
+ * no subject to scope and no project to bind to. This module returns a
  * `ProjectApiPrincipal` instead: a credential id, the ONE project it speaks
  * for, and the exact actions it may perform. Scoping becomes expressible
  * rather than aspirational.
@@ -146,8 +150,9 @@ export function hashProjectApiSecret(secret: string): string {
  * Constant-time hash comparison.
  *
  * Length is checked first because `timingSafeEqual` throws on unequal-length
- * buffers, and a hash's length is not secret. Mirrors `timingSafeEqualStr` in
- * `lib/api-auth.ts` rather than introducing a second idiom.
+ * buffers, and a hash's length is not secret. The same shape the retired global
+ * key helper used, kept here after that helper was deleted so the idiom did not
+ * leave with it.
  */
 export function secretHashMatches(presentedHash: string, storedHash: string): boolean {
   const a = Buffer.from(presentedHash, 'utf8')

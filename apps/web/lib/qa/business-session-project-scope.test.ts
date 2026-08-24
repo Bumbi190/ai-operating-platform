@@ -589,10 +589,14 @@ describe('structure', () => {
     expect(tts).not.toContain('project_id')
   })
 
-  it('leaves lib/api-auth.ts unchanged in shape', () => {
+  it('leaves lib/api-auth.ts holding cron auth and nothing global', () => {
+    // 4E2 deleted the global-key chain. What this assertion owns is that the
+    // deletion did not take the cron class with it.
     const src = read('lib/api-auth.ts')
-    expect(src).toContain('export function requireApiKey')
-    expect(src).toContain('export async function requireUserOrApiKey')
-    expect(src).toContain('process.env.AIOPS_API_KEY')
+    expect(src).not.toContain('export function requireApiKey')
+    expect(src).not.toContain('export async function requireUserOrApiKey')
+    expect(src).not.toContain('process.env.AIOPS_API_KEY')
+    expect(src).toContain('export function requireCronAuth')
+    expect(src).toContain('process.env.CRON_SECRET')
   })
 })

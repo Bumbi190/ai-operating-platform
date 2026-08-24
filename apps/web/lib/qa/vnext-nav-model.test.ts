@@ -99,6 +99,17 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
     expect(mobile.length).toBeLessThan(vnextNavItems().length)
   })
 
+  it('desktop renders all four groups, each with its approved items', () => {
+    const groups = vnextNavGroupsFor('desktop')
+    expect(groups.map((g) => [g.label, g.items.length])).toEqual([
+      ['Atlas', 2], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
+    ])
+    // Grouping must not have changed the C4 order.
+    expect(groups.flatMap((g) => g.items.map((i) => i.href))).toEqual(
+      vnextNavItemsFor('desktop').map((i) => i.href),
+    )
+  })
+
   it('drops empty groups per surface rather than rendering a bare heading', () => {
     expect(vnextNavGroupsFor('mobile').map((g) => g.id)).toEqual(['atlas', 'arbete', 'intelligens'])
     expect(vnextNavGroupsFor('desktop').map((g) => g.id)).toEqual(VNEXT_NAV.map((g) => g.id))

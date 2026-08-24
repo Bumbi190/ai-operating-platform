@@ -27,7 +27,7 @@ import {
   shouldRenderSettingsFooter,
   sidebarProjectsFor,
 } from '@/lib/nav/sidebar-visibility'
-import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
+import { vnextNavGroupsFor } from '@/lib/nav/vnext-nav'
 
 interface Project {
   id: string
@@ -71,8 +71,13 @@ export function Sidebar({
   // already inside is not duplication and stays.
   // vNext reads the canonical model — approved IA, approved order, and the
   // source both surfaces will share. Legacy stays pinned to its frozen list.
-  const navItems: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; primary?: boolean }> =
-    isVNextShell ? vnextNavItemsFor('desktop') : globalNav
+  const navSections: ReadonlyArray<{
+    id: string
+    label: string
+    items: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; primary?: boolean }>
+  }> = isVNextShell
+    ? vnextNavGroupsFor('desktop')
+    : [{ id: 'operations', label: 'Operationer', items: globalNav }]
   const showSettingsFooter = shouldRenderSettingsFooter(uiGeneration)
   const showGlobalProjectList = shouldRenderGlobalProjectList(uiGeneration)
   const sidebarProjects = sidebarProjectsFor(uiGeneration, projects, activeSlug)
@@ -147,12 +152,14 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5 space-y-6">
 
         {/* Operations */}
-        <div>
+        <div className="space-y-5">
+          {navSections.map((section) => (
+          <div key={section.id}>
           <p className="px-3 mb-3 eyebrow !text-[9px] !text-faint">
-            Operationer
+            {section.label}
           </p>
           <div className="space-y-1">
-            {navItems.map((item) => {
+            {section.items.map((item) => {
               const Icon = item.icon
               const isActive = item.href === '/chat'
                 ? isChatActive
@@ -237,6 +244,8 @@ export function Sidebar({
               )
             })}
           </div>
+          </div>
+          ))}
         </div>
 
         {/* Divider */}

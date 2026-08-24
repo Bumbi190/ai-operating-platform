@@ -172,10 +172,18 @@ describe('sidebar · the shell actually consumes these decisions', () => {
     expect(SIDEBAR).toContain('{showGlobalProjectList && projects.length === 0 && (')
   })
 
-  it('renders the nav list from the resolved set, not the legacy constant', () => {
-    expect(SIDEBAR).toContain('navItems.map')
+  it('renders the nav list from the resolved sections, not the legacy constant', () => {
+    expect(SIDEBAR).toContain('section.items.map')
     expect(SIDEBAR).toContain("from '@/lib/nav/vnext-nav'")
+    expect(SIDEBAR).toContain("vnextNavGroupsFor('desktop')")
     expect(SIDEBAR).not.toContain('globalNav.map')
+  })
+
+  it('renders one heading per section, from the section label', () => {
+    // Presentational only: the heading reuses the sidebar's existing eyebrow
+    // treatment rather than introducing a competing style, and carries no state.
+    expect(SIDEBAR).toContain('{section.label}')
+    expect(SIDEBAR).toMatch(/eyebrow !text-\[9px\] !text-faint/)
   })
 
   it('gates the settings footer on the decision', () => {

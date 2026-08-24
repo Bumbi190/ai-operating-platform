@@ -148,8 +148,12 @@ describe('legacy nav · shell still renders the pieces that are not data', () =>
     // branch still resolves to the frozen definition — asserted here — and that
     // the definition is imported, not re-inlined.
     expect(SIDEBAR).toContain("from '@/lib/nav/legacy-nav'")
-    expect(SIDEBAR).toContain('navItems.map')
-    expect(SIDEBAR).toMatch(/isVNextShell \? vnextNavItemsFor\('desktop'\) : globalNav/)
+    expect(SIDEBAR).toContain('section.items.map')
+    // C5 renders sections. Legacy is exactly one section, still fed by the
+    // frozen definition and still headed "Operationer" — no groups for legacy.
+    expect(SIDEBAR).toMatch(
+      /\[\{\s*id:\s*'operations',\s*label:\s*'Operationer',\s*items:\s*globalNav\s*\}\]/,
+    )
     expect(SIDEBAR).not.toMatch(/const\s+globalNav\s*=\s*\[/)
   })
 

@@ -69,6 +69,10 @@ export function AtlasMiniOrb() {
       {panelOpen && (
         <div
           className={cn(
+            // Desktop only. Below lg the MobileRailToggle owns the
+            // bottom-right corner; two fixed controls at z-50 there
+            // overlapped in a ~52x40px region and covered page content.
+            'hidden lg:block',
             'fixed right-6 z-50 w-72',
             'rounded-2xl overflow-hidden',
             'border border-white/[0.08]',
@@ -179,7 +183,7 @@ export function AtlasMiniOrb() {
       )}
 
       {/* ── Mini-orb: fast position bottom-right ──────────────────────────── */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="hidden lg:block fixed bottom-6 right-6 z-50">
 
         {/* Aktiv-prick: syns när session pågår men panel är stängd */}
         {atlas.isSessionActive && !panelOpen && atlas.voicePhase === 'idle' && (

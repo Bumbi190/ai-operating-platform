@@ -478,10 +478,10 @@ describe('global legacy HTTP surface', () => {
    * verified in production, and deleting the helper now would make that
    * rollback a code change rather than an env change.
    */
-  it('keeps api-auth.ts intact, including requireCronAuth', () => {
+  it('keeps api-auth.ts holding requireCronAuth after the global chain went', () => {
     const src = read('lib/api-auth.ts')
-    expect(src).toContain('export function requireApiKey')
-    expect(src).toContain('export async function requireUserOrApiKey')
+    expect(src).not.toContain('export function requireApiKey')
+    expect(src).not.toContain('export async function requireUserOrApiKey')
     expect(src).toContain('export function requireCronAuth')
   })
 

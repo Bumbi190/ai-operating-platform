@@ -1,29 +1,18 @@
 /**
- * API key authentication for external integrations (Hermes, scripts, etc.)
+ * Cron authentication.
  *
- * Set AIOPS_API_KEY in .env.local — any long random string works.
- * Generate one with: openssl rand -base64 32
+ * This module used to hold the global-API-key auth chain as well
+ * (`requireApiKey`, `requireUserOrApiKey` and their constant-time comparison).
+ * That chain is gone: Phase 4B removed the HTTP capability route by route, 4C
+ * removed the consumer and its secret, 4D retired the runtime configuration,
+ * and this change removes the verifier itself. It had zero callers before it
+ * was deleted.
  *
- * Usage in a route:
- *   const auth = requireApiKey(request)
- *   if (!auth.ok) return auth.response
+ * What remains is a different security class that happens to share the file:
+ * cron authentication over `CRON_SECRET`. It is untouched.
  */
 
 import { NextResponse } from 'next/server'
-import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
-
-/**
- * Constant-time string comparison for secrets. Avoids the early-exit timing
- * side-channel of `a !== b`. Length is compared first (a token's length is not
- * secret-sensitive and timingSafeEqual throws on unequal-length buffers).
- */
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const ab = Buffer.from(a, 'utf8')
-  const bb = Buffer.from(b, 'utf8')
-  if (ab.length !== bb.length) return false
-  return crypto.timingSafeEqual(ab, bb)
-}
 
 interface AuthOk {
   ok: true
@@ -35,34 +24,6 @@ interface AuthFail {
 }
 
 type AuthResult = AuthOk | AuthFail
-
-export function requireApiKey(request: Request): AuthResult {
-  const apiKey = process.env.AIOPS_API_KEY
-  if (!apiKey) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: 'AIOPS_API_KEY is not configured on the server' },
-        { status: 500 },
-      ),
-    }
-  }
-
-  const authHeader = request.headers.get('authorization')
-  const token = authHeader?.replace(/^Bearer\s+/i, '').trim()
-
-  if (!token || !timingSafeEqualStr(token, apiKey)) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: 'Unauthorized — provide a valid API key via Authorization: Bearer <key>' },
-        { status: 401 },
-      ),
-    }
-  }
-
-  return { ok: true }
-}
 
 /**
  * Cron authentication — FAIL CLOSED.
@@ -94,22 +55,4 @@ export function requireCronAuth(request: Request): AuthResult {
     }
   }
   return { ok: true }
-}
-
-/**
- * Tillåt antingen en inloggad app-användare ELLER en giltig API-nyckel.
- * Används för business-endpoints som anropas både från UI och från externa
- * integrationer (Stripe-webhooks, cron, agenter).
- */
-export async function requireUserOrApiKey(request: Request): Promise<AuthResult> {
-  // 1. Inloggad användare?
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) return { ok: true }
-  } catch {
-    // ingen session — fall tillbaka till API-nyckel
-  }
-  // 2. API-nyckel?
-  return requireApiKey(request)
 }

@@ -2,11 +2,12 @@
  * POST /api/seed
  *
  * Skapar Familje-Stunden agenter och månadspaket-workflow i databasen.
- * Skyddad med AIOPS_API_KEY.
  *
- * Anropa med:
- *   curl -X POST http://localhost:3001/api/seed \
- *     -H "Authorization: Bearer <AIOPS_API_KEY>"
+ * Kräver en inloggad användare — se session-kontrollen i POST. Headern påstod
+ * tidigare att routen skyddades med en global API-nyckel och visade ett
+ * curl-exempel med Bearer-token. Det stämde aldrig med koden: auth har varit
+ * session-baserad hela tiden, och den globala nyckelklassen finns inte längre
+ * någonstans i kodbasen.
  */
 
 import { NextResponse } from 'next/server'

@@ -12,6 +12,7 @@ import {
   Plus,
   MessageSquare,
   Activity,
+  type LucideIcon,
 } from 'lucide-react'
 import vnextStyles from './SidebarVNext.module.css'
 import { DEFAULT_UI_GENERATION, isVNext, type OmniraUiGeneration } from '@/lib/ui/generation'
@@ -23,8 +24,10 @@ import {
 import {
   shouldRenderGlobalProjectList,
   shouldRenderProjectSection,
+  shouldRenderSettingsFooter,
   sidebarProjectsFor,
 } from '@/lib/nav/sidebar-visibility'
+import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 
 interface Project {
   id: string
@@ -66,6 +69,11 @@ export function Sidebar({
   // vNext defers project SELECTION to ProjectRail on Atlas Home, so the global
   // list is duplication and goes. Workspace context for the project you are
   // already inside is not duplication and stays.
+  // vNext reads the canonical model — approved IA, approved order, and the
+  // source both surfaces will share. Legacy stays pinned to its frozen list.
+  const navItems: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; primary?: boolean }> =
+    isVNextShell ? vnextNavItemsFor('desktop') : globalNav
+  const showSettingsFooter = shouldRenderSettingsFooter(uiGeneration)
   const showGlobalProjectList = shouldRenderGlobalProjectList(uiGeneration)
   const sidebarProjects = sidebarProjectsFor(uiGeneration, projects, activeSlug)
   const showProjectSection = shouldRenderProjectSection(uiGeneration, projects, activeSlug)
@@ -144,7 +152,7 @@ export function Sidebar({
             Operationer
           </p>
           <div className="space-y-1">
-            {globalNav.map((item) => {
+            {navItems.map((item) => {
               const Icon = item.icon
               const isActive = item.href === '/chat'
                 ? isChatActive
@@ -343,10 +351,12 @@ export function Sidebar({
         className="px-3 py-3 space-y-1"
         style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
       >
-        <Link href="/settings" className="nav-pill ease-os" data-active={pathname === '/settings'}>
-          <Settings className="w-3.5 h-3.5 shrink-0 text-meta" />
-          <span className="tracking-tight">Inställningar</span>
-        </Link>
+        {showSettingsFooter && (
+          <Link href="/settings" className="nav-pill ease-os" data-active={pathname === '/settings'}>
+            <Settings className="w-3.5 h-3.5 shrink-0 text-meta" />
+            <span className="tracking-tight">Inställningar</span>
+          </Link>
+        )}
 
         {userEmail && (
           <div

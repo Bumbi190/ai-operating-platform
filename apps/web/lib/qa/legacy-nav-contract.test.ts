@@ -143,10 +143,13 @@ describe('legacy nav · shell still renders the pieces that are not data', () =>
   })
 
   it('renders the global list from the shared definition, not an inline copy', () => {
-    // If someone re-inlines the array, this contract stops guarding the real
-    // thing — so the coupling itself is pinned.
+    // C4 made the shell pick a list per generation, so it now maps `navItems`
+    // rather than `globalNav` directly. What must stay true is that the LEGACY
+    // branch still resolves to the frozen definition — asserted here — and that
+    // the definition is imported, not re-inlined.
     expect(SIDEBAR).toContain("from '@/lib/nav/legacy-nav'")
-    expect(SIDEBAR).toContain('globalNav.map')
+    expect(SIDEBAR).toContain('navItems.map')
+    expect(SIDEBAR).toMatch(/isVNextShell \? vnextNavItemsFor\('desktop'\) : globalNav/)
     expect(SIDEBAR).not.toMatch(/const\s+globalNav\s*=\s*\[/)
   })
 

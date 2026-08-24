@@ -4,8 +4,11 @@ import { resolve } from 'node:path'
 import {
   shouldRenderGlobalProjectList,
   shouldRenderProjectSection,
+  shouldRenderSettingsFooter,
   sidebarProjectsFor,
 } from '@/lib/nav/sidebar-visibility'
+import { LEGACY_GLOBAL_NAV } from '@/lib/nav/legacy-nav'
+import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 
 /**
  * Sidebar project-section visibility.
@@ -96,6 +99,63 @@ describe('sidebar · whether the section renders at all', () => {
   })
 })
 
+describe('sidebar · settings placement', () => {
+  it('legacy keeps the footer pill — Settings was never in its nav list', () => {
+    expect(shouldRenderSettingsFooter('legacy')).toBe(true)
+    expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).not.toContain('/settings')
+  })
+
+  it('vNext drops the pill, because the nav list now carries Inställningar', () => {
+    expect(shouldRenderSettingsFooter('vnext')).toBe(false)
+    expect(vnextNavItemsFor('desktop').map((i) => i.href)).toContain('/settings')
+  })
+
+  it('never shows Settings twice in the same generation', () => {
+    for (const generation of ['legacy', 'vnext'] as const) {
+      const inNav = generation === 'vnext'
+        ? vnextNavItemsFor('desktop').filter((i) => i.href === '/settings').length
+        : LEGACY_GLOBAL_NAV.filter((i) => i.href === '/settings').length
+      const inFooter = shouldRenderSettingsFooter(generation) ? 1 : 0
+      expect(inNav + inFooter).toBe(1)
+    }
+  })
+})
+
+describe('sidebar · which nav list each generation renders', () => {
+  it('vNext renders the canonical model in its approved order', () => {
+    expect(vnextNavItemsFor('desktop').map((i) => i.label)).toEqual([
+      'Atlas', 'Chat',
+      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      'Minne', 'Intelligence Graph', 'Revenue Center',
+      'System', 'Inställningar',
+    ])
+  })
+
+  it('adds exactly the three approved destinations', () => {
+    const legacy = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
+    const added = vnextNavItemsFor('desktop').map((i) => i.href).filter((h) => !legacy.has(h))
+    expect(added.sort()).toEqual(['/planning', '/settings', '/system'])
+  })
+
+  it('drops nothing that legacy carried', () => {
+    const vnext = new Set(vnextNavItemsFor('desktop').map((i) => i.href))
+    for (const item of LEGACY_GLOBAL_NAV) expect(vnext.has(item.href)).toBe(true)
+  })
+
+  it('still excludes Manager and any project link', () => {
+    const hrefs = vnextNavItemsFor('desktop').map((i) => i.href)
+    expect(hrefs).not.toContain('/manager')
+    expect(hrefs.some((h) => h.startsWith('/projects'))).toBe(false)
+  })
+
+  it('legacy order is untouched by the vNext reorder', () => {
+    expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).toEqual([
+      '/atlas', '/atlas/marketing', '/atlas/content', '/revenue',
+      '/agent-activity', '/chat', '/approvals', '/memory', '/intelligence/graph',
+    ])
+  })
+})
+
 describe('sidebar · the shell actually consumes these decisions', () => {
   it('imports the visibility module', () => {
     expect(SIDEBAR).toContain("from '@/lib/nav/sidebar-visibility'")
@@ -110,6 +170,16 @@ describe('sidebar · the shell actually consumes these decisions', () => {
     expect(SIDEBAR).toContain('{showProjectSection && (')
     expect(SIDEBAR).toContain('{showGlobalProjectList && (')
     expect(SIDEBAR).toContain('{showGlobalProjectList && projects.length === 0 && (')
+  })
+
+  it('renders the nav list from the resolved set, not the legacy constant', () => {
+    expect(SIDEBAR).toContain('navItems.map')
+    expect(SIDEBAR).toContain("from '@/lib/nav/vnext-nav'")
+    expect(SIDEBAR).not.toContain('globalNav.map')
+  })
+
+  it('gates the settings footer on the decision', () => {
+    expect(SIDEBAR).toContain('{showSettingsFooter && (')
   })
 
   it('keeps workspace sub-navigation inside the section', () => {

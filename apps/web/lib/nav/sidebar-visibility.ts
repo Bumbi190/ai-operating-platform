@@ -22,6 +22,17 @@ export function shouldRenderGlobalProjectList(generation: OmniraUiGeneration): b
 }
 
 /**
+ * The Settings footer pill.
+ *
+ * Legacy keeps it — Settings has never been part of its nav list. vNext promotes
+ * Inställningar into the navigation proper, so rendering the pill as well would
+ * put the same destination on screen twice.
+ */
+export function shouldRenderSettingsFooter(generation: OmniraUiGeneration): boolean {
+  return !isVNext(generation)
+}
+
+/**
  * Which projects the sidebar section renders.
  *
  * Legacy: all of them. vNext: only the one currently open, so its workspace

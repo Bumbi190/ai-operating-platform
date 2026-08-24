@@ -123,14 +123,14 @@ describe('vnext nav · stays data, and stays unwired', () => {
     expect(NAV_SRC).not.toMatch(/className|text-\[|bg-\[|rgba?\(|#[0-9a-fA-F]{6}/)
   })
 
-  it('is not yet consumed by any renderer', () => {
-    // C2 is architecture preparation. The visible switch is C3-C6, each with its
-    // own proof; this asserts the foundation shipped without a silent rollout.
-    const consumers = ['components/platform/Sidebar.tsx', 'components/platform/vnext/AtlasMobileNav.tsx']
-    for (const rel of consumers) {
-      const src = readFileSync(resolve(__dirname, '../..', rel), 'utf8')
-      expect(src).not.toContain('vnext-nav')
-    }
+  it('is consumed by the desktop shell, and not yet by mobile', () => {
+    // C2 shipped this unwired; C4 switched the desktop sidebar onto it. Mobile
+    // is C6 and must stay on its own hard-coded list until then — that gap is
+    // the drift this model exists to close, so it is pinned rather than assumed.
+    const sidebar = readFileSync(resolve(__dirname, '../../components/platform/Sidebar.tsx'), 'utf8')
+    const mobile = readFileSync(resolve(__dirname, '../../components/platform/vnext/AtlasMobileNav.tsx'), 'utf8')
+    expect(sidebar).toContain('vnext-nav')
+    expect(mobile).not.toContain('vnext-nav')
   })
 
   it('does not import from the legacy definition', () => {

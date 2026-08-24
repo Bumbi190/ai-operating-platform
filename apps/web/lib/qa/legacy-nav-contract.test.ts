@@ -7,6 +7,10 @@ import {
   LEGACY_PROJECT_NAV,
   LEGACY_SETTINGS_HREF,
 } from '@/lib/nav/legacy-nav'
+import {
+  shouldRenderProjectSection,
+  sidebarProjectsFor,
+} from '@/lib/nav/sidebar-visibility'
 
 /**
  * Legacy navigation contract.
@@ -116,8 +120,16 @@ describe('legacy nav · shell still renders the pieces that are not data', () =>
   // real file and would catch outright removal — which is the failure mode
   // Stage C could plausibly introduce.
 
-  it('still maps over the project list', () => {
-    expect(SIDEBAR).toContain('projects.map')
+  it('still maps over a project list, and legacy still resolves to all of them', () => {
+    // C3 moved the shell from mapping the raw prop to mapping a resolved set,
+    // so the render decision could be unit-tested. The source assertion tracks
+    // that rename; the guarantee that matters — legacy renders every project —
+    // is asserted against the real helper rather than against source text.
+    expect(SIDEBAR).toContain('sidebarProjects.map')
+    const projects = [{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }]
+    expect(sidebarProjectsFor('legacy', projects, undefined)).toEqual(projects)
+    expect(sidebarProjectsFor('legacy', projects, 'b')).toEqual(projects)
+    expect(shouldRenderProjectSection('legacy', projects, undefined)).toBe(true)
   })
 
   it('still composes workspace nav for a project', () => {

@@ -20,6 +20,11 @@ import {
   LEGACY_MEDIA_PROJECT_NAV as mediaProjectNav,
   LEGACY_PROJECT_NAV as projectNav,
 } from '@/lib/nav/legacy-nav'
+import {
+  shouldRenderGlobalProjectList,
+  shouldRenderProjectSection,
+  sidebarProjectsFor,
+} from '@/lib/nav/sidebar-visibility'
 
 interface Project {
   id: string
@@ -58,6 +63,12 @@ export function Sidebar({
   const isVNextShell = isVNext(uiGeneration)
   const isChatActive = pathname.startsWith('/chat')
   const activeSlug = pathname.match(/\/projects\/([^/]+)/)?.[1]
+  // vNext defers project SELECTION to ProjectRail on Atlas Home, so the global
+  // list is duplication and goes. Workspace context for the project you are
+  // already inside is not duplication and stays.
+  const showGlobalProjectList = shouldRenderGlobalProjectList(uiGeneration)
+  const sidebarProjects = sidebarProjectsFor(uiGeneration, projects, activeSlug)
+  const showProjectSection = shouldRenderProjectSection(uiGeneration, projects, activeSlug)
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -226,22 +237,25 @@ export function Sidebar({
         </div>
 
         {/* Autonomous stack */}
+        {showProjectSection && (
         <div>
           <div className="flex items-center justify-between px-3 mb-3">
             <span className="eyebrow !text-[9px] !text-faint">
               Autonom stack
             </span>
+            {showGlobalProjectList && (
             <Link
-              href="/projects/new"
-              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-meta hover:text-indigo-200 transition-colors ease-os"
-              title="Driftsätt nytt projekt"
-            >
-              <Plus className="w-3 h-3" />
-            </Link>
+                href="/projects/new"
+                className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-meta hover:text-indigo-200 transition-colors ease-os"
+                title="Driftsätt nytt projekt"
+              >
+                <Plus className="w-3 h-3" />
+              </Link>
+            )}
           </div>
 
           <div className="space-y-1">
-            {projects.map((project) => {
+            {sidebarProjects.map((project) => {
               const isActive = activeSlug === project.slug
               const projectBase = `/projects/${project.slug}`
               return (
@@ -310,7 +324,7 @@ export function Sidebar({
               )
             })}
 
-            {projects.length === 0 && (
+            {showGlobalProjectList && projects.length === 0 && (
               <Link
                 href="/projects/new"
                 className="flex items-center gap-2 px-3 py-2 text-[11px] text-meta hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"
@@ -321,6 +335,7 @@ export function Sidebar({
             )}
           </div>
         </div>
+        )}
       </nav>
 
       {/* ── Bottom ──────────────────────────────────────────── */}

@@ -292,7 +292,19 @@
    TYPOGRAPHY · editorial scale
 ═══════════════════════════════════════════════════════════════════════════ */
 
-@layer utilities {
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENTS · editorial display defaults
+   These are component DEFAULTS, so they live in the components layer where
+   Tailwind emits them ahead of utilities. That ordering is the whole point: a
+   call site writing `text-[22px] leading-tight` must win.
+   They previously sat in @layer utilities alongside the generated ones, where
+   source order decided — and being authored later they silently beat every
+   call-site override. ExecutiveAssistant asked for 22px/1.25 and rendered
+   40px/0.98, which is what clipped the gradient-filled heading.
+   Consumers with no size utility (e.g. /system) still inherit these defaults.
+═══════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
   /* Editorial display — for hero headlines */
   .display-hero {
     font-size: clamp(40px, 5.2vw, 68px);
@@ -306,7 +318,9 @@
     letter-spacing: -0.025em;
     font-weight: 600;
   }
+}
 
+@layer utilities {
   /* Eyebrow — restrained uppercase mono caption */
   .eyebrow {
     font-size: 10px;

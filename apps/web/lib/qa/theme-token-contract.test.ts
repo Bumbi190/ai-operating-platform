@@ -92,6 +92,80 @@ describe('theme tokens · .eyebrow-accent follows the generation', () => {
   })
 })
 
+describe('theme tokens · component defaults must not defeat call-site utilities', () => {
+  /**
+   * `.display-hero` and `.display-section` are component DEFAULTS. They used to
+   * live in `@layer utilities` next to Tailwind's generated ones, where only
+   * source order decided — and being authored later they beat every call site.
+   * ExecutiveAssistant asked for `text-[22px] leading-tight` and rendered
+   * 40px/0.98, which is what clipped its gradient-filled heading.
+   *
+   * The rule pinned here is the layer, not a byte offset: a components-layer
+   * rule is always emitted ahead of utilities, so utilities win by cascade
+   * order regardless of where anyone writes them in the file.
+   */
+  function layerOf(selector: string): string | null {
+    // Walk the file tracking the nearest enclosing @layer at brace depth 0.
+    let depth = 0
+    let layer: string | null = null
+    let layerDepth = -1
+    for (const raw of CSS.split('\n')) {
+      const line = raw.trim()
+      const opened = (raw.match(/\{/g) ?? []).length
+      const closed = (raw.match(/\}/g) ?? []).length
+      const at = line.match(/^@layer\s+([a-z]+)\s*\{/)
+      if (at) { layer = at[1]; layerDepth = depth }
+      if (line.startsWith(selector) && /\{\s*$/.test(line)) return layer
+      depth += opened - closed
+      if (layer !== null && depth <= layerDepth) { layer = null; layerDepth = -1 }
+    }
+    return null
+  }
+
+  it('places the editorial display defaults in the components layer', () => {
+    expect(layerOf('.display-hero')).toBe('components')
+    expect(layerOf('.display-section')).toBe('components')
+  })
+
+  it('never returns them to the utilities layer', () => {
+    // The exact regression: same layer as the generated utilities means source
+    // order decides, and these rules would silently win again.
+    expect(layerOf('.display-hero')).not.toBe('utilities')
+    expect(layerOf('.display-section')).not.toBe('utilities')
+  })
+
+  it('keeps the default values unchanged', () => {
+    // M2A moved these rules; it did not retune them. /system has no size
+    // utility and still relies on the default.
+    const hero = CSS.match(/\.display-hero\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(hero).toContain('clamp(40px, 5.2vw, 68px)')
+    expect(hero).toContain('line-height: 0.98')
+    const section = CSS.match(/\.display-section\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(section).toContain('clamp(22px, 1.8vw, 30px)')
+  })
+
+  it('does not reach for !important or a specificity bump instead', () => {
+    const hero = CSS.match(/\.display-hero\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(hero).not.toContain('!important')
+    // A qualified selector would defeat utilities just as badly as the old order.
+    expect(CSS).not.toMatch(/^\s*[^\s{]+\s+\.display-hero\s*\{/m)
+  })
+
+  it('every call site that sets a size still expresses one', () => {
+    // Guards the other half: the fix is only meaningful while the call sites
+    // actually carry the utilities they intend to win with.
+    const sites: Array<[string, string[]]> = [
+      ['app/(platform)/chat/ExecutiveAssistant.tsx', ['text-[22px]', 'leading-tight']],
+      ['app/(platform)/agent-activity/page.tsx', ['text-[26px]', 'md:text-[30px]']],
+      ['components/platform/os/DashboardHero.tsx', ['text-[26px]', 'md:text-[32px]']],
+    ]
+    for (const [rel, utils] of sites) {
+      const src = readFileSync(resolve(__dirname, '../..', rel), 'utf8')
+      for (const util of utils) expect(src).toContain(util)
+    }
+  })
+})
+
 describe('theme tokens · the ambiguous utility is not reintroduced', () => {
   /**
    * Scans the same trees Tailwind scans. Checking globals.css alone would prove

@@ -127,10 +127,17 @@ describe('drift-guard — manifest ↔ filsystem', () => {
 // ─── 7. Auth-kärnan och den levande konsumenten är ORÖRDA ────────────────────
 
 describe('auth-kärnan behålls — Familje-Stunden är beroende av den', () => {
-  it('lib/api-auth.ts exporterar fortfarande båda helpers', async () => {
-    const auth = await import('@/lib/api-auth')
-    expect(typeof auth.requireApiKey).toBe('function')
-    expect(typeof auth.requireUserOrApiKey).toBe('function')
+  /**
+   * DEAD HELPER TEST, ersatt. Den asserterade att api-auth exporterade
+   * requireApiKey och requireUserOrApiKey — kod som Phase 4E2 medvetet raderade
+   * efter att både capability och secrets pensionerats. Egenskapen som är värd
+   * att låsa är inversen: helpers borta, cron-klassen kvar.
+   */
+  it('lib/api-auth.ts exporterar cron-auth och inga globala helpers', async () => {
+    const auth = await import('@/lib/api-auth') as Record<string, unknown>
+    expect(typeof auth.requireCronAuth).toBe('function')
+    expect(auth.requireApiKey).toBeUndefined()
+    expect(auth.requireUserOrApiKey).toBeUndefined()
   })
 
   it('/api/business/leads finns kvar med en fungerande maskinväg', () => {

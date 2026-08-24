@@ -4,7 +4,9 @@
  *
  * Body (POST): { project_id | project_slug, amount_sek, currency?, source?, description?, occurred_at? }
  *
- * Exempel: en Stripe-webhook postar hit varje gång en betalning lyckas.
+ * Historiskt exempel, inte längre möjligt: en Stripe-webhook postade hit vid
+ * varje lyckad betalning. Routen är session-only sedan 4B2, så en webhook kan
+ * inte nå den.
  *
  * ── SESSION ONLY (4B2) ───────────────────────────────────────────────────────
  *

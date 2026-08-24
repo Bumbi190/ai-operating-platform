@@ -80,8 +80,8 @@ export default async function AgentActivityPage() {
         {recent.length > 0 && (
           <section>
             <p className="eyebrow !text-[9px] mb-3">Senaste körningar</p>
-            <div className="panel overflow-hidden">
-              <table className="w-full text-[12px]">
+            <div className="panel overflow-x-auto overflow-y-hidden scrollbar-thin">
+              <table className="w-full min-w-[592px] text-[12px]">
                 <tbody>
                   {recent.map((r, i) => (
                     <tr key={r.runId} style={{ borderBottom: i < recent.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>

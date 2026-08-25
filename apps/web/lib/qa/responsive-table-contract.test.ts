@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -41,6 +41,18 @@ const CONTENT_BUDGET_EM = 96 / 14
 /** Smallest content width per column any floor may imply, whatever the maths. */
 const MIN_CONTENT_PX = 60
 
+/**
+ * Ceiling on any floor, with clearance below the narrowest md+ canvas.
+ *
+ * The content budget above is a comfort target, not a hard requirement, and on a
+ * wide-enough table the two collide: /system asks for 761px across six px-6
+ * columns, which would bind at lg and put a scrollbar on the desktop table. The
+ * parity requirement wins — a floor may never be the reason desktop scrolls — so
+ * every floor is min(comfort target, this cap). /system is the first surface
+ * where the cap is what binds.
+ */
+const DESKTOP_CAP = 656
+
 interface Surface {
   id: string
   rel: string
@@ -51,11 +63,20 @@ interface Surface {
   avgTypePx: number
   /** The reviewed floor, in px. */
   floor: number
-  /** Whatever gives the wrapper its rounded frame on this surface. */
-  frameClass: string
+  /**
+   * What gives the wrapper its rounded frame. Two of these surfaces name a
+   * class at the call site; /system wraps in the shared Panel component, which
+   * applies its frame class internally — so reading the call-site className
+   * would assert the wrong thing entirely.
+   */
+  frame: { via: 'class'; token: string } | { via: 'component'; tag: string; token: string }
   /** The table's own type scale utility. */
   typeClass: string
-  hasHeader: boolean
+  /**
+   * How the header row is produced: not at all, as literal cells, or mapped
+   * from an array. Counting `<th` in source only answers the literal case.
+   */
+  headerMode: 'none' | 'literal' | 'mapped'
   /** Link text in the final column, when the surface has one. */
   action: string | null
   /** Row and data semantics that must survive the change untouched. */
@@ -70,9 +91,9 @@ const SURFACES: Surface[] = [
     cellPadPx: 32,
     avgTypePx: 14,
     floor: 640,
-    frameClass: 'rounded-xl',
+    frame: { via: 'class', token: 'rounded-xl' },
     typeClass: 'text-sm',
-    hasHeader: true,
+    headerMode: 'literal',
     action: 'Visa logg',
     invariants: ['RunStatusBadge', 'formatDistanceToNow', 'divide-y divide-border', 'hover:bg-muted/30'],
   },
@@ -83,9 +104,9 @@ const SURFACES: Surface[] = [
     cellPadPx: 32,
     avgTypePx: 14,
     floor: 512,
-    frameClass: 'rounded-xl',
+    frame: { via: 'class', token: 'rounded-xl' },
     typeClass: 'text-sm',
-    hasHeader: true,
+    headerMode: 'literal',
     action: 'Visa',
     invariants: ['RunStatusBadge', 'formatDistanceToNow', 'divide-y divide-border', 'hover:bg-muted/30'],
   },
@@ -99,25 +120,45 @@ const SURFACES: Surface[] = [
     floor: 592,
     // This surface frames itself with the shared panel treatment, which carries
     // its own radius — asserting a utility here would be asserting the wrong thing.
-    frameClass: 'panel',
+    frame: { via: 'class', token: 'panel' },
     typeClass: 'text-[12px]',
     // Deliberately headerless. Adding one would be inventing labels.
-    hasHeader: false,
+    headerMode: 'none',
     // And it carries no action link; its last column is a duration.
     action: null,
     invariants: ['RunStatusBadge', 'formatDistanceToNow', 'caption-mono', 'r.projectColor'],
   },
+  {
+    id: 'system',
+    rel: 'app/(platform)/system/page.tsx',
+    columns: 6,
+    cellPadPx: 48,
+    // Four columns at 12px, two at 10.5px.
+    avgTypePx: (4 * 12 + 2 * 10.5) / 6,
+    floor: 656,
+    // Wrapped by the shared Panel component, which carries the radius via its
+    // own class rather than a utility. The primitive itself is not touched.
+    frame: { via: 'component', tag: 'Panel', token: 'panel' },
+    typeClass: 'text-[12px]',
+    headerMode: 'mapped',
+    action: 'runs/${run.id}',
+    invariants: ['PulseDot', 'RunStatusBadge', 'isRunning', 'hover:bg-white/[0.025]'],
+  },
 ]
 
 /** Class list of the nearest element wrapping the table. */
-function wrapperClasses(src: string): string[] {
+function wrapperOf(src: string): { tag: string; classes: string[] } {
   const idx = src.indexOf('<table')
   expect(idx).toBeGreaterThan(-1)
   // Any element may be the wrapper — /system uses a Panel component, not a div.
-  const preceding = [...src.slice(0, idx).matchAll(/<[A-Za-z][\w.]*\s+className="([^"]*)"\s*>/g)]
+  const preceding = [...src.slice(0, idx).matchAll(/<([A-Za-z][\w.]*)\s+className="([^"]*)"\s*>/g)]
   const nearest = preceding.at(-1)
   if (!nearest) throw new Error('no wrapper element found above the table')
-  return nearest[1].split(/\s+/).filter(Boolean)
+  return { tag: nearest[1], classes: nearest[2].split(/\s+/).filter(Boolean) }
+}
+
+function wrapperClasses(src: string): string[] {
+  return wrapperOf(src).classes
 }
 
 function tableClasses(src: string): string[] {
@@ -150,9 +191,18 @@ describe.each(SURFACES)('responsive table · $id stays reachable', (surface) => 
   it('keeps clipping the other axis so the rounded frame still holds', () => {
     // The frame is what makes this read as a panel; losing the clip would be a
     // visible desktop change, which these slices are not allowed to make.
-    const cls = wrapperClasses(SRC)
-    expect(cls).toContain(surface.frameClass)
-    expect(cls.some((c) => new RegExp('^overflow-y-' + '(hidden|clip)$').test(c))).toBe(true)
+    const { tag, classes } = wrapperOf(SRC)
+    if (surface.frame.via === 'class') {
+      expect(classes).toContain(surface.frame.token)
+    } else {
+      // The frame is the component's, so assert BOTH that the wrapper is still
+      // that component and that the component still supplies the frame class.
+      // Changing the shared primitive is out of scope for every M3 slice.
+      expect(tag).toBe(surface.frame.tag)
+      const primitive = read(`components/platform/os/${surface.frame.tag}.tsx`)
+      expect(primitive).toContain(`'${surface.frame.token}'`)
+    }
+    expect(classes.some((c) => new RegExp('^overflow-y-' + '(hidden|clip)$').test(c))).toBe(true)
   })
 
   it('reuses the established thin scrollbar treatment', () => {
@@ -181,7 +231,7 @@ describe.each(SURFACES)('responsive table · $id stays reachable', (surface) => 
     // content budget plus its own cell padding. A floor lifted from a table with
     // different padding or type scale lands outside the rounding tolerance.
     const perColumn = surface.cellPadPx + CONTENT_BUDGET_EM * surface.avgTypePx
-    const derived = surface.columns * perColumn
+    const derived = Math.min(surface.columns * perColumn, DESKTOP_CAP)
     expect(Math.abs(surface.floor - derived)).toBeLessThanOrEqual(8)
   })
 
@@ -204,8 +254,18 @@ describe.each(SURFACES)('responsive table · $id stays reachable', (surface) => 
     expect((block.match(/<td\b/g) ?? []).length).toBe(surface.columns)
     // A headerless table must stay headerless — adding one would mean inventing
     // labels the surface never had.
-    const headers = (block.match(/<th\b/g) ?? []).length
-    expect(headers).toBe(surface.hasHeader ? surface.columns : 0)
+    if (surface.headerMode === 'none') {
+      expect((block.match(/<th\b/g) ?? []).length).toBe(0)
+    } else if (surface.headerMode === 'literal') {
+      expect((block.match(/<th\b/g) ?? []).length).toBe(surface.columns)
+    } else {
+      // Mapped headers: one `<th` template over a literal array of labels, so
+      // the array is what carries the real column count.
+      const arr = block.match(/\{\[([^\]]*)\]\.map\(/)
+      expect(arr).not.toBeNull()
+      const labels = arr![1].split(',').map((x) => x.trim()).filter((x) => x.length > 0)
+      expect(labels).toHaveLength(surface.columns)
+    }
   })
 
   it('keeps the final-column link reachable and unchanged', () => {
@@ -248,6 +308,13 @@ describe('responsive table · desktop presentation is untouched', () => {
     expect(LG_PX - SIDEBAR_PX - OSPAGE_LG_PAD_PX).toBe(NARROWEST_DESKTOP_CANVAS)
   })
 
+  it('keeps the cap clear of the canvas it exists to protect', () => {
+    // The cap is only meaningful while it actually sits below the canvas; if the
+    // shell narrowed, every capped floor would start binding at lg at once.
+    expect(DESKTOP_CAP).toBeLessThan(NARROWEST_DESKTOP_CANVAS)
+    expect(NARROWEST_DESKTOP_CANVAS - DESKTOP_CAP).toBeGreaterThanOrEqual(16)
+  })
+
   it('keeps the runs route free of breakpoint-conditional utilities', () => {
     // A prefixed utility would make mobile and desktop diverge structurally.
     // This route had none before M3.1 and must still have none. Project home
@@ -260,25 +327,27 @@ describe('responsive table · desktop presentation is untouched', () => {
   })
 })
 
-describe('responsive table · unconverted surfaces stay unconverted', () => {
-  /**
-   * M3.4 has not been authorized. This table must still be in
-   * its clipping state — finding it already converged would mean scope
-   * was jumped rather than merely that a fix arrived early.
-   */
-  const REMAINING = ['app/(platform)/system/page.tsx']
-
-  it('still clips, and offers no scroll affordance', () => {
-    for (const rel of REMAINING) {
-      const src = read(rel)
-      expect(wrapperClasses(src)).toContain('overflow-' + 'hidden')
-      expect(src).not.toContain('overflow-x-' + 'auto')
+describe('responsive table · the audit is closed', () => {
+  it('has converged every table the mobile audit found', () => {
+    // The audit found exactly four. With /system converted there is no
+    // unconverted-surface guard left to keep, so the closure is asserted
+    // instead: no table under (platform) may still clip both axes.
+    const roots = ['app/(platform)']
+    const files: string[] = []
+    const walk = (dir: string) => {
+      for (const e of readdirSync(resolve(__dirname, '../..', dir), { withFileTypes: true })) {
+        if (e.name.startsWith('.') || e.name === 'node_modules') continue
+        const next = `${dir}/${e.name}`
+        if (e.isDirectory()) walk(next)
+        else if (e.name.endsWith('.tsx')) files.push(next)
+      }
     }
-  })
-
-  it('carries no width floor yet', () => {
-    for (const rel of REMAINING) {
-      expect(minWidthFloor(read(rel))).toBeNull()
+    roots.forEach(walk)
+    const withTables = files.filter((f) => read(f).includes('<table'))
+    expect(withTables.length).toBe(SURFACES.length)
+    expect(withTables.sort()).toEqual(SURFACES.map((s) => s.rel).sort())
+    for (const rel of withTables) {
+      expect(wrapperClasses(read(rel))).not.toContain('overflow-' + 'hidden')
     }
   })
 })

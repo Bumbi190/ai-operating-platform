@@ -806,8 +806,8 @@ export default async function DashboardPage() {
 
           {snapshot.recentRuns.length > 0 ? (
             <MissionState tier="archived">
-              <Panel className="overflow-hidden">
-                <table className="w-full text-[12px]">
+              <Panel className="overflow-x-auto overflow-y-hidden scrollbar-thin">
+                <table className="w-full min-w-[656px] text-[12px]">
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       {['Arbetsflöde', 'Projekt', 'Status', 'Startad', 'Varaktighet', ''].map((h) => (

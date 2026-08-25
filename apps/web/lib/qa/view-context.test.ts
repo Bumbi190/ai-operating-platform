@@ -6,7 +6,7 @@
  * only ids + labels. These tests lock that contract.
  */
 import { describe, it, expect } from 'vitest'
-import { pathToDestination } from '@/lib/nav/registry'
+import { pathToDestination, resolveDestination } from '@/lib/nav/registry'
 import { normalizeView, renderViewBlock } from '@/lib/atlas/view-context'
 
 describe('pathToDestination — reverse route lookup', () => {
@@ -101,5 +101,78 @@ describe('renderViewBlock — compact [CURRENT VIEW]', () => {
     expect(block).toContain('(none / all)')
     expect(block).not.toContain('Filters:')
     expect(block).not.toContain('Selected:')
+  })
+})
+
+/**
+ * Canonical reverse resolution.
+ *
+ * Three destination ids forward to /revenue — money, costs and revenue — which
+ * is a deliberate product decision. Reverse resolution had no way to express
+ * which of them OWNS that route, so it fell out of ROUTE_MAP declaration order
+ * and returned `money`. That label reaches Atlas's chat context, so a user on
+ * the Revenue page had the assistant told they were on Money.
+ *
+ * The route now names its canonical owner explicitly. Forward aliasing is
+ * unchanged; only the answer to "what page is this?" changes.
+ */
+describe('reverse resolution is canonical, not incidental', () => {
+  it('resolves /revenue to the canonical destination rather than an alias', () => {
+    expect(pathToDestination('/revenue')).toBe('revenue')
+  })
+
+  it('keeps every forward alias pointing at /revenue', () => {
+    for (const id of ['money', 'costs', 'revenue'] as const) {
+      expect(resolveDestination(id)?.href).toBe('/revenue')
+    }
+  })
+
+  it('keeps the project query-string form intact for the aliases', () => {
+    expect(resolveDestination('money', { project: 'The Prompt' })?.href)
+      .toBe('/revenue?project=ai-media-automation')
+    expect(resolveDestination('revenue', { project: 'The Prompt' })?.href)
+      .toBe('/revenue?project=ai-media-automation')
+  })
+
+  it('does not simply return whichever alias is declared first', () => {
+    // The three ids tie on base-path length, so before the fix the winner was
+    // decided by declaration order — `money` came first. A canonical answer must
+    // not be either of the aliases, however they are ordered.
+    const winner = pathToDestination('/revenue')
+    expect(winner).not.toBe('money')
+    expect(winner).not.toBe('costs')
+  })
+
+  it('reports the canonical label the registry already defines', () => {
+    // No new label is invented; normalizeView derives it from the destination id.
+    const v = normalizeView({ pathname: '/revenue' })!
+    expect(v.destinationId).toBe('revenue')
+    expect(v.destinationLabel).toBe('Revenue')
+  })
+
+  it('tells Atlas the right page for /revenue', () => {
+    // This is where the defect actually reached the user: renderViewBlock feeds
+    // the chat context, so the assistant was told "Page: Money" for someone on
+    // Revenue. The existing block test above uses /revenue but never asserted
+    // the Page line, which is how this went unnoticed.
+    const block = renderViewBlock(normalizeView({ pathname: '/revenue' })!)
+    expect(block).toContain('Page: Revenue')
+    expect(block).not.toContain('Page: Money')
+  })
+
+  it('leaves the other duplicate-path families exactly as they were', () => {
+    // /atlas is claimed by `atlas` and `actions`; it already resolved correctly
+    // and must continue to. /system is claimed by `dream` and `health`, and QA.4
+    // deliberately designates no canonical owner for it — choosing between them
+    // is a product decision, not a defect fix — so its behaviour must not move.
+    expect(pathToDestination('/atlas')).toBe('atlas')
+    expect(pathToDestination('/system')).toBe('dream')
+  })
+
+  it('still resolves nested and unknown routes by longest prefix', () => {
+    expect(pathToDestination('/atlas/content')).toBe('content_queue')
+    expect(pathToDestination('/atlas/marketing')).toBe('marketing_queue')
+    expect(pathToDestination('/projects/gainpilot')).toBe('project_home')
+    expect(pathToDestination('/totally-unknown')).toBeNull()
   })
 })

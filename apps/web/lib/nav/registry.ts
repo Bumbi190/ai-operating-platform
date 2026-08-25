@@ -267,6 +267,29 @@ export const DESTINATION_IDS = Object.keys(DESTINATIONS) as DestinationId[]
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Resolve a live pathname back to a logical destination id (best-effort, longest base path wins). */
+/**
+ * Which destination OWNS a route, for reverse resolution.
+ *
+ * Forward routing is deliberately many-to-one: money, costs and revenue all
+ * lead to /revenue, and atlas and actions both lead to /atlas. Going backwards
+ * that is ambiguous, and the tie used to fall out of ROUTE_MAP declaration
+ * order — so /revenue answered `money`, and normalizeView told Atlas the user
+ * was on Money while they were on Revenue.
+ *
+ * Naming the owner here keeps the answer explicit rather than positional: the
+ * aliases stay fully valid going forward, and reordering the map above can no
+ * longer change what a page reports itself to be.
+ *
+ * /system is also claimed twice (dream, health) and is deliberately absent:
+ * both are placeholders for a future /health surface, so choosing between them
+ * is a product decision rather than a defect fix, and its current behaviour is
+ * left exactly as it was.
+ */
+const CANONICAL_BY_ROUTE: Partial<Record<string, DestinationId>> = {
+  '/atlas': 'atlas',
+  '/revenue': 'revenue',
+}
+
 export function pathToDestination(pathname: string): DestinationId | null {
   if (!pathname) return null
   const path = (pathname.split('?')[0] || '/').replace(/\/+$/, '') || '/'
@@ -274,7 +297,9 @@ export function pathToDestination(pathname: string): DestinationId | null {
     .map(id => [id, ROUTE_MAP[id]] as const)
     .sort((a, b) => b[1].length - a[1].length) // longest base path first
   for (const [id, base] of entries) {
-    if (path === base || path.startsWith(base + '/')) return id
+    // Matching is unchanged — longest base path still wins. Only the id that
+    // match reports is canonicalised.
+    if (path === base || path.startsWith(base + '/')) return CANONICAL_BY_ROUTE[base] ?? id
   }
   return null
 }

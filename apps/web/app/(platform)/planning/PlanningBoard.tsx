@@ -240,19 +240,19 @@ function Card({
         </div>
         <button
           onClick={() => onRemove(item.id)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground/40 hover:text-muted-foreground shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground/40 hover:text-muted-foreground shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="w-2.5 h-2.5" />
         </button>
       </div>
 
       {/* Quick-move dropdown */}
-      <div className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 flex-wrap">
+      <div className="mt-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity flex gap-1 flex-wrap">
         {otherStatuses.map((s) => (
           <button
             key={s.id}
             onClick={() => onMove(item.id, s.id)}
-            className={cn('text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted transition-colors', s.color)}
+            className={cn('text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted transition-colors', '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[11px] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', s.color)}
           >
             → {s.label}
           </button>

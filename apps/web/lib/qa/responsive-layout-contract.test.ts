@@ -246,7 +246,7 @@ describe('responsive layout · project home stat grid', () => {
       'group',
       'rounded-xl border border-border bg-card',
       'hover:border-border/80',
-      'group-hover:opacity-100',
+      'group-hover:' + OP100,
       'text-3xl font-bold',
     ]) {
       expect(block).toContain(token)
@@ -376,5 +376,156 @@ describe('responsive layout · planning board', () => {
     for (const forbidden of ['onPointer', 'onTouch', 'touch-action', 'useSensor', 'DndContext']) {
       expect(PLANNING).not.toContain(forbidden)
     }
+  })
+})
+
+/**
+ * M5 — planning card actions on touch and focus.
+ *
+ * The quick-move and remove controls were revealed by hover alone. `opacity: 0`
+ * does not remove an element from hit-testing, so a touch user could technically
+ * activate them — invisibly, by accident. That is not an interaction contract.
+ *
+ * The reveal is now three additive triggers on the same elements: hover for
+ * pointer devices (unchanged), focus-within for keyboard, and a coarse-pointer
+ * media query for touch. `pointer-coarse:` does not exist in this Tailwind, which
+ * was verified against the toolchain rather than assumed, so the coarse branch is
+ * written as an arbitrary variant scoped to these class attributes — it adds no
+ * global responsive system and globals.css is untouched.
+ *
+ * Class tokens are assembled from fragments; a literal here would emit the
+ * utility from test source alone, which happened during M4.3.
+ */
+
+const COARSE = '[@me' + 'dia(pointer:coarse)]:'
+/**
+ * Assembled, never spelled. Tailwind's extractor pulls candidates out of test
+ * source — comments included — and a standalone literal here emitted a dead
+ * full-opacity rule into the bundle that no component uses. The comment that
+ * first described that leak was itself spelling the name, and so was causing it.
+ */
+const OP100 = 'opa' + 'city-100'
+
+/** The quick-move control row on a planning card. */
+function quickMoveRowClasses(): string[] {
+  const at = PLANNING.indexOf('{otherStatuses.map(')
+  expect(at).toBeGreaterThan(-1)
+  const open = PLANNING.lastIndexOf('<div className="', at)
+  return PLANNING.slice(open, at).match(/className="([^"]*)"/)![1].split(/\s+/).filter(Boolean)
+}
+
+/**
+ * The individual quick-move buttons. Their classes are composed through `cn()`
+ * across several string arguments, so every literal in the call has to be
+ * collected — reading only the first argument silently misses the rest.
+ */
+function quickMoveButtonClasses(): string[] {
+  const at = PLANNING.indexOf('onClick={() => onMove(item.id, s.id)}')
+  expect(at).toBeGreaterThan(-1)
+  // Bound the call from the `cn(` position, not the anchor: the first `)}`
+  // after the anchor closes the onClick handler, which inverted the range.
+  const open = PLANNING.indexOf('cn(', at)
+  const call = PLANNING.slice(open, PLANNING.indexOf(')}', open))
+  const literals = [...call.matchAll(/'([^']*)'/g)].map((m) => m[1])
+  expect(literals.length).toBeGreaterThan(1)
+  return literals.join(' ').split(/\s+/).filter(Boolean)
+}
+
+/** The remove (X) control. */
+function removeButtonClasses(): string[] {
+  const at = PLANNING.indexOf('onClick={() => onRemove(item.id)}')
+  expect(at).toBeGreaterThan(-1)
+  const cls = PLANNING.slice(at).match(/className="([^"]*)"/)![1]
+  return cls.split(/\s+/).filter(Boolean)
+}
+
+/** Smallest touch dimension a class list guarantees on coarse pointers, in px. */
+function coarseMinPx(classes: string[]): number | null {
+  const vals = classes
+    .filter((c) => c.startsWith(COARSE) && /min-[hw]-/.test(c))
+    .map((c) => {
+      const arb = c.match(/min-[hw]-\[(\d+)px\]$/)
+      if (arb) return Number(arb[1])
+      const step = c.match(/min-[hw]-(\d+)$/)
+      return step ? Number(step[1]) * 4 : null
+    })
+    .filter((v): v is number => v !== null)
+  return vals.length ? Math.min(...vals) : null
+}
+
+describe('planning cards · actions are reachable on touch and focus', () => {
+  const REVEALED = [
+    ['quick-move row', quickMoveRowClasses],
+    ['remove button', removeButtonClasses],
+  ] as const
+
+  it.each(REVEALED)('%s is no longer hover-only', (_label, get) => {
+    const cls = get()
+    // Still starts hidden — the compact desktop card is preserved.
+    expect(cls).toContain('opacity-0')
+    // But hover is no longer the only way back.
+    const reveals = cls.filter((c) => c.endsWith(OP100))
+    expect(reveals.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it.each(REVEALED)('%s reveals on keyboard focus anywhere in the card', (_label, get) => {
+    expect(get()).toContain('group-focus-within:' + OP100)
+  })
+
+  it.each(REVEALED)('%s reveals on coarse pointers', (_label, get) => {
+    expect(get()).toContain(COARSE + OP100)
+  })
+
+  it.each(REVEALED)('%s keeps the existing hover reveal for pointer devices', (_label, get) => {
+    expect(get()).toContain('group-hover:' + OP100)
+  })
+
+  it('sizes both controls to a real touch target, coarse pointers only', () => {
+    // Visible-but-16px would not be a fix. Desktop keeps its compact sizing
+    // because the growth is inside the coarse branch.
+    expect(coarseMinPx(quickMoveButtonClasses())).toBeGreaterThanOrEqual(44)
+    expect(coarseMinPx(removeButtonClasses())).toBeGreaterThanOrEqual(44)
+    for (const cls of [quickMoveButtonClasses(), removeButtonClasses()]) {
+      expect(cls.some((c) => !c.startsWith(COARSE) && /^min-[hw]-/.test(c))).toBe(false)
+    }
+  })
+
+  it('makes the focused control itself discoverable', () => {
+    expect(quickMoveButtonClasses().some((c) => c.startsWith('focus-visible:'))).toBe(true)
+    expect(removeButtonClasses().some((c) => c.startsWith('focus-visible:'))).toBe(true)
+  })
+
+  it('routes through the existing move and remove pipelines, unchanged', () => {
+    for (const token of [
+      'onClick={() => onMove(item.id, s.id)}',
+      'onClick={() => onRemove(item.id)}',
+      'function moveItem(id: string, newStatus: ItemStatus)',
+      'const otherStatuses = COLUMNS.filter((c) => c.id !== item.status)',
+    ]) {
+      expect(PLANNING).toContain(token)
+    }
+  })
+
+  it('adds no touch drag implementation', () => {
+    // M5 exposes what already existed. It does not become a DnD slice.
+    for (const forbidden of ['onPointer', 'onTouch', 'useSensor', 'DndContext', 'touchAction']) {
+      expect(PLANNING).not.toContain(forbidden)
+    }
+    expect(PLANNING).toContain('draggable')
+    expect(PLANNING).toContain('onDrop={(e) => handleDrop(e, col.id)}')
+  })
+
+  it('leaves the M4.3 layout untouched', () => {
+    expect(boardClasses()).toContain('flex')
+    expect(columnsAt(boardClasses(), 'md:')).toBe(4)
+    expect(columnFloor()).toBe(200)
+    expect(columnClasses()).toContain('md:min-w-' + '[auto]')
+  })
+
+  it('introduces no global stylesheet change', () => {
+    // The coarse branch is a scoped arbitrary variant, not a new global system.
+    const globals = read('app/globals.css')
+    expect(globals).not.toContain('pointer: coarse')
+    expect(globals).not.toContain('pointer:coarse')
   })
 })

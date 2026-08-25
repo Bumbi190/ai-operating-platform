@@ -670,7 +670,7 @@ export default async function DashboardPage() {
               }
             />
 
-            <div className="grid grid-cols-3 gap-x-0 gap-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-0 gap-y-5">
               <div>
                 <Instrument
                   label="Snittkörning"

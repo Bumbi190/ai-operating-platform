@@ -12,7 +12,7 @@ export function AtlasHomeVNext({ model }: { model: AtlasHomeViewModel }) {
       <div className={styles.ambientStars} aria-hidden="true" />
       <div className={styles.ambientOrbit} aria-hidden="true" />
       <div className={styles.ambientGlow} aria-hidden="true" />
-      <AtlasMobileNav projects={model.projects} />
+      <AtlasMobileNav />
       <div className={styles.workspace}>
         <main className={styles.primaryCanvas}>
           <AtlasCommandCore />

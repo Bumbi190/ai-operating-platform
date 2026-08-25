@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 import { resolveDestination } from '@/lib/nav/registry'
+import { LEGACY_PROJECT_NAV } from '@/lib/nav/legacy-nav'
+import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
 
 /**
  * Mobile navigation contract.
@@ -19,10 +21,9 @@ import { resolveDestination } from '@/lib/nav/registry'
  * deciding which are mobile.
  */
 
-const MOBILE = readFileSync(
-  resolve(__dirname, '../../components/platform/vnext/AtlasMobileNav.tsx'),
-  'utf8',
-)
+const read = (rel: string) => readFileSync(resolve(__dirname, '../..', rel), 'utf8')
+
+const MOBILE = read('components/platform/vnext/AtlasMobileNav.tsx')
 
 describe('mobile nav · destinations are unchanged', () => {
   it('renders the same five destinations, in the same order, as before C6', () => {
@@ -101,9 +102,43 @@ describe('mobile nav · the component consumes the model', () => {
     expect(MOBILE).not.toContain('resolveDestination')
   })
 
-  it('keeps its project links untouched', () => {
-    // Project navigation is explicitly out of C6's scope.
-    expect(MOBILE).toContain('projects.map')
+  it('renders no project list of its own', () => {
+    // C6 froze this list in place because project navigation was out of its
+    // scope. C.7 removes it: ProjectRail is the canonical project surface and
+    // sits on the same page, so the menu copy was a second path to the same
+    // destinations rather than the only one.
+    //
+    // Asserted by absence of the rendering path AND of the data that fed it,
+    // so a future edit cannot reintroduce it under a different shape.
+    expect(MOBILE).not.toContain('projects.map')
+    expect(MOBILE).not.toContain('AtlasHomeProjectSummary')
+    expect(MOBILE).not.toMatch(/\bprojects\b/)
+    expect(MOBILE).not.toContain('/projects')
+  })
+
+  it('leaves ProjectRail owning project selection on the same page', () => {
+    // Removing the duplicate is only safe while the canonical surface is still
+    // mounted beside it and still receives its data.
+    const home = read('components/platform/vnext/AtlasHomeVNext.tsx')
+    expect(home).toContain('<ProjectRail')
+    expect(home).toContain('projects={model.projects}')
+    expect(home).toContain('<AtlasMobileNav')
+    // And the mobile nav is no longer handed project data at all.
+    expect(home).not.toMatch(/<AtlasMobileNav[^>]*projects=/)
+  })
+
+  it('leaves project-route workspace context alone', () => {
+    // Active-project context belongs to the sidebar, which derives it from the
+    // pathname. AtlasMobileNav mounts only on Atlas Home and never took part.
+    const sidebar = read('components/platform/Sidebar.tsx')
+    expect(sidebar).toContain('const activeSlug = pathname.match(/\\/projects\\/([^/]+)/)?.[1]')
+    expect(sidebar).toContain('shouldRenderProjectSection')
+  })
+
+  it('leaves legacy project navigation unchanged', () => {
+    expect(LEGACY_PROJECT_NAV.length).toBeGreaterThan(0)
+    expect(shouldRenderGlobalProjectList('legacy')).toBe(true)
+    expect(shouldRenderGlobalProjectList('vnext')).toBe(false)
   })
 
   it('does not reach for the desktop surface', () => {

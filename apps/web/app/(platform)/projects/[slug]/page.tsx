@@ -60,7 +60,7 @@ export default async function ProjectPage({
 
       {/* OPERATIONAL · quick stats + actions */}
       <OSLayer layer="operational" className="space-y-5 lg:space-y-6">
-      <div className="grid grid-cols-3 lg:grid-cols-3 3xl:grid-cols-4 gap-4 lg:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 3xl:grid-cols-4 gap-4 lg:gap-5">
         {stats.map((stat) => {
           const Icon = stat.icon
           return (
@@ -129,8 +129,8 @@ export default async function ProjectPage({
         </div>
 
         {recentRuns && recentRuns.length > 0 ? (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-xl border border-border overflow-x-auto overflow-y-hidden scrollbar-thin">
+            <table className="w-full min-w-[512px] text-sm">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">Workflow</th>

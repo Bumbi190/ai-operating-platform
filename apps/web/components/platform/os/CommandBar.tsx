@@ -21,10 +21,11 @@ interface CommandBarProps {
  */
 export function CommandBar({ operator, projects = [] }: CommandBarProps) {
   const pathname = usePathname()
-  const [now, setNow] = useState(() => new Date())
+  const [now, setNow] = useState<Date | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
+    setNow(new Date())
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
@@ -49,12 +50,12 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
       href: '/' + all.slice(0, i + 1).join('/'),
     }))
 
-  const hh = now.getHours().toString().padStart(2, '0')
-  const mm = now.getMinutes().toString().padStart(2, '0')
-  const ss = now.getSeconds().toString().padStart(2, '0')
-  const dateLabel = now.toLocaleDateString('en-US', {
+  const hh = now ? now.getHours().toString().padStart(2, '0') : '--'
+  const mm = now ? now.getMinutes().toString().padStart(2, '0') : '--'
+  const ss = now ? now.getSeconds().toString().padStart(2, '0') : '--'
+  const dateLabel = now ? now.toLocaleDateString('en-US', {
     weekday: 'short', day: 'numeric', month: 'short',
-  }).toUpperCase()
+  }).toUpperCase() : '—'
   const initials = operator?.split('@')[0].slice(0, 2).toUpperCase() ?? '••'
 
   // På /atlas är orben det primära gränssnittet — CommandBar distraherar.
@@ -167,7 +168,12 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
               >
                 <span className="text-[8.5px] font-bold text-white">{initials}</span>
               </div>
-              <span className="eyebrow !text-[9px] !text-secondary !tracking-[0.18em] hidden xl:inline">
+              {/* Names the readable text token directly. The bare shorthand is
+                  ambiguous — Tailwind also emits it from the dark `secondary`
+                  SURFACE token, and with the important modifier that beats the
+                  specificity-based fix in globals.css, rendering this eyebrow
+                  at ~1.10:1. */}
+              <span className="eyebrow !text-[9px] !text-[var(--omnira-text-2)] !tracking-[0.18em] hidden xl:inline">
                 Operator
               </span>
             </div>

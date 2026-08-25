@@ -35,8 +35,8 @@ export default async function RunsPage({ params }: { params: { slug: string } })
 
       <OSLayer layer="operational">
       {runs && runs.length > 0 ? (
-        <div className="rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-xl border border-border overflow-x-auto overflow-y-hidden scrollbar-thin">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Workflow</th>

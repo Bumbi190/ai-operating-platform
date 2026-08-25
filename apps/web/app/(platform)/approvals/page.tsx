@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { ApprovalCard } from './ApprovalCard'
-import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
+import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer, ViewVisibleSync, EmptyState } from '@/components/platform/os'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +82,7 @@ export default async function ApprovalsPage() {
               <h1 className="text-[36px] font-black tracking-tight leading-[1.05] text-gradient-aurora">
                 Granskningscenter
               </h1>
-              <p className="text-[12.5px] text-zinc-400 mt-1.5 max-w-xl leading-relaxed">
+              <p className="text-[12.5px] text-muted-foreground mt-1.5 max-w-xl leading-relaxed">
                 AI-betygsatta utdata köade för exekutiv bedömning · godkänn, revidera eller avvisa autonoma beslut
               </p>
             </div>
@@ -122,17 +122,11 @@ export default async function ApprovalsPage() {
       {/* ── INTELLIGENCE · the actual approval queue ───────────────────── */}
       <OSLayer layer="intelligence">
       {all.length === 0 ? (
-        <Panel className="p-16 text-center">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 chrome-edge"
-            style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}
-          >
-            <ShieldCheck className="w-6 h-6 text-indigo-300" />
-          </div>
-          <p className="text-[14px] text-zinc-300 font-medium">Inkorg tom</p>
-          <p className="text-[11.5px] text-meta mt-1.5 max-w-sm mx-auto">
-            Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning.
-          </p>
-        </Panel>
+        <EmptyState
+          icon={<ShieldCheck className="w-6 h-6" style={{ color: 'var(--os-accent-soft)' }} />}
+          title="Inkorg tom"
+          body="Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning."
+        />
       ) : (
         <div className="space-y-10">
           {counts.pending > 0 && (

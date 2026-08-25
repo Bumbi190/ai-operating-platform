@@ -10,6 +10,7 @@
  */
 
 export const OPERATOR_NAME = 'Andre'
+export const OPERATOR_DISPLAY_NAME = 'Andre'
 
 export interface BusinessProfile {
   slug: string

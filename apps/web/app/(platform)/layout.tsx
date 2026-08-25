@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
@@ -8,6 +9,10 @@ import {
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
+import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
+import { OMNIRA_UI_COOKIE, resolveUiGeneration } from '@/lib/ui/generation'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -29,7 +34,19 @@ export default async function PlatformLayout({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Which UI generation this request renders. Middleware has already written a
+  // valid ?ui= choice onto the request, so the first request that enters vNext
+  // resolves correctly here without a redirect. Selection only — never an auth
+  // or authorization input.
+  const cookieStore = await cookies()
+  const uiGeneration = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
+
   const db = createAdminClient()
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const scopedProjectIds = scopeProjectFilter(allowedProjectIds)
+  const allowedProjects = new Set(allowedProjectIds)
 
   const [projectsRes, conversationsRes, runsRes, approvalsRes] = await Promise.allSettled([
     supabase
@@ -43,26 +60,38 @@ export default async function PlatformLayout({
       .order('updated_at', { ascending: false })
       .limit(8),
     (db.from('runs') as any)
-      .select('id, status, created_at, finished_at, workflows(name), projects(name, color, slug)')
+      .select('id, project_id, status, created_at, finished_at, workflows(name)')
+      .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(12),
     (db.from('approvals') as any)
-      .select('id, status, output_key, created_at, reviewed_at, runs(workflows(name), projects:projects(name, color, slug))')
+      .select('id, project_id, status, output_key, created_at, reviewed_at')
+      .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(8),
   ])
 
-  const projects   = projectsRes.status      === 'fulfilled' ? (projectsRes.value.data ?? [])       : []
+  const projectsRaw = projectsRes.status === 'fulfilled' ? (projectsRes.value.data ?? []) : []
+  // Final pre-serialization guard: a service-role query can never expand the
+  // shell beyond the authenticated user's project allow-list.
+  const projects = projectsRaw.filter((project: any) => allowedProjects.has(project.id))
+  const projectById = new Map(projects.map((project: any) => [project.id, project]))
   const conversations = conversationsRes.status === 'fulfilled' ? (conversationsRes.value.data ?? []) : []
-  const runs       = runsRes.status          === 'fulfilled' ? ((runsRes.value as any).data ?? [])  : []
-  const approvals  = approvalsRes.status     === 'fulfilled' ? ((approvalsRes.value as any).data ?? []) : []
+  const runs = runsRes.status === 'fulfilled'
+    ? (((runsRes.value as any).data ?? []) as any[]).filter((run) => allowedProjects.has(run.project_id))
+    : []
+  const approvals = approvalsRes.status === 'fulfilled'
+    ? (((approvalsRes.value as any).data ?? []) as any[]).filter((approval) => (
+        approval.project_id && allowedProjects.has(approval.project_id)
+      ))
+    : []
 
   const events: ActivityEvent[] = []
 
   // Människospråkiga, affärsfokuserade, åtgärdsinriktade händelser.
   for (const r of runs as any[]) {
     const w = Array.isArray(r.workflows) ? r.workflows[0] : r.workflows
-    const p = Array.isArray(r.projects)  ? r.projects[0]  : r.projects
+    const p = projectById.get(r.project_id) as any
     const wf = w?.name ?? 'Ett arbetsflöde'
     if (r.status === 'failed') {
       events.push({
@@ -102,8 +131,7 @@ export default async function PlatformLayout({
   }
 
   for (const a of approvals as any[]) {
-    const run = Array.isArray(a.runs) ? a.runs[0] : a.runs
-    const p   = run ? (Array.isArray(run.projects)  ? run.projects[0]  : run.projects)  : null
+    const p = projectById.get(a.project_id) as any
     if (a.status === 'pending') {
       events.push({
         id: `appr-${a.id}-pending`,
@@ -161,6 +189,7 @@ export default async function PlatformLayout({
   return (
     <AtlasRuntimeProvider projects={projects}>
     <OperatorModeProvider>
+      <AtlasProjectReturnShortcut />
       <div
         className="
           relative h-screen overflow-hidden
@@ -174,11 +203,19 @@ export default async function PlatformLayout({
         <Sidebar
           projects={projects}
           userEmail={user.email ?? ''}
+          operatorName={OPERATOR_DISPLAY_NAME}
           recentConversations={conversations}
+          uiGeneration={uiGeneration}
         />
 
         {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}
-        <main className="relative overflow-y-auto scrollbar-thin os-stage os-grain">
+        {/* The operating canvas is the narrowest boundary that scopes every OS
+            page surface. The sidebar sits outside it and keeps the vNext skin
+            it already resolves from A1, so it is not themed twice. */}
+        <main
+          data-ui-generation={uiGeneration}
+          className="relative overflow-y-auto scrollbar-thin os-stage os-grain"
+        >
           {/* Ambient backdrop — grid + orbs + scan line                        */}
           <div className="os-grid" aria-hidden />
           <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>

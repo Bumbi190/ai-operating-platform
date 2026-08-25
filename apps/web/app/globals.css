@@ -98,6 +98,14 @@
   --omnira-violet-soft: #a78bfa;
   --omnira-cyan:        #22d3ee;
   --omnira-cyan-soft:   #67e8f9;
+
+  /* vNext aqua/teal — the accent family introduced by the owner-approved Atlas
+     Home. Promoted verbatim from that CSS module so the approved surface and
+     the rest of the platform share one source of truth. Values are unchanged. */
+  --omnira-teal:        #2dd4bf;
+  --omnira-teal-soft:   #5eead4;
+  --omnira-aqua:        #a5f3fc;
+  --omnira-aqua-bright: #ecfeff;
   --omnira-gold:        #d4a574;       /* warm gold (Interstellar) */
   --omnira-gold-soft:   #e8c89a;
   --omnira-emerald:     #34d399;
@@ -112,6 +120,25 @@
   --omnira-text-2: rgba(255,255,255,0.72);  /* was 0.62 — secondary (~9.8:1) */
   --omnira-text-3: rgba(255,255,255,0.60);  /* was 0.38 — meta (~6.9:1)      */
   --omnira-text-4: rgba(255,255,255,0.18);  /* decorative only               */
+
+  /* ── OS accent indirection ──────────────────────────────────────────────
+     The one accent the shared os/ surface chrome speaks through. Defaults
+     resolve to today's exact legacy indigo, so nothing moves until a
+     generation scope overrides them.
+
+     Consumed today: --os-accent-rgb, --os-accent-edge, --os-accent-tint-rgb.
+     --os-accent and --os-accent-soft are the declared solid-colour contract
+     and have no consumer yet: the remaining solid-accent sites (HeroStat,
+     Instrument, AgentCard) build colours by hex concatenation (`${color}14`),
+     which var() cannot satisfy without restructuring those components.
+
+     --os-accent-rgb must stay the channel form of --os-accent; CSS cannot
+     derive one from the other. */
+  --os-accent:          var(--omnira-indigo);       /* #6366f1 */
+  --os-accent-soft:     var(--omnira-indigo-soft);  /* #818cf8 */
+  --os-accent-rgb:      99 102 241;                 /* channels of --os-accent */
+  --os-accent-tint-rgb: 165 180 252;                /* indigo-300 — eyebrow tint */
+  --os-accent-edge:     rgb(var(--os-accent-rgb) / 0.18);
 
   /* Spacing rhythm */
   --rhythm-1: 4px;
@@ -128,13 +155,66 @@
    STAGE · atmospheric Interstellar interior
 ═══════════════════════════════════════════════════════════════════════════ */
 
-.os-stage {
-  position: relative;
-  background:
+/* ═══════════════════════════════════════════════════════════════════════════
+   GENERATION SCOPE · vNext theme
+   The one block that retints the shared OS surfaces for the vNext generation.
+   Every value is derived from the owner-approved Atlas Home, not invented:
+   backgrounds from its .page gradient stops, surfaces and edges from its panel
+   rgba values composited over that ground, text from its .page colour.
+
+   Scoped to the platform canvas, so legacy is untouched by construction — the
+   selector simply cannot match when the generation is legacy. Atlas Home itself
+   renders inside this scope but consumes none of these variables, so it stays
+   pixel-identical.
+
+   Status semantics (--destructive) and shadcn's component semantics
+   (--primary, --secondary, --accent) are deliberately NOT overridden: the first
+   carries meaning, the second is unused by the OS pages.
+═══════════════════════════════════════════════════════════════════════════ */
+
+[data-ui-generation='vnext'] {
+  /* Accent — the A2.1 contract, retuned to the approved cyan/aqua. */
+  --os-accent:          var(--omnira-cyan);       /* #22d3ee */
+  --os-accent-soft:     var(--omnira-cyan-soft);  /* #67e8f9 */
+  --os-accent-rgb:      34 211 238;               /* channels of --os-accent */
+  --os-accent-tint-rgb: 103 232 249;              /* channels of --os-accent-soft */
+
+  /* Stage ground — same geometry as legacy, Atlas's teal palette and bases. */
+  --os-stage-background:
+    radial-gradient(ellipse 90% 60% at 18% 0%,   rgba(34,211,238,0.050) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 50% at 88% 100%, rgba(45,212,191,0.035) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 50% 40%,  rgba(67,56,202,0.030)  0%, transparent 60%),
+    linear-gradient(180deg, #01060e 0%, #020c17 50%, #020711 100%);
+
+  /* Theme semantics. Derived by compositing Atlas Home's own surface rgba over
+     its page ground; contrast was measured, not assumed — foreground 18.47:1,
+     muted-foreground 7.53:1 on card, both AAA and both above the legacy 5.45:1. */
+  --background:          211 84% 5%;
+  --foreground:          218 100% 98%;
+  --card:                208 78% 7%;
+  --card-foreground:     218 100% 98%;
+  --popover:             208 78% 7%;
+  --popover-foreground:  218 100% 98%;
+  --muted:               209 78% 7%;
+  --muted-foreground:    200 15% 64%;
+  --border:              206 45% 11%;
+  --input:               205 54% 9%;
+  --ring:                187 92% 69%;
+}
+
+/* The stage ground is a variable so a generation scope can retint it without
+   rewriting the geometry. The default below is the legacy value verbatim. */
+:root {
+  --os-stage-background:
     radial-gradient(ellipse 90% 60% at 18% 0%,   rgba(99,102,241,0.06)  0%, transparent 55%),
     radial-gradient(ellipse 50% 50% at 88% 100%, rgba(212,165,116,0.04) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 50% 40%,  rgba(139,92,246,0.025) 0%, transparent 60%),
     linear-gradient(180deg, #050714 0%, #060919 50%, #050714 100%);
+}
+
+.os-stage {
+  position: relative;
+  background: var(--os-stage-background);
   min-height: 100vh;
 }
 
@@ -212,7 +292,19 @@
    TYPOGRAPHY · editorial scale
 ═══════════════════════════════════════════════════════════════════════════ */
 
-@layer utilities {
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENTS · editorial display defaults
+   These are component DEFAULTS, so they live in the components layer where
+   Tailwind emits them ahead of utilities. That ordering is the whole point: a
+   call site writing `text-[22px] leading-tight` must win.
+   They previously sat in @layer utilities alongside the generated ones, where
+   source order decided — and being authored later they silently beat every
+   call-site override. ExecutiveAssistant asked for 22px/1.25 and rendered
+   40px/0.98, which is what clipped the gradient-filled heading.
+   Consumers with no size utility (e.g. /system) still inherit these defaults.
+═══════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
   /* Editorial display — for hero headlines */
   .display-hero {
     font-size: clamp(40px, 5.2vw, 68px);
@@ -226,7 +318,9 @@
     letter-spacing: -0.025em;
     font-weight: 600;
   }
+}
 
+@layer utilities {
   /* Eyebrow — restrained uppercase mono caption */
   .eyebrow {
     font-size: 10px;
@@ -236,8 +330,12 @@
     font-family: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
     color: rgba(255,255,255,0.60);  /* was 0.45 — eyebrows now legible (~6.9:1) */
   }
+  /* Accent eyebrow. Routed through the OS accent contract so it follows the
+     generation instead of pinning legacy indigo. --os-accent-tint-rgb defaults
+     to `165 180 252`, so the legacy colour is unchanged; the 0.75 alpha is
+     deliberately kept distinct from .os-eyebrow-accent's 0.70. */
   .eyebrow-accent {
-    color: rgba(165,180,252,0.75);
+    color: rgb(var(--os-accent-tint-rgb) / 0.75);
   }
   .eyebrow-gold {
     color: rgba(212,165,116,0.85);
@@ -350,8 +448,14 @@
       0 1px 0 rgba(255,255,255,0.06) inset,
       0 30px 70px -16px rgba(0,0,0,0.65),
       0 8px 22px -6px rgba(0,0,0,0.45),
-      0 0 40px -20px rgba(99,102,241,0.16);
+      0 0 40px -20px rgb(var(--os-accent-rgb) / 0.16);
   }
+  /* Eyebrow label colour — shared by PanelHeader and SectionHeader.
+     Computes to rgb(165 180 252 / 0.7), identical to text-indigo-300/70. */
+  .os-eyebrow-accent {
+    color: rgb(var(--os-accent-tint-rgb) / 0.7);
+  }
+
   .panel-quiet {
     background: rgba(255,255,255,0.015);
     border: 1px solid rgba(255,255,255,0.04);
@@ -360,12 +464,12 @@
   }
   .panel-feature {
     background:
-      linear-gradient(180deg, rgba(99,102,241,0.06) 0%, rgba(255,255,255,0.01) 60%);
-    border: 1px solid rgba(99,102,241,0.18);
+      linear-gradient(180deg, rgb(var(--os-accent-rgb) / 0.06) 0%, rgba(255,255,255,0.01) 60%);
+    border: 1px solid var(--os-accent-edge);
     border-radius: 22px;
     box-shadow:
       0 1px 0 rgba(255,255,255,0.06) inset,
-      0 32px 80px -20px rgba(99,102,241,0.30),
+      0 32px 80px -20px rgb(var(--os-accent-rgb) / 0.30),
       0 10px 28px -8px rgba(0,0,0,0.55);
   }
 
@@ -1386,6 +1490,16 @@ body.mode-maintenance .orb { opacity: 0.45; }
    (the shadcn `secondary` theme color, which is near-black in dark mode).
 ═══════════════════════════════════════════════════════════════════════════ */
 
-.text-secondary { color: var(--omnira-text-2); }   /* 0.72 · ~9.8:1 — supporting copy, labels  */
+/* `.text-secondary` is claimed by two systems. Tailwind emits it from the
+   `secondary` theme colour, which is a dark SURFACE token; Omnira has long used
+   the same name for a readable text-hierarchy token. Both rules are a single
+   class, so with equal specificity only source order decided the winner — and a
+   reordered or re-layered stylesheet would silently flip 117 usages across 37
+   files to near-black text.
+   `:root` is a pseudo-class, so this selector scores (0,2,0) against the
+   utility's (0,1,0) and wins on specificity rather than on position. No
+   !important, and Tailwind's higher-specificity variants still take precedence.
+   A rename to an unambiguous token remains future hygiene. */
+:root .text-secondary { color: var(--omnira-text-2); }   /* 0.72 · ~9.8:1 — supporting copy, labels  */
 .text-meta      { color: var(--omnira-text-3); }   /* 0.60 · ~6.9:1 — metadata, timestamps      */
 .text-faint     { color: rgba(255,255,255,0.52); } /* ~5.3:1 — most de-emphasized readable text  */

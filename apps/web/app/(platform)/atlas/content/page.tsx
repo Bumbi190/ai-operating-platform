@@ -101,7 +101,7 @@ export default async function ContentCenter() {
           <Newspaper className="w-5 h-5" />
         </span>
         <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Content Center</h1>
+          <h1 className="text-lg font-semibold text-foreground">Content Center</h1>
           <p className="text-xs text-secondary">
             System A — Website Content · Atlas is the editorial system of record · website is destination-only
             {pendingCount > 0 && <span className="text-amber-400"> · {pendingCount} pending review</span>}
@@ -135,14 +135,14 @@ export default async function ContentCenter() {
                           'block rounded-lg border p-3 transition-colors',
                           group.highlight
                             ? 'border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10'
-                            : 'border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900',
+                            : 'border-border bg-card/40 hover:bg-card',
                         ].join(' ')}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-medium text-zinc-100 line-clamp-1">
+                          <p className="text-sm font-medium text-foreground line-clamp-1">
                             {r.title ?? '(untitled)'}
                           </p>
-                          <span className="shrink-0 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          <span className="shrink-0 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                             {r.content_type}
                           </span>
                         </div>
@@ -153,14 +153,14 @@ export default async function ContentCenter() {
                             {pass.ok === false && <XCircle className="w-3 h-3 text-rose-400" />}
                             QA: <span className={pass.ok === true ? 'text-emerald-400' : pass.ok === false ? 'text-rose-400' : ''}>{pass.label}</span>
                           </span>
-                          <span>Confidence: <span className="text-zinc-300">{r.qa?.confidence ?? '—'}</span></span>
+                          <span>Confidence: <span className="text-secondary">{r.qa?.confidence ?? '—'}</span></span>
                           {issues > 0 && (
                             <span className="inline-flex items-center gap-1 text-amber-400">
                               <AlertTriangle className="w-3 h-3" /> {issues} issue{issues === 1 ? '' : 's'}
                             </span>
                           )}
-                          <span>Model: <span className="text-zinc-300">{r.model ?? '—'}</span></span>
-                          <span>Cost: <span className="text-zinc-300">{fmtCost(r.cost_usd)}</span></span>
+                          <span>Model: <span className="text-secondary">{r.model ?? '—'}</span></span>
+                          <span>Cost: <span className="text-secondary">{fmtCost(r.cost_usd)}</span></span>
                           <span>{fmtDate(r.created_at)}</span>
                           {r.destination_url && (
                             <span className="text-emerald-500/80 truncate max-w-[18rem]">{r.destination_url}</span>

@@ -46,9 +46,9 @@ export default async function ContentDetail({ params }: { params: { id: string }
   const issues: string[] = Array.isArray(qa.issues) ? qa.issues : []
 
   const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex justify-between gap-4 py-1.5 border-b border-zinc-800/60 text-xs">
+    <div className="flex justify-between gap-4 py-1.5 border-b border-border/60 text-xs">
       <span className="text-secondary">{label}</span>
-      <span className="text-zinc-200 text-right break-words">{value}</span>
+      <span className="text-foreground text-right break-words">{value}</span>
     </div>
   )
 
@@ -56,17 +56,17 @@ export default async function ContentDetail({ params }: { params: { id: string }
     <OSPage density="spacious">
       {/* Atlas selection awareness — the open record IS the operator's selection. */}
       <ViewSelectionSync refs={[{ domain: 'website_content', id: row.id, label: row.title ?? '(untitled)' }]} />
-      <Link href="/atlas/content" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200">
+      <Link href="/atlas/content" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-3.5 h-3.5" /> Content Center
       </Link>
 
       <header className="space-y-1">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{row.content_type}</span>
+          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{row.content_type}</span>
           <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">{row.status}</span>
         </div>
-        <h1 className="text-xl font-semibold text-zinc-100">{row.title ?? '(untitled)'}</h1>
-        {row.summary && <p className="text-sm text-zinc-400 max-w-3xl">{row.summary}</p>}
+        <h1 className="text-xl font-semibold text-foreground">{row.title ?? '(untitled)'}</h1>
+        {row.summary && <p className="text-sm text-muted-foreground max-w-3xl">{row.summary}</p>}
       </header>
 
       {row.status === 'pending_review' && (
@@ -84,7 +84,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* QA report */}
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+        <section className="rounded-lg border border-border bg-card/40 p-4">
           <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">QA Report</h2>
           <div className="flex items-center gap-2 mb-3">
             {qa.pass === true ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-rose-400" />}
@@ -109,7 +109,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
         </section>
 
         {/* Metadata */}
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+        <section className="rounded-lg border border-border bg-card/40 p-4">
           <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Generation Metadata</h2>
           <Stat label="Model" value={row.model ?? meta.model ?? '—'} />
           <Stat label="Cost" value={fmtCost(row.cost_usd ?? meta.estCostUsd ?? null)} />
@@ -123,7 +123,7 @@ export default async function ContentDetail({ params }: { params: { id: string }
         </section>
 
         {/* Workflow / destination */}
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+        <section className="rounded-lg border border-border bg-card/40 p-4">
           <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Workflow</h2>
           <Stat label="Status" value={row.status} />
           <Stat label="Status reason" value={row.status_reason ?? '—'} />
@@ -135,10 +135,10 @@ export default async function ContentDetail({ params }: { params: { id: string }
       </div>
 
       {/* Article body */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5">
+      <section className="rounded-lg border border-border bg-card/40 p-5">
         <h2 className="text-xs font-mono uppercase tracking-wide text-secondary mb-3">Article Body</h2>
         {body ? (
-          <pre className="text-sm text-zinc-300 whitespace-pre-wrap break-words leading-relaxed font-sans max-w-3xl">{body}</pre>
+          <pre className="text-sm text-secondary whitespace-pre-wrap break-words leading-relaxed font-sans max-w-3xl">{body}</pre>
         ) : (
           <p className="text-xs text-meta italic">No body content.</p>
         )}

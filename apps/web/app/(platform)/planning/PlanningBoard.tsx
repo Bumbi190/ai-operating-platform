@@ -100,7 +100,7 @@ export function PlanningBoard() {
         <span className="text-xs text-muted-foreground">— dra kort mellan kolumner</span>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="flex gap-3 overflow-x-auto scrollbar-thin md:grid md:grid-cols-4 md:overflow-x-visible">
         {COLUMNS.map((col) => {
           const colItems = items.filter((it) => it.status === col.id)
           const isAdding = addingIn === col.id
@@ -108,7 +108,7 @@ export function PlanningBoard() {
           return (
             <div
               key={col.id}
-              className="flex flex-col min-h-48 rounded-xl border border-border bg-card/50"
+              className="flex flex-col min-w-[200px] md:min-w-[auto] min-h-48 rounded-xl border border-border bg-card/50"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => handleDrop(e, col.id)}
             >
@@ -144,7 +144,7 @@ export function PlanningBoard() {
                         if (e.key === 'Escape') { setAddingIn(null); setNewTitle('') }
                       }}
                       placeholder="Titel..."
-                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[rgb(var(--os-accent-rgb))]"
                     />
                     <div className="flex gap-1">
                       <select
@@ -169,7 +169,7 @@ export function PlanningBoard() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => addItem(col.id)}
-                        className="flex-1 rounded bg-indigo-500 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-indigo-600 transition-colors"
+                        className="flex-1 rounded bg-[rgb(var(--os-accent-rgb))] px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90 transition-opacity"
                       >
                         Lägg till
                       </button>
@@ -240,19 +240,19 @@ function Card({
         </div>
         <button
           onClick={() => onRemove(item.id)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground/40 hover:text-muted-foreground shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted text-muted-foreground/40 hover:text-muted-foreground shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="w-2.5 h-2.5" />
         </button>
       </div>
 
       {/* Quick-move dropdown */}
-      <div className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 flex-wrap">
+      <div className="mt-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity flex gap-1 flex-wrap">
         {otherStatuses.map((s) => (
           <button
             key={s.id}
             onClick={() => onMove(item.id, s.id)}
-            className={cn('text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted transition-colors', s.color)}
+            className={cn('text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-muted transition-colors', '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[11px] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', s.color)}
           >
             → {s.label}
           </button>

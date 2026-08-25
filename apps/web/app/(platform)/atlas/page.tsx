@@ -22,6 +22,10 @@ import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
 import { AlertTriangle, ArrowRight, Clock } from 'lucide-react'
+import { loadAtlasHomeViewModel } from '@/lib/atlas/home-view-model'
+import { AtlasHomeVNext } from '@/components/platform/vnext/AtlasHomeVNext'
+import { cookies } from 'next/headers'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +33,25 @@ function fmtSEK(n: number): string {
   return new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' kr'
 }
 
-export default async function AtlasHome() {
+interface AtlasHomeProps {
+  searchParams?: { ui?: string | string[] }
+}
+
+export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
+  // ?ui= still wins for the request that enters Atlas, exactly as before; the
+  // cookie only decides when no explicit choice is present. Both are read
+  // through the one canonical resolver rather than compared inline.
+  const uiCookies = await cookies()
+  const generation = resolveUiGeneration({
+    query: searchParams?.ui,
+    cookie: uiCookies.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
+  if (isVNext(generation)) {
+    const model = await loadAtlasHomeViewModel()
+    if (!model) redirect('/login')
+    return <AtlasHomeVNext model={model} />
+  }
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

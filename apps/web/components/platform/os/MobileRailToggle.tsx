@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Activity, X } from 'lucide-react'
 import { PulseDot } from './PulseDot'
 
@@ -20,6 +21,9 @@ interface MobileRailToggleProps {
  */
 export function MobileRailToggle({ liveCount = 0, children }: MobileRailToggleProps) {
   const [open, setOpen] = useState(false)
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const atlasVNextHasDesktopRail = pathname === '/atlas' && searchParams.get('ui') === 'vnext'
 
   // Lock background scroll while sheet is open
   useEffect(() => {
@@ -44,7 +48,7 @@ export function MobileRailToggle({ liveCount = 0, children }: MobileRailTogglePr
         type="button"
         aria-label="Open live activity"
         onClick={() => setOpen(true)}
-        className="fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2 press ease-os"
+        className={`${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2 press ease-os`}
         style={{
           background: 'linear-gradient(180deg, rgba(99,102,241,0.40) 0%, rgba(79,70,229,0.55) 100%)',
           border: '1px solid rgba(99,102,241,0.55)',

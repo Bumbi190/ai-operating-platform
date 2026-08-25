@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Target, Lightbulb, Zap, ArrowRight } from 'lucide-react'
 import { PlanningBoard } from './PlanningBoard'
-import { OSPage, OSLayer } from '@/components/platform/os'
+import { OSPage, OSLayer, Panel, PanelHeader } from '@/components/platform/os'
 
 export default async function PlanningPage() {
   const supabase = await createClient()
@@ -18,6 +18,7 @@ export default async function PlanningPage() {
       {/* HERO */}
       <OSLayer layer="hero" className="flex items-start justify-between gap-6">
         <div>
+          <p className="eyebrow os-eyebrow-accent mb-3">Operator · fokus och roadmap</p>
           <h1 className="text-2xl font-bold tracking-tight">Planering</h1>
           <p className="text-sm text-muted-foreground mt-1 capitalize">{today}</p>
         </div>
@@ -29,12 +30,24 @@ export default async function PlanningPage() {
 
       {/* OPERATIONAL · active focus + board */}
       <OSLayer layer="operational" className="space-y-5 lg:space-y-6">
-      <section className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5 flex gap-4">
-        <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-          <Zap className="w-4 h-4 text-indigo-400" />
+      <section
+        className="rounded-xl border p-5 flex gap-4"
+        style={{
+          borderColor: 'rgb(var(--os-accent-rgb) / 0.20)',
+          background: 'rgb(var(--os-accent-rgb) / 0.05)',
+        }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+          style={{
+            background: 'rgb(var(--os-accent-rgb) / 0.20)',
+            borderColor: 'rgb(var(--os-accent-rgb) / 0.30)',
+          }}
+        >
+          <Zap className="w-4 h-4" style={{ color: 'var(--os-accent-soft)' }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-indigo-400 font-medium mb-1">Aktivt fokus</div>
+          <div className="text-xs font-medium mb-1" style={{ color: 'var(--os-accent-soft)' }}>Aktivt fokus</div>
           <p className="text-sm">Stabilisera The Prompt autonoma pipeline (IG + FB publicering, cron-schemaläggning) och implementera buggskanner-agent</p>
           <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
@@ -42,7 +55,7 @@ export default async function PlanningPage() {
               The Prompt — Aktiv
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
               Familje-Stunden — På is
             </span>
           </div>
@@ -55,11 +68,8 @@ export default async function PlanningPage() {
 
       {/* INTELLIGENCE · roadmap */}
       <OSLayer layer="intelligence">
-      <section className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-          <Target className="w-4 h-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Roadmap — Kommande faser</h2>
-        </div>
+      <Panel className="p-5">
+        <PanelHeader icon={<Target className="w-4 h-4 text-muted-foreground" />} title="Roadmap — Kommande faser" />
         <div className="divide-y divide-border">
           {[
             {
@@ -126,7 +136,7 @@ export default async function PlanningPage() {
             </div>
           ))}
         </div>
-      </section>
+      </Panel>
 
       </OSLayer>
 

@@ -12,15 +12,16 @@ import {
 /**
  * UI-generation resolution.
  *
- * The gate selects which UI renders and nothing else. These tests pin the two
- * properties that matter: an explicit choice is honoured on the request that
- * makes it, and anything unrecognised falls back to legacy rather than leaking
- * vNext.
+ * The gate selects which UI renders and nothing else. These tests pin the
+ * properties that matter after the vNext default rollout: an explicit choice is
+ * honoured on the request that makes it, legacy is reachable only through an
+ * explicit legacy signal, anything unrecognised resolves to the production
+ * default rather than inventing a state, and nothing here depends on identity.
  */
 describe('ui generation · contract', () => {
-  it('exposes exactly two generations and defaults to legacy', () => {
+  it('exposes exactly two generations and defaults to vnext', () => {
     expect([...OMNIRA_UI_GENERATIONS]).toEqual(['legacy', 'vnext'])
-    expect(DEFAULT_UI_GENERATION).toBe('legacy')
+    expect(DEFAULT_UI_GENERATION).toBe('vnext')
     expect(OMNIRA_UI_COOKIE).toBe('omnira_ui')
   })
 
@@ -45,10 +46,10 @@ describe('ui generation · contract', () => {
 })
 
 describe('ui generation · resolution', () => {
-  it('no query and no cookie resolves to legacy', () => {
-    expect(resolveUiGeneration()).toBe('legacy')
-    expect(resolveUiGeneration({})).toBe('legacy')
-    expect(resolveUiGeneration({ query: undefined, cookie: undefined })).toBe('legacy')
+  it('no query and no cookie resolves to vnext', () => {
+    expect(resolveUiGeneration()).toBe('vnext')
+    expect(resolveUiGeneration({})).toBe('vnext')
+    expect(resolveUiGeneration({ query: undefined, cookie: undefined })).toBe('vnext')
   })
 
   it('?ui=vnext selects vNext on the current request', () => {
@@ -59,13 +60,17 @@ describe('ui generation · resolution', () => {
     expect(resolveUiGeneration({ query: 'legacy' })).toBe('legacy')
   })
 
-  it('a malformed query falls through to the cookie rather than forcing legacy', () => {
+  it('a malformed query falls through to the cookie rather than to the default', () => {
+    // The cookie is a real, previously-expressed preference: junk in the query
+    // must not silently discard it in either direction.
     expect(resolveUiGeneration({ query: 'bogus', cookie: 'vnext' })).toBe('vnext')
     expect(resolveUiGeneration({ query: '', cookie: 'vnext' })).toBe('vnext')
+    expect(resolveUiGeneration({ query: 'bogus', cookie: 'legacy' })).toBe('legacy')
+    expect(resolveUiGeneration({ query: '', cookie: 'legacy' })).toBe('legacy')
   })
 
-  it('a malformed query with no cookie resolves to legacy', () => {
-    expect(resolveUiGeneration({ query: 'bogus' })).toBe('legacy')
+  it('a malformed query with no cookie resolves to the production default', () => {
+    expect(resolveUiGeneration({ query: 'bogus' })).toBe('vnext')
   })
 
   it('a persisted vnext cookie selects vNext on another platform route', () => {
@@ -77,9 +82,9 @@ describe('ui generation · resolution', () => {
     expect(resolveUiGeneration({ cookie: 'legacy' })).toBe('legacy')
   })
 
-  it('a malformed or unknown cookie fails closed to legacy', () => {
+  it('a malformed or unknown cookie resolves to the production default', () => {
     for (const junk of ['vnext; admin', 'VNEXT', 'true', '', 'undefined', 'null', '{}']) {
-      expect(resolveUiGeneration({ cookie: junk })).toBe('legacy')
+      expect(resolveUiGeneration({ cookie: junk })).toBe('vnext')
     }
   })
 
@@ -88,16 +93,30 @@ describe('ui generation · resolution', () => {
     expect(resolveUiGeneration({ query: 'vnext', cookie: 'legacy' })).toBe('vnext')
   })
 
-  it('never resolves to vNext without an explicit vnext signal', () => {
+  it('resolves to the production default whenever no valid signal is present', () => {
     const noSignal = [
       { query: null, cookie: null },
-      { query: 'legacy', cookie: 'legacy' },
       { query: 'bogus', cookie: 'bogus' },
       { query: undefined, cookie: 'nope' },
+      { query: '', cookie: '' },
     ]
     for (const input of noSignal) {
-      expect(resolveUiGeneration(input)).toBe('legacy')
-      expect(isVNext(resolveUiGeneration(input))).toBe(false)
+      expect(resolveUiGeneration(input)).toBe('vnext')
+      expect(isVNext(resolveUiGeneration(input))).toBe(true)
+    }
+  })
+
+  it('reaches legacy only through an explicit legacy signal', () => {
+    // Rollback stays deliberate rather than accidental. This is the mirror of
+    // the pre-rollout guarantee: junk can no more downgrade a request than it
+    // could previously upgrade one.
+    expect(resolveUiGeneration({ query: 'legacy' })).toBe('legacy')
+    expect(resolveUiGeneration({ cookie: 'legacy' })).toBe('legacy')
+    expect(resolveUiGeneration({ query: 'legacy', cookie: 'legacy' })).toBe('legacy')
+
+    for (const junk of ['LEGACY', 'Legacy', ' legacy', 'legacy ', 'old', 'v1', 'true', '']) {
+      expect(resolveUiGeneration({ query: junk })).toBe('vnext')
+      expect(resolveUiGeneration({ cookie: junk })).toBe('vnext')
     }
   })
 })

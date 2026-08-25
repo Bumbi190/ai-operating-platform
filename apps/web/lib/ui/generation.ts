@@ -1,19 +1,25 @@
 /**
  * Omnira UI generation — the canonical resolver for which UI a request renders.
  *
- * Omnira ships two UI generations side by side while vNext is under
- * development. This module is the ONLY place that interprets what "vnext" or
- * "legacy" means; call sites resolve through it rather than reading `?ui=` or
- * the cookie themselves.
+ * Omnira ships two UI generations side by side. This module is the ONLY place
+ * that interprets what "vnext" or "legacy" means; call sites resolve through it
+ * rather than reading `?ui=` or the cookie themselves.
  *
  * Resolution order:
  *   1. a valid `?ui=` query value — wins for the current request
  *   2. a valid `omnira_ui` cookie — carries the choice across navigation
- *   3. legacy — the fail-closed default
+ *   3. DEFAULT_UI_GENERATION — the production default
  *
  * A malformed or unknown value at either layer is treated as "no opinion"
  * rather than as an error: the query falls through to the cookie, and the
- * cookie falls through to legacy. vNext is never reached by accident.
+ * cookie falls through to the production default. Junk therefore never selects
+ * a generation of its own, and no input can produce a third state.
+ *
+ * vNext is the production default. Legacy is no longer the fallback — it is the
+ * explicit ROLLBACK, reachable at any time via `?ui=legacy` or a persisted
+ * `omnira_ui=legacy` cookie, and an explicit query still beats the cookie in
+ * both directions. Nothing about the two-generation model changed here; only
+ * which one a request with no valid preference lands on.
  *
  * SCOPE — this selects a UI generation and nothing else. It must never grant
  * authorization, bypass authentication, widen project scope, alter Executive
@@ -27,8 +33,11 @@ export const OMNIRA_UI_GENERATIONS = ['legacy', 'vnext'] as const
 
 export type OmniraUiGeneration = (typeof OMNIRA_UI_GENERATIONS)[number]
 
-/** Fail-closed default: the existing UI stays the fallback. */
-export const DEFAULT_UI_GENERATION: OmniraUiGeneration = 'legacy'
+/**
+ * What a request renders when it expresses no valid preference. vNext is the
+ * shipped default; legacy remains fully supported as the explicit rollback.
+ */
+export const DEFAULT_UI_GENERATION: OmniraUiGeneration = 'vnext'
 
 /** 180 days — long enough to survive a development cycle, short of permanent. */
 export const OMNIRA_UI_COOKIE_MAX_AGE = 60 * 60 * 24 * 180

@@ -15,6 +15,12 @@ let mockUser: { id?: string; email?: string } | null = null
 let capturedDestination: string | null = null
 let capturedPayload: Record<string, unknown> | null = null
 let publishShouldThrow: Error | null = null
+/**
+ * The caller's owned projects, exactly as the real ownership lookup would find
+ * them. Kept explicit and per-test so a case can revoke ownership and prove the
+ * isolation gate still denies.
+ */
+let ownedProjectIds: string[] = []
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -25,6 +31,26 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => {
+      // The route's ownership check reads this table through the REAL helper in
+      // lib/atlas/isolation. Before, any table but website_content threw here;
+      // the helper caught it, resolved an empty allow-list, and every request
+      // was denied before the threading logic under test could run.
+      //
+      // Serving it keeps both isolation helpers real: the allow-list is derived
+      // from owner_id exactly as in production, not stubbed to permit anything.
+      if (table === 'projects') {
+        return {
+          select: () => ({
+            eq: async (column: string, value: string) => ({
+              data:
+                column === 'owner_id' && value === mockUser?.id
+                  ? ownedProjectIds.map((id) => ({ id }))
+                  : [],
+              error: null,
+            }),
+          }),
+        }
+      }
       if (table !== 'website_content') throw new Error(`unexpected table: ${table}`)
       return {
         select: () => ({
@@ -64,6 +90,7 @@ vi.mock('@/lib/publishing/publish', () => ({
 import { POST } from '@/app/api/content/articles/[id]/review/route'
 
 const ARTICLE_ID = 'article-uuid-1'
+const PROJECT_ID = 'project-uuid-1'
 const PAYLOAD_BASE = {
   version: 1,
   external_id: 'omnira_news-1',
@@ -87,6 +114,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
   beforeEach(() => {
     mockRow = null
     mockUser = { id: 'op-1', email: 'op@example.com' }
+    ownedProjectIds = [PROJECT_ID]
     capturedDestination = null
     capturedPayload = null
     publishShouldThrow = null
@@ -97,6 +125,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       'https://iboepohjwrhtgshrqaol.supabase.co/storage/v1/object/public/media-assets/images/articles/p1/a1-hero-1234.jpg'
     mockRow = {
       id: ARTICLE_ID,
+      project_id: PROJECT_ID,
       status: 'pending_review',
       destination_key: 'the-prompt',
       payload: { ...PAYLOAD_BASE },
@@ -114,6 +143,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
   it('threads hero_image_url=null when website_content.hero_image_url is null (CMS clears field)', async () => {
     mockRow = {
       id: ARTICLE_ID,
+      project_id: PROJECT_ID,
       status: 'pending_review',
       destination_key: 'the-prompt',
       payload: { ...PAYLOAD_BASE },
@@ -133,6 +163,7 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
       'https://iboepohjwrhtgshrqaol.supabase.co/storage/v1/object/public/media-assets/images/articles/p1/a1-hero-NEW.jpg'
     mockRow = {
       id: ARTICLE_ID,
+      project_id: PROJECT_ID,
       status: 'pending_review',
       destination_key: 'the-prompt',
       payload: { ...PAYLOAD_BASE, hero_image_url: 'https://old.example/stale.jpg' },
@@ -143,9 +174,32 @@ describe('POST /review — MVP Commit 5: hero_image_url threading', () => {
     expect(capturedPayload!.hero_image_url).toBe(ROW_HERO)
   })
 
+  it('content in a project the caller does not own is still refused', async () => {
+    // Guards the guard. The four cases above only mean something while the
+    // ownership gate is genuinely evaluated — if the harness had stubbed it
+    // open, they would pass for the wrong reason and this suite would be
+    // vacuous in the way the Instagram one was. Revoking ownership must bring
+    // back the same refusal the whole suite used to hit.
+    ownedProjectIds = ['some-other-project']
+    mockRow = {
+      id: ARTICLE_ID,
+      project_id: PROJECT_ID,
+      status: 'pending_review',
+      destination_key: 'the-prompt',
+      payload: { ...PAYLOAD_BASE },
+      hero_image_url: 'https://example/hero.jpg',
+    }
+    const res = await POST(makeApproveRequest(), { params: { id: ARTICLE_ID } })
+    expect(res.status).toBe(404)
+    // Refused before publishing, not after.
+    expect(capturedPayload).toBeNull()
+    expect(capturedDestination).toBeNull()
+  })
+
   it('reject path: hero_image_url is not threaded (publishArticle never called)', async () => {
     mockRow = {
       id: ARTICLE_ID,
+      project_id: PROJECT_ID,
       status: 'pending_review',
       destination_key: 'the-prompt',
       payload: { ...PAYLOAD_BASE },

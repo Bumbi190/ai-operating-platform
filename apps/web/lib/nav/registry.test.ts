@@ -175,8 +175,11 @@ describe('navigation targets — the exact hrefs `navigate` resolves', () => {
   it('The Prompt resolves to ai-media-automation', () => {
     expect(resolveDestination('project_home', { project: 'The Prompt' })?.href)
       .toBe('/projects/ai-media-automation')
+    // `money` resolves to /revenue, not /costs. That is the product decision
+    // recorded in ROUTE_MAP — /costs was retired as a canonical destination and
+    // kept only as a redirect — not a routing bug to be corrected back.
     expect(resolveDestination('money', { project: 'The Prompt' })?.href)
-      .toBe('/costs?project=ai-media-automation')
+      .toBe('/revenue?project=ai-media-automation')
   })
 
   it('GainPilot resolves correctly', () => {

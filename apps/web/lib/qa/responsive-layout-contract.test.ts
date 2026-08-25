@@ -261,3 +261,120 @@ describe('responsive layout · project home stat grid', () => {
     expect(wrapper![1]).not.toContain('overflow-' + 'hidden')
   })
 })
+
+const PLANNING = read('app/(platform)/planning/PlanningBoard.tsx')
+
+/** The board container — the element that lays the four stage columns out. */
+function boardClasses(): string[] {
+  const anchor = PLANNING.indexOf('COLUMNS.map(')
+  expect(anchor).toBeGreaterThan(-1)
+  const containers = [...PLANNING.slice(0, anchor).matchAll(/<div className="([^"]*)"\s*>/g)]
+  const nearest = containers.at(-1)
+  if (!nearest) throw new Error('board container not found')
+  return nearest[1].split(/\s+/).filter(Boolean)
+}
+
+/** The per-column wrapper, which is where any mobile width floor belongs. */
+function columnClasses(): string[] {
+  const at = PLANNING.indexOf('onDrop={(e) => handleDrop(e, col.id)}')
+  expect(at).toBeGreaterThan(-1)
+  const open = PLANNING.lastIndexOf('<div', at)
+  const cls = PLANNING.slice(open, at).match(/className="([^"]*)"/)
+  if (!cls) throw new Error('column wrapper className not found')
+  return cls[1].split(/\s+/).filter(Boolean)
+}
+
+/** Explicit mobile min-width floor in px, or null. */
+function columnFloor(): number | null {
+  const hit = columnClasses().find((c) => new RegExp('^min-w-' + '\\[\\d+px\\]$').test(c))
+  return hit ? Number(hit.match(/\d+/)![0]) : null
+}
+
+describe('responsive layout · planning board', () => {
+  const STAGES = ['backlog', 'todo', 'in_progress', 'done']
+
+  it('keeps all four canonical stages, in order', () => {
+    const at = PLANNING.indexOf('const COLUMNS')
+    const arr = PLANNING.slice(at, PLANNING.indexOf('\n]', at))
+    expect([...arr.matchAll(/id: '([^']*)'/g)].map((m) => m[1])).toEqual(STAGES)
+    expect([...arr.matchAll(/label: '([^']*)'/g)].map((m) => m[1])).toEqual([
+      'Backlog', 'Att göra', 'Pågår', 'Klart',
+    ])
+  })
+
+  it('lays the stages out side by side below md rather than stacking them', () => {
+    // Stacking would discard the board metaphor. The columns stay in a row and
+    // the row scrolls.
+    const cls = boardClasses()
+    expect(cls).toContain('flex')
+    expect(cls.some((c) => new RegExp('^grid-cols-').test(c))).toBe(false)
+  })
+
+  it('makes that row horizontally scrollable', () => {
+    const cls = boardClasses()
+    expect(cls.some((c) => new RegExp('^overflow-x-' + '(auto|scroll)$').test(c))).toBe(true)
+    expect(cls).toContain('scrollbar-thin')
+  })
+
+  it('gives each column an explicit readable floor', () => {
+    expect(columnFloor()).not.toBeNull()
+    // Derived from the widest card content: a Förbättring badge beside a
+    // priority marker, plus grip and remove button, plus both paddings.
+    expect(columnFloor()!).toBeGreaterThanOrEqual(180)
+  })
+
+  it('puts the floor on the columns, never on the board itself', () => {
+    // A floor on the scroll container would push the page wide instead of
+    // scrolling inside it.
+    expect(boardClasses().some((c) => new RegExp('^min-w-').test(c))).toBe(false)
+  })
+
+  it('restores exactly the four-column grid at md', () => {
+    const cls = boardClasses()
+    expect(cls).toContain('md:gr' + 'id')
+    expect(columnsAt(cls, 'md:')).toBe(4)
+  })
+
+  it('releases the mobile floor at md — which is required, not cosmetic', () => {
+    // At md the canvas is 704px, so a four-column grid gives 167px per column,
+    // and at lg it gives 162px. Both sit BELOW the mobile floor, so leaving the
+    // floor in place would make the board scroll on desktop.
+    const canvasAtMd = 768 - 32 * 2
+    const gridColumnAtMd = (canvasAtMd - 3 * 12) / 4
+    expect(gridColumnAtMd).toBeLessThan(columnFloor()!)
+    // Released to `auto`, not to 0. The column had no min-width before, and for
+    // a grid item that means the automatic minimum size — not zero. At lg the
+    // tracks are about 162px while a card's min-content is about 180px, so the
+    // two values genuinely differ in how the overflow lands. `auto` restores the
+    // pre-change computed value exactly; 0 would have been a quiet change.
+    expect(columnClasses()).toContain('md:min-w-' + '[auto]')
+    expect(columnClasses()).not.toContain('md:min-w-' + '0')
+  })
+
+  it('releases the scroll container at md so desktop overflow is untouched', () => {
+    expect(boardClasses().some((c) => new RegExp('^md:overflow-x-' + 'visible$').test(c))).toBe(true)
+  })
+
+  it('leaves drag and drop exactly as it was', () => {
+    // M4.3 is layout only. Touch DnD remains unresolved and out of scope.
+    for (const token of [
+      'draggable',
+      'onDragStart={(e) => onDragStart(e, item.id)}',
+      'onDragOver={(e) => e.preventDefault()}',
+      'onDrop={(e) => handleDrop(e, col.id)}',
+      // The move pipeline itself, by signature rather than by name alone.
+      'function moveItem(id: string, newStatus: ItemStatus)',
+      'function handleDragStart(e: React.DragEvent, id: string)',
+      'function handleDrop(e: React.DragEvent, status: ItemStatus)',
+      'if (id) moveItem(id, status)',
+    ]) {
+      expect(PLANNING).toContain(token)
+    }
+  })
+
+  it('adds no touch sensor, pointer handler or tap-to-move affordance', () => {
+    for (const forbidden of ['onPointer', 'onTouch', 'touch-action', 'useSensor', 'DndContext']) {
+      expect(PLANNING).not.toContain(forbidden)
+    }
+  })
+})

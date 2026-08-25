@@ -100,7 +100,7 @@ export function PlanningBoard() {
         <span className="text-xs text-muted-foreground">— dra kort mellan kolumner</span>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="flex gap-3 overflow-x-auto scrollbar-thin md:grid md:grid-cols-4 md:overflow-x-visible">
         {COLUMNS.map((col) => {
           const colItems = items.filter((it) => it.status === col.id)
           const isAdding = addingIn === col.id
@@ -108,7 +108,7 @@ export function PlanningBoard() {
           return (
             <div
               key={col.id}
-              className="flex flex-col min-h-48 rounded-xl border border-border bg-card/50"
+              className="flex flex-col min-w-[200px] md:min-w-[auto] min-h-48 rounded-xl border border-border bg-card/50"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => handleDrop(e, col.id)}
             >

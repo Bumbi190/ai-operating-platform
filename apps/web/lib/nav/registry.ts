@@ -280,14 +280,19 @@ export const DESTINATION_IDS = Object.keys(DESTINATIONS) as DestinationId[]
  * aliases stay fully valid going forward, and reordering the map above can no
  * longer change what a page reports itself to be.
  *
- * /system is also claimed twice (dream, health) and is deliberately absent:
- * both are placeholders for a future /health surface, so choosing between them
- * is a product decision rather than a defect fix, and its current behaviour is
- * left exactly as it was.
+ * All three families that share an exact path are named here. A future alias
+ * joining an existing route should be added deliberately rather than inheriting
+ * whatever position gives it — that fallback is the bug this map replaces.
  */
 const CANONICAL_BY_ROUTE: Partial<Record<string, DestinationId>> = {
   '/atlas': 'atlas',
   '/revenue': 'revenue',
+  // /system is a global telemetry surface — its own hero reads Systemtelemetri
+  // and it carries no Dream Findings content. `health` matches it on every
+  // axis: its keywords include system and telemetry, it is projectMode 'none'
+  // where dream is project-scoped, it is in PRIMARY_JUMP_TARGETS where dream is
+  // not, and dream's own route comment places Dream/bug status under Health.
+  '/system': 'health',
 }
 
 export function pathToDestination(pathname: string): DestinationId | null {

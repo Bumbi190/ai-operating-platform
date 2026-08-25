@@ -6,6 +6,8 @@
  * only ids + labels. These tests lock that contract.
  */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { pathToDestination, resolveDestination } from '@/lib/nav/registry'
 import { normalizeView, renderViewBlock } from '@/lib/atlas/view-context'
 
@@ -160,13 +162,51 @@ describe('reverse resolution is canonical, not incidental', () => {
     expect(block).not.toContain('Page: Money')
   })
 
-  it('leaves the other duplicate-path families exactly as they were', () => {
-    // /atlas is claimed by `atlas` and `actions`; it already resolved correctly
-    // and must continue to. /system is claimed by `dream` and `health`, and QA.4
-    // deliberately designates no canonical owner for it — choosing between them
-    // is a product decision, not a defect fix — so its behaviour must not move.
+  it('names a canonical owner for every duplicate-path family', () => {
+    // All three families that share an exact path are now designated. /system
+    // was left undesignated by QA.4 because choosing between `dream` and
+    // `health` was a product decision rather than a defect fix; that decision
+    // has since been made and is recorded here.
     expect(pathToDestination('/atlas')).toBe('atlas')
-    expect(pathToDestination('/system')).toBe('dream')
+    expect(pathToDestination('/revenue')).toBe('revenue')
+    expect(pathToDestination('/system')).toBe('health')
+  })
+
+  it('tells Atlas the right page for /system', () => {
+    // /system is a telemetry surface — its hero reads Systemtelemetri and it
+    // carries no Dream Findings content — yet reverse resolution reported the
+    // project-scoped nightly-findings destination purely because `dream` is
+    // declared first.
+    const v = normalizeView({ pathname: '/system' })!
+    expect(v.destinationId).toBe('health')
+    expect(v.destinationLabel).toBe('Health')
+    const block = renderViewBlock(v)
+    expect(block).toContain('Page: Health')
+    expect(block).not.toContain('Page: Dream Findings')
+  })
+
+  it('keeps both /system claimants routing forward unchanged', () => {
+    // Reverse ownership moved; forward routing did not. `dream` remains a fully
+    // valid destination — it simply no longer speaks for the page.
+    expect(resolveDestination('dream')?.href).toBe('/system')
+    expect(resolveDestination('health')?.href).toBe('/system')
+  })
+
+  it('has exactly the three duplicate-path families it designates', () => {
+    // Guards against a future alias quietly joining an existing route, or a new
+    // duplicate family appearing with no canonical owner and falling back to
+    // declaration order — the failure mode this whole mechanism exists to end.
+    const src = readFileSync(
+      resolve(__dirname, '../nav/registry.ts'),
+      'utf8',
+    )
+    const body = src.match(/ROUTE_MAP[^=]*=\s*\{([\s\S]*?)\n\}/)![1]
+    const byPath = new Map<string, string[]>()
+    for (const m of body.matchAll(/^\s*(\w+):\s*'([^']+)'/gm)) {
+      byPath.set(m[2], [...(byPath.get(m[2]) ?? []), m[1]])
+    }
+    const families = [...byPath.entries()].filter(([, ids]) => ids.length > 1).map(([p]) => p)
+    expect(families.sort()).toEqual(['/atlas', '/revenue', '/system'])
   })
 
   it('still resolves nested and unknown routes by longest prefix', () => {

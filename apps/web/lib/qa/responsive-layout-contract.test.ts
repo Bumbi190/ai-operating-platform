@@ -53,11 +53,51 @@ function instrumentGroupClasses(): string[] {
   return instrumentGroup().classes
 }
 
-/** Column count declared at a breakpoint, or at base when prefix is empty. */
-function columnsAt(prefix: string): number | null {
+/** Column count a class list declares at a breakpoint; empty prefix = base. */
+function columnsAt(classes: string[], prefix: string): number | null {
   const pattern = new RegExp(`^${prefix}grid-cols-` + '(\\d+)$')
-  const hit = instrumentGroupClasses().find((c) => pattern.test(c))
+  const hit = classes.find((c) => pattern.test(c))
   return hit ? Number(hit.match(/\d+$/)![0]) : null
+}
+
+/** Every breakpoint at which a class list declares a column count. */
+function columnBreakpoints(classes: string[]): string[] {
+  return classes
+    .filter((c) => new RegExp('(^|:)grid-cols-' + '\\d+$').test(c))
+    .map((c) => (c.includes(':') ? c.split(':')[0] : 'base'))
+}
+
+/** Gap utilities a class list declares, at any breakpoint, sorted. */
+function gapsOf(classes: string[]): string[] {
+  return classes.filter((c) => new RegExp('(^|:)gap(-x|-y)?-').test(c)).sort()
+}
+
+const PROJECT_HOME = read('app/(platform)/projects/[slug]/page.tsx')
+
+/**
+ * The project-home stat grid. Anchored on the map that renders it: this file
+ * has seven links and one grid, so counting links would be wrong and matching
+ * a class string would be needlessly brittle.
+ */
+function statGrid(): { classes: string[]; block: string } {
+  const anchor = PROJECT_HOME.indexOf('stats.map(')
+  expect(anchor).toBeGreaterThan(-1)
+  const grids = [...PROJECT_HOME.slice(0, anchor).matchAll(/<div className="([^"]*\bgrid\b[^"]*)"\s*>/g)]
+  const nearest = grids.at(-1)
+  if (!nearest) throw new Error('stat grid container not found')
+  const start = nearest.index!
+  const end = PROJECT_HOME.indexOf('</div>', PROJECT_HOME.indexOf('})}', start))
+  return { classes: nearest[1].split(/\s+/).filter(Boolean), block: PROJECT_HOME.slice(start, end) }
+}
+
+/** The stat entries the grid renders, from the array that feeds it. */
+function statEntries(): { label: string; href: string }[] {
+  const at = PROJECT_HOME.indexOf('const stats = [')
+  const arr = PROJECT_HOME.slice(at, PROJECT_HOME.indexOf(']', at))
+  return [...arr.matchAll(/label: '([^']*)'[^}]*href: '([^']*)'/g)].map((m) => ({
+    label: m[1],
+    href: m[2],
+  }))
 }
 
 describe('responsive layout · system instrument group', () => {
@@ -72,11 +112,11 @@ describe('responsive layout · system instrument group', () => {
   })
 
   it('stacks to a single column below md', () => {
-    expect(columnsAt('')).toBe(1)
+    expect(columnsAt(instrumentGroupClasses(), '')).toBe(1)
   })
 
   it('restores exactly three columns at md', () => {
-    expect(columnsAt('md:')).toBe(3)
+    expect(columnsAt(instrumentGroupClasses(), 'md:')).toBe(3)
   })
 
   it('steps at md and nowhere else', () => {
@@ -155,5 +195,69 @@ describe('responsive layout · the rest of /system is out of scope', () => {
   it('does not reach into the reference instrument row higher up the file', () => {
     // The row this pattern was copied from is already correct and stays as is.
     expect(SYSTEM).toContain('grid grid-cols-2 md:grid-cols-4 panel p-7 2xl:p-9')
+  })
+})
+
+describe('responsive layout · project home stat grid', () => {
+  it('is the container that actually renders the stat cards', () => {
+    // Guards the locator. The cards come from a map, so there is one Link in
+    // source and three on screen; anything counting source links would be
+    // describing the wrong thing.
+    const { block } = statGrid()
+    expect(block).toContain('stats.map(')
+    expect(statEntries()).toHaveLength(3)
+  })
+
+  it('gives each card the full row below sm', () => {
+    expect(columnsAt(statGrid().classes, '')).toBe(1)
+  })
+
+  it('restores exactly three columns at sm', () => {
+    expect(columnsAt(statGrid().classes, 'sm:')).toBe(3)
+  })
+
+  it('still widens to four columns at 3xl', () => {
+    expect(columnsAt(statGrid().classes, '3xl:')).toBe(4)
+  })
+
+  it('drops the redundant lg restatement rather than carrying it forward', () => {
+    // `lg:grid-cols-3` only ever restated the base. Once sm restores three it is
+    // dead responsive debt, and leaving it would imply a step that does nothing.
+    expect(columnsAt(statGrid().classes, 'lg:')).toBeNull()
+    expect(columnBreakpoints(statGrid().classes)).toEqual(['base', 'sm', '3xl'])
+  })
+
+  it('leaves the gaps exactly as they were', () => {
+    expect(gapsOf(statGrid().classes)).toEqual(['gap-4', 'lg:gap-5'])
+  })
+
+  it('keeps the cards as links, with their hrefs and order unchanged', () => {
+    expect(statEntries().map((s) => s.label)).toEqual(['Agenter', 'Workflows', 'Utdata'])
+    expect(statEntries().map((s) => s.href)).toEqual(['agents', 'workflows', 'outputs'])
+    const { block } = statGrid()
+    expect(block).toContain('<Link')
+    expect(block).toContain('href={`/projects/${slug}/${stat.href}`}')
+  })
+
+  it('does not redesign the card itself', () => {
+    const { block } = statGrid()
+    for (const token of [
+      'p-5',
+      'group',
+      'rounded-xl border border-border bg-card',
+      'hover:border-border/80',
+      'group-hover:opacity-100',
+      'text-3xl font-bold',
+    ]) {
+      expect(block).toContain(token)
+    }
+  })
+
+  it('leaves the M3.2 table conversion intact', () => {
+    expect(PROJECT_HOME).toContain('min-w-[512px]')
+    const wrapper = PROJECT_HOME.match(/<div className="([^"]*)"\s*>\s*<table/)
+    expect(wrapper).not.toBeNull()
+    expect(wrapper![1]).toContain('overflow-x-' + 'auto')
+    expect(wrapper![1]).not.toContain('overflow-' + 'hidden')
   })
 })

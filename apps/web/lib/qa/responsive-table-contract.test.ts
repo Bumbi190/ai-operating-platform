@@ -322,8 +322,19 @@ describe('responsive table · desktop presentation is untouched', () => {
     expect(read(SURFACES[0].rel)).not.toMatch(/\b(sm|md|lg|xl):/)
   })
 
-  it('leaves the project-home stat grid untouched — that grid is M4', () => {
-    expect(read(SURFACES[1].rel)).toContain('grid grid-cols-3 lg:grid-cols-3 3xl:grid-cols-4')
+  it('keeps the project-home stat grid a separate concern from the table', () => {
+    // M3.2 froze this grid's class string to prove the table slice had not
+    // touched it. M4.2 converged the grid on its own authority, so a frozen
+    // string is no longer the right guard — and it was always a weak one, since
+    // it would have passed on a duplicated container too. What the table
+    // contract still needs is that the two stay distinct: the grid is
+    // mobile-first, and no table treatment leaked into it.
+    const grid = read(SURFACES[1].rel).match(/<div className="([^"]*\bgrid\b[^"]*)"\s*>/)
+    expect(grid).not.toBeNull()
+    const tokens = grid![1].split(/\s+/)
+    expect(tokens.some((c) => new RegExp('^grid-cols-' + '([2-9]|\\d{2})$').test(c))).toBe(false)
+    expect(tokens.some((c) => new RegExp('^overflow-x-').test(c))).toBe(false)
+    expect(tokens.some((c) => new RegExp('^min-w-').test(c))).toBe(false)
   })
 })
 

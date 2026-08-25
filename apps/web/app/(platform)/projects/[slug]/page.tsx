@@ -60,7 +60,7 @@ export default async function ProjectPage({
 
       {/* OPERATIONAL · quick stats + actions */}
       <OSLayer layer="operational" className="space-y-5 lg:space-y-6">
-      <div className="grid grid-cols-3 lg:grid-cols-3 3xl:grid-cols-4 gap-4 lg:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 3xl:grid-cols-4 gap-4 lg:gap-5">
         {stats.map((stat) => {
           const Icon = stat.icon
           return (

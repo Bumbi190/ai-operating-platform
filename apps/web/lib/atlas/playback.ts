@@ -21,8 +21,14 @@
  *      `play()` and an external stop all race by construction, so every path
  *      funnels through one guarded `settle`, which is also the only place the
  *      object URL is revoked.
+ *
+ * And one rule the analyser does NOT get: it cannot veto speech. Only a
+ * captured element with no route to the speakers (`unusable`) stops playback.
+ * Web Audio failing to start at all is `direct` — Atlas still plays the audio
+ * the ordinary way, and only the browser's own autoplay policy may silence it.
  */
 
+import type { AtlasAudioRoute } from './audio-analysis'
 import type { AtlasServiceErrorCode } from './provider-errors'
 
 /** What actually happened to one spoken segment. */
@@ -49,8 +55,11 @@ export interface PlaybackResult {
 
 /** The analyser seam, narrowed to what playback actually needs from it. */
 export interface PlaybackAnalyser {
-  /** Resolves true when the element is safe to play and routed to output. */
-  connect(audio: HTMLAudioElement): Promise<boolean>
+  /**
+   * Report how the element ended up. Total by contract: `direct` means Web
+   * Audio never captured it, so ordinary playback is still the right move.
+   */
+  prepare(audio: HTMLAudioElement): Promise<AtlasAudioRoute>
   disconnect(): void
 }
 
@@ -141,25 +150,33 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
   audio.addEventListener('error', handleError)
 
   void (async () => {
-    // Attaching the analyser is best-effort. It reports whether the element is
-    // still safe to play; it never decides whether Atlas may speak.
-    let audible = true
+    // Attaching the analyser is best-effort, and its answer decides only ONE
+    // thing: whether playing this element could be silent. Visualisation never
+    // decides whether Atlas may speak.
+    let route: AtlasAudioRoute = 'direct'
     if (analyser) {
       try {
-        audible = await analyser.connect(audio)
+        route = await analyser.prepare(audio)
       } catch {
-        audible = false
+        // `prepare` is total, so this branch is unreachable in practice. If it
+        // ever fires, nothing completed a capture, and audible speech wins.
+        route = 'direct'
       }
     }
     if (settled) return
 
-    if (!audible) {
-      // The element could not be given a working output path. Saying nothing
-      // here is what produced a silent orb, so this is reported, not swallowed.
+    if (route === 'unusable') {
+      // The ONLY case that must not play: the element is captured by the graph
+      // with no path to the speakers. Playing it would produce exactly the
+      // silent-but-"speaking" orb this module exists to prevent.
       settle('failed')
       return
     }
 
+    // `routed` and `direct` are both playable. `direct` is the fallback that
+    // keeps Atlas audible when Web Audio could not start — an analyser problem
+    // must never become a speech failure. If the browser itself refuses, that
+    // surfaces below as a genuine autoplay denial rather than being hidden here.
     try {
       await audio.play()
     } catch (error) {

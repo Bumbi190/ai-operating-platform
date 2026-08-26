@@ -40,6 +40,33 @@ interface AtlasAudioAnalyserOptions {
  */
 export const ATLAS_AUDIO_RESUME_TIMEOUT_MS = 1_200
 
+/**
+ * How an element ended up, and therefore what the caller may safely do with it.
+ *
+ * A boolean cannot express this. `false` previously meant both "Web Audio never
+ * touched your element, play it normally" and "the element is captured and has
+ * nowhere to go" — opposite instructions to the caller. Conflating them turned
+ * a routine autoplay-policy timeout into a speech failure, which is exactly
+ * backwards from the rule that audible speech outranks visualisation.
+ */
+export type AtlasAudioRoute =
+  /** Captured, with a proven path to `destination`. Analyser may be running. */
+  | 'routed'
+  /** Never captured by this analyser. Ordinary element playback is correct. */
+  | 'direct'
+  /** Captured, but no usable path to `destination` could be established. */
+  | 'unusable'
+
+/**
+ * `createMediaElementSource` raises InvalidStateError specifically when the
+ * element already belongs to a MediaElementSourceNode. Every other throw leaves
+ * the element untouched per spec.
+ */
+function isInvalidStateError(error: unknown): boolean {
+  const candidate = error as { name?: unknown } | null
+  return typeof candidate?.name === 'string' && candidate.name === 'InvalidStateError'
+}
+
 async function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | 'timeout'> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -88,26 +115,30 @@ export class AtlasAudioAnalyser {
   }
 
   /**
-   * Attach the element to the graph and report whether it is safe to play.
+   * Attach the element to the graph and report how it may be played.
    *
    * ORDER IS THE FIX. `createMediaElementSource()` permanently reroutes an
-   * element's output into the Web Audio graph, so the previous version — which
-   * built the analyser first and only reached `destination` on the last line —
-   * could capture the element and then throw, leaving it playing into nothing.
-   * `onended` still fired on schedule, which is exactly what a silent orb that
+   * element's output into the Web Audio graph, so the original version — which
+   * built the analyser first and only reached `destination` on its last line —
+   * could capture the element and then throw, leaving it playing into nothing
+   * while `onended` still fired on schedule. That is what a silent orb that
    * believes it is speaking looks like.
    *
    * So the audible route is established FIRST, immediately after capture, and
    * the analyser is attached afterwards as a side branch off the same source.
-   * An `AnalyserNode` observes whatever is fed to it; it does not need to sit
-   * in the signal path, and routing it to `destination` as well would only
+   * An `AnalyserNode` observes whatever is fed to it; it does not need to sit in
+   * the signal path, and routing it onward to `destination` as well would only
    * double the signal. Visualisation can therefore fail on its own without
-   * taking the speech with it.
+   * taking the speech with it — that case still returns `routed`.
    *
-   * `false` means the element was never captured, so a plain `audio.play()` by
-   * the caller still reaches the speakers normally.
+   * Everything that can fail BEFORE capture returns `direct`, because the
+   * element is then untouched and a plain `audio.play()` still reaches the
+   * speakers. Only a captured element with no working output is `unusable`.
+   *
+   * Total by contract: this never throws, so a caller can treat its result as
+   * the whole truth about the element.
    */
-  async connect(audio: HTMLAudioElement): Promise<boolean> {
+  async prepare(audio: HTMLAudioElement): Promise<AtlasAudioRoute> {
     this.disconnect()
 
     let context: AudioContextLike
@@ -115,36 +146,42 @@ export class AtlasAudioAnalyser {
       this.context ??= this.createContext()
       context = this.context
     } catch {
-      return false
+      // No context was ever built, so nothing captured the element.
+      return 'direct'
     }
 
     if (context.state === 'suspended') {
       try {
         await settleWithin(Promise.resolve(context.resume()), this.resumeTimeoutMs)
       } catch {
-        return false
+        return 'direct'
       }
-      // Still suspended means the browser declined. Capturing the element into
-      // a graph that cannot output is the one thing worse than not capturing.
-      if (context.state === 'suspended') return false
+      // Still suspended means the browser declined to start the graph. The
+      // element has not been captured, so HTML media playback is still worth
+      // attempting — Web Audio policy and autoplay policy are separate gates,
+      // and only the second one gets to silence Atlas.
+      if (context.state === 'suspended') return 'direct'
     }
 
     let source: MediaElementAudioSourceNode
     try {
       source = context.createMediaElementSource(audio)
-    } catch {
-      // Never captured — the element is untouched and still plays normally.
-      return false
+    } catch (error) {
+      // Each spoken segment builds a fresh element, so InvalidStateError here
+      // means something already owns this element's output and we cannot claim
+      // it reaches the speakers. That is anomalous rather than routine, and
+      // reporting it beats playing into a graph we do not control. Any other
+      // throw creates no node at all, so the element is untouched.
+      return isInvalidStateError(error) ? 'unusable' : 'direct'
     }
 
+    // The element is captured from here on. Output before observation.
+    this.source = source
     try {
-      // The element is captured from here on. Output before observation.
       source.connect(context.destination)
-      this.source = source
     } catch {
-      this.source = source
       this.disconnect()
-      return false
+      return 'unusable'
     }
 
     try {
@@ -161,7 +198,7 @@ export class AtlasAudioAnalyser {
       this.store.set(0)
     }
 
-    return true
+    return 'routed'
   }
 
   disconnect() {

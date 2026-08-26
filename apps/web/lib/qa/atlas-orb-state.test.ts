@@ -141,7 +141,7 @@ describe('Atlas Web Audio lifecycle', () => {
       cancelFrame,
     })
 
-    await expect(controller.connect({} as HTMLAudioElement)).resolves.toBe(true)
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('routed')
     // Output before observation: the source reaches destination directly, and
     // the analyser hangs off it as a tap. Routing the analyser onward as well
     // would double the signal, and making it the only route to destination is
@@ -193,17 +193,32 @@ describe('Atlas Web Audio graph · audible output outranks visualisation', () =>
     return { controller, context, source, analyser }
   }
 
-  it('stays audible when analyser creation fails', async () => {
+  // ── Captured, with a working output path ────────────────────────────────────
+
+  it('stays routed when analyser creation fails after destination exists', async () => {
     const { controller, context, source } = harness({
       createAnalyser: vi.fn(() => { throw new Error('analyser unavailable') }),
     })
 
     // The whole point of the reorder: visualisation died, speech did not.
-    await expect(controller.connect({} as HTMLAudioElement)).resolves.toBe(true)
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('routed')
     expect(source.connect).toHaveBeenCalledWith(context.destination)
   })
 
-  it('never captures the element when a suspended context will not resume', async () => {
+  // ── Never captured — ordinary playback is still correct ─────────────────────
+
+  it('reports direct when no AudioContext can be created', async () => {
+    const controller = new AtlasAudioAnalyser({
+      store: new AtlasAudioLevelStore(),
+      createContext: () => { throw new Error('Web Audio is unavailable') },
+      requestFrame: () => 1,
+      cancelFrame: vi.fn(),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+  })
+
+  it('reports direct when a suspended context never resumes', async () => {
     vi.useFakeTimers()
     try {
       const { controller, context } = harness({
@@ -212,33 +227,68 @@ describe('Atlas Web Audio graph · audible output outranks visualisation', () =>
         resume: vi.fn(() => new Promise<void>(() => {})),
       })
 
-      const pending = controller.connect({} as HTMLAudioElement)
+      const pending = controller.prepare({} as HTMLAudioElement)
       await vi.advanceTimersByTimeAsync(2_000)
 
-      await expect(pending).resolves.toBe(false)
-      // Capturing here would route the element into a graph with no output.
+      // direct, NOT unusable: the element is untouched, so Atlas can still be
+      // heard. A Web Audio timeout must never become a speech failure.
+      await expect(pending).resolves.toBe('direct')
       expect(context.createMediaElementSource).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('never captures the element when resume settles but the context stays suspended', async () => {
+  it('reports direct when resume rejects', async () => {
+    const { controller, context } = harness({
+      state: 'suspended',
+      resume: vi.fn(async () => { throw new Error('resume refused') }),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+    expect(context.createMediaElementSource).not.toHaveBeenCalled()
+  })
+
+  it('reports direct when resume settles but the context stays suspended', async () => {
     const { controller, context } = harness({
       state: 'suspended',
       resume: vi.fn(async () => undefined),
     })
 
-    await expect(controller.connect({} as HTMLAudioElement)).resolves.toBe(false)
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
     expect(context.createMediaElementSource).not.toHaveBeenCalled()
   })
 
-  it('reports false without capturing when the element cannot be captured', async () => {
+  it('reports direct when capture throws without taking the element', async () => {
+    // Per spec no node is created, so the element was never rerouted.
     const { controller } = harness({
-      createMediaElementSource: vi.fn(() => { throw new Error('already captured') }),
+      createMediaElementSource: vi.fn(() => { throw new Error('not supported') }),
     })
 
-    // false here means "untouched" — the caller may still play it plainly.
-    await expect(controller.connect({} as HTMLAudioElement)).resolves.toBe(false)
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+  })
+
+  // ── Captured with nowhere to go — the only case that must not play ──────────
+
+  it('reports unusable when the element is already owned by a source node', async () => {
+    // Every segment builds a fresh element, so InvalidStateError is anomalous.
+    // We cannot claim this element reaches the speakers, so we say so.
+    const invalidState = Object.assign(new Error('already connected'), { name: 'InvalidStateError' })
+    const { controller } = harness({
+      createMediaElementSource: vi.fn(() => { throw invalidState }),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('unusable')
+  })
+
+  it('reports unusable when a captured element cannot reach destination', async () => {
+    const source = {
+      connect: vi.fn(() => { throw new Error('cannot route') }),
+      disconnect: vi.fn(),
+    }
+    const { controller } = harness({ createMediaElementSource: vi.fn(() => source) })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('unusable')
+    expect(source.disconnect).toHaveBeenCalled()
   })
 })

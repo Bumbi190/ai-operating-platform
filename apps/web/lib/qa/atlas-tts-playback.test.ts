@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import type { AtlasAudioRoute } from '@/lib/atlas/audio-analysis'
 import { classifyPlaybackError, playTtsUrl, type PlaybackAnalyser } from '@/lib/atlas/playback'
 
 /** Lets the module's internal async chain reach `audio.play()`. */
@@ -45,8 +46,11 @@ function fakeAudio(play: () => Promise<void> = async () => {}) {
   }
 }
 
-function okAnalyser(): PlaybackAnalyser & { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> } {
-  return { connect: vi.fn(async () => true), disconnect: vi.fn() }
+function routingAnalyser(route: AtlasAudioRoute = 'routed') {
+  return { prepare: vi.fn(async () => route), disconnect: vi.fn() } satisfies PlaybackAnalyser & {
+    prepare: ReturnType<typeof vi.fn>
+    disconnect: ReturnType<typeof vi.fn>
+  }
 }
 
 function play(audio: ReturnType<typeof fakeAudio>, extra: Record<string, unknown> = {}) {
@@ -55,7 +59,7 @@ function play(audio: ReturnType<typeof fakeAudio>, extra: Record<string, unknown
   const handle = playTtsUrl('blob:segment-1', {
     createAudio: () => audio as unknown as HTMLAudioElement,
     revokeObjectUrl,
-    analyser: okAnalyser(),
+    analyser: routingAnalyser(),
     onStart,
     ...extra,
   })
@@ -130,12 +134,11 @@ describe('Atlas TTS playback · failures are outcomes, never completions', () =>
     })
   })
 
-  it('treats an analyser that cannot route the element as a failure, not silence', async () => {
-    // connect() === false means the element has no working output path. Playing
-    // anyway is what produced audio nobody could hear.
+  it('refuses to play only a captured element with nowhere to go', async () => {
+    // `unusable` is the one case where playing would be silent-but-"speaking":
+    // the element belongs to the graph and the graph reaches no speakers.
     const audio = fakeAudio()
-    const analyser: PlaybackAnalyser = { connect: vi.fn(async () => false), disconnect: vi.fn() }
-    const { handle, onStart } = play(audio, { analyser })
+    const { handle, onStart } = play(audio, { analyser: routingAnalyser('unusable') })
 
     await expect(handle.result).resolves.toEqual({
       status: 'failed',
@@ -187,7 +190,7 @@ describe('Atlas TTS playback · settles exactly once', () => {
 
   it('detaches every listener and releases the analyser on settlement', async () => {
     const audio = fakeAudio()
-    const analyser = okAnalyser()
+    const analyser = routingAnalyser()
     const { handle } = play(audio, { analyser })
     await tick()
     expect(audio.listenerCount()).toBeGreaterThan(0)
@@ -221,6 +224,79 @@ describe('Atlas TTS playback · settles exactly once', () => {
     await handle.result
     audio.emit('playing')
 
+    expect(onStart).not.toHaveBeenCalled()
+  })
+})
+
+describe('Atlas TTS playback · analyser problems never silence Atlas', () => {
+  it('plays the element directly when Web Audio never captured it', async () => {
+    // The correction: `direct` is not a failure. Web Audio could not start, the
+    // element is untouched, and ordinary media playback is exactly right.
+    const audio = fakeAudio()
+    const analyser = routingAnalyser('direct')
+    const { handle, onStart } = play(audio, { analyser })
+    await tick()
+
+    expect(analyser.prepare).toHaveBeenCalledTimes(1)
+    expect(audio.play).toHaveBeenCalledTimes(1)
+
+    audio.emit('playing')
+    expect(onStart).toHaveBeenCalledTimes(1)
+
+    audio.emit('ended')
+    await expect(handle.result).resolves.toEqual({ status: 'completed', code: null, started: true })
+  })
+
+  it('plays directly when a suspended context timed out before capture', async () => {
+    // What AtlasAudioAnalyser reports after its bounded resume gives up. The
+    // element was never captured, so speech must still be attempted.
+    const audio = fakeAudio()
+    const { handle, onStart } = play(audio, { analyser: routingAnalyser('direct') })
+    await tick()
+
+    expect(audio.play).toHaveBeenCalledTimes(1)
+    audio.emit('playing')
+    audio.emit('ended')
+
+    expect(onStart).toHaveBeenCalledTimes(1)
+    await expect(handle.result).resolves.toEqual({ status: 'completed', code: null, started: true })
+  })
+
+  it('still plays when the analyser attached but visualisation failed', async () => {
+    // `routed` covers "captured, destination live, analyser dead".
+    const audio = fakeAudio()
+    const { handle } = play(audio, { analyser: routingAnalyser('routed') })
+    await tick()
+
+    expect(audio.play).toHaveBeenCalledTimes(1)
+    audio.emit('playing')
+    audio.emit('ended')
+    await expect(handle.result).resolves.toEqual({ status: 'completed', code: null, started: true })
+  })
+
+  it('plays directly when there is no analyser at all', async () => {
+    const audio = fakeAudio()
+    const { handle } = play(audio, { analyser: null })
+    await tick()
+
+    expect(audio.play).toHaveBeenCalledTimes(1)
+    audio.emit('playing')
+    audio.emit('ended')
+    await expect(handle.result).resolves.toEqual({ status: 'completed', code: null, started: true })
+  })
+
+  it('does not let the direct fallback hide an autoplay denial', async () => {
+    // The fallback must not paper over the browser's own refusal — otherwise
+    // we would have swapped one silent lie for another.
+    const denial = Object.assign(new Error('blocked'), { name: 'NotAllowedError' })
+    const audio = fakeAudio(async () => { throw denial })
+    const { handle, onStart } = play(audio, { analyser: routingAnalyser('direct') })
+
+    await expect(handle.result).resolves.toEqual({
+      status: 'blocked',
+      code: 'ATLAS_TTS_PLAYBACK_BLOCKED',
+      started: false,
+    })
     expect(onStart).not.toHaveBeenCalled()
   })
 })

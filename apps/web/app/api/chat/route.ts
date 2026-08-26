@@ -697,6 +697,10 @@ export async function POST(request: Request) {
       }
 
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
+      // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
+      // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
+      // för att avgöra VAR tiden gick. Klienten slår ihop ramarna additivt.
+      let earlyTimingSent = false
       let actionToolUsed = false  // kördes ett ÅTGÄRDS-verktyg (trigger_workflow/delegate) DENNA förfrågan?
       // OBS: list_workflows/get_run_status/ask_manager räknas INTE — de är läsningar.
       // Ärlighetsspärren får bara tystas av ett verkligt, lyckat åtgärdsanrop.
@@ -729,7 +733,14 @@ export async function POST(request: Request) {
             messages: msgs,
           })
           llm.on('text', (delta: string) => {
-            if (!firstTokenMs) firstTokenMs = Date.now() - tStart
+            if (!firstTokenMs) {
+              firstTokenMs = Date.now() - tStart
+              if (!earlyTimingSent) {
+                earlyTimingSent = true
+                // Diagnostik, inte innehåll: eget event, aldrig 'text'.
+                send('timing', { reqType, contextMs, firstTokenMs })
+              }
+            }
             if (delta) send('text', { text: delta })
           })
           const response = await llm.finalMessage()

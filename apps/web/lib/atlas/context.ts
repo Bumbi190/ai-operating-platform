@@ -105,18 +105,83 @@ export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]
     try { const { data } = await p; return (data ?? fallback) } catch { return fallback }
   }
 
-  // ── Projects (businesses) ──────────────────────────────────────────────────
-  const projects = await safe<any[]>(
-    applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), [],
-  )
+  // ── Every read, launched together ──────────────────────────────────────────
+  //
+  // These eight sources are independent by construction: each builder is made
+  // from `db`, `allowedProjectIds` and the date boundaries computed above, and
+  // none of them reads another's result. Walking them one at a time meant eight
+  // sequential round trips to a database on another continent, which the latency
+  // audit measured as the dominant cost of a cold Atlas context.
+  //
+  // `Promise.all` is correct here for one specific reason: `safe()` NEVER
+  // REJECTS. It converts any failure into that source's fallback before its
+  // promise settles, so a dead source degrades to `[]` exactly as it did when
+  // these were sequential, and the other seven are untouched. That property is
+  // what makes this safe rather than a raw Promise.all over bare queries — and a
+  // test pins it, so if `safe()` ever starts rethrowing, that fails loudly
+  // instead of silently emptying the context in production.
+  //
+  // Destructuring in a fixed order means completion order cannot reach the
+  // output: whichever query finishes first, assembly below is unchanged.
+  const [
+    projects,
+    costRows,
+    revRows,
+    leadRows,
+    scriptRows,
+    pendingApprovalsRows,
+    failedRunsRows,
+    decisionRows,
+  ] = await Promise.all([
+    // Projects (businesses)
+    safe<any[]>(
+      applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), [],
+    ),
+    // Cost events this month (today/week/month + per-project + per-provider)
+    safe<any[]>(
+      applyProjectScope(db.from('cost_events')
+        .select('project_id, provider, cost_sek, created_at')
+        .gte('created_at', monthStart.toISOString()), allowedProjectIds),
+      [],
+    ),
+    // Revenue this month, per project
+    safe<any[]>(
+      applyProjectScope(db.from('revenue_events').select('project_id, amount_sek, occurred_at').gte('occurred_at', monthStart.toISOString()), allowedProjectIds),
+      [],
+    ),
+    // Leads (qualified) per project
+    safe<any[]>(
+      applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), [],
+    ),
+    // Media scripts: published this week + pending review, per project
+    safe<any[]>(
+      applyProjectScope(db.from('media_scripts').select('project_id, status, published_at').gte('generated_at', weekStart.toISOString()), allowedProjectIds),
+      [],
+    ),
+    // Platform: pending approvals
+    safe<any[]>(
+      applyProjectScope(db.from('approvals').select('id').eq('status', 'pending'), allowedProjectIds), [],
+    ),
+    // Platform: failed runs (24h)
+    safe<any[]>(
+      applyProjectScope(db.from('runs').select('id').eq('status', 'failed').gte('created_at', new Date(now.getTime() - 864e5).toISOString()), allowedProjectIds),
+      [],
+    ),
+    // Operator decisions (D1) — project-scoped like every other read
+    safe<DecisionRow[]>(
+      applyProjectScope(
+        db.from('memories')
+          .select('key, value, source, updated_at')
+          .in('source', DECISION_SOURCES)
+          .order('updated_at', { ascending: false }),
+        allowedProjectIds,
+      ),
+      [],
+    ),
+  ])
 
-  // ── Cost events this month (today/week/month + per-project + per-provider) ──
-  const costRows = await safe<any[]>(
-    applyProjectScope(db.from('cost_events')
-      .select('project_id, provider, cost_sek, created_at')
-      .gte('created_at', monthStart.toISOString()), allowedProjectIds),
-    [],
-  )
+  // ── Derivation, in the same order and with the same arithmetic as before ────
+
   let costToday = 0, costWeek = 0, costMonth = 0
   const costByProject = new Map<string, number>()
   const costByProvider = new Map<string, number>()
@@ -133,11 +198,6 @@ export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const forecastMonth = dayOfMonth > 0 ? (costMonth / dayOfMonth) * daysInMonth : 0
 
-  // ── Revenue this month, per project ────────────────────────────────────────
-  const revRows = await safe<any[]>(
-    applyProjectScope(db.from('revenue_events').select('project_id, amount_sek, occurred_at').gte('occurred_at', monthStart.toISOString()), allowedProjectIds),
-    [],
-  )
   let revenueMonth = 0
   const revByProject = new Map<string, number>()
   for (const r of revRows) {
@@ -146,10 +206,6 @@ export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]
     if (r.project_id) revByProject.set(r.project_id, (revByProject.get(r.project_id) ?? 0) + sek)
   }
 
-  // ── Leads (qualified) per project ──────────────────────────────────────────
-  const leadRows = await safe<any[]>(
-    applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), [],
-  )
   const qualifiedByProject = new Map<string, number>()
   for (const l of leadRows) {
     if (['new', 'qualified', 'warm'].includes(String(l.status))) {
@@ -157,11 +213,6 @@ export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]
     }
   }
 
-  // ── Media scripts: published this week + pending review, per project ───────
-  const scriptRows = await safe<any[]>(
-    applyProjectScope(db.from('media_scripts').select('project_id, status, published_at').gte('generated_at', weekStart.toISOString()), allowedProjectIds),
-    [],
-  )
   const publishedByProject = new Map<string, number>()
   const reviewByProject = new Map<string, number>()
   for (const s of scriptRows) {
@@ -173,29 +224,8 @@ export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]
     }
   }
 
-  // ── Platform: pending approvals + failed runs (24h) ────────────────────────
-  const pendingApprovalsRows = await safe<any[]>(
-    applyProjectScope(db.from('approvals').select('id').eq('status', 'pending'), allowedProjectIds), [],
-  )
   const pendingApprovals = pendingApprovalsRows.length
-
-  const failedRunsRows = await safe<any[]>(
-    applyProjectScope(db.from('runs').select('id').eq('status', 'failed').gte('created_at', new Date(now.getTime() - 864e5).toISOString()), allowedProjectIds),
-    [],
-  )
   const failedRuns24h = failedRunsRows.length
-
-  // ── Operator decisions (D1) — project-scoped like every other read ──────────
-  const decisionRows = await safe<DecisionRow[]>(
-    applyProjectScope(
-      db.from('memories')
-        .select('key, value, source, updated_at')
-        .in('source', DECISION_SOURCES)
-        .order('updated_at', { ascending: false }),
-      allowedProjectIds,
-    ),
-    [],
-  )
   const decisions = selectActiveDecisions(decisionRows)
 
   // ── Assemble per-business snapshots ────────────────────────────────────────

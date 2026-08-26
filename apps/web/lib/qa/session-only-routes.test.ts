@@ -257,13 +257,27 @@ describe('session positive paths', () => {
 
   it('tts preserves its body contract after auth', async () => {
     stubOpenAI()
+    // `hd` is gone from the contract; an explicit `speed` is still honoured.
     await ttsRoute.POST(postT({ text: '  hej  ', voice: 'nova', hd: false, speed: 2 }))
     const body = openaiCalls[0].body as Record<string, unknown>
-    expect(body.model).toBe('tts-1')
+    expect(body.model).toBe('gpt-4o-mini-tts')
     expect(body.voice).toBe('nova')
     expect(body.input).toBe('hej')
     expect(body.response_format).toBe('mp3')
     expect(body.speed).toBe(2)
+    // `hd` can no longer select a model, so it must not reach the provider.
+    expect(body.hd).toBeUndefined()
+  })
+
+  it('tts sends the benchmarked payload verbatim when no speed is supplied', async () => {
+    stubOpenAI()
+    // This is the ONLY path Atlas itself uses: runtime.tsx sends { text, voice }.
+    // It has to stay field-for-field identical to the approved listening test.
+    await ttsRoute.POST(postT({ text: 'hej', voice: 'onyx' }))
+    const b = openaiCalls[0].body as Record<string, unknown>
+    expect(Object.keys(b).sort()).toEqual(['input', 'model', 'response_format', 'voice'])
+    expect(b.speed).toBeUndefined()
+    expect(b.instructions).toBeUndefined()
   })
 
   it('tts still truncates to 600 characters', async () => {
@@ -272,13 +286,26 @@ describe('session positive paths', () => {
     expect((openaiCalls[0].body as { input: string }).input).toHaveLength(600)
   })
 
-  it('tts still clamps speed and defaults voice/hd', async () => {
+  it('tts still clamps an explicit speed and defaults voice/model', async () => {
     stubOpenAI()
     await ttsRoute.POST(postT({ text: 'x', speed: 99 }))
     const b = openaiCalls[0].body as Record<string, unknown>
+    // The clamp is unchanged; only the DEFAULT of 1.08 was dropped.
     expect(b.speed).toBe(4.0)
     expect(b.voice).toBe('onyx')
-    expect(b.model).toBe('tts-1-hd')
+    expect(b.model).toBe('gpt-4o-mini-tts')
+  })
+
+  it('tts clamps a too-low explicit speed to the floor', async () => {
+    stubOpenAI()
+    await ttsRoute.POST(postT({ text: 'x', speed: 0.01 }))
+    expect((openaiCalls[0].body as Record<string, unknown>).speed).toBe(0.25)
+  })
+
+  it('tts ignores a non-numeric speed rather than forwarding junk', async () => {
+    stubOpenAI()
+    await ttsRoute.POST(postT({ text: 'x', speed: 'fast' }))
+    expect((openaiCalls[0].body as Record<string, unknown>).speed).toBeUndefined()
   })
 
   it('tts still 400s on empty text — after auth, before OpenAI', async () => {

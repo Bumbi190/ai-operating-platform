@@ -33,6 +33,7 @@ import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamF
 import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { isActionIntent } from '@/lib/atlas/action-intent'
+import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
@@ -592,23 +593,41 @@ export async function POST(request: Request) {
   const db = createAdminClient()
   const tStart = Date.now()
 
-  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
-  // path (live context, ask_manager, get_dream_findings) is scoped to these.
-  // Single-owner today → all projects; multi-tenant ready by construction.
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
+  // Routing is decided from the message alone, BEFORE any database work. Every
+  // classifier here is a pure function, so hoisting them above the isolation
+  // read changes nothing for any existing path — it only makes it possible for
+  // a class that needs no project data to skip that read entirely.
   const lastUserText = (() => {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
   const fastPath = mode === 'content' || isFastPathContent(lastUserText)
+  // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
+  // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
+  // data, projekt, Memory, klocka och verktyg går full path.
+  const staticConversation =
+    !fastPath && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Action-intent (kör/starta/publicera …) → tvinga verktygsanrop på första turen.
-  const actionIntent = !fastPath && isActionIntent(lastUserText)
+  const actionIntent = !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
-  const navIntent = !fastPath && !actionIntent && isNavIntent(lastUserText)
-  const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+  const navIntent = !fastPath && !staticConversation && !actionIntent && isNavIntent(lastUserText)
+  const reqType = fastPath
+    ? 'fast_path'
+    : staticConversation
+      ? 'static_conversation'
+      : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+
+  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
+  // path (live context, ask_manager, get_dream_findings) is scoped to these.
+  // Single-owner today → all projects; multi-tenant ready by construction.
+  //
+  // Skipped ONLY for static conversation, where it provably has no consumer:
+  // that path builds no project context and is sent no tools, so `executeTool`
+  // — the one remaining reader of this list — cannot be reached. Every other
+  // path, the content fast path included, reads it exactly as before.
+  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -618,6 +637,12 @@ export async function POST(request: Request) {
   if (fastPath) {
     // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else if (staticConversation) {
+    // Identitet räcker. Ingen live-snapshot, inget projekt-, verktygs- eller
+    // åtgärdsminne, ingen klocka — och därmed ingen databasläsning alls.
+    // STATIC_CONVERSATION_SYSTEM säger uttryckligen att live-data saknas denna
+    // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
+    systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -686,7 +711,12 @@ export async function POST(request: Request) {
     }
   }
 
-  const activeTools = fastPath ? [] : TOOLS
+  // Static conversation is defined as the class that needs no tool, so it is
+  // sent none. Sending zero tools is also what makes skipping the isolation
+  // read safe: with no tool schema the model cannot emit a tool_use block, so
+  // executeTool is unreachable on this path. Every other class keeps TOOLS
+  // exactly as before — this is not general per-class schema pruning.
+  const activeTools = (fastPath || staticConversation) ? [] : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
   const forceNavigateFirstTurn = navIntent && activeTools.length > 0

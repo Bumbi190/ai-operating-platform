@@ -28,6 +28,28 @@ interface AtlasAudioAnalyserOptions {
   createContext?: () => AudioContextLike
   requestFrame?: (callback: FrameRequestCallback) => number
   cancelFrame?: (id: number) => void
+  /** How long `resume()` may take before the graph is abandoned. */
+  resumeTimeoutMs?: number
+}
+
+/**
+ * Under autoplay policy Chrome's `resume()` on a suspended context does not
+ * reject — it simply never settles until a user gesture arrives. Awaiting it
+ * unguarded stalled the whole speech queue, which is how the orb reached a
+ * permanent `speaking` with no audio. Nothing here polls; one timer decides.
+ */
+export const ATLAS_AUDIO_RESUME_TIMEOUT_MS = 1_200
+
+async function settleWithin<T>(promise: Promise<T>, ms: number): Promise<T | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), ms) }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }
 
 export function normalizeAudioSamples(samples: Uint8Array): number {
@@ -46,6 +68,7 @@ export class AtlasAudioAnalyser {
   private readonly createContext: () => AudioContextLike
   private readonly requestFrame: (callback: FrameRequestCallback) => number
   private readonly cancelFrame: (id: number) => void
+  private readonly resumeTimeoutMs: number
   private context: AudioContextLike | null = null
   private source: MediaElementAudioSourceNode | null = null
   private analyser: AnalyserNode | null = null
@@ -61,27 +84,84 @@ export class AtlasAudioAnalyser {
     })
     this.requestFrame = options.requestFrame ?? requestAnimationFrame
     this.cancelFrame = options.cancelFrame ?? cancelAnimationFrame
+    this.resumeTimeoutMs = options.resumeTimeoutMs ?? ATLAS_AUDIO_RESUME_TIMEOUT_MS
   }
 
+  /**
+   * Attach the element to the graph and report whether it is safe to play.
+   *
+   * ORDER IS THE FIX. `createMediaElementSource()` permanently reroutes an
+   * element's output into the Web Audio graph, so the previous version — which
+   * built the analyser first and only reached `destination` on the last line —
+   * could capture the element and then throw, leaving it playing into nothing.
+   * `onended` still fired on schedule, which is exactly what a silent orb that
+   * believes it is speaking looks like.
+   *
+   * So the audible route is established FIRST, immediately after capture, and
+   * the analyser is attached afterwards as a side branch off the same source.
+   * An `AnalyserNode` observes whatever is fed to it; it does not need to sit
+   * in the signal path, and routing it to `destination` as well would only
+   * double the signal. Visualisation can therefore fail on its own without
+   * taking the speech with it.
+   *
+   * `false` means the element was never captured, so a plain `audio.play()` by
+   * the caller still reaches the speakers normally.
+   */
   async connect(audio: HTMLAudioElement): Promise<boolean> {
     this.disconnect()
+
+    let context: AudioContextLike
     try {
       this.context ??= this.createContext()
-      if (this.context.state === 'suspended') await this.context.resume()
-      const analyser = this.context.createAnalyser()
-      analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.72
-      const source = this.context.createMediaElementSource(audio)
-      source.connect(analyser)
-      analyser.connect(this.context.destination)
-      this.source = source
-      this.analyser = analyser
-      this.sample()
-      return true
+      context = this.context
     } catch {
+      return false
+    }
+
+    if (context.state === 'suspended') {
+      try {
+        await settleWithin(Promise.resolve(context.resume()), this.resumeTimeoutMs)
+      } catch {
+        return false
+      }
+      // Still suspended means the browser declined. Capturing the element into
+      // a graph that cannot output is the one thing worse than not capturing.
+      if (context.state === 'suspended') return false
+    }
+
+    let source: MediaElementAudioSourceNode
+    try {
+      source = context.createMediaElementSource(audio)
+    } catch {
+      // Never captured — the element is untouched and still plays normally.
+      return false
+    }
+
+    try {
+      // The element is captured from here on. Output before observation.
+      source.connect(context.destination)
+      this.source = source
+    } catch {
+      this.source = source
       this.disconnect()
       return false
     }
+
+    try {
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.72
+      // A tap off the source, deliberately NOT routed onward to destination.
+      source.connect(analyser)
+      this.analyser = analyser
+      this.sample()
+    } catch {
+      // Amplitude visualisation is optional; the speech above is already live.
+      this.analyser = null
+      this.store.set(0)
+    }
+
+    return true
   }
 
   disconnect() {

@@ -141,9 +141,14 @@ describe('Atlas Web Audio lifecycle', () => {
       cancelFrame,
     })
 
-    await expect(controller.connect({} as HTMLAudioElement)).resolves.toBe(true)
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('routed')
+    // Output before observation: the source reaches destination directly, and
+    // the analyser hangs off it as a tap. Routing the analyser onward as well
+    // would double the signal, and making it the only route to destination is
+    // what let a failed analyser silence the speech.
+    expect(source.connect).toHaveBeenCalledWith(context.destination)
     expect(source.connect).toHaveBeenCalledWith(analyser)
-    expect(analyser.connect).toHaveBeenCalledWith(context.destination)
+    expect(analyser.connect).not.toHaveBeenCalled()
     expect(frameCallback).not.toBeNull()
     ;(frameCallback as unknown as FrameRequestCallback)(16)
     expect(store.getSnapshot()).toBeGreaterThan(0)
@@ -156,5 +161,134 @@ describe('Atlas Web Audio lifecycle', () => {
 
     await controller.dispose()
     expect(context.close).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Atlas Web Audio graph · audible output outranks visualisation', () => {
+  function harness(overrides: Record<string, unknown> = {}) {
+    const source = { connect: vi.fn(), disconnect: vi.fn() }
+    const analyser = {
+      fftSize: 0,
+      smoothingTimeConstant: 0,
+      frequencyBinCount: 32,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      getByteTimeDomainData: vi.fn((samples: Uint8Array) => samples.fill(180)),
+    }
+    const context = {
+      state: 'running',
+      destination: {},
+      resume: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+      createAnalyser: vi.fn(() => analyser),
+      createMediaElementSource: vi.fn(() => source),
+      ...overrides,
+    }
+    const controller = new AtlasAudioAnalyser({
+      store: new AtlasAudioLevelStore(),
+      createContext: () => context as any,
+      requestFrame: () => 1,
+      cancelFrame: vi.fn(),
+    })
+    return { controller, context, source, analyser }
+  }
+
+  // ── Captured, with a working output path ────────────────────────────────────
+
+  it('stays routed when analyser creation fails after destination exists', async () => {
+    const { controller, context, source } = harness({
+      createAnalyser: vi.fn(() => { throw new Error('analyser unavailable') }),
+    })
+
+    // The whole point of the reorder: visualisation died, speech did not.
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('routed')
+    expect(source.connect).toHaveBeenCalledWith(context.destination)
+  })
+
+  // ── Never captured — ordinary playback is still correct ─────────────────────
+
+  it('reports direct when no AudioContext can be created', async () => {
+    const controller = new AtlasAudioAnalyser({
+      store: new AtlasAudioLevelStore(),
+      createContext: () => { throw new Error('Web Audio is unavailable') },
+      requestFrame: () => 1,
+      cancelFrame: vi.fn(),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+  })
+
+  it('reports direct when a suspended context never resumes', async () => {
+    vi.useFakeTimers()
+    try {
+      const { controller, context } = harness({
+        state: 'suspended',
+        // Chrome's real behaviour under autoplay policy: never settles.
+        resume: vi.fn(() => new Promise<void>(() => {})),
+      })
+
+      const pending = controller.prepare({} as HTMLAudioElement)
+      await vi.advanceTimersByTimeAsync(2_000)
+
+      // direct, NOT unusable: the element is untouched, so Atlas can still be
+      // heard. A Web Audio timeout must never become a speech failure.
+      await expect(pending).resolves.toBe('direct')
+      expect(context.createMediaElementSource).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports direct when resume rejects', async () => {
+    const { controller, context } = harness({
+      state: 'suspended',
+      resume: vi.fn(async () => { throw new Error('resume refused') }),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+    expect(context.createMediaElementSource).not.toHaveBeenCalled()
+  })
+
+  it('reports direct when resume settles but the context stays suspended', async () => {
+    const { controller, context } = harness({
+      state: 'suspended',
+      resume: vi.fn(async () => undefined),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+    expect(context.createMediaElementSource).not.toHaveBeenCalled()
+  })
+
+  it('reports direct when capture throws without taking the element', async () => {
+    // Per spec no node is created, so the element was never rerouted.
+    const { controller } = harness({
+      createMediaElementSource: vi.fn(() => { throw new Error('not supported') }),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('direct')
+  })
+
+  // ── Captured with nowhere to go — the only case that must not play ──────────
+
+  it('reports unusable when the element is already owned by a source node', async () => {
+    // Every segment builds a fresh element, so InvalidStateError is anomalous.
+    // We cannot claim this element reaches the speakers, so we say so.
+    const invalidState = Object.assign(new Error('already connected'), { name: 'InvalidStateError' })
+    const { controller } = harness({
+      createMediaElementSource: vi.fn(() => { throw invalidState }),
+    })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('unusable')
+  })
+
+  it('reports unusable when a captured element cannot reach destination', async () => {
+    const source = {
+      connect: vi.fn(() => { throw new Error('cannot route') }),
+      disconnect: vi.fn(),
+    }
+    const { controller } = harness({ createMediaElementSource: vi.fn(() => source) })
+
+    await expect(controller.prepare({} as HTMLAudioElement)).resolves.toBe('unusable')
+    expect(source.disconnect).toHaveBeenCalled()
   })
 })

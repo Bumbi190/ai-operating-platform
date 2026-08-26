@@ -24,6 +24,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient }           from '@/lib/supabase/client'
 import { buildChatRequestBody }   from '@/lib/atlas/view-client'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
+import { playTtsUrl, type PlaybackHandle, type PlaybackResult } from './playback'
 import {
   ATLAS_ACTION_TOOL_NAMES,
   interpretAtlasToolResult,
@@ -34,6 +35,9 @@ import {
 import { resolveWorkspace, resolveActiveProject } from './workspace-registry'
 
 // ── Typer ────────────────────────────────────────────────────────────────────
+
+/** Server-side timing carried alongside a spoken segment, for the perf readout. */
+interface ServerTiming { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number }
 
 /** Mekanisk/audio-tillstånd — vad rösten gör just nu. */
 export type VoicePhase =
@@ -197,8 +201,9 @@ export function AtlasRuntimeProvider({
 
   // ── Voice-refs ────────────────────────────────────────────────────────────
   const recRef       = useRef<any>(null)
-  const audioRef     = useRef<HTMLAudioElement | null>(null)
-  const finishAudioRef = useRef<(() => void) | null>(null)
+  // One live segment at a time. The handle owns the element, the analyser and
+  // the object URL, so nothing here has to reach past it to tear a segment down.
+  const playbackRef  = useRef<PlaybackHandle | null>(null)
   const audioLevelStoreRef = useRef<AtlasAudioLevelStore | null>(null)
   const audioAnalyserRef = useRef<AtlasAudioAnalyser | null>(null)
   const silenceRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -212,7 +217,7 @@ export function AtlasRuntimeProvider({
   if (!audioLevelStoreRef.current) audioLevelStoreRef.current = new AtlasAudioLevelStore()
 
   useEffect(() => () => {
-    finishAudioRef.current?.()
+    playbackRef.current?.stop()
     void audioAnalyserRef.current?.dispose()
   }, [])
 
@@ -278,7 +283,7 @@ export function AtlasRuntimeProvider({
       if (closedRef.current)    return
       if (!listeningRef.current) return
       if (recActiveRef.current)  return
-      if (audioRef.current)      return
+      if (playbackRef.current)   return
       if (phaseRef.current === 'thinking' || phaseRef.current === 'speaking') return
       startListeningRef.current()
     }, 1500)
@@ -420,32 +425,34 @@ export function AtlasRuntimeProvider({
     }
   }
 
-  function playUrl(url: string): Promise<void> {
-    return new Promise((resolve) => {
-      const audio = new Audio(url)
-      audioRef.current = audio
-      let settled = false
-      const finish = () => {
-        if (settled) return
-        settled = true
-        getAudioAnalyser().disconnect()
-        try { URL.revokeObjectURL(url) } catch { /* ignore */ }
-        if (audioRef.current === audio) audioRef.current = null
-        if (finishAudioRef.current === finish) finishAudioRef.current = null
-        resolve()
-      }
-      finishAudioRef.current = finish
-      audio.onended = finish
-      audio.onerror = finish
-      void getAudioAnalyser().connect(audio).finally(() => {
-        audio.play().catch(finish)
-      })
+  /**
+   * Play one segment and report what genuinely happened.
+   *
+   * `speaking` is raised from `onStart`, which fires on the element's `playing`
+   * event — the first moment audio is actually leaving the browser. It is NOT
+   * raised when the blob arrives and NOT when `play()` is called; either would
+   * be the orb claiming to speak into silence, which is the defect this fixes.
+   */
+  async function playUrl(url: string, serverTiming?: ServerTiming): Promise<PlaybackResult> {
+    const handle = playTtsUrl(url, {
+      analyser: getAudioAnalyser(),
+      onStart: () => {
+        setVoicePhase('speaking')
+        if (!marksRef.current.firstAudio) {
+          marksRef.current.firstAudio = performance.now()
+          logLatency(serverTiming)
+        }
+      },
     })
+    playbackRef.current = handle
+    try {
+      return await handle.result
+    } finally {
+      if (playbackRef.current === handle) playbackRef.current = null
+    }
   }
 
-  function logLatency(
-    serverTiming?: { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number }
-  ) {
+  function logLatency(serverTiming?: ServerTiming) {
     const m = marksRef.current
     const totalToVoice = (m.speechEnd && m.firstAudio)
       ? Math.round(m.firstAudio - m.speechEnd)
@@ -486,8 +493,7 @@ export function AtlasRuntimeProvider({
 
   function stopAudio() {
     cancelRef.current = true
-    try { audioRef.current?.pause() } catch { /* ignore */ }
-    finishAudioRef.current?.()
+    playbackRef.current?.stop()
     getAudioAnalyser().disconnect()
     setVoicePhase('idle')
     if (!closedRef.current) {
@@ -531,7 +537,7 @@ export function AtlasRuntimeProvider({
     let streamDone    = false
     let playerStarted = false
     let ttsFailureReported = false
-    let serverTiming: { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number } | undefined
+    let serverTiming: ServerTiming | undefined
 
     const player = async () => {
       let idx = 0
@@ -552,14 +558,14 @@ export function AtlasRuntimeProvider({
           break
         }
         if (url) {
-          // `speaking` begins only after a real TTS blob exists. While the
-          // network request is pending Atlas truthfully remains `thinking`.
-          setVoicePhase('speaking')
-          if (!marksRef.current.firstAudio) {
-            marksRef.current.firstAudio = performance.now()
-            logLatency(serverTiming)
+          // The phase is raised inside playUrl, on real playback start. Here we
+          // only care what came back: a blocked or failed segment must reach the
+          // operator rather than pass for speech nobody heard.
+          const outcome = await playUrl(url, serverTiming)
+          if (outcome.code && !ttsFailureReported) {
+            ttsFailureReported = true
+            setWarning(resolveAtlasServiceWarning(outcome.code))
           }
-          await playUrl(url)
         }
       }
       if (cancelRef.current && idx < urlQueue.length) {

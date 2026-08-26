@@ -4,6 +4,8 @@ export const ATLAS_SERVICE_ERROR_CODES = [
   'ATLAS_PROVIDER_REQUEST_FAILED',
   'ATLAS_TTS_NOT_CONFIGURED',
   'ATLAS_TTS_REQUEST_FAILED',
+  'ATLAS_TTS_PLAYBACK_BLOCKED',
+  'ATLAS_TTS_PLAYBACK_FAILED',
 ] as const
 
 export type AtlasServiceErrorCode = (typeof ATLAS_SERVICE_ERROR_CODES)[number]
@@ -14,6 +16,8 @@ const ATLAS_SERVICE_ERROR_MESSAGES: Record<AtlasServiceErrorCode, string> = {
   ATLAS_PROVIDER_REQUEST_FAILED: 'Atlas kunde inte hämta ett AI-svar just nu.',
   ATLAS_TTS_NOT_CONFIGURED: 'Atlas svarade i text, men röstleverantören är inte konfigurerad i servermiljön.',
   ATLAS_TTS_REQUEST_FAILED: 'Atlas svarade i text, men ljudet kunde inte skapas just nu.',
+  ATLAS_TTS_PLAYBACK_BLOCKED: 'Atlas kunde skapa rösten men webbläsaren blockerade ljuduppspelningen. Klicka i fönstret och försök igen.',
+  ATLAS_TTS_PLAYBACK_FAILED: 'Atlas skapade rösten men ljudet kunde inte spelas upp i webbläsaren.',
 }
 
 export function isAtlasServiceErrorCode(value: unknown): value is AtlasServiceErrorCode {

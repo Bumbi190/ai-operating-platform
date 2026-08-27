@@ -206,7 +206,7 @@ describe('Risk holds veto', () => {
       riskClearance: issueRiskClearance(ISSUER, makeRisk('DENY')),
     }))
     expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('MISSING_RISK_DECISION')
+    expect(codes(r)).toContain('MISSING_RISK_CLEARANCE')
   })
 
   it('refuses when the Risk verdict was UNKNOWN', () => {
@@ -246,7 +246,7 @@ describe('Prop holds veto independently', () => {
       propClearance: issuePropClearance(ISSUER, makeProp('DENY')),
     }))
     expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('MISSING_PROP_DECISION')
+    expect(codes(r)).toContain('MISSING_PROP_CLEARANCE')
   })
 })
 
@@ -261,7 +261,7 @@ describe('Approval is required and expires', () => {
   it('refuses without a grant', () => {
     const r = openExecutionGate(makeInput({ approvalGrant: null }))
     expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('MISSING_APPROVAL')
+    expect(codes(r)).toContain('MISSING_APPROVAL_GRANT')
   })
 
   it('refuses a grant for a different proposal', () => {
@@ -428,9 +428,9 @@ describe('proposal status is never authority by itself', () => {
     }))
     expect(r.ok).toBe(false)
     const found = codes(r)
-    expect(found).toContain('MISSING_RISK_DECISION')
-    expect(found).toContain('MISSING_PROP_DECISION')
-    expect(found).toContain('MISSING_APPROVAL')
+    expect(found).toContain('MISSING_RISK_CLEARANCE')
+    expect(found).toContain('MISSING_PROP_CLEARANCE')
+    expect(found).toContain('MISSING_APPROVAL_GRANT')
   })
 
   it('J. withStatus cannot conjure a clearance for a denied decision', () => {
@@ -588,6 +588,69 @@ describe('the gate verifies capability provenance at runtime', () => {
   })
 })
 
+// ─── Gateway reason semantics ─────────────────────────────────────────────────
+
+describe('the gateway claims only what it can observe', () => {
+  it('1. a DENY decision exists upstream, yet the gate does not call it missing', () => {
+    // The decision is real and recorded. It simply produced no clearance.
+    const denied = makeRisk('DENY')
+    expect(denied.result).toBe('DENY')
+    expect(denied.riskDecisionId).toBe(RISK_DECISION_ID)
+
+    const r = openExecutionGate(makeInput({
+      riskClearance: issueRiskClearance(ISSUER, denied),
+    }))
+    expect(r.ok).toBe(false)
+
+    const found = codes(r)
+    expect(found).toContain('MISSING_RISK_CLEARANCE')
+    // The gateway must NOT assert a verdict it never saw.
+    expect(found).not.toContain('RISK_DENIED')
+  })
+
+  it('1. the same holds for a blocked prop decision', () => {
+    const blocked = makeProp('DENY')
+    const r = openExecutionGate(makeInput({
+      propClearance: issuePropClearance(ISSUER, blocked),
+    }))
+    const found = codes(r)
+    expect(found).toContain('MISSING_PROP_CLEARANCE')
+    expect(found).not.toContain('PROP_BLOCKED')
+  })
+
+  it('2. no risk clearance yields MISSING_RISK_CLEARANCE', () => {
+    expect(codes(openExecutionGate(makeInput({ riskClearance: null }))))
+      .toContain('MISSING_RISK_CLEARANCE')
+  })
+
+  it('3. no prop clearance yields MISSING_PROP_CLEARANCE', () => {
+    expect(codes(openExecutionGate(makeInput({ propClearance: null }))))
+      .toContain('MISSING_PROP_CLEARANCE')
+  })
+
+  it('4. no approval grant yields MISSING_APPROVAL_GRANT', () => {
+    expect(codes(openExecutionGate(makeInput({ approvalGrant: null }))))
+      .toContain('MISSING_APPROVAL_GRANT')
+  })
+
+  it('never emits the retired decision-absence codes', () => {
+    const r = openExecutionGate(makeInput({
+      riskClearance: null, propClearance: null, approvalGrant: null,
+    }))
+    const found: string[] = codes(r)
+    for (const retired of ['MISSING_RISK_DECISION', 'MISSING_PROP_DECISION', 'MISSING_APPROVAL']) {
+      expect(found).not.toContain(retired)
+    }
+  })
+
+  it('keeps engine verdict codes available for the decision record itself', () => {
+    // RISK_DENIED still exists in the vocabulary — it belongs on the RiskDecision
+    // the engine writes, not on a gateway refusal.
+    const recorded = riskDecision({ ...makeRisk('DENY'), reasonCodes: ['RISK_DENIED'] })
+    expect(recorded.reasonCodes).toContain('RISK_DENIED')
+  })
+})
+
 // ─── Diagnostics ──────────────────────────────────────────────────────────────
 
 describe('refusal reporting', () => {
@@ -601,9 +664,9 @@ describe('refusal reporting', () => {
     expect(r.ok).toBe(false)
     const found = codes(r)
     expect(found).toContain('MODE_FORBIDS_EXECUTION')
-    expect(found).toContain('MISSING_RISK_DECISION')
-    expect(found).toContain('MISSING_PROP_DECISION')
-    expect(found).toContain('MISSING_APPROVAL')
+    expect(found).toContain('MISSING_RISK_CLEARANCE')
+    expect(found).toContain('MISSING_PROP_CLEARANCE')
+    expect(found).toContain('MISSING_APPROVAL_GRANT')
   })
 
   it('preserves reason codes on the refusal for the journal', () => {

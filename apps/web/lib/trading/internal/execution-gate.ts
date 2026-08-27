@@ -12,6 +12,13 @@
  *  - Datamodell v0.1 §33 (proposals name their decisions), §36–37
  *  - Risk Engine Specification v0.1 §32 (proposal expiry), §55 (execution health)
  *
+ * WHAT THE GATE MAY CLAIM.
+ * It reports only what it can observe. When no RiskClearance arrives it says
+ * MISSING_RISK_CLEARANCE — never "the decision is missing", because a
+ * RiskDecision may well exist and be a DENY, in which case no clearance was
+ * ever issued. RISK_DENIED and PROP_BLOCKED belong to the engine that produced
+ * the decision and are recorded on that decision, not here.
+ *
  * THE GATE TAKES CAPABILITIES, NOT RECORDS.
  * It accepts a RiskClearance, a PropClearance and an ApprovalGrant — never raw
  * RiskDecision / PropDecision / Approval records. Records are data anyone can
@@ -136,7 +143,7 @@ export function openExecutionGate(input: ExecutionGateInput): ExecutionGateResul
 
   // --- Risk veto and decision-reference integrity ---------------------------
   if (risk === null) {
-    reasons.push(reason('MISSING_RISK_DECISION'))
+    reasons.push(reason('MISSING_RISK_CLEARANCE'))
   } else {
     if (risk.signalId !== proposal.signalId || risk.accountId !== proposal.accountId) {
       reasons.push(reason('REFERENCE_MISMATCH', 'Risk clearance does not match this proposal'))
@@ -161,7 +168,7 @@ export function openExecutionGate(input: ExecutionGateInput): ExecutionGateResul
 
   // --- Prop veto and decision-reference integrity ---------------------------
   if (prop === null) {
-    reasons.push(reason('MISSING_PROP_DECISION'))
+    reasons.push(reason('MISSING_PROP_CLEARANCE'))
   } else {
     if (prop.signalId !== proposal.signalId || prop.accountId !== proposal.accountId) {
       reasons.push(reason('REFERENCE_MISMATCH', 'Prop clearance does not match this proposal'))
@@ -185,7 +192,7 @@ export function openExecutionGate(input: ExecutionGateInput): ExecutionGateResul
 
   // --- Approval -------------------------------------------------------------
   if (grant === null) {
-    reasons.push(reason('MISSING_APPROVAL'))
+    reasons.push(reason('MISSING_APPROVAL_GRANT'))
   } else {
     if (grant.proposalId !== proposal.proposalId || grant.accountId !== proposal.accountId) {
       reasons.push(reason('REFERENCE_MISMATCH', 'Approval does not match this proposal'))

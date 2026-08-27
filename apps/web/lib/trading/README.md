@@ -112,11 +112,32 @@ The property actually guaranteed, and covered by `public-boundary.test.ts`:
 
 ### Bounded authority lifetime
 
-An `ExecutionIntent` never outlives the permissions that authorized it:
+Canonical since 2026-08-27 — Systemarkitektur v0.1 §24.1, Canonical Amendments
+v1.0 Beslut C. An `ExecutionIntent` never outlives the permissions that
+authorized it:
 
 - it may not be created already expired (`expiresAt > now`)
 - `expiresAt <= proposal.expiresAt`
 - `expiresAt <= approval.expiresAt`
+
+A shorter lifetime is always fine; the bound is a ceiling, not an equality.
+If further upstream authority objects gain their own expiry, the same principle
+must be evaluated through governance rather than assumed.
+
+### What the gateway may claim
+
+The gate reports only what it can observe. When no clearance arrives it emits
+`MISSING_RISK_CLEARANCE` — never "the decision is missing", because the decision
+may well exist and be a `DENY`. `RISK_DENIED` and `PROP_BLOCKED` belong on the
+decision record written by the engine that produced it.
+
+That keeps three cases distinguishable in later analytics:
+
+| Case | Where it shows |
+|---|---|
+| No decision was ever produced or recorded | upstream journal is silent |
+| A decision was produced and it was DENY | `RISK_DENIED` on the RiskDecision |
+| A decision existed but no authority reached the gateway | `MISSING_RISK_CLEARANCE` |
 
 ### Decision reference integrity
 

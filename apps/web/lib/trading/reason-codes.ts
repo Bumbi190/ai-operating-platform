@@ -60,12 +60,23 @@ export type RiskReasonCode = (typeof RISK_REASON_CODES)[number]
 export const CORE_REASON_CODES = [
   // Chain completeness (Systemarkitektur §3)
   'STRATEGY_INVALID',
+  'EXECUTION_BLOCKED',
+  // Gateway authority absence.
+  //
+  // These say only what the gateway can actually observe: no valid capability
+  // reached it. They deliberately do NOT claim a decision is missing — a
+  // RiskDecision may well exist and be a DENY, in which case no clearance was
+  // ever issued. That distinction is what lets analytics later separate:
+  //   (a) no decision was ever produced or recorded — upstream journal is silent
+  //   (b) a decision was produced and it was DENY — see RISK_DENIED on the record
+  //   (c) a decision existed but no valid authority reached the gateway — here
+  'MISSING_RISK_CLEARANCE',
+  'MISSING_PROP_CLEARANCE',
+  'MISSING_APPROVAL_GRANT',
+  // Upstream engine verdicts. Emitted on the decision record by the engine that
+  // produced it, never by the gateway.
   'RISK_DENIED',
   'PROP_BLOCKED',
-  'EXECUTION_BLOCKED',
-  'MISSING_RISK_DECISION',
-  'MISSING_PROP_DECISION',
-  'MISSING_APPROVAL',
   // Authority provenance — a capability that this codebase did not issue
   'AUTHORITY_NOT_GENUINE',
   // Decision reference integrity (Datamodell §33: proposals name their decisions)

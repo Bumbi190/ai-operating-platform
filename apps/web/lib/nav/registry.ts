@@ -184,6 +184,18 @@ const PROJECT_ALIASES: Record<string, string> = (() => {
 })()
 
 /**
+ * The canonical alias → slug pairs, longest alias first.
+ *
+ * Exposed so other layers can SCAN free text for a project reference without
+ * building a second alias table. `resolveProjectSlug` answers "is this string a
+ * project?"; this lets a caller ask "which project is named in this sentence?".
+ * Both read the same source, so a business added to BUSINESS_PROFILES becomes
+ * known to both at once. Read-only: sorted copy, original map untouched.
+ */
+export const PROJECT_ALIAS_ENTRIES: ReadonlyArray<readonly [string, string]> =
+  Object.entries(PROJECT_ALIASES).sort((a, b) => b[0].length - a[0].length)
+
+/**
  * Resolve any operator/Atlas reference to a project into a canonical slug.
  * Returns `null` for an explicitly-given-but-unresolvable project (so a link is
  * dropped rather than pointed at the wrong business), or `undefined` for "no

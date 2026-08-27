@@ -10,22 +10,73 @@
  * server route and its dependencies.
  */
 
-// Ord/fraser som PÅSTÅR en utförd/pågående åtgärd (workflow-körning/publicering).
-// Om Atlas skriver något av dessa utan att ha kört ett åtgärds-verktyg samma tur
-// → falskt påstående (åtgärds-ärlighetsspärr).
+// Åtgärdsverb som, när Atlas självt är subjektet, påstår en utförd eller pågående
+// körning/publicering. Presens, preteritum och supinum — ett påstående är lika
+// falskt i dåtid ("jag publicerade videon") som i presens ("jag publicerar den").
+const ACTION_VERBS = [
+  'startar', 'startat', 'startade',
+  'triggar', 'triggat', 'triggade',
+  'publicerar', 'publicerat', 'publicerade',
+  'postar', 'postat', 'postade',
+  'genomför', 'genomfört', 'genomförde',
+  // Bare "kör/körde/kört" is a claim only because this pattern is clause-initial:
+  // "Jag körde workflowet" matches, "Systemet kör en render" does not, because
+  // the latter has its own subject in front of the verb.
+  'kör', 'körde', 'kört',
+  'kör igång', 'körde igång', 'drar igång', 'drog igång',
+  'sätter igång', 'satte igång',
+  'påbörjar', 'påbörjat', 'påbörjade',
+].join('|')
+
+/**
+ * Ett åtgärdspåstående — SATSINITIALT, inte var som helst i texten.
+ *
+ * Detta är hela skillnaden mellan ett påstående och en beskrivning. "Startar
+ * publiceringen." och "Jag publicerade videon." har Atlas som subjekt. "Nästa
+ * körning startar kl 14." och "The Prompt publicerar två gånger om dagen." har
+ * ett annat subjekt före verbet — de rapporterar verksamheten och påstår
+ * ingenting om vad Atlas gjort. Den gamla regexen såg bara verbet, var det än
+ * stod, och kunde därför inte skilja dem åt: en ren statusrapport utlöste en
+ * körnings-varning. Den missade samtidigt dåtidspåståenden helt, så det
+ * verkligt farliga fallet ("jag publicerade videon") gick igenom.
+ *
+ * Satsinitialt = satsens början, eventuellt föregånget av "jag"/"vi" och ett
+ * hjälpord. Står något annat framför verbet är någon annan subjektet.
+ */
 export const ACTION_CLAIM_RE = new RegExp(
-  [
-    // Starka åtgärds-verb i presens (med eller utan "jag") = påstår pågående körning/postning.
-    '\\b(startar|triggar|publicerar|postar|kör igång|drar igång|sätter igång|påbörjar)\\b',
-    // "kör/genomför … <workflow-objekt eller -namn>" (ej ren analys).
-    '\\b(kör|genomför)\\b[^.!?]*\\b(workflow|arbetsflöde|fetch ai news|generate script|generate voiceover|publish to social|publish to youtube|render video|render|youtube|nyhet|nyheten|artikeln|scriptet|manus|posten|inlägget|publicering|videon|reel)\\b',
-    // Status-påståenden om workflow/körning/publicering.
-    '\\bworkflow(et)?\\b[^.!?]*\\b(startat|köat|köad|igång|påbörjat|triggat)\\b',
-    '\\b(körningen|publiceringen)\\b[^.!?]*\\b(startad|köad|igång|påbörjad)\\b',
-    '\\b(har )?(startat|köat|triggat|publicerat) (workflow|körning|scriptet|nyheten|posten|inlägget)\\b',
-  ].join('|'),
+  `^(?:(?:jag|vi)\\s+)?(?:har\\s+|nu\\s+|redan\\s+|precis\\s+)?(?:${ACTION_VERBS})(?![\\wåäöÅÄÖ])`
+  + `|^(?:jag|vi)\\s+(?:har\\s+)?(?:startat|köat|triggat|publicerat|kört)(?![\\wåäöÅÄÖ])`,
   'i',
 )
+
+/**
+ * Framingar som aldrig är påståenden: frågor och erbjudanden. "Vill du att jag
+ * kör publiceringen?" och "Ska jag starta workflowet?" innehåller åtgärdsverb i
+ * första person men lovar ingenting — de ber om tillstånd.
+ */
+const OFFER_RE = /(vill du|vill ni|ska jag|ska vi|kan jag|kan vi|om du vill|säg till|bekräfta)/i
+
+/** Satsgränser: meningsskiljetecken samt komma/semikolon/tankstreck. */
+const CLAUSE_SPLIT = /[.!?…\n]+|[,;]\s+|\s+[—–]\s+/
+
+/**
+ * Sant när texten påstår en utförd/pågående åtgärd. Paras i route.ts med
+ * "kördes ett åtgärdsverktyg denna tur?" — bara ett obackat påstående korrigeras.
+ *
+ * Satsvis, av två skäl som drar åt olika håll: ett beskrivande led ska inte
+ * smitta hela svaret, och ett påstående gömt mitt i en lång statusrapport ska
+ * ändå fångas. Frågor och erbjudanden hoppas över.
+ */
+export function isUnsupportedActionClaim(text: string): boolean {
+  if (!text) return false
+  for (const rawClause of text.split(CLAUSE_SPLIT)) {
+    const clause = rawClause.trim()
+    if (!clause) continue
+    if (OFFER_RE.test(clause)) continue
+    if (ACTION_CLAIM_RE.test(clause)) return true
+  }
+  return false
+}
 
 // Fraser som PÅSTÅR att en delegering/uppgift skapats — Dream→Action eller
 // generell delegate. Paras i route.ts med delegateToolUsed (delegate /

@@ -30,10 +30,11 @@ import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
-import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
+import { NAV_CLAIM_RE, DELEGATE_CLAIM_RE, isUnsupportedActionClaim } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { isActionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
+import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
@@ -613,6 +614,13 @@ export async function POST(request: Request) {
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
   const navIntent = !fastPath && !staticConversation && !actionIntent && isNavIntent(lastUserText)
+  // Läs-status ("hur har X gått idag?"). Påverkar INTE routningen — en
+  // statusfråga går full path precis som förut, med samma autentisering,
+  // projektisolering och verktyg. Den enda effekten är ett kort direktiv i
+  // systemprompten som säger vilken period och vilket projekt som efterfrågades.
+  const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
+    ? classifyStatusIntent(lastUserText)
+    : null
   const reqType = fastPath
     ? 'fast_path'
     : staticConversation
@@ -652,6 +660,12 @@ export async function POST(request: Request) {
     // no business sharing that fate. It is also outside buildLiveContext's 45s
     // cache, so "now" is never served stale.
     systemPrompt += renderCurrentInstant(new Date())
+    // Statusförfrågan → säg vilken period och vilket projekt som efterfrågades,
+    // och hur svaret ska grundas. UNCONDITIONAL och före allt som kan faila, av
+    // samma skäl som tidsstämpeln: den kostar ingenting, beror på ingenting, och
+    // ett svar som tappar perioden är precis det som gjorde livstidssiffror till
+    // "idag". Ren vägledning — ingen routing ändras, inget innehåll mallas.
+    if (statusIntent) systemPrompt += renderStatusDirective(statusIntent)
     // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
     // the exact strings appended below, nothing recomputed, zero behavior change.
     let shadowLive = '', shadowAction = '', shadowView = ''
@@ -817,7 +831,7 @@ export async function POST(request: Request) {
             // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
             // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
             // förfrågan → korrigera. list_workflows/ask_manager tystar INTE spärren.
-            if (!fastPath && !actionToolUsed && ACTION_CLAIM_RE.test(fullText)) {
+            if (!fastPath && !actionToolUsed && isUnsupportedActionClaim(fullText)) {
               const correction = ' \n\n⚠️ Obs: jag har faktiskt inte kört något än — ingen körning startades. Bekräfta vilket workflow du vill köra, så triggar jag det på riktigt och visar run-id.'
               send('text', { text: correction })
               fullText += correction

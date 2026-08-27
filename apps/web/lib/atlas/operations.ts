@@ -268,7 +268,11 @@ export function operationsSummary(o: OperationsSnapshot): string {
   const viewsTotal = p.views.instagram + p.views.youtube + p.views.facebook
   const lines: string[] = []
   lines.push(`\n\nOPERATIONS (live):`)
-  lines.push(`The Prompt — publicerat idag: ${p.publishedToday}, väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade: ${p.archived}, återförsöker: ${p.retrying}, fastnade fel (kräver åtgärd): ${p.pipelineErrors}, fel 24h: ${p.failed24h}. Visningar: IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
+  // Varje tal bär sin egen period. Kön och renderingsläget är NULÄGE, inte
+  // dagens utfall, och visningarna är ackumulerade totaler — media_insights
+  // läses utan datumfilter. Utan de etiketterna kunde ett livstidstal
+  // rapporteras som "räckvidd idag" så fort operatören frågade om idag.
+  lines.push(`The Prompt — publicerat idag (händelse idag): ${p.publishedToday}. NULÄGE just nu: väntar render: ${p.waitingRender}, renderar: ${p.rendering}, väntar publicering (färska ≤4d): ${p.waitingPublish}, arkiverade: ${p.archived}, återförsöker: ${p.retrying}, fastnade fel (kräver åtgärd): ${p.pipelineErrors}. Fel senaste 24h: ${p.failed24h}. Visningar TOTALT ackumulerat (INTE idag, INTE denna vecka): IG ${p.views.instagram}, YouTube ${p.views.youtube}, FB ${p.views.facebook} (totalt ${viewsTotal}).`)
   if (p.latestPublished) lines.push(`Senast publicerat: "${(p.latestPublished.hook ?? '').slice(0, 60)}".`)
   const f = o.familje
   const famRev = f.activeSubscribers === null

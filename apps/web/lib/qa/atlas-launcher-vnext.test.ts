@@ -118,6 +118,16 @@ describe('accessible label and keyboard contract', () => {
   it('the tooltip cannot intercept the click', () => {
     expect(LAUNCHER_CSS).toMatch(/\.tooltip\s*\{[^}]*pointer-events:\s*none/)
   })
+
+  it('owns its own positioning context for the tooltip', () => {
+    // The tooltip is absolutely positioned against the wrapper. Borrowing that
+    // containing block from a utility class means the tooltip flies off-screen
+    // wherever that class is not in effect — observed in a render harness where
+    // `right` resolved to 1010px against the page. The module owns it instead.
+    expect(LAUNCHER_CSS).toMatch(/\.root\s*\{[^}]*position:\s*relative/)
+    expect(LAUNCHER).toContain('className={cn(styles.root, className)}')
+    expect(LAUNCHER).not.toContain("cn('relative'")
+  })
 })
 
 describe('vNext visual language', () => {

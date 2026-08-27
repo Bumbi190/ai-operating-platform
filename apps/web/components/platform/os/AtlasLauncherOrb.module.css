@@ -12,6 +12,18 @@
  * launcher, which is exactly the thing being replaced.
  */
 
+/**
+ * The positioning context for the tooltip.
+ *
+ * Owned here rather than borrowed from a utility class: the tooltip is
+ * absolutely positioned against this element, so if the containing block were
+ * ever missing it would resolve against the page and fly off-screen. Keeping it
+ * in the module makes the component correct on its own terms.
+ */
+.root {
+  position: relative;
+}
+
 .launcher {
   position: relative;
   display: grid;

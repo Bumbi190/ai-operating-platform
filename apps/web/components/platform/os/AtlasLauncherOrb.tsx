@@ -48,7 +48,7 @@ export function AtlasLauncherOrb({
   const descriptionId = stateDescription ? 'atlas-launcher-state' : undefined
 
   return (
-    <div className={cn('relative', className)} style={{ width: size, height: size }}>
+    <div className={cn(styles.root, className)} style={{ width: size, height: size }}>
       <button
         type="button"
         onClick={onClick}

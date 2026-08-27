@@ -63,10 +63,50 @@ describe('NAVIGATION INVARIANT — behaviour is untouched', () => {
     expect(MINI).toContain('atlas.openWorkspace(`/chat/${atlas.conversationId}`)')
   })
 
-  it('keeps the same position, footprint and stacking', () => {
-    expect(MINI).toContain('hidden lg:block fixed bottom-6 right-6 z-50')
+  it('keeps the same footprint, breakpoint and stacking level', () => {
+    expect(MINI).toContain('hidden lg:block fixed z-50')
     expect(MINI).toContain('const MINI_SIZE = 52')
     expect(MINI).toContain('size={MINI_SIZE}')
+  })
+})
+
+describe('PLACEMENT — the bottom-right corner is shared with the activity peek', () => {
+  const PEEK = read('components/platform/os/MobileRailToggle.tsx')
+
+  it('the activity peek really is on screen at desktop where the launcher renders', () => {
+    // Its `lg:hidden` is conditional: it only applies on /atlas?ui=vnext, and
+    // the launcher returns null on /atlas. So wherever the launcher is visible,
+    // the peek is visible too — they cannot be treated as breakpoint-exclusive.
+    expect(PEEK).toContain("pathname === '/atlas' && searchParams.get('ui') === 'vnext'")
+    expect(PEEK).toContain("${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11")
+  })
+
+  it('derives the launcher offset from the peek geometry rather than a magic number', () => {
+    expect(MINI).toContain('const ACTIVITY_PEEK_BOTTOM = 20')
+    expect(MINI).toContain('const ACTIVITY_PEEK_HEIGHT = 44')
+    expect(MINI).toContain('const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP')
+  })
+
+  it('clears the peek with real breathing room', () => {
+    const gap = Number(MINI.match(/const STACK_GAP = (\d+)/)?.[1])
+    expect(gap).toBeGreaterThanOrEqual(8)
+    // 20 + 44 + gap must put the launcher's lower edge above the peek's top (64px).
+    expect(20 + 44 + gap).toBeGreaterThan(64)
+  })
+
+  it('shares a right edge with the peek so the corner reads as one stack', () => {
+    expect(MINI).toContain('const STACK_RIGHT = ACTIVITY_PEEK_BOTTOM')
+    expect(MINI).toContain('right: `${STACK_RIGHT}px`')
+  })
+
+  it('rides the panel above the launcher, not beside the peek', () => {
+    expect(MINI).toContain('const PANEL_BOTTOM = LAUNCHER_BOTTOM + MINI_SIZE + PANEL_GAP')
+    expect(MINI).toContain('bottom: `${PANEL_BOTTOM}px`')
+  })
+
+  it('no longer hard-codes the old colliding offsets', () => {
+    expect(MINI).not.toContain('fixed bottom-6 right-6')
+    expect(MINI).not.toContain('MINI_SIZE + 24 + 10')
   })
 })
 

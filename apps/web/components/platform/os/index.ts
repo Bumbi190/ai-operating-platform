@@ -64,6 +64,7 @@ export { MobileRailToggle } from './MobileRailToggle'
 
 // Atlas voice UI
 export { AtlasOrb, type OrbPhase } from './AtlasOrb'
+export { AtlasLauncherOrb } from './AtlasLauncherOrb'
 export { AtlasMiniOrb } from './AtlasMiniOrb'
 
 // Global voice assistant

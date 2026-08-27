@@ -20,10 +20,44 @@ import { usePathname } from 'next/navigation'
 import { X, Maximize2, MessageSquare, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAtlas } from '@/lib/atlas/runtime'
-import { AtlasOrb } from './AtlasOrb'
+import type { OrbPhase } from './AtlasOrb'
+import { AtlasLauncherOrb } from './AtlasLauncherOrb'
 
 // Orbens diameter som mini-version (vs 148px på Atlas-sidan)
 const MINI_SIZE = 52
+
+// ── Nedre högra hörnet delas med aktivitets-peeken ──────────────────────────
+//
+// Den här krocken har setts förut. En tidigare slice mätte upp exakt samma
+// ~52x40 px överlapp mot aktivitets-peeken och löste den genom att göra orben
+// desktop-only — under antagandet att peeken ägde hörnet UNDER lg. Antagandet
+// höll inte: peeken är "universell aktivitets-peek (alla skärmstorlekar)" och
+// gömmer sig på desktop enbart på /atlas?ui=vnext. Eftersom launchern aldrig
+// renderas på /atlas är det villkoret aldrig sant där launchern syns, så
+// krocken flyttade bara upp till desktop i stället för att försvinna.
+//
+// Lösningen är en vertikal stapel: peeken ligger kvar längst ned, launchern
+// vilar ovanför den. Offseten är HÄRLEDD ur peekens egen geometri i stället för
+// gissad, så den följer med om den knappen ändrar storlek.
+const ACTIVITY_PEEK_BOTTOM = 20   // MobileRailToggle: bottom-5
+const ACTIVITY_PEEK_HEIGHT = 44   // MobileRailToggle: h-11
+const STACK_GAP = 12              // andrum mellan peek och launcher
+const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP  // 76
+// Höger-kanten delas med peeken (right-5) så stapeln får en rak kant.
+const STACK_RIGHT = ACTIVITY_PEEK_BOTTOM
+// Panelen vilar 10 px ovanför launchern, som tidigare.
+const PANEL_GAP = 10
+const PANEL_BOTTOM = LAUNCHER_BOTTOM + MINI_SIZE + PANEL_GAP
+
+/** Fasbeskrivning för hjälpmedel — samma ordval som orbens tidigare etikett. */
+function phaseDescription(phase: OrbPhase): string {
+  switch (phase) {
+    case 'idle':      return 'Tryck för att prata'
+    case 'listening': return 'Lyssnar…'
+    case 'thinking':  return 'Tänker…'
+    case 'speaking':  return 'Talar…'
+  }
+}
 
 export function AtlasMiniOrb() {
   const pathname = usePathname()
@@ -69,18 +103,18 @@ export function AtlasMiniOrb() {
       {panelOpen && (
         <div
           className={cn(
-            // Desktop only. Below lg the MobileRailToggle owns the
-            // bottom-right corner; two fixed controls at z-50 there
-            // overlapped in a ~52x40px region and covered page content.
+            // Desktop only, matching the launcher that opens it. The corner is
+            // shared with the activity peek — see the stack constants above;
+            // the panel rides above the launcher rather than beside the peek.
             'hidden lg:block',
-            'fixed right-6 z-50 w-72',
+            'fixed z-50 w-72',
             'rounded-2xl overflow-hidden',
             'border border-white/[0.08]',
             'bg-[#070b1a]/96 backdrop-blur-xl',
             'shadow-[0_0_0_1px_rgba(99,102,241,0.08),0_24px_48px_rgba(0,0,0,0.65)]',
             'animate-fade-in-up',
           )}
-          style={{ bottom: `${MINI_SIZE + 24 + 10}px` }}   // 10px gap ovanför orben
+          style={{ bottom: `${PANEL_BOTTOM}px`, right: `${STACK_RIGHT}px` }}
         >
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
@@ -183,21 +217,30 @@ export function AtlasMiniOrb() {
       )}
 
       {/* ── Mini-orb: fast position bottom-right ──────────────────────────── */}
-      <div className="hidden lg:block fixed bottom-6 right-6 z-50">
+      <div
+        className="hidden lg:block fixed z-50"
+        style={{ bottom: `${LAUNCHER_BOTTOM}px`, right: `${STACK_RIGHT}px` }}
+      >
 
         {/* Aktiv-prick: syns när session pågår men panel är stängd */}
         {atlas.isSessionActive && !panelOpen && atlas.voicePhase === 'idle' && (
           <div
             className="absolute -top-0.5 -right-0.5 z-10 w-2 h-2 rounded-full
-                       bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.9)]"
+                       bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]"
             aria-hidden
           />
         )}
 
-        <AtlasOrb
+        {/* Presentation only. The handler, the phase and the 52px footprint are
+            exactly what AtlasOrb received here before — the launcher swapped
+            material, not behaviour. AtlasOrb itself is untouched because the
+            legacy Atlas home still renders it. */}
+        <AtlasLauncherOrb
           phase={atlas.voicePhase}
           onClick={handleOrbClick}
           size={MINI_SIZE}
+          label="Öppna Atlas"
+          stateDescription={`Atlas — ${phaseDescription(atlas.voicePhase)}`}
         />
       </div>
     </>

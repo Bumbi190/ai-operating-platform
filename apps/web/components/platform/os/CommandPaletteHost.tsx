@@ -39,5 +39,17 @@ export function CommandPaletteHost({ projects = [] }: CommandPaletteHostProps) {
 
   // Renders no chrome and occupies no space — the palette portals its own
   // overlay when open, and Escape/close is handled inside CommandPalette.
-  return <CommandPalette open={open} onClose={() => setOpen(false)} projects={projects} />
+  //
+  // `variant` is the ONLY thing this host says about appearance. The palette is
+  // the same component legacy mounts, with the same search, keyboard model and
+  // navigation; vNext just wears the shell's own dark-glass cyan identity
+  // instead of the legacy indigo.
+  return (
+    <CommandPalette
+      open={open}
+      onClose={() => setOpen(false)}
+      projects={projects}
+      variant="vnext"
+    />
+  )
 }

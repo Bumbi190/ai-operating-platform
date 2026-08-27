@@ -66,6 +66,17 @@ export const CORE_REASON_CODES = [
   'MISSING_RISK_DECISION',
   'MISSING_PROP_DECISION',
   'MISSING_APPROVAL',
+  // Authority provenance — a capability that this codebase did not issue
+  'AUTHORITY_NOT_GENUINE',
+  // Decision reference integrity (Datamodell §33: proposals name their decisions)
+  'MISSING_RISK_DECISION_REFERENCE',
+  'MISSING_PROP_DECISION_REFERENCE',
+  'RISK_DECISION_REFERENCE_MISMATCH',
+  'PROP_DECISION_REFERENCE_MISMATCH',
+  // Bounded authority lifetime
+  'EXECUTION_INTENT_ALREADY_EXPIRED',
+  'EXECUTION_INTENT_OUTLIVES_PROPOSAL',
+  'EXECUTION_INTENT_OUTLIVES_APPROVAL',
   // Fail-closed (Systemarkitektur §26)
   'VERDICT_UNKNOWN',
   // Gateway checks (Systemarkitektur §17, §25)

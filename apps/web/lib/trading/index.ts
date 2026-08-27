@@ -7,6 +7,21 @@
  * Canonical documentation: docs/trading-system/README.md
  * Precedence rules:       docs/trading-system/SOURCE_OF_TRUTH.md
  *
+ * WHAT IS HERE: immutable record types, value objects, vocabulary, parsers and
+ * read-only predicates. Everything on this surface merely constructs or
+ * inspects data.
+ *
+ * WHAT IS NOT HERE, ON PURPOSE: anything that can mint execution authority.
+ * Authority issuance and the execution gate live in `lib/trading/internal/` and
+ * are not re-exported. Code importing only from `@/lib/trading` therefore
+ * cannot turn a record it invented into a clearance, and cannot reach the gate
+ * at all.
+ *
+ * Note what this means for the record constructors below: `riskDecision(...)`
+ * and friends produce *data*, not permission. Building a record with
+ * `result: 'ALLOW'` grants nothing, because the gate consumes capabilities
+ * issued by `lib/trading/internal/authority.ts` — never raw records.
+ *
  * Everything re-exported here is PUBLIC. Anything not re-exported is an
  * INTERNAL IMPLEMENTATION DETAIL and may change without notice.
  *
@@ -149,19 +164,12 @@ export type {
   ExecutionHealth, KillSwitch, KillSwitchScope, KillSwitchSnapshot, KillSwitchTarget,
 } from './safety'
 
-// ─── Execution gate ───────────────────────────────────────────────────────────
-export {
-  EXECUTION_STATUSES,
-  ORDER_TYPES,
-  approvalGrantOf,
-  openExecutionGate,
-  propClearanceOf,
-  riskClearanceOf,
-} from './execution-intent'
-export type {
-  ApprovalGrant, ExecutionGateInput, ExecutionGateResult, ExecutionIntent,
-  ExecutionStatus, OrderType, PropClearance, RiskClearance,
-} from './execution-intent'
+// ─── Execution intent (shape only) ────────────────────────────────────────────
+// The intent TYPE is public so read-side code can display and analyse intents.
+// Creating one requires the gate in `lib/trading/internal/`, which is not
+// exported here. There is deliberately no public constructor.
+export { EXECUTION_STATUSES, ORDER_TYPES } from './execution-intent'
+export type { ExecutionIntent, ExecutionStatus, OrderType } from './execution-intent'
 
 // ─── Events ───────────────────────────────────────────────────────────────────
 export {

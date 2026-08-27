@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  approvalGrantOf, openExecutionGate, propClearanceOf, riskClearanceOf,
-  type ExecutionGateInput, type ExecutionGateResult,
-} from './execution-intent'
+  grantAuthorityIssuer, isGenuineAuthority, issueApprovalGrant, issuePropClearance,
+  issueRiskClearance, openExecutionGate,
+  type ApprovalGrant, type ExecutionGateInput, type ExecutionGateResult,
+  type PropClearance, type RiskClearance,
+} from './internal'
 import { asDecimal } from './decimal'
 import { asId } from './ids'
 import type {
@@ -11,7 +13,7 @@ import type {
 } from './ids'
 import { asTimestamp } from './time'
 import { strategyVersionRef } from './versions'
-import { approval, tradeProposal, type Approval, type TradeProposal } from './proposal'
+import { approval, tradeProposal, withStatus, type Approval, type TradeProposal } from './proposal'
 import { propDecision, riskDecision, type PropDecision, type RiskDecision } from './contracts'
 import type { ExecutionHealth, KillSwitch, KillSwitchSnapshot } from './safety'
 import type { ReasonCode } from './reason-codes'
@@ -21,12 +23,18 @@ import type { Verdict } from './authority'
 
 const NOW = asTimestamp('2026-08-27T10:00:00Z')
 const LATER = asTimestamp('2026-08-27T10:05:00Z')
+const MUCH_LATER = asTimestamp('2026-08-27T11:00:00Z')
 
 const ACCOUNT = asId<'AccountId'>('acct-1') as AccountId
 const INSTRUMENT = asId<'InstrumentId'>('MNQ') as InstrumentId
 const SIGNAL = asId<'SignalId'>('sig-1') as SignalId
 const PROPOSAL = asId<'ProposalId'>('prop-1') as ProposalId
 const RUNNER = asId<'RunnerId'>('runner-1') as RunnerId
+const RISK_DECISION_ID = asId<'RiskDecisionId'>('rd-1') as RiskDecisionId
+const PROP_DECISION_ID = asId<'PropDecisionId'>('pd-1') as PropDecisionId
+
+/** Stands in for a future Risk/Prop/Approval engine at the trusted boundary. */
+const ISSUER = grantAuthorityIssuer('test-harness')
 
 const STRATEGY_VERSION = strategyVersionRef(
   asId<'StrategyId'>('omnira-liquidity-manipulation') as StrategyId,
@@ -52,8 +60,8 @@ function makeProposal(over: Partial<TradeProposal> = {}): TradeProposal {
     riskAmount: asDecimal('102.50'),
     riskPercentage: asDecimal('0.21'),
     aiAnalysisId: null,
-    riskDecisionId: asId<'RiskDecisionId'>('rd-1') as RiskDecisionId,
-    propDecisionId: asId<'PropDecisionId'>('pd-1') as PropDecisionId,
+    riskDecisionId: RISK_DECISION_ID,
+    propDecisionId: PROP_DECISION_ID,
     status: 'APPROVED',
     createdAt: NOW,
     expiresAt: LATER,
@@ -64,7 +72,7 @@ function makeProposal(over: Partial<TradeProposal> = {}): TradeProposal {
 
 function makeRisk(result: Verdict = 'ALLOW', over: Partial<RiskDecision> = {}): RiskDecision {
   return riskDecision({
-    riskDecisionId: asId<'RiskDecisionId'>('rd-1') as RiskDecisionId,
+    riskDecisionId: RISK_DECISION_ID,
     signalId: SIGNAL,
     accountId: ACCOUNT,
     riskProfileId: asId<'RiskProfileId'>('rp-1') as RiskProfileId,
@@ -84,7 +92,7 @@ function makeRisk(result: Verdict = 'ALLOW', over: Partial<RiskDecision> = {}): 
 
 function makeProp(result: Verdict = 'ALLOW', over: Partial<PropDecision> = {}): PropDecision {
   return propDecision({
-    propDecisionId: asId<'PropDecisionId'>('pd-1') as PropDecisionId,
+    propDecisionId: PROP_DECISION_ID,
     signalId: SIGNAL,
     accountId: ACCOUNT,
     propFirmProfileId: asId<'PropFirmProfileId'>('pfp-1') as PropFirmProfileId,
@@ -129,9 +137,9 @@ const NO_SWITCHES: KillSwitchSnapshot = { switches: [], observedAt: NOW }
 function makeInput(over: Partial<ExecutionGateInput> = {}): ExecutionGateInput {
   return {
     proposal: makeProposal(),
-    riskDecision: makeRisk('ALLOW'),
-    propDecision: makeProp('ALLOW'),
-    approval: makeApproval('ALLOW'),
+    riskClearance: issueRiskClearance(ISSUER, makeRisk('ALLOW')),
+    propClearance: issuePropClearance(ISSUER, makeProp('ALLOW')),
+    approvalGrant: issueApprovalGrant(ISSUER, makeApproval('ALLOW'), NOW),
     authorityMode: 'DEMO_MANUAL_APPROVAL',
     accountEnvironment: 'demo',
     killSwitches: NO_SWITCHES,
@@ -151,10 +159,10 @@ function codes(result: ExecutionGateResult): ReasonCode[] {
   return result.ok ? [] : result.reasons.map((r) => r.code)
 }
 
-// ─── Happy path ───────────────────────────────────────────────────────────────
+// ─── K. Happy path still passes under the stricter model ──────────────────────
 
 describe('execution gate — the one supported crossing', () => {
-  it('opens when every authority stage allows', () => {
+  it('opens when every authority stage issued a capability', () => {
     const result = openExecutionGate(makeInput())
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -184,117 +192,186 @@ describe('execution gate — the one supported crossing', () => {
   })
 })
 
-// ─── Veto cannot be bypassed ──────────────────────────────────────────────────
+// ─── L. DENY / UNKNOWN behaviour unchanged ────────────────────────────────────
 
 describe('Risk holds veto', () => {
-  it('refuses on RISK DENY', () => {
-    const r = openExecutionGate(makeInput({ riskDecision: makeRisk('DENY') }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('RISK_DENIED')
+  it('issues no clearance for DENY or UNKNOWN', () => {
+    expect(issueRiskClearance(ISSUER, makeRisk('DENY'))).toBeNull()
+    expect(issueRiskClearance(ISSUER, makeRisk('UNKNOWN'))).toBeNull()
+    expect(issueRiskClearance(ISSUER, makeRisk('ALLOW'))).not.toBeNull()
   })
 
-  it('refuses on RISK UNKNOWN — absence of information is not permission', () => {
-    const r = openExecutionGate(makeInput({ riskDecision: makeRisk('UNKNOWN') }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('VERDICT_UNKNOWN')
-  })
-
-  it('refuses when the risk decision is missing entirely', () => {
-    const r = openExecutionGate(makeInput({ riskDecision: null }))
+  it('refuses when Risk denied, so no clearance exists', () => {
+    const r = openExecutionGate(makeInput({
+      riskClearance: issueRiskClearance(ISSUER, makeRisk('DENY')),
+    }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('MISSING_RISK_DECISION')
   })
 
-  it('refuses a risk decision belonging to another signal', () => {
-    const foreign = makeRisk('ALLOW', { signalId: asId<'SignalId'>('sig-other') as SignalId })
-    const r = openExecutionGate(makeInput({ riskDecision: foreign }))
+  it('refuses when the Risk verdict was UNKNOWN', () => {
+    const r = openExecutionGate(makeInput({
+      riskClearance: issueRiskClearance(ISSUER, makeRisk('UNKNOWN')),
+    }))
+    expect(r.ok).toBe(false)
+  })
+
+  it('refuses a clearance issued for another signal', () => {
+    const foreign = issueRiskClearance(ISSUER, makeRisk('ALLOW', {
+      signalId: asId<'SignalId'>('sig-other') as SignalId,
+    }))
+    const r = openExecutionGate(makeInput({ riskClearance: foreign }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('REFERENCE_MISMATCH')
   })
 
-  it('refuses a risk decision belonging to another account', () => {
-    const foreign = makeRisk('ALLOW', { accountId: asId<'AccountId'>('acct-2') as AccountId })
-    const r = openExecutionGate(makeInput({ riskDecision: foreign }))
+  it('refuses a clearance issued for another account', () => {
+    const foreign = issueRiskClearance(ISSUER, makeRisk('ALLOW', {
+      accountId: asId<'AccountId'>('acct-2') as AccountId,
+    }))
+    const r = openExecutionGate(makeInput({ riskClearance: foreign }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('REFERENCE_MISMATCH')
-  })
-
-  it('yields no clearance from a non-ALLOW decision', () => {
-    expect(riskClearanceOf(makeRisk('DENY'))).toBeNull()
-    expect(riskClearanceOf(makeRisk('UNKNOWN'))).toBeNull()
-    expect(riskClearanceOf(makeRisk('ALLOW'))).not.toBeNull()
   })
 })
 
 describe('Prop holds veto independently', () => {
-  it('refuses on PROP DENY even when Risk allowed', () => {
-    const r = openExecutionGate(makeInput({ propDecision: makeProp('DENY') }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('PROP_BLOCKED')
+  it('issues no clearance for DENY or UNKNOWN', () => {
+    expect(issuePropClearance(ISSUER, makeProp('DENY'))).toBeNull()
+    expect(issuePropClearance(ISSUER, makeProp('UNKNOWN'))).toBeNull()
   })
 
-  it('refuses on PROP UNKNOWN', () => {
-    const r = openExecutionGate(makeInput({ propDecision: makeProp('UNKNOWN') }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('VERDICT_UNKNOWN')
-  })
-
-  it('refuses when the prop decision is missing', () => {
-    const r = openExecutionGate(makeInput({ propDecision: null }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('MISSING_PROP_DECISION')
-  })
-
-  it('yields no clearance from a non-ALLOW decision', () => {
-    expect(propClearanceOf(makeProp('DENY'))).toBeNull()
-    expect(propClearanceOf(makeProp('UNKNOWN'))).toBeNull()
-  })
-
-  it('blocks when Risk allows but Prop denies — both must pass', () => {
+  it('refuses when Prop blocked even though Risk allowed', () => {
     const r = openExecutionGate(makeInput({
-      riskDecision: makeRisk('ALLOW'),
-      propDecision: makeProp('DENY'),
+      propClearance: issuePropClearance(ISSUER, makeProp('DENY')),
     }))
     expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('MISSING_PROP_DECISION')
   })
 })
 
 describe('Approval is required and expires', () => {
-  it('refuses without an approval', () => {
-    const r = openExecutionGate(makeInput({ approval: null }))
+  it('issues no grant for DENY, UNKNOWN or an expired approval', () => {
+    expect(issueApprovalGrant(ISSUER, makeApproval('DENY'), NOW)).toBeNull()
+    expect(issueApprovalGrant(ISSUER, makeApproval('UNKNOWN'), NOW)).toBeNull()
+    expect(issueApprovalGrant(ISSUER, makeApproval('ALLOW', { expiresAt: NOW }), NOW)).toBeNull()
+    expect(issueApprovalGrant(ISSUER, makeApproval('ALLOW'), NOW)).not.toBeNull()
+  })
+
+  it('refuses without a grant', () => {
+    const r = openExecutionGate(makeInput({ approvalGrant: null }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('MISSING_APPROVAL')
   })
 
-  it('refuses a rejected approval', () => {
-    const r = openExecutionGate(makeInput({ approval: makeApproval('DENY') }))
-    expect(r.ok).toBe(false)
-  })
-
-  it('refuses an UNKNOWN approval', () => {
-    const r = openExecutionGate(makeInput({ approval: makeApproval('UNKNOWN') }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('VERDICT_UNKNOWN')
-  })
-
-  it('refuses an expired approval', () => {
-    const expired = makeApproval('ALLOW', { expiresAt: asTimestamp('2026-08-27T09:59:00Z') })
-    const r = openExecutionGate(makeInput({ approval: expired }))
-    expect(r.ok).toBe(false)
-    expect(codes(r)).toContain('APPROVAL_EXPIRED')
-  })
-
-  it('refuses an approval for a different proposal', () => {
-    const foreign = makeApproval('ALLOW', { proposalId: asId<'ProposalId'>('prop-2') as ProposalId })
-    const r = openExecutionGate(makeInput({ approval: foreign }))
+  it('refuses a grant for a different proposal', () => {
+    const foreign = issueApprovalGrant(ISSUER, makeApproval('ALLOW', {
+      proposalId: asId<'ProposalId'>('prop-2') as ProposalId,
+    }), NOW)
+    const r = openExecutionGate(makeInput({ approvalGrant: foreign }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('REFERENCE_MISMATCH')
   })
 
-  it('yields no grant from a non-ALLOW or expired approval', () => {
-    expect(approvalGrantOf(makeApproval('DENY'), NOW)).toBeNull()
-    expect(approvalGrantOf(makeApproval('ALLOW', { expiresAt: NOW }), NOW)).toBeNull()
-    expect(approvalGrantOf(makeApproval('ALLOW'), NOW)).not.toBeNull()
+  it('refuses a grant that has expired between issuance and the gate', () => {
+    const grant = issueApprovalGrant(ISSUER, makeApproval('ALLOW', { expiresAt: LATER }), NOW)
+    const r = openExecutionGate(makeInput({
+      approvalGrant: grant,
+      proposal: makeProposal({ expiresAt: MUCH_LATER }),
+      now: MUCH_LATER,
+      expiresAt: MUCH_LATER,
+    }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('APPROVAL_EXPIRED')
+  })
+})
+
+// ─── C–F. Decision reference integrity ────────────────────────────────────────
+
+describe('decision reference integrity', () => {
+  it('C. refuses when the proposal names a different RiskDecision', () => {
+    // A DENY decision is what the proposal actually references; an ALLOW from a
+    // second decision must not be substitutable just because signal/account match.
+    const otherAllow = issueRiskClearance(ISSUER, makeRisk('ALLOW', {
+      riskDecisionId: asId<'RiskDecisionId'>('rd-substitute') as RiskDecisionId,
+    }))
+    const r = openExecutionGate(makeInput({ riskClearance: otherAllow }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('RISK_DECISION_REFERENCE_MISMATCH')
+  })
+
+  it('D. refuses when the proposal names a different PropDecision', () => {
+    const otherAllow = issuePropClearance(ISSUER, makeProp('ALLOW', {
+      propDecisionId: asId<'PropDecisionId'>('pd-substitute') as PropDecisionId,
+    }))
+    const r = openExecutionGate(makeInput({ propClearance: otherAllow }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('PROP_DECISION_REFERENCE_MISMATCH')
+  })
+
+  it('E. refuses when the proposal names no RiskDecision at all', () => {
+    const r = openExecutionGate(makeInput({
+      proposal: makeProposal({ riskDecisionId: null }),
+    }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('MISSING_RISK_DECISION_REFERENCE')
+  })
+
+  it('F. refuses when the proposal names no PropDecision at all', () => {
+    const r = openExecutionGate(makeInput({
+      proposal: makeProposal({ propDecisionId: null }),
+    }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('MISSING_PROP_DECISION_REFERENCE')
+  })
+
+  it('accepts only the exact decisions the proposal references', () => {
+    expect(openExecutionGate(makeInput()).ok).toBe(true)
+  })
+})
+
+// ─── G–I. Bounded authority lifetime ──────────────────────────────────────────
+
+describe('execution intent lifetime is bounded by its upstream permissions', () => {
+  it('G. refuses an intent that would be born expired', () => {
+    const r = openExecutionGate(makeInput({ expiresAt: NOW }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('EXECUTION_INTENT_ALREADY_EXPIRED')
+  })
+
+  it('G. refuses an intent whose expiry is already in the past', () => {
+    const r = openExecutionGate(makeInput({ expiresAt: asTimestamp('2026-08-27T09:59:00Z') }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('EXECUTION_INTENT_ALREADY_EXPIRED')
+  })
+
+  it('H. refuses an intent that would outlive the proposal', () => {
+    const r = openExecutionGate(makeInput({ expiresAt: MUCH_LATER }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('EXECUTION_INTENT_OUTLIVES_PROPOSAL')
+  })
+
+  it('I. refuses an intent that would outlive the approval', () => {
+    const shortGrant = issueApprovalGrant(
+      ISSUER,
+      makeApproval('ALLOW', { expiresAt: asTimestamp('2026-08-27T10:02:00Z') }),
+      NOW,
+    )
+    const r = openExecutionGate(makeInput({
+      approvalGrant: shortGrant,
+      expiresAt: asTimestamp('2026-08-27T10:04:00Z'),
+    }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('EXECUTION_INTENT_OUTLIVES_APPROVAL')
+  })
+
+  it('permits an intent expiring exactly at the proposal boundary', () => {
+    expect(openExecutionGate(makeInput({ expiresAt: LATER })).ok).toBe(true)
+  })
+
+  it('permits a shorter intent lifetime than its permissions', () => {
+    const r = openExecutionGate(makeInput({ expiresAt: asTimestamp('2026-08-27T10:01:00Z') }))
+    expect(r.ok).toBe(true)
   })
 })
 
@@ -302,19 +379,21 @@ describe('Approval is required and expires', () => {
 
 describe('proposal state', () => {
   it('refuses an expired proposal', () => {
-    const stale = makeProposal({ expiresAt: asTimestamp('2026-08-27T09:59:00Z') })
-    const r = openExecutionGate(makeInput({ proposal: stale }))
+    const r = openExecutionGate(makeInput({
+      proposal: makeProposal({ expiresAt: asTimestamp('2026-08-27T09:59:00Z') }),
+      expiresAt: asTimestamp('2026-08-27T09:58:00Z'),
+    }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('PROPOSAL_EXPIRED')
   })
 
-  it('treats expiry exactly at now as expired', () => {
+  it('treats proposal expiry exactly at now as expired', () => {
     const r = openExecutionGate(makeInput({ proposal: makeProposal({ expiresAt: NOW }) }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('PROPOSAL_EXPIRED')
   })
 
-  it('refuses a proposal that was already executed — retries cannot double-fill', () => {
+  it('refuses a proposal already consumed — retries cannot double-fill', () => {
     for (const status of ['EXECUTED', 'EXECUTION_REQUESTED', 'EXECUTION_FAILED'] as const) {
       const r = openExecutionGate(makeInput({ proposal: makeProposal({ status }) }))
       expect(r.ok).toBe(false)
@@ -324,14 +403,43 @@ describe('proposal state', () => {
 
   it('refuses proposals that never reached approval', () => {
     for (const status of ['CREATED', 'RISK_DENIED', 'PROP_DENIED', 'AWAITING_APPROVAL'] as const) {
-      const r = openExecutionGate(makeInput({ proposal: makeProposal({ status }) }))
-      expect(r.ok).toBe(false)
+      expect(openExecutionGate(makeInput({ proposal: makeProposal({ status }) })).ok).toBe(false)
     }
   })
 
   it('refuses a proposal without a positive quantity', () => {
     expect(openExecutionGate(makeInput({ proposal: makeProposal({ quantity: null }) })).ok).toBe(false)
     expect(openExecutionGate(makeInput({ proposal: makeProposal({ quantity: asDecimal('0') }) })).ok).toBe(false)
+  })
+})
+
+// ─── J. Status alone is not authority ─────────────────────────────────────────
+
+describe('proposal status is never authority by itself', () => {
+  it('J. marking a proposal APPROVED grants nothing without capabilities', () => {
+    const promoted = withStatus(makeProposal({ status: 'RISK_DENIED' }), 'APPROVED')
+    expect(promoted.status).toBe('APPROVED')
+
+    const r = openExecutionGate(makeInput({
+      proposal: promoted,
+      riskClearance: null,
+      propClearance: null,
+      approvalGrant: null,
+    }))
+    expect(r.ok).toBe(false)
+    const found = codes(r)
+    expect(found).toContain('MISSING_RISK_DECISION')
+    expect(found).toContain('MISSING_PROP_DECISION')
+    expect(found).toContain('MISSING_APPROVAL')
+  })
+
+  it('J. withStatus cannot conjure a clearance for a denied decision', () => {
+    const promoted = withStatus(makeProposal(), 'APPROVED')
+    const deniedRisk = issueRiskClearance(ISSUER, makeRisk('DENY'))
+    expect(deniedRisk).toBeNull()
+
+    const r = openExecutionGate(makeInput({ proposal: promoted, riskClearance: deniedRisk }))
+    expect(r.ok).toBe(false)
   })
 })
 
@@ -346,10 +454,9 @@ describe('environment separation', () => {
 
   it('refuses a demo proposal against a live account', () => {
     const r = openExecutionGate(makeInput({
-      proposal: makeProposal({ environment: 'demo' }),
       accountEnvironment: 'live',
       authorityMode: 'LIVE_MANUAL_APPROVAL',
-      approval: makeApproval('ALLOW', { environment: 'live' }),
+      approvalGrant: issueApprovalGrant(ISSUER, makeApproval('ALLOW', { environment: 'live' }), NOW),
     }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('ENVIRONMENT_MISMATCH')
@@ -369,15 +476,15 @@ describe('environment separation', () => {
       proposal: makeProposal({ environment: 'live' }),
       accountEnvironment: 'live',
       authorityMode: 'DEMO_AUTOMATION',
-      approval: makeApproval('ALLOW', { environment: 'live' }),
+      approvalGrant: issueApprovalGrant(ISSUER, makeApproval('ALLOW', { environment: 'live' }), NOW),
     }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('MODE_ENVIRONMENT_MISMATCH')
   })
 
-  it('refuses when the approval was granted in a different environment', () => {
+  it('refuses a grant issued in a different environment', () => {
     const r = openExecutionGate(makeInput({
-      approval: makeApproval('ALLOW', { environment: 'live' }),
+      approvalGrant: issueApprovalGrant(ISSUER, makeApproval('ALLOW', { environment: 'live' }), NOW),
     }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('ENVIRONMENT_MISMATCH')
@@ -396,8 +503,7 @@ describe('authority mode', () => {
   })
 
   it('permits the demo automation tier on a demo account', () => {
-    const r = openExecutionGate(makeInput({ authorityMode: 'DEMO_AUTOMATION' }))
-    expect(r.ok).toBe(true)
+    expect(openExecutionGate(makeInput({ authorityMode: 'DEMO_AUTOMATION' })).ok).toBe(true)
   })
 })
 
@@ -417,27 +523,68 @@ describe('kill switch and health block the gate', () => {
   }]
 
   it('refuses while a kill switch is active', () => {
-    const r = openExecutionGate(makeInput({
-      killSwitches: { switches: active, observedAt: NOW },
-    }))
+    const r = openExecutionGate(makeInput({ killSwitches: { switches: active, observedAt: NOW } }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('KILL_SWITCH_ACTIVE')
   })
 
   it('refuses when the heartbeat is missing', () => {
-    const r = openExecutionGate(makeInput({
-      health: { ...HEALTHY, lastHeartbeatAt: null },
-    }))
+    const r = openExecutionGate(makeInput({ health: { ...HEALTHY, lastHeartbeatAt: null } }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('VERDICT_UNKNOWN')
   })
 
   it('refuses while reconciliation is incomplete', () => {
-    const r = openExecutionGate(makeInput({
-      health: { ...HEALTHY, reconciliationComplete: 'DENY' },
-    }))
+    const r = openExecutionGate(makeInput({ health: { ...HEALTHY, reconciliationComplete: 'DENY' } }))
     expect(r.ok).toBe(false)
     expect(codes(r)).toContain('EXECUTION_HEALTH_FAILURE')
+  })
+})
+
+// ─── Provenance at the gate ───────────────────────────────────────────────────
+
+describe('the gate verifies capability provenance at runtime', () => {
+  it('recognizes issued capabilities', () => {
+    expect(isGenuineAuthority(issueRiskClearance(ISSUER, makeRisk('ALLOW')))).toBe(true)
+    expect(isGenuineAuthority(issuePropClearance(ISSUER, makeProp('ALLOW')))).toBe(true)
+    expect(isGenuineAuthority(issueApprovalGrant(ISSUER, makeApproval('ALLOW'), NOW))).toBe(true)
+  })
+
+  it('rejects a structurally identical object produced by a cast', () => {
+    const cast = {
+      riskDecisionId: RISK_DECISION_ID,
+      signalId: SIGNAL,
+      accountId: ACCOUNT,
+      issuedBy: 'attacker',
+    } as unknown as RiskClearance
+    expect(isGenuineAuthority(cast)).toBe(false)
+
+    const r = openExecutionGate(makeInput({ riskClearance: cast }))
+    expect(r.ok).toBe(false)
+    expect(codes(r)).toContain('AUTHORITY_NOT_GENUINE')
+  })
+
+  it('rejects cast prop clearances and approval grants too', () => {
+    const propCast = {
+      propDecisionId: PROP_DECISION_ID, signalId: SIGNAL, accountId: ACCOUNT, issuedBy: 'x',
+    } as unknown as PropClearance
+    const grantCast = {
+      approvalId: asId<'ApprovalId'>('ap-1'), proposalId: PROPOSAL, accountId: ACCOUNT,
+      environment: 'demo', expiresAt: LATER, issuedBy: 'x',
+    } as unknown as ApprovalGrant
+
+    expect(codes(openExecutionGate(makeInput({ propClearance: propCast })))).toContain('AUTHORITY_NOT_GENUINE')
+    expect(codes(openExecutionGate(makeInput({ approvalGrant: grantCast })))).toContain('AUTHORITY_NOT_GENUINE')
+  })
+
+  it('records which component issued each capability, for the journal', () => {
+    const clearance = issueRiskClearance(ISSUER, makeRisk('ALLOW'))
+    expect(clearance?.issuedBy).toBe('test-harness')
+  })
+
+  it('refuses to grant an issuer without a named component', () => {
+    expect(() => grantAuthorityIssuer('')).toThrow()
+    expect(() => grantAuthorityIssuer('   ')).toThrow()
   })
 })
 
@@ -447,29 +594,29 @@ describe('refusal reporting', () => {
   it('reports every failed check, not only the first', () => {
     const r = openExecutionGate(makeInput({
       authorityMode: 'READ_ONLY',
-      riskDecision: makeRisk('DENY'),
-      propDecision: null,
-      approval: null,
+      riskClearance: null,
+      propClearance: null,
+      approvalGrant: null,
     }))
     expect(r.ok).toBe(false)
     const found = codes(r)
     expect(found).toContain('MODE_FORBIDS_EXECUTION')
-    expect(found).toContain('RISK_DENIED')
+    expect(found).toContain('MISSING_RISK_DECISION')
     expect(found).toContain('MISSING_PROP_DECISION')
     expect(found).toContain('MISSING_APPROVAL')
   })
 
   it('preserves reason codes on the refusal for the journal', () => {
-    const r = openExecutionGate(makeInput({ riskDecision: makeRisk('DENY') }))
+    const r = openExecutionGate(makeInput({ riskClearance: null }))
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.reasons.length).toBeGreaterThan(0)
     expect(Object.isFrozen(r.reasons)).toBe(true)
-    for (const reason of r.reasons) expect(typeof reason.code).toBe('string')
+    for (const item of r.reasons) expect(typeof item.code).toBe('string')
   })
 
   it('never returns an intent alongside a refusal', () => {
-    const r = openExecutionGate(makeInput({ riskDecision: null, propDecision: null }))
+    const r = openExecutionGate(makeInput({ riskClearance: null, propClearance: null }))
     expect(r.ok).toBe(false)
     expect('intent' in r).toBe(false)
   })

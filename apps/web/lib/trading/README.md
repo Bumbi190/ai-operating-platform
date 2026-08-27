@@ -34,9 +34,12 @@ no orders.
 | `contracts.ts` | StrategySignal, AiAnalysis, RiskDecision, PropDecision |
 | `proposal.ts` | TradeProposal, Approval, lifecycle statuses |
 | `safety.ts` | Kill switches (5 scopes), execution health |
-| `execution-intent.ts` | ExecutionIntent and the authority gate |
+| `execution-intent.ts` | ExecutionIntent *shape* only — it cannot produce one |
 | `events.ts` | Append-only journal envelope, deterministic serialization |
 | `index.ts` | **The public contract.** Import from `@/lib/trading` only |
+| `internal/authority.ts` | **Trusted.** Issues authority capabilities |
+| `internal/execution-gate.ts` | **Trusted.** The execution gate |
+| `internal/index.ts` | **Trusted barrel.** Not re-exported publicly |
 
 ## What Fas 1 explicitly does NOT contain
 
@@ -69,15 +72,59 @@ Risk PASS is not execution approval. A Trade Proposal is not a broker order.
 
 ### How the code enforces it
 
-`ExecutionIntent` has no exported constructor. It is produced only by
-`openExecutionGate`, which requires a `RiskClearance`, a `PropClearance` and an
-`ApprovalGrant`. Those three are branded types whose brand symbol is
-module-private, and each is obtainable only from a decision that returned an
-explicit `ALLOW`.
+**Authority is issued, not derived from data.**
 
-So `StrategySignal → ExecutionIntent` does not typecheck, a `DENY` cannot yield a
-clearance, and `UNKNOWN` never becomes `ALLOW`. `AiAnalysis` carries no verdict
-at all and no function derives a clearance from it.
+A `RiskDecision` is a record, and records are constructible by anyone. So a
+record is never itself permission. The execution gate accepts only *capabilities*
+— `RiskClearance`, `PropClearance`, `ApprovalGrant` — which are minted solely by
+`internal/authority.ts` after it inspects a decision and finds an explicit
+`ALLOW`.
+
+Two layers protect that:
+
+1. **Module boundary (primary).** Issuance and the gate live in
+   `lib/trading/internal/` and are not re-exported from `@/lib/trading`. Code
+   importing the public barrel cannot reach either one.
+2. **Runtime witness (defence in depth).** Every issued capability carries a
+   module-private symbol that nothing outside `internal/authority.ts` can name.
+   A structurally identical object produced by a type assertion fails
+   `isGenuineAuthority`, and the gate refuses it with `AUTHORITY_NOT_GENUINE`.
+   This catches casts, which the type system alone cannot.
+
+`ExecutionIntent` has no exported constructor anywhere — not even internally
+outside the gate. `AiAnalysis` carries no verdict at all, and nothing derives a
+capability from it.
+
+### What this is not
+
+This is a **TypeScript and module authority boundary inside one trusted
+codebase**. It is not cryptography and not a sandbox. It stops accidental
+bypass, honest mistakes and casual misuse. It does not stop someone editing this
+repository, and it is not intended to — a deep import of
+`@/lib/trading/internal` reaches the issuer by design, because that is exactly
+how the Risk Engine (Fas 5), Prop Engine (Fas 9) and Approval layer (Fas 6) will
+integrate.
+
+The property actually guaranteed, and covered by `public-boundary.test.ts`:
+
+> Code importing only from `@/lib/trading` cannot mint execution authority from
+> records it invented.
+
+### Bounded authority lifetime
+
+An `ExecutionIntent` never outlives the permissions that authorized it:
+
+- it may not be created already expired (`expiresAt > now`)
+- `expiresAt <= proposal.expiresAt`
+- `expiresAt <= approval.expiresAt`
+
+### Decision reference integrity
+
+The gate checks that the capabilities offered are for *exactly* the decisions the
+proposal names — `proposal.riskDecisionId` must equal the clearance's
+`riskDecisionId`, and likewise for prop. A proposal cleared by decision A cannot
+execute on an ALLOW from decision B merely because signal and account match. A
+proposal naming no decision fails closed.
 
 ## Open gates
 

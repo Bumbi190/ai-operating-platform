@@ -46,6 +46,16 @@ const FACETS = [
 // Center diamond highlight
 const CENTER_DIAMOND = '50,38 62,50 50,62 38,50'
 
+/**
+ * The mark's outer silhouette — the canonical Omnira four-point crystal.
+ *
+ * Exported so other surfaces render the same identity instead of re-deriving
+ * the geometry. Atlas's mini-launcher draws this outline with its own cyan
+ * material: the shape is shared, only the fill differs. Anything drawing an
+ * Omnira/Atlas crystal should read this rather than repeat the coordinates.
+ */
+export const OMNIRA_MARK_POINTS = '50,5 64,36 95,50 64,64 50,95 36,64 5,50 36,36'
+
 // Separator lines between facets
 const LINES = [
   // cardinal lines through center

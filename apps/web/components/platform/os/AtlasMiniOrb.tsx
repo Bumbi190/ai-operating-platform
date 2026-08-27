@@ -20,10 +20,21 @@ import { usePathname } from 'next/navigation'
 import { X, Maximize2, MessageSquare, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAtlas } from '@/lib/atlas/runtime'
-import { AtlasOrb } from './AtlasOrb'
+import type { OrbPhase } from './AtlasOrb'
+import { AtlasLauncherOrb } from './AtlasLauncherOrb'
 
 // Orbens diameter som mini-version (vs 148px på Atlas-sidan)
 const MINI_SIZE = 52
+
+/** Fasbeskrivning för hjälpmedel — samma ordval som orbens tidigare etikett. */
+function phaseDescription(phase: OrbPhase): string {
+  switch (phase) {
+    case 'idle':      return 'Tryck för att prata'
+    case 'listening': return 'Lyssnar…'
+    case 'thinking':  return 'Tänker…'
+    case 'speaking':  return 'Talar…'
+  }
+}
 
 export function AtlasMiniOrb() {
   const pathname = usePathname()
@@ -189,15 +200,21 @@ export function AtlasMiniOrb() {
         {atlas.isSessionActive && !panelOpen && atlas.voicePhase === 'idle' && (
           <div
             className="absolute -top-0.5 -right-0.5 z-10 w-2 h-2 rounded-full
-                       bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.9)]"
+                       bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]"
             aria-hidden
           />
         )}
 
-        <AtlasOrb
+        {/* Presentation only. The handler, the phase and the 52px footprint are
+            exactly what AtlasOrb received here before — the launcher swapped
+            material, not behaviour. AtlasOrb itself is untouched because the
+            legacy Atlas home still renders it. */}
+        <AtlasLauncherOrb
           phase={atlas.voicePhase}
           onClick={handleOrbClick}
           size={MINI_SIZE}
+          label="Öppna Atlas"
+          stateDescription={`Atlas — ${phaseDescription(atlas.voicePhase)}`}
         />
       </div>
     </>

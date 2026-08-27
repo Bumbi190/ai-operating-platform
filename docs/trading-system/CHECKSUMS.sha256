@@ -1,0 +1,63 @@
+d67b775215991f29f308c9304a104c45c9c296ed586f42b852415b0089b8cde7  ./README.md
+727ef3dea12047e2795f9c699eee6c3ec81787fce7aa71ceda3f2f873f68e66a  ./SOURCE_OF_TRUTH.md
+e079a8304e0fdf19cd8d0f6d09da3ccb644fea566639784a1fa2c620dfbc82ac  ./archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical Candidate v1.0.pdf
+ee18f1d2ddd1a3321b5e9ec851e7c8b76fe0283bfaa729295e1caa58ee4d71a7  ./archive/Omnira Trading System – Risk Engine Specification – Canonical v1.0 CANDIDATE.md
+9560fced3c096660482c4dd484d12b988eb8c41b8cd894c2d81d65b13508f863  ./archive/README.md
+98511598631b017eaaa4ea996efa0994dface143c6ea6eef4c56acbf0b132e5a  ./book/chapters/01 - Vision.md
+8f60912d5e5a27986882dcbece231d3d9f06a7aa6ad5a202bb2f397e5d1bad7e  ./book/chapters/02 - Tradingfilosofi.md
+2d8840239b4dc087c820b6d242db050a7d22ef5f09cecb47e475e10217807ceb  ./book/chapters/03 - Strategispecifikation.md
+876a2ad14ca5487c6553157857c5106e4f185029805e4e34495563ff78419a59  ./book/chapters/04 - Riskhantering.md
+5b7a62a222e954fa80e3535be7399b8b5c369c8bea463cf75484ae4bc7e5a7a0  ./book/chapters/05 - Systemarkitektur.md
+84102945c629148cfea3964b53b0300e340b2b81e6e29322c30f86f652664303  ./book/chapters/06 - Marknadsdata.md
+7d4c65ffac2aa84ddd8f17b335eb16f0968f88c16541050e003b698c7ea84555  ./book/chapters/07 - AI som beslutsstöd.md
+b69cbf0452be81ce1a3f5a3caa68b1a65ce0900558a163440f13ac8b25f549c2  ./book/chapters/08 - Exekvering.md
+2eca7a34c5495750e17b74dace6e8e93f1804e9ba07e826a35fe537f7c39aaf1  ./book/chapters/09 - MetaTrader 5-integration.md
+c7bd9032c5745c6abdf1693472ec3dc6b9e41b98704ea43b4f6972eb16e89c48  ./book/chapters/10 - Backtesting.md
+215d957311242dfe48c4b6759c75c3aba3f053f53e66c803d1649efc2315752b  ./book/chapters/11 - Forward testing.md
+97ae1aa840ca5fd451d6103db04af05210a7b55d1d5785c7e8971691f39b7ec2  ./book/chapters/12 - Prop firm-regler.md
+1b895d832946fdfda4edc66943defa7b57ec6caddf952454991a5d981ce8a69f  ./book/chapters/13 - Tradingjournal.md
+86461a0741de8af998ec3f70d47e11ecc1189b87587ec13894985519db625283  ./book/chapters/14 - Prestationsanalys.md
+e262240101d91ee6caa3f3df745d435df0afc0e92e6e43b19c7254ae212f8065  ./book/chapters/15 - Felmoder och failure scenarios.md
+c7152ab909bd2ec5c06fa2b25eb21f47cf863ca4a4cbd4b30b922042685cf2a7  ./book/chapters/16 - Säkerhet och kill switches.md
+80e5824a3f4c99ae1f995939d5032b77aaf96f40601abbb371852c4fc4e8ffe0  ./book/chapters/17 - Demofas.md
+56e79910374b9fea1f7e776b266fdd54854d1cec1af01de012fa8d1ba774045d  ./book/chapters/18 - Live-deployment.md
+07ac93b6872115f99b66eec222e346caa7cdc3ec5d307aaad3fc96f91c65f358  ./book/chapters/19 - Kriterier för uppskalning.md
+ac4c85289360a1413fa1632cb74773bc5c1f96d4d3aa205d9ace5a6befbe993c  ./book/chapters/20 - Lärdomar och förändringshistorik.md
+8b668c4087af187fe973100e51d322a014d72af4101f42fded6240a64a31926c  ./book/final/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.0.pdf
+6bb2785b8801111b28fdf1902547fd07936dde12b37c4a0b2f163a2ce6114767  ./book/source/01 - Vision.docx
+cc1b16f380433c092a43862564bc9fcde4b2d2054654c2724ea857b87745605e  ./book/source/02 - Tradingfilosofi.docx
+2a6521709f3da3755db6d322473a186b8be820111e82acf209235503e031ab05  ./book/source/03 - Strategispecifikation.docx
+1aca83b1b5a8be1b07db6cf9da4e1e36af5bcd696715e1b20e99b7a3787079f8  ./book/source/04 - Riskhantering.docx
+b64aa5b26f74ac4381cf2f25d0abf2811333472c874aa7328a1060cf6fd96f1b  ./book/source/05 - Systemarkitektur.docx
+9068c696102ec0a4f98c239fce0af75805dac7db60d1048e3f3d6e88df3ad5c2  ./book/source/06 - Marknadsdata.docx
+a74642c19a7cbcc350d07d45d5afa0c34676e02912801377858f2fd650687459  ./book/source/07 - AI som beslutsstöd.docx
+c282cba724be6bd15689da4c2611cd37afc059b0f2868157549cd5a75a702faf  ./book/source/08 - Exekvering.docx
+5281e4ee261b78622f5c1ca6b64319390651956f5268e0d931e00478ef5c6e27  ./book/source/09 - MetaTrader 5-integration.docx
+5e36f470f21374515af68ca7723402e6c6fa66abb46dee370b16f376951a124b  ./book/source/10 - Backtesting.docx
+14e41659c5ae7a35bca9ae897be29cd79125816a2b0b98ce2ac376cec2db9e5e  ./book/source/11 - Forward testing.docx
+0d92e250e8a683277b609d33ba6fc8e0f068673993ead242200221054d84b04d  ./book/source/12 - Prop firm-regler.docx
+d9c899afe991765fab66f6d61c9fb2cf6a747d05656de6b4cad3182071e321ec  ./book/source/13 - Tradingjournal.docx
+fff5c347ddbc9be1829e2a5e2888d28451c8aa5b4d1fe34a367c6a44479ee9d3  ./book/source/14 - Prestationsanalys.docx
+ba02d3b3b5c52952a838cf1472ee856f5b541cf34ca6a4c5386eb14a3d13c2e2  ./book/source/15 - Felmoder och failure scenarios.docx
+320ebc0546c825b8984daabb0bcdc9acf48888130a9d48848afb6af433a58c1b  ./book/source/16 - Säkerhet och kill switches.docx
+bb6623e8a0f31ab9b902154ce11e2a32c572ef24bdb79ff955c4492d299cd0ae  ./book/source/17 - Demofas.docx
+6b96f3cc4eeaba911d8c7c0e3e8a2cea2106919f46704503c99f9ab23b0c9230  ./book/source/18 - Live-deployment.docx
+55577b3f4b35234b035a4f658134f6677fe5179508281c9146ab64d2961dc1c5  ./book/source/19 - Kriterier för uppskalning.docx
+867ad934ce2f9ac3f87c83a457863096f3cc7bbe50004bdd08df1a419873511a  ./book/source/20 - Lärdomar och förändringshistorik.docx
+823f2f61cb2a96918d66e5a3a1179842d0281a9a619d5e74cd160b8c75d00d2c  ./book/source/README.md
+6ab83624396e4d62a759511ac2b85e936a7a12e5a1111e143401b96d68292314  ./reviews/Canonical Amendments v1.0.md
+68a4461cf01c811f4204c302eda014b5cf539ff82f0018b0c7927ba8d58febb6  ./reviews/Canonical Review v1.0.md
+0a9675391f61bc9ed01f4f288d419bc7e784daa309cbcad0f8d12f203e308784  ./reviews/Contradiction Register v1.0.md
+95295ef66d048527222c80c0e5cca5d631b18c9f056c2344ec0a64bac7575a7d  ./reviews/Open Implementation Gates v1.0.md
+75b2f76afd614b4726ff07626c4c08fa2bca45ff82723011aa458247fc576552  ./specifications/README.md
+930c38bf192cfd555f84d90faa5b82ec991e6466edb90526f26c17433e867525  ./specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.docx
+35cdc70ccf024d021f226922609470da74adf1c95e8ff5c6f74544d088fb3d9a  ./specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.md
+4eb52779f44da2d17da036e84d2fb28fac0b110892a42354bdde595e32d86355  ./specifications/data-model/Omnira Trading System – Datamodell v0.1.docx
+03cb29edc527d04d892ca368349cebe25a64365fc832f531b1874183b1cef4cb  ./specifications/data-model/Omnira Trading System – Datamodell v0.1.md
+32ade37605fdf591653ca29171afc54581d5eb80b0bba45fe65c67b5cdc273d1  ./specifications/pattern-detection/README.md
+e19d2754c6766a807e39472ff63b62d3df66b2e0fd3de84bfc73aa1604665631  ./specifications/prop-firm/README.md
+865fcb11ecfde181b5cbeb2ecba0514222d428caba693843be636cace4c568b9  ./specifications/risk/Omnira Trading System – Risk Engine Specification v0.1.docx
+df26a362fc02854e9d8b94a94430b79b5514d1b0390b6fac8ec16873d5166fd2  ./specifications/risk/Omnira Trading System – Risk Engine Specification v0.1.md
+40b60037e88b1ea179ea32f47b479924a4317e548debb71a4d886f3461fc4ec5  ./specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md
+72b90871ce5da8f4f7f01e1248387bf2293c2b1675efa45a9c2c886f87e7d570  ./specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.docx
+1cf0d5de2a59c7273cdbf29aec75a3f699bd5897e452496350d035671f05dcfd  ./specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md

@@ -1,0 +1,20 @@
+# specifications — läsordning
+
+Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
+
+**`.md` är aktiv source of truth. `.docx` är historiskt original.**
+
+| Domän | Aktiv fil | Status |
+|---|---|---|
+| Strategi | `strategy/…Canonical v1.0.md` | Canonical v1.0, rev. 2026-08-27 (CLOSED-03) |
+| Risk | `risk/…Canonical v1.0.md` | **Canonical v1.0**, 0 öppna riskbeslut |
+| Risk (historik) | `risk/…v0.1.md` | Historiskt, superseded |
+| Arkitektur | `architecture/…v0.1.md` | v0.1, oförändrad |
+| Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
+| Prop firm | `prop-firm/` | Tom, GATE-09 |
+| Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |
+
+Strategi- och datamodell-`.md` har ändrats sedan sina `.docx`-original. Ändringarna är
+listade i `../reviews/Canonical Amendments v1.0.md`.
+
+Vid konflikt mellan `.docx` och `.md` vinner alltid `.md`.

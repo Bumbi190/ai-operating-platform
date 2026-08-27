@@ -14,6 +14,7 @@ export { OSPage, OSLayer, OSGrid } from './OSPage'
 // Bars & chrome
 export { CommandBar } from './CommandBar'
 export { CommandPalette } from './CommandPalette'
+export { CommandPaletteHost } from './CommandPaletteHost'
 export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center

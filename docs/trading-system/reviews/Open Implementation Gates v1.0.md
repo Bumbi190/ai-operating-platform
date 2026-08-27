@@ -4,6 +4,7 @@
 **Version:** v1.0
 **Datum:** 2026-08-27
 **Status:** Aktiv. Ska konsulteras före varje fasstart.
+**Senast uppdaterad:** 2026-08-27 — GATE-05, GATE-10 och GATE-11 STÄNGDA.
 
 ---
 
@@ -32,6 +33,7 @@ klassificeringen är att göra just den skillnaden explicit.
 | `BLOCKS PROP MODE` | Måste lösas innan Fas 9 Prop Firm Mode |
 | `BLOCKS LIVE` | Måste lösas innan Fas 10 Controlled Live |
 | `DEFERRED` | Blockerar ingen nu planerad fas |
+| `STÄNGD` | Explicit canonical beslut fattat, se `Canonical Amendments v1.0.md` |
 
 ---
 
@@ -43,18 +45,25 @@ klassificeringen är att göra just den skillnaden explicit.
 | GATE-02 | Deterministisk CISD-detektion | BLOCKS STRATEGY ENGINE |
 | GATE-03 | Equal-high / equal-low-tolerans | BLOCKS STRATEGY ENGINE |
 | GATE-04 | SMT correspondence- och timingregler | BLOCKS STRATEGY ENGINE |
-| GATE-05 | London window-close / break-even-tvetydighet | BLOCKS STRATEGY ENGINE |
+| ~~GATE-05~~ | ~~London window-close / break-even-tvetydighet~~ | **STÄNGD 2026-08-27** |
 | GATE-06 | Val av news-provider | BLOCKS EXECUTION |
 | GATE-07 | High-impact USD-klassificering och providermappning | BLOCKS EXECUTION |
 | GATE-08 | Val av realtids-marknadsdataprovider | BLOCKS STRATEGY ENGINE |
 | GATE-09 | Första faktiska PropFirmProfile | BLOCKS PROP MODE |
-| GATE-10 | Daily-loss force close-semantik | BLOCKS EXECUTION |
-| GATE-11 | Reserved risk-semantik vid flera positioner | DEFERRED |
+| ~~GATE-10~~ | ~~Daily-loss force close-semantik~~ | **STÄNGD 2026-08-27** |
+| ~~GATE-11~~ | ~~Reserved risk-semantik vid flera positioner~~ | **STÄNGD 2026-08-27** |
 | GATE-12 | Execution safety margin- och slippagemodell | BLOCKS EXECUTION |
 | GATE-13 | Exakta promotion thresholds | BLOCKS LIVE |
 | GATE-14 | Exakta live safety policies | BLOCKS LIVE |
 
+**Antal öppna gates: 11.** Tre stängdes 2026-08-27.
+
 **Antal som blockerar Fas 1: 0.**
+**Antal som blockerar Fas 2: 0.**
+
+De elva kvarvarande är samtliga medvetet uppskjutna detaljspecifikationer. Ingen av dem är
+en defekt i den låsta regelmängden — den distinktionen är avgörande och behandlas i
+*Canonical Review v1.0* avsnitt 6.
 
 ---
 
@@ -127,22 +136,26 @@ obrukbar som beslutsunderlag för framtida minimum-grade-tester.
 
 ---
 
-## GATE-05 — London window-close och break-even
+## ~~GATE-05~~ — London window-close och break-even
 
-**Klass:** BLOCKS STRATEGY ENGINE
+**Status: STÄNGD 2026-08-27**
 
-Se *Contradiction Register v1.0*, C-03.
+Canonical beslut:
 
-Strategy Specification §31 och Kapitel 3 säger båda att en London-position som
-fortfarande är öppen 05:00 "ska skyddas genom break-even-regeln". Det går att läsa
-som forcerad BE vid 05:00, eller som att den vanliga §21-triggern helt enkelt
-fortsätter gälla.
+```
+London-position fortfarande öppen 05:00 America/New_York
+→ SL = entry price
+```
 
-De två läsningarna ger olika backtestresultat för varje London-trade som är öppen
-05:00 utan att ha tagit närmaste bekräftade 1m swing.
+Gäller även om den swing-baserade triggern i §21 ännu inte har inträffat. Positionen
+fortsätter därefter. Ingen fyratimmarsgräns tillkommer för London. Har swing-triggern
+redan flyttat SL till entry price är window-close-triggern en no-op.
 
-**Krav för att stänga:** ett explicit val mellan de två läsningarna.
-**Får inte lösas i kod.**
+Registrerat som CLOSED-03 i strategispecifikationen, infört i §21.1, §31 och Kapitel 3,
+journalfört via `be_trigger_type = SWING | WINDOW_CLOSE`, och täckt av forward
+test-kriterier i Kapitel 11.
+
+Se `Canonical Amendments v1.0.md` avsnitt A1–A8.
 
 ---
 
@@ -221,40 +234,54 @@ mot skarpt konto blockeras.
 
 ---
 
-## GATE-10 — Daily-loss force close-semantik
+## ~~GATE-10~~ — Daily-loss force close-semantik
 
-**Klass:** BLOCKS EXECUTION
+**Status: STÄNGD 2026-08-27**
 
-Se *Contradiction Register v1.0*, C-01.
+Canonical beslut: den interna dagsregeln tvångsstänger **inte** en öppen position.
 
-Kapitel 4 låser den interna daily-loss-mätaren till realiserad förlust, och kräver
-samtidigt att en öppen position tvångsstängs om dagsgränsen bryts. Med högst en öppen
-position kan en realiserad mätare inte passera gränsen medan en position fortfarande
-är öppen.
+```
+MAX INTERNAL DAILY LOSS: $450
+CALCULATION BASIS:       REALIZED LOSSES ONLY
+RESET:                   00:00 America/New_York
+```
 
-**Krav för att stänga:** beslut om huruvida gränsbrottsdetektion för force close sker
-på equity-basis medan mätaren förblir realiserad — eller om regeln ska omformuleras
-som framtidsregel.
+Vid `realized_daily_loss >= $450`: inga nya trades, state `BLOCKED / DAILY_STOP`,
+execution av nya intents blockeras, state persistent över restart, blockerad till nästa
+canonical reset, audit event skapas.
 
-Detta är den enda kvarvarande posten som hindrar att Risk Engine Specification
-promoveras från CANDIDATE till Canonical v1.0.
+En öppen position hanteras vidare av teknisk SL, TP, canonical BE, London window-close BE,
+news exit, NY time exit, emergency-kontroller och Prop Firm Rules. Ett prop-lager som
+använder equity, floating eller trailing får vara striktare och kan kräva tidigare skydd.
+
+Risk Engine Specification är därmed promoverad till **Canonical v1.0**.
+
+Se `Canonical Amendments v1.0.md` avsnitt B1–B6.
 
 ---
 
-## GATE-11 — Reserved risk vid flera positioner
+## ~~GATE-11~~ — Reserved risk
 
-**Klass:** DEFERRED
+**Status: STÄNGD 2026-08-27**
 
-Se *Contradiction Register v1.0*, C-02.
+Canonical beslut — reserved risk är en pre-entry-kontroll:
 
-Risk Engine Specification v0.1 §18 kräver att en öppen positions återstående möjliga
-förlust reserveras mot dagsbudgeten. Kapitel 4:s realiserade mätare uttalar sig inte
-om reservationer.
+```
+realized_daily_loss + reserved_risk_for_new_trade <= daily_loss_limit
+```
 
-Frågan är praktiskt vilande så länge `max_open_positions = 1`, eftersom ingen ny
-riskutvärdering kan ske medan en position är öppen.
+```
+realized_daily_loss = $300, daily_loss_limit = $450, daily_remaining = $150
+ny trade risk = $128  → passerar
+ny trade risk = $151  → DENY
+```
 
-**Blir aktiv** vid `max_open_positions > 1`. Blockerar ingen nu planerad fas.
+Kontrollen ändrar inte definitionen av realiserad daily loss och skriver inget i mätaren.
+Reservationen frisläpps när traden stängs.
+
+Regeln är normativ redan i v1.0, inte bara vid `max_open_positions > 1`.
+
+Se `Canonical Amendments v1.0.md` avsnitt B2.
 
 ---
 
@@ -307,14 +334,22 @@ uppskalning får ske på kortsiktig performance.
 | Fas | Blockerande gates | Får påbörjas |
 |---|---|---|
 | Fas 1 – Trading Core | inga | **Ja** |
-| Fas 2 – MT5 Read Only | inga | Ja |
-| Fas 3 – Strategy Engine | GATE-01, 02, 03, 04, 05, 08 | Nej |
+| Fas 2 – MT5 Read Only | inga | **Ja** |
+| Fas 3 – Strategy Engine | GATE-01, 02, 03, 04, 08 | Nej |
 | Fas 4 – AI Analysis | ärver Fas 3 | Nej |
-| Fas 5 – Risk Engine | GATE-10 | Nej |
-| Fas 6 – Manual Approval | GATE-06, 07, 10, 12 | Nej |
+| Fas 5 – Risk Engine | inga gates kvar, förutsätter Fas 3–4 | Gate-fri |
+| Fas 6 – Manual Approval | GATE-06, 07, 12 | Nej |
 | Fas 7 – Demo Automation | som Fas 6 | Nej |
 | Fas 8 – Backtest + Forward | ärver Fas 3 | Nej |
 | Fas 9 – Prop Firm Mode | GATE-09 | Nej |
 | Fas 10 – Controlled Live | GATE-13, 14 | Nej |
 
 **Fas 1 och Fas 2 är ogrindade och kan påbörjas omedelbart.**
+
+Fas 5 har efter 2026-08-27 inga egna öppna gates — Risk Engine Specification är Canonical
+v1.0 med noll öppna riskbeslut. Fasen förutsätter fortfarande att Fas 3 och Fas 4 är
+genomförda i den canonical fasordningen.
+
+Notera att GATE-12 flyttades från Fas 5 till Fas 6: execution safety margin och
+slippagetröskel behövs först när en order faktiskt kan skickas, inte för att bygga
+riskmotorn.

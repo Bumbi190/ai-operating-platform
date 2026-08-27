@@ -85,6 +85,36 @@ och:
 
 Om något av systemen nekar traden får den inte exekveras.
 
+## Reserved risk
+
+Att dagsmätaren är realiserad betyder inte att en ny trade får ta hela den återstående
+budgeten i anspråk utan kontroll.
+
+Innan en ny trade tillåts ska dess möjliga initiala risk reserveras mot återstående
+dagsbudget:
+
+```
+realized_daily_loss + reserved_risk_for_new_trade <= daily_loss_limit
+```
+
+Exempel:
+
+```
+realized_daily_loss = $300
+daily_loss_limit    = $450
+daily_remaining     = $150
+
+ny trade risk = $128  → passerar denna regel
+ny trade risk = $151  → DENY
+```
+
+Reserved risk är en **pre-entry-kontroll**. Den ändrar inte definitionen av realiserad
+daily loss, och den skriver inte in något i dagsmätaren. Den avgör bara om en ny trade
+får öppnas.
+
+Reservationen frisläpps när traden stängs. Det faktiska utfallet, vinst eller förlust,
+bokförs då mot den realiserade mätaren.
+
 ## Daily reset
 
 Den interna daily risk-budgeten återställs vid:
@@ -97,13 +127,52 @@ Systemet får inte använda serverns lokala timezone som implicit daily-reset.
 
 ## Daily stop
 
-När $450 i realiserade dagliga förluster har nåtts får inga nya trades öppnas.
+När:
 
-Risk Engine ska då visa kontot som blockerat för nya entries fram till nästa daily reset.
+```
+realized_daily_loss >= $450
+```
 
-Om en position fortfarande är öppen när daily-loss-gränsen bryts ska positionen stängas direkt.
+ska följande gälla:
+
+- inga nya trades tillåts
+- risk state blir **BLOCKED / DAILY_STOP**
+- execution av nya intents blockeras
+- state är persistent över restart
+- trading förblir blockerad till nästa canonical reset
+- ett audit event skapas
+
+Risk Engine ska visa kontot som blockerat för nya entries fram till nästa daily reset.
+
+En daily stop ska inte kunna återställas genom att ladda om UI:t.
 
 Detta är en explicit riskregel och inte en frivillig rekommendation.
+
+## Ingen intern floating force-close
+
+Den interna dagsregeln stänger **inte** en redan öppen position.
+
+Eftersom Omniras interna mätare endast räknar realiserade förluster, och strategin tillåter
+högst en öppen position, kan den interna gränsen inte brytas av en position som fortfarande
+är öppen. Att införa en intern tvångsstängning baserad på floating P/L skulle motsäga
+realized-only-modellen.
+
+En redan öppen position hanteras därför vidare genom sina övriga giltiga regler:
+
+- teknisk stop loss
+- take profit
+- canonical break-even
+- London window-close break-even 05:00
+- news exit
+- New York time exit
+- emergency- och safety-kontroller
+- Prop Firm Rules
+
+Om ett aktivt PropFirmProfile använder equity-, floating- eller trailingbaserade gränser och
+kräver en tidigare skyddsåtgärd gäller den striktare prop-regeln. Intern risk och prop
+firm-risk hålls fortsatt separata.
+
+Att stoppa nya trades och att tvångsstänga befintlig exponering är två olika actions.
 
 ## Max tre attempts per 4H-thesis
 
@@ -276,3 +345,31 @@ Marknaden kan bete sig på ett sätt som aldrig tidigare observerats.
 Därför ska systemet byggas utifrån antagandet att fel förr eller senare kommer att inträffa.
 
 Risk Engine ska begränsa konsekvenserna när de gör det.
+
+## Kapitelstatus
+
+Kapitel: 4 – Riskhantering
+
+Bok: Omnira Trading System – Från strategi till autonom exekvering
+
+Status: Baseline dokumenterad
+
+Revision: 2026-08-27 – reserved risk och daily stop gjorda explicita, intern floating force-close borttagen
+
+Max risk per trade: $150
+
+Intern daily loss: $450, realized only
+
+Daily reset: 00:00 America/New_York
+
+Reserved risk: Pre-entry-kontroll, ändrar inte realiserad mätare
+
+Intern floating force-close: Finns inte
+
+Max öppna positioner: 1
+
+Max attempts per 4H-thesis: 3
+
+Human override av hard risk DENY: Finns inte
+
+Prop firm-risk: Separat lager, striktaste gräns vinner

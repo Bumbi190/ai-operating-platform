@@ -355,6 +355,26 @@ Efter att break-even-triggern har uppfyllts:
 
 SL = entry price
 
+## 21.1 Window-close break-even — London
+
+Utöver den swing-baserade triggern ovan gäller för London-sessionen en obligatorisk
+window-close break-even.
+
+Om positionen fortfarande är öppen exakt när London entry-window stänger
+05:00 America/New_York:
+
+```
+SL → entry price
+```
+
+Denna action inträffar **även om** den swing-baserade break-even-triggern ännu inte har
+uppfyllts. Den ersätter inte swing-triggern — den är en andra, tidsbaserad trigger för
+samma break-even-action.
+
+Har swing-triggern redan flyttat SL till entry price är window-close-triggern en no-op.
+
+Se avsnitt 31.
+
 Efter break-even används ingen ytterligare trailing stop.
 
 Denna regel är canonical för Strategy v1.0.
@@ -500,13 +520,36 @@ En trade måste öppnas inom:
 
 02:00–05:00 America/New_York
 
-Om positionen fortfarande är öppen när entry-window stänger får den fortsätta.
+Om positionen fortfarande är öppen exakt när entry-window stänger
+05:00 America/New_York gäller obligatorisk window-close break-even:
 
-Strategins instruktion är att positionen då ska skyddas genom break-even-regeln.
+```
+SL → entry price
+```
+
+Denna action inträffar även om den swing-baserade break-even-triggern i avsnitt 21 ännu
+inte har uppfyllts.
+
+Efter denna action:
+
+```
+SL = entry price
+```
+
+Positionen får därefter fortsätta.
 
 London-trades har ingen explicit fyratimmarsgräns.
 
-De får fortsätta så länge övriga regler inte framtvingar exit.
+De fortsätter tills en annan explicit canonical exitregel inträffar, exempelvis:
+
+- TP
+- BE
+- relevant news exit
+- emergency- eller safety-exit
+- annan explicit canonical exitregel
+
+Window-close break-even är deterministisk och tidsstyrd. Den är inte discretionary och får
+inte hoppas över av AI, UI eller operatör.
 
 ## 32. New York Session Trade Management
 
@@ -726,6 +769,7 @@ Minst följande ska sparas:
 - slippage
 - MFE
 - MAE
+- break-even trigger type (SWING | WINDOW_CLOSE)
 - exit
 - exit reason
 - slutligt R-resultat
@@ -845,7 +889,9 @@ Gamla resultat får aldrig automatiskt räknas som resultat för den nya version
 
 ## 45. Canonical Status
 
-De två implementationdetaljer som var öppna i v1.0-RC1 är nu låsta.
+De två implementationdetaljer som var öppna i v1.0-RC1 är nu låsta, och en ytterligare
+tvetydighet som upptäcktes vid canonical documentation review 2026-08-27 är nu explicit
+stängd (CLOSED-03).
 
 ## CLOSED-01 — Break-even trigger
 
@@ -871,7 +917,28 @@ T - 15 minuter
 
 före relevant high-impact USD-news.
 
-Det finns därmed inga kvarvarande öppna strategiimplementationer från v1.0-RC1 som blockerar canonical status.
+## CLOSED-03 — London window-close break-even
+
+Upptäckt vid canonical documentation review 2026-08-27. Den tidigare formuleringen
+"positionen skyddas genom break-even-regeln" tillät två olika implementationer.
+
+Canonical betydelse:
+
+```
+London-position fortfarande öppen 05:00 America/New_York
+→ SL = entry price
+```
+
+Detta gäller även om den swing-baserade triggern i avsnitt 21 ännu inte har inträffat.
+Positionen får därefter fortsätta. Ingen fyratimmarsgräns tillkommer för London.
+
+Detta är inte en ny regel. Det är den explicita maskinläsbara tolkningen av det redan
+tidigare fattade beslutet att en trade som fortsätter efter trading window ska skyddas
+med stop loss på break-even.
+
+Se avsnitt 21.1 och 31.
+
+Det finns därmed inga kvarvarande öppna strategiimplementationer som blockerar canonical status.
 
 ## 46. Canonical Strategy Flow
 
@@ -904,6 +971,10 @@ Selected 4H Open
 Dokument: Omnira Liquidity Manipulation – Trading Strategy Specification
 
 Version: Canonical v1.0
+
+Revision: 2026-08-27 — CLOSED-03 (London window-close break-even). Explicit
+disambiguering av redan fattat beslut. Ingen versionsbump enligt avsnitt 44, eftersom
+ingen materiell regel har ändrats — endast en tvetydig formulering har gjorts entydig.
 
 Strategisk status: Låst baseline för implementation och validering
 

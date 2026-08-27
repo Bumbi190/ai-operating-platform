@@ -503,6 +503,22 @@ motsvarande swing low.
 
 Journalen ska veta både trigger och broker confirmation.
 
+## Break-Even Trigger Type
+
+Strategy v1.0 har två giltiga break-even-triggers. Journalen ska skilja dem åt, annars går
+det inte att mäta dem separat i efterhand.
+
+```
+be_trigger_type = SWING | WINDOW_CLOSE
+```
+
+- `SWING` — närmaste bekräftade 1m swing efter entry togs
+- `WINDOW_CLOSE` — London-positionen var fortfarande öppen 05:00 America/New_York
+
+Båda ger samma action, `SL → entry price`, men de har olika orsak och olika
+performancekaraktär. Utan denna separation kan analysen inte avgöra hur mycket
+window-close-regeln faktiskt kostar eller sparar.
+
 ## Break-Even Failure
 
 Om systemet skickar BE modification men broker nekar ska det journalföras som technical incident.

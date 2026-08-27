@@ -5,16 +5,31 @@
 **Datum:** 2026-08-27
 **Granskare:** Kontrollerad canonical documentation pass
 **Omfattning:** Kapitel 1–20 samt fyra Fas 0-specifikationer
-**Utfall:** **CANONICAL CANDIDATE v1.0** — se avsnitt 6
+**Utfall:** **CANONICAL v1.0** — se avsnitt 6
+**Reviderad:** 2026-08-27, efter att de två sista blockerarna stängdes
 
 ---
 
 ## 1. Bevaranderegel
 
-Denna review har **inte** ändrat någon tradingregel, riskgräns, session, entry-,
-SL-, TP-, BE-, re-entry- eller news-regel.
+Denna review genomfördes i två pass.
 
-Vad som gjordes:
+**Pass 1 (granskning)** ändrade **ingen** tradingregel. Den registrerade allt den hittade
+och lämnade två regeltvetydigheter olösta, eftersom de krävde mänskliga beslut.
+
+**Pass 2 (reconciliation)** genomfördes efter att de två besluten fattats. Här ändrades
+text — men endast för att införa de fattade besluten, aldrig för att avgöra något på egen
+hand. Varje ändring är listad med före, efter och motivering i
+`Canonical Amendments v1.0.md`.
+
+Ingen riskgräns, session, entry-, SL-, TP-, re-entry- eller news-regel har ändrats i
+något av passen. De två ändringar som rör regelinnehåll är:
+
+- London window-close break-even gjordes entydig (disambiguering av redan fattat beslut)
+- intern floating force-close togs bort som logiskt ohållbar, och reserved risk infördes
+  som explicit pre-entry-kontroll
+
+Vad som gjordes i pass 1:
 
 - inventering och verifiering av materialet
 - korsläsning av samtliga dokument mot varandra
@@ -116,8 +131,12 @@ tre attempts per 4H thesis; ingen re-entry efter winner eller BE; news T-1h → 
 för nya entries; befintlig position stängs T-15m; New York max fyra timmars
 trade duration; London utan explicit tidsgräns.
 
-**En tvetydighet kvarstår:** London window-close och break-even. Se C-03 / GATE-05.
-Den är gemensam för båda dokumenten — de säger samma sak, och samma sak är tvetydigt.
+**En tvetydighet hittades i pass 1:** London window-close och break-even. Den var gemensam
+för båda dokumenten — de sa samma sak, och samma sak var tvetydigt.
+
+**Stängd 2026-08-27.** En London-position som fortfarande är öppen 05:00 får
+`SL → entry price`, även utan swing-trigger. Registrerad som CLOSED-03 i
+strategispecifikationen. Se C-03 och `Canonical Amendments v1.0.md` avsnitt A.
 
 ### 3.2 Risk
 
@@ -131,7 +150,11 @@ Siffrorna $150 och $450 förekommer i 18 respektive 15 dokument utan en enda
 avvikelse. Alla andra belopp i materialet är räkneexempel och motsäger inte
 baslinjen.
 
-**En koherenslucka kvarstår:** daily-loss force close. Se C-01 / GATE-10.
+**En koherenslucka hittades i pass 1:** daily-loss force close.
+
+**Stängd 2026-08-27.** Den interna dagsregeln tvångsstänger inte en öppen position.
+Reserved risk infördes som explicit pre-entry-kontroll. Se C-01, C-02 och
+`Canonical Amendments v1.0.md` avsnitt B.
 
 ### 3.3 Arkitektur
 
@@ -205,17 +228,44 @@ bemötts av senare bokbeslut, i praktiken helt av Kapitel 4.
 
 Sju av åtta är rena, entydiga resolutioner.
 
-**OPEN-RISK-07 är löst i ordalydelse men inte i koherens.** Beslutet "stäng direkt"
-kombinerat med OPEN-RISK-01:s realiserade mätare och `max_open_positions = 1` ger en
-regel utan nåbar trigger. Se C-01 / GATE-10.
+**OPEN-RISK-07 var i pass 1 löst i ordalydelse men inte i koherens.** Beslutet
+"stäng direkt" kombinerat med OPEN-RISK-01:s realiserade mätare och
+`max_open_positions = 1` gav en regel utan nåbar trigger.
+
+Detta är stängt sedan 2026-08-27. Se avsnitt 4.1.
 
 Notera att §29 (spread) och §26 (total drawdown) inte är motsägelser mot Kapitel 4:
 specifikationen kräver att Risk Engine *stöder* funktionerna, Kapitel 4 beslutar att
 de inte är *aktiva* i v1.0. Kapacitet och aktivering är olika saker.
 
-**Resultat:** `Risk Engine Specification – Canonical v1.0 CANDIDATE` är framtagen och
-placerad i `specifications/risk/`. Den behåller CANDIDATE-status enbart på grund av
-GATE-10.
+### 4.1 Uppdatering 2026-08-27
+
+OPEN-RISK-07 är nu stängd. Beslutet blev **att ta bort den interna tvångsstängningen**,
+inte att införa equity-baserad detektion — den senare hade motsagt realized-only-modellen.
+
+Samtidigt låstes reserved risk som en explicit pre-entry-kontroll, vilket även stänger
+den tidigare vilande GATE-11.
+
+Den låsta modellen är:
+
+```
+MAX INTERNAL DAILY LOSS: $450
+CALCULATION BASIS:       REALIZED LOSSES ONLY
+RESET:                   00:00 America/New_York
+
+realized_daily_loss + reserved_risk_for_new_trade <= daily_loss_limit
+```
+
+Vid `realized_daily_loss >= $450`: inga nya trades, `BLOCKED / DAILY_STOP`, execution av
+nya intents blockeras, persistent över restart, audit event.
+
+En öppen position tvångsstängs inte av den interna regeln. Prop-lagret får vara striktare.
+
+**Resultat:** samtliga åtta OPEN-RISK-poster är stängda.
+`Risk Engine Specification – Canonical v1.0` är promoverad och ligger i
+`specifications/risk/`. CANDIDATE-versionen är flyttad till `archive/` med
+superseded-banner, och v0.1 har försetts med en historik-banner så att dess OPEN-RISK-lista
+inte kan läsas som aktuell.
 
 ---
 
@@ -231,61 +281,94 @@ Se `book/final/`.
 
 ## 6. Utfall
 
-### 6.1 Varför inte Canonical v1.0
+### 6.1 De två blockerarna är stängda
 
-Materialet är av hög och ovanligt jämn kvalitet. Baslinjesiffrorna är konsistenta
-över alla 24 dokument, auktoritetskedjan håller, self-improvement-gränsen är korrekt
-dragen, och fail-closed-principen är genomförd rakt igenom.
-
-Två poster hindrar ändå ärlig canonical-status:
+Pass 1 identifierade två defekter i den låsta regelmängden. Båda är nu stängda genom
+explicita mänskliga beslut.
 
 **C-03 / GATE-05 — London window-close och break-even.**
-En canonical strategiregel som inte kan implementeras deterministiskt som skriven.
-De två möjliga läsningarna ger olika backtestresultat. Detta är en regeltvetydighet,
-inte en saknad detalj.
+Canonical betydelse: en London-position som fortfarande är öppen 05:00 America/New_York
+får `SL → entry price`, även om den swing-baserade triggern inte har inträffat.
+Positionen fortsätter därefter, utan fyratimmarsgräns. Registrerat som CLOSED-03.
 
 **C-01 / GATE-10 — Daily-loss force close.**
-Två låsta riskbeslut ger tillsammans en regel utan nåbar trigger. Detta är en
-logisk lucka mellan två canonical beslut, inte en oskriven parameter.
+Canonical policy: den interna dagsregeln tvångsstänger inte en öppen position. Mätaren
+förblir realiserad. Vid gränsbrott blockeras nya trades och state blir
+`BLOCKED / DAILY_STOP`. Reserved risk infördes som pre-entry-kontroll, vilket samtidigt
+stängde GATE-11.
 
-Skillnaden mot de övriga gates spelar roll: GATE-01 till 04 och 06 till 14 är
-**medvetet uppskjutna detaljspecifikationer**, precis som Kapitel 20 förutser. De
-hindrar inte att boken är canonical. C-03 och C-01 är däremot **defekter i den
-låsta regelmängden själv**.
+Ingen av dessa löstes genom tolkning under granskningen. Båda avgjordes av beslut som
+sedan infördes i texten och dokumenterades i `Canonical Amendments v1.0.md`.
 
-Att kalla paketet Canonical v1.0 med dessa kvar vore att markera något som beslutat
-som i praktiken inte är det.
+### 6.2 Varför paketet nu är Canonical v1.0
 
-### 6.2 Status
+Kriteriet för canonical-status är inte att allt är känt. Det är att **den låsta
+regelmängden är intern konsistent och deterministiskt implementerbar**.
 
-| Artefakt | Status |
+Skillnaden som avgjorde pass 1 gäller fortfarande, men faller nu ut åt andra hållet:
+
+- **Defekter i den låsta regelmängden** — regler som motsäger varandra eller inte kan
+  implementeras entydigt. Dessa blockerar canonical-status. Det fanns två. Det finns nu
+  noll.
+- **Medvetet uppskjutna detaljspecifikationer** — frågor som ännu inte behöver ett svar
+  och som Kapitel 20 uttryckligen förutser. Dessa blockerar respektive fas, inte
+  canonical-status. Det finns elva.
+
+En manual kan vara kanonisk och samtidigt ha oöppnade dörrar, så länge varje dörr är
+märkt och ingen av dem står på glänt in i ett rum som redan är beskrivet.
+
+### 6.3 Status
+
+| Artefakt | Status | Version |
+|---|---|---|
+| Boken, Kapitel 1–20 | **Canonical** | v1.0 |
+| Trading Strategy Specification | **Canonical** | v1.0, rev. 2026-08-27 (CLOSED-03) |
+| Risk Engine Specification | **Canonical** | v1.0, promoverad från CANDIDATE |
+| Systemarkitektur | Fas 0-baseline, oförändrad | v0.1 |
+| Datamodell | Fas 0-baseline | v0.1, rev. 2026-08-27 (additivt fält) |
+
+**Arkitektur och datamodell promoveras inte.** Granskningen fann inga motsägelser i dem,
+men det är inte samma sak som att de genomgått en promotionsprocess. Systemarkitektur
+v0.1 är canonical **för auktoritetskedjan** genom en explicit precedensregel i
+`SOURCE_OF_TRUTH.md` — det är en precedensutsaga, inte en versionsbump. Att promovera
+dem här vore att hitta på ett beslut som ingen har fattat.
+
+### 6.4 Kvarvarande öppna gates
+
+Elva, samtliga medvetet uppskjutna:
+
+| Gate | Blockerar |
 |---|---|
-| Boken (Kapitel 1–20) | **Canonical Candidate v1.0** |
-| Trading Strategy Specification | Canonical v1.0, med GATE-05 kvar |
-| Risk Engine Specification | **Canonical v1.0 CANDIDATE**, med GATE-10 kvar |
-| Systemarkitektur | v0.1, oförändrad |
-| Datamodell | v0.1, oförändrad |
+| GATE-01 iFVG-detektion | Strategy Engine |
+| GATE-02 CISD-detektion | Strategy Engine |
+| GATE-03 equal-high/low-tolerans | Strategy Engine |
+| GATE-04 SMT correspondence | Strategy Engine |
+| GATE-08 marknadsdataprovider | Strategy Engine |
+| GATE-06 news-provider | Execution |
+| GATE-07 high-impact-klassificering | Execution |
+| GATE-12 execution margin/slippage | Execution |
+| GATE-09 första PropFirmProfile | Prop Mode |
+| GATE-13 promotion thresholds | Live |
+| GATE-14 live safety policies | Live |
 
-### 6.3 Väg till Canonical v1.0
+Ingen av dem blockerar Fas 1 eller Fas 2.
 
-Två beslut krävs — inget av dem är stort, båda kräver en människa:
+### 6.5 Duglighet som implementationsbaslinje
 
-1. **GATE-05:** forcerad BE vid 05:00, eller enbart fortsatt §21-trigger.
-2. **GATE-10:** equity-baserad detektion för force close, eller omformulering som
-   framtidsregel.
+**Materialet är dugligt som implementationsbaslinje.**
 
-När dessa två är låsta kan paketet promoveras till Canonical v1.0 utan ytterligare
-granskning. Övriga gates blockerar respektive fas, inte canonical-status.
-
-### 6.4 Duglighet som implementationsbaslinje
-
-**Materialet är dugligt som implementationsbaslinje för Fas 1 och Fas 2.**
-
-Ingen öppen gate berör Trading Core eller MT5 Read Only. Domänmodellen,
-auktoritetskedjan, journalkraven och datamodellen är tillräckligt låsta för att
-byggas mot.
+Domänmodellen, auktoritetskedjan, riskmodellen, journalkraven och datamodellen är låsta
+och inbördes konsistenta. Risk Engine Specification har noll öppna riskbeslut.
 
 **Nästa rekommenderade utvecklingsfas: Fas 1 – Trading Core**, enligt den canonical
 implementationsordning som Kapitel 20 fastställer.
 
-Fas 3 får inte påbörjas innan GATE-01 till 05 och 08 är stängda.
+Fas 3 får inte påbörjas innan GATE-01, 02, 03, 04 och 08 är stängda.
+
+### 6.6 Vad canonical inte betyder
+
+Canonical v1.0 betyder att reglerna är tillräckligt definierade för att implementeras och
+testas konsekvent.
+
+Det betyder **inte** att strategin har bevisad positiv expectancy. Den ska bevisas eller
+förkastas genom data. Strategispecifikationens egen formulering gäller oförändrat.

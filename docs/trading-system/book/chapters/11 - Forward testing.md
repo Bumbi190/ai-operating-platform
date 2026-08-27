@@ -180,7 +180,7 @@ Forward testing är en viktig kontroll av timezone-logiken.
 Systemet ska verifiera att:
 
 - 02:00 New York öppnar rätt trading window
-- 05:00 stänger rätt London-entry window
+- 05:00 stänger rätt London-entry window och utlöser window-close break-even
 - 10:00 öppnar New York-window
 - 12:00 stänger New York-entry window
 - daylight saving transitions fungerar
@@ -432,7 +432,11 @@ Vi ska verifiera att:
 
 - nya trades blockeras
 - status visas korrekt
-- öppen position hanteras enligt policy
+- risk state blir BLOCKED / DAILY_STOP
+- audit event skapas
+- en redan öppen position tvångsstängs **inte** av den interna dagsregeln
+- öppen position fortsätter hanteras av SL, TP, BE, window-close BE, news- och time-exit
+- reserved risk nekar en ny trade vars risk överstiger återstående dagsbudget
 - reset sker korrekt
 - state överlever restart
 ## Prop Firm Simulation
@@ -519,6 +523,15 @@ TIME_EXIT
 London-trades kan fortsätta längre.
 
 Forward test ska kontrollera att systemet inte felaktigt stänger dem bara för att entry-window har stängt.
+
+Forward test ska dessutom verifiera window-close break-even:
+
+- en London-position som fortfarande är öppen 05:00 får SL flyttad till entry price
+- detta sker även när den swing-baserade BE-triggern ännu inte har inträffat
+- har swing-triggern redan flyttat SL till entry price sker ingen ytterligare förändring
+- positionen fortsätter efter actionen
+- ingen fyratimmarsgräns tillämpas på London-trades
+- actionen journalförs separat från swing-baserad BE
 
 ## Re-entry Testing
 

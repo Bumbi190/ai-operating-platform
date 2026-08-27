@@ -599,6 +599,8 @@ Vi ska kunna se:
 - hur många BE-trades hade senare nått TP
 - hur mycket drawdown BE minskade
 - hur mycket profit BE eventuellt kostade
+- fördelningen mellan swing-baserad BE och London window-close BE
+- hur London window-close BE påverkade utfallet separat
 Canonical regeln ska inte ändras i samma test.
 
 Detta blir input till candidate research.

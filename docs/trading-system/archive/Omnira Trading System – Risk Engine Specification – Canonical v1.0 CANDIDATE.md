@@ -1,3 +1,16 @@
+> # ⚠ SUPERSEDED — ARKIVERAD
+>
+> Detta dokument är **inte** aktiv source of truth.
+>
+> Det ersattes 2026-08-27 av
+> `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md`
+> när RISK-GATE-01 stängdes.
+>
+> Dokumentet bevaras enbart som revisionsspår över promotionen v0.1 → CANDIDATE → Canonical v1.0.
+> Använd det aldrig som underlag för implementation.
+
+---
+
 # Omnira Trading System – Risk Engine Specification
 
 **Version:** Canonical v1.0 **CANDIDATE**

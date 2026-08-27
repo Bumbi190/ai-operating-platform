@@ -1,6 +1,6 @@
 # Omnira Trading System – Documentation
 
-**Status:** Canonical Candidate v1.0 · 2026-08-27
+**Status:** **Canonical v1.0** · 2026-08-27
 **Språk:** Svenska (dokumentation), engelska (kod och identifierare)
 
 > **Läs detta först.** Detta träd är auktoritativ kontext för allt arbete med Omnira
@@ -23,20 +23,25 @@ den fungerar.
 
 | Dokument | Status |
 |---|---|
-| `specifications/strategy/…Canonical v1.0` | **Canonical.** Låst baseline |
-| `specifications/architecture/…v0.1` | Canonical för auktoritetskedjan |
-| `specifications/data-model/…v0.1` | Gällande Fas 0-baseline |
-| `book/` Kapitel 1–20 | **Canonical Candidate v1.0** |
+| `specifications/strategy/…Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-08-27 |
+| `specifications/risk/…Canonical v1.0.md` | **Canonical v1.0**, 0 öppna riskbeslut |
+| `book/chapters/*.md` + `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** |
+| `specifications/architecture/…v0.1.md` | v0.1. Canonical **för auktoritetskedjan** genom precedensregel |
+| `specifications/data-model/…v0.1.md` | v0.1, rev. 2026-08-27 |
 
-## 3. Vad som är kandidat
+`.md` är aktiv text. `.docx` i `book/source/` och `specifications/` är historiska
+original och kan avvika — vid konflikt vinner alltid `.md`. Se
+`reviews/Canonical Amendments v1.0.md`.
+
+## 3. Vad som är arkiverat
 
 | Dokument | Varför |
 |---|---|
-| `specifications/risk/…Canonical v1.0 CANDIDATE` | Sju av åtta öppna riskbeslut lösta. Ett kvarstår: RISK-GATE-01 |
-| Boken som helhet | Två regeldefekter kvarstår: GATE-05 och GATE-10 |
+| `archive/…Canonical v1.0 CANDIDATE.md` | Ersatt när RISK-GATE-01 stängdes |
+| `archive/…Canonical Candidate v1.0.pdf` | Ersatt av Canonical v1.0-PDF:en |
+| `specifications/risk/…v0.1.md` | Historiskt. Dess OPEN-RISK-lista är **inte** aktuell |
 
-Kandidatstatus betyder: **använd som underlag, men lita inte på den punkt som är
-öppen.** Den öppna punkten står alltid namngiven i dokumentet.
+Arkiverade dokument är revisionsspår. Använd dem aldrig som implementationsunderlag.
 
 ## 4. Regler som aldrig får gissas
 
@@ -45,17 +50,32 @@ Om svaret inte står uttryckligen i detta träd — **fråga, implementera inte.
 - exakt iFVG- och CISD-detektion (GATE-01, GATE-02)
 - equal-high / equal-low-tolerans (GATE-03)
 - SMT correspondence och timing (GATE-04)
-- London window-close och break-even (GATE-05)
 - news-provider och high-impact USD-klassificering (GATE-06, GATE-07)
 - marknadsdataprovider (GATE-08)
 - PropFirmProfile-parametrar (GATE-09)
-- daily-loss force close-semantik (GATE-10)
 - execution safety margin och slippagetröskel (GATE-12)
 - promotion thresholds och live safety policies (GATE-13, GATE-14)
 
 Riskgränser, sessioner, entry, SL, TP, break-even, re-entry och news-regler får
 **aldrig** härledas, avrundas eller "förbättras" i kod. De ändras bara genom en ny
 versionsidentifierare.
+
+### Låst sedan 2026-08-27 — härled inte om
+
+**London window-close break-even.** En London-position som fortfarande är öppen
+05:00 America/New_York får `SL → entry price`, även om den swing-baserade 1m-triggern
+inte har inträffat. Positionen fortsätter därefter. Ingen fyratimmarsgräns för London.
+Journalförs som `be_trigger_type = WINDOW_CLOSE`.
+
+**Intern daily loss.** `$450`, **realized only**, reset `00:00 America/New_York`.
+Floating P/L ingår inte i den interna mätaren.
+
+**Reserved risk.** Pre-entry:
+`realized_daily_loss + reserved_risk_for_new_trade <= daily_loss_limit`.
+
+**Ingen intern floating force-close.** Den interna dagsregeln stänger inte en öppen
+position. Vid `realized_daily_loss >= $450`: `BLOCKED / DAILY_STOP`, persistent över
+restart, audit event. Prop-lagret får vara striktare.
 
 ## 5. Auktoritetsordning
 
@@ -116,8 +136,8 @@ Ingen AI-modell får tolka vad som "ser ut som" ett entrykritiskt pattern.
 Läs `reviews/Open Implementation Gates v1.0.md` innan en ny fas påbörjas. Varje gate
 är klassificerad efter exakt vilken fas den blockerar.
 
-**Ingen gate blockerar Fas 1 eller Fas 2.** Fas 3 kräver att GATE-01 till 05 och 08
-är stängda.
+**Ingen gate blockerar Fas 1 eller Fas 2.** Fas 3 kräver att GATE-01, 02, 03, 04 och 08
+är stängda. Elva gates är öppna; GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27.
 
 Canonical fasordning enligt Kapitel 20:
 
@@ -154,22 +174,24 @@ docs/trading-system/
 ├── README.md                    ← du är här
 ├── SOURCE_OF_TRUTH.md           ← precedensregler vid konflikt
 ├── CHECKSUMS.md                 ← SHA-256 för alla artefakter
-├── CHECKSUMS.sha256             ← maskinverifierbar manifest
+├── CHECKSUMS.sha256             ← maskinverifierbart manifest
 ├── book/
-│   ├── source/                  20 kapitel, original .docx
-│   ├── chapters/                20 kapitel, extraherad markdown
-│   └── final/                   assemblerad PDF
+│   ├── source/                  20 kapitel, historiska .docx-original
+│   ├── chapters/                20 kapitel, AKTIV kanonisk text
+│   └── final/                   Canonical v1.0-PDF
 ├── specifications/
 │   ├── strategy/                Canonical v1.0
 │   ├── architecture/            v0.1
 │   ├── data-model/              v0.1
-│   ├── risk/                    v0.1 + Canonical v1.0 CANDIDATE
+│   ├── risk/                    Canonical v1.0 + v0.1 (historik)
 │   ├── prop-firm/               tom, gated av GATE-09
 │   └── pattern-detection/       tom, gated av GATE-01/02
-└── reviews/
-    ├── Canonical Review v1.0.md
-    ├── Open Implementation Gates v1.0.md
-    └── Contradiction Register v1.0.md
+├── reviews/
+│   ├── Canonical Review v1.0.md
+│   ├── Open Implementation Gates v1.0.md
+│   ├── Contradiction Register v1.0.md
+│   └── Canonical Amendments v1.0.md   ← före/efter för varje ändring
+└── archive/                     superseded, aldrig implementationsunderlag
 ```
 
 **Vid tveksamhet:** läs `SOURCE_OF_TRUTH.md`. Avgör aldrig precedens själv.

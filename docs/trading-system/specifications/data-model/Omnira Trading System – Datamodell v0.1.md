@@ -886,6 +886,7 @@ Alla förändringar av öppen position ska loggas.
 Exempel:
 
 - break_even_triggered
+- break_even_trigger_type (SWING | WINDOW_CLOSE)
 - stop_moved_to_entry
 - TP_hit
 - SL_hit
@@ -1518,6 +1519,9 @@ Detta är nödvändigt för:
 Dokument: Omnira Trading System – Datamodell
 
 Version: v0.1
+
+Revision: 2026-08-27 – additivt fält break_even_trigger_type (SWING | WINDOW_CLOSE) efter
+att London window-close break-even låstes. Inga befintliga fält ändrade eller borttagna.
 
 Status: Fas 0 – Första datamodell
 

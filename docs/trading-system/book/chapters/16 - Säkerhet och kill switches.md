@@ -774,7 +774,18 @@ Vissa safety conditions kan senare få explicit automation.
 
 Exempel:
 
-Canonical riskbeslutet säger att en öppen position ska stängas när intern realized daily loss når $450.
+Canonical riskbeslutet säger att när intern realized daily loss når $450 ska nya trades
+blockeras och risk state sättas till BLOCKED / DAILY_STOP.
+
+Den interna dagsregeln tvångsstänger däremot **inte** en redan öppen position. Eftersom
+mätaren endast räknar realiserade förluster kan gränsen inte brytas av en position som
+fortfarande är öppen. En öppen position hanteras vidare genom sina egna exitregler:
+teknisk SL, TP, canonical break-even, London window-close break-even 05:00, news exit,
+New York time exit samt Prop Firm Rules.
+
+Automatisk stängning av en öppen position kan däremot bli aktuell för prop-relaterade
+gränser som använder equity, floating eller trailing. Sådan policy hör till Prop Firm
+Rules Engine, inte till Omniras interna dagsregel.
 
 Detta är inte Atlas discretion.
 

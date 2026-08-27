@@ -230,6 +230,9 @@ Trading window definierar när en ny position får öppnas.
 
 Det betyder inte automatiskt att en redan öppen trade måste stängas när entry-window tar slut.
 
+För London gäller däremot en obligatorisk window-close break-even vid 05:00: positionen
+stängs inte, men stop loss flyttas till entry price.
+
 Detta hanteras separat för London och New York senare i strategin.
 
 ## Higher-Timeframe Context
@@ -769,6 +772,22 @@ SL → Entry Price
 
 Denna regel är canonical. 
 
+## Window-close Break-Even — London
+
+Utöver den swing-baserade triggern ovan har London-sessionen en andra, tidsbaserad
+break-even-trigger.
+
+Om positionen fortfarande är öppen exakt när London entry-window stänger
+05:00 America/New_York:
+
+```
+SL → Entry Price
+```
+
+Detta sker även om den swing-baserade triggern ännu inte har inträffat.
+
+Har swing-triggern redan flyttat SL till entry price gör window-close-triggern ingenting.
+
 ## Confirmed Swing gäller även BE
 
 BE-trigger använder samma swingdefinition som tidigare.
@@ -991,21 +1010,38 @@ London entry window är:
 
 En trade måste öppnas inom detta window.
 
-Om positionen fortfarande är öppen 05:00 får den fortsätta.
+Om positionen fortfarande är öppen exakt 05:00 America/New_York gäller obligatorisk
+window-close break-even:
 
-Canonical specification säger att positionen då fortsätter under strategy management och skyddas genom break-even-regeln.
+```
+SL → Entry Price
+```
+
+Detta gäller även om den swing-baserade break-even-triggern ännu inte har inträffat.
+
+Efter denna action:
+
+```
+SL = Entry Price
+```
+
+Positionen får därefter fortsätta.
 
 London trades har:
 
 **ingen explicit fyratimmarsgräns**
 
-De fortsätter tills exempelvis:
+De fortsätter tills en annan explicit canonical exitregel inträffar, exempelvis:
 
 - TP 
 - SL 
 - BE 
-- news exit 
-- annan explicit rule 
+- relevant news exit 
+- emergency- eller safety-exit 
+- annan explicit canonical exitregel 
+
+Window-close break-even är deterministisk och tidsstyrd. Den får inte hoppas över av AI,
+UI eller operatör.
 ## New York Trade Management
 
 New York entry window är:
@@ -1621,7 +1657,7 @@ Partial profits: Nej
 
 Trailing: Nej, utöver canonical BE
 
-Break-even: När närmaste confirmed 1m swing efter entry tas
+Break-even: När närmaste confirmed 1m swing efter entry tas, samt obligatoriskt vid London window-close 05:00
 
 Max positioner: 1
 

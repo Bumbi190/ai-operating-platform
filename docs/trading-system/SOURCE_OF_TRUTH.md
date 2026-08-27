@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH – Omnira Trading System
 
-**Version:** v1.0 · **Datum:** 2026-08-27 · **Paketstatus:** Canonical Candidate v1.0
+**Version:** v1.1 · **Datum:** 2026-08-27 · **Paketstatus:** **Canonical v1.0**
 
 > Maskinläsbart index över vilket dokument som gäller för vilken fråga, och vilken
 > källa som vinner när två dokument säger olika saker.
@@ -13,23 +13,45 @@
 
 | Domän | Canonical källa | Version | Status |
 |---|---|---|---|
-| Strategi | `specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0` | Canonical v1.0 | Låst, GATE-05 öppen |
-| Risk | `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0 CANDIDATE.md` | v1.0 CANDIDATE | RISK-GATE-01 öppen |
-| Risk (föregångare) | `specifications/risk/Omnira Trading System – Risk Engine Specification v0.1` | v0.1 | Normativ för allt som kandidaten inte ändrar |
-| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.1` | v0.1 | Canonical för auktoritetskedjan |
-| Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1` | v0.1 | Gällande Fas 0-baseline |
-| Bok | `book/` Kapitel 1–20 | Canonical Candidate v1.0 | GATE-05, GATE-10 öppna |
-| Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv |
+| Strategi | `specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. Rev. 2026-08-27, CLOSED-03 |
+| Risk | `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. 0 öppna riskbeslut |
+| Bok | `book/chapters/*.md` och `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** | Låst |
+| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.md` | v0.1 | Fas 0-baseline. Canonical **endast för auktoritetskedjan**, se P5 |
+| Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
+| Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
+| Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
 | Motsägelser | `reviews/Contradiction Register v1.0.md` | v1.0 | Aktiv |
 | Review | `reviews/Canonical Review v1.0.md` | v1.0 | Aktiv |
 | Prop firm-profiler | `specifications/prop-firm/` | — | Tom, GATE-09 |
 | Pattern detection | `specifications/pattern-detection/` | — | Tom, GATE-01, GATE-02 |
+
+### Historiska och arkiverade — aldrig implementationsunderlag
+
+| Dokument | Varför |
+|---|---|
+| `specifications/risk/…v0.1.md` | Föregångare. Normativ endast för det som Canonical v1.0 inte ändrar. Dess OPEN-RISK-lista är **stängd**, inte aktuell |
+| `archive/…Canonical v1.0 CANDIDATE.md` | Superseded 2026-08-27 |
+| `archive/…Canonical Candidate v1.0.pdf` | Superseded av Canonical v1.0-PDF:en |
+| `book/source/*.docx`, `specifications/**/*.docx` | Historiska original. Kan avvika från `.md` |
+
+### Filformatsprecedens
+
+`.md` slår `.docx`. Alltid. Utan undantag.
+
+Kapitel 3, 4, 10, 11, 13 och 16 samt strategi- och datamodellspecifikationerna ändrades
+2026-08-27 i `.md`. Deras `.docx`-original lämnades orörda som revisionsspår.
 
 ---
 
 ## 2. Precedensregler
 
 Tillämpas i ordning. Första regel som träffar avgör.
+
+### P0 — Arkiverat och historiskt är aldrig källa
+
+Dokument i `archive/`, `.docx`-original, och `Risk Engine Specification v0.1` får aldrig
+användas som implementationsunderlag. De finns för revision. Om ett sådant dokument
+motsäger en aktiv canonical källa vinner alltid den aktiva.
 
 ### P1 — Öppen gate slår allt
 
@@ -59,7 +81,8 @@ Kapitel 4 och är införda i riskkandidaten.
 En fråga som var öppen i v0.1 och sedan uttryckligen låsts i ett senare dokument är
 låst. Den öppna formuleringen är historik.
 
-Tillämpat i denna review på OPEN-RISK-01 till 08.
+Tillämpat på OPEN-RISK-01 till 08, som samtliga är stängda i Risk Engine Specification
+Canonical v1.0.
 
 ### P5 — Fullständig återgivning slår förkortad
 
@@ -127,18 +150,18 @@ Fullständig lista och klassificering: `reviews/Open Implementation Gates v1.0.m
 | GATE-02 CISD-detektion | Strategy Engine |
 | GATE-03 equal-high/low-tolerans | Strategy Engine |
 | GATE-04 SMT correspondence | Strategy Engine |
-| GATE-05 London BE-tvetydighet | Strategy Engine |
 | GATE-06 news-provider | Execution |
 | GATE-07 high-impact-klassificering | Execution |
 | GATE-08 marknadsdataprovider | Strategy Engine |
 | GATE-09 första PropFirmProfile | Prop Mode |
-| GATE-10 daily-loss force close | Execution |
-| GATE-11 reserved risk | Deferred |
 | GATE-12 execution margin/slippage | Execution |
 | GATE-13 promotion thresholds | Live |
 | GATE-14 live safety policies | Live |
 
 **Fas 1 och Fas 2 är ogrindade.**
+
+**Stängda 2026-08-27:** GATE-05 (London window-close BE), GATE-10 (daily-loss force
+close), GATE-11 (reserved risk). Se `reviews/Canonical Amendments v1.0.md`.
 
 ---
 

@@ -4,7 +4,8 @@
 **Version:** v1.0
 **Datum:** 2026-08-27
 **Granskat material:** Kapitel 1–20 samt fyra Fas 0-specifikationer
-**Status:** Registrerad. Inga tradingregler har ändrats av denna review.
+**Status:** Uppdaterad 2026-08-27 efter canonical-beslut. C-01, C-02 och C-03 är STÄNGDA.
+**Ändringsspår:** se `Canonical Amendments v1.0.md`
 
 ---
 
@@ -17,7 +18,21 @@ under den kontrollerade canonical-genomgången.
 
 Poster märkta `KVARSTÅR` kräver ett explicit mänskligt beslut innan berörd
 implementation får påbörjas. Poster märkta `NORMALISERAD` avser dokumentationsform,
-inte tradinginnehåll — ingen regel har ändrats i sak.
+inte tradinginnehåll. Poster märkta `STÄNGD` har fått ett explicit canonical beslut;
+beslutet och den exakta textändringen finns i `Canonical Amendments v1.0.md`.
+
+**Statusöversikt efter 2026-08-27:**
+
+| Post | Status |
+|---|---|
+| C-01 Daily-loss force close | **STÄNGD** |
+| C-02 Reserved risk | **STÄNGD** |
+| C-03 London window-close BE | **STÄNGD** |
+| C-04 Auktoritetskedja förkortad | NORMALISERAD |
+| C-05 "Partial" överlagrad term | NORMALISERAD |
+| C-06 Statusblock saknas | DELVIS ÅTGÄRDAD |
+| C-07 Tredjepartsvillkor i Kapitel 12 | KVARSTÅR som referensvarning |
+| C-08 Word-låsfil | NOTERAD |
 
 Allvarlighetsgrad:
 
@@ -33,9 +48,17 @@ Allvarlighetsgrad:
 
 **Grad:** MEDEL
 **Domän:** Risk
-**Status:** KVARSTÅR
+**Status:** **STÄNGD 2026-08-27**
 
-**Källor i konflikt**
+> **Beslut:** Den interna dagsregeln tvångsstänger inte en öppen position. Mätaren förblir
+> realiserad. Vid `realized_daily_loss >= $450` blockeras nya trades och state blir
+> `BLOCKED / DAILY_STOP`, persistent över restart, med audit event. En öppen position
+> hanteras vidare av SL, TP, canonical BE, London window-close BE, news exit, NY time exit,
+> emergency-kontroller och Prop Firm Rules. Prop-lagret kan vara striktare.
+>
+> Se `Canonical Amendments v1.0.md` avsnitt B1, B4, B5, B6.
+
+**Källor i konflikt (historik)**
 
 - Kapitel 4, *Daily drawdown*: "den interna daily loss-beräkningen baseras på realiserade förluster. Floating P/L används inte som den interna Omnira daily-loss-mätaren."
 - Kapitel 4, *Daily stop*: "Om en position fortfarande är öppen när daily-loss-gränsen bryts ska positionen stängas direkt."
@@ -61,8 +84,9 @@ Antingen:
 2. Force close-regeln är redundant i v1.0 och ska formuleras om som en framtidsregel
    för `max_open_positions > 1`.
 
-**Får inte lösas i kod.** Tills detta är låst får implementationen inte anta någondera
-tolkningen.
+**Utfall:** alternativ 2 valdes, med explicit korrigering — regeln om intern
+tvångsstängning togs bort som logiskt ohållbar, i stället för att införa
+floating-baserad detektion som hade motsagt realized-only-modellen.
 
 ---
 
@@ -70,7 +94,14 @@ tolkningen.
 
 **Grad:** MEDEL
 **Domän:** Risk
-**Status:** KVARSTÅR (vilande i v1.0)
+**Status:** **STÄNGD 2026-08-27**
+
+> **Beslut:** Reserved risk är en pre-entry-kontroll:
+> `realized_daily_loss + reserved_risk_for_new_trade <= daily_loss_limit`.
+> Den ändrar inte definitionen av realiserad daily loss och skriver inget i mätaren.
+> Reservationen frisläpps när traden stängs.
+>
+> Se `Canonical Amendments v1.0.md` avsnitt B2.
 
 **Källor i spänning**
 
@@ -88,7 +119,9 @@ I Strategy v1.0 är frågan praktiskt vilande, eftersom `max_open_positions = 1`
 ingen ny riskutvärdering kan ske medan en position är öppen. Reservationen har därför
 inget att påverka.
 
-**Blir aktiv** i samma stund `max_open_positions > 1` införs. Ska låsas innan dess.
+**Utfall:** frågan är nu låst normativt, inte bara för framtiden. Regeln gäller redan i
+v1.0 även om `max_open_positions = 1` gör att bara en reservation kan vara aktiv åt gången.
+Modellen är därmed korrekt den dag fler positioner tillåts.
 
 ---
 
@@ -96,7 +129,15 @@ inget att påverka.
 
 **Grad:** HÖG
 **Domän:** Strategi
-**Status:** KVARSTÅR
+**Status:** **STÄNGD 2026-08-27**
+
+> **Beslut:** Läsning 1 (forcerad BE) är canonical. En London-position som fortfarande är
+> öppen 05:00 America/New_York får `SL → entry price`, även om den swing-baserade triggern
+> inte har inträffat. Positionen fortsätter därefter. Ingen fyratimmarsgräns tillkommer.
+> Har swing-triggern redan flyttat SL är window-close-triggern en no-op.
+>
+> Registrerat som CLOSED-03 i strategispecifikationen.
+> Se `Canonical Amendments v1.0.md` avsnitt A1–A8.
 
 **Källor**
 
@@ -121,7 +162,8 @@ både win rate, average R och drawdown.
 Båda dokumenten är eniga med varandra — tvetydigheten är *gemensam*, inte en konflikt
 mellan källor. Det gör den inte mindre blockerande.
 
-**Konsekvens:** BLOCKS STRATEGY ENGINE. Se *Open Implementation Gates v1.0*, GATE-05.
+**Utfall:** GATE-05 stängd. Regeln är nu deterministisk och tidsstyrd, journalförs med
+`be_trigger_type = SWING | WINDOW_CLOSE`, och testas separat i forward test.
 
 ---
 
@@ -176,7 +218,10 @@ som att partiella fills ska avvisas.
 
 **Grad:** LÅG
 **Domän:** Dokumentation
-**Status:** KVARSTÅR (redaktionellt)
+**Status:** **DELVIS ÅTGÄRDAD 2026-08-27**
+
+> Kapitel 4 har nu ett statusblock, tillagt i samband med att kapitlets riskregler
+> reviderades. Kapitel 5 saknar fortfarande statusblock. Ingen regeländring i något fall.
 
 Samtliga kapitel utom 4 och 5 avslutas med ett statusblock. Kapitel 4 är dessutom det
 klart kortaste kapitlet i boken — 7,7 kB extraherad text mot 17–33 kB för övriga.
@@ -252,6 +297,22 @@ Följande granskades uttryckligen och visade **ingen** motsägelse mellan dokume
 | Teckenkodning i samtliga extraherade kapitel | Ren, ingen mojibake |
 | Tracked changes / kommentarer i källfiler | Inga funna |
 
+### Tillkommande kontroller efter 2026-08-27
+
+| Kontroll | Resultat |
+|---|---|
+| London window-close BE entydig i Kapitel 3 och strategispecifikationen | Konsistent |
+| Swing-baserad BE-trigger fortfarande korrekt och oförändrad | Konsistent |
+| `be_trigger_type` separerar SWING och WINDOW_CLOSE | Konsistent |
+| Daily loss $450 realized-only i samtliga dokument | Konsistent |
+| Daily reset 00:00 America/New_York | Konsistent |
+| Reserved risk som pre-entry-kontroll | Konsistent |
+| `BLOCKED / DAILY_STOP` persistent över restart | Konsistent |
+| Ingen kvarvarande intern floating force-close-formulering | Verifierad borttagen |
+| Intern risk och prop firm-risk fortfarande separata lager | Konsistent |
+| Prop-lagret får vara striktare och kan kräva tidigare skydd | Konsistent |
+
 ---
 
-*Registret är en observation av materialet, inte en ändring av det.*
+*Registret är en observation av materialet. Där en post är märkt STÄNGD har ett explicit
+mänskligt beslut fattats — inte en tolkning gjord under granskningen.*

@@ -1,3 +1,20 @@
+> # ⚠ HISTORISKT DOKUMENT
+>
+> Detta är **v0.1**. Det är inte aktiv source of truth.
+>
+> Aktiv version:
+> `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md`
+>
+> De åtta `OPEN-RISK`-punkterna i §84 nedan är **samtliga stängda** i Canonical v1.0.
+> De står kvar här som revisionsspår, inte som öppna frågor.
+>
+> §51 (öppen position vid daily breach) är **ersatt**: den interna dagsregeln
+> tvångsstänger inte en öppen position. Se Canonical v1.0 avsnitt 3.7 och 4.
+>
+> Allt i v0.1 som Canonical v1.0 inte uttryckligen ändrar gäller fortfarande normativt.
+
+---
+
 # Omnira Trading System
 
 ## Risk Engine Specification v0.1

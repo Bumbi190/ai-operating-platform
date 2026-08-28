@@ -20,7 +20,15 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { hasDesktopActivityRail, ATLAS_HOME_PATH } from '@/lib/nav/activity-peek-visibility'
-import { resolveUiGeneration } from '@/lib/ui/generation'
+import {
+  resolveUiGeneration,
+  parseUiGeneration,
+  parseUiGenerationParam,
+  isVNext,
+  DEFAULT_UI_GENERATION,
+  OMNIRA_UI_GENERATIONS,
+  type OmniraUiGeneration,
+} from '@/lib/ui/generation'
 import { resolveDestination } from '@/lib/nav/registry'
 
 const WEB_ROOT = resolve(__dirname, '../..')
@@ -88,12 +96,47 @@ describe('CASE C — resolved legacy is untouched', () => {
     expect(hasDesktopActivityRail('/atlas', 'legacy')).toBe(false)
   })
 
-  it('stays legacy however legacy was reached, including ?ui=legacy', () => {
+  it('stays legacy however legacy was explicitly selected', () => {
     expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ query: 'legacy' }))).toBe(false)
     expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ cookie: 'legacy' }))).toBe(false)
-    // Junk input is "no opinion" and falls through to the default, never vNext.
-    expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ query: 'VNEXT' }))).toBe(false)
-    expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ query: 'nonsense' }))).toBe(false)
+  })
+})
+
+/**
+ * Malformed `?ui=` used to be asserted here as "resolves to legacy, so the peek
+ * shows". That was wrong: it read the CURRENT value of DEFAULT_UI_GENERATION
+ * back as if it were the resolver's contract. The actual contract is that junk
+ * is *no opinion* — it falls through to the cookie, then to the production
+ * default, whatever that default happens to be. PR #82 flips it to vNext, and
+ * the assertion below has to survive that.
+ */
+describe('MALFORMED INPUT — follows the resolved generation, not a fixed default', () => {
+  it('carries no opinion of its own — the next valid signal decides', () => {
+    // Same junk query, opposite cookies, opposite outcomes.
+    expect(resolveUiGeneration({ query: 'nonsense', cookie: 'legacy' })).toBe('legacy')
+    expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ query: 'nonsense', cookie: 'legacy' })))
+      .toBe(false)
+
+    expect(resolveUiGeneration({ query: 'VNEXT', cookie: 'vnext' })).toBe('vnext')
+    expect(hasDesktopActivityRail('/atlas', resolveUiGeneration({ query: 'VNEXT', cookie: 'vnext' })))
+      .toBe(true)
+  })
+
+  it('with no valid signal at all, tracks whatever the production default is', () => {
+    // Deliberately does NOT assert WHICH generation that is — that is the
+    // resolver's policy and PR #82's to change, not this module's to restate.
+    for (const query of ['nonsense', 'VNEXT', '', 'vnext ', 'LEGACY', 'Legacy']) {
+      const generation = resolveUiGeneration({ query })
+      expect(hasDesktopActivityRail('/atlas', generation), query).toBe(isVNext(generation))
+    }
+  })
+
+  it('is default-proof by construction: on Atlas Home the peek IS isVNext', () => {
+    // Exhaustive over every value the resolver can return, so whichever one the
+    // default resolves to — before or after PR #82 — is covered by definition.
+    for (const generation of OMNIRA_UI_GENERATIONS) {
+      expect(hasDesktopActivityRail('/atlas', generation), generation).toBe(isVNext(generation))
+    }
   })
 })
 
@@ -166,5 +209,77 @@ describe('AUTHORITY — generation precedence lives in exactly one module', () =
     expect(code).not.toContain('searchParams')
     expect(code).not.toContain('cookie')
     expect(code).not.toContain('DEFAULT_UI_GENERATION')
+  })
+})
+
+
+/**
+ * Forward compatibility with PR #82, proven without touching that branch.
+ *
+ * PR #82's only functional change is `DEFAULT_UI_GENERATION: 'legacy' → 'vnext'`
+ * — the parsers and the query→cookie→default precedence are untouched. So
+ * post-rollout resolution is the same composition of the same public parsers
+ * with a different fallback, and that is what is modelled here.
+ *
+ * The first test is what licenses the rest: it proves the model reproduces the
+ * real resolver exactly today. DEFAULT_UI_GENERATION is read only to anchor
+ * that equivalence, never to restate resolver policy as a peek expectation.
+ */
+describe('PR #82 FORWARD COMPATIBILITY — simulated, branch untouched', () => {
+  const resolveWithFallback = (
+    fallback: OmniraUiGeneration,
+    input: { query?: string | string[] | null; cookie?: string | null } = {},
+  ): OmniraUiGeneration =>
+    parseUiGenerationParam(input.query) ?? parseUiGeneration(input.cookie ?? null) ?? fallback
+
+  const INPUTS: Array<{ query?: string | string[] | null; cookie?: string | null }> = [
+    {},
+    { query: 'vnext' },
+    { query: 'legacy' },
+    { cookie: 'vnext' },
+    { cookie: 'legacy' },
+    { query: 'nonsense' },
+    { query: 'VNEXT' },
+    { query: '' },
+    { query: 'nonsense', cookie: 'vnext' },
+    { query: 'nonsense', cookie: 'legacy' },
+    { query: ['legacy', 'vnext'] },
+  ]
+
+  it('the model reproduces the real resolver exactly, for every input shape', () => {
+    for (const input of INPUTS) {
+      expect(resolveWithFallback(DEFAULT_UI_GENERATION, input), JSON.stringify(input))
+        .toBe(resolveUiGeneration(input))
+    }
+  })
+
+  it('after the flip, a bare /atlas visit with no signal suppresses the peek', () => {
+    const generation = resolveWithFallback('vnext', {})
+    expect(generation).toBe('vnext')
+    expect(hasDesktopActivityRail('/atlas', generation)).toBe(true)
+  })
+
+  it('after the flip, malformed ?ui= suppresses it too', () => {
+    // This is precisely where the superseded assertion would have failed: it
+    // demanded `false` here, which only held while the default was legacy.
+    const generation = resolveWithFallback('vnext', { query: 'nonsense' })
+    expect(generation).toBe('vnext')
+    expect(hasDesktopActivityRail('/atlas', generation)).toBe(true)
+  })
+
+  it('after the flip, an explicit ?ui=legacy still wins and keeps the peek', () => {
+    const generation = resolveWithFallback('vnext', { query: 'legacy' })
+    expect(generation).toBe('legacy')
+    expect(hasDesktopActivityRail('/atlas', generation)).toBe(false)
+  })
+
+  it('holds under BOTH defaults — the peek tracks the resolved value either way', () => {
+    for (const fallback of OMNIRA_UI_GENERATIONS) {
+      for (const input of INPUTS) {
+        const generation = resolveWithFallback(fallback, input)
+        expect(hasDesktopActivityRail('/atlas', generation), `${fallback} ${JSON.stringify(input)}`)
+          .toBe(isVNext(generation))
+      }
+    }
   })
 })

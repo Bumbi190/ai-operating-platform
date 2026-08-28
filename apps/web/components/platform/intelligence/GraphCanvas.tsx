@@ -54,6 +54,8 @@ export interface GraphCanvasProps {
   onSelect: (node: IntelligenceGraphNode | null) => void
   onOpen?: (node: IntelligenceGraphNode) => void
   fitSignal?: number
+  /** Operations snapshots retain force-layout positions until topology changes. */
+  topologyKey?: string
   mode?: 'system' | 'operations'
   semanticContext?: 'auto' | 'detail' | 'execution'
   dimmedIds?: ReadonlySet<string>
@@ -81,6 +83,20 @@ export interface GraphCameraCommand {
 const WORLD_W = 1200
 const WORLD_H = 800
 
+function nodeTooltipText(node: IntelligenceGraphNode): string {
+  if (node.kind !== 'workflow') {
+    return `${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`
+  }
+
+  const configurationStatus = node.status === 'active'
+    ? 'konfiguration aktiverad'
+    : node.status === 'inactive'
+      ? 'konfiguration inaktiverad'
+      : 'konfiguration okänd'
+
+  return `${node.label} · workflow · ${configurationStatus}`
+}
+
 export function GraphCanvas({
   nodes,
   edges,
@@ -88,6 +104,7 @@ export function GraphCanvas({
   onSelect,
   onOpen,
   fitSignal = 0,
+  topologyKey,
   mode = 'system',
   semanticContext = 'auto',
   dimmedIds = new Set<string>(),
@@ -115,6 +132,7 @@ export function GraphCanvas({
   const autoFitRef = useRef(true)
   const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
   const handledCameraContextRef = useRef(`${WORLD_W}x${WORLD_H}:closed::`)
+  const handledCameraCommandNonceRef = useRef<number | null>(null)
 
   const layout = useMemo(() => {
     const positioned = computeLayout(
@@ -131,7 +149,9 @@ export function GraphCanvas({
       { width: WORLD_W, height: WORLD_H },
     )
     return new Map(positioned.map(node => [node.id, node]))
-  }, [nodes, edges])
+  // A validated Operations topology key deliberately excludes label, status,
+  // metadata, and timestamp changes, preserving the mental map on refresh.
+  }, [topologyKey ?? nodes, topologyKey ? null : edges])
 
   const territories = useMemo(() => buildProjectTerritories(nodes, layout), [nodes, layout])
   const graphBounds = useMemo(() => calculateGraphBounds(layout, territories), [layout, territories])
@@ -267,12 +287,15 @@ export function GraphCanvas({
   useEffect(() => {
     autoFitRef.current = true
     fit()
-  // A new graph or explicit fit/reset gets a complete, aspect-aware fit.
+  // Initial mount and explicit fit/reset only. Snapshot topology changes retain camera state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitSignal, graphBounds])
+  }, [fitSignal])
 
   useEffect(() => {
-    if (!cameraCommand) return
+    if (!cameraCommand || handledCameraCommandNonceRef.current === cameraCommand.nonce) return
+    // Commands are imperative user/navigation intent. A later layout update must
+    // not replay an already-consumed command and reset the current camera.
+    handledCameraCommandNonceRef.current = cameraCommand.nonce
     if (cameraCommand.type === 'restore' && cameraCommand.view) {
       autoFitRef.current = false
       setView(cameraCommand.view)
@@ -432,7 +455,7 @@ export function GraphCanvas({
       onClick={backgroundClick}
       onKeyDown={handleCanvasKeyDown}
       role="group"
-      aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
+      aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Operations Snapshot graph'}
       data-semantic-zoom={zoomLevel}
       data-semantic-meaning={semanticPolicy.meaning}
       data-structural-detail={semanticPolicy.structuralDetail}
@@ -589,7 +612,7 @@ export function GraphCanvas({
               onPointerEnter={() => setHoverId(node.id)}
               onPointerLeave={() => setHoverId(current => current === node.id ? null : current)}
             >
-              <title>{`${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`}</title>
+              <title>{nodeTooltipText(node)}</title>
               <circle r={Math.max(22, position.r + 8)} fill="transparent" pointerEvents="all" />
               {isFocused && <FocusRings radius={position.r} />}
               {isSelected && (

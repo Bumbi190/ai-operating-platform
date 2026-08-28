@@ -82,7 +82,6 @@ export function NodeInspector({
           <p className="truncate text-sm font-medium text-slate-100" title={node.label}>{node.label}</p>
           <p className="mt-0.5 text-[11px] uppercase tracking-wider text-slate-500">
             {KIND_LABEL[node.kind] ?? node.kind}
-            {node.status ? <span className="ml-2 text-slate-400">· {node.status}</span> : null}
           </p>
         </div>
         <button
@@ -111,21 +110,90 @@ export function NodeInspector({
           {typeof node.metadata?.size === 'number' && (
             <Row label="Noder i subsystemet" value={String(node.metadata.size)} />
           )}
-          {typeof node.metadata?.model === 'string' && (
-            <Row label="Modell" value={node.metadata.model as string} mono />
+
+          {node.kind === 'workflow' && (
+            <>
+              <WorkflowConfigRow status={node.status} />
+              {typeof node.metadata?.trigger === 'string' && (
+                <Row label="Trigger" value={node.metadata.trigger as string} />
+              )}
+            </>
           )}
-          {typeof node.metadata?.trigger === 'string' && (
-            <Row label="Trigger" value={node.metadata.trigger as string} />
+
+          {node.kind === 'agent' && (
+            <>
+              {typeof node.metadata?.model === 'string' && (
+                <Row label="Modell" value={node.metadata.model as string} mono />
+              )}
+              {typeof node.metadata?.description === 'string' && node.metadata.description && (
+                <Row label="Beskrivning" value={node.metadata.description as string} />
+              )}
+            </>
           )}
-          {typeof node.metadata?.projectName === 'string' && (
-            <Row label="Projekt" value={node.metadata.projectName as string} />
+
+          {node.kind === 'run' && (
+            <>
+              {node.status && <Row label="Körningsstatus" value={node.status} />}
+              {typeof node.metadata?.createdAt === 'string' && (
+                <Row label="Skapad" value={formatTime(node.metadata.createdAt as string)} />
+              )}
+              {typeof node.metadata?.startedAt === 'string' && (
+                <Row label="Startad" value={formatTime(node.metadata.startedAt as string)} />
+              )}
+              {typeof node.metadata?.finishedAt === 'string' && (
+                <Row label="Avslutad" value={formatTime(node.metadata.finishedAt as string)} />
+              )}
+              {typeof node.metadata?.attempts === 'number' && (
+                <Row label="Försök" value={String(node.metadata.attempts)} />
+              )}
+              {typeof node.metadata?.kind === 'string' && node.metadata.kind && (
+                <Row label="Typ" value={node.metadata.kind as string} />
+              )}
+              {typeof node.metadata?.projectName === 'string' && (
+                <Row label="Projekt" value={node.metadata.projectName as string} />
+              )}
+            </>
           )}
-          {typeof node.metadata?.createdAt === 'string' && (
-            <Row label="Skapad" value={formatTime(node.metadata.createdAt as string)} />
+
+          {node.kind === 'approval' && (
+            <>
+              {node.status && <Row label="Godkännandestatus" value={node.status} />}
+              {typeof node.metadata?.createdAt === 'string' && (
+                <Row label="Skapad" value={formatTime(node.metadata.createdAt as string)} />
+              )}
+              {typeof node.metadata?.reviewedAt === 'string' && (
+                <Row label="Granskad" value={formatTime(node.metadata.reviewedAt as string)} />
+              )}
+              {typeof node.metadata?.operator === 'string' && node.metadata.operator && (
+                <Row label="Granskad av" value={node.metadata.operator as string} />
+              )}
+            </>
           )}
-          {typeof node.metadata?.operator === 'string' && node.metadata.operator && (
-            <Row label="Godkänd av" value={node.metadata.operator as string} />
+
+          {node.kind === 'output' && (
+            <>
+              {typeof node.metadata?.type === 'string' && (
+                <Row label="Artefakttyp" value={node.metadata.type as string} />
+              )}
+              {typeof node.metadata?.createdAt === 'string' && (
+                <Row label="Skapad" value={formatTime(node.metadata.createdAt as string)} />
+              )}
+            </>
           )}
+
+          {node.kind === 'task' && (
+            <>
+              {node.status && <Row label="Uppgiftsstatus" value={node.status} />}
+              {typeof node.metadata?.createdAt === 'string' && (
+                <Row label="Skapad" value={formatTime(node.metadata.createdAt as string)} />
+              )}
+              {(typeof node.metadata?.priority === 'string' || typeof node.metadata?.priority === 'number')
+                && node.metadata.priority !== null && (
+                  <Row label="Prioritet" value={String(node.metadata.priority)} />
+              )}
+            </>
+          )}
+
           {builtAtCommit && node.source === 'graphify' && (
             <Row label="Byggd från commit" value={builtAtCommit.slice(0, 12)} mono />
           )}
@@ -133,7 +201,7 @@ export function NodeInspector({
 
         {typeof node.metadata?.error === 'string' && node.metadata.error && (
           <div className="rounded-lg border border-red-400/20 bg-red-400/[0.07] p-3">
-            <p className="text-[11px] uppercase tracking-wider text-red-300/80">Fel</p>
+            <p className="text-[11px] uppercase tracking-wider text-red-300/80">Felmeddelande</p>
             <p className="mt-1 break-words text-xs text-red-200/90">{node.metadata.error as string}</p>
           </div>
         )}
@@ -231,4 +299,15 @@ function formatTime(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/**
+ * `workflows.active` is a configuration flag, not an execution signal — there is
+ * no "running now" truth to show here. An unrecognized value stays "okänd"
+ * rather than being folded into either known state.
+ */
+function WorkflowConfigRow({ status }: { status?: string }) {
+  if (!status) return null
+  const label = status === 'active' ? 'aktiverad' : status === 'inactive' ? 'inaktiverad' : 'okänd'
+  return <Row label="Konfiguration" value={label} />
 }

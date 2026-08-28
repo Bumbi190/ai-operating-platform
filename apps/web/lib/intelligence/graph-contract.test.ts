@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   isSafeRelativePath,
   LIMITS,
+  OPERATIONS_SNAPSHOT_SOURCES,
   normalizeEdge,
   normalizeNode,
   validateIntelligenceGraph,
+  type OperationsGraphResponse,
 } from './graph-contract'
 
 const validNode = {
@@ -120,5 +122,47 @@ describe('validateIntelligenceGraph', () => {
       edges: [{ source: 'apps_web_lib_foo', target: 'ghost', relation: 'imports' }],
     })
     expect(g.edges).toHaveLength(0)
+  })
+})
+
+
+describe('Operations snapshot contract', () => {
+  it('declares only the supported snapshot sources and capabilities', () => {
+    expect(OPERATIONS_SNAPSHOT_SOURCES).toEqual([
+      'projects', 'agents', 'workflows', 'runs', 'approvals', 'outputs', 'manager_tasks',
+    ])
+
+    const response: OperationsGraphResponse = {
+      available: true,
+      projects: [],
+      snapshot: {
+        generatedAt: '2026-07-14T10:00:00.000Z',
+        requestedHours: 24,
+        authorizedProjectIds: [],
+        appliedProjectId: null,
+        returnedProjectIds: [],
+        queriedSources: ['projects'],
+        delivery: 'snapshot_only',
+        sourceFreshness: 'unknown',
+        capabilities: {
+          realtime: false,
+          polling: true,
+          incidents: false,
+          toolCalls: false,
+          atlasRuntime: false,
+          managerRuntime: false,
+          correlation: false,
+          causation: false,
+          replay: false,
+        },
+      },
+      meta: { source: 'runtime', generatedAt: '2026-07-14T10:00:00.000Z', nodeCount: 0, edgeCount: 0 },
+      nodes: [],
+      edges: [],
+    }
+
+    expect(response.snapshot.delivery).toBe('snapshot_only')
+    expect(response.snapshot.sourceFreshness).toBe('unknown')
+    expect(response.snapshot.capabilities).toMatchObject({ realtime: false, polling: true, replay: false })
   })
 })

@@ -261,7 +261,7 @@ export default async function PlatformLayout({
         {/* ─── Aktivitets-peek (P0): railen är inte längre en permanent kolumn.
              Samma händelseström nås via flytande knapp → panel, alla skärmstorlekar.
              Fullvyn bor i /agent-activity. ─────────────────────────────── */}
-        <MobileRailToggle liveCount={liveCount}>
+        <MobileRailToggle liveCount={liveCount} uiGeneration={uiGeneration}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
       </div>

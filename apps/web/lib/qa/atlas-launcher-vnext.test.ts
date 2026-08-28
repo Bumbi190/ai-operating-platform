@@ -74,10 +74,17 @@ describe('PLACEMENT — the bottom-right corner is shared with the activity peek
   const PEEK = read('components/platform/os/MobileRailToggle.tsx')
 
   it('the activity peek really is on screen at desktop where the launcher renders', () => {
-    // Its `lg:hidden` is conditional: it only applies on /atlas?ui=vnext, and
-    // the launcher returns null on /atlas. So wherever the launcher is visible,
-    // the peek is visible too — they cannot be treated as breakpoint-exclusive.
-    expect(PEEK).toContain("pathname === '/atlas' && searchParams.get('ui') === 'vnext'")
+    // Its `lg:hidden` is conditional: it only applies on Atlas Home under
+    // vNext, and the launcher returns null on /atlas. So wherever the launcher
+    // is visible, the peek is visible too — they cannot be treated as
+    // breakpoint-exclusive, and the stack geometry below is load-bearing.
+    //
+    // The condition used to be spelled `searchParams.get('ui') === 'vnext'`,
+    // which read raw URL state rather than the resolved generation; the peek
+    // now consumes the value the shell resolved. Semantics are covered in
+    // lib/qa/activity-peek-generation.test.ts — this only needs the peek to
+    // still occupy the corner at desktop.
+    expect(PEEK).toContain('hasDesktopActivityRail(pathname, uiGeneration)')
     expect(PEEK).toContain("${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11")
   })
 

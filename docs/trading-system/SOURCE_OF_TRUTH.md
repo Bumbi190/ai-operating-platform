@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH – Omnira Trading System
 
-**Version:** v1.1 · **Datum:** 2026-08-27 · **Paketstatus:** **Canonical v1.0**
+**Version:** v1.2 · **Datum:** 2026-08-27 · **Paketstatus:** **Canonical v1.0**
 
 > Maskinläsbart index över vilket dokument som gäller för vilken fråga, och vilken
 > källa som vinner när två dokument säger olika saker.
@@ -16,7 +16,7 @@
 | Strategi | `specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. Rev. 2026-08-27, CLOSED-03 |
 | Risk | `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. 0 öppna riskbeslut |
 | Bok | `book/chapters/*.md` och `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** | Låst |
-| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.md` | v0.1 | Fas 0-baseline. Canonical **endast för auktoritetskedjan**, se P5 |
+| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.md` | v0.1 | Fas 0-baseline. Canonical för auktoritetskedjan (P5) och för execution safety-invarianten §24.1. Rev. 2026-08-27 |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -137,6 +137,13 @@ Får inte härledas, avrundas eller ändras i kod.
 | Partial profits | Nej | Strategy §22 |
 | Kontinuerlig trailing | Nej | Strategy §23 |
 | Tidszon | America/New_York, aldrig fast UTC-4 | Strategy §5 |
+| London window-close BE | Öppen 05:00 → SL = entry price | Strategy §21.1, §31, CLOSED-03 |
+| Break-even trigger-typer | SWING och WINDOW_CLOSE | Strategy §21, §21.1 |
+| Daily loss beräkningsbas | Realized only | Risk Canonical v1.0 §3.1 |
+| Reserved risk | Pre-entry, ändrar ej mätaren | Risk Canonical v1.0 §5 |
+| Daily stop state | BLOCKED / DAILY_STOP, persistent | Risk Canonical v1.0 §4 |
+| Intern floating force-close | Finns inte | Risk Canonical v1.0 §4.1 |
+| ExecutionIntent-livstid | `now < expiresAt <= min(proposal, approval)` | Systemarkitektur §24.1, Beslut C |
 
 ---
 

@@ -3,7 +3,8 @@
 **Dokument:** Omnira Trading System – Canonical Amendments
 **Version:** v1.0
 **Datum:** 2026-08-27
-**Föranlett av:** Två canonical-beslut som stängde GATE-05 och GATE-10
+**Föranlett av:** Canonical-beslut som stängde GATE-05 och GATE-10 (Beslut A och B),
+samt en execution safety-invariant som upptäcktes under Fas 1-implementationen (Beslut C)
 **Status:** Auditerbart ändringsspår
 
 ---
@@ -196,6 +197,79 @@ och reserved risk nekar en trade som inte ryms.
 
 ---
 
+## Beslut C — Bounded authority lifetime för ExecutionIntent
+
+**Datum:** 2026-08-27
+**Karaktär:** Execution safety-invariant. Inte strategilogik, inte en riskgräns.
+**Upptäckt:** Under Fas 1-implementationen av Trading Core.
+
+### Bakgrund
+
+Systemarkitektur v0.1 §24 ger ExecutionIntent ett `expiry`-fält, Datamodell v0.1
+§35 och §36 ger Approval och ExecutionIntent var sitt `expires_at`, och
+Risk Engine Specification v0.1 §32 slår fast att en gammal approval inte får
+användas mot en marknad som redan förändrats.
+
+Vad ingen text sa var hur dessa livstider **förhåller sig till varandra**.
+
+Under implementationen blev det synligt att ett ExecutionIntent utan sådan
+koppling kunde skapas redan utgånget, eller ges en livstid som sträcker sig
+förbi den proposal och den approval som gav rätten att skapa det. Båda fallen
+skulle innebära execution på ett tillstånd som redan upphört att gälla.
+
+Invarianten implementerades konservativt i Fas 1 och flaggades uttryckligen som
+**härledd, inte dokumenterad**. Den godkänns nu explicit.
+
+### Beslut
+
+> **En ExecutionIntent får aldrig skapas redan utgången, och får aldrig leva
+> längre än något upstream authority-objekt som krävdes för att skapa den.**
+
+Konkret gäller minst:
+
+```
+intent.expiresAt > now
+intent.expiresAt <= proposal.expiresAt
+intent.expiresAt <= approval.expiresAt
+```
+
+### Vad detta låser i implementationen
+
+Execution Gateway ska avvisa ett intent-skapande som bryter mot någon av de tre
+gränserna, med separata reason codes så att analytics kan skilja fallen åt:
+
+| Villkor | Reason code |
+|---|---|
+| `intent.expiresAt <= now` | `EXECUTION_INTENT_ALREADY_EXPIRED` |
+| `intent.expiresAt > proposal.expiresAt` | `EXECUTION_INTENT_OUTLIVES_PROPOSAL` |
+| `intent.expiresAt > approval.expiresAt` | `EXECUTION_INTENT_OUTLIVES_APPROVAL` |
+
+En livstid som är **kortare** än upstream är alltid tillåten. Gränsen är ett tak,
+inte ett krav på exakt matchning.
+
+### Framtida upstream authority
+
+Om ytterligare upstream authority-objekt senare får egen expiry — exempelvis en
+framtida RiskDecision-giltighet eller en PropDecision-giltighet — ska samma
+konservativa bounded-authority-princip **utvärderas genom governance**, inte
+antas automatiskt. Att en princip är rimlig gör den inte canonical.
+
+### Avgränsning
+
+Detta är en execution safety-invariant. Den påverkar inte entry, SL, TP,
+break-even, sessioner, news-regler, re-entry, riskgränser eller setup grades.
+Ingen strategiregel och ingen riskgräns ändras av Beslut C.
+
+### C1 — Systemarkitektur v0.1, nytt avsnitt 24.1
+
+**Efter:** nytt avsnitt *24.1 Bounded Authority Lifetime* direkt efter §24, med
+de tre gränserna, motivet, governance-kravet för framtida upstream authority och
+avgränsningen mot strategilogik. Revisionsrad tillagd i dokumentstatus.
+
+**Inget befintligt avsnitt ändrat.** Additivt.
+
+---
+
 ## Dokument som medvetet **inte** ändrades
 
 | Dokument | Varför |
@@ -223,3 +297,5 @@ och reserved risk nekar en trade som inte ryms.
 | `specifications/risk/…v0.1.md` | Historik-banner |
 | `specifications/risk/…Canonical v1.0.md` | Ny, B6 |
 | `archive/…CANDIDATE.md` | Flyttad, superseded-banner |
+| `specifications/architecture/…v0.1.md` | C1 — nytt avsnitt 24.1 |
+| `SOURCE_OF_TRUTH.md` | C — låst värde tillagt |

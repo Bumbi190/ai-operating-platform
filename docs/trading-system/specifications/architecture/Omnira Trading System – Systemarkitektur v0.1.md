@@ -604,6 +604,33 @@ Execution ID måste vara idempotent.
 
 Samma execution intent får aldrig kunna skapa två positioner på grund av retry eller nätverksfel.
 
+## 24.1 Bounded Authority Lifetime
+
+Låst 2026-08-27. Se Canonical Amendments v1.0, Beslut C.
+
+Ett ExecutionIntent får aldrig skapas redan utgånget, och får aldrig leva längre
+än något upstream authority-objekt som krävdes för att skapa det.
+
+Konkret gäller minst:
+
+```
+intent.expiresAt > now
+intent.expiresAt <= proposal.expiresAt
+intent.expiresAt <= approval.expiresAt
+```
+
+Motivet är att expiry är en säkerhetsgräns, inte en bekvämlighet. Ett intent som
+överlever sin proposal eller sin approval skulle innebära att execution sker på
+ett tillstånd som redan upphört att gälla — precis det som avsnitt 25 och
+Risk Engine Specification v0.1 §32 finns för att förhindra.
+
+Om ytterligare upstream authority-objekt senare får egen expiry ska samma
+konservativa bounded-authority-princip utvärderas genom governance. Den får
+inte antas gälla automatiskt.
+
+Detta är en **execution safety-invariant**, inte strategilogik. Den påverkar
+inte entry, SL, TP, break-even, sessioner eller riskgränser.
+
 ## 25. Pre-Execution Revalidation
 
 Direkt före orderläggning ska systemet kontrollera igen:
@@ -984,6 +1011,10 @@ Atlas ger användaren en begriplig helhetsbild.
 Dokument: Omnira Trading System – Systemarkitektur
 
 Version: v0.1
+
+Revision: 2026-08-27 – nytt avsnitt 24.1, bounded authority lifetime för
+ExecutionIntent. Additiv execution safety-invariant. Inget befintligt avsnitt
+ändrat. Se Canonical Amendments v1.0, Beslut C.
 
 Status: Fas 0 – Första arkitekturbaslinje
 

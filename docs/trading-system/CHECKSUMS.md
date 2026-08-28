@@ -27,7 +27,7 @@ shasum -a 256 -c CHECKSUMS.sha256
 ## Bokkapitel (aktiv kanonisk text)
 
 ```
-f917e817f32a2350941a766df9f999dfc102026ee78425aa0ba9be9eba52bff1  book/chapters/01 - Vision.md
+5cbc595626faa123eb1641aa01956af64c3008bcee805e05b1b343b2d9fd0c3d  book/chapters/01 - Vision.md
 8f60912d5e5a27986882dcbece231d3d9f06a7aa6ad5a202bb2f397e5d1bad7e  book/chapters/02 - Tradingfilosofi.md
 df98594b1caf3750f08442bd0889fc00dabcd3088bb4025b78e651b62ab81392  book/chapters/03 - Strategispecifikation.md
 78a0438ad48b3640861fc64c0091648a3e9e95c49443c2e15a5655ec8253b797  book/chapters/04 - Riskhantering.md

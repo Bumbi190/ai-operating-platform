@@ -1,13 +1,20 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { Activity, X } from 'lucide-react'
 import { PulseDot } from './PulseDot'
+import { hasDesktopActivityRail } from '@/lib/nav/activity-peek-visibility'
+import type { OmniraUiGeneration } from '@/lib/ui/generation'
 
 interface MobileRailToggleProps {
   /** number of live events to indicate */
   liveCount?: number
+  /**
+   * Resolved server-side by the platform layout — never parsed here. Required,
+   * so a new mount cannot silently fall back to a guess about the generation.
+   */
+  uiGeneration: OmniraUiGeneration
   children: ReactNode  // the rail content to render inside the sheet
 }
 
@@ -19,11 +26,14 @@ interface MobileRailToggleProps {
  * Restraint: invisible on desktop. On mobile the indicator sits in the
  * bottom-right above the safe area and shows a small live count.
  */
-export function MobileRailToggle({ liveCount = 0, children }: MobileRailToggleProps) {
+export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: MobileRailToggleProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const atlasVNextHasDesktopRail = pathname === '/atlas' && searchParams.get('ui') === 'vnext'
+  // The generation arrives resolved from the server layout. This component does
+  // not read `?ui=`, the cookie or the default — that precedence lives in
+  // lib/ui/generation.ts and nowhere else, so the peek behaves the same however
+  // the operator navigated to the route.
+  const atlasVNextHasDesktopRail = hasDesktopActivityRail(pathname, uiGeneration)
 
   // Lock background scroll while sheet is open
   useEffect(() => {

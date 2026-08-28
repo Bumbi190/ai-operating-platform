@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -170,11 +170,18 @@ describe('Immutable artifact and runtime loader', () => {
   })
 
   it('fails closed on a corrupt payload', () => {
+    // One fixture, one lifetime: try/finally is the whole mechanism needed here.
+    // The `finally` is the point — the assertion below expects a throw, so a
+    // cleanup placed after it would be the one line that never runs.
     const dir = mkdtempSync(join(tmpdir(), 'akr-corrupt-'))
-    cpSync(knowledgeArtifactDirectory(repoRoot), dir, { recursive: true })
-    const path = join(dir, 'chunks.jsonl')
-    writeFileSync(path, `${readFileSync(path, 'utf8')}corrupt\n`)
-    expect(() => loadAndValidateArtifactFiles(dir)).toThrow()
+    try {
+      cpSync(knowledgeArtifactDirectory(repoRoot), dir, { recursive: true })
+      const path = join(dir, 'chunks.jsonl')
+      writeFileSync(path, `${readFileSync(path, 'utf8')}corrupt\n`)
+      expect(() => loadAndValidateArtifactFiles(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

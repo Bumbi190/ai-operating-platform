@@ -4,15 +4,16 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
-  ActivityRail, CommandBar, OperatorModeProvider, MobileRailToggle,
-  AtlasMiniOrb, type ActivityEvent,
+  ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
+  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
-import { OMNIRA_UI_COOKIE, resolveUiGeneration } from '@/lib/ui/generation'
+import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -226,13 +227,48 @@ export default async function PlatformLayout({
           </div>
           <div className="scan-line" aria-hidden />
 
-          {/* Sticky command layer */}
-          <div className="relative z-bar">
-            <CommandBar
-              operator={user.email ?? undefined}
+          {/* ─── Command layer ─────────────────────────────────────────────
+              vNext has no permanent top bar. Rather than hiding it, the bar is
+              simply not rendered: its wrapper goes too, so no empty sticky band
+              is left behind to reserve height or swallow clicks. Nothing else
+              depended on that height — the bar sat in normal flow, so the page
+              canvas rises into the freed space on its own.
+
+              What the bar was NOT allowed to take with it is ⌘K. The palette
+              was only ever *mounted* by CommandBar, so vNext mounts it headless
+              instead and keeps jump-to-page, jump-to-project and "ask Atlas".
+
+              Legacy renders exactly what it rendered before — it remains the
+              rollback path until PR #82 is merged and production is proven. */}
+          {isVNext(uiGeneration) ? (
+            <CommandPaletteHost
               projects={projects.map((p: any) => ({ name: p.name, slug: p.slug }))}
             />
-          </div>
+          ) : (
+            <div className="relative z-bar">
+              <CommandBar
+                operator={user.email ?? undefined}
+                projects={projects.map((p: any) => ({ name: p.name, slug: p.slug }))}
+              />
+            </div>
+          )}
+
+          {/* ─── Mobile shell navigation ───────────────────────────────────
+              Below lg the vNext shell has no other navigation: the sidebar is
+              `hidden lg:flex`, there is no CommandBar, the Atlas launcher is
+              desktop-only, and ⌘K has no touch affordance. This is that missing
+              surface, and it is the SAME component and the same canonical model
+              Atlas Home already uses.
+
+              Atlas Home keeps rendering its own — its mobile layout subtracts
+              the header's 62px from `.workspace`, so hoisting it out would add
+              scroll to a locked design. The shell therefore covers every route
+              EXCEPT /atlas, which is what keeps the count at exactly one. It
+              sits in normal flow, so nothing is overlapped or obscured, and CSS
+              alone hides it from 1024px up. */}
+          <ShellMobileNav uiGeneration={uiGeneration}>
+            <AtlasMobileNav />
+          </ShellMobileNav>
 
           {/* Page canvas */}
           <div className="relative z-content">
@@ -243,7 +279,7 @@ export default async function PlatformLayout({
         {/* ─── Aktivitets-peek (P0): railen är inte längre en permanent kolumn.
              Samma händelseström nås via flytande knapp → panel, alla skärmstorlekar.
              Fullvyn bor i /agent-activity. ─────────────────────────────── */}
-        <MobileRailToggle liveCount={liveCount}>
+        <MobileRailToggle liveCount={liveCount} uiGeneration={uiGeneration}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
       </div>

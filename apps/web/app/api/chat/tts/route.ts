@@ -1,19 +1,32 @@
 /**
  * POST /api/chat/tts
  *
- * Converts text to speech using OpenAI TTS.
- * OpenAI's nova/shimmer voices handle Swedish naturally and sound
- * much more human than browser TTS or ElevenLabs English voices.
+ * Converts text to speech using OpenAI's speech API.
  *
- * Body: { text: string, voice?: 'onyx' | 'echo' | 'nova' | 'shimmer' | 'alloy' | 'fable' }
+ * Body: { text: string, voice?: string, speed?: number }
  * Returns: audio/mpeg binary
  *
- * Voices (all handle Swedish well):
- *   onyx    — deep, calm, authoritative male — ATLAS standard (Executive Chief of Staff)
- *   echo    — neutral, clear male
- *   nova    — warm, natural female
- *   shimmer — slightly softer female
- *   alloy   — neutral
+ * Atlas speaks with `gpt-4o-mini-tts` and the `onyx` voice. Both were chosen by
+ * a latency benchmark followed by an owner listening test, replacing the older
+ * tts-1-hd path. Changing either is a product decision, not a tuning knob —
+ * hence the named constant below.
+ *
+ * THE DEFAULT REQUEST SENDS FOUR FIELDS AND NOTHING ELSE: model, voice, input,
+ * response_format. That is exactly the payload the approved voice sample was
+ * generated from, and keeping it identical is the point. Anything added here by
+ * default ships a configuration nobody listened to.
+ *
+ * So there is no default `speed` — the previous 1.08 was a workaround for the
+ * old model sounding sluggish in Swedish and did not survive the change — and
+ * no `instructions`, which is this model's real pacing lever and should be
+ * benchmarked and listened to before it is used.
+ *
+ * An EXPLICIT `speed` from a caller is still honoured and clamped, as it always
+ * was. Note that the installed SDK's JSDoc claims speed does not work with this
+ * model; that is stale, and a direct check against the API disproved it.
+ *
+ * Speech normalisation of numbers, dates and currency is a SEPARATE slice. The
+ * text arriving here is still raw, and that is expected.
  */
 
 import { requireUserSession } from '@/lib/auth/session'
@@ -21,6 +34,9 @@ import { getAtlasServiceErrorMessage } from '@/lib/atlas/provider-errors'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
+
+/** The benchmarked winner. Named so a future change has to be deliberate. */
+const ATLAS_TTS_MODEL = 'gpt-4o-mini-tts'
 
 export async function POST(request: Request) {
   // SESSION ONLY (4B2). Kräver inloggad användare — den globala AIOPS_API_KEY
@@ -43,22 +59,33 @@ export async function POST(request: Request) {
     )
   }
 
+  // `hd` is gone. It used to pick tts-1-hd over tts-1; with the model pinned it
+  // could only lie about what it does, and a repository search found no caller
+  // that ever sent it. `speed` stays optional — see the header.
   const {
     text,
     voice = 'onyx',
-    // hd=true ger bättre uttal för svenska — ~100-150ms extra latens men
-    // tydligt bättre prosodi och vokalljud. Standard för Atlas-röst.
-    hd    = true,
-    // 1.08 ger mer naturlig svenska-rytm. Neutral svenska tenderar annars
-    // att låta något segt i OpenAI-röster.
-    speed = 1.08,
-  } = await request.json() as { text: string; voice?: string; hd?: boolean; speed?: number }
+    speed,
+  } = await request.json() as { text: string; voice?: string; speed?: number }
 
   if (!text?.trim()) {
     return Response.json({ error: 'text krävs' }, { status: 400 })
   }
 
   const trimmed = text.trim().slice(0, 600)
+
+  // Exactly the benchmark's winning payload — these four fields and no others.
+  const payload: Record<string, unknown> = {
+    model:           ATLAS_TTS_MODEL,
+    voice,
+    input:           trimmed,
+    response_format: 'mp3',
+  }
+  // Added ONLY when a caller asks for it, so the Atlas path stays benchmark-
+  // identical. Same clamp the route has always applied to an explicit value.
+  if (typeof speed === 'number' && Number.isFinite(speed)) {
+    payload.speed = Math.max(0.25, Math.min(4.0, speed))
+  }
 
   const tTts = Date.now()
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -67,13 +94,7 @@ export async function POST(request: Request) {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type':  'application/json',
     },
-    body: JSON.stringify({
-      model:           hd ? 'tts-1-hd' : 'tts-1',
-      voice,
-      input:           trimmed,
-      response_format: 'mp3',
-      speed:           Math.max(0.25, Math.min(4.0, speed)),
-    }),
+    body: JSON.stringify(payload),
     signal: AbortSignal.timeout(15_000),
   })
 

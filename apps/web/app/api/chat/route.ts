@@ -23,15 +23,18 @@ import {
   getAtlasServiceErrorMessage,
 } from '@/lib/atlas/provider-errors'
 import { gatherAtlasContext } from '@/lib/atlas/context'
+import { currentTimeFor, renderCurrentInstant, type TimeLookup } from '@/lib/atlas/utilities/time'
 import { contentScore } from '@/lib/atlas/content-score'
 import { listOpportunities } from '@/lib/atlas/opportunities'
 import { agentActivity } from '@/lib/atlas/activity'
 import { revenueIntel } from '@/lib/atlas/revenue'
 import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
-import { ACTION_CLAIM_RE, NAV_CLAIM_RE, DELEGATE_CLAIM_RE } from '@/lib/atlas/honesty'
+import { NAV_CLAIM_RE, DELEGATE_CLAIM_RE, isUnsupportedActionClaim } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { isActionIntent } from '@/lib/atlas/action-intent'
+import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
+import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
@@ -76,7 +79,13 @@ async function buildLiveContext(db: ReturnType<typeof createAdminClient>, allowe
   let text = ''
   if (ctxR.status === 'fulfilled') {
     const ctx = ctxR.value
-    text += `\n\n[LIVE LÄGE — ${new Date().toLocaleString('sv-SE')}]
+    // The timestamp that used to sit here was `new Date().toLocaleString('sv-SE')`
+    // — a wall clock with no zone, rendered in the server's timezone (UTC on
+    // Vercel) and passed off as Swedish time. It was also wrong for a second
+    // reason: this block is cached for 45s, so the "current" time could be most
+    // of a minute stale. The instant now lives outside the cache entirely, in
+    // renderCurrentInstant, where it is both zone-labelled and always fresh.
+    text += `\n\n[LIVE LÄGE]
 Kostnad idag: ${k(ctx.totals.costTodaySek)} · denna månad: ${k(ctx.totals.costMonthSek)} (prognos ${k(ctx.totals.forecastMonthSek)}).
 Intäkt denna månad: ${k(ctx.totals.revenueMonthSek)}. Väntande godkännanden: ${ctx.totals.pendingApprovals}. Fallerade körningar (24h): ${ctx.totals.failedRuns24h}.
 Verksamheter:
@@ -273,6 +282,26 @@ När operatören vill köra något: hitta rätt workflow, trigga det, presentera
 - Hitta aldrig på run_id, status eller utfall.`
 
 const TOOLS: Anthropic.Tool[] = [
+  {
+    // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
+    // must never answer a time question from training data or from reading a
+    // timestamp out of its own prompt.
+    name: 'get_current_time',
+    description: 'Hämta aktuell tid och datum deterministiskt för en plats eller IANA-tidszon. Använd ALLTID detta verktyg vid frågor om vad klockan är, vilket datum det är, eller tiden i ett annat land — gissa aldrig klockslag eller datum. Utan argument returneras svensk tid (Europe/Stockholm). "USA" returnerar de fyra kontinentala tidszonerna eftersom landet inte har en enda tid.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        location: {
+          type: 'string',
+          description: 'Plats eller land som operatören sa det, t.ex. "Sverige", "New York", "USA", "Tokyo". Utelämna för svensk tid.',
+        },
+        timezone: {
+          type: 'string',
+          description: 'Exakt IANA-tidszon, t.ex. "America/New_York". Föredras när den är känd; slår location.',
+        },
+      },
+    },
+  },
   {
     name: 'list_workflows',
     description: 'Lista alla tillgängliga workflows. Anropa detta för att se vilka workflows som finns och vilka inputs de kräver.',
@@ -565,23 +594,48 @@ export async function POST(request: Request) {
   const db = createAdminClient()
   const tStart = Date.now()
 
-  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
-  // path (live context, ask_manager, get_dream_findings) is scoped to these.
-  // Single-owner today → all projects; multi-tenant ready by construction.
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
+  // Routing is decided from the message alone, BEFORE any database work. Every
+  // classifier here is a pure function, so hoisting them above the isolation
+  // read changes nothing for any existing path — it only makes it possible for
+  // a class that needs no project data to skip that read entirely.
   const lastUserText = (() => {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
   const fastPath = mode === 'content' || isFastPathContent(lastUserText)
+  // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
+  // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
+  // data, projekt, Memory, klocka och verktyg går full path.
+  const staticConversation =
+    !fastPath && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Action-intent (kör/starta/publicera …) → tvinga verktygsanrop på första turen.
-  const actionIntent = !fastPath && isActionIntent(lastUserText)
+  const actionIntent = !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
-  const navIntent = !fastPath && !actionIntent && isNavIntent(lastUserText)
-  const reqType = fastPath ? 'fast_path' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+  const navIntent = !fastPath && !staticConversation && !actionIntent && isNavIntent(lastUserText)
+  // Läs-status ("hur har X gått idag?"). Påverkar INTE routningen — en
+  // statusfråga går full path precis som förut, med samma autentisering,
+  // projektisolering och verktyg. Den enda effekten är ett kort direktiv i
+  // systemprompten som säger vilken period och vilket projekt som efterfrågades.
+  const statusIntent = (!fastPath && !staticConversation && !actionIntent && !navIntent)
+    ? classifyStatusIntent(lastUserText)
+    : null
+  const reqType = fastPath
+    ? 'fast_path'
+    : staticConversation
+      ? 'static_conversation'
+      : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+
+  // Project-isolation boundary: the projects THIS user owns. Every Atlas data
+  // path (live context, ask_manager, get_dream_findings) is scoped to these.
+  // Single-owner today → all projects; multi-tenant ready by construction.
+  //
+  // Skipped ONLY for static conversation, where it provably has no consumer:
+  // that path builds no project context and is sent no tools, so `executeTool`
+  // — the one remaining reader of this list — cannot be reached. Every other
+  // path, the content fast path included, reads it exactly as before.
+  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -591,8 +645,27 @@ export async function POST(request: Request) {
   if (fastPath) {
     // Ingen Executive Brain, inga verktyg, ingen workflow — bara skriv.
     systemPrompt = FAST_PATH_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else if (staticConversation) {
+    // Identitet räcker. Ingen live-snapshot, inget projekt-, verktygs- eller
+    // åtgärdsminne, ingen klocka — och därmed ingen databasläsning alls.
+    // STATIC_CONVERSATION_SYSTEM säger uttryckligen att live-data saknas denna
+    // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
+    systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+    // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
+    // this slice fixes was partly that the only timestamp lived inside a block
+    // guarded by `try`, so a single failed database read left Atlas with no idea
+    // what time it was. Costing nothing and depending on nothing, the instant has
+    // no business sharing that fate. It is also outside buildLiveContext's 45s
+    // cache, so "now" is never served stale.
+    systemPrompt += renderCurrentInstant(new Date())
+    // Statusförfrågan → säg vilken period och vilket projekt som efterfrågades,
+    // och hur svaret ska grundas. UNCONDITIONAL och före allt som kan faila, av
+    // samma skäl som tidsstämpeln: den kostar ingenting, beror på ingenting, och
+    // ett svar som tappar perioden är precis det som gjorde livstidssiffror till
+    // "idag". Ren vägledning — ingen routing ändras, inget innehåll mallas.
+    if (statusIntent) systemPrompt += renderStatusDirective(statusIntent)
     // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
     // the exact strings appended below, nothing recomputed, zero behavior change.
     let shadowLive = '', shadowAction = '', shadowView = ''
@@ -652,7 +725,12 @@ export async function POST(request: Request) {
     }
   }
 
-  const activeTools = fastPath ? [] : TOOLS
+  // Static conversation is defined as the class that needs no tool, so it is
+  // sent none. Sending zero tools is also what makes skipping the isolation
+  // read safe: with no tool schema the model cannot emit a tool_use block, so
+  // executeTool is unreachable on this path. Every other class keeps TOOLS
+  // exactly as before — this is not general per-class schema pruning.
+  const activeTools = (fastPath || staticConversation) ? [] : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
   const forceNavigateFirstTurn = navIntent && activeTools.length > 0
@@ -697,6 +775,10 @@ export async function POST(request: Request) {
       }
 
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
+      // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
+      // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
+      // för att avgöra VAR tiden gick. Klienten slår ihop ramarna additivt.
+      let earlyTimingSent = false
       let actionToolUsed = false  // kördes ett ÅTGÄRDS-verktyg (trigger_workflow/delegate) DENNA förfrågan?
       // OBS: list_workflows/get_run_status/ask_manager räknas INTE — de är läsningar.
       // Ärlighetsspärren får bara tystas av ett verkligt, lyckat åtgärdsanrop.
@@ -729,7 +811,14 @@ export async function POST(request: Request) {
             messages: msgs,
           })
           llm.on('text', (delta: string) => {
-            if (!firstTokenMs) firstTokenMs = Date.now() - tStart
+            if (!firstTokenMs) {
+              firstTokenMs = Date.now() - tStart
+              if (!earlyTimingSent) {
+                earlyTimingSent = true
+                // Diagnostik, inte innehåll: eget event, aldrig 'text'.
+                send('timing', { reqType, contextMs, firstTokenMs })
+              }
+            }
             if (delta) send('text', { text: delta })
           })
           const response = await llm.finalMessage()
@@ -742,7 +831,7 @@ export async function POST(request: Request) {
             // ÄRLIGHETSSPÄRR (safety net): om Atlas PÅSTÅR en åtgärd ("jag triggar/kör …")
             // men inget ÅTGÄRDS-verktyg (trigger_workflow/delegate) faktiskt kördes denna
             // förfrågan → korrigera. list_workflows/ask_manager tystar INTE spärren.
-            if (!fastPath && !actionToolUsed && ACTION_CLAIM_RE.test(fullText)) {
+            if (!fastPath && !actionToolUsed && isUnsupportedActionClaim(fullText)) {
               const correction = ' \n\n⚠️ Obs: jag har faktiskt inte kört något än — ingen körning startades. Bekräfta vilket workflow du vill köra, så triggar jag det på riktigt och visar run-id.'
               send('text', { text: correction })
               fullText += correction
@@ -961,6 +1050,14 @@ async function executeTool(
   _userId: string,
   allowedProjectIds: string[] = [],
 ): Promise<unknown> {
+  // Deterministic, read-only, no database and no network. Placed first because
+  // it is the cheapest branch and touches nothing else in the system.
+  if (name === 'get_current_time') {
+    const { location, timezone } = input as { location?: string; timezone?: string }
+    const result: TimeLookup = currentTimeFor({ location, timezone }, new Date())
+    return result
+  }
+
   if (name === 'list_workflows') {
     const { data: workflows } = await db
       .from('workflows')

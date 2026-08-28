@@ -24,6 +24,16 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient }           from '@/lib/supabase/client'
 import { buildChatRequestBody }   from '@/lib/atlas/view-client'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
+import { playTtsUrl, type PlaybackHandle, type PlaybackResult } from './playback'
+import {
+  createLatencyMarks,
+  formatLatency,
+  markOnce,
+  mergeServerTiming,
+  type AtlasLatencyMarks,
+  type AtlasServerTiming,
+  type LatencyOrigin,
+} from './latency'
 import {
   ATLAS_ACTION_TOOL_NAMES,
   interpretAtlasToolResult,
@@ -197,8 +207,9 @@ export function AtlasRuntimeProvider({
 
   // ── Voice-refs ────────────────────────────────────────────────────────────
   const recRef       = useRef<any>(null)
-  const audioRef     = useRef<HTMLAudioElement | null>(null)
-  const finishAudioRef = useRef<(() => void) | null>(null)
+  // One live segment at a time. The handle owns the element, the analyser and
+  // the object URL, so nothing here has to reach past it to tear a segment down.
+  const playbackRef  = useRef<PlaybackHandle | null>(null)
   const audioLevelStoreRef = useRef<AtlasAudioLevelStore | null>(null)
   const audioAnalyserRef = useRef<AtlasAudioAnalyser | null>(null)
   const silenceRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -206,13 +217,20 @@ export function AtlasRuntimeProvider({
   const closedRef    = useRef(true)   // startar stängt (inaktivt)
   const listeningRef = useRef(false)
   const recActiveRef = useRef(false)
-  const marksRef     = useRef<Record<string, number>>({})
+  // One timeline per request. `requestGeneration` is what stops a cancelled
+  // response's late TTS or playback callback from writing into the next
+  // request's marks and inventing a latency nobody experienced.
+  const marksRef     = useRef<AtlasLatencyMarks>(createLatencyMarks(0, 'typed', 0))
+  const requestGenRef = useRef(0)
+  // Set by the recogniser at speech-end and consumed by the NEXT send. Held
+  // apart from the marks so a typed message can never adopt a stale speech-end.
+  const pendingSpeechEndRef = useRef<number | null>(null)
   const ttsMsRef     = useRef(0)
 
   if (!audioLevelStoreRef.current) audioLevelStoreRef.current = new AtlasAudioLevelStore()
 
   useEffect(() => () => {
-    finishAudioRef.current?.()
+    playbackRef.current?.stop()
     void audioAnalyserRef.current?.dispose()
   }, [])
 
@@ -278,7 +296,7 @@ export function AtlasRuntimeProvider({
       if (closedRef.current)    return
       if (!listeningRef.current) return
       if (recActiveRef.current)  return
-      if (audioRef.current)      return
+      if (playbackRef.current)   return
       if (phaseRef.current === 'thinking' || phaseRef.current === 'speaking') return
       startListeningRef.current()
     }, 1500)
@@ -361,7 +379,7 @@ export function AtlasRuntimeProvider({
         if (t) {
           listeningRef.current = false
           try { rec.stop() } catch { /* ignore */ }
-          marksRef.current = { speechEnd: performance.now() }
+          pendingSpeechEndRef.current = performance.now()
           sendMessage(t)
         }
       }, SILENCE_MS)
@@ -420,37 +438,43 @@ export function AtlasRuntimeProvider({
     }
   }
 
-  function playUrl(url: string): Promise<void> {
-    return new Promise((resolve) => {
-      const audio = new Audio(url)
-      audioRef.current = audio
-      let settled = false
-      const finish = () => {
-        if (settled) return
-        settled = true
-        getAudioAnalyser().disconnect()
-        try { URL.revokeObjectURL(url) } catch { /* ignore */ }
-        if (audioRef.current === audio) audioRef.current = null
-        if (finishAudioRef.current === finish) finishAudioRef.current = null
-        resolve()
-      }
-      finishAudioRef.current = finish
-      audio.onended = finish
-      audio.onerror = finish
-      void getAudioAnalyser().connect(audio).finally(() => {
-        audio.play().catch(finish)
-      })
+  /**
+   * Play one segment and report what genuinely happened.
+   *
+   * `speaking` is raised from `onStart`, which fires on the element's `playing`
+   * event — the first moment audio is actually leaving the browser. It is NOT
+   * raised when the blob arrives and NOT when `play()` is called; either would
+   * be the orb claiming to speak into silence, which is the defect this fixes.
+   */
+  async function playUrl(
+    url: string,
+    generation: number,
+    serverTiming?: AtlasServerTiming,
+  ): Promise<PlaybackResult> {
+    // The blob leaves our hands here. This is NOT `audio.play()` — the playback
+    // module owns that, and the gap between the two is its analyser preparation.
+    markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+    const handle = playTtsUrl(url, {
+      analyser: getAudioAnalyser(),
+      onStart: () => {
+        setVoicePhase('speaking')
+        // Unchanged contract: `firstAudio` means the browser's `playing` event
+        // and nothing earlier.
+        if (markOnce(marksRef.current, generation, 'firstAudio', performance.now())) {
+          logLatency(serverTiming)
+        }
+      },
     })
+    playbackRef.current = handle
+    try {
+      return await handle.result
+    } finally {
+      if (playbackRef.current === handle) playbackRef.current = null
+    }
   }
 
-  function logLatency(
-    serverTiming?: { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number }
-  ) {
-    const m = marksRef.current
-    const totalToVoice = (m.speechEnd && m.firstAudio)
-      ? Math.round(m.firstAudio - m.speechEnd)
-      : null
-    if (totalToVoice) setPerf(`⚡ ${(totalToVoice / 1000).toFixed(1)}s`)
+  function logLatency(serverTiming?: AtlasServerTiming) {
+    setPerf(formatLatency(marksRef.current, serverTiming))
   }
 
   // ── Publika kontroller ────────────────────────────────────────────────────
@@ -486,8 +510,7 @@ export function AtlasRuntimeProvider({
 
   function stopAudio() {
     cancelRef.current = true
-    try { audioRef.current?.pause() } catch { /* ignore */ }
-    finishAudioRef.current?.()
+    playbackRef.current?.stop()
     getAudioAnalyser().disconnect()
     setVoicePhase('idle')
     if (!closedRef.current) {
@@ -505,6 +528,16 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
+    // A new request retires the previous timeline. Anything still in flight for
+    // the old one now fails its generation check instead of contaminating this.
+    const generation = ++requestGenRef.current
+    const speechEnd = pendingSpeechEndRef.current
+    pendingSpeechEndRef.current = null
+    const origin: LatencyOrigin = speechEnd !== null ? 'voice' : 'typed'
+    // Voice anchors on speech-end; a typed message has no speech, so submit is
+    // its T0. Consuming the pending value above is what keeps them separate.
+    marksRef.current = createLatencyMarks(generation, origin, speechEnd ?? performance.now())
+
     setVoicePhase('thinking')
     setTranscript(text)
     setResponse('')
@@ -531,7 +564,7 @@ export function AtlasRuntimeProvider({
     let streamDone    = false
     let playerStarted = false
     let ttsFailureReported = false
-    let serverTiming: { contextMs?: number; firstTokenMs?: number; serverTotalMs?: number } | undefined
+    let serverTiming: AtlasServerTiming | undefined
 
     const player = async () => {
       let idx = 0
@@ -552,14 +585,14 @@ export function AtlasRuntimeProvider({
           break
         }
         if (url) {
-          // `speaking` begins only after a real TTS blob exists. While the
-          // network request is pending Atlas truthfully remains `thinking`.
-          setVoicePhase('speaking')
-          if (!marksRef.current.firstAudio) {
-            marksRef.current.firstAudio = performance.now()
-            logLatency(serverTiming)
+          // The phase is raised inside playUrl, on real playback start. Here we
+          // only care what came back: a blocked or failed segment must reach the
+          // operator rather than pass for speech nobody heard.
+          const outcome = await playUrl(url, generation, serverTiming)
+          if (outcome.code && !ttsFailureReported) {
+            ttsFailureReported = true
+            setWarning(resolveAtlasServiceWarning(outcome.code))
           }
-          await playUrl(url)
         }
       }
       if (cancelRef.current && idx < urlQueue.length) {
@@ -578,7 +611,20 @@ export function AtlasRuntimeProvider({
     const enqueue = (sentence: string) => {
       const s = sentence.trim()
       if (!s) return
-      urlQueue.push(fetchTTSUrl(s))
+      // enqueue is only ever reached with a COMPLETE speakable segment, so this
+      // is exactly T4, and the TTS round trip for it starts on the next line.
+      const isFirstSegment = urlQueue.length === 0
+      markOnce(marksRef.current, generation, 'firstSentence', performance.now())
+      markOnce(marksRef.current, generation, 'ttsStart', performance.now())
+      const pending = fetchTTSUrl(s)
+      urlQueue.push(isFirstSegment
+        // Only the FIRST segment's blob answers "how long does one TTS call
+        // take". The cumulative ttsMsRef cannot distinguish that.
+        ? pending.then(result => {
+            markOnce(marksRef.current, generation, 'ttsBlobReady', performance.now())
+            return result
+          })
+        : pending)
       if (!playerStarted) { playerStarted = true; player() }
     }
 
@@ -600,7 +646,7 @@ export function AtlasRuntimeProvider({
     }
 
     const convId = await ensureConversation(text)
-    marksRef.current.sent = performance.now()
+    markOnce(marksRef.current, generation, 'sent', performance.now())
 
     try {
       const res = await fetch('/api/chat', {
@@ -643,17 +689,19 @@ export function AtlasRuntimeProvider({
               const d = JSON.parse(line.slice(6))
 
               if (d.event === 'text' && d.text) {
-                if (!marksRef.current.firstByte) marksRef.current.firstByte = performance.now()
+                markOnce(marksRef.current, generation, 'firstByte', performance.now())
                 reply += d.text
                 setResponse(reply)
                 flush(false)
 
               } else if (d.event === 'timing') {
-                serverTiming = {
+                // Two frames arrive: an early one at first token, a final one at
+                // completion. Merging keeps what the early frame already proved.
+                serverTiming = mergeServerTiming(serverTiming, {
                   contextMs:     d.contextMs,
                   firstTokenMs:  d.firstTokenMs,
                   serverTotalMs: d.serverTotalMs,
-                }
+                })
 
               } else if (d.event === 'navigate' && d.href) {
                 // Atlas delegerar till ett workspace

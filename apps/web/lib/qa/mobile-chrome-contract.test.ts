@@ -14,6 +14,13 @@ import { resolve } from 'node:path'
  * They overlapped in roughly 52x40px, and AtlasMiniOrb painted last. M1 makes
  * the orb desktop-only so MobileRailToggle owns that corner below lg.
  *
+ * UPDATE: that only moved the collision rather than ending it. MobileRailToggle
+ * is not mobile-only — it hides on desktop solely on /atlas?ui=vnext, and the
+ * orb never renders on /atlas at all, so the two still shared the corner at
+ * every desktop width. The orb is now stacked above the peek (see the derived
+ * offsets in AtlasMiniOrb), which is why the assertions below pin the stack
+ * constants instead of the original bottom-6/right-6 literals.
+ *
  * These are source assertions — the geometry above is arithmetic from the
  * emitted CSS, not something a unit test can observe. They exist to stop the
  * responsive gate being dropped again, not to prove pixels.
@@ -34,18 +41,27 @@ describe('mobile chrome · AtlasMiniOrb is desktop-only', () => {
   })
 
   it('hides the orb container below lg', () => {
-    expect(ORB).toMatch(/className="hidden lg:block fixed bottom-6 right-6 z-50"/)
+    // The offsets moved out of the class string into derived constants when the
+    // launcher was stacked above the activity peek. The desktop-only gate —
+    // which is what this test exists to protect — is unchanged.
+    expect(ORB).toMatch(/className="hidden lg:block fixed z-50"/)
   })
 
   it('hides the conversation panel below lg', () => {
     expect(ORB).toContain("'hidden lg:block',")
   })
 
-  it('keeps desktop positioning byte-identical', () => {
-    // M1 changes visibility only — the desktop geometry must not move.
-    expect(ORB).toContain('fixed bottom-6 right-6 z-50')
-    expect(ORB).toContain("'fixed right-6 z-50 w-72',")
+  it('keeps the desktop footprint, and anchors the geometry deliberately', () => {
+    // M1 asserted the desktop geometry must not move, because M1 changed
+    // visibility only. That geometry has since been moved ON PURPOSE: the
+    // launcher shared the corner with the activity peek and overlapped it, so
+    // the two are now a vertical stack. What M1 was really protecting — a
+    // single 52px control, both fixed layers gated to desktop — still holds.
     expect(ORB).toContain('const MINI_SIZE = 52')
+    expect(ORB).toContain('const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP')
+    expect(ORB).toContain('const PANEL_BOTTOM = LAUNCHER_BOTTOM + MINI_SIZE + PANEL_GAP')
+    // The old colliding offsets must not come back.
+    expect(ORB).not.toContain('fixed bottom-6 right-6')
   })
 
   it('did not invent a mobile replacement', () => {

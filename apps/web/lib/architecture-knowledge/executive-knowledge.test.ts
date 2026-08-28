@@ -14,10 +14,10 @@
  * records), which is what the adapter exists to enforce.
  */
 
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { verifyArchitectureKnowledge } from './build'
 import { validateKnowledgeCitation } from './citations'
 import { sha256, sha256File, stableJson } from './hash'
@@ -55,6 +55,32 @@ function executiveSource(): KnowledgeSource {
   return source
 }
 
+// ── Tracked temporary fixtures ────────────────────────────────────────────────
+//
+// Both fixture builders below materialise a full package copy under the OS temp
+// directory, and several tests here deliberately make the adapter throw or a
+// promise reject. Removing a directory at the end of its own test would therefore
+// be skipped on exactly the paths that matter most — the failing ones — so every
+// created path is tracked and removed after EVERY test instead, passing or not.
+//
+// Only paths this file created are ever removed. There is no glob, no prefix
+// sweep of the temp directory, and no reliance on the process exiting cleanly.
+
+const trackedTempDirs = new Set<string>()
+
+function createTrackedTempDir(prefix: string): string {
+  const directory = mkdtempSync(join(tmpdir(), prefix))
+  trackedTempDirs.add(directory)
+  return directory
+}
+
+afterEach(() => {
+  for (const directory of trackedTempDirs) {
+    rmSync(directory, { recursive: true, force: true })
+  }
+  trackedTempDirs.clear()
+})
+
 // ── Synthetic package fixture ──────────────────────────────────────────────────
 //
 // Failure modes are exercised against a generated package that satisfies the
@@ -69,7 +95,7 @@ interface SyntheticOverrides {
 }
 
 function syntheticPackage(overrides: SyntheticOverrides = {}): { root: string; source: KnowledgeSource } {
-  const root = mkdtempSync(join(tmpdir(), 'executive-synthetic-'))
+  const root = createTrackedTempDir('executive-synthetic-')
   const bookBytes = 'canonical-executive-book-bytes'
   writeFileSync(join(root, 'book.docx'), bookBytes)
   const bookSha = sha256(bookBytes)
@@ -331,7 +357,7 @@ describe('Generic artifact eligibility invariant', () => {
   const artifactDirectory = knowledgeArtifactDirectory(repoRoot)
 
   function patchedArtifact(mutate: (sources: KnowledgeSource[]) => KnowledgeSource[]): string {
-    const directory = mkdtempSync(join(tmpdir(), 'artifact-eligibility-'))
+    const directory = createTrackedTempDir('artifact-eligibility-')
     cpSync(artifactDirectory, directory, { recursive: true })
     const sources = mutate(JSON.parse(readFileSync(join(directory, 'sources.json'), 'utf8')) as KnowledgeSource[])
     const payload = stableJson(sources)

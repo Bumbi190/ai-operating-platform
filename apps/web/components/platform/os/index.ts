@@ -14,6 +14,7 @@ export { OSPage, OSLayer, OSGrid } from './OSPage'
 // Bars & chrome
 export { CommandBar } from './CommandBar'
 export { CommandPalette } from './CommandPalette'
+export { CommandPaletteHost } from './CommandPaletteHost'
 export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center
@@ -61,9 +62,11 @@ export {
 
 // Mobile companion
 export { MobileRailToggle } from './MobileRailToggle'
+export { ShellMobileNav } from './ShellMobileNav'
 
 // Atlas voice UI
 export { AtlasOrb, type OrbPhase } from './AtlasOrb'
+export { AtlasLauncherOrb } from './AtlasLauncherOrb'
 export { AtlasMiniOrb } from './AtlasMiniOrb'
 
 // Global voice assistant

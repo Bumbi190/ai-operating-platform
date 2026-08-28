@@ -1,6 +1,17 @@
-# Kapitel 9 – MetaTrader 5-integration
+# Kapitel 9 – Futures Execution Integration
 
-MetaTrader 5 är den första execution- och brokerplattform som Omnira Trading System ska integreras med.
+Omnira Trading System handlar NQ och MNQ. Det är futures, och integrationen ska därför
+vara futures-native.
+
+Ingen specifik execution provider är vald. Kapitlet definierar den provider-neutrala
+integrationsarkitekturen: vad Omnira kräver av en extern execution-miljö, och var
+gränsen mellan Omnira och den miljön går. En eller flera **Execution Provider
+Adapters** kan senare implementeras mot den gränsen.
+
+> **Rättelse 2026-08-28.** Tidigare version av detta kapitel antog MetaTrader 5 som
+> execution-plattform. Det var ett felaktigt implementation-specifikt antagande för en
+> futures-strategi. Se Canonical Amendments v1.0, Beslut D. Tradingstrategin och
+> riskreglerna är oförändrade.
 
 Integrationen ska byggas stegvis.
 
@@ -25,13 +36,14 @@ innan trading requests får aktiveras.
 
 Den centrala principen är:
 
-Omnira ska först lära sig att observera MT5 korrekt innan systemet får rätt att påverka MT5.
+Omnira ska först lära sig att observera providern korrekt innan systemet får rätt att påverka den.
 
-## Varför MetaTrader 5 används
+## Ansvarsfördelningen mot providern
 
-MetaTrader 5 fungerar som den initiala bryggan mellan Omnira Trading System och broker- eller prop firm-kontot.
+En Futures Execution Provider är bryggan mellan Omnira Trading System och det faktiska
+handelskontot hos broker, FCM eller prop firm.
 
-MT5 ansvarar för den externa tradingmiljön:
+Providern ansvarar för den externa tradingmiljön:
 
 - brokeranslutning
 - account state
@@ -52,15 +64,15 @@ Omnira ansvarar istället för:
 - analytics
 - UI
 - governance
-MT5 ska alltså inte bli Omniras intelligenslager.
+Providern ska alltså inte bli Omniras intelligenslager.
 
-## Windows Runner
+## Execution Runtime — deployment-beroende
 
-MT5-integrationen ska initialt köras genom en separat Windows Execution Runner.
+Om integrationen kräver en separat process eller host beror på vald provider och
+driftsmodell. Det är **inte** en universell arkitekturinvariant, och ingen
+executionplattform är låst. Se Systemarkitektur v0.2 §2.1 och §18, samt GATE-17.
 
-Den första miljön kan vara den dedikerade stationära Windows-dator som används som 24/7 trading-rigg.
-
-Flödet är:
+Flödet när ett separat runtime **behövs**:
 
 **Omnira**
 
@@ -70,29 +82,36 @@ Flödet är:
 
 ↕
 
-## Windows Execution Runner
+## Execution Runtime
 
 ↕
 
-## MetaTrader 5 Terminal
+## Execution Provider Adapter
 
 ↕
 
-## Broker / Prop Firm
+## Futures Execution Provider
 
-Runnern fungerar som adapter mellan Omnira och MT5.
+↕
 
-## Varför MT5 inte kopplas direkt till frontend
+## Broker / FCM / Prop Firm
+
+När providern kan nås direkt och säkert från Omnira faller runtime-ledet bort och
+Execution Gateway talar direkt med adaptern. Adaptergränsen finns i båda fallen.
+
+Adaptern är den enda komponent som får känna till en specifik providers API.
+
+## Varför providern inte kopplas direkt till frontend
 
 Ingen tradingfunktion ska kommunicera:
 
-**Web UI → MT5**
+**Web UI → Provider**
 
 direkt.
 
 Det skulle göra behörigheter, auditing och riskkontroll betydligt svagare.
 
-Alla MT5-operationer ska gå genom serverkontrollerade tradinglager.
+Alla provideroperationer ska gå genom serverkontrollerade tradinglager.
 
 Frontend ska endast:
 
@@ -100,13 +119,13 @@ Frontend ska endast:
 - visa proposal
 - ta emot explicit approval
 - visa execution-resultat
-## MetaTrader 5 Python Integration
+## Provider API-integration
 
-Den initiala tekniska kandidaten är MetaTraders officiella Python-integration.
+Ingen provider och inget SDK är valt. Se GATE-15 och GATE-16.
 
-Integrationen erbjuder separata funktioner för exempelvis:
+Oavsett provider ska integrationen exponera separata kapabiliteter för exempelvis:
 
-- terminal connection
+- connection
 - account information
 - symbol information
 - bars
@@ -115,13 +134,16 @@ Integrationen erbjuder separata funktioner för exempelvis:
 - open positions
 - historical orders
 - historical deals
-och separat funktionalitet för trading requests.
+och **separat** funktionalitet för trading requests.
 
-Denna separation passar Omnira Trading Systems säkerhetsarkitektur.
+Den separationen är ett krav på providern, inte en tillfällighet: read-kapabilitet och
+execution-kapabilitet ska kunna aktiveras och behörighetsstyras var för sig. En provider
+som inte tillåter den uppdelningen är svårare att göra säker, och det ska vägas in i
+providervalet.
 
 ## Connection Lifecycle
 
-Runnern ska hantera MT5-anslutningen som ett explicit state.
+Adaptern ska hantera provideranslutningen som ett explicit state.
 
 Exempel:
 
@@ -145,7 +167,7 @@ Runnern får inte behandlas som execution-ready bara för att Pythonbiblioteket 
 
 Efter anslutning ska runnern kontrollera:
 
-- MT5 terminal tillgänglig
+- provider endpoint tillgänglig
 - terminal version
 - connection state
 - trading permission state
@@ -174,7 +196,7 @@ Account state ska normaliseras till Omniras interna TradingAccount och AccountSn
 
 ## Account Identity
 
-Kontot som MT5 faktiskt rapporterar måste matcha det konto Omnira förväntar sig.
+Kontot som providern faktiskt rapporterar måste matcha det konto Omnira förväntar sig.
 
 Exempel:
 
@@ -256,7 +278,7 @@ Det ska alltså inte räcka att någon av misstag anropar en orderfunktion.
 
 ## Symbol Discovery
 
-MT5 erbjuder ett stort antal symbols beroende på broker.
+Providern erbjuder ett stort antal symbols beroende på broker.
 
 Omnira ska kunna läsa symbolinformationen och skapa mappings mellan:
 
@@ -295,15 +317,15 @@ Risk Engine ska använda normaliserad instrumentmetadata.
 
 NQ och MNQ är futures och kontraktet förändras över tid.
 
-MT5 Bridge måste därför kunna identifiera vilket broker-symbolnamn som representerar rätt aktivt futureskontrakt.
+Execution Provider Adapter måste därför kunna identifiera vilket providersymbolnamn som representerar rätt aktivt futureskontrakt.
 
 Strategy Engine ska arbeta med canonical instrument.
 
 Execution Adapter ansvarar för broker mapping.
 
-## Market Data via MT5
+## Market Data via providern
 
-Runnern ska kunna läsa bars och ticks från MT5 när MT5 används som market-data source.
+Adaptern ska kunna läsa bars och ticks från providern när providern används som market-data source.
 
 Bars ska kunna begäras för relevanta timeframes:
 
@@ -311,11 +333,11 @@ Bars ska kunna begäras för relevanta timeframes:
 - 5m
 - 15m
 - 4H
-MT5-data ska därefter gå genom Market Data Layer innan Strategy Engine använder den.
+Providerdata ska därefter gå genom Market Data Layer innan Strategy Engine använder den.
 
-## MT5-data är inte automatiskt trusted data
+## Providerdata är inte automatiskt trusted data
 
-Att data kommer från MT5 betyder inte att validation kan hoppas över.
+Att data kommer från providern betyder inte att validation kan hoppas över.
 
 Omnira ska fortfarande kontrollera:
 
@@ -326,13 +348,13 @@ Omnira ska fortfarande kontrollera:
 - ordering
 - symbol
 - timeframe
-MT5 är provider.
+Providern är datakälla.
 
 Omniras Market Data Layer är validation boundary.
 
 ## Tick Data
 
-MT5-integrationen ska kunna läsa tickdata där det behövs.
+Integrationen ska kunna läsa tickdata där det behövs.
 
 Tickdata kan senare användas för:
 
@@ -362,7 +384,7 @@ Read Adapter ska kunna läsa aktiva orders.
 
 Dessa ska synkroniseras till Omniras interna state.
 
-Om MT5 rapporterar en order som inte finns i Omnira ska systemet kunna markera:
+Om providern rapporterar en order som inte finns i Omnira ska systemet kunna markera:
 
 ```
 UNKNOWN_ORDER
@@ -383,7 +405,7 @@ Minst:
 - TP
 - current P/L
 - open time
-MT5 state är source of truth för vad brokern faktiskt håller öppet.
+Providerns state är source of truth för vad brokern faktiskt håller öppet.
 
 ## Expected State och Observed State
 
@@ -401,7 +423,7 @@ Omnira expected:
 
 0 positions
 
-MT5 observed:
+Provider observed:
 
 1 MNQ long
 
@@ -415,7 +437,7 @@ Ny execution blockeras.
 
 ## Historical Orders
 
-MT5-integrationen ska kunna läsa orderhistorik.
+Integrationen ska kunna läsa orderhistorik.
 
 Detta behövs för:
 
@@ -427,7 +449,7 @@ Order history är inte samma sak som trade performance.
 
 ## Historical Deals
 
-MT5:s deal history representerar faktiska execution events.
+Providerns deal history representerar faktiska execution events.
 
 Den ska användas för att rekonstruera:
 
@@ -453,7 +475,7 @@ Dessa får inte lagras som samma generiska objekt.
 
 ## Historical Import
 
-När MT5 Read Only aktiveras kan Omnira importera tidigare tradinghistorik.
+När Fas 2 – Futures Connectivity (Read Only) aktiveras kan Omnira importera tidigare tradinghistorik.
 
 Denna historik ska märkas exempelvis:
 
@@ -467,7 +489,7 @@ Detta gör det möjligt att använda gammal data utan att förorena systemets va
 
 ## Manual Trades
 
-Om en användare tar en trade manuellt genom MT5 ska Omnira kunna upptäcka detta.
+Om en användare tar en trade manuellt hos providern ska Omnira kunna upptäcka detta.
 
 Origin:
 
@@ -541,7 +563,7 @@ I'm alive
 
 utan även kunna inkludera:
 
-- MT5 connected
+- provider connected
 - broker connected
 - active account
 - environment
@@ -556,7 +578,7 @@ Exempel på runner states:
 ```
 OFFLINE
 STARTING
-MT5_DISCONNECTED
+PROVIDER_DISCONNECTED
 ACCOUNT_MISMATCH
 SYNCING
 RECONCILING
@@ -575,7 +597,7 @@ Flödet ska exempelvis vara:
 
 ```
 START
-→ INITIALIZE MT5
+→ INITIALIZE PROVIDER
 → VERIFY TERMINAL
 → VERIFY ACCOUNT
 → SYNC ACCOUNT
@@ -596,7 +618,7 @@ Ny execution blockeras tills detta är klart.
 
 ## Last Error
 
-MT5-integrationens tekniska fel ska översättas till strukturerade Omnira error states.
+Providerintegrationens tekniska fel ska översättas till strukturerade Omnira error states.
 
 Råa felkoder får lagras för debugging.
 
@@ -605,7 +627,7 @@ Atlas och UI ska däremot kunna visa begriplig status.
 Exempel:
 
 ```
-MT5_CONNECTION_FAILED
+PROVIDER_CONNECTION_FAILED
 SYMBOL_NOT_FOUND
 ACCOUNT_MISMATCH
 ORDER_REJECTED
@@ -613,7 +635,7 @@ ORDER_REJECTED
 
 ## Read Adapter
 
-MT5 Read Adapter ska vara separat från Execution Adapter.
+Read Adapter ska vara separat från Execution Adapter.
 
 Read Adapter ansvarar för:
 
@@ -641,9 +663,9 @@ Den ansvarar för:
 - position close
 Execution Adapter ska aldrig innehålla strategy logic.
 
-## order_check
+## Order Pre-Check
 
-Innan en trading request skickas kan MT5:s pre-check-funktionalitet användas för att kontrollera om requesten är tekniskt acceptabel.
+Innan en trading request skickas kan providerns pre-check-funktionalitet, där den finns, användas för att kontrollera om requesten är tekniskt acceptabel.
 
 Det kan bland annat ge information om huruvida requesten kan utföras med aktuell account state.
 
@@ -651,7 +673,7 @@ Detta är defense-in-depth.
 
 Ett lyckat broker pre-check betyder inte att Omniras Strategy-, Risk- eller Prop Firm-regler automatiskt är uppfyllda.
 
-## order_send
+## Order Submission
 
 Trading requests ska senare skickas genom den separata execution-funktionen.
 
@@ -664,15 +686,15 @@ När den senare aktiveras får den endast nås genom:
 ```
 Approved ExecutionIntent
 → Pre-Execution Revalidation
-→ MT5 Execution Adapter
+→ Execution Adapter
 ```
 
-## Ingen direkt order_send från Strategy Engine
+## Ingen direkt order submission från Strategy Engine
 
 Det ska arkitektoniskt vara omöjligt för Strategy Engine att göra:
 
 ```
-order_send()
+submitOrder()
 ```
 
 Strategy Engine känner endast till:
@@ -687,7 +709,7 @@ Detta minskar blast radius om strategy-kod innehåller ett fel.
 
 Det är viktigt att skilja dessa.
 
-MT5 kan exempelvis godkänna att kontot tekniskt har tillräcklig margin för en order.
+Providern kan exempelvis godkänna att kontot tekniskt har tillräcklig margin för en order.
 
 Men Omnira kan ändå säga:
 
@@ -724,7 +746,7 @@ Exakt request-format ska definieras under implementation och verifieras på demo
 
 ## Magic / Strategy Identifier
 
-När MT5 stödjer identifierande metadata ska Omnira använda en konsekvent identifierare för sina orders.
+När providern stödjer identifierande metadata ska Omnira använda en konsekvent identifierare för sina orders.
 
 Det ska göra det lättare att skilja:
 
@@ -748,11 +770,11 @@ Resultat ska kunna skilja mellan exempelvis:
 - market unavailable
 - insufficient resources
 - unknown failure
-Rå MT5-response ska bevaras där det är säkert och relevant.
+Rå providerresponse ska bevaras där det är säkert och relevant.
 
 ## Submission är inte Fill
 
-Att MT5 accepterar en request betyder inte automatiskt att den slutliga executionen blev exakt som planerat.
+Att providern accepterar en request betyder inte automatiskt att den slutliga executionen blev exakt som planerat.
 
 Systemet måste kontrollera actual resulting state.
 
@@ -804,7 +826,7 @@ För short:
 
 SL flyttas till entry efter canonical 1m swing-low-trigger.
 
-MT5-resultatet måste verifieras.
+Providerresultatet måste verifieras.
 
 ## Closing Position
 
@@ -845,7 +867,7 @@ och:
 
 ## Connection Loss
 
-Om runnern tappar MT5 connection ska den:
+Om runtime/adaptern tappar provideranslutningen ska den:
 
 - markera connection unhealthy
 - stoppa nya execution requests
@@ -888,19 +910,19 @@ Runnern ska kunna mäta relevant latency.
 Exempel:
 
 - Omnira → Runner
-- Runner → MT5
+- Runtime → Provider
 - request → broker response
 - signal → actual fill
 Detta hjälper senare vid VPS-beslut.
 
 ## Stationär dator som första rigg
 
-Den stationära Windows-datorn fungerar som initial deployment target.
+Deployment target är inte låst och följer av providervalet. Se GATE-17.
 
-Den ska användas för:
+Miljön ska användas för:
 
-- MT5
-- runner
+- provideranslutning
+- runtime om ett sådant krävs
 - demo
 - read-only verification
 - system health tests
@@ -924,7 +946,7 @@ Endast execution host och deployment config ska förändras.
 
 ## Credentials
 
-MT5 credentials ska behandlas som secrets.
+Providercredentials ska behandlas som secrets.
 
 De ska:
 
@@ -947,7 +969,7 @@ Fail closed gäller.
 
 Runnern ska bara få arbeta med explicit godkända accounts.
 
-Om MT5 terminalen loggar in på ett konto utanför allowlist:
+Om providern ansluter till ett konto utanför allowlist:
 
 ```
 BLOCKED
@@ -967,7 +989,7 @@ Det minskar risken för att fel symbol exekveras.
 
 ## Logging och Audit
 
-MT5 Bridge ska logga systemevents som:
+Execution Provider Adapter ska logga systemevents som:
 
 - initialized
 - connected
@@ -985,7 +1007,7 @@ Secrets ska aldrig hamna i log payload.
 
 ## Data Precision
 
-MT5-data måste normaliseras med korrekt instrumentprecision.
+Providerdata måste normaliseras med korrekt instrumentprecision.
 
 Priser, volume och quantity ska respektera broker-symbolens faktiska steg.
 
@@ -1017,21 +1039,21 @@ ska inte retryas automatiskt.
 
 Trading request får aldrig skickas om blint.
 
-Om systemet är osäkert på om den första requesten exekverades ska det först fråga MT5 om verkligt state.
+Om systemet är osäkert på om den första requesten exekverades ska det först fråga providern om verkligt state.
 
 Detta är kritiskt för duplicate protection.
 
 ## Testing Strategy
 
-MT5-integrationen ska testas stegvis.
+Providerintegrationen ska testas stegvis.
 
 ## Testnivå 1 – Offline Contract Tests
 
 Testa adapters mot mockade responses.
 
-## Testnivå 2 – Local MT5 Read Only
+## Testnivå 2 – Local Provider Read Only
 
-Verifiera riktig terminalanslutning.
+Verifiera riktig provideranslutning.
 
 ## Testnivå 3 – Demo Account Sync
 
@@ -1053,7 +1075,7 @@ Endast efter senare gates.
 
 Fas 2 ska inte betraktas som färdig förrän systemet konsekvent kan:
 
-- connecta till MT5
+- connecta till providern
 - verifiera rätt account
 - läsa account state
 - läsa relevanta symbols
@@ -1085,7 +1107,7 @@ När Execution Adapter senare aktiveras på demo ska systemet bland annat verifi
 - time exit
 - duplicate protection
 - restart recovery
-## Atlas Market View och MT5
+## Atlas Market View och providern
 
 Atlas Market View ska kunna visa både:
 
@@ -1124,7 +1146,7 @@ Det gör execution transparent.
 Trading-projektet ska kunna visa:
 
 - Runner Online
-- MT5 Connected
+- Provider Connected
 - Broker Connected
 - Account Verified
 - Data Fresh
@@ -1134,13 +1156,13 @@ Trading-projektet ska kunna visa:
 - Last Heartbeat
 Användaren ska inte behöva öppna terminalen för att veta om integrationskedjan är healthy.
 
-## Atlas och MT5 Errors
+## Atlas och providerfel
 
 Atlas ska kunna översätta strukturerade tekniska fel.
 
 Exempel:
 
-Execution är blockerad eftersom Windows-runnern rapporterar att MT5 är anslutet men fel account är aktivt.
+Execution är blockerad eftersom runtime rapporterar att providern är ansluten men fel account är aktivt.
 
 eller:
 
@@ -1148,9 +1170,9 @@ Positionen öppnades korrekt men broker verifierar inte planerad stop loss. Kont
 
 AI:n ska inte försöka dölja tekniska fel med optimistiskt språk.
 
-## MT5 och Self-Improvement
+## Providerdata och Self-Improvement
 
-MT5-data blir även en viktig källa för Atlas Trading Learning & Improvement Layer.
+Providerdata blir även en viktig källa för Atlas Trading Learning & Improvement Layer.
 
 Systemet kan över tid analysera:
 
@@ -1178,7 +1200,7 @@ Det kan vara:
 - slippage
 - broker costs
 - implementation problem
-MT5 Bridge ska ge tillräcklig data för att göra denna separation.
+Execution Provider Adapter ska ge tillräcklig data för att göra denna separation.
 
 ## Ingen live-aktivering genom koddeploy
 
@@ -1190,7 +1212,7 @@ Detta minskar risken att en ny deployment av misstag börjar handla riktiga peng
 
 ## Säker standard
 
-Den initiala standarden för alla nya MT5 integrationsmiljöer ska vara:
+Den initiala standarden för alla nya providerintegrationsmiljöer ska vara:
 
 ```
 READ_ONLY
@@ -1200,15 +1222,17 @@ En ny runner, nytt account eller ny deployment måste explicit kvalificeras inna
 
 ## Kapitelstatus
 
-Kapitel: 9 – MetaTrader 5-integration
+Kapitel: 9 – Futures Execution Integration
 
 Bok: Omnira Trading System – Från strategi till autonom exekvering
 
 Status: Baseline dokumenterad
 
-Initial integration: MetaTrader 5 Python Integration
+Revision: 2026-08-28 – kapitlet omskrivet provider-neutralt (Beslut D). Filnamn och rubrik ändrade från MetaTrader 5-integration. Struktur och resonemang bevarade.
 
-Initial host: Windows Execution Runner
+Initial integration: Ingen provider vald (GATE-15). Adapterkontrakt ej låst (GATE-16)
+
+Initial host: Ej låst. Runtime är deployment-beroende (GATE-17)
 
 Initial capability: READ ONLY
 
@@ -1219,14 +1243,14 @@ Market data sync: Planerad
 Positions/history sync: Planerad
 
 ```
-order_check: Framtida execution defense-in-depth
-order_send: Förbjuden under Read Only
+Order pre-check: Framtida execution defense-in-depth
+Order submission: Förbjuden under Read Only
 ```
 
 Demo execution: Ej aktiverad
 
 Live execution: Förbjuden
 
-VPS migration: Arkitekturen ska stödja den
+Host migration: Arkitekturen ska stödja den
 
-Omnira ska först bevisa att systemet korrekt kan observera, synkronisera och reconcila MetaTrader 5 innan det får rätt att skicka en enda tradingorder.
+Omnira ska först bevisa att systemet korrekt kan observera, synkronisera och reconcila den externa providern innan det får rätt att skicka en enda tradingorder.

@@ -10,7 +10,7 @@ En strategi kan se stark ut i backtest men ändå misslyckas när den möter:
 - verkliga spreads
 - verkliga brokerförhållanden
 - realtidsdata
-- MT5-synkronisering
+- providersynkronisering
 - marknadsförändringar
 - execution delays
 - tekniska avbrott
@@ -42,8 +42,8 @@ Det innebär att vi ska testa:
 - Prop Firm Rules Engine
 - Trade Proposal
 - Approval flow
-- Windows Execution Runner
-- MT5 synchronization
+- Execution Runtime
+- provider synchronization
 - Journal
 - Analytics
 - Reconciliation
@@ -111,7 +111,7 @@ Efter att Shadow Mode fungerar stabilt får systemet gå vidare till demo.
 
 I demo kan Omnira:
 
-- skapa riktiga orders i MT5 demo
+- skapa riktiga orders i providerns demo
 - läsa actual fills
 - mäta latency
 - mäta slippage
@@ -155,7 +155,7 @@ Forward test ska använda samma typ av realtime-data som senare production.
 Detta gör att vi kan upptäcka skillnader mellan:
 
 - historical data
-- MT5 data
+- providerdata
 - broker timestamps
 - current contracts
 - session boundaries
@@ -300,7 +300,7 @@ Detta gör Shadow Mode mer realistiskt.
 
 ## Demo Fill Data
 
-I Demo Mode ska faktisk MT5 fill användas.
+I Demo Mode ska faktisk providern fill användas.
 
 Systemet ska jämföra:
 
@@ -383,7 +383,7 @@ Det ska därför kräva att systemet redan bevisat:
 - korrekt strategy detection
 - korrekt risk
 - korrekt account sync
-- korrekt MT5 execution
+- korrekt providern execution
 - duplicate protection
 - reconciliation
 - kill switch
@@ -493,7 +493,7 @@ Vi ska verifiera att:
 - rätt 1m swing identifieras
 - trigger sker vid rätt tid
 - SL modification skickas
-- MT5 bekräftar ändringen
+- providern bekräftar ändringen
 - journal uppdateras
 - Atlas Market View visar rätt state
 ## Break-Even Failure
@@ -560,7 +560,7 @@ Demo är rätt plats att utsätta reconciliation för riktiga fel.
 Exempel:
 
 - starta om runner
-- starta om MT5
+- starta om provideranslutningen
 - bryt nätverk
 - reconnect
 - skapa manual demo position
@@ -568,7 +568,7 @@ Systemet ska återställa korrekt state innan ny trading.
 
 ## Manual Position Test
 
-En manuell demo-position kan öppnas direkt i MT5.
+En manuell demo-position kan öppnas direkt i providern.
 
 Omnira ska då upptäcka:
 
@@ -602,7 +602,7 @@ Forward testing ska inkludera:
 
 - Omnira disconnect
 - runner disconnect
-- MT5 disconnect
+- provider disconnect
 - broker disconnect
 Vi ska dokumentera vad som händer med:
 
@@ -643,7 +643,7 @@ Exempel:
 - gap genom SL
 - broker outage
 - internet outage nära news exit
-- MT5 malfunction
+- provider malfunction
 - execution slippage
 - unavailable calendar
 - corrupted provider data
@@ -986,7 +986,7 @@ Innan Demo Automation får aktiveras ska minst följande vara verifierat:
 
 - Analysis Mode stable
 - Shadow Mode stable
-- MT5 Read Only stable
+- Futures Connectivity (Read Only) stable
 - strategy detection verified
 - Risk Engine verified
 - Prop Firm Engine verified
@@ -1093,7 +1093,7 @@ Detta är Analysis Only / Shadow Gate.
 
 Nästa mål är:
 
-Omnira kan genomföra samma beslut genom ett MT5 demo-konto med korrekt risk, execution och reconciliation.
+Omnira kan genomföra samma beslut genom ett providerns demo-konto med korrekt risk, execution och reconciliation.
 
 Detta är Demo Manual Gate.
 

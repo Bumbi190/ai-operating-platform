@@ -166,6 +166,13 @@ Market Data → Strategy Engine → AI Analysis → Risk Engine → Prop Firm Ru
 → Windows Execution Runner → MetaTrader 5 → Broker / Prop Firm → Journal & Analytics
 ```
 
+> **Not 2026-08-28:** kedjan ovan är den som verifierades mot Systemarkitektur **v0.1**
+> och bevaras som granskningsprotokoll. Den är sedan Beslut D ersatt av en
+> futures-native, provider-neutral kedja i Systemarkitektur **v0.2**. Se
+> `Canonical Amendments v1.0.md`, Beslut D, och `SOURCE_OF_TRUTH.md` för den
+> gällande kedjan. Auktoritetsordningen och veto-lagren är oförändrade — endast
+> den externa execution-noden har blivit provider-neutral.
+
 Verifierat i materialet:
 
 | Invariant | Status | Belägg |

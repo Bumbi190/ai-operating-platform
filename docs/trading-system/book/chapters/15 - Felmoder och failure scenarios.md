@@ -10,7 +10,7 @@ Det kan vara:
 
 - felaktig marknadsdata
 - avbrott i nätverk
-- MT5 som tappar anslutningen
+- providern som tappar anslutningen
 - fel konto aktivt
 - stale account state
 - duplicate execution requests
@@ -441,7 +441,7 @@ Omnira tror:
 
 realized daily loss = $150
 
-men MT5 history visar:
+men providerns history visar:
 
 $300
 
@@ -547,7 +547,7 @@ Scenario:
 
 Runnern förväntar sig ett demo-account.
 
-MT5 har ett live-account aktivt.
+Providern har ett live-account aktivt.
 
 Expected:
 
@@ -723,7 +723,7 @@ Scenario:
 
 Runner skickar broker request.
 
-MT5 tar emot den.
+Providern tar emot den.
 
 Runner kraschar innan local confirmation sparas.
 
@@ -733,7 +733,7 @@ Expected:
 
 ```
 UNKNOWN_EXECUTION_STATE
-→ reconciliation mot MT5
+→ reconciliation mot providern
 ```
 
 innan någon retry får ske.
@@ -878,7 +878,7 @@ Systemet ska:
 
 Samma princip för New York 4h exit.
 
-## MT5 Terminal Closed
+## Provider Client Closed
 
 Scenario:
 
@@ -886,19 +886,19 @@ Windows lever.
 
 Runner lever.
 
-Men MT5 är stängt.
+Men providern är stängt.
 
 Expected:
 
 ```
-MT5_DISCONNECTED
+PROVIDER_DISCONNECTED
 ```
 
 Ny execution stoppas.
 
 Runner ska inte betraktas som healthy execution host.
 
-## MT5 Connected but Broker Offline
+## Provider Connected but Broker Offline
 
 Terminalprocessen kan vara igång utan fungerande broker connection.
 
@@ -929,7 +929,7 @@ Produktionsmiljön ska ha sleep avstängt.
 Efter OS-restart ska autostart kunna starta:
 
 - runner
-- MT5 där konfigurationen tillåter
+- providern där konfigurationen tillåter
 Men trading får inte börja förrän startup reconciliation är klar.
 
 ## Disk Full
@@ -1003,13 +1003,13 @@ Approval/idempotency-logik ska göra att detta inte kan skapa två executions.
 
 Scenario:
 
-Användaren öppnar MNQ manuellt i MT5.
+Användaren öppnar MNQ manuellt i providern.
 
 Omnira expected:
 
 0 positions
 
-MT5 observed:
+Provider observed:
 
 1 position
 
@@ -1024,7 +1024,7 @@ Systemet ska inte ignorera positionen för att den skapades utanför Omnira.
 
 Scenario:
 
-Användaren flyttar SL direkt i MT5.
+Användaren flyttar SL direkt i providern.
 
 Omnira ska upptäcka att actual broker state har förändrats.
 
@@ -1126,7 +1126,7 @@ Expected:
 
 Scenario:
 
-Runner har kontakt med MT5 men inte Omnira.
+Runner har kontakt med providern men inte Omnira.
 
 Runnern ska som standard:
 
@@ -1290,7 +1290,7 @@ Config ska vara immutable/versioned så att samma version betyder samma regler.
 
 Scenario:
 
-MT5 credentials råkar loggas.
+Providercredentials råkar loggas.
 
 Detta är ett security incident.
 
@@ -1667,7 +1667,7 @@ Exempel:
 
 - disconnect network
 - kill runner process
-- close MT5
+- close providern
 - duplicate execution request
 - corrupt test payload
 - create manual position
@@ -1842,7 +1842,7 @@ Exempel:
 
 HYP-OPS-014
 
-Inför längre reconciliation lock efter MT5 reconnect.
+Inför längre reconciliation lock efter providern reconnect.
 
 Detta ska testas precis som andra systemförändringar.
 
@@ -1896,7 +1896,7 @@ Det gäller särskilt:
 - duplicate execution
 - wrong account
 - runner crash
-- MT5 restart
+- providerklient restart
 - network loss
 - unknown position
 - SL failure

@@ -1,6 +1,6 @@
 # Kapitel 17 – Demofas
 
-Demofasen är den första fas där Omnira Trading System får exekvera riktiga orders genom MetaTrader 5, men utan att verkligt kapital står på spel.
+Demofasen är den första fas där Omnira Trading System får exekvera riktiga orders genom providern, men utan att verkligt kapital står på spel.
 
 Detta är en avgörande övergång.
 
@@ -178,7 +178,7 @@ När Shadow Mode fungerar stabilt aktiveras:
 
 **DEMO MANUAL**
 
-Detta är första gången systemet får skicka en riktig broker order genom MT5.
+Detta är första gången systemet får skicka en riktig broker order genom providern.
 
 Men varje trade kräver explicit mänskligt approval.
 
@@ -240,8 +240,8 @@ Realtime Market Data
 → Human Approval
 → Execution Gateway
 → Execution Intent
-→ Windows Runner
-→ MT5 Demo
+→ Execution Provider Adapter
+→ Futures Execution Provider (demo)
 → Broker Demo Environment
 → Journal
 ```
@@ -296,10 +296,10 @@ Minst:
 - prop state
 - kill switches
 - runner state
-- MT5 state
+- providern state
 ## Demo Order
 
-När alla gates passerar får systemet skicka order till MT5 Demo.
+När alla gates passerar får systemet skicka order till providerns demomiljö.
 
 Ordern ska därefter verifieras mot actual broker state.
 
@@ -312,7 +312,7 @@ Efter order submission ska systemet kontrollera:
 - actual position
 - actual SL
 - actual TP
-Det räcker inte att MT5 returnerade ett positivt request response.
+Det räcker inte att providern returnerade ett positivt request response.
 
 ## Broker-Native SL
 
@@ -343,7 +343,7 @@ Short motsvarande med swing low.
 
 ## Ingen falsk BE-status
 
-Om MT5 nekar modification ska UI och journal visa:
+Om providern nekar modification ska UI och journal visa:
 
 ```
 BREAK_EVEN_FAILED
@@ -533,7 +533,7 @@ Ett av Demofasens viktigaste test är att samma Execution Intent skickas flera g
 
 Expected:
 
-**exakt en MT5-order**
+**exakt en providern-order**
 
 ## Approval Double-Click Test
 
@@ -563,13 +563,13 @@ Vi ska också testa den svårare varianten:
 - runner crash innan confirmation sparas
 Efter restart:
 
-- read MT5 positions/orders/deals
+- read providern positions/orders/deals
 - reconcile
 - hitta actual trade
 - inte skicka om
-## MT5 Restart
+## Provider Restart
 
-MT5 ska medvetet startas om under demo.
+Provideranslutningen ska medvetet startas om under demo.
 
 Runnern ska:
 
@@ -586,7 +586,7 @@ Hela Windows-host ska kunna startas om.
 Efter startup:
 
 - runner start
-- MT5 start
+- providern start
 - account verification
 - position sync
 - reconciliation
@@ -615,9 +615,9 @@ Break-even, news exit och time exit kan kräva aktiv runtime.
 
 Demo ska hjälpa oss förstå residual risk om systemet är unavailable precis när sådan action krävs.
 
-## Manual MT5 Trade
+## Manual providern Trade
 
-Vi ska manuellt öppna en position direkt i demo-MT5.
+Vi ska manuellt öppna en position direkt i demo-providern.
 
 Omnira ska upptäcka:
 
@@ -633,13 +633,13 @@ UNKNOWN_POSITION
 
 Ny Omnira execution ska blockeras enligt aktuell policy.
 
-## Manual MT5 Modification
+## Manual providern Modification
 
 Vi ska manuellt ändra SL eller TP i terminalen.
 
 Omnira ska upptäcka discrepancy och uppdatera actual broker state.
 
-## Manual MT5 Close
+## Manual providern Close
 
 Om positionen stängs manuellt ska journalen visa att exit inte kom från normal strategy management.
 

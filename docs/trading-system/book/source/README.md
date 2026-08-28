@@ -24,6 +24,20 @@ Varje ändring är listad med före/efter och motivering i:
 docs/trading-system/reviews/Canonical Amendments v1.0.md
 ```
 
+## Kapitel 9 — filnamnen skiljer sig avsiktligt
+
+`09 - MetaTrader 5-integration.docx` är **v1.0:s historiska källmaterial** och behåller
+sitt ursprungliga namn. Den döps aldrig om.
+
+Aktiv kapitelkälla för Canonical v1.1 är:
+
+```
+book/chapters/09 - Futures Execution Integration.md
+```
+
+Kapitlet skrevs om provider-neutralt i Beslut D (2026-08-28). Att filnamnen skiljer sig
+är avsiktligt: `.docx`-originalet dokumenterar vad som faktiskt stod i v1.0.
+
 ## Regel
 
 Läs aldrig en `.docx` här som gällande regel. Läs motsvarande fil i `book/chapters/`.

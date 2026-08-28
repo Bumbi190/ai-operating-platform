@@ -245,7 +245,7 @@ Den ska minst kontrollera:
 ## Execution
 
 - runner healthy
-- MT5 verified
+- providern verified
 - account verified
 - symbol mapping verified
 - idempotency verified
@@ -283,7 +283,7 @@ Det innebär att vi inte samtidigt:
 - ändrar risk
 - byter market provider
 - byter runner
-- ändrar MT5 integration
+- ändrar providern integration
 om det inte är absolut nödvändigt.
 
 För många samtidiga förändringar gör root-cause analysis svårare.
@@ -475,12 +475,12 @@ Man ska inte behöva lära sig detta under en incident.
 En enkel första incidentprocedur ska finnas:
 
 - Stoppa nya trades.
-- Kontrollera faktisk MT5-position.
+- Kontrollera faktisk providern-position.
 - Kontrollera broker-native SL.
 - Använd Emergency Close endast när det verkligen behövs.
 - Reconcile systemet.
 - Dokumentera incidenten.
-## Live MT5 Reconciliation
+## Live providern Reconciliation
 
 Broker state är source of truth för actual exposure.
 
@@ -636,7 +636,7 @@ Det viktiga är om live beter sig rimligt nära den tidigare evidence-profilen.
 Parallellt mäts:
 
 - runner uptime
-- MT5 availability
+- providern availability
 - slippage
 - order rejection
 - reconciliation incidents
@@ -791,7 +791,7 @@ Minst:
 - Risk Engine
 - Prop Engine
 - runner
-- MT5
+- providern
 - broker connection
 - reconciliation
 - kill switches
@@ -959,7 +959,7 @@ Det kräver:
 
 - environment verification
 - broker/prop policy check
-- MT5 verification
+- providern verification
 - runner verification
 - read-only test
 - demo eller controlled verification där relevant
@@ -974,7 +974,7 @@ Endast execution host/deployment layer ska flyttas.
 Live-deployment ska ha en plan för att återställa:
 
 - runner
-- MT5
+- providern
 - account binding
 - configurations
 - database

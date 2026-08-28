@@ -1245,7 +1245,7 @@ Strategy Engine
 → Trade Proposal
 → Approval / Automation Policy
 → Execution
-→ MetaTrader 5
+→ Futures Execution Provider
 ```
 
 Strategy Engine får inte skicka orders direkt. 

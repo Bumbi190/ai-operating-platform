@@ -217,7 +217,7 @@ Detta förenklar:
 - reconciliation
 - journaling
 - prop firm-kontroll
-Om MT5 visar en position som Omnira inte känner till ska systemet behandla detta som en säkerhetsincident.
+Om providern visar en position som Omnira inte känner till ska systemet behandla detta som en säkerhetsincident.
 
 Ny trading ska blockeras tills positionen har identifierats och systemets state är reconciled.
 

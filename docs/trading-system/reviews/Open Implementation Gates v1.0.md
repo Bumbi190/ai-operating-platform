@@ -4,7 +4,9 @@
 **Version:** v1.0
 **Datum:** 2026-08-27
 **Status:** Aktiv. Ska konsulteras före varje fasstart.
-**Senast uppdaterad:** 2026-08-27 — GATE-05, GATE-10 och GATE-11 STÄNGDA.
+**Senast uppdaterad:** 2026-08-28 — GATE-15, GATE-16 och GATE-17 tillagda efter Beslut D
+(futures-native execution). GATE-08 och GATE-09 fick förtydligat scope i stället för nya
+duplicerande gates. GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27.
 
 ---
 
@@ -33,6 +35,7 @@ klassificeringen är att göra just den skillnaden explicit.
 | `BLOCKS PROP MODE` | Måste lösas innan Fas 9 Prop Firm Mode |
 | `BLOCKS LIVE` | Måste lösas innan Fas 10 Controlled Live |
 | `DEFERRED` | Blockerar ingen nu planerad fas |
+| `BLOCKS FAS 2 IMPLEMENTATION` | Blockerar connectivity-kod och connectivity proof, **inte** utrednings- och designarbetet som krävs för att stänga gaten |
 | `STÄNGD` | Explicit canonical beslut fattat, se `Canonical Amendments v1.0.md` |
 
 ---
@@ -55,11 +58,26 @@ klassificeringen är att göra just den skillnaden explicit.
 | GATE-12 | Execution safety margin- och slippagemodell | BLOCKS EXECUTION |
 | GATE-13 | Exakta promotion thresholds | BLOCKS LIVE |
 | GATE-14 | Exakta live safety policies | BLOCKS LIVE |
+| GATE-15 | Val av futures execution provider | BLOCKS FAS 2 IMPLEMENTATION |
+| GATE-16 | Execution Provider Adapter-kontrakt | BLOCKS FAS 2 IMPLEMENTATION |
+| GATE-17 | Execution runtime- och deploymenttopologi | BLOCKS EXECUTION |
 
-**Antal öppna gates: 11.** Tre stängdes 2026-08-27.
+**Antal öppna gates: 14.** Tre stängdes 2026-08-27, tre tillkom 2026-08-28.
 
 **Antal som blockerar Fas 1: 0.**
-**Antal som blockerar Fas 2: 0.**
+**Antal som blockerar Fas 2:s implementation: 2** — GATE-15 och GATE-16.
+
+> **Ändring 2026-08-28.** Fas 2 var tidigare ogrindad eftersom plattformen felaktigt
+> antogs vara MetaTrader 5. Med en provider-neutral arkitektur kan read-only-connectivity
+> inte bevisas mot en provider som inte är vald. Fas 1 är fortsatt ogrindad och oförändrad.
+>
+> **Vad grindningen omfattar.** GATE-15 och GATE-16 blockerar **connectivity-kod och
+> connectivity proof** — inte det utredningsarbete som krävs för att stänga dem.
+> Capability review, security review, API- och auth-granskning, providerjämförelse och
+> design av adapterkontraktet får och bör påbörjas omedelbart. Utan det undantaget vore
+> gaterna cirkulära: de skulle blockera exakt det arbete som stänger dem.
+>
+> Detta kräver ingen ny subfas. Roadmap-taxonomin är oförändrad.
 
 De elva kvarvarande är samtliga medvetet uppskjutna detaljspecifikationer. Ingen av dem är
 en defekt i den låsta regelmängden — den distinktionen är avgörande och behandlas i
@@ -198,9 +216,17 @@ Utan (2) blir regeln beroende av en tredjepartsleverantörs interna märkning, s
 
 ---
 
-## GATE-08 — Val av realtids-marknadsdataprovider
+## GATE-08 — Val av realtids-marknadsdataprovider och kontraktsserie
 
 **Klass:** BLOCKS STRATEGY ENGINE
+
+> **Scope förtydligat 2026-08-28.** GATE-08 omfattar även **contract rollover och
+> kontraktsserie-policy** för futures. Rollover är en marknadsdata- och
+> kontraktsseriefråga: vilket kontrakt en bar tillhör och hur serien fogas ihop.
+> Konceptet finns redan i Kapitel 6, 10 och 15; det är policyn som är uppskjuten.
+> Ingen separat rollover-gate har skapats — det hade bara duplicerat denna.
+> Adaptern översätter instrument till providerns kontraktsidentitet
+> (Systemarkitektur v0.2 §22.1), men *vilket* kontrakt som är aktuellt avgörs här.
 
 Kapitel 6 anger i sitt statusblock: **Realtime provider: Ej slutligt vald.**
 
@@ -217,6 +243,12 @@ befintlig historisk data. Realtidsdrift kräver valet.
 ## GATE-09 — Första faktiska PropFirmProfile
 
 **Klass:** BLOCKS PROP MODE
+
+> **Scope förtydligat 2026-08-28.** GATE-09 omfattar även **kompatibilitet mellan vald
+> futures execution provider och vald prop firm**. Vilka providers en prop firm tillåter,
+> och vilka konton som går att nå, är en del av att välja den första faktiska profilen.
+> Ingen separat providerkompatibilitets-gate har skapats — det hade bara duplicerat denna.
+> Interagerar med GATE-15.
 
 Kapitel 12 fastslår att den första faktiska `PropFirmProfile` ska väljas när det är
 känt vilken challenge eller provider som ska användas först.
@@ -329,22 +361,117 @@ uppskalning får ske på kortsiktig performance.
 
 ---
 
+## GATE-15 — Val av futures execution provider
+
+**Klass:** BLOCKS FAS 2 IMPLEMENTATION
+**Tillkom:** 2026-08-28, Beslut D
+
+**Vad som är blockerat:** all provider-connectivity-kod och allt connectivity proof.
+
+**Vad som är tillåtet nu:** capability review, security review, API- och auth-granskning,
+providerjämförelse och underlagsarbete inför valet. Det arbetet är själva vägen till att
+stänga gaten och får inte blockeras av den.
+
+NQ och MNQ är futures. Ingen execution provider är vald.
+
+Kandidater som ska utvärderas inkluderar Tradovate, TradeSea eller motsvarande
+underliggande futures-anslutning, samt andra kompatibla futures-providers. **Ingen av
+dem är låst**, och listan är inte uttömmande.
+
+Valet ska föregås av en separat capability-, security- och integration review. Relevanta
+kriterier är minst:
+
+- separerbar read- och execution-kapabilitet
+- autentiseringsmodell och credential-hantering
+- idempotens vid orderinläggning
+- kontrakts- och symbolmodell för futures
+- rapportering av fills, positions och history
+- reconciliation-möjlighet mot faktiskt kontostate
+- prop firm-kompatibilitet, se GATE-09
+- driftsmodell och var adaptern får köras, se GATE-17
+
+**Konsekvens:** Fas 2 – Futures Connectivity (Read Only) kan inte **implementeras**.
+Read-only proof of connectivity kräver en provider att ansluta mot. Utvärderingsarbetet
+inför valet påbörjas däremot direkt. Fas 1 påverkas inte.
+
+---
+
+## GATE-16 — Execution Provider Adapter-kontrakt
+
+**Klass:** BLOCKS FAS 2 IMPLEMENTATION
+**Tillkom:** 2026-08-28, Beslut D
+
+**Vad som är blockerat:** implementation av en adapter mot en verklig provider.
+
+**Vad som är tillåtet nu:** design av kontraktet, gränssnittsutkast och jämförelse mot
+kandidatproviders API:er. Kontraktet kan inte skrivas utan det arbetet.
+
+Systemarkitektur v0.2 §22 definierar adaptern som den enda komponent som får känna till
+en specifik providers API. Själva kontraktet är inte skrivet.
+
+Ska minst låsa:
+
+- read-kapabilitetens gränssnitt: account, symbols, quotes, bars, ticks, orders,
+  positions, history
+- execution-kapabilitetens gränssnitt: pre-check, submit, modify, close
+- autentisering och sessionshantering
+- felöversättning till Omniras strukturerade error states
+- idempotensnyckel och duplicate protection
+- översättning mellan Omniras instrumentidentitet och providerns kontraktsidentitet
+- health- och heartbeat-semantik
+
+**Beroende:** kan inte **färdigställas** före GATE-15, eftersom kontraktet måste kunna
+implementeras mot minst en verklig provider utan att bli en abstraktion utan täckning.
+Designarbetet kan och bör ändå löpa parallellt med providerutvärderingen — de informerar
+varandra.
+
+---
+
+## GATE-17 — Execution runtime- och deploymenttopologi
+
+**Klass:** BLOCKS EXECUTION
+**Tillkom:** 2026-08-28, Beslut D
+
+Krävs ett separat Execution Runtime eller en egen host överhuvudtaget? Det tidigare
+Windows-runner-antagandet var en konsekvens av MT5-bindningen, inte ett arkitekturkrav.
+Systemarkitektur v0.2 §2.1 och §18 gör runtime-ledet deployment-beroende.
+
+Ska avgöras:
+
+- krävs en separat process eller host, eller kan Execution Gateway nå adaptern direkt
+- var runtime i så fall får köras, och på vilken plattform
+- nätverks- och credentialpolicy för den placeringen
+- heartbeat- och failover-modell
+
+**Varför denna blockerar Execution och inte Fas 2:** read-only-verifiering kan göras från
+en utvecklingsmiljö. Topologin blir bindande först när ordrar faktiskt kan skickas, och
+hör därför ihop med Fas 6 tillsammans med GATE-12.
+
+---
+
 ## Fasbedömning
 
 | Fas | Blockerande gates | Får påbörjas |
 |---|---|---|
 | Fas 1 – Trading Core | inga | **Ja** |
-| Fas 2 – MT5 Read Only | inga | **Ja** |
+| Fas 2 – Futures Connectivity (Read Only) | GATE-15, 16 | Implementation: Nej. Utredning/design: Ja |
 | Fas 3 – Strategy Engine | GATE-01, 02, 03, 04, 08 | Nej |
 | Fas 4 – AI Analysis | ärver Fas 3 | Nej |
 | Fas 5 – Risk Engine | inga gates kvar, förutsätter Fas 3–4 | Gate-fri |
-| Fas 6 – Manual Approval | GATE-06, 07, 12 | Nej |
+| Fas 6 – Manual Approval | GATE-06, 07, 12, 17 | Nej |
 | Fas 7 – Demo Automation | som Fas 6 | Nej |
 | Fas 8 – Backtest + Forward | ärver Fas 3 | Nej |
 | Fas 9 – Prop Firm Mode | GATE-09 | Nej |
 | Fas 10 – Controlled Live | GATE-13, 14 | Nej |
 
-**Fas 1 och Fas 2 är ogrindade och kan påbörjas omedelbart.**
+**Fas 1 är ogrindad och kan påbörjas omedelbart.** Fas 1 – Trading Core är dessutom
+redan genomförd och mergad (PR #96).
+
+**Fas 2:s implementation är sedan 2026-08-28 grindad** av GATE-15 och GATE-16. Provider
+måste väljas och adapterkontraktet skrivas innan read-only-connectivity kan bevisas.
+
+Det utredningsarbete som stänger gaterna — capability, security, API/auth, jämförelse och
+kontraktsdesign — är **inte** blockerat och kan börja omedelbart.
 
 Fas 5 har efter 2026-08-27 inga egna öppna gates — Risk Engine Specification är Canonical
 v1.0 med noll öppna riskbeslut. Fasen förutsätter fortfarande att Fas 3 och Fas 4 är

@@ -264,6 +264,38 @@ utvidgar inte hard limits (§47); human override finns inte (§70); numeric prec
 
 ---
 
+## 7.1 Provider-neutral tolkning av v0.1
+
+Tillagt 2026-08-28. Se Canonical Amendments v1.0, Beslut D.
+
+Risk Engine Specification v0.1 skrevs när systemarkitekturen felaktigt antog
+MetaTrader 5 som extern tradingmiljö. NQ och MNQ är futures, och arkitekturen är sedan
+Beslut D futures-native och provider-neutral.
+
+**Tolkningsregel.** Där v0.1 skriver `MT5`, `broker/MT5`, `MT5 connected` eller
+motsvarande ska detta läsas som ett **implementation-specifikt exempel** på den externa
+execution- och providermiljön. Den normativa innebörden är provider-neutral.
+
+Konkret gäller detta bland annat:
+
+| v0.1 | Normativ innebörd |
+|---|---|
+| §20 "faktisk broker/MT5 position state" | faktisk position state hos den externa providern |
+| §21 "Om broker/MT5 rapporterar en position…" | om providern rapporterar en okänd position |
+| §55 "MT5 connected" | provider connected |
+| §74 "protection … hos broker/MT5" | protection hos providern/brokern där den kan placeras |
+| §74 "Exakt MT5 executionmodell specificeras senare" | exakt executionmodell för vald provider specificeras senare |
+
+**Ingen riskregel ändras av detta.** Gränser, veto, fail closed, reserved risk,
+daily stop och position sizing är oförändrade. Risk Engine Specification förblir
+**Canonical v1.0** — detta är en tolkningsförtydligande, inte en regeländring, och
+utlöser därför ingen versionshöjning.
+
+v0.1 lämnas medvetet **oredigerad**. Att skriva om ett historiskt dokument för att dölja
+ett tidigare antagande skulle förstöra revisionsspåret över hur beslutet faktiskt såg ut.
+
+---
+
 ## 8. Kvarvarande gates som berör Risk Engine
 
 Dessa blockerar **inte** canonical status för detta dokument. De blockerar senare faser
@@ -272,7 +304,9 @@ och är listade i *Open Implementation Gates v1.0*.
 | Gate | Fråga | Blockerar |
 |---|---|---|
 | GATE-12 | Execution safety margin- och slippagemodell | Execution |
-| GATE-09 | Första faktiska PropFirmProfile | Prop Mode |
+| GATE-15 | Val av futures execution provider | Fas 2 implementation |
+| GATE-16 | Execution Provider Adapter-kontrakt | Fas 2 implementation |
+| GATE-09 | Första faktiska PropFirmProfile, inkl. providerkompatibilitet | Prop Mode |
 | GATE-13/14 | Promotion thresholds och live safety policies | Live |
 
 ---

@@ -31,8 +31,8 @@ Strategy Signal
 → Approval / Automation Policy
 → Execution Gateway
 → Execution Intent
-→ Windows Execution Runner
-→ MetaTrader 5
+→ Execution Runtime
+→ Futures Execution Provider
 → Broker / Prop Firm
 ```
 
@@ -152,7 +152,7 @@ Exempel på data:
 - prop decision reference
 Execution Runner ska inte behöva tolka naturligt språk.
 
-## Ingen AI-prompt till MT5
+## Ingen AI-prompt till providern
 
 Execution ska aldrig fungera genom instruktioner såsom:
 
@@ -184,7 +184,7 @@ Idempotency är ett av de viktigaste säkerhetskraven i execution.
 
 Anta att Omnira skickar ett orderrequest.
 
-Runnern skickar ordern till MT5.
+Runnern skickar ordern till providern.
 
 Sedan försvinner nätverket innan Omnira får svar.
 
@@ -317,7 +317,7 @@ Fel futureskontrakt får inte exekveras bara för att symbolnamnen liknar varand
 
 Execution Intent ska vara kopplat till ett specifikt konto.
 
-Runnern ska kontrollera att det MT5-konto som faktiskt är aktivt motsvarar:
+Runnern ska kontrollera att det providerkonto som faktiskt är aktivt motsvarar:
 
 ```
 account_id
@@ -349,17 +349,17 @@ och tvärtom.
 
 Miljön ska vara explicit verifierad.
 
-## MetaTrader 5
+## Futures Execution Provider
 
-MetaTrader 5 är den initiala executionplattformen.
+Providern är den externa executionmiljön. Ingen specifik provider är vald (GATE-15).
 
-Omnira ska inte låta Strategy Engine kommunicera direkt med MT5.
+Omnira ska inte låta Strategy Engine kommunicera direkt med providern.
 
 Kommunikationen ska gå genom execution-lagret.
 
 Det skapar ett säkerhetsmässigt mellanrum där alla kontroller kan göras innan order submission.
 
-## Windows Execution Runner
+## Execution Runtime
 
 Den första runnern ska köras på en dedikerad Windows-miljö.
 
@@ -368,7 +368,7 @@ Initialt kan detta vara användarens stationära dator.
 Runnerns ansvar är begränsat till:
 
 - kommunikation med Omnira
-- kommunikation med MT5
+- kommunikation med providern
 - read operations
 - execution requests
 - order status
@@ -386,7 +386,7 @@ Den initiala workstation-miljön behöver därför minst:
 - sleep avstängt
 - stabil nätverksanslutning
 - auto-start
-- MT5 auto-start
+- provideranslutning auto-start
 - runner auto-start
 - korrekt systemtid
 - health monitoring
@@ -403,7 +403,7 @@ Runnern ska regelbundet rapportera att den lever.
 Heartbeat kan innehålla:
 
 - runner status
-- MT5 connection
+- providern connection
 - broker connection
 - active account
 - environment
@@ -418,15 +418,15 @@ Ingen ny execution ska skickas.
 
 Runnern ska skilja mellan:
 
-- MT5-process running
+- providerprocess running
 - terminal connected
 - broker connected
 - account tradeable
-Att MT5-programmet är öppet betyder inte automatiskt att execution är möjlig.
+Att providerklienten är öppet betyder inte automatiskt att execution är möjlig.
 
 ## Order Pre-Check
 
-Innan faktisk submission ska runnern eller relevant adapter använda de kontroller som broker/MT5 erbjuder när detta är möjligt.
+Innan faktisk submission ska runnern eller relevant adapter använda de kontroller som broker/providern erbjuder när detta är möjligt.
 
 Pre-check kan upptäcka exempelvis:
 
@@ -678,7 +678,7 @@ Trading på kontot ska pausas tills reconciliation visar verkligt broker state.
 
 ## Reconciliation
 
-Reconciliation innebär att Omniras förväntade state jämförs med MT5:s verkliga state.
+Reconciliation innebär att Omniras förväntade state jämförs med providerns verkliga state.
 
 Systemet ska exempelvis jämföra:
 
@@ -699,7 +699,7 @@ Efter runner restart ska följande ske:
 
 ```
 START
-→ CONNECT MT5
+→ CONNECT providern
 → VERIFY ACCOUNT
 → READ ORDERS
 → READ POSITIONS
@@ -718,7 +718,7 @@ får ny execution tillåtas.
 
 ## Unknown Position
 
-Om MT5 har en position som Omnira inte känner igen ska den markeras:
+Om providern har en position som Omnira inte känner igen ska den markeras:
 
 ```
 UNKNOWN_POSITION
@@ -826,9 +826,9 @@ Strategy Engine kan eventuellt fortsätta analysera beroende på operation mode.
 
 Men inga executable proposals får behandlas som om execution finns tillgänglig.
 
-## MT5 Outage
+## Provider Outage
 
-Om MT5-processen eller broker connection försvinner ska execution blockeras.
+Om providerprocessen eller broker connection försvinner ska execution blockeras.
 
 Systemet ska kunna skilja detta från att hela runnern är offline.
 
@@ -896,7 +896,7 @@ Den ska därför använda:
 - secret storage
 - explicit account allowlist
 - environment restrictions
-MT5-credentials får inte exponeras till frontend eller AI-promptar.
+providercredentials får inte exponeras till frontend eller AI-promptar.
 
 ## Signerade Execution Intents
 
@@ -917,7 +917,7 @@ Samma princip kan användas för instrument.
 Under första valideringen kan execution exempelvis begränsas till:
 
 - MNQ
-även om MT5-kontot erbjuder hundratals andra symbols.
+även om providerkontot erbjuder hundratals andra symbols.
 
 ## Environment Banner
 
@@ -1031,7 +1031,7 @@ Execution ska aktivt testas mot fel.
 Exempel:
 
 - network disconnect
-- MT5 restart
+- providerklient restart
 - broker rejection
 - duplicate request
 - stale proposal
@@ -1081,7 +1081,7 @@ Initial executionmiljö: Windows workstation
 
 Framtida miljö: VPS-kompatibel
 
-Initial platform: MetaTrader 5
+Initial platform: providern
 
 Execution authority: Separat från Strategy Engine och AI
 

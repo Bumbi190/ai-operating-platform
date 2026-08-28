@@ -1,6 +1,6 @@
 # Omnira Trading System
 
-## Systemarkitektur v0.2
+## Systemarkitektur v0.3
 
 Dokumentspråk: Svenska
 Status: Fas 0 – Arkitekturförslag för granskning
@@ -494,6 +494,12 @@ process eller host krävs beror på vald Futures Execution Provider och driftsmo
 Ingen executionplattform är låst. Windows är inte längre ett arkitekturantagande — det
 var en konsekvens av ett tidigare MT5-antagande som är korrigerat i Beslut D.
 
+R|Protocol är WebSocket och Protocol Buffers, språk- och OS-oberoende och lämpat för
+cloud- och backendsystem. Ett obligatoriskt lokalt eller Windows-bundet terminalrunner är
+därför **inte förväntat**. Om Omnira ändå använder en dedikerad providertjänst för
+isolation är det ett deploymentbeslut, inte ett arkitekturkrav. GATE-17 är fortfarande
+öppen.
+
 När ett separat runtime **behövs** ska det:
 
 - kommunicera med Omnira
@@ -598,7 +604,51 @@ Adaptern är den enda plats som får känna till en specifik providers API, aute
 ordermodell och symbolformat. Ingenting ovanför adaptern i kedjan får innehålla
 providerspecifik kunskap.
 
-Flera adaptrar ska kunna existera. Ingen provider är vald. Se GATE-15 och GATE-16.
+Flera adaptrar ska kunna existera.
+
+## 22.2 Vald första provider
+
+Låst 2026-08-28. Se Canonical Amendments v1.0, Beslut E.
+
+**Första implementationsmål: Rithmic R|Protocol API**, utvecklat mot Rithmic Test.
+**Planerad andra adapter: Tradovate.**
+
+Rithmic är **första implementationsmål, inte permanent exklusiv provider**. Arkitekturen
+förblir multi-provider capable, och ingen providerspecifik kunskap får hårdkodas i Trading
+Core eller någonstans ovanför adaptergränsen.
+
+TradeSea är **inte** ett execution provider-mål. Det är en front-end ovanpå Rithmic eller
+motsvarande infrastruktur, och ligger arkitektoniskt på samma nivå som Omnira själv.
+
+Provider-valet innebär **inte** att produktionscredentials finns, att en broker- eller
+FCM-relation finns, att prop firm-kompatibilitet är löst, att market data-licensiering är
+löst eller att conformance är passerad. Se avsnitt 22.3.
+
+## 22.3 Provider-neutralt adapterkontrakt
+
+Adaptergränsytan är låst i ett eget dokument:
+
+```
+specifications/execution-provider/
+  Omnira Trading System – Execution Provider Adapter
+  – Level 1 Read Only – Canonical v1.0.md
+```
+
+Level 1 är **read only** och deklarerar noll execution-metoder. Providerskillnader uttrycks
+deterministiskt genom:
+
+- `ProviderCapabilities` med `CapabilityState` — SUPPORTED / UNSUPPORTED / CONDITIONAL / UNKNOWN
+- `Available<T>` för fältillgänglighet — PRESENT / UNAVAILABLE / UNKNOWN
+- `FillHistory.completeness` — COMPLETE / TRUNCATED / UNKNOWN
+- `CredentialMode` — READ_ONLY_ENFORCED / READ_WRITE_CAPABLE / UNKNOWN
+- normaliserade `ReasonCode`
+
+**Säkerhetsregel:** endast `SUPPORTED` uppfyller ett säkerhetskritiskt capability-krav.
+`CONDITIONAL` och `UNKNOWN` fail closed. Dessa states får aldrig kollapsas till boolean.
+
+**Auktoritetsgräns:** en provider-observation är ett record och kan aldrig minta
+`RiskClearance`, `PropClearance`, `ApprovalGrant` eller `ExecutionIntent`. Fas 1-invarianten
+*authority is issued, not derived from data* gäller oförändrat.
 
 ## 22.1 Contract Resolution
 
@@ -620,7 +670,8 @@ Systemet ska först bevisa att det stabilt kan läsa:
 - historisk orderhistorik
 innan någon orderfunktion aktiveras.
 
-Detta är innehållet i **Fas 2 – Futures Connectivity (Read Only)**.
+Detta är innehållet i **Fas 2 – Futures Connectivity (Read Only)**, vars första
+implementationsmål är Rithmic R|Protocol mot Rithmic Test. Se avsnitt 22.2.
 
 ## 24. Execution Intent
 
@@ -1055,11 +1106,17 @@ Atlas ger användaren en begriplig helhetsbild.
 
 Dokument: Omnira Trading System – Systemarkitektur
 
-Version: v0.2
+Version: v0.3
 
 Revision: 2026-08-27 – nytt avsnitt 24.1, bounded authority lifetime för
 ExecutionIntent. Additiv execution safety-invariant. Inget befintligt avsnitt
 ändrat. Se Canonical Amendments v1.0, Beslut C.
+
+Version 0.3, 2026-08-28 – första execution provider vald (Rithmic R|Protocol, avsnitt
+22.2) och provider-neutralt Level 1-adapterkontrakt låst (avsnitt 22.3). Evidens om
+runtime-topologi tillagd i avsnitt 18. GATE-15 och GATE-16 stängda; GATE-17, GATE-08 och
+GATE-09 fortsatt öppna. Ingen strategiregel och ingen riskregel ändrad. Se Canonical
+Amendments v1.0, Beslut E.
 
 Version 0.2, 2026-08-28 – futures-native, provider-neutral execution-arkitektur.
 MetaTrader 5 var ett felaktigt implementation-specifikt antagande för en NQ/MNQ
@@ -1079,7 +1136,7 @@ Prop Firm Engine: Ej fullständigt specificerad
 
 Datamodell: Nästa Fas 0-del
 
-Provider adapter implementation: Ej påbörjad. Provider ej vald (GATE-15)
+Provider adapter implementation: Ej påbörjad. Första provider: Rithmic R|Protocol (GATE-15 stängd 2026-08-28)
 
 Execution: Förbjuden
 

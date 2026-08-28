@@ -1,6 +1,6 @@
 # Checksums – Omnira Trading System Documentation
 
-**Version:** Canonical v1.1 · **Datum:** 2026-08-28
+**Version:** Canonical v1.2 · **Datum:** 2026-08-28
 **Algoritm:** SHA-256
 
 Verifiera med:
@@ -9,10 +9,10 @@ Verifiera med:
 shasum -a 256 -c CHECKSUMS.sha256
 ```
 
-## Slutlig PDF (Canonical v1.1)
+## Slutlig PDF (Canonical v1.2)
 
 ```
-4da6c4e899c591a042d4346981f15b6ff60d1ebb4baabb9f583434559ca1b6f7  book/final/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.1.pdf
+baa8f819be69000dfc724858afde4249f4953fccc8fc84f34a73a36eeadb222a  book/final/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.2.pdf
 ```
 
 ## Canonical specifikationer
@@ -20,8 +20,9 @@ shasum -a 256 -c CHECKSUMS.sha256
 ```
 0ba015d015c9f9cfe7f4ad721f3b1224dc80fe955b0a547a847ce40c8cb73a89  specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md
 2eeb5708d5fb60ac9dda29827d81f89b36d51be661597553c755cd714c0fa106  specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md
-56c99907683abc1471a09d522ce8109324a5f599f5291d0e6891251081f4b033  specifications/architecture/Omnira Trading System – Systemarkitektur v0.2.md
-83797dd69f12ecd08ae82825eee23f886986682a953da2aa1a84a768587d9f73  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
+655447bd28a334c9618679cb09a00b2a59f280a3db48ab2458c0d499a9c7c3d2  specifications/architecture/Omnira Trading System – Systemarkitektur v0.3.md
+11cd194ebd82c83265002613558faa69d1c71cff7a1f37bfa0a906f38882172d  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.0.md
+9f8dc9bd5791f3d35434352dc6c51db61f66b447b3519928963c9edc4645bfa7  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
 ```
 
 ## Bokkapitel (aktiv kanonisk text)
@@ -34,8 +35,8 @@ df98594b1caf3750f08442bd0889fc00dabcd3088bb4025b78e651b62ab81392  book/chapters/
 79304cdd9e1d4442217e3be9ce3e2167cc863bbcb536470ad464732ac7f5a5fe  book/chapters/05 - Systemarkitektur.md
 37321507195a64d9d57c9198dd8e4095e534ef588a75aabc8c885d3b22c1d692  book/chapters/06 - Marknadsdata.md
 7d4c65ffac2aa84ddd8f17b335eb16f0968f88c16541050e003b698c7ea84555  book/chapters/07 - AI som beslutsstöd.md
-e6bd721bbebcf95c30bf8510dafe208713edd923a7032134610086ffce8006d2  book/chapters/08 - Exekvering.md
-f7bf863fc8bea092f1e944ebf884c4d831a38de0c1471299bee61f82dab07ffe  book/chapters/09 - Futures Execution Integration.md
+1bceb8a9dc39f71365a8d1a757e7d5ccced383f8a356e58e5aa61bedea10847e  book/chapters/08 - Exekvering.md
+96a9a28b5e90a0db57f2735e9e25d536b5c7e31662b88e1f8a413ee1c39372d1  book/chapters/09 - Futures Execution Integration.md
 c7bd9032c5745c6abdf1693472ec3dc6b9e41b98704ea43b4f6972eb16e89c48  book/chapters/10 - Backtesting.md
 afcf95abda8deb5f27f355ac91b93dad01d0f4872933e98f6c0be7fb2f94a0ee  book/chapters/11 - Forward testing.md
 97ae1aa840ca5fd451d6103db04af05210a7b55d1d5785c7e8971691f39b7ec2  book/chapters/12 - Prop firm-regler.md
@@ -49,15 +50,16 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 9e5bcb52675bf5234ebb24ac0402c9db6da618999b6e98dae6da92c2eb48b1ff  book/chapters/20 - Lärdomar och förändringshistorik.md
 ```
 
-## Review- och indexdokument
+## Review-, research- och indexdokument
 
 ```
-aae48c695bcde01b3d1e2c6f5eb6c5a445c517b44635f938df9e434294d2d471  reviews/Canonical Amendments v1.0.md
+89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
+0987de4a95ca8b6d3b82234d18ddd1f3bd06cf5983714531e5abe41cbdf1ca4a  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md
-fe83f0efcbfd7d30226a06d3e6480a402d81f1ed5ec4f441c6156f3bc7c388ca  reviews/Open Implementation Gates v1.0.md
-8fca64ba18099e60adf244aa6a038b9c6db6da1fa85171cfd3507c09d1cc093a  README.md
-0f67cb0ae97aa21ee9a979a47d1854d8ea6371f518b008f71b15980cb44071fc  SOURCE_OF_TRUTH.md
+07cef499c61ee314bbe547bad89d1fd1d2b653badecdd948cee9b31658ded22c  reviews/Open Implementation Gates v1.0.md
+054e263e876c534d57f7b5be288c4c7bfed07ad833b2ecce6c6aa3c781cb8449  README.md
+83c0893c0e95d99a66f2fa0bfb84c827233a7f46274d38607ae50b538d7ef3e5  SOURCE_OF_TRUTH.md
 ```
 
 ## Historiska original (.docx, oförändrade)
@@ -92,11 +94,12 @@ bb6623e8a0f31ab9b902154ce11e2a32c572ef24bdb79ff955c4492d299cd0ae  book/source/17
 72b90871ce5da8f4f7f01e1248387bf2293c2b1675efa45a9c2c886f87e7d570  specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.docx
 ```
 
-## Arkiverat (superseded, inkl. Canonical v1.0)
+## Arkiverat (superseded, inkl. Canonical v1.0 och v1.1)
 
 ```
 e079a8304e0fdf19cd8d0f6d09da3ccb644fea566639784a1fa2c620dfbc82ac  archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical Candidate v1.0.pdf
 8b668c4087af187fe973100e51d322a014d72af4101f42fded6240a64a31926c  archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.0.pdf
+4da6c4e899c591a042d4346981f15b6ff60d1ebb4baabb9f583434559ca1b6f7  archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.1.pdf
 ee18f1d2ddd1a3321b5e9ec851e7c8b76fe0283bfaa729295e1caa58ee4d71a7  archive/Omnira Trading System – Risk Engine Specification – Canonical v1.0 CANDIDATE.md
-9560fced3c096660482c4dd484d12b988eb8c41b8cd894c2d81d65b13508f863  archive/README.md
+b73a51e8416b293401b169f08bfbda185af9e1ecc179510fd87c98b839137206  archive/README.md
 ```

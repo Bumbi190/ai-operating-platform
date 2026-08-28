@@ -9,7 +9,8 @@ Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
 | Strategi | `strategy/…Canonical v1.0.md` | Canonical v1.0, rev. 2026-08-27 (CLOSED-03) |
 | Risk | `risk/…Canonical v1.0.md` | **Canonical v1.0**, 0 öppna riskbeslut |
 | Risk (historik) | `risk/…v0.1.md` | Historiskt, superseded |
-| Arkitektur | `architecture/…v0.1.md` | v0.1, oförändrad |
+| Arkitektur | `architecture/…v0.3.md` | **v0.3**, rev. 2026-08-28 (Beslut E) |
+| Execution Provider Adapter | `execution-provider/…Level 1 Read Only – Canonical v1.0.md` | **Canonical v1.0**. Provider-neutralt, noll order-metoder |
 | Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
 | Prop firm | `prop-firm/` | Tom, GATE-09 |
 | Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |

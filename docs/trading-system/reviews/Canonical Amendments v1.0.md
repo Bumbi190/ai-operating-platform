@@ -4,8 +4,9 @@
 **Version:** v1.0
 **Datum:** 2026-08-27
 **Föranlett av:** Canonical-beslut som stängde GATE-05 och GATE-10 (Beslut A och B), en
-execution safety-invariant från Fas 1-implementationen (Beslut C), och en korrigering av
-ett felaktigt plattformsantagande i execution-arkitekturen (Beslut D)
+execution safety-invariant från Fas 1-implementationen (Beslut C), en korrigering av
+ett felaktigt plattformsantagande i execution-arkitekturen (Beslut D), och valet av första
+execution provider med tillhörande adapterkontrakt (Beslut E)
 **Status:** Auditerbart ändringsspår
 
 ---
@@ -404,6 +405,129 @@ not, så att en läsare ser att kedjan är ersatt utan att fyndprotokollet förf
 
 ---
 
+## Beslut E — Första execution provider och Level 1-adapterkontrakt
+
+**Datum:** 2026-08-28
+**Karaktär:** Providerval och arkitekturkontrakt. **Inte** en strategiändring, **inte** en
+riskändring.
+**Stänger:** GATE-15 och GATE-16.
+
+### Beslut
+
+**Första Execution Provider Adapter: Rithmic R|Protocol API**, utvecklad mot Rithmic Test.
+
+**Planerad andra adapter: Tradovate.**
+
+**TradeSea är inte ett execution provider-mål.** Det är en front-end ovanpå Rithmic eller
+motsvarande infrastruktur och ligger arkitektoniskt på samma nivå som Omnira själv.
+
+Rithmic är **första implementationsmål, inte permanent exklusiv provider**. Omniras
+execution-arkitektur förblir **multi-provider capable**, och Rithmic får inte hårdkodas i
+Trading Core eller någonstans ovanför adaptergränsen.
+
+### Rationale
+
+Omnira är futures-native, och långsiktigt prop firm-stöd är fortsatt ett huvudmål. Rithmic
+är direkt relevant i det funded-futures-ekosystem Omnira siktar mot — det är vad
+infrastrukturen under stora delar av prop-världen faktiskt kör, inklusive TradeSea.
+
+R|Protocol är ett infrastruktur-API snarare än en front-end. Det använder WebSockets och
+Google Protocol Buffers, fungerar från valfritt språk och operativsystem, och passar en
+cloud- och backendarkitektur. Rithmic Test tillåter utveckling före conformance, vilket gör
+Fas 2 möjlig utan att först passera en certifieringsprocess. Server-side bracket-, OCO- och
+riskkapabiliteter är strategiskt värdefulla i senare faser, och providerns state kan
+fungera som authoritative extern execution state.
+
+Avgörande för valet: risken att den första adaptern blir **disposable** är lägre här än på
+alternativa vägar. Fas 2 är inte ett engångsbevis av kontraktet — det är första tekniska
+steget mot den långsiktiga futures- och prop firm-vägen.
+
+Tradovate förblir viktig som andra adapter: broker-diversifiering, en enklare REST- och
+JSON-integrationsväg, och en möjlig väg via personligt konto.
+
+### Vad Beslut E INTE innebär
+
+Provider-valet innebär inte att produktionscredentials finns, att en broker- eller
+FCM-relation finns, att prop firm-kompatibilitet är löst, att market data-licensiering är
+löst eller att conformance är passerad. Dessa hör till senare implementations-, kommersiella
+och deploymentbeslut.
+
+### E1 — Level 1 Read Only-kontraktet låst
+
+Nytt canonical dokument:
+
+```
+specifications/execution-provider/
+  Omnira Trading System – Execution Provider Adapter
+  – Level 1 Read Only – Canonical v1.0.md
+```
+
+Closure-grund för GATE-16: en `TradovateAdapter` och en `RithmicProtocolAdapter` kan
+implementera samma Level 1-semantik utan att kontraktet ändras.
+
+Providerskillnader uttrycks deterministiskt:
+
+| Mekanism | States |
+|---|---|
+| `CapabilityState` | SUPPORTED · UNSUPPORTED · CONDITIONAL · UNKNOWN |
+| `Available<T>` | PRESENT · UNAVAILABLE · UNKNOWN |
+| `FillHistory.completeness` | COMPLETE · TRUNCATED · UNKNOWN |
+| `CredentialMode` | READ_ONLY_ENFORCED · READ_WRITE_CAPABLE · UNKNOWN |
+
+**Säkerhetsregel:** endast `SUPPORTED` uppfyller ett säkerhetskritiskt capability-krav.
+`CONDITIONAL` och `UNKNOWN` fail closed. Dessa states får aldrig kollapsas till boolean,
+eftersom UNKNOWN och UNSUPPORTED är olika fakta.
+
+**Credential-semantik:** om Fas 2-credentials är bredare än nödvändigt rapporteras
+`SECURITY_DEGRADED`. Det skapar ingen execution authority. Level 1 exponerar inga
+order-metoder överhuvudtaget, så defense-in-depth uppnås genom frånvaro snarare än genom
+behörighet.
+
+**Kontraktsmetadata:** saknade providerfält gissas aldrig. Provider observation hålls skild
+från canonical contract specification via ett `source`-fält. Detta interagerar med GATE-08
+men stänger den inte.
+
+**Fill history:** inget antagande om obegränsad eller komplett historik. Fas 2 behöver
+endast tillräcklig recent history för att bevisa observation och reconciliation.
+
+### E2 — Auktoritetsgränsen oförändrad
+
+Fas 1-invarianten **authority is issued, not derived from data** gäller oförändrat. En
+provider-observation är ett record och kan aldrig minta `RiskClearance`, `PropClearance`,
+`ApprovalGrant` eller `ExecutionIntent`. Trading Cores auktoritetsimplementation är **inte
+ändrad** i denna dokumentationsuppgift.
+
+### E3 — Systemarkitektur v0.2 → v0.3
+
+Nya avsnitt 22.2 (vald första provider) och 22.3 (provider-neutralt adapterkontrakt).
+Evidens om runtime-topologi tillagd i avsnitt 18. Inget befintligt avsnitt omskrivet i sak.
+
+### E4 — Gatepåverkan
+
+| Gate | Utfall |
+|---|---|
+| GATE-15 | **STÄNGD** — Rithmic R\|Protocol som första provider |
+| GATE-16 | **STÄNGD** — Level 1-kontraktet låst |
+| GATE-17 | **ÖPPEN** — evidens tillagd att lokalt runner inte förväntas; topologin är fortfarande ett deploymentbeslut |
+| GATE-08 | **ÖPPEN** — execution provider behöver inte vara market data-provider; ingen CME-avgift canonicaliseras |
+| GATE-09 | **ÖPPEN** — Rithmic förbättrar anpassningen men bevisar ingen prop firm-access |
+
+Fas 2 är därmed ogrindad. Kvarvarande arbete är implementationsförberedelse, inte gates.
+
+### E5 — Providerresearch bevarad separat
+
+Providerspecifik research ligger i `research/Provider Evaluation – Futures Execution –
+2026-08-28.md` som **implementationsunderlag, inte canonical arkitektur**. Providerfakta
+åldras; arkitekturen gör det inte. Inga providerspecifika endpoint-namn finns i det
+canonical adapterkontraktet.
+
+### Avgränsning
+
+Ingen strategiregel och ingen riskregel ändras av Beslut E. Strategy förblir Canonical
+v1.0, Risk förblir Canonical v1.0, och Trading Core-koden är orörd.
+
+---
+
 ## Dokument som medvetet **inte** ändrades
 
 | Dokument | Varför |
@@ -441,4 +565,7 @@ not, så att en läsare ser att kedjan är ersatt utan att fyndprotokollet förf
 | `reviews/Open Implementation Gates v1.0.md` | D7 — GATE-15/16/17, scope, fastabell |
 | `reviews/Canonical Review v1.0.md` | D8 — framåtpekande not |
 | `reviews/Contradiction Register v1.0.md` | D8 — framåtpekande not |
-| `README.md` | D — kedja, roadmap, gates |
+| `README.md` | D — kedja, roadmap, gates. E — provider, roadmap |
+| `specifications/execution-provider/…Level 1 Read Only – Canonical v1.0.md` | E1 — ny, provider-neutralt kontrakt |
+| `research/Provider Evaluation – Futures Execution – 2026-08-28.md` | E5 — ny, implementationsunderlag |
+| `specifications/architecture/…v0.2.md → v0.3.md` | E3 — §22.2, §22.3, §18 |

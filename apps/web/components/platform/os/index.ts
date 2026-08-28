@@ -62,6 +62,7 @@ export {
 
 // Mobile companion
 export { MobileRailToggle } from './MobileRailToggle'
+export { ShellMobileNav } from './ShellMobileNav'
 
 // Atlas voice UI
 export { AtlasOrb, type OrbPhase } from './AtlasOrb'

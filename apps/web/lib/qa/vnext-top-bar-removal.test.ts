@@ -148,8 +148,17 @@ describe('LEGACY INVARIANT — the bar itself is untouched', () => {
 })
 
 describe('the generation selector is not part of this slice', () => {
-  it('lib/ui/generation.ts still fails closed to legacy', () => {
-    expect(GENERATION).toContain("export const DEFAULT_UI_GENERATION: OmniraUiGeneration = 'legacy'")
+  it('keeps the generation selector contract intact', () => {
+    // This slice removed the top bar from vNext; it did not remove, absorb or
+    // take ownership of the generation selector. That is the whole invariant.
+    //
+    // It used to be spelled by requiring the literal
+    // `DEFAULT_UI_GENERATION: OmniraUiGeneration = 'legacy'`, which quietly
+    // froze the production default in a test about chrome. Flipping the default
+    // is a legitimate, planned change (PR #82) and this test would have been its
+    // only failure — so the value is deliberately NOT asserted here. What the
+    // default IS belongs to lib/qa/ui-generation.test.ts, which owns that policy.
+    expect(GENERATION).toContain('export const DEFAULT_UI_GENERATION: OmniraUiGeneration')
     expect(GENERATION).toContain('export function isVNext')
   })
 })

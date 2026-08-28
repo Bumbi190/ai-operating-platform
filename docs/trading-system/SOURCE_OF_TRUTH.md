@@ -1,6 +1,6 @@
 # SOURCE OF TRUTH – Omnira Trading System
 
-**Version:** v1.2 · **Datum:** 2026-08-27 · **Paketstatus:** **Canonical v1.0**
+**Version:** v1.3 · **Datum:** 2026-08-28 · **Paketstatus:** **Canonical v1.1**
 
 > Maskinläsbart index över vilket dokument som gäller för vilken fråga, och vilken
 > källa som vinner när två dokument säger olika saker.
@@ -16,7 +16,7 @@
 | Strategi | `specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. Rev. 2026-08-27, CLOSED-03 |
 | Risk | `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. 0 öppna riskbeslut |
 | Bok | `book/chapters/*.md` och `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** | Låst |
-| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.1.md` | v0.1 | Fas 0-baseline. Canonical för auktoritetskedjan (P5) och för execution safety-invarianten §24.1. Rev. 2026-08-27 |
+| Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.2.md` | **v0.2** | Fas 0-baseline. Canonical för auktoritetskedjan (P5) och för execution safety-invarianten §24.1. Futures-native/provider-neutral sedan Beslut D, 2026-08-28 |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -33,6 +33,7 @@
 | `archive/…Canonical v1.0 CANDIDATE.md` | Superseded 2026-08-27 |
 | `archive/…Canonical Candidate v1.0.pdf` | Superseded av Canonical v1.0-PDF:en |
 | `book/source/*.docx`, `specifications/**/*.docx` | Historiska original. Kan avvika från `.md` |
+| `book/source/09 - MetaTrader 5-integration.docx` | **v1.0-källmaterial.** Behåller sitt ursprungliga namn. Aktiv kapitelkälla är `book/chapters/09 - Futures Execution Integration.md` |
 
 ### Filformatsprecedens
 
@@ -64,7 +65,7 @@ Eskalera till människa. Detta gäller även om ett dokument verkar ge ett svar.
 |---|---|
 | Entry, SL, TP, BE, grades, sessioner, re-entry, news-timing, R:R | Strategy Specification |
 | Riskgränser, position sizing, daily loss, veto, fail closed | Risk Engine Specification (kandidat före v0.1) |
-| Auktoritetskedja, lagerindelning, komponentansvar | Systemarkitektur v0.1 |
+| Auktoritetskedja, lagerindelning, komponentansvar | Systemarkitektur v0.2 |
 | Entiteter, fält, states, persistens | Datamodell v0.1 |
 | Prop firm-regelmodell | Kapitel 12, tills en faktisk PropFirmProfile finns |
 
@@ -89,7 +90,7 @@ Canonical v1.0.
 Där ett dokument återger en kedja eller lista förkortat, vinner den fullständiga
 återgivningen.
 
-**Tillämpat:** Systemarkitektur v0.1 §2 är canonical för auktoritetskedjan.
+**Tillämpat:** Systemarkitektur v0.2 §2 är canonical för auktoritetskedjan.
 Strategy Specification §35 är en delvy och utelämnar Execution Gateway. Se C-04.
 
 ### P6 — Striktaste gräns vinner
@@ -109,10 +110,10 @@ Om precedens inte kan avgöras med P1–P6, och frågan påverkar execution: beh
 ```
 Market Data → Strategy Engine → AI Analysis → Risk Engine → Prop Firm Rules Engine
 → Trade Proposal → Approval / Automation Policy → Execution Gateway
-→ Execution Runner → MetaTrader 5 → Broker / Prop Firm → Journal & Analytics
+→ Execution Provider Adapter → Futures Execution Provider → Journal & Analytics
 ```
 
-Canonical källa: Systemarkitektur v0.1 §2.
+Canonical källa: Systemarkitektur v0.2 §2 och §2.1.
 
 ---
 
@@ -164,11 +165,20 @@ Fullständig lista och klassificering: `reviews/Open Implementation Gates v1.0.m
 | GATE-12 execution margin/slippage | Execution |
 | GATE-13 promotion thresholds | Live |
 | GATE-14 live safety policies | Live |
+| GATE-15 futures execution provider | Fas 2 implementation |
+| GATE-16 Execution Provider Adapter-kontrakt | Fas 2 implementation |
+| GATE-17 execution runtime/deploymenttopologi | Execution |
 
-**Fas 1 och Fas 2 är ogrindade.**
+**Fas 1 är ogrindad** och genomförd (PR #96). **Fas 2 – Futures Connectivity (Read Only)
+har sedan 2026-08-28 grindad implementation** genom GATE-15 och GATE-16. Utredning,
+security review och kontraktsdesign är inte blockerade.
 
 **Stängda 2026-08-27:** GATE-05 (London window-close BE), GATE-10 (daily-loss force
-close), GATE-11 (reserved risk). Se `reviews/Canonical Amendments v1.0.md`.
+close), GATE-11 (reserved risk).
+
+**Tillkomna 2026-08-28:** GATE-15, GATE-16, GATE-17 efter Beslut D. GATE-08 och GATE-09
+fick förtydligat scope i stället för nya duplicerande gates. Se
+`reviews/Canonical Amendments v1.0.md`.
 
 ---
 

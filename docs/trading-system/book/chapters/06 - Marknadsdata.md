@@ -610,7 +610,7 @@ I execution-enabled mode ska tveksam data leda till:
 
 Market Data Layer och Account Data Layer är tekniskt separata concerns, men båda behövs för ett tradingbeslut.
 
-Från MT5 behöver Omnira exempelvis kunna läsa:
+Från providern behöver Omnira exempelvis kunna läsa:
 
 - balance
 - equity
@@ -759,7 +759,7 @@ ska använda samma canonical market-data format.
 
 Historiska candles kan komma från en dataset adapter.
 
-Live candles kan komma från MT5.
+Live candles kan komma från providern.
 
 Men Strategy Engine ska få samma interna objekt.
 

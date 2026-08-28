@@ -651,13 +651,13 @@ Approval / Automation Policy
 ↓
 ```
 
-Execution Runner
+Execution Provider Adapter
 
 ```
 ↓
 ```
 
-MetaTrader 5
+Futures Execution Provider
 
 Strategy Engine får inte skicka en order direkt.
 
@@ -975,6 +975,12 @@ Version: Canonical v1.0
 Revision: 2026-08-27 — CLOSED-03 (London window-close break-even). Explicit
 disambiguering av redan fattat beslut. Ingen versionsbump enligt avsnitt 44, eftersom
 ingen materiell regel har ändrats — endast en tvetydig formulering har gjorts entydig.
+
+Revision: 2026-08-28 — endast avsnitt 35:s referens till den externa execution-noden
+uppdaterad från MetaTrader 5 till Execution Provider Adapter / Futures Execution
+Provider, efter Beslut D. **Ingen strategiregel är ändrad.** Entry, SL, TP, break-even,
+grades, sessioner, re-entry, news-regler och R:R är oförändrade. Ingen versionsbump
+enligt avsnitt 44 — strategin förblir Canonical v1.0.
 
 Strategisk status: Låst baseline för implementation och validering
 

@@ -3,8 +3,9 @@
 **Dokument:** Omnira Trading System – Canonical Amendments
 **Version:** v1.0
 **Datum:** 2026-08-27
-**Föranlett av:** Canonical-beslut som stängde GATE-05 och GATE-10 (Beslut A och B),
-samt en execution safety-invariant som upptäcktes under Fas 1-implementationen (Beslut C)
+**Föranlett av:** Canonical-beslut som stängde GATE-05 och GATE-10 (Beslut A och B), en
+execution safety-invariant från Fas 1-implementationen (Beslut C), och en korrigering av
+ett felaktigt plattformsantagande i execution-arkitekturen (Beslut D)
 **Status:** Auditerbart ändringsspår
 
 ---
@@ -270,6 +271,139 @@ avgränsningen mot strategilogik. Revisionsrad tillagd i dokumentstatus.
 
 ---
 
+## Beslut D — Futures-native, provider-neutral execution-arkitektur
+
+**Datum:** 2026-08-28
+**Karaktär:** Arkitekturkorrigering av execution- och connectivity-lagret.
+**Inte** en strategiändring och **inte** en riskändring.
+**Källa:** korrigering från strategiägaren.
+
+### Bakgrund
+
+Omnira Trading System handlar **NQ och MNQ**. Det är futures.
+
+Dokumentationen byggde ändå execution- och connectivity-lagret runt **MetaTrader 5**.
+MT5 är en plattform vars ekosystem i huvudsak riktar sig mot Forex och CFD. Att låsa en
+futures-strategi till den plattformen var ett felaktigt implementation-specifikt
+antagande.
+
+Antagandet syntes i 232 referenser över 24 dokument, koncentrerade till
+execution-, connectivity- och deploymentavsnitten.
+
+Värt att notera: **själva tradinginnehållet var aldrig Forex-kontaminerat.** Granskningen
+fann noll förekomster av `forex`, `CFD`, `pip` eller `lot size`, medan futures-vokabulären
+redan var på plats — `tick value`, `tick size`, `contract specification`, `NQ`, `MNQ`,
+`rollover`. Felet satt i plattformsvalet, inte i marknadsförståelsen.
+
+### Beslut
+
+Execution-arkitekturen ska vara **futures-native och provider-neutral**.
+
+Ingen provider är vald. Tradovate, TradeSea och andra kompatibla futures-providers är
+kandidater som ska utvärderas separat. Se GATE-15.
+
+**Ny canonical auktoritetskedja:**
+
+```
+Market Data → Strategy Engine → AI Analysis → Risk Engine → Prop Firm Rules Engine
+→ Trade Proposal → Approval / Automation Policy → Execution Gateway
+→ Execution Provider Adapter → Futures Execution Provider → Journal & Analytics
+```
+
+Auktoritetsordningen och veto-lagren är **oförändrade**. Endast den externa
+execution-noden har blivit provider-neutral.
+
+**Logiskt obligatoriskt:** Execution Gateway och Execution Provider Adapter.
+
+**Deployment-beroende:** ett separat Execution Runtime. När det behövs placeras det
+mellan Gateway och Adapter. Det är inte längre modellerat som obligatorisk arkitektur,
+och ingen executionplattform — Windows eller annan — är låst.
+
+Extern faktisk account-, order-, position- och fill-state förblir source of truth för
+faktisk exponering.
+
+### Vad som uttryckligen INTE ändras
+
+- **Tradingstrategin.** Entry, SL, TP, break-even, manipulation, sessions, setup grades,
+  re-entry, news-regler och R:R är oförändrade. Strategy Canonical **v1.0** består.
+- **Riskreglerna.** $150, $450 realized-only, daily reset, reserved risk, max en position,
+  max tre attempts, veto, fail closed. Risk Canonical **v1.0** består.
+- **Datamodellens struktur.** Inga entiteter, relationer eller states omdesignade.
+
+### D1 — Systemarkitektur v0.1 → **v0.2**
+
+Materiell arkitekturändring. Ändrade avsnitt: §2 (kedjan), nytt §2.1
+(deployment-beroende noder), §18 (runtime, ej längre Windows-bundet), §19–20
+(deployment/host), §22 (Execution Provider Adapter), nytt §22.1 (contract resolution),
+§23 (Read-Only First). Filen är omdöpt till `…Systemarkitektur v0.2.md`.
+
+### D2 — Kapitel 9 omskrivet och omdöpt
+
+`09 - MetaTrader 5-integration.md` → `09 - Futures Execution Integration.md` via `git mv`,
+så historiken förblir granskningsbar.
+
+Strukturen är **bevarad** där resonemanget fortfarande gäller: connection lifecycle,
+read-only mode, expected vs observed state, contract resolution, idempotens,
+reconciliation, extern provider som source of truth, och separationen mellan Trading Core
+och execution-infrastruktur. MT5-specifika antaganden är borttagna.
+
+### D3 — Datamodell v0.1
+
+Providerspecifika **exempelvärden** gjorda provider-neutrala. `MT5_status` →
+`provider_status`. Ingen modellomdesign, ingen versionshöjning.
+
+### D4 — Strategy Canonical v1.0
+
+Endast §35:s referens till den externa execution-noden. Revisionsnotering tillagd.
+**Ingen strategiregel ändrad**, ingen versionshöjning.
+
+### D5 — Risk Canonical v1.0, nytt §7.1
+
+Risk v0.1 lämnas **oredigerad**. I stället är en provider-neutral tolkningsregel införd i
+det aktiva canonical-lagret: där v0.1 skriver `MT5` eller `broker/MT5` ska det läsas som
+ett implementation-specifikt exempel på den externa providermiljön. Den normativa
+innebörden är provider-neutral.
+
+Att skriva om ett historiskt dokument för att dölja ett tidigare antagande skulle förstöra
+revisionsspåret. **Ingen riskregel ändras**, ingen versionshöjning.
+
+### D6 — Fas 2 omdefinierad
+
+`Fas 2 – MT5 Read Only` → **`Fas 2 – Futures Connectivity (Read Only)`**.
+
+Fasen handlar om säkert read-only proof of connectivity och observation av externt state
+innan någon order-kapabilitet tillåts. Den är provider-neutral.
+
+**Konsekvens:** Fas 2 var tidigare ogrindad. Dess **implementation** är nu grindad av
+GATE-15 och GATE-16 — read-only-connectivity kan inte bevisas mot en provider som inte är
+vald. Gaterna blockerar däremot **inte** capability review, security review, API- och
+auth-granskning, providerjämförelse eller design av adapterkontraktet; det arbetet är
+vägen till att stänga dem och skulle annars bli cirkulärt. Ingen ny subfas har införts.
+Fas 1 påverkas inte och är redan genomförd.
+
+### D7 — Gates, med deduplicering
+
+Tre nya gates. Två befintliga fick förtydligat scope i stället för duplikat:
+
+| Gate | Åtgärd |
+|---|---|
+| GATE-15 | **Ny.** Val av futures execution provider. BLOCKS FAS 2 IMPLEMENTATION |
+| GATE-16 | **Ny.** Execution Provider Adapter-kontrakt. BLOCKS FAS 2 IMPLEMENTATION |
+| GATE-17 | **Ny.** Execution runtime- och deploymenttopologi. BLOCKS EXECUTION |
+| GATE-08 | **Scope förtydligat** att omfatta contract rollover och kontraktsserie. Ingen separat rollover-gate skapad |
+| GATE-09 | **Scope förtydligat** att omfatta provider/prop firm-kompatibilitet. Ingen separat kompatibilitets-gate skapad |
+
+Ingen befintlig gate har tappats eller bytt blockeringsfas, med ett undantag som är
+avsiktligt och dokumenterat: Fas 2 går från ogrindad till grindad.
+
+### D8 — Reviewdokument bevarade
+
+`Canonical Review v1.0` och `Contradiction Register v1.0` citerar den gamla kedjan som
+granskningsprotokoll. De är **inte** omskrivna. Båda har fått en daterad framåtpekande
+not, så att en läsare ser att kedjan är ersatt utan att fyndprotokollet förfalskas.
+
+---
+
 ## Dokument som medvetet **inte** ändrades
 
 | Dokument | Varför |
@@ -297,5 +431,14 @@ avgränsningen mot strategilogik. Revisionsrad tillagd i dokumentstatus.
 | `specifications/risk/…v0.1.md` | Historik-banner |
 | `specifications/risk/…Canonical v1.0.md` | Ny, B6 |
 | `archive/…CANDIDATE.md` | Flyttad, superseded-banner |
-| `specifications/architecture/…v0.1.md` | C1 — nytt avsnitt 24.1 |
-| `SOURCE_OF_TRUTH.md` | C — låst värde tillagt |
+| `specifications/architecture/…v0.1.md → v0.2.md` | C1 — §24.1. D1 — futures-native, omdöpt |
+| `SOURCE_OF_TRUTH.md` | C — låst värde. D — kedja, gates, versioner |
+| `book/chapters/09 …` | D2 — omskrivet och omdöpt via `git mv` |
+| `book/chapters/01, 03, 04, 05, 06, 08, 11, 13, 15, 16, 17, 18, 20` | D — provider-neutral terminologi |
+| `specifications/data-model/…v0.1.md` | A7 — fält. D3 — provider-neutrala exempel |
+| `specifications/risk/…Canonical v1.0.md` | B6 — promotion. D5 — nytt §7.1 |
+| `specifications/strategy/…Canonical v1.0.md` | A1–A4, A7. D4 — §35-referens |
+| `reviews/Open Implementation Gates v1.0.md` | D7 — GATE-15/16/17, scope, fastabell |
+| `reviews/Canonical Review v1.0.md` | D8 — framåtpekande not |
+| `reviews/Contradiction Register v1.0.md` | D8 — framåtpekande not |
+| `README.md` | D — kedja, roadmap, gates |

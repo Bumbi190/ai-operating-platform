@@ -6,7 +6,7 @@ Dokumentspråk: Svenska
 Status: Fas 0 – Datamodell för granskning
 System: Omnira Trading System
 Primär strategi: Omnira Liquidity Manipulation – Canonical v1.0
-Arkitektur: Omnira Trading System – Systemarkitektur v0.1
+Arkitektur: Omnira Trading System – Systemarkitektur v0.2
 
 ## 1. Syfte
 
@@ -143,7 +143,7 @@ Fält:
 - metadata
 Exempel på platform:
 
-MetaTrader5
+Futures Execution Provider (specifik provider ej vald, se GATE-15)
 
 Broker får inte innehålla credentials direkt i normal databastabell.
 
@@ -287,8 +287,8 @@ Fält:
 - last_seen_at
 Exempel:
 
-- MT5
-- broker feed
+- futures execution provider feed
+- separat market-data provider
 - historical dataset
 - backtest dataset
 - framtida extern market-data provider
@@ -822,7 +822,7 @@ ExecutionIntent ska kunna ha status:
 - reconciled
 ## 38. Order
 
-Order representerar ordern hos MT5/brokern.
+Order representerar ordern hos providern/brokern.
 
 Fält:
 
@@ -1095,7 +1095,7 @@ Fält:
 - host_type
 - runner_version
 - status
-- MT5_status
+- provider_status
 - broker_status
 - last_heartbeat
 - last_reconciliation
@@ -1106,7 +1106,7 @@ Fält:
 Runner health ska kunna innehålla:
 
 - online
-- MT5 connected
+- provider connected
 - broker connected
 - account synchronized
 - clock healthy
@@ -1196,7 +1196,7 @@ För varje faktisk trade ska systemet kunna svara på:
 - vad beslutade Prop Firm Engine?
 - vem eller vad godkände?
 - vilket execution intent skickades?
-- vad svarade MT5?
+- vad svarade providern?
 - vilken fill erhölls?
 - varför stängdes positionen?
 - vad blev resultatet?
@@ -1301,7 +1301,7 @@ För Omnira Liquidity Manipulation v1.0:
 - existing position exit: T-15m
 ## 64. Manual External Trade
 
-En manuellt öppnad MT5-position ska kunna importeras utan att betraktas som strategy-generated.
+En manuellt öppnad position hos providern ska kunna importeras utan att betraktas som strategy-generated.
 
 Origin ska kunna vara:
 
@@ -1364,7 +1364,7 @@ Detta blir viktigare när systemet senare handlar fler instrument.
 
 ## 68. Reconciliation Record
 
-Varje reconciliation mellan Omnira och MT5 ska kunna loggas.
+Varje reconciliation mellan Omnira och providern ska kunna loggas.
 
 Fält:
 
@@ -1396,7 +1396,7 @@ Prop status: Prop Firm Engine
 
 Approval: Approval Service
 
-Broker order/fill: MT5/Broker
+Broker order/fill: Provider/Broker
 
 Visualization: UI, aldrig source of truth
 
@@ -1522,6 +1522,11 @@ Version: v0.1
 
 Revision: 2026-08-27 – additivt fält break_even_trigger_type (SWING | WINDOW_CLOSE) efter
 att London window-close break-even låstes. Inga befintliga fält ändrade eller borttagna.
+
+Revision: 2026-08-28 – providerspecifika exempelvärden gjorda provider-neutrala efter
+Beslut D (futures-native execution). MT5 var ett implementation-specifikt exempel, inte
+en modellbindning. Fältet `MT5_status` heter nu `provider_status`. Inga entiteter,
+relationer eller states omdesignade. Ingen modellversionshöjning krävs.
 
 Status: Fas 0 – Första datamodell
 

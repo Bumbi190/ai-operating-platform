@@ -15,8 +15,8 @@ Market Data
 → Trade Proposal
 → Approval / Automation Policy
 → Execution Gateway
-→ Windows Execution Runner
-→ MetaTrader 5
+→ Execution Runtime
+→ Futures Execution Provider
 → Broker / Prop Firm
 → Journal & Analytics
 ```
@@ -354,7 +354,7 @@ Ingen broker execution är tillåten.
 
 ## Read Only
 
-Systemet läser konto- och market data från MT5.
+Systemet läser konto- och market data från providern.
 
 Orderläggning är tekniskt avstängd.
 
@@ -380,7 +380,7 @@ Systemet får aldrig automatiskt höja sin egen autonomy level.
 
 ## Execution Gateway
 
-Execution Gateway fungerar som säkerhetsgränsen mellan Omnira och MT5-miljön.
+Execution Gateway fungerar som säkerhetsgränsen mellan Omnira och providermiljön.
 
 Gateway ska verifiera:
 
@@ -415,7 +415,7 @@ Execution Intent ska vara idempotent.
 
 Om samma request skickas två gånger på grund av nätverksproblem får detta inte kunna skapa två trades.
 
-## Windows Execution Runner
+## Execution Runtime
 
 Den första executionmiljön ska vara en dedikerad Windows-dator.
 
@@ -424,7 +424,7 @@ Den stationära datorn kan användas som 24/7-rigg i den första fasen.
 Runnern ansvarar för:
 
 - kommunikation med Omnira
-- kommunikation med MetaTrader 5
+- kommunikation med providern
 - read-only account sync
 - framtida order execution
 - broker response
@@ -437,7 +437,7 @@ Den ska inte innehålla självständig strategi-AI.
 
 ## Varför execution separeras från Omnira
 
-Att lägga MT5 execution i en separat runner ger flera fördelar.
+Att lägga providern execution i en separat runner ger flera fördelar.
 
 Omnira kan fortsätta vara ansvarig för:
 
@@ -448,7 +448,7 @@ Omnira kan fortsätta vara ansvarig för:
 - approvals
 - historik
 - analytics
-medan Windows-miljön ansvarar för själva MT5-integrationen.
+medan Windows-miljön ansvarar för själva providerintegrationen.
 
 Det gör det senare möjligt att flytta execution från stationär dator till VPS utan att hela Omnira behöver byggas om.
 
@@ -459,7 +459,7 @@ Den första Windows-riggen ska minst ha:
 - sleep avstängt
 - stabil internetanslutning
 - automatisk startup
-- MT5 autostart
+- provideranslutning autostart
 - Execution Runner autostart
 - korrekt systemtid
 - health monitoring
@@ -487,9 +487,9 @@ Men systemet får inte anta att VPN alltid är tillåtet.
 
 Broker- och prop firm-regler ska kunna avgöra vilken network policy som är godkänd för ett specifikt konto.
 
-## MetaTrader 5 Bridge
+## Execution Provider Adapter
 
-MT5-integrationen ska delas upp i två logiska delar.
+providerintegrationen ska delas upp i två logiska delar.
 
 ## Read Adapter
 
@@ -553,7 +553,7 @@ Trading ska aldrig fortsätta på antagandet att allt förmodligen är okej.
 
 ## Reconciliation
 
-Omnira och MT5 måste kunna återställa gemensam state efter exempelvis:
+Omnira och providern måste kunna återställa gemensam state efter exempelvis:
 
 - restart
 - nätverksfel
@@ -570,7 +570,7 @@ Om states inte matchar ska ny trading blockeras tills discrepancy är löst.
 
 ## Unknown Position
 
-Om MT5 visar en öppen position som Omnira inte känner igen ska den markeras som:
+Om providern visar en öppen position som Omnira inte känner igen ska den markeras som:
 
 **UNKNOWN_POSITION**
 
@@ -670,7 +670,7 @@ Det innebär att journalen bland annat ska veta:
 - vad Prop Firm Engine beslutade
 - vem som godkände
 - vad Execution Runner skickade
-- vad MT5 svarade
+- vad providern svarade
 - vilket fill som erhölls
 - varför traden stängdes
 - slutligt resultat

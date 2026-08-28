@@ -183,6 +183,11 @@ mellan källor. Det gör den inte mindre blockerande.
   **Execution Gateway**, Broker / Prop Firm och Journal & Analytics.
 - Strategy Specification §46 *Canonical Strategy Flow* skriver "Execution" som ett steg.
 
+> **Not 2026-08-28:** kedjan som citeras ovan är Systemarkitektur **v0.1** och bevaras
+> som fyndprotokoll. Den är sedan Beslut D ersatt i **v0.2**. C-04:s slutsats står
+> kvar oförändrad: §35 är fortfarande en delvy, och precedensregeln i
+> `SOURCE_OF_TRUTH.md` gäller fortfarande.
+
 **Analys**
 
 Detta är en förkortning, inte en motsägelse. Ingen av texterna påstår att Execution

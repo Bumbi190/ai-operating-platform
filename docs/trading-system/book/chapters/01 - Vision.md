@@ -46,7 +46,7 @@ Market Data
 → Approval / Automation Policy
 → Execution Gateway
 → Execution Runner
-→ MetaTrader 5
+→ Futures Execution Provider
 → Broker / Prop Firm
 → Journal & Analytics
 ```
@@ -370,9 +370,9 @@ Målet är att visa att Omnira kan observera marknaden, följa Canonical Strateg
 
 Detta är viktigt eftersom vi först måste kunna lita på vad systemet ser innan vi låter det påverka ett konto.
 
-## MT5 Read Only först
+## Futures Connectivity (Read Only) först
 
-Samma filosofi gäller MetaTrader 5.
+Samma filosofi gäller providern.
 
 Omnira ska först kunna läsa:
 
@@ -388,7 +388,7 @@ innan orderläggning aktiveras.
 
 Principen är:
 
-Omnira ska först lära sig att observera MT5 korrekt innan systemet får rätt att påverka MT5.
+Omnira ska först lära sig att observera providern korrekt innan systemet får rätt att påverka providern.
 
 ## Execution separeras från intelligens
 
@@ -404,13 +404,13 @@ Den ska:
 - reconcila 
 Den ska endast acceptera strukturerade Execution Intents som redan passerat systemets authority chain. 
 
-Strategy Engine ska aldrig direkt kalla MT5 orderfunktioner.
+Strategy Engine ska aldrig direkt kalla providerns orderfunktioner.
 
 Atlas ska aldrig själv formulera en naturlig språkinstruktion till brokern.
 
 ## Initial executionmiljö
 
-Den första executionmiljön ska vara en separat Windows-baserad runner kopplad till MetaTrader 5.
+Den första executionmiljön ska vara en separat Execution Runtime kopplad till providern.
 
 Arkitekturen ska vara location-agnostic så att runnern senare kan flyttas till en VPS utan att Strategy Engine, Risk Engine eller Omnira UI behöver byggas om. 
 
@@ -428,7 +428,7 @@ och:
 
 **Observed Broker State**
 
-Om Omnira tror att inga positions finns men MT5 visar en position ska systemet inte gissa.
+Om Omnira tror att inga positions finns men providern visar en position ska systemet inte gissa.
 
 Det ska gå till:
 
@@ -676,7 +676,7 @@ Analytics behöver inte orderbehörighet.
 
 Strategy Engine behöver inte kunna exekvera.
 
-Frontend ska inte kunna tala direkt med MT5.
+Frontend ska inte kunna tala direkt med providern.
 
 Execution Runner ska endast kunna göra det den explicit auktoriserats att göra. 
 
@@ -687,7 +687,7 @@ Ju mindre authority varje komponent har, desto mindre skada kan ett enskilt fel 
 Omnira ska designas utifrån att:
 
 - nätverk kommer falla 
-- MT5 kommer disconnecta 
+- providern kommer disconnecta
 - providers kommer ge problem 
 - processer kommer krascha 
 - brokers kan neka orders 

@@ -549,7 +549,7 @@ Exempel:
 
 - prop firm ändrar drawdown rule
 - broker ändrar symbol mapping
-- MT5 API ändras
+- providern API ändras
 - news provider ändrar schema
 Dessa kan kräva ny internal version.
 
@@ -898,7 +898,7 @@ Decision:
 Execution Runner ska vara separerad från Strategy Engine.
 
 Reason:
-Least privilege, MT5 isolation, VPS migration, lower blast radius.
+Least privilege, providern isolation, VPS migration, lower blast radius.
 
 Status:
 Accepted.
@@ -1320,7 +1320,7 @@ Den definierar:
 - data
 - AI
 - execution
-- MT5
+- providern
 - testing
 - prop firm
 - journal
@@ -1381,7 +1381,7 @@ Trading Core
 
 ## Fas 2
 
-MT5 Read Only
+Futures Connectivity (Read Only)
 
 ```
 →

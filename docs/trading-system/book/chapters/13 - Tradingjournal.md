@@ -961,7 +961,7 @@ Systemet ska kunna visa varför en trade var tillåten eller förbjuden vid exak
 
 ## Imported Historical Trades
 
-Trades som importeras från MT5 men inte skapats av Omnira ska markeras tydligt.
+Trades som importeras från providern men inte skapats av Omnira ska markeras tydligt.
 
 Exempel:
 

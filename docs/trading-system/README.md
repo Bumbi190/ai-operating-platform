@@ -1,6 +1,6 @@
 # Omnira Trading System – Documentation
 
-**Status:** **Canonical v1.0** · 2026-08-27
+**Status:** **Canonical v1.1** · 2026-08-28
 **Språk:** Svenska (dokumentation), engelska (kod och identifierare)
 
 > **Läs detta först.** Detta träd är auktoritativ kontext för allt arbete med Omnira
@@ -51,9 +51,15 @@ Om svaret inte står uttryckligen i detta träd — **fråga, implementera inte.
 - equal-high / equal-low-tolerans (GATE-03)
 - SMT correspondence och timing (GATE-04)
 - news-provider och high-impact USD-klassificering (GATE-06, GATE-07)
-- marknadsdataprovider (GATE-08)
-- PropFirmProfile-parametrar (GATE-09)
+- marknadsdataprovider, contract rollover och kontraktsserie (GATE-08)
+- PropFirmProfile-parametrar och providerkompatibilitet (GATE-09)
 - execution safety margin och slippagetröskel (GATE-12)
+- **val av futures execution provider (GATE-15)**
+- **Execution Provider Adapter-kontrakt (GATE-16)**
+- **execution runtime- och deploymenttopologi (GATE-17)**
+
+GATE-15 och GATE-16 blockerar **connectivity-kod och connectivity proof**, inte den
+utredning och kontraktsdesign som krävs för att stänga dem. Det arbetet får börja direkt.
 - promotion thresholds och live safety policies (GATE-13, GATE-14)
 
 Riskgränser, sessioner, entry, SL, TP, break-even, re-entry och news-regler får
@@ -82,7 +88,7 @@ restart, audit event. Prop-lagret får vara striktare.
 ```
 Market Data → Strategy Engine → AI Analysis → Risk Engine → Prop Firm Rules Engine
 → Trade Proposal → Approval / Automation Policy → Execution Gateway
-→ Execution Runner → MetaTrader 5 → Broker / Prop Firm → Journal & Analytics
+→ Execution Provider Adapter → Futures Execution Provider → Journal & Analytics
 ```
 
 Ingen komponent får kringgå ett efterföljande säkerhetslager.
@@ -136,19 +142,25 @@ Ingen AI-modell får tolka vad som "ser ut som" ett entrykritiskt pattern.
 Läs `reviews/Open Implementation Gates v1.0.md` innan en ny fas påbörjas. Varje gate
 är klassificerad efter exakt vilken fas den blockerar.
 
-**Ingen gate blockerar Fas 1 eller Fas 2.** Fas 3 kräver att GATE-01, 02, 03, 04 och 08
-är stängda. Elva gates är öppna; GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27.
+**Ingen gate blockerar Fas 1**, som dessutom redan är genomförd (PR #96). **Fas 2 är
+sedan 2026-08-28 grindad** av GATE-15 och GATE-16 — en provider måste väljas innan
+read-only-connectivity kan bevisas. Fas 3 kräver GATE-01, 02, 03, 04 och 08.
+
+Fjorton gates är öppna. GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27;
+GATE-15, GATE-16 och GATE-17 tillkom 2026-08-28.
 
 Canonical fasordning enligt Kapitel 20:
 
 ```
-Fas 0 Specs → Fas 1 Trading Core → Fas 2 MT5 Read Only → Fas 3 Strategy Engine
+Fas 0 Specs → Fas 1 Trading Core → Fas 2 Futures Connectivity (Read Only) → Fas 3 Strategy Engine
 → Fas 4 AI Analysis → Fas 5 Risk Engine → Fas 6 Manual Approval
 → Fas 7 Demo Automation → Fas 8 Backtest + Forward → Fas 9 Prop Firm Mode
 → Fas 10 Controlled Live
 ```
 
-**Nästa fas: Fas 1 – Trading Core.**
+**Nästa fas: Fas 2 – Futures Connectivity (Read Only).** Implementationen är blockerad av
+GATE-15 och GATE-16; utvärdering av provider och design av adapterkontraktet är nästa
+konkreta arbete och är inte blockerat.
 
 ## 10. Versionering av dokumentationen
 

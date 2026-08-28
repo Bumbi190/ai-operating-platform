@@ -1,6 +1,6 @@
 # Omnira Trading System
 
-## Systemarkitektur v0.1
+## Systemarkitektur v0.2
 
 Dokumentspråk: Svenska
 Status: Fas 0 – Arkitekturförslag för granskning
@@ -80,19 +80,13 @@ Execution Gateway
 ↓
 ```
 
-Windows Execution Runner
+Execution Provider Adapter
 
 ```
 ↓
 ```
 
-MetaTrader 5
-
-```
-↓
-```
-
-Broker / Prop Firm
+Futures Execution Provider
 
 ```
 ↓
@@ -101,6 +95,31 @@ Broker / Prop Firm
 Journal & Analytics
 
 Ingen komponent får kringgå ett efterföljande säkerhetslager.
+
+## 2.1 Deployment-beroende noder
+
+Kedjan ovan anger den **logiska** auktoritetsordningen. Två av leden är obligatoriska
+oavsett hur systemet driftsätts:
+
+- **Execution Gateway** — gränsen där auktoritet kontrolleras
+- **Execution Provider Adapter** — gränsen mot en specifik extern provider
+
+Ett separat **Execution Runtime / Runner** är däremot **deployment-beroende**. Om en
+egen process eller host krävs beror på vald provider och driftsmodell. När den behövs
+placeras den mellan Gateway och Adapter:
+
+```
+Execution Gateway
+→ Execution Runtime / Runner
+→ Execution Provider Adapter
+```
+
+Ett runtime-lager är alltså inte en universell invariant och får inte modelleras som
+obligatorisk arkitektur. Ingen executionplattform — Windows eller annan — är låst.
+
+Bakom `Futures Execution Provider` kan det finnas broker, FCM eller prop
+firm-infrastruktur beroende på uppsättning. Extern faktisk account-, order-, position-
+och fill-state förblir source of truth för faktisk exponering.
 
 ## 3. Separation of Authority
 
@@ -198,7 +217,7 @@ Varje signal ska returneras i ett standardiserat format.
 Detta möjliggör framtida strategier utan att förändra:
 
 - Risk Engine
-- MT5 integration
+- provider integration
 - journaling
 - approvals
 - analytics
@@ -429,7 +448,7 @@ Ingen orderläggning är tekniskt tillåten.
 
 ## Mode 1 – Read Only
 
-MT5-data får läsas.
+Providerdata får läsas.
 
 Orderläggning är avstängd.
 
@@ -467,58 +486,64 @@ Gateway ska:
 - logga hela händelsen
 Gateway ska inte implementera Strategy Engine-logik.
 
-## 18. Windows Execution Runner
+## 18. Execution Runtime (deployment-beroende)
 
-Initial executionmiljö ska vara en dedikerad Windows-dator.
+Ett separat Execution Runtime är **inte** en universell arkitekturinvariant. Om en egen
+process eller host krävs beror på vald Futures Execution Provider och driftsmodell.
 
-Execution Runner ska:
+Ingen executionplattform är låst. Windows är inte längre ett arkitekturantagande — det
+var en konsekvens av ett tidigare MT5-antagande som är korrigerat i Beslut D.
+
+När ett separat runtime **behövs** ska det:
 
 - kommunicera med Omnira
-- kommunicera lokalt med MetaTrader 5
-- läsa MT5-status
-- skicka tillåtna orderrequests
+- hosta eller anropa Execution Provider Adapter
+- vidarebefordra tillåtna orderrequests
 - rapportera fills
 - rapportera positionsstatus
-- rapportera broker errors
+- rapportera provider errors
 - skicka heartbeat
-Runnern ska vara så liten och deterministisk som möjligt.
+Runtime ska vara så litet och deterministiskt som möjligt.
 
-Den ska inte självständigt skapa tradingstrategier.
+Det ska inte självständigt skapa tradingstrategier och inte innehålla strategilogik.
+
+När providern kan nås direkt och säkert från Omnira utan mellanliggande host får
+kedjan gå direkt från Execution Gateway till Execution Provider Adapter. Se avsnitt 2.1.
+
+Val av runtime-topologi är en öppen fråga. Se GATE-17.
 
 ## 19. Initial Deployment Target
 
-Första deployment target:
+Deployment target är **inte låst**. Det följer av vald provider och av om ett separat
+Execution Runtime alls krävs. Se avsnitt 2.1, avsnitt 18 och GATE-17.
 
-Dedicated Windows Workstation
-
-Den stationära datorn kan initialt fungera som 24/7 execution-rigg.
-
-Krav:
+Om ett kontinuerligt driftande runtime behövs gäller följande krav oavsett plattform:
 
 - sleep avstängt
 - stabil internetanslutning
 - automatisk återstart
-- runner auto-start
-- MT5 auto-start
+- runtime auto-start
 - health monitoring
 - korrekt systemtid
 - loggning
 - diskövervakning
 - tydlig kill switch
-Arkitekturen ska vara location-agnostic så att samma runner senare kan flyttas till VPS.
+Arkitekturen ska vara location-agnostic så att runtime senare kan flyttas.
 
-## 20. VPS Migration
+## 20. Host Migration
 
-Execution Runner får inte vara beroende av specifik lokal hårdvara.
+Ett Execution Runtime får inte vara beroende av specifik lokal hårdvara eller ett
+specifikt operativsystem.
 
-På sikt ska den kunna migreras till:
+Det ska kunna migreras till:
 
-- Windows VPS
-- broker-near VPS
+- provider-nära host
 - annan godkänd execution host
+- managed runtime där providern stödjer det
 utan att Strategy Engine, Risk Engine eller Omnira UI behöver ändras.
 
-MetaTrader erbjuder själv 24/7 virtual hosting och beskriver låg latency mot broker-servern som en central fördel med att välja en närliggande server.
+Latency mot providerns endpoint är en relevant faktor vid hostval, men får aldrig
+motivera att ett säkerhetslager kringgås.
 
 ## 21. Network Policy
 
@@ -538,9 +563,9 @@ Systemet ska inte anta att VPN alltid är tillåtet.
 
 Broker- och prop firm-regler ska avgöra vilken network policy som får användas för ett visst konto.
 
-## 22. MetaTrader 5 Bridge
+## 22. Execution Provider Adapter
 
-MT5-integrationen ska delas upp logiskt i:
+Integrationen mot en Futures Execution Provider ska delas upp logiskt i:
 
 **Read Adapter**
 
@@ -569,17 +594,33 @@ Ansvarar för:
 - broker rejection
 Read och Execution ska ha separata behörighetsgränser i Omnira.
 
-## 23. MT5 Read-Only First
+Adaptern är den enda plats som får känna till en specifik providers API, autentisering,
+ordermodell och symbolformat. Ingenting ovanför adaptern i kedjan får innehålla
+providerspecifik kunskap.
 
-Första MT5-integrationen ska vara strikt read-only.
+Flera adaptrar ska kunna existera. Ingen provider är vald. Se GATE-15 och GATE-16.
+
+## 22.1 Contract Resolution
+
+En futures-provider handlar kontrakt, inte generiska symboler. Adaptern ansvarar för att
+översätta Omniras instrumentidentitet till providerns kontraktsidentitet, inklusive
+vilket kontrakt som är aktuellt.
+
+Rollover-policy hör till marknadsdata- och kontraktsserielagret. Se GATE-08.
+
+## 23. Read-Only First
+
+Första integrationen mot en ny provider ska vara strikt read-only.
 
 Systemet ska först bevisa att det stabilt kan läsa:
 
 - account state
 - market data
 - positions
-- historical deals
-innan order_send eller motsvarande execution-funktion aktiveras.
+- historisk orderhistorik
+innan någon orderfunktion aktiveras.
+
+Detta är innehållet i **Fas 2 – Futures Connectivity (Read Only)**.
 
 ## 24. Execution Intent
 
@@ -706,7 +747,7 @@ Execution Runner ska regelbundet skicka heartbeat.
 Omnira ska kunna se:
 
 - runner online/offline
-- MT5 connected/disconnected
+- provider connected/disconnected
 - broker connected/disconnected
 - account synchronized
 - latest market-data timestamp
@@ -838,7 +879,7 @@ Live ska ha tydligare safety gates än demo.
 
 ## 34. Credential Security
 
-Broker- och MT5-credentials ska:
+Provider- och brokercredentials ska:
 
 - aldrig ligga i frontend
 - aldrig finnas i strategy config
@@ -922,7 +963,7 @@ Ingen ny trade får skickas innan reconciliation är klar.
 
 ## 41. Orphan Position Protection
 
-Om MT5 visar en öppen position som Omnira inte känner till ska systemet markera:
+Om providern visar en öppen position som Omnira inte känner till ska systemet markera:
 
 ```
 UNKNOWN_POSITION
@@ -959,9 +1000,13 @@ Första implementationen ska prioritera:
 - architecture boundaries
 ## 44. Fas 2 Boundary
 
-MT5 Read Only får endast aktivera funktioner som behövs för att läsa och synkronisera data.
+Fas 2 – Futures Connectivity (Read Only) får endast aktivera funktioner som behövs för
+att läsa och synkronisera data.
 
-MT5:s officiella Python-interface exponerar separat funktionalitet för bland annat bars, ticks, orders, positions och history samt en separat order_send()-funktion för trading requests. Detta stödjer arkitekturens uppdelning mellan read och execution.
+En provider exponerar typiskt separat funktionalitet för bars, ticks, orders, positions
+och history, skilt från de anrop som skickar trading requests. Adaptern ska spegla den
+uppdelningen: read-kapabilitet och execution-kapabilitet ska vara separat behörighetsstyrda
+och separat aktiverbara, oavsett vilken provider som senare väljs.
 
 ## 45. Future Autonomy
 
@@ -1010,11 +1055,19 @@ Atlas ger användaren en begriplig helhetsbild.
 
 Dokument: Omnira Trading System – Systemarkitektur
 
-Version: v0.1
+Version: v0.2
 
 Revision: 2026-08-27 – nytt avsnitt 24.1, bounded authority lifetime för
 ExecutionIntent. Additiv execution safety-invariant. Inget befintligt avsnitt
 ändrat. Se Canonical Amendments v1.0, Beslut C.
+
+Version 0.2, 2026-08-28 – futures-native, provider-neutral execution-arkitektur.
+MetaTrader 5 var ett felaktigt implementation-specifikt antagande för en NQ/MNQ
+futures-strategi och är borttaget som arkitekturberoende. Ändrade avsnitt: 2 (kedjan),
+nytt 2.1 (deployment-beroende noder), 18 (runtime, ej längre Windows-bundet),
+19–20 (deployment/host), 22 (Execution Provider Adapter), nytt 22.1
+(contract resolution), 23 (read-only first). Se Canonical Amendments v1.0, Beslut D.
+Ingen strategiregel och ingen riskregel ändrad.
 
 Status: Fas 0 – Första arkitekturbaslinje
 
@@ -1026,7 +1079,7 @@ Prop Firm Engine: Ej fullständigt specificerad
 
 Datamodell: Nästa Fas 0-del
 
-MT5 implementation: Ej påbörjad
+Provider adapter implementation: Ej påbörjad. Provider ej vald (GATE-15)
 
 Execution: Förbjuden
 

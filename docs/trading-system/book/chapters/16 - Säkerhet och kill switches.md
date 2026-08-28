@@ -55,7 +55,7 @@ Execution Gateway får:
 - skapa Execution Intent
 Execution Runner får:
 
-- läsa MT5
+- läsa providern
 - exekvera endast godkända intents
 Ingen komponent ska ensam kunna gå från idé till broker-order.
 
@@ -67,7 +67,7 @@ Exempel:
 
 Analytics behöver inte kunna skicka orders.
 
-Atlas Learning Layer behöver inte ha MT5 credentials.
+Atlas Learning Layer behöver inte ha providern credentials.
 
 Frontend behöver inte ha broker access.
 
@@ -124,7 +124,7 @@ Först därefter får broker request skapas.
 
 Atlas ska aldrig behöva känna till:
 
-- MT5 login password
+- providern login password
 - broker API secrets
 - execution secrets
 - signing keys
@@ -264,7 +264,7 @@ Exempel:
 allowed_accounts = [ACCOUNT_01]
 ```
 
-Om MT5 visar:
+Om providern visar:
 
 ```
 ACCOUNT_02
@@ -286,7 +286,7 @@ Account verification ska ske:
 - efter reconnect
 - före execution
 - när account state förändras oväntat
-Systemet ska aldrig anta att samma MT5-terminal alltid har samma account aktivt.
+Systemet ska aldrig anta att samma providern-terminal alltid har samma account aktivt.
 
 ## Instrument Allowlist
 
@@ -505,9 +505,9 @@ Runnern ska inte köras med full administrator authority om detta inte krävs.
 
 Least privilege gäller även på operativsystemsnivå.
 
-## MT5 Credentials
+## Provider Credentials
 
-MT5 credentials ska endast finnas där de faktiskt behövs.
+Providercredentials ska endast finnas där de faktiskt behövs.
 
 Idealt är det runner/terminalmiljön.
 
@@ -592,7 +592,7 @@ Runner kill blockerar execution genom en specifik execution host.
 
 Exempel:
 
-Windows-host har instabil MT5 connection.
+Windows-host har instabil providern connection.
 
 ## Kill Switch Evaluation
 
@@ -1340,7 +1340,7 @@ Kritiska säkerhetshändelser ska notifiera användaren.
 
 Exempel:
 
-Execution blocked: active MT5 account does not match approved live account.
+Execution blocked: active providern account does not match approved live account.
 
 ## Security Incident Response
 
@@ -1437,7 +1437,7 @@ Det kan inkludera:
 Systemet är beroende av komponenter såsom:
 
 - broker
-- MT5
+- providern
 - data providers
 - VPS
 - AI provider
@@ -1537,7 +1537,7 @@ I live mode bör Trading UI alltid visa en kompakt safety header:
 - LIVE
 - account
 - runner
-- MT5
+- providern
 - Risk Engine
 - Prop Firm
 - kill switch
@@ -1550,7 +1550,7 @@ Atlas ska kunna förklara säkerhetsstate.
 
 Exempel:
 
-Trading är blockerad eftersom execution-runnern återanslöt till MT5 och ännu inte har klarat reconciliation.
+Trading är blockerad eftersom execution-runnern återanslöt till providern och ännu inte har klarat reconciliation.
 
 Det är en lämplig AI-roll.
 

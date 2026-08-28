@@ -3,10 +3,13 @@
 Omnira Trading System handlar NQ och MNQ. Det är futures, och integrationen ska därför
 vara futures-native.
 
-Ingen specifik execution provider är vald. Kapitlet definierar den provider-neutrala
-integrationsarkitekturen: vad Omnira kräver av en extern execution-miljö, och var
-gränsen mellan Omnira och den miljön går. En eller flera **Execution Provider
-Adapters** kan senare implementeras mot den gränsen.
+Kapitlet definierar den provider-neutrala integrationsarkitekturen: vad Omnira kräver av
+en extern execution-miljö, och var gränsen mellan Omnira och den miljön går. En eller flera
+**Execution Provider Adapters** implementeras mot den gränsen.
+
+Första implementationsmål är **Rithmic R|Protocol API**, utvecklat mot Rithmic Test.
+**Tradovate** är planerad andra adapter. Rithmic är första implementationsmål, **inte**
+permanent exklusiv provider — arkitekturen förblir multi-provider capable. Se Beslut E.
 
 > **Rättelse 2026-08-28.** Tidigare version av detta kapitel antog MetaTrader 5 som
 > execution-plattform. Det var ett felaktigt implementation-specifikt antagande för en
@@ -70,7 +73,7 @@ Providern ska alltså inte bli Omniras intelligenslager.
 
 Om integrationen kräver en separat process eller host beror på vald provider och
 driftsmodell. Det är **inte** en universell arkitekturinvariant, och ingen
-executionplattform är låst. Se Systemarkitektur v0.2 §2.1 och §18, samt GATE-17.
+executionplattform är låst. Se Systemarkitektur v0.3 §2.1 och §18, samt GATE-17.
 
 Flödet när ett separat runtime **behövs**:
 
@@ -121,7 +124,9 @@ Frontend ska endast:
 - visa execution-resultat
 ## Provider API-integration
 
-Ingen provider och inget SDK är valt. Se GATE-15 och GATE-16.
+Första provider är vald: Rithmic R|Protocol, som använder WebSockets och Google Protocol
+Buffers och fungerar från valfritt språk och operativsystem. Adaptergränsytan är låst
+provider-neutralt i `specifications/execution-provider/`.
 
 Oavsett provider ska integrationen exponera separata kapabiliteter för exempelvis:
 
@@ -1073,21 +1078,33 @@ Endast efter senare gates.
 
 ## Read-Only Acceptance Criteria
 
-Fas 2 ska inte betraktas som färdig förrän systemet konsekvent kan:
+Låst 2026-08-28 genom Beslut E. Fas 2 är inte färdig förrän systemet konsekvent kan bevisa
+samtliga sexton punkter:
 
-- connecta till providern
-- verifiera rätt account
-- läsa account state
-- läsa relevanta symbols
-- läsa NQ/MNQ/ES-data
-- läsa open orders
-- läsa open positions
-- läsa history
-- identifiera manuella/okända positions
-- reconnecta
-- reconcila efter restart
-- rapportera health till Omnira
-utan att kunna skicka en live-order.
+1. authenticated provider connectivity
+2. provider identity
+3. environment identity — demo bevisad som demo, aldrig defaultad
+4. account discovery och account identity mot allowlist
+5. futures contract discovery
+6. NQ- och MNQ-kontraktsresolution
+7. account snapshot
+8. positions
+9. working orders
+10. recent fills och history där providern stödjer det
+11. provider time och mätt clock skew
+12. disconnect
+13. reconnect utan duplicerat state
+14. stale-state detection — aldrig antagen som frisk
+15. deterministisk normalisering över två körningar
+16. explicit UNKNOWN och fail-closed-beteende
+
+Utöver detta ska systemet kunna identifiera manuella och okända positioner, reconcila efter
+restart och rapportera health till Omnira.
+
+**Ingen order-kapabilitet krävs för Fas 2.** Level 1-adaptern innehåller inga
+order-metoder, så systemet kan inte skicka en order ens om providerns credentials tekniskt
+skulle tillåta det. Om credentials är bredare än nödvändigt rapporteras
+`SECURITY_DEGRADED` — det är en registrerad försvagning, inte ett godkännande.
 
 ## Execution Acceptance Criteria
 
@@ -1230,7 +1247,13 @@ Status: Baseline dokumenterad
 
 Revision: 2026-08-28 – kapitlet omskrivet provider-neutralt (Beslut D). Filnamn och rubrik ändrade från MetaTrader 5-integration. Struktur och resonemang bevarade.
 
-Initial integration: Ingen provider vald (GATE-15). Adapterkontrakt ej låst (GATE-16)
+Revision: 2026-08-28 – första provider vald och adapterkontrakt låst (Beslut E). Ingen strategiregel och ingen riskregel ändrad.
+
+Initial integration: Rithmic R|Protocol mot Rithmic Test (GATE-15 stängd 2026-08-28)
+
+Adapterkontrakt: Level 1 Read Only, Canonical v1.0 (GATE-16 stängd 2026-08-28)
+
+Andra planerade adapter: Tradovate
 
 Initial host: Ej låst. Runtime är deployment-beroende (GATE-17)
 

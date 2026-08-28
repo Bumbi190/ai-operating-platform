@@ -4,7 +4,8 @@
 **Version:** v1.0
 **Datum:** 2026-08-27
 **Status:** Aktiv. Ska konsulteras före varje fasstart.
-**Senast uppdaterad:** 2026-08-28 — GATE-15, GATE-16 och GATE-17 tillagda efter Beslut D
+**Senast uppdaterad:** 2026-08-28 — GATE-15 och GATE-16 STÄNGDA efter Beslut E.
+GATE-15, GATE-16 och GATE-17 tillades tidigare samma dag efter Beslut D
 (futures-native execution). GATE-08 och GATE-09 fick förtydligat scope i stället för nya
 duplicerande gates. GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27.
 
@@ -58,26 +59,22 @@ klassificeringen är att göra just den skillnaden explicit.
 | GATE-12 | Execution safety margin- och slippagemodell | BLOCKS EXECUTION |
 | GATE-13 | Exakta promotion thresholds | BLOCKS LIVE |
 | GATE-14 | Exakta live safety policies | BLOCKS LIVE |
-| GATE-15 | Val av futures execution provider | BLOCKS FAS 2 IMPLEMENTATION |
-| GATE-16 | Execution Provider Adapter-kontrakt | BLOCKS FAS 2 IMPLEMENTATION |
+| ~~GATE-15~~ | ~~Val av futures execution provider~~ | **STÄNGD 2026-08-28** |
+| ~~GATE-16~~ | ~~Execution Provider Adapter-kontrakt~~ | **STÄNGD 2026-08-28** |
 | GATE-17 | Execution runtime- och deploymenttopologi | BLOCKS EXECUTION |
 
-**Antal öppna gates: 14.** Tre stängdes 2026-08-27, tre tillkom 2026-08-28.
+**Antal öppna gates: 12.** Tre stängdes 2026-08-27, tre tillkom och två stängdes 2026-08-28.
 
 **Antal som blockerar Fas 1: 0.**
-**Antal som blockerar Fas 2:s implementation: 2** — GATE-15 och GATE-16.
+**Antal som blockerar Fas 2:s implementation: 0.**
 
 > **Ändring 2026-08-28.** Fas 2 var tidigare ogrindad eftersom plattformen felaktigt
 > antogs vara MetaTrader 5. Med en provider-neutral arkitektur kan read-only-connectivity
 > inte bevisas mot en provider som inte är vald. Fas 1 är fortsatt ogrindad och oförändrad.
 >
-> **Vad grindningen omfattar.** GATE-15 och GATE-16 blockerar **connectivity-kod och
-> connectivity proof** — inte det utredningsarbete som krävs för att stänga dem.
-> Capability review, security review, API- och auth-granskning, providerjämförelse och
-> design av adapterkontraktet får och bör påbörjas omedelbart. Utan det undantaget vore
-> gaterna cirkulära: de skulle blockera exakt det arbete som stänger dem.
->
-> Detta kräver ingen ny subfas. Roadmap-taxonomin är oförändrad.
+> **Stängda 2026-08-28 genom Beslut E.** Provider vald och adapterkontrakt låst.
+> Fas 2 är därmed **inte längre grindad**. Kvarvarande arbete inför Fas 2 är
+> implementationsförberedelse — dev kit-begäran, Rithmic Test-access — inte gates.
 
 De elva kvarvarande är samtliga medvetet uppskjutna detaljspecifikationer. Ingen av dem är
 en defekt i den låsta regelmängden — den distinktionen är avgörande och behandlas i
@@ -220,13 +217,19 @@ Utan (2) blir regeln beroende av en tredjepartsleverantörs interna märkning, s
 
 **Klass:** BLOCKS STRATEGY ENGINE
 
+> **Kvarstår öppen efter Beslut E.** Rithmic kan tekniskt leverera market- och
+> referensdata, men Omniras canonical market data-, rollover- och licensieringsbeslut är
+> fortfarande separat. Execution provider **behöver inte** vara market data-provider.
+> Ingen aktuell CME-avgift canonicaliseras utan verifiering mot gällande officiell
+> avgiftskategori för Omniras faktiska användningsfall.
+>
 > **Scope förtydligat 2026-08-28.** GATE-08 omfattar även **contract rollover och
 > kontraktsserie-policy** för futures. Rollover är en marknadsdata- och
 > kontraktsseriefråga: vilket kontrakt en bar tillhör och hur serien fogas ihop.
 > Konceptet finns redan i Kapitel 6, 10 och 15; det är policyn som är uppskjuten.
 > Ingen separat rollover-gate har skapats — det hade bara duplicerat denna.
 > Adaptern översätter instrument till providerns kontraktsidentitet
-> (Systemarkitektur v0.2 §22.1), men *vilket* kontrakt som är aktuellt avgörs här.
+> (Systemarkitektur v0.3 §22.1), men *vilket* kontrakt som är aktuellt avgörs här.
 
 Kapitel 6 anger i sitt statusblock: **Realtime provider: Ej slutligt vald.**
 
@@ -244,6 +247,11 @@ befintlig historisk data. Realtidsdrift kräver valet.
 
 **Klass:** BLOCKS PROP MODE
 
+> **Kvarstår öppen efter Beslut E.** Valet av Rithmic förbättrar anpassningen mot
+> funded-futures-ekosystemet men bevisar **inte** specifik prop firm-API-access,
+> automationstillstånd, kontokompatibilitet eller kommersiella villkor. Första
+> PropFirmProfile är fortfarande olöst.
+>
 > **Scope förtydligat 2026-08-28.** GATE-09 omfattar även **kompatibilitet mellan vald
 > futures execution provider och vald prop firm**. Vilka providers en prop firm tillåter,
 > och vilka konton som går att nå, är en del av att välja den första faktiska profilen.
@@ -361,16 +369,30 @@ uppskalning får ske på kortsiktig performance.
 
 ---
 
-## GATE-15 — Val av futures execution provider
+## ~~GATE-15~~ — Val av futures execution provider
 
-**Klass:** BLOCKS FAS 2 IMPLEMENTATION
+**Status: STÄNGD 2026-08-28** genom Beslut E.
 **Tillkom:** 2026-08-28, Beslut D
 
-**Vad som är blockerat:** all provider-connectivity-kod och allt connectivity proof.
+**Beslut:** första execution provider adapter är **Rithmic R|Protocol API**, utvecklad mot
+Rithmic Test. **Planerad andra adapter: Tradovate.** TradeSea är inte ett execution
+provider-mål.
 
-**Vad som är tillåtet nu:** capability review, security review, API- och auth-granskning,
-providerjämförelse och underlagsarbete inför valet. Det arbetet är själva vägen till att
-stänga gaten och får inte blockeras av den.
+Rithmic är **första implementationsmål, inte permanent exklusiv provider**. Arkitekturen
+förblir multi-provider capable.
+
+### Vad closure INTE innebär
+
+Provider-valet innebär **inte** att:
+
+- produktionscredentials finns
+- en broker- eller FCM-relation finns
+- prop firm-kompatibilitet är löst
+- market data-licensiering är löst
+- conformance är passerad
+
+Dessa hör till senare implementations-, kommersiella och deploymentgates — GATE-08,
+GATE-09 och GATE-17 — samt till kontoarbete som inte är en gate alls.
 
 NQ och MNQ är futures. Ingen execution provider är vald.
 
@@ -390,23 +412,35 @@ kriterier är minst:
 - prop firm-kompatibilitet, se GATE-09
 - driftsmodell och var adaptern får köras, se GATE-17
 
-**Konsekvens:** Fas 2 – Futures Connectivity (Read Only) kan inte **implementeras**.
-Read-only proof of connectivity kräver en provider att ansluta mot. Utvärderingsarbetet
-inför valet påbörjas däremot direkt. Fas 1 påverkas inte.
+**Rationale.** Omnira är futures-native; långsiktigt prop firm-stöd är fortsatt ett
+huvudmål; Rithmic är direkt relevant i det funded-futures-ekosystem Omnira siktar mot;
+R|Protocol är ett infrastruktur-API snarare än en front-end; WebSocket och Protocol Buffers
+fungerar från valfritt språk och OS och passar en backendarkitektur; Rithmic Test tillåter
+utveckling före conformance; server-side bracket-, OCO- och riskkapabiliteter är
+strategiskt värdefulla i senare faser; providerns state kan fungera som authoritative
+extern execution state; och risken att den första adaptern blir disposable är lägre än på
+alternativa vägar.
 
 ---
 
-## GATE-16 — Execution Provider Adapter-kontrakt
+## ~~GATE-16~~ — Execution Provider Adapter-kontrakt
 
-**Klass:** BLOCKS FAS 2 IMPLEMENTATION
+**Status: STÄNGD 2026-08-28** genom Beslut E.
 **Tillkom:** 2026-08-28, Beslut D
 
-**Vad som är blockerat:** implementation av en adapter mot en verklig provider.
+**Beslut:** det provider-neutrala Level 1 Read Only-kontraktet är låst i
+`specifications/execution-provider/Omnira Trading System – Execution Provider Adapter –
+Level 1 Read Only – Canonical v1.0.md`.
 
-**Vad som är tillåtet nu:** design av kontraktet, gränssnittsutkast och jämförelse mot
-kandidatproviders API:er. Kontraktet kan inte skrivas utan det arbetet.
+**Closure-grund:** en `TradovateAdapter` och en `RithmicProtocolAdapter` kan implementera
+samma Level 1-semantik utan att kontraktet ändras. Providerskillnader uttrycks genom
+`ProviderCapabilities`, `CapabilityState`, `Available<T>`, `FillHistory.completeness`,
+`CredentialMode` och normaliserade fel.
 
-Systemarkitektur v0.2 §22 definierar adaptern som den enda komponent som får känna till
+Level 1 innehåller **noll** execution-metoder. Inga providerspecifika endpoint-namn finns i
+det canonical gränssnittet.
+
+Systemarkitektur v0.3 §22 definierar adaptern som den enda komponent som får känna till
 en specifik providers API. Själva kontraktet är inte skrivet.
 
 Ska minst låsa:
@@ -420,10 +454,14 @@ Ska minst låsa:
 - översättning mellan Omniras instrumentidentitet och providerns kontraktsidentitet
 - health- och heartbeat-semantik
 
-**Beroende:** kan inte **färdigställas** före GATE-15, eftersom kontraktet måste kunna
-implementeras mot minst en verklig provider utan att bli en abstraktion utan täckning.
-Designarbetet kan och bör ändå löpa parallellt med providerutvärderingen — de informerar
-varandra.
+**Varför providerspecifika detaljer inte blockerade closure.** De tre frågor som tidigare
+kallades blockerare — permission scoping, fill history-retention och tillgång till tick
+value och multiplier — är alla samma sorts problem: providers skiljer sig i vad de kan
+rapportera. Det är en capability-fråga, inte en arkitekturfråga. Arkitekturen bryter bara
+om kontraktet saknar sätt att uttrycka skillnaden. Med capability- och
+tillgänglighetssemantik på plats är de implementationsfrågor.
+
+Providerspecifika endpoint-namn behövdes aldrig för att stänga en provider-neutral gate.
 
 ---
 
@@ -434,7 +472,7 @@ varandra.
 
 Krävs ett separat Execution Runtime eller en egen host överhuvudtaget? Det tidigare
 Windows-runner-antagandet var en konsekvens av MT5-bindningen, inte ett arkitekturkrav.
-Systemarkitektur v0.2 §2.1 och §18 gör runtime-ledet deployment-beroende.
+Systemarkitektur v0.3 §2.1 och §18 gör runtime-ledet deployment-beroende.
 
 Ska avgöras:
 
@@ -447,6 +485,15 @@ Ska avgöras:
 en utvecklingsmiljö. Topologin blir bindande först när ordrar faktiskt kan skickas, och
 hör därför ihop med Fas 6 tillsammans med GATE-12.
 
+**Evidens tillagd 2026-08-28 (Beslut E).** R|Protocol är WebSocket och Protocol Buffers,
+språk- och OS-oberoende och lämpat för webb, mobil och cloud. Ett obligatoriskt lokalt
+eller Windows-bundet runner är därför **inte förväntat**.
+
+Gaten stängs ändå **inte**. Om Omnira använder en direkt backendadapter eller en dedikerad
+providertjänst för isolation är fortfarande ett deployment- och isoleringsbeslut. Fas 2 får
+initialt använda en dedikerad tjänst om det ger bättre isolation, utan att det låser
+topologin.
+
 ---
 
 ## Fasbedömning
@@ -454,7 +501,7 @@ hör därför ihop med Fas 6 tillsammans med GATE-12.
 | Fas | Blockerande gates | Får påbörjas |
 |---|---|---|
 | Fas 1 – Trading Core | inga | **Ja** |
-| Fas 2 – Futures Connectivity (Read Only) | GATE-15, 16 | Implementation: Nej. Utredning/design: Ja |
+| Fas 2 – Futures Connectivity (Read Only) | inga | **Ja** |
 | Fas 3 – Strategy Engine | GATE-01, 02, 03, 04, 08 | Nej |
 | Fas 4 – AI Analysis | ärver Fas 3 | Nej |
 | Fas 5 – Risk Engine | inga gates kvar, förutsätter Fas 3–4 | Gate-fri |
@@ -467,11 +514,11 @@ hör därför ihop med Fas 6 tillsammans med GATE-12.
 **Fas 1 är ogrindad och kan påbörjas omedelbart.** Fas 1 – Trading Core är dessutom
 redan genomförd och mergad (PR #96).
 
-**Fas 2:s implementation är sedan 2026-08-28 grindad** av GATE-15 och GATE-16. Provider
-måste väljas och adapterkontraktet skrivas innan read-only-connectivity kan bevisas.
+**Fas 2 är ogrindad sedan 2026-08-28**, när GATE-15 och GATE-16 stängdes genom Beslut E.
+Första implementationsmål är Rithmic R|Protocol mot Rithmic Test.
 
-Det utredningsarbete som stänger gaterna — capability, security, API/auth, jämförelse och
-kontraktsdesign — är **inte** blockerat och kan börja omedelbart.
+Kvarvarande arbete inför Fas 2 är implementationsförberedelse — dev kit-begäran och
+Rithmic Test-access — inte gates. Se `research/Provider Evaluation` för vad begäran kräver.
 
 Fas 5 har efter 2026-08-27 inga egna öppna gates — Risk Engine Specification är Canonical
 v1.0 med noll öppna riskbeslut. Fasen förutsätter fortfarande att Fas 3 och Fas 4 är

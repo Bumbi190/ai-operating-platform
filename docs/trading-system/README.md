@@ -1,6 +1,6 @@
 # Omnira Trading System – Documentation
 
-**Status:** **Canonical v1.1** · 2026-08-28
+**Status:** **Canonical v1.2** · 2026-08-28
 **Språk:** Svenska (dokumentation), engelska (kod och identifierare)
 
 > **Läs detta först.** Detta träd är auktoritativ kontext för allt arbete med Omnira
@@ -25,8 +25,9 @@ den fungerar.
 |---|---|
 | `specifications/strategy/…Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-08-27 |
 | `specifications/risk/…Canonical v1.0.md` | **Canonical v1.0**, 0 öppna riskbeslut |
-| `book/chapters/*.md` + `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** |
-| `specifications/architecture/…v0.1.md` | v0.1. Canonical **för auktoritetskedjan** genom precedensregel |
+| `book/chapters/*.md` + `book/final/…Canonical v1.2.pdf` | **Canonical v1.2** |
+| `specifications/architecture/…v0.3.md` | **v0.3**. Auktoritetskedjan, §22.2 vald provider, §22.3 adapterkontrakt |
+| `specifications/execution-provider/…Level 1 Read Only – Canonical v1.0.md` | **Canonical v1.0**. Provider-neutralt, noll order-metoder |
 | `specifications/data-model/…v0.1.md` | v0.1, rev. 2026-08-27 |
 
 `.md` är aktiv text. `.docx` i `book/source/` och `specifications/` är historiska
@@ -39,6 +40,8 @@ original och kan avvika — vid konflikt vinner alltid `.md`. Se
 |---|---|
 | `archive/…Canonical v1.0 CANDIDATE.md` | Ersatt när RISK-GATE-01 stängdes |
 | `archive/…Canonical Candidate v1.0.pdf` | Ersatt av Canonical v1.0-PDF:en |
+| `archive/…Canonical v1.0.pdf` | Ersatt av v1.1 |
+| `archive/…Canonical v1.1.pdf` | Ersatt av v1.2 |
 | `specifications/risk/…v0.1.md` | Historiskt. Dess OPEN-RISK-lista är **inte** aktuell |
 
 Arkiverade dokument är revisionsspår. Använd dem aldrig som implementationsunderlag.
@@ -54,12 +57,7 @@ Om svaret inte står uttryckligen i detta träd — **fråga, implementera inte.
 - marknadsdataprovider, contract rollover och kontraktsserie (GATE-08)
 - PropFirmProfile-parametrar och providerkompatibilitet (GATE-09)
 - execution safety margin och slippagetröskel (GATE-12)
-- **val av futures execution provider (GATE-15)**
-- **Execution Provider Adapter-kontrakt (GATE-16)**
 - **execution runtime- och deploymenttopologi (GATE-17)**
-
-GATE-15 och GATE-16 blockerar **connectivity-kod och connectivity proof**, inte den
-utredning och kontraktsdesign som krävs för att stänga dem. Det arbetet får börja direkt.
 - promotion thresholds och live safety policies (GATE-13, GATE-14)
 
 Riskgränser, sessioner, entry, SL, TP, break-even, re-entry och news-regler får
@@ -142,12 +140,12 @@ Ingen AI-modell får tolka vad som "ser ut som" ett entrykritiskt pattern.
 Läs `reviews/Open Implementation Gates v1.0.md` innan en ny fas påbörjas. Varje gate
 är klassificerad efter exakt vilken fas den blockerar.
 
-**Ingen gate blockerar Fas 1**, som dessutom redan är genomförd (PR #96). **Fas 2 är
-sedan 2026-08-28 grindad** av GATE-15 och GATE-16 — en provider måste väljas innan
-read-only-connectivity kan bevisas. Fas 3 kräver GATE-01, 02, 03, 04 och 08.
+**Ingen gate blockerar Fas 1 eller Fas 2.** Fas 1 är genomförd (PR #96). Fas 2 blev
+ogrindad när GATE-15 och GATE-16 stängdes 2026-08-28. Fas 3 kräver GATE-01, 02, 03, 04
+och 08.
 
-Fjorton gates är öppna. GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27;
-GATE-15, GATE-16 och GATE-17 tillkom 2026-08-28.
+Tolv gates är öppna. GATE-05, GATE-10 och GATE-11 stängdes 2026-08-27; GATE-15, GATE-16
+och GATE-17 tillkom 2026-08-28, varav GATE-15 och GATE-16 stängdes samma dag.
 
 Canonical fasordning enligt Kapitel 20:
 
@@ -158,9 +156,9 @@ Fas 0 Specs → Fas 1 Trading Core → Fas 2 Futures Connectivity (Read Only) �
 → Fas 10 Controlled Live
 ```
 
-**Nästa fas: Fas 2 – Futures Connectivity (Read Only).** Implementationen är blockerad av
-GATE-15 och GATE-16; utvärdering av provider och design av adapterkontraktet är nästa
-konkreta arbete och är inte blockerat.
+**Nästa fas: Fas 2 – Futures Connectivity (Read Only)**, ogrindad. Första
+implementationsmål är **Rithmic R|Protocol mot Rithmic Test**. Adaptergränsytan är låst i
+`specifications/execution-provider/`.
 
 ## 10. Versionering av dokumentationen
 
@@ -191,7 +189,9 @@ docs/trading-system/
 │   ├── source/                  20 kapitel, historiska .docx-original
 │   ├── chapters/                20 kapitel, AKTIV kanonisk text
 │   └── final/                   Canonical v1.0-PDF
+├── research/                    providerresearch, EJ canonical arkitektur
 ├── specifications/
+│   ├── execution-provider/      Level 1 adapterkontrakt, Canonical v1.0
 │   ├── strategy/                Canonical v1.0
 │   ├── architecture/            v0.1
 │   ├── data-model/              v0.1

@@ -351,7 +351,9 @@ Miljön ska vara explicit verifierad.
 
 ## Futures Execution Provider
 
-Providern är den externa executionmiljön. Ingen specifik provider är vald (GATE-15).
+Providern är den externa executionmiljön. Första implementationsmål är Rithmic
+R|Protocol (Beslut E, 2026-08-28); Tradovate är planerad andra adapter. Arkitekturen
+förblir multi-provider och ingen provider hårdkodas ovanför adaptergränsen.
 
 Omnira ska inte låta Strategy Engine kommunicera direkt med providern.
 

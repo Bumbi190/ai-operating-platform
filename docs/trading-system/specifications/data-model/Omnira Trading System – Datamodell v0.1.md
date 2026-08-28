@@ -6,7 +6,7 @@ Dokumentspråk: Svenska
 Status: Fas 0 – Datamodell för granskning
 System: Omnira Trading System
 Primär strategi: Omnira Liquidity Manipulation – Canonical v1.0
-Arkitektur: Omnira Trading System – Systemarkitektur v0.2
+Arkitektur: Omnira Trading System – Systemarkitektur v0.3
 
 ## 1. Syfte
 

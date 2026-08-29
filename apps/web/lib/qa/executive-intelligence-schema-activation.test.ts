@@ -68,10 +68,12 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    * should never arrive unnoticed. Raising the number is an acknowledgement.
    *
    * 42 → 43: `project_api_credentials` (Security Credential Phase 1).
+   * 43 → 44: `workflow_instance_core` (Workflow Instance Core, PR1).
+   * 44 → 45: `workflow_instance_core_hardening` (advisor fixes for the above).
    */
-  it('enforces exactly the expected number of migrations — currently 43', () => {
+  it('enforces exactly the expected number of migrations — currently 45', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(43)
+    expect(enforced).toBe(45)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

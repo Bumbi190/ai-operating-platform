@@ -36,6 +36,8 @@ import {
   type WorkflowDb,
 } from './store'
 import { systemDeriveWorkflowGate, type LedgerReader } from './system-authorization'
+import { findAdapter } from './adapters/registry'
+import type { VerificationEvidence } from './adapters/types'
 import {
   evaluateWorkflowTick,
   nextWakeAfter,
@@ -87,8 +89,30 @@ export async function evaluateDueWorkflow(
     ? await systemDeriveWorkflowGate(db, instance.id, { now, ledger: options.ledger })
     : null
 
+  // Read-only verification, when an adapter serves this definition and has
+  // something to say about this state. It reaches only the project's own
+  // authoritative systems, never writes, and can only downgrade the outcome.
+  let verification: VerificationEvidence[] = []
+  const adapter = findAdapter(instance.def_key)
+  if (adapter) {
+    try {
+      verification = await adapter.verifyState({
+        state: instance.current_state, instanceKey: instance.instance_key, now,
+      })
+    } catch (e) {
+      // A throwing adapter is an unusable answer, never a passing one.
+      verification = [{
+        check_key: 'adapter_execution', result: 'error', observed_at: now,
+        source: 'omnira.workflow.adapter', authoritative_system: adapter.authoritativeSystem,
+        expected: 'adapter verification to complete',
+        observed: e instanceof Error ? e.message : 'unknown error',
+        failure_kind: 'unexpected_status', detail: {},
+      }]
+    }
+  }
+
   return evaluateWorkflowTick({
-    instance, spec: def.spec, transitions, gate, projectPaused, now,
+    instance, spec: def.spec, transitions, gate, projectPaused, now, verification,
   })
 }
 
@@ -136,6 +160,8 @@ export async function tickDueWorkflows(
         gate_status: evaluation.gateStatus,
         missing_prerequisites: evaluation.missingPrerequisites,
         auto_advanceable: evaluation.autoAdvanceable,
+        verification: evaluation.verification,
+        verification_findings: evaluation.verificationFindings,
       }, nextWakeAt)
 
       if (evaluation.escalate) {

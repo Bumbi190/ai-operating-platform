@@ -366,6 +366,69 @@ describe('structural — the scheduler cannot become an authority', () => {
   })
 })
 
+// ── Verification can only ever make things worse (PR4) ───────────────────────
+
+const verif = (result: 'pass' | 'fail' | 'blocked' | 'error', key = 'c') => ({
+  check_key: key, result, observed_at: NOW, source: 'omnira.workflow.adapter',
+  authoritative_system: 'familje-stunden', expected: 'e', observed: 'o',
+  failure_kind: result === 'pass' ? null : ('authoritative_fail' as const), detail: {},
+})
+
+describe('read-only verification never produces an advance', () => {
+  it('a verification FAIL blocks an otherwise-authorized state', () => {
+    const e = evaluate({ gate: gate('authorized'), verification: [verif('fail', 'anonymous_protected_access_denied')] })
+    expect(e.outcome).toBe('blocked')
+    expect(e.verification).toBe('verification_failed')
+    expect(e.reason).toMatch(/verification failed: anonymous_protected_access_denied:fail/)
+  })
+
+  it('a verification ERROR blocks — "could not understand" is never "fine"', () => {
+    const e = evaluate({ gate: gate('authorized'), verification: [verif('error')] })
+    expect(e.outcome).toBe('blocked')
+    expect(e.verification).toBe('verification_error')
+  })
+
+  it('a BLOCKED verification is reported but does not itself stop the workflow', () => {
+    // Evidence about our reach, not about the world. A missing credential must
+    // not masquerade as a release problem.
+    const e = evaluate({ gate: gate('authorized'), verification: [verif('blocked')] })
+    expect(e.outcome).toBe('authorized_ready')
+    expect(e.verification).toBe('verification_blocked')
+  })
+
+  it('a passing verification does NOT upgrade anything', () => {
+    // The state still declares external work; verification cannot make it
+    // orchestration-only.
+    const e = evaluate({ gate: gate('authorized'), verification: [verif('pass')] })
+    expect(e.outcome).toBe('authorized_ready')
+    expect(e.outcome).not.toBe('ready_for_transition')
+  })
+
+  it('verification cannot open a closed gate', () => {
+    for (const status of ['denied', 'expired', 'revoked', 'stale'] as const) {
+      const e = evaluate({ gate: gate(status), verification: [verif('pass')] })
+      expect(e.outcome, status).toBe('blocked')
+    }
+  })
+
+  it('verification cannot rescue a corrupt history', () => {
+    seq = 0
+    const corrupt = [tx(null, 'planning'), tx('planning', 'backend_release_gate')]
+    const e = evaluate({
+      transitions: corrupt, instance: INSTANCE({ current_state: 'backend_release_gate' }),
+      gate: gate('authorized'), verification: [verif('pass')],
+    })
+    expect(e.outcome).toBe('failed')
+  })
+
+  it('no verification outcome is ever ready_for_transition for this definition', () => {
+    for (const r of ['pass', 'fail', 'blocked', 'error'] as const) {
+      const e = evaluate({ gate: gate('authorized'), verification: [verif(r)] })
+      expect(e.outcome, r).not.toBe('ready_for_transition')
+    }
+  })
+})
+
 // ── Mutation tests ───────────────────────────────────────────────────────────
 
 describe('mutant — an evaluator that treats a resolvable gate as open', () => {

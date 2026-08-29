@@ -308,7 +308,27 @@ describe('unavailable and error frames', () => {
     )
     expect(unavailable).toContain('data-status="UNAVAILABLE"')
     expect(unavailable).toContain('Ingen tidslinje för detta urval')
+    expect(unavailable).toContain('kunde inte lämna en användbar tidslinje')
     expect(unavailable).toContain('inte en lugn marknad')
+
+    /*
+     * More than one thing reaches UNAVAILABLE: the market seam having nothing
+     * for this selection, and — since Stage 1.7 — the provider-observation seam
+     * being unable to establish position state, which fails the load closed.
+     *
+     * The copy must therefore claim none of these, or a reader would conclude
+     * the account had been checked and found flat.
+     */
+    for (const forbidden of [
+      'Källan svarade',
+      'Det är ett svar',
+      'har ingenting för det valda instrumentet',
+      'inga positioner',
+      'inga öppna positioner',
+      'flat',
+    ]) {
+      expect(unavailable, `UNAVAILABLE copy asserts "${forbidden}"`).not.toContain(forbidden)
+    }
 
     const failed = renderToStaticMarkup(
       createElement(SourceStatus, { state: { status: 'ERROR', message: 'källan svarade inte' } }),

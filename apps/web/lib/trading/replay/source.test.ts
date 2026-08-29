@@ -40,6 +40,10 @@ import {
 // The synchronous fixture helper is deliberately not on the public barrel — see
 // the note in index.ts. Tests reach for it directly, so the bypass is visible.
 import { buildReplayTimeline } from './timelines'
+import {
+  defaultFixtureObservationSource,
+  fixturePositionObservations,
+} from './fixture-provider'
 
 const NQ_5M: MarketViewQuery = { instrument: 'NQ', timeframe: '5m' }
 
@@ -134,11 +138,16 @@ describe('the Stage 1 seam is on the path', () => {
     }
   })
 
-  it('composes the same two pieces the convenience does', () => {
-    // `buildReplayTimeline` is defined as assemble(generate(...)), so authoring
-    // a hand-built base reproduces it exactly.
+  it('composes the same pieces the convenience does', () => {
+    // `buildReplayTimeline` is assemble(marketGenerator, observationAuthor), so
+    // authoring both inputs by hand reproduces it exactly.
     const base = buildFixtureSnapshot('a-plus-confirmed', 'ES', '15m')
-    const assembled = assembleReplayTimeline('a-plus-confirmed', base)
+    const observations = fixturePositionObservations(
+      'a-plus-confirmed',
+      base,
+      defaultFixtureObservationSource('a-plus-confirmed', '15m'),
+    )
+    const assembled = assembleReplayTimeline('a-plus-confirmed', base, observations)
     expect(assembled).toEqual(buildReplayTimeline('a-plus-confirmed', 'ES', '15m'))
   })
 

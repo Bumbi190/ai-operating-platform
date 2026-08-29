@@ -30,6 +30,14 @@
  */
 export const PROJECT_API_SCOPES = [
   'business.leads.create',
+  /**
+   * PR5. Permits ONE action: appending attested workflow evidence for an
+   * instance in the credential's own project. It confers nothing else — not a
+   * transition, not an approval, not an authorization, not execution, and no
+   * reach into any other project's systems. Those are separate scopes that do
+   * not exist, and exact-match comparison means this one can never imply them.
+   */
+  'workflow.evidence.write',
 ] as const
 
 export type ProjectApiScope = (typeof PROJECT_API_SCOPES)[number]

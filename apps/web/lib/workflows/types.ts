@@ -146,7 +146,12 @@ export interface WorkflowInstance {
   closed_at: string | null
 }
 
-export type EvidenceResult = 'pass' | 'fail' | 'skipped'
+/**
+ * `blocked` (could not be produced) and `error` (produced something unusable) are
+ * distinct from `fail` (a real negative finding). Only `fail` is evidence about
+ * the world. `skipped` is the pre-PR5 vocabulary, retained so old rows stay valid.
+ */
+export type EvidenceResult = 'pass' | 'fail' | 'blocked' | 'error' | 'skipped'
 /**
  * 'automated' — Omnira ran the check and owns the result.
  * 'attested'  — a human ran it elsewhere and reported the outcome. Most of the
@@ -165,6 +170,16 @@ export interface WorkflowEvidence {
   source: EvidenceSource
   detail: Record<string, unknown>
   recorded_at: string
+  // ── Attestation envelope (PR5). Null on automated and pre-PR5 rows. ──
+  /** Who stated it. A credential name — never a secret, never an end user. */
+  producer: string | null
+  producer_type: string | null
+  /** When the PRODUCER observed it, which is not when Omnira recorded it. */
+  observed_at: string | null
+  payload_hash: string | null
+  /** The target this evidence was produced against. Moves → evidence goes stale. */
+  target_hash: string | null
+  attestation: Record<string, unknown>
 }
 
 /** Registered definition row. */

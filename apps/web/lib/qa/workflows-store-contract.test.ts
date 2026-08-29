@@ -251,10 +251,34 @@ describe('store — recordEvidence', () => {
     await store.recordEvidence(db, {
       instanceId: INSTANCE_ID, state: 'local_qa', checkKey: 'audio_files_19_of_19',
       result: 'pass', source: 'attested', detail: { by: 'editor' },
+      // PR5 CHANGED THIS, and the change is the point: an attested row must say
+      // who stated it and what it was pinned to. Anonymous attestation is
+      // assertion with extra steps, and the database refuses it too.
+      attestation: {
+        producer: 'cred-1', producerType: 'human', observedAt: '2026-08-02T10:00:00.000Z',
+        payloadHash: 'a'.repeat(64), targetHash: 'b'.repeat(64),
+      },
     })
     const row = inserts.find(i => i.table === 'evidence')!.row
     expect(row.state).toBe('local_qa')
     expect(row.source).toBe('attested')
     expect(row.result).toBe('pass')
+    expect(row.producer).toBe('cred-1')
+  })
+
+  it('refuses attested evidence with no envelope, and automated evidence with one', async () => {
+    const { db, inserts } = fakeDb({ defs: [defRow()], instances: [instanceRow('local_qa')] })
+    await expect(store.recordEvidence(db, {
+      instanceId: INSTANCE_ID, state: 'local_qa', checkKey: 'k',
+      result: 'pass', source: 'attested',
+    })).rejects.toThrow(/attested evidence requires an attestation envelope/)
+
+    await expect(store.recordEvidence(db, {
+      instanceId: INSTANCE_ID, state: 'local_qa', checkKey: 'k',
+      result: 'pass', source: 'automated',
+      attestation: { producer: 'x', producerType: 'ci', observedAt: 'now',
+                     payloadHash: 'a'.repeat(64), targetHash: 'b'.repeat(64) },
+    })).rejects.toThrow(/automated evidence must not carry an attestation envelope/)
+    expect(inserts.filter(i => i.table === 'evidence')).toEqual([])
   })
 })

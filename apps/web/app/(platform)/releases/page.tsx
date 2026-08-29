@@ -13,12 +13,12 @@
  */
 
 import { redirect } from 'next/navigation'
-import { AlertTriangle, Clock, GitBranch, Lock, Moon, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Clock, FileCheck, GitBranch, Lock, Moon, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OSPage, OSLayer, Panel, SectionHeader, PulseDot, EmptyState } from '@/components/platform/os'
 import { deriveWorkflowStatus } from '@/lib/workflows/machine'
-import { listInstances, listTransitions, readDefinitionById } from '@/lib/workflows/store'
+import { listEvidence, listInstances, listTransitions, readDefinitionById } from '@/lib/workflows/store'
 import { deriveWorkflowGateStatus } from '@/lib/workflows/authorization'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
@@ -26,6 +26,8 @@ import type { WorkflowGateState } from '@/lib/workflows/gate'
 import { wakeState } from '@/lib/workflows/schedule'
 import { findAdapter } from '@/lib/workflows/adapters/registry'
 import type { VerificationEvidence } from '@/lib/workflows/adapters/types'
+import { computeEvidenceTargetHash } from '@/lib/workflows/attestation'
+import { summarizeStateEvidence, type CheckVerdict } from '@/lib/workflows/evidence-consumption'
 import { GateActions } from './GateActions'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE, loadVendoredDefinitions } from '@/lib/workflows/definitions'
 import type { WorkflowSpec } from '@/lib/workflows/types'
@@ -77,6 +79,7 @@ export default async function ReleasesPage() {
     lastTickOutcome: string | null
     verification: VerificationEvidence[]
     authoritativeSystem: string | null
+    checkVerdicts: CheckVerdict[]
     mayDecide: boolean
     projected: string
     projectionAgrees: boolean
@@ -116,6 +119,27 @@ export default async function ReleasesPage() {
         }
       }
 
+      // Declared checks for the current state, judged against what has actually
+      // been recorded. Provenance and binding are decided here, not in the view.
+      let checkVerdicts: CheckVerdict[] = []
+      if (adapter) {
+        try {
+          const rows = await listEvidence(db, instance.id)
+          checkVerdicts = summarizeStateEvidence(
+            adapter.attestableChecks(), instance.current_state, rows,
+            checkKey => computeEvidenceTargetHash({
+              instance, spec: def.spec, state: instance.current_state, checkKey,
+              sourceCommit: (rows.find(r => r.check_key === checkKey)?.attestation as
+                { source_commit?: string } | undefined)?.source_commit ?? null,
+              artifactManifestHash: (rows.find(r => r.check_key === checkKey)?.attestation as
+                { artifact_manifest_hash?: string } | undefined)?.artifact_manifest_hash ?? null,
+            }),
+          ).verdicts
+        } catch {
+          checkVerdicts = []
+        }
+      }
+
       cards.push({
         instanceId: instance.id,
         instanceKey: instance.instance_key,
@@ -130,6 +154,7 @@ export default async function ReleasesPage() {
         lastTickOutcome: instance.last_tick_outcome,
         verification,
         authoritativeSystem: adapter?.authoritativeSystem ?? null,
+        checkVerdicts,
         mayDecide: assertProjectAllowed(instance.project_id, allowedProjectIds),
         projected: instance.current_state,
         projectionAgrees: derived.current_state === instance.current_state,
@@ -332,6 +357,39 @@ export default async function ReleasesPage() {
                     </div>
                   )}
 
+                  {card.checkVerdicts.length > 0 && (
+                    <div className="space-y-2 rounded border border-white/10 bg-white/[0.02] p-3">
+                      <div className="flex items-center gap-1.5 text-[11px] text-white/70">
+                        <FileCheck className="h-3 w-3" />
+                        Declared checks for this state
+                      </div>
+                      <ul className="space-y-1">
+                        {card.checkVerdicts.map(v => (
+                          <li key={v.check_key} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                            <span className={`w-[104px] shrink-0 font-mono uppercase ${SATISFACTION_TONE[v.satisfaction] ?? 'text-white/40'}`}>
+                              {v.satisfaction}
+                            </span>
+                            {/* Provenance is never implied — an unproven check says so. */}
+                            <span className={`shrink-0 rounded px-1 py-px font-mono text-[10px] ${PROVENANCE_BADGE[v.source ?? 'none']}`}>
+                              {v.source ?? 'no evidence'}
+                            </span>
+                            <span className="font-mono text-white/70">{v.check_key}</span>
+                            {v.producer && <span className="text-white/40">by {v.producer.slice(0, 12)}…</span>}
+                            {v.observed_at && <span className="text-white/30">{v.observed_at}</span>}
+                            {v.binding && v.binding !== 'current' && (
+                              <span className="font-mono text-amber-300/80">target:{v.binding}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="text-[10px] text-white/30">
+                        <span className="text-white/50">attested</span> means an external producer
+                        states it observed this; <span className="text-white/50">automated</span> means
+                        Omnira observed it. A check with no evidence is never shown as passing.
+                      </div>
+                    </div>
+                  )}
+
                   {card.latest && (
                     <div className="text-xs text-white/50">
                       <span className="text-white/70">Latest transition:</span>{' '}
@@ -377,6 +435,32 @@ export default async function ReleasesPage() {
       </OSLayer>
     </OSPage>
   )
+}
+
+/**
+ * Satisfaction → colour. Only `satisfied` is green, and it is the only value
+ * that means a check actually passed against the CURRENT target.
+ */
+const SATISFACTION_TONE: Record<string, string> = {
+  satisfied: 'text-emerald-300/80',
+  failed: 'text-rose-300',
+  errored: 'text-rose-300/80',
+  blocked: 'text-amber-300/80',
+  stale: 'text-amber-300',
+  unbound: 'text-amber-300/70',
+  provenance_refused: 'text-rose-300/70',
+  undeclared: 'text-white/40',
+  absent: 'text-white/35',
+}
+
+/**
+ * Provenance badge. Attested is deliberately a DIFFERENT colour from automated:
+ * a statement and an observation must never look alike at a glance.
+ */
+const PROVENANCE_BADGE: Record<string, string> = {
+  automated: 'bg-sky-400/10 text-sky-200/80',
+  attested: 'bg-violet-400/10 text-violet-200/80',
+  none: 'bg-white/[0.04] text-white/35',
 }
 
 /** Verification result → colour. `blocked` is amber, not red: we could not look. */

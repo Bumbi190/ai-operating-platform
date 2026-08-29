@@ -74,10 +74,12 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    * 46 → 47: `workflow_scheduled_continuation` (PR3 — wake/claim/tick + guardian).
    * 47 → 48: `workflow_scheduler_project_pause` (PR3 — projects.execution_paused,
    *          which turned out never to have been applied; see that file).
+   * 48 → 49: `workflow_attested_evidence` (PR5 — attestation envelope, wider
+   *          result vocabulary, replay index).
    */
-  it('enforces exactly the expected number of migrations — currently 48', () => {
+  it('enforces exactly the expected number of migrations — currently 49', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(48)
+    expect(enforced).toBe(49)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

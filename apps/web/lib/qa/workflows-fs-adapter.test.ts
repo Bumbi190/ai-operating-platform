@@ -330,7 +330,7 @@ describe('adapter registration', () => {
 
   it('exposes no execute, write or upload capability', () => {
     expect(Object.keys(familjeStundenAdapter).sort())
-      .toEqual(['authoritativeSystem', 'defKey', 'verifiableStates', 'verifyState'])
+      .toEqual(['attestableChecks', 'authoritativeSystem', 'defKey', 'verifiableStates', 'verifyState'])
   })
 
   it('returns nothing for a state it cannot speak about', async () => {

@@ -1,0 +1,49 @@
+{
+  "schema": "omnira.workflow.evidence-bundle/v1",
+  "def_key": "familje-stunden.monthly-release",
+  "instance_key": "2026-11",
+  "producer": {
+    "type": "local_agent",
+    "tool": "familje-stunden/scripts",
+    "tool_version": "0.0.0-example"
+  },
+  "source_commit": "0000000000000000000000000000000000000000",
+  "artifact_manifest_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "checks": [
+    {
+      "state": "content_generation",
+      "check_key": "story_page_count",
+      "result": "pass",
+      "observed_at": "2026-10-20T08:00:00.000Z",
+      "payload": { "expected": 18, "found": 18 }
+    },
+    {
+      "state": "visual_generation",
+      "check_key": "hero_audio_stream_count_zero",
+      "result": "pass",
+      "observed_at": "2026-10-20T08:05:00.000Z",
+      "payload": { "audio_streams": 0 }
+    },
+    {
+      "state": "local_qa",
+      "check_key": "audio_file_count",
+      "result": "pass",
+      "observed_at": "2026-10-20T09:14:03.000Z",
+      "payload": { "expected": 19, "found": 19 }
+    },
+    {
+      "state": "local_qa",
+      "check_key": "audio_page_mapping_ok",
+      "result": "blocked",
+      "observed_at": "2026-10-20T09:15:00.000Z",
+      "payload": { "reason": "measurement tool unavailable on this host" }
+    },
+    {
+      "state": "frontend_deploy",
+      "check_key": "typecheck_passed",
+      "result": "pass",
+      "observed_at": "2026-10-20T10:00:00.000Z",
+      "payload": { "errors": 0 }
+    }
+  ]
+}

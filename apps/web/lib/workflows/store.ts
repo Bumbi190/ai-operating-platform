@@ -42,7 +42,9 @@ const INSTANCE_COLS =
   'id, def_id, def_key, def_version, def_hash, project_id, instance_key, current_state, status, wake_at, last_tick_at, last_tick_outcome, created_at, closed_at'
 const TRANSITION_COLS =
   'id, seq, instance_id, from_state, to_state, reason, actor, evidence_ref, authorization_id, occurred_at'
-const EVIDENCE_COLS = 'id, instance_id, state, check_key, result, source, detail, recorded_at'
+const EVIDENCE_COLS =
+  'id, instance_id, state, check_key, result, source, detail, recorded_at, ' +
+  'producer, producer_type, observed_at, payload_hash, target_hash, attestation'
 
 const UNIQUE_VIOLATION = '23505'
 
@@ -368,6 +370,15 @@ export interface RecordEvidenceInput {
   result: EvidenceResult
   source: EvidenceSource
   detail?: Record<string, unknown>
+  /** Attestation envelope. Required for `attested`, refused for `automated`. */
+  attestation?: {
+    producer: string
+    producerType: string
+    observedAt: string
+    payloadHash: string
+    targetHash: string
+    metadata?: Record<string, unknown>
+  }
 }
 
 /**
@@ -390,6 +401,15 @@ export async function recordEvidence(
     )
   }
 
+  // An attested row without a producer is an assertion wearing evidence's
+  // clothes; the database refuses it too, but failing here says why.
+  if (input.source === 'attested' && !input.attestation) {
+    throw new Error('recordEvidence: attested evidence requires an attestation envelope')
+  }
+  if (input.source === 'automated' && input.attestation) {
+    throw new Error('recordEvidence: automated evidence must not carry an attestation envelope')
+  }
+
   const { data, error } = await (db as AnyDb)
     .from('workflow_evidence')
     .insert({
@@ -399,6 +419,12 @@ export async function recordEvidence(
       result: input.result,
       source: input.source,
       detail: input.detail ?? {},
+      producer: input.attestation?.producer ?? null,
+      producer_type: input.attestation?.producerType ?? null,
+      observed_at: input.attestation?.observedAt ?? null,
+      payload_hash: input.attestation?.payloadHash ?? null,
+      target_hash: input.attestation?.targetHash ?? null,
+      attestation: input.attestation?.metadata ?? {},
     })
     .select(EVIDENCE_COLS)
     .single()
@@ -571,6 +597,12 @@ function rowToEvidence(row: AnyDb): WorkflowEvidence {
     source: row.source,
     detail: (row.detail ?? {}) as Record<string, unknown>,
     recorded_at: row.recorded_at,
+    producer: row.producer ?? null,
+    producer_type: row.producer_type ?? null,
+    observed_at: row.observed_at ?? null,
+    payload_hash: row.payload_hash ?? null,
+    target_hash: row.target_hash ?? null,
+    attestation: (row.attestation ?? {}) as Record<string, unknown>,
   }
 }
 

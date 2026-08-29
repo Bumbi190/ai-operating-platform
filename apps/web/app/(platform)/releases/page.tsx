@@ -13,7 +13,7 @@
  */
 
 import { redirect } from 'next/navigation'
-import { AlertTriangle, GitBranch, Lock, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Clock, GitBranch, Lock, Moon, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OSPage, OSLayer, Panel, SectionHeader, PulseDot, EmptyState } from '@/components/platform/os'
@@ -23,6 +23,7 @@ import { deriveWorkflowGateStatus } from '@/lib/workflows/authorization'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import type { WorkflowGateState } from '@/lib/workflows/gate'
+import { wakeState } from '@/lib/workflows/schedule'
 import { GateActions } from './GateActions'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE, loadVendoredDefinitions } from '@/lib/workflows/definitions'
 import type { WorkflowSpec } from '@/lib/workflows/types'
@@ -69,6 +70,9 @@ export default async function ReleasesPage() {
     defHash: string
     derived: ReturnType<typeof deriveWorkflowStatus>
     gate: WorkflowGateState | null
+    wake: { at: string | null; state: 'not_scheduled' | 'sleeping' | 'due' }
+    lastTickAt: string | null
+    lastTickOutcome: string | null
     mayDecide: boolean
     projected: string
     projectionAgrees: boolean
@@ -102,6 +106,9 @@ export default async function ReleasesPage() {
         defHash: instance.def_hash,
         derived,
         gate,
+        wake: { at: instance.wake_at, state: wakeState(instance.wake_at, new Date().toISOString()) },
+        lastTickAt: instance.last_tick_at,
+        lastTickOutcome: instance.last_tick_outcome,
         mayDecide: assertProjectAllowed(instance.project_id, allowedProjectIds),
         projected: instance.current_state,
         projectionAgrees: derived.current_state === instance.current_state,
@@ -212,6 +219,26 @@ export default async function ReleasesPage() {
                     </div>
                   )}
 
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/50">
+                    <span className="flex items-center gap-1.5 text-white/70">
+                      {card.wake.state === 'sleeping' ? <Moon className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                      Scheduler
+                    </span>
+                    <span>
+                      <span className="text-white/40">wake:</span>{' '}
+                      <span className="font-mono">{WAKE_LABEL[card.wake.state]}</span>
+                    </span>
+                    {card.wake.at && (
+                      <span><span className="text-white/40">at:</span>{' '}
+                        <span className="font-mono">{card.wake.at}</span></span>
+                    )}
+                    <span>
+                      <span className="text-white/40">last evaluation:</span>{' '}
+                      <span className="font-mono">{card.lastTickOutcome ?? 'never'}</span>
+                      {card.lastTickAt && <span className="text-white/30"> · {card.lastTickAt}</span>}
+                    </span>
+                  </div>
+
                   {card.gate?.required && (
                     <div className="space-y-2 rounded border border-amber-400/20 bg-amber-400/[0.04] p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -297,6 +324,17 @@ export default async function ReleasesPage() {
       </OSLayer>
     </OSPage>
   )
+}
+
+/**
+ * What the wake column means. `not_scheduled` is the resting state and is not a
+ * problem: the scheduler only looks at instances something has explicitly armed,
+ * and it deliberately does not re-arm anything that needs a human.
+ */
+const WAKE_LABEL: Record<'not_scheduled' | 'sleeping' | 'due', string> = {
+  not_scheduled: 'not scheduled',
+  sleeping: 'sleeping',
+  due: 'due — next tick',
 }
 
 /** Gate statuses where a NEW request is needed, with the reason spelled out. */

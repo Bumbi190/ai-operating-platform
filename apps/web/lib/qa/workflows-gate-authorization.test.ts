@@ -36,7 +36,7 @@ const INSTANCE: WorkflowInstance = {
   id: INSTANCE_ID, def_id: '22222222-2222-4222-8222-222222222222',
   def_key: FAMILJE_STUNDEN_MONTHLY_RELEASE, def_version: 1, def_hash: 'a'.repeat(64),
   project_id: PROJECT, instance_key: '2026-11', current_state: 'local_qa',
-  status: 'active', wake_at: null, created_at: '2026-08-01T00:00:00.000Z', closed_at: null,
+  status: 'active', wake_at: null, last_tick_at: null, last_tick_outcome: null, created_at: '2026-08-01T00:00:00.000Z', closed_at: null,
 }
 
 const EVIDENCE: WorkflowEvidence[] = [{

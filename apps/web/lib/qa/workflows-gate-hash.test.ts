@@ -38,6 +38,8 @@ const INSTANCE: WorkflowInstance = {
   current_state: 'local_qa',
   status: 'active',
   wake_at: null,
+  last_tick_at: null,
+  last_tick_outcome: null,
   created_at: '2026-08-01T00:00:00.000Z',
   closed_at: null,
 }

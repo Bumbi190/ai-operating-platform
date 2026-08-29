@@ -39,7 +39,7 @@ export type WorkflowDb = ReturnType<typeof createAdminClient> | AnyDb
 
 const DEF_COLS      = 'id, def_key, version, def_hash, spec, created_at'
 const INSTANCE_COLS =
-  'id, def_id, def_key, def_version, def_hash, project_id, instance_key, current_state, status, wake_at, created_at, closed_at'
+  'id, def_id, def_key, def_version, def_hash, project_id, instance_key, current_state, status, wake_at, last_tick_at, last_tick_outcome, created_at, closed_at'
 const TRANSITION_COLS =
   'id, seq, instance_id, from_state, to_state, reason, actor, evidence_ref, authorization_id, occurred_at'
 const EVIDENCE_COLS = 'id, instance_id, state, check_key, result, source, detail, recorded_at'
@@ -421,6 +421,99 @@ export async function listEvidence(
   return ((data ?? []) as unknown[]).map(rowToEvidence)
 }
 
+// ── Scheduling (PR3) ─────────────────────────────────────────────────────────
+//
+// Every write here goes through an RPC that appends its own audit row, so a
+// wake can be armed, replaced or cleared without any of it being silent.
+
+/**
+ * Arm (or replace) the instance's wake.
+ *
+ * A wake in the past is accepted and becomes immediately due — clock skew, a
+ * paused project and a missed tick all produce one, and rejecting it would
+ * strand the instance exactly when it needs attention. Terminal instances are
+ * refused by the RPC.
+ */
+export async function scheduleWorkflowWake(
+  db: WorkflowDb,
+  instanceId: string,
+  wakeAt: string,
+  actor: string,
+  reason: string,
+): Promise<WorkflowInstance> {
+  const { data, error } = await (db as AnyDb).rpc('workflow_schedule_wake', {
+    p_instance_id: instanceId, p_wake_at: wakeAt, p_actor: actor, p_reason: reason,
+  })
+  if (error) throw new Error(`scheduleWorkflowWake failed for ${instanceId}: ${error.message}`)
+  return rowToInstance(Array.isArray(data) ? data[0] : data)
+}
+
+/** Unschedule. Idempotent; only a real change is audited. */
+export async function clearWorkflowWake(
+  db: WorkflowDb, instanceId: string, actor: string, reason: string,
+): Promise<WorkflowInstance> {
+  const { data, error } = await (db as AnyDb).rpc('workflow_clear_wake', {
+    p_instance_id: instanceId, p_actor: actor, p_reason: reason,
+  })
+  if (error) throw new Error(`clearWorkflowWake failed for ${instanceId}: ${error.message}`)
+  return rowToInstance(Array.isArray(data) ? data[0] : data)
+}
+
+/**
+ * Instances that are due, WITHOUT claiming them. Read-only: for the status
+ * surface and for tests. The tick uses `claimDueWorkflowInstances`.
+ */
+export async function listDueWorkflowInstances(
+  db: WorkflowDb, now: string, limit = 50,
+): Promise<WorkflowInstance[]> {
+  const { data, error } = await (db as AnyDb)
+    .from('workflow_instances').select(INSTANCE_COLS)
+    .eq('status', 'active')
+    .not('wake_at', 'is', null)
+    .lte('wake_at', now)
+    .order('wake_at', { ascending: true })
+    .limit(limit)
+  if (error) throw new Error(`listDueWorkflowInstances failed: ${error.message}`)
+  return ((data ?? []) as unknown[]).map(rowToInstance)
+}
+
+/**
+ * Claim due instances for evaluation.
+ *
+ * The claim PUSHES wake_at forward by the visibility window rather than clearing
+ * it, so a crashed tick retries instead of losing the wake, and two concurrent
+ * ticks partition the work through SKIP LOCKED instead of both taking the same
+ * instance. Paused projects are filtered inside the RPC, at the lowest level.
+ */
+export async function claimDueWorkflowInstances(
+  db: WorkflowDb, limit = 20, visibilitySeconds = 300,
+): Promise<WorkflowInstance[]> {
+  const { data, error } = await (db as AnyDb).rpc('workflow_claim_due', {
+    p_limit: limit, p_visibility_seconds: visibilitySeconds,
+  })
+  if (error) throw new Error(`claimDueWorkflowInstances failed: ${error.message}`)
+  return ((data ?? []) as unknown[]).map(rowToInstance)
+}
+
+/**
+ * Record the result of one evaluation and set the next wake.
+ * `nextWakeAt` of null leaves the instance unscheduled — the situation needs a
+ * human, and re-checking every minute would change nothing.
+ */
+export async function recordWorkflowTick(
+  db: WorkflowDb,
+  instanceId: string,
+  outcome: string,
+  detail: Record<string, unknown>,
+  nextWakeAt: string | null,
+): Promise<void> {
+  const { error } = await (db as AnyDb).rpc('workflow_record_tick', {
+    p_instance_id: instanceId, p_outcome: outcome,
+    p_detail: detail, p_next_wake_at: nextWakeAt,
+  })
+  if (error) throw new Error(`recordWorkflowTick failed for ${instanceId}: ${error.message}`)
+}
+
 // ── Row mapping ──────────────────────────────────────────────────────────────
 
 function rowToDef(row: AnyDb): WorkflowDef {
@@ -446,6 +539,8 @@ function rowToInstance(row: AnyDb): WorkflowInstance {
     current_state: row.current_state,
     status: row.status,
     wake_at: row.wake_at ?? null,
+    last_tick_at: row.last_tick_at ?? null,
+    last_tick_outcome: row.last_tick_outcome ?? null,
     created_at: row.created_at,
     closed_at: row.closed_at ?? null,
   }

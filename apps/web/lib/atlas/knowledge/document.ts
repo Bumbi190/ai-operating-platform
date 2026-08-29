@@ -44,6 +44,15 @@ export interface ParsedKnowledgeDocument {
   sourceOfTruth: KnowledgeSourceOfTruth
   canonicalPath: string | null
   authorityRank: KnowledgeAuthorityRank
+  /**
+   * The raw recognized frontmatter key/value pairs, exactly as declared.
+   *
+   * Additive for the projection layer, which must read fields the Phase-1
+   * contract does not model yet (classification, publication scope) WITHOUT
+   * re-reading the file or growing a second parser. The Atlas-facing provider
+   * ignores it; nothing here is trusted until it has been validated.
+   */
+  rawFrontMatter: Record<string, string>
   /** Body with the frontmatter block removed. */
   body: string
   /** Headings, kept separately so ranking can weight them. */
@@ -160,6 +169,7 @@ export function parseKnowledgeDocument(raw: string, relativePath: string): Parse
     sourceOfTruth: trustedSourceOfTruth,
     canonicalPath,
     authorityRank: authorityRankFor(trustedSourceOfTruth, status),
+    rawFrontMatter: frontMatter,
     body,
     headings: headingsFrom(body),
     contentHash: sha256(raw),

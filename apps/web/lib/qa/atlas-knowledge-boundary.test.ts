@@ -25,7 +25,11 @@ import { createVaultKnowledgeProvider } from '@/lib/atlas/knowledge/vault-provid
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const KNOWLEDGE_DIR = path.join(WEB_ROOT, 'lib/atlas/knowledge')
 
-const KNOWLEDGE_FILES = ['types.ts', 'policy.ts', 'document.ts', 'rank.ts', 'vault-provider.ts']
+const KNOWLEDGE_FILES = ['types.ts', 'policy.ts', 'document.ts', 'rank.ts', 'vault-provider.ts', 'vault-walk.ts']
+
+const PROJECTION_DIR = path.join(KNOWLEDGE_DIR, 'projection')
+const PROJECTION_FILES = ['source.ts', 'eligibility.ts', 'secret-scan.ts', 'report.ts']
+const projectionEntries = PROJECTION_FILES.map((f) => path.join(PROJECTION_DIR, f))
 
 // ── module graph (local imports only) ────────────────────────────────────────
 
@@ -253,7 +257,9 @@ describe('NO PRODUCTION CONSUMER — Phase 1 wires nothing', () => {
   it('the only importers are the operator harness and these QA tests', () => {
     expect(knowledgeImporters()).toEqual([
       'lib/qa/atlas-knowledge-boundary.test.ts',
+      'lib/qa/atlas-knowledge-projection.test.ts',
       'lib/qa/atlas-knowledge-provider.test.ts',
+      'scripts/knowledge-projection-report.ts',
       'scripts/knowledge-shadow.ts',
     ])
   })
@@ -268,6 +274,116 @@ describe('NO PRODUCTION CONSUMER — Phase 1 wires nothing', () => {
       if (!fs.existsSync(abs)) continue
       const parents = moduleGraph([abs])
       const hits = [...parents.keys()]
+        .map((f) => path.relative(WEB_ROOT, f))
+        .filter((rel) => rel.startsWith('lib/atlas/knowledge/'))
+      expect(hits.join(', '), `${entry} reaches Knowledge`).toBe('')
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECTION SOURCE — operator-only, and structurally unable to become anything else
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PROJECTION SOURCE — a local boundary, never an Atlas one', () => {
+  /** Every file in apps/web that imports the projection layer. */
+  function projectionImporters(): string[] {
+    const roots = ['app', 'lib', 'components', 'scripts'].map((d) => path.join(WEB_ROOT, d))
+    const importers: string[] = []
+    for (const root of roots) {
+      if (!fs.existsSync(root)) continue
+      const stack = [root]
+      while (stack.length) {
+        const dir = stack.pop()!
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const p = path.join(dir, entry.name)
+          if (entry.isDirectory()) { if (entry.name !== 'node_modules') stack.push(p); continue }
+          if (!/\.(ts|tsx)$/.test(entry.name)) continue
+          const rel = path.relative(WEB_ROOT, p)
+          if (rel.startsWith('lib/atlas/knowledge/projection/')) continue // internal
+          if (specifiersOf(fs.readFileSync(p, 'utf8')).some((s) => s.includes('knowledge/projection'))) {
+            importers.push(rel)
+          }
+        }
+      }
+    }
+    return importers.sort()
+  }
+
+  it('nothing under app/ imports the projection source', () => {
+    expect(projectionImporters().filter((f) => f.startsWith('app/')).join(', ')).toBe('')
+  })
+
+  it('the only importers are the operator script and its QA suite', () => {
+    expect(projectionImporters()).toEqual([
+      'lib/qa/atlas-knowledge-projection.test.ts',
+      'scripts/knowledge-projection-report.ts',
+    ])
+  })
+
+  it('the Atlas-facing provider does not reach the projection layer', () => {
+    const parents = moduleGraph([path.join(KNOWLEDGE_DIR, 'vault-provider.ts')])
+    const hits = [...parents.keys()]
+      .map((f) => path.relative(WEB_ROOT, f))
+      .filter((rel) => rel.startsWith('lib/atlas/knowledge/projection/'))
+    expect(hits.join(', ')).toBe('')
+  })
+
+  it('the projection source exposes no mutation verb', () => {
+    const source = fs.readFileSync(path.join(PROJECTION_DIR, 'source.ts'), 'utf8')
+    const block = source.slice(source.indexOf('export interface KnowledgeProjectionSource'))
+    const body = block.slice(block.indexOf('{'), block.indexOf('\n}') + 1)
+    const members = [...body.matchAll(/^\s*(?:readonly\s+)?([a-zA-Z][a-zA-Z0-9_]*)\s*[(:]/gm)].map((m) => m[1])
+    expect(members.sort()).toEqual(['id', 'listAll', 'readDocument'])
+    for (const verb of ['create', 'append', 'update', 'delete', 'remove', 'rename', 'move',
+      'write', 'put', 'patch', 'insert', 'upsert', 'execute', 'exec']) {
+      expect(new RegExp(`^\\s*${verb}\\s*[(<:]`, 'm').test(body), `exposes ${verb}`).toBe(false)
+    }
+  })
+
+  it('the projection layer imports no filesystem write or process-spawning API', () => {
+    const source = PROJECTION_FILES
+      .map((f) => fs.readFileSync(path.join(PROJECTION_DIR, f), 'utf8')).join('\n')
+    for (const banned of ['writeFileSync', 'appendFileSync', 'unlinkSync', 'rmSync', 'renameSync',
+      'mkdirSync', 'createWriteStream', 'child_process', 'execSync', 'spawnSync', 'spawn']) {
+      expect(source.includes(banned), `projection references ${banned}`).toBe(false)
+    }
+  })
+
+  it('the projection source cannot reach authority or execution surfaces', () => {
+    const parents = moduleGraph(projectionEntries)
+    const hits = [...parents.keys()].map((f) => path.relative(WEB_ROOT, f)).filter((rel) =>
+      ['lib/atlas/authorization/', 'lib/atlas/delegation/', 'lib/atlas/executive/',
+        'lib/workflows/authorization', 'lib/workflows/gate', 'lib/ai/policy-gate',
+        'lib/ai/fencing'].some((p) => rel.startsWith(p)))
+    expect(hits.join(', ')).toBe('')
+  })
+
+  it('the projection source cannot reach Atlas Memory M4', () => {
+    const parents = moduleGraph(projectionEntries)
+    const hits = [...parents.keys()].map((f) => path.relative(WEB_ROOT, f)).filter((rel) =>
+      rel.startsWith('lib/atlas/memory/') || rel === 'lib/atlas/intelligence/memory-context.ts')
+    expect(hits.map((h) => chainTo(parents, path.join(WEB_ROOT, h))).join('\n')).toBe('')
+  })
+
+  it('Atlas Memory M4 cannot reach the projection source', () => {
+    const parents = moduleGraph([
+      'lib/atlas/memory/record-event.ts',
+      'lib/atlas/memory/recall-memories.ts',
+      'lib/atlas/intelligence/memory-context.ts',
+    ].map((r) => path.join(WEB_ROOT, r)))
+    const hits = [...parents.keys()]
+      .map((f) => path.relative(WEB_ROOT, f))
+      .filter((rel) => rel.startsWith('lib/atlas/knowledge/'))
+    expect(hits.join(', ')).toBe('')
+  })
+
+  it('chat, Executive and Context Request do not reach the projection source', () => {
+    for (const entry of ['app/api/chat/route.ts',
+      'lib/atlas/intelligence/producers/brief-orchestrator.ts', 'lib/atlas/context/request.ts']) {
+      const abs = path.join(WEB_ROOT, entry)
+      if (!fs.existsSync(abs)) continue
+      const hits = [...moduleGraph([abs]).keys()]
         .map((f) => path.relative(WEB_ROOT, f))
         .filter((rel) => rel.startsWith('lib/atlas/knowledge/'))
       expect(hits.join(', '), `${entry} reaches Knowledge`).toBe('')

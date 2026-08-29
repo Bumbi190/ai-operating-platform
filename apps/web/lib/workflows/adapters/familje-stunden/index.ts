@@ -38,6 +38,7 @@ import {
 } from '../types'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE } from '@/lib/workflows/definitions'
 import { InvalidMonthKeyError, computeReleaseInstant } from './instant'
+import { FAMILJE_STUNDEN_CHECKS } from './checks'
 
 export const FAMILJE_STUNDEN_SYSTEM = 'familje-stunden'
 
@@ -270,6 +271,7 @@ export const familjeStundenAdapter: WorkflowAdapter = {
   defKey: FAMILJE_STUNDEN_MONTHLY_RELEASE,
   authoritativeSystem: FAMILJE_STUNDEN_SYSTEM,
   verifiableStates: () => Object.keys(VERIFIABLE).sort(),
+  attestableChecks: () => FAMILJE_STUNDEN_CHECKS,
   verifyState: async ({ state, instanceKey, now }) => {
     const check = VERIFIABLE[state]
     if (!check) return []

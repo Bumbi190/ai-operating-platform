@@ -43,6 +43,8 @@ const EVIDENCE: WorkflowEvidence[] = [{
   id: '44444444-4444-4444-8444-444444444444', instance_id: INSTANCE_ID, state: 'local_qa',
   check_key: 'audio_files_19_of_19', result: 'pass', source: 'attested',
   detail: {}, recorded_at: '2026-08-02T10:00:00.000Z',
+  producer: null, producer_type: null, observed_at: null,
+  payload_hash: null, target_hash: null, attestation: {},
 }]
 
 const TARGET = computeWorkflowGateTarget({

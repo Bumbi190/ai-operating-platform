@@ -13,7 +13,6 @@ import {
   PLAYBACK_SPEEDS,
   SETUP_LIFECYCLES,
   allowedTransitionsFrom,
-  buildReplayTimeline,
   canTransition,
   clockAt,
   isAtEnd,
@@ -43,6 +42,9 @@ import {
   type ReplayCursor,
   type SetupLifecycle,
 } from './index'
+// The synchronous fixture helper is deliberately not on the public barrel — see
+// the note in index.ts. Tests reach for it directly, so the bypass is visible.
+import { buildReplayTimeline } from './timelines'
 import {
   MARKET_INSTRUMENTS,
   MARKET_TIMEFRAMES,

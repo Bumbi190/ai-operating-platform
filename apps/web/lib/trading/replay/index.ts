@@ -103,7 +103,43 @@ export {
 export type { PlaybackSpeed, ReplayCursor } from './engine'
 
 // ─── Timelines and projection ─────────────────────────────────────────────────
-export { buildReplayTimeline } from './timelines'
+/*
+ * `buildReplayTimeline` is deliberately NOT exported here.
+ *
+ * It builds a timeline synchronously, straight from the fixture generator, and
+ * that is a legal bypass of the source seam — the exact shortcut Stage 1.6
+ * exists to close. Application code acquires timelines through
+ * `ReplayTimelineSource`; anything that genuinely needs the synchronous
+ * fixture helper imports `./timelines` directly and is visible in review for
+ * doing so.
+ *
+ * `assembleReplayTimeline` stays public: it is the authoring step a source
+ * calls with a base it has already obtained, so it cannot bypass anything.
+ */
+export { assembleReplayTimeline } from './timelines'
 export type { ReplayTimeline } from './timelines'
+
+// ─── Async load state ─────────────────────────────────────────────────────────
+export {
+  LOADING,
+  UNAVAILABLE_STATE,
+  errorState,
+  identityOfTimeline,
+  isCurrentGeneration,
+  loadTimelineState,
+  readyState,
+  timelineIdentity,
+  timelineOf,
+} from './load-state'
+export type { LoadOutcome, ReplayLoadState } from './load-state'
+
+// ─── Source seam ──────────────────────────────────────────────────────────────
+export {
+  ALL_INSTRUMENTS,
+  ALL_TIMEFRAMES,
+  createFixtureReplayTimelineSource,
+  sourceSupports,
+} from './source'
+export type { FixtureReplaySourceConfig, ReplayTimelineSource } from './source'
 export { projectReplay } from './projection'
 export type { TradingReplayProjection } from './projection'

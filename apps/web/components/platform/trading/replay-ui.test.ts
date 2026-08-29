@@ -12,12 +12,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   INITIAL_CURSOR,
-  buildReplayTimeline,
   projectReplay,
   seekTo,
   setSpeed,
   type PlaybackSpeed,
 } from '@/lib/trading/replay'
+// The synchronous fixture helper is deliberately not on the public barrel — see
+// the note in index.ts. Tests reach for it directly, so the bypass is visible.
+import { buildReplayTimeline } from '@/lib/trading/replay/timelines'
 import { MARKET_VIEW_SCENARIO_IDS, type MarketViewScenarioId } from '@/lib/trading/market-view'
 
 vi.mock('next/navigation', () => ({
@@ -26,10 +28,11 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/trading',
 }))
 
-let AtlasMarketView: (props: Record<string, never>) => JSX.Element
+let AtlasMarketView: (props: Record<string, unknown>) => JSX.Element
 let ReplayControls: (props: Record<string, unknown>) => JSX.Element
 let PlannedTradesPanel: (props: Record<string, unknown>) => JSX.Element
 let ObservedPositionsPanel: (props: Record<string, unknown>) => JSX.Element
+let SourceStatus: (props: Record<string, unknown>) => JSX.Element
 
 beforeAll(async () => {
   AtlasMarketView = (await import('./AtlasMarketView')).AtlasMarketView as never
@@ -37,11 +40,27 @@ beforeAll(async () => {
   const panels = await import('./PositionPanels')
   PlannedTradesPanel = panels.PlannedTradesPanel as never
   ObservedPositionsPanel = panels.ObservedPositionsPanel as never
+  SourceStatus = (await import('./SourceStatus')).SourceStatus as never
 })
 
 const TL = (s: MarketViewScenarioId = 'a-plus-confirmed') => buildReplayTimeline(s, 'NQ', '5m')
 
-function renderView(): string {
+/**
+ * The workspace with a timeline already in hand.
+ *
+ * Acquisition is async now, and `renderToStaticMarkup` cannot await, so a
+ * static render of the bare component correctly shows the LOADING frame. The
+ * seed lets these assertions keep testing the composed ready workspace; the
+ * loading, unavailable and error frames have their own tests.
+ */
+function renderView(scenario: MarketViewScenarioId = 'long-developing'): string {
+  return renderToStaticMarkup(
+    createElement(AtlasMarketView, { initialTimeline: buildReplayTimeline(scenario, 'NQ', '5m') }),
+  )
+}
+
+/** The bare component, with no seed — the real first frame in a browser. */
+function renderViewUnseeded(): string {
   return renderToStaticMarkup(createElement(AtlasMarketView, {}))
 }
 
@@ -219,6 +238,91 @@ describe('planned trades are visibly not open positions', () => {
     const markup = renderToStaticMarkup(createElement(PlannedTradesPanel, { plans: [] }))
     expect(markup).toContain('data-testid="planned-empty"')
     expect(markup).toContain('Ingen planerad trade')
+  })
+})
+
+// ─── Async source states (Stage 1.6) ──────────────────────────────────────────
+
+describe('the workspace without a timeline', () => {
+  it('opens in LOADING, not in an empty chart', () => {
+    // The real first frame in a browser: acquisition is async, so there is no
+    // timeline yet. An empty chart here would read as a calm market.
+    const markup = renderViewUnseeded()
+    expect(markup).toContain('data-testid="source-status"')
+    expect(markup).toContain('data-status="LOADING"')
+    expect(markup).toContain('Laddar tidslinje')
+    expect(markup).not.toContain('<svg')
+  })
+
+  it('reports the source state in the banner rather than a market claim', () => {
+    const markup = renderViewUnseeded()
+    expect(markup).toContain('data-banner="LOADING"')
+    expect(markup).toContain('LADDAR')
+    // No market-state claim is made without market state.
+    expect(markup).not.toContain('data-banner="FIXTURE"')
+  })
+
+  it('still shows source identity, which exists without a timeline', () => {
+    const markup = renderViewUnseeded()
+    expect(markup).toContain('data-testid="provenance-chip"')
+    expect(markup).toContain('FIXTURE')
+    expect(markup).toContain('Fixturreplay')
+    expect(markup).toContain('Ingen provider ansluten')
+  })
+
+  it('keeps the selection controls usable so the operator can change it', () => {
+    const markup = renderViewUnseeded()
+    expect(markup).toContain('data-testid="instrument-switch"')
+    expect(markup).toContain('data-testid="timeframe-switch"')
+    expect(markup).toContain('Fixturscenario')
+  })
+
+  it('renders no panels and no planned/observed state', () => {
+    const markup = renderViewUnseeded()
+    expect(markup).not.toContain('Planerade trades')
+    expect(markup).not.toContain('Observerade positioner')
+    expect(markup).not.toContain('aria-label="Marknadsanalys"')
+  })
+
+  it('disables the whole transport when there is nothing to step through', () => {
+    const markup = renderViewUnseeded()
+    const buttons = markup.match(/<button[^>]*data-testid="replay-[^"]*"[^>]*>/g) ?? []
+    expect(buttons.length).toBe(4)
+    for (const button of buttons) {
+      expect(button, `enabled with no timeline: ${button}`).toContain('disabled')
+    }
+    expect(markup).toContain('start / 0')
+  })
+
+  it('says "ingen tidslinje" rather than a fabricated market time', () => {
+    expect(renderViewUnseeded()).toContain('ingen tidslinje')
+  })
+})
+
+describe('unavailable and error frames', () => {
+  it('distinguishes UNAVAILABLE from ERROR in words', () => {
+    const unavailable = renderToStaticMarkup(
+      createElement(SourceStatus, { state: { status: 'UNAVAILABLE' } }),
+    )
+    expect(unavailable).toContain('data-status="UNAVAILABLE"')
+    expect(unavailable).toContain('Ingen tidslinje för detta urval')
+    expect(unavailable).toContain('inte en lugn marknad')
+
+    const failed = renderToStaticMarkup(
+      createElement(SourceStatus, { state: { status: 'ERROR', message: 'källan svarade inte' } }),
+    )
+    expect(failed).toContain('data-status="ERROR"')
+    expect(failed).toContain('Källan kunde inte läsas')
+    // The reason is shown verbatim; a swallowed message is a debugging session.
+    expect(failed).toContain('källan svarade inte')
+    expect(failed).toContain('data-testid="source-status-reason"')
+  })
+
+  it('renders nothing at all when the state is READY', () => {
+    const timeline = buildReplayTimeline('long-developing', 'NQ', '5m')
+    expect(
+      renderToStaticMarkup(createElement(SourceStatus, { state: { status: 'READY', timeline } })),
+    ).toBe('')
   })
 })
 

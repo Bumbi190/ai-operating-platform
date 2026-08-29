@@ -978,3 +978,77 @@
   text-transform: uppercase;
   color: var(--omnira-amber);
 }
+
+/* ── Source status ────────────────────────────────────────────────────────── */
+
+/*
+  Shown instead of the canvas when there is no timeline.
+
+  Deliberately not chart-shaped and deliberately not a spinner over stale data:
+  an empty chart reads as a quiet market, and that is the one impression this
+  surface must never give.
+*/
+.sourceStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-2);
+  padding: var(--rhythm-6);
+  border-radius: 14px;
+  border: 1px dashed var(--omnira-edge-strong);
+  background: var(--omnira-glass-1);
+  min-height: 220px;
+  justify-content: center;
+}
+
+.sourceStatusLabel {
+  margin: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--omnira-text-3);
+}
+
+.sourceStatusTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  text-wrap: balance;
+}
+
+.sourceStatusBody {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--omnira-text-2);
+  max-width: 62ch;
+}
+
+.sourceStatusReason {
+  margin: var(--rhythm-2) 0 0;
+  padding: var(--rhythm-3);
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  font-size: 11px;
+  color: var(--omnira-rose);
+  word-break: break-word;
+}
+
+.sourceStatus[data-status='LOADING'] { border-style: solid; border-color: var(--mv-panel-edge); }
+.sourceStatus[data-status='UNAVAILABLE'] .sourceStatusLabel { color: var(--omnira-amber); }
+.sourceStatus[data-status='ERROR'] { border-color: rgba(248, 113, 113, 0.4); }
+.sourceStatus[data-status='ERROR'] .sourceStatusLabel { color: var(--omnira-rose); }
+
+/* Source-state banners reuse the safety banner chrome. */
+.safetyBanner[data-banner='LOADING'] { border-color: var(--mv-panel-edge); }
+.safetyBanner[data-banner='UNAVAILABLE'] {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.10);
+}
+.safetyBanner[data-banner='UNAVAILABLE'] .safetyLabel { color: var(--omnira-amber); }
+.safetyBanner[data-banner='ERROR'] {
+  border-color: rgba(248, 113, 113, 0.48);
+  background: rgba(248, 113, 113, 0.13);
+}
+.safetyBanner[data-banner='ERROR'] .safetyLabel { color: var(--omnira-rose); }

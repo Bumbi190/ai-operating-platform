@@ -366,25 +366,51 @@ function stepsFor(
 }
 
 /**
- * Build one timeline.
+ * Author a timeline on top of a base market observation.
  *
- * Pure and total: same three arguments always produce a deeply equal result,
- * with no clock read and no randomness.
+ * THE AUTHORING STEP, SEPARATED FROM WHERE THE BASE CAME FROM.
+ *
+ * This is what `ReplayTimelineSource` calls after reading its base through the
+ * `MarketViewDataSource` seam. Splitting it out is what lets the bridge put
+ * that seam genuinely on the path without a second fixture generator existing:
+ * the base arrives as an argument, and this function never reaches for one.
+ *
+ * Pure and total: the same scenario and the same base always produce a deeply
+ * equal result, with no clock read and no randomness.
+ */
+export function assembleReplayTimeline(
+  scenarioId: MarketViewScenarioId,
+  base: TradingMarketViewSnapshot,
+): ReplayTimeline {
+  const steps = stepsFor(scenarioId, base)
+  return {
+    scenarioId,
+    instrument: base.instrument,
+    timeframe: base.timeframe,
+    startsAt: base.candles[START_CANDLE].openTime,
+    startCandleIndex: START_CANDLE,
+    events: materialize(scenarioId, base.instrument, base, steps),
+    base,
+  }
+}
+
+/**
+ * Build one timeline synchronously, straight from the fixture generator.
+ *
+ * A CONVENIENCE FOR TESTS AND FIXTURES, not the application's data path. The
+ * Atlas Market View acquires timelines through `ReplayTimelineSource`, which
+ * reads its base through the market-data seam; this skips that seam because a
+ * test asserting replay determinism has no interest in it.
+ *
+ * It is deliberately implemented in terms of the same two pieces the source
+ * uses — `buildFixtureSnapshot` then `assembleReplayTimeline` — so there is one
+ * generator and one authoring step. A test asserts the two paths produce
+ * identical timelines.
  */
 export function buildReplayTimeline(
   scenarioId: MarketViewScenarioId,
   instrument: MarketInstrument,
   timeframe: MarketTimeframe,
 ): ReplayTimeline {
-  const base = buildFixtureSnapshot(scenarioId, instrument, timeframe)
-  const steps = stepsFor(scenarioId, base)
-  return {
-    scenarioId,
-    instrument,
-    timeframe,
-    startsAt: base.candles[START_CANDLE].openTime,
-    startCandleIndex: START_CANDLE,
-    events: materialize(scenarioId, instrument, base, steps),
-    base,
-  }
+  return assembleReplayTimeline(scenarioId, buildFixtureSnapshot(scenarioId, instrument, timeframe))
 }

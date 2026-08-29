@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   MARKET_INSTRUMENTS,
@@ -11,7 +11,11 @@ import {
 } from '@/lib/trading/market-view'
 import {
   INITIAL_CURSOR,
-  buildReplayTimeline,
+  LOADING,
+  createFixtureReplayTimelineSource,
+  identityOfTimeline,
+  isCurrentGeneration,
+  loadTimelineState,
   pause,
   play,
   projectReplay,
@@ -21,8 +25,13 @@ import {
   stepBackward,
   stepForward,
   tickIntervalMs,
+  readyState,
+  timelineIdentity,
+  timelineOf,
   type PlaybackSpeed,
   type ReplayCursor,
+  type ReplayLoadState,
+  type ReplayTimeline,
 } from '@/lib/trading/replay'
 import { resolveMarketViewKeyAction, stepIndex } from '@/lib/trading/market-view/keyboard'
 import { TRADING_WORKSPACE_ID } from '@/lib/atlas/first-party-workspaces'
@@ -30,6 +39,7 @@ import { MarketChart } from './MarketChart'
 import { MarketViewHeader } from './MarketViewHeader'
 import { ExplanationSurface } from './ExplanationSurface'
 import { ReplayControls } from './ReplayControls'
+import { SourceStatus } from './SourceStatus'
 import { ObservedPositionsPanel, PlannedTradesPanel } from './PositionPanels'
 import { ProposalPanel, PropPanel, RiskPanel, SetupPanel, ThesisPanel } from './panels'
 import styles from './AtlasMarketView.module.css'
@@ -53,14 +63,17 @@ import styles from './AtlasMarketView.module.css'
  *
  * AUTHORITY IS ISSUED, NOT DERIVED FROM DATA.
  *
- * WHY THE FIXTURES ARE BUILT CLIENT-SIDE
- * ──────────────────────────────────────
- * `buildReplayTimeline` and `projectReplay` are pure, seeded and
- * dependency-free, so they produce identical output on the server and in the
- * browser. Building here rather than serialising every combination keeps the
- * payload to code, makes switching instant, and keeps SSR and hydration in
- * agreement by construction — both run the same functions with the same
- * arguments.
+ * WHERE THE TIMELINE COMES FROM
+ * ─────────────────────────────
+ * A `ReplayTimelineSource`, and nowhere else. This component does not know how
+ * a timeline is constructed and must not: it holds the cursor and the
+ * presentation state, asks a source for a timeline, and projects it. That is
+ * what lets a real market feed replace the fixture source later without any
+ * change here.
+ *
+ * Loading is async because every future source will be. The fixture source
+ * resolves immediately, but it goes through the same seam, so the loading,
+ * unavailable and error paths are exercised now rather than discovered later.
  *
  * REPLAY
  * ──────
@@ -77,54 +90,120 @@ const DEFAULT_SCENARIO: MarketViewScenarioId = 'long-developing'
 const DEFAULT_INSTRUMENT: MarketInstrument = 'NQ'
 const DEFAULT_TIMEFRAME: MarketTimeframe = '5m'
 
-export function AtlasMarketView() {
+export interface AtlasMarketViewProps {
+  /**
+   * A timeline already in hand for the default selection.
+   *
+   * Optional, and only ever a SEED: acquisition still belongs to the source.
+   * It exists so a server render — or a test, which cannot await inside
+   * `renderToStaticMarkup` — can show the ready workspace instead of a loading
+   * frame. The first load is skipped only while the seed matches the current
+   * selection; every change after that goes through the source like any other.
+   */
+  initialTimeline?: ReplayTimeline
+}
+
+export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) {
   const router = useRouter()
   const [scenario, setScenario] = useState<MarketViewScenarioId>(DEFAULT_SCENARIO)
   const [instrument, setInstrument] = useState<MarketInstrument>(DEFAULT_INSTRUMENT)
   const [timeframe, setTimeframe] = useState<MarketTimeframe>(DEFAULT_TIMEFRAME)
 
-  const timeline = useMemo(
-    () => buildReplayTimeline(scenario, instrument, timeframe),
-    [scenario, instrument, timeframe],
+  // One source per scenario. The component knows the seam, not the construction.
+  const source = useMemo(
+    () => createFixtureReplayTimelineSource({ scenario }),
+    [scenario],
   )
 
-  // Opens at the end of the replay: the same state Stage 1 showed.
-  const [cursor, setCursor] = useState<ReplayCursor>(
-    () => seekTo(INITIAL_CURSOR, timeline.events, timeline.events.length - 1),
+  const [loadState, setLoadState] = useState<ReplayLoadState>(
+    () => (initialTimeline === undefined ? LOADING : readyState(initialTimeline)),
+  )
+  const [cursor, setCursor] = useState<ReplayCursor>(() => (
+    initialTimeline === undefined
+      ? INITIAL_CURSOR
+      : seekTo(INITIAL_CURSOR, initialTimeline.events, initialTimeline.events.length - 1)
+  ))
+
+  /** The selection a seeded timeline already satisfies, consumed once. */
+  const seededKey = useRef<string | null>(
+    initialTimeline === undefined
+      ? null
+      : identityOfTimeline(initialTimeline),
   )
 
   /*
-   * Changing scenario, instrument or timeframe is a different timeline, so the
-   * old cursor position is meaningless against it. Jump to that timeline's end
-   * rather than keeping an index that now points at an unrelated event. The
-   * playback speed is a UI preference and survives.
+   * The generation guard.
+   *
+   * Every load is tagged with the generation that requested it, and a result is
+   * applied only while that generation is still current. Without this, a slow
+   * request for a previously selected instrument would resolve after a faster
+   * newer one and quietly drag the view back to the old selection.
    */
-  const timelineKey = `${scenario}:${instrument}:${timeframe}`
-  const [activeKey, setActiveKey] = useState(timelineKey)
-  if (activeKey !== timelineKey) {
-    setActiveKey(timelineKey)
-    setCursor((current) => ({
-      ...seekTo(INITIAL_CURSOR, timeline.events, timeline.events.length - 1),
-      speed: current.speed,
-    }))
-  }
+  const generation = useRef(0)
+
+  useEffect(() => {
+    // A seed already satisfies this exact selection, so there is nothing to
+    // fetch. Consumed once: any later change loads through the source.
+    if (seededKey.current === timelineIdentity(scenario, instrument, timeframe)) {
+      seededKey.current = null
+      return
+    }
+
+    const requested = generation.current + 1
+    generation.current = requested
+    setLoadState(LOADING)
+    // A new timeline is coming, so the old cursor addresses nothing. Reset to
+    // the start and stop playback; the end position is chosen once the timeline
+    // actually arrives. Speed is a UI preference and survives.
+    setCursor((current) => ({ ...INITIAL_CURSOR, speed: current.speed }))
+
+    let applied = false
+    void loadTimelineState(requested, () => source.load({ instrument, timeframe }))
+      .then((outcome) => {
+        if (!isCurrentGeneration(outcome.generation, generation.current)) return
+        applied = true
+        setLoadState(outcome.state)
+        const loaded = timelineOf(outcome.state)
+        // Open at the end of the replay: the same state Stage 1 showed.
+        if (loaded !== null) {
+          setCursor((current) => ({
+            ...seekTo(INITIAL_CURSOR, loaded.events, loaded.events.length - 1),
+            speed: current.speed,
+          }))
+        }
+      })
+
+    return () => {
+      // Unmount or a newer selection: bump the generation so an in-flight
+      // result can no longer match. `applied` is only read to keep the linter
+      // honest about the closure being used.
+      void applied
+      generation.current += 1
+    }
+  }, [source, scenario, instrument, timeframe])
+
+  const timeline = timelineOf(loadState)
 
   const projection = useMemo(
-    () => projectReplay(timeline, cursor.position),
+    () => (timeline === null ? null : projectReplay(timeline, cursor.position)),
     [timeline, cursor.position],
   )
-  const snapshot = projection.snapshot
+  const snapshot = projection?.snapshot ?? null
 
   // The one wall clock in this component. It advances the cursor and decides
   // nothing else; market state is a function of the cursor, not of this timer.
   useEffect(() => {
-    if (!cursor.playing) return
+    // No timeline means nothing to advance through. Playback also cannot leak
+    // across a reload, because the effect re-runs when the timeline changes and
+    // the cursor was reset to a paused start.
+    if (!cursor.playing || timeline === null) return
+    const events = timeline.events
     const id = setInterval(
-      () => setCursor((current) => stepForward(current, timeline.events)),
+      () => setCursor((current) => stepForward(current, events)),
       tickIntervalMs(cursor.speed),
     )
     return () => clearInterval(id)
-  }, [cursor.playing, cursor.speed, timeline.events])
+  }, [cursor.playing, cursor.speed, timeline])
 
   const shiftInstrument = useCallback((delta: number) => {
     setInstrument((current) => {
@@ -160,6 +239,9 @@ export function AtlasMarketView() {
     <div className={styles.workspace} data-testid="atlas-market-view">
       <MarketViewHeader
         snapshot={snapshot}
+        loadStatus={loadState.status}
+        sourceLabel={source.label}
+        sourceOrigin={source.origin}
         instrument={instrument}
         timeframe={timeframe}
         onInstrumentChange={setInstrument}
@@ -185,39 +267,49 @@ export function AtlasMarketView() {
 
       <ReplayControls
         cursor={cursor}
-        events={timeline.events}
-        marketTimeLabel={snapshot.sessionState.canonicalTime}
-        marketZoneLabel={`${snapshot.sessionState.timezone} ${snapshot.sessionState.utcOffset}`}
-        onPlayPause={() => setCursor((c) => (c.playing ? pause(c) : play(c, timeline.events)))}
-        onStepBackward={() => setCursor((c) => stepBackward(c, timeline.events))}
-        onStepForward={() => setCursor((c) => stepForward(c, timeline.events))}
+        events={timeline?.events ?? []}
+        marketTimeLabel={snapshot?.sessionState.canonicalTime ?? '—'}
+        marketZoneLabel={
+          snapshot === null
+            ? 'ingen tidslinje'
+            : `${snapshot.sessionState.timezone} ${snapshot.sessionState.utcOffset}`
+        }
+        onPlayPause={() => setCursor((c) => (c.playing ? pause(c) : play(c, timeline?.events ?? [])))}
+        onStepBackward={() => setCursor((c) => stepBackward(c, timeline?.events ?? []))}
+        onStepForward={() => setCursor((c) => stepForward(c, timeline?.events ?? []))}
         onReset={() => setCursor(resetCursor)}
-        onSeek={(position) => setCursor((c) => seekTo(c, timeline.events, position))}
+        onSeek={(position) => setCursor((c) => seekTo(c, timeline?.events ?? [], position))}
         onSpeed={(speed: PlaybackSpeed) => setCursor((c) => setSpeed(c, speed))}
       />
 
-      <div className={styles.canvas}>
-        <div className={styles.chartColumn}>
-          <MarketChart snapshot={snapshot} />
-        </div>
+      {projection === null || snapshot === null ? (
+        <SourceStatus state={loadState} />
+      ) : (
+        <>
+          <div className={styles.canvas}>
+            <div className={styles.chartColumn}>
+              <MarketChart snapshot={snapshot} />
+            </div>
 
-        <aside className={styles.rail} aria-label="Marknadsanalys">
-          {/*
-            Planned and observed lead the rail — they are what the future
-            graph-first terminal keeps, and putting them first now makes that
-            redesign a layout change rather than a rewrite.
-          */}
-          <PlannedTradesPanel plans={projection.plannedTrades} />
-          <ObservedPositionsPanel positions={projection.observedPositions} />
-          <ThesisPanel thesis={snapshot.thesis} />
-          <SetupPanel setup={snapshot.setup} />
-          <RiskPanel risk={snapshot.riskState} />
-          <PropPanel prop={snapshot.propState} position={snapshot.positionState} />
-          <ProposalPanel proposal={snapshot.tradeProposal} />
-        </aside>
-      </div>
+            <aside className={styles.rail} aria-label="Marknadsanalys">
+              {/*
+                Planned and observed lead the rail — they are what the future
+                graph-first terminal keeps, and putting them first now makes that
+                redesign a layout change rather than a rewrite.
+              */}
+              <PlannedTradesPanel plans={projection.plannedTrades} />
+              <ObservedPositionsPanel positions={projection.observedPositions} />
+              <ThesisPanel thesis={snapshot.thesis} />
+              <SetupPanel setup={snapshot.setup} />
+              <RiskPanel risk={snapshot.riskState} />
+              <PropPanel prop={snapshot.propState} position={snapshot.positionState} />
+              <ProposalPanel proposal={snapshot.tradeProposal} />
+            </aside>
+          </div>
 
-      <ExplanationSurface explanation={snapshot.explanation} snapshot={snapshot} />
+          <ExplanationSurface explanation={snapshot.explanation} snapshot={snapshot} />
+        </>
+      )}
 
       <p className={styles.keyboardHint}>← → byt instrument · Esc eller Backspace tillbaka till Atlas</p>
     </div>

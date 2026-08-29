@@ -11,6 +11,7 @@
     "test": "vitest run",
     "knowledge:build": "../../node_modules/.bin/tsx scripts/build-architecture-knowledge.ts",
     "knowledge:verify": "../../node_modules/.bin/tsx scripts/verify-architecture-knowledge.ts",
+    "knowledge:shadow": "../../node_modules/.bin/tsx scripts/knowledge-shadow.ts",
     "knowledge:test": "../../node_modules/.bin/vitest run lib/architecture-knowledge lib/qa/architecture-knowledge*.test.ts"
   },
   "dependencies": {

@@ -40,6 +40,7 @@ import { FAMILJE_STUNDEN_MONTHLY_RELEASE } from '@/lib/workflows/definitions'
 import { InvalidMonthKeyError, computeReleaseInstant } from './instant'
 import { FAMILJE_STUNDEN_CHECKS } from './checks'
 import { checkConsumersInSync, readAllConsumers, verifyDeployedSource } from './deployed-source'
+import { verifyDeploymentChain, verifyReleaseDeployment, configuredReleasePr } from './deployment'
 
 export const FAMILJE_STUNDEN_SYSTEM = 'familje-stunden'
 
@@ -256,11 +257,18 @@ const VERIFIABLE: Record<string, (monthKey: string, now: string) => Promise<Veri
   // KFM 3/4/5: a merged shared file is not a deployed shared file. This is the
   // state where that is established, against production rather than the repo.
   edge_deploy: async (_monthKey, now) => verifyDeployedSource(now),
+  // The frontend half of the chain. Deliberately separate from edge_deploy:
+  // Vercel deploys only the frontend and never touches the Edge Functions, so
+  // a green Vercel deployment says nothing about the protected manifest.
+  frontend_deploy: async (_monthKey, now) => verifyReleaseDeployment(now),
   approval_release: async (monthKey, now) => [
     await checkAnonymousProtectedAccessDenied(monthKey, now),
     checkNonAdminAccess(monthKey, now),
     // Re-read: a redeploy between edge_deploy and approval would otherwise slip past.
     checkConsumersInSync(await readAllConsumers(now), now),
+    ...(configuredReleasePr() === null ? [] :
+      (await verifyDeploymentChain({ prNumber: configuredReleasePr()! }, now))
+        .filter(e => e.check_key === 'vercel_deploy_sha_matches_merge_sha')),
   ],
   scheduled_release: async (monthKey, now) => [
     checkReleaseInstant(monthKey, now),
@@ -271,6 +279,9 @@ const VERIFIABLE: Record<string, (monthKey: string, now: string) => Promise<Veri
     checkNonAdminAccess(monthKey, now),
     checkVisibleMonths(now),
     checkConsumersInSync(await readAllConsumers(now), now),
+    ...(configuredReleasePr() === null ? [] :
+      (await verifyDeploymentChain({ prNumber: configuredReleasePr()! }, now))
+        .filter(e => e.check_key === 'vercel_deploy_sha_matches_merge_sha')),
   ],
 }
 

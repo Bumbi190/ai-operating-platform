@@ -121,7 +121,10 @@ describe('mobile nav · the component consumes the model', () => {
     // mounted beside it and still receives its data.
     const home = read('components/platform/vnext/AtlasHomeVNext.tsx')
     expect(home).toContain('<ProjectRail')
-    expect(home).toContain('projects={model.projects}')
+    // The rail takes composed cards rather than a bare project array since
+    // first-party system workspaces joined it, but the authorized project data
+    // still reaches it and nothing else feeds project selection.
+    expect(home).toContain('composeAtlasRailCards(model.projects)')
     expect(home).toContain('<AtlasMobileNav')
     // And the mobile nav is no longer handed project data at all.
     expect(home).not.toMatch(/<AtlasMobileNav[^>]*projects=/)

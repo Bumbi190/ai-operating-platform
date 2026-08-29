@@ -37,6 +37,7 @@ export type DestinationId =
   | 'planning'
   | 'settings'
   | 'intelligence_graph'
+  | 'trading'
   | 'project_home'
 
 type ProjectMode = 'none' | 'query' | 'path'
@@ -86,6 +87,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   planning: '/planning',
   settings: '/settings',
   intelligence_graph: '/intelligence/graph',
+  trading: '/trading',
   project_home: '/projects', // path mode → /projects/<slug>
 }
 
@@ -150,6 +152,16 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
   intelligence_graph: {
     id: 'intelligence_graph', label: 'Intelligence Graph',
     keywords: ['intelligence', 'graph', 'graf', 'system map', 'arkitektur', 'architecture', 'karta', 'live operations'],
+    projectMode: 'none',
+  },
+  trading: {
+    id: 'trading', label: 'Trading',
+    keywords: [
+      'trading', 'trade', 'marknad', 'market', 'market view', 'atlas market view',
+      'chart', 'diagram', 'candles', 'futures', 'terminer', 'nq', 'mnq', 'es', 'setup',
+    ],
+    // Project-neutral: the Trading system is its own workspace, not a lens on
+    // one of the Supabase-backed businesses in the project rail.
     projectMode: 'none',
   },
   project_home: {
@@ -339,6 +351,7 @@ export function projectDisplayName(slug: string): string | undefined {
 /** Default jump targets shown in the palette before the operator types. */
 export const PRIMARY_JUMP_TARGETS: DestinationId[] = [
   'atlas', 'chat', 'approvals', 'activity', 'money', 'revenue', 'actions', 'health', 'knowledge',
+  'trading',
 ]
 
 interface ProjectLite { name: string; slug: string }

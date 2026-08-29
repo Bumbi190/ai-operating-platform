@@ -66,6 +66,15 @@ export interface AttestableCheck {
    * checks that are claims ABOUT built files — rebuilding must invalidate them.
    */
   binds_artifacts: boolean
+  /**
+   * Whether this check must be SATISFIED for safe advancement.
+   *
+   * A required check that is absent, stale or blocked holds the workflow. An
+   * informational one is recorded and shown but does not hold anything — it is
+   * a fact worth having, not a gate. Stating it per check keeps "we could not
+   * run this" from silently becoming either a blocker or a shrug.
+   */
+  required: boolean
 }
 
 // ── Target binding ───────────────────────────────────────────────────────────

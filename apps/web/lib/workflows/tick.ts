@@ -27,14 +27,21 @@
 
 import 'server-only'
 
-import { createAdminClient } from '@/lib/supabase/admin'
 import {
   claimDueWorkflowInstances,
+  listEvidence,
   listTransitions,
   readDefinitionById,
   recordWorkflowTick,
   type WorkflowDb,
 } from './store'
+import { computeEvidenceTargetHash } from './attestation'
+import { summarizeStateEvidence } from './evidence-consumption'
+import {
+  decideNotification, escalationEmail, listActiveWorkflowSignals,
+  raiseWorkflowSignal, resolveWorkflowSignal, type SignalWriter,
+} from './escalation'
+import { sendAdminNotification } from '@/lib/email/brevo'
 import { systemDeriveWorkflowGate, type LedgerReader } from './system-authorization'
 import { findAdapter } from './adapters/registry'
 import type { VerificationEvidence } from './adapters/types'
@@ -50,14 +57,23 @@ export interface TickOptions {
   limit?: number
   visibilitySeconds?: number
   ledger?: LedgerReader
-  /** Injected so tests can assert escalation without writing signals. */
-  emitSignal?: (kind: string, payload: Record<string, unknown>) => Promise<void>
+  /**
+   * The Signal Platform write path. Production uses `recordSignal`, which builds
+   * its own admin client; tests inject one so the escalation lifecycle can be
+   * observed without a database.
+   */
+  signalWriter?: SignalWriter
 }
 
 export interface TickResult {
   claimed: number
   evaluated: { instanceId: string; instanceKey: string; outcome: string; reason: string }[]
+  /** Conditions newly raised or regressed this tick. Repeats are not counted. */
   escalated: number
+  /** Conditions that recovered this tick. */
+  resolved: number
+  /** Operator emails sent. Zero unless WORKFLOW_ESCALATION_EMAIL=1. */
+  notified: number
   errors: { instanceId: string; error: string }[]
 }
 
@@ -111,19 +127,41 @@ export async function evaluateDueWorkflow(
     }
   }
 
-  return evaluateWorkflowTick({
-    instance, spec: def.spec, transitions, gate, projectPaused, now, verification,
-  })
-}
-
-/** Append an escalation signal. Best-effort: never fails the tick. */
-async function defaultEmitSignal(kind: string, payload: Record<string, unknown>): Promise<void> {
-  try {
-    const db = createAdminClient() as unknown as { from: (t: string) => any }
-    await db.from('atlas_signals').insert({ kind, payload, version: 'workflow-tick-v1' })
-  } catch (e) {
-    console.error('[workflow-tick] signal emit failed:', e)
+  // Recorded evidence (PR5) for the checks this state declares, judged against
+  // the CURRENT target. Stale, refused and absent all resolve here, not later.
+  let evidence: Awaited<ReturnType<typeof summarizeStateEvidence>>['verdicts'] = []
+  let requiredChecks = new Set<string>()
+  if (adapter) {
+    try {
+      const rows = await listEvidence(db, instance.id)
+      const declared = adapter.attestableChecks().filter(c => c.state === instance.current_state)
+      requiredChecks = new Set(declared.filter(c => c.required).map(c => c.check_key))
+      evidence = summarizeStateEvidence(
+        adapter.attestableChecks(), instance.current_state, rows,
+        checkKey => {
+          const row = rows.find(r => r.check_key === checkKey)
+          const meta = (row?.attestation ?? {}) as
+            { source_commit?: string; artifact_manifest_hash?: string }
+          return computeEvidenceTargetHash({
+            instance, spec: def.spec, state: instance.current_state, checkKey,
+            sourceCommit: meta.source_commit ?? null,
+            artifactManifestHash: meta.artifact_manifest_hash ?? null,
+          })
+        },
+      ).verdicts
+    } catch (e) {
+      // Unreadable evidence is never "nothing is wrong". Surface it as a
+      // condition rather than evaluating as if the checks did not exist.
+      console.error(`[workflow-tick] ${instance.id} evidence read failed:`, e)
+      evidence = []
+      requiredChecks = new Set()
+    }
   }
+
+  return evaluateWorkflowTick({
+    instance, spec: def.spec, transitions, gate, projectPaused, now,
+    verification, evidence, requiredChecks,
+  })
 }
 
 /**
@@ -137,13 +175,14 @@ export async function tickDueWorkflows(
   options: TickOptions = {},
 ): Promise<TickResult> {
   const now = options.now ?? new Date().toISOString()
-  const emit = options.emitSignal ?? defaultEmitSignal
 
   const claimed = await claimDueWorkflowInstances(
     db, options.limit ?? 20, options.visibilitySeconds ?? 300,
   )
 
-  const result: TickResult = { claimed: claimed.length, evaluated: [], escalated: 0, errors: [] }
+  const result: TickResult = {
+    claimed: claimed.length, evaluated: [], escalated: 0, resolved: 0, notified: 0, errors: [],
+  }
 
   for (const instance of claimed) {
     try {
@@ -164,16 +203,63 @@ export async function tickDueWorkflows(
         verification_findings: evaluation.verificationFindings,
       }, nextWakeAt)
 
-      if (evaluation.escalate) {
-        result.escalated += 1
-        await emit('workflow.integrity_failure', {
-          instance_id: instance.id,
-          instance_key: instance.instance_key,
-          def_key: instance.def_key,
-          state: evaluation.state,
-          reason: evaluation.reason,
-          severity: 'critical',
+      // ── Escalation ───────────────────────────────────────────────────────
+      // Each condition becomes at most one OPEN signal. A repeated identical
+      // detection appends nothing, which is what keeps a once-a-minute tick
+      // from writing a once-a-minute incident log.
+      const openBefore = await listActiveWorkflowSignals(instance.project_id, db)
+      const stillOpen = new Set<string>()
+
+      for (const condition of evaluation.conditions) {
+        const raised = await raiseWorkflowSignal({
+          projectId: instance.project_id,
+          instanceId: instance.id,
+          instanceKey: instance.instance_key,
+          defKey: instance.def_key,
+          defVersion: instance.def_version,
+          defHash: instance.def_hash,
+          state: evaluation.state ?? instance.current_state,
+          failureClass: condition.failureClass,
+          checkKey: condition.checkKey,
+          targetHash: condition.targetHash,
+          provenance: condition.provenance,
+          summary: condition.summary,
+          observedAt: now,
+        }, db, options.signalWriter)
+        stillOpen.add(raised.signalKey)
+        if (raised.outcome !== 'unchanged') result.escalated += 1
+
+        // Email is default-off and only ever on a lifecycle CHANGE, so a
+        // repeated detection cannot notify at all. Best-effort: a mail failure
+        // must never fail a tick or lose the signal that was already recorded.
+        const decision = decideNotification({
+          severity: raised.severity, outcome: raised.outcome, now,
+          previousEventAt: openBefore.find(o => o.signalKey === raised.signalKey)?.producedAt ?? null,
         })
+        if (decision.notify && raised.signal) {
+          result.notified += 1
+          try {
+            const { subject, html } = escalationEmail(raised.signal.payload)
+            await sendAdminNotification(subject, html)
+          } catch (mailErr) {
+            console.error('[workflow-tick] escalation email failed:', mailErr)
+          }
+        }
+      }
+
+      // Anything open for THIS instance that the current evaluation no longer
+      // finds has recovered. The original event is never edited or deleted — a
+      // `resolved` event is appended beside it, so the history stays readable.
+      for (const open of openBefore) {
+        if (open.payload.instance_id !== instance.id) continue
+        if (stillOpen.has(open.signalKey)) continue
+        await resolveWorkflowSignal({
+          projectId: instance.project_id,
+          signalKey: open.signalKey,
+          summary: 'condition no longer present in the current evaluation',
+          observedAt: now,
+        }, db, options.signalWriter)
+        result.resolved += 1
       }
 
       result.evaluated.push({
@@ -188,6 +274,19 @@ export async function tickDueWorkflows(
       const message = e instanceof Error ? e.message : 'unknown error'
       console.error(`[workflow-tick] ${instance.id} evaluation failed:`, message)
       result.errors.push({ instanceId: instance.id, error: message })
+      // The instance keeps its pushed-forward wake and is retried; a repeated
+      // failure escalates once rather than every minute.
+      try {
+        await raiseWorkflowSignal({
+          projectId: instance.project_id, instanceId: instance.id,
+          instanceKey: instance.instance_key, defKey: instance.def_key,
+          defVersion: instance.def_version, defHash: instance.def_hash,
+          state: instance.current_state, failureClass: 'scheduler_error',
+          summary: `tick evaluation failed: ${message.slice(0, 300)}`, observedAt: now,
+        }, db, options.signalWriter)
+      } catch (signalErr) {
+        console.error('[workflow-tick] escalation failed:', signalErr)
+      }
     }
   }
 

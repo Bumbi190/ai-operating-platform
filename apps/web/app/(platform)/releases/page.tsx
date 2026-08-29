@@ -13,7 +13,7 @@
  */
 
 import { redirect } from 'next/navigation'
-import { AlertTriangle, Clock, FileCheck, GitBranch, Lock, Moon, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Clock, FileCheck, GitBranch, Lock, Moon, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OSPage, OSLayer, Panel, SectionHeader, PulseDot, EmptyState } from '@/components/platform/os'
@@ -28,6 +28,10 @@ import { findAdapter } from '@/lib/workflows/adapters/registry'
 import type { VerificationEvidence } from '@/lib/workflows/adapters/types'
 import { computeEvidenceTargetHash } from '@/lib/workflows/attestation'
 import { summarizeStateEvidence, type CheckVerdict } from '@/lib/workflows/evidence-consumption'
+import {
+  deriveWorkflowHealth, listActiveWorkflowSignals,
+  type ActiveWorkflowSignal, type WorkflowHealth,
+} from '@/lib/workflows/escalation'
 import { GateActions } from './GateActions'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE, loadVendoredDefinitions } from '@/lib/workflows/definitions'
 import type { WorkflowSpec } from '@/lib/workflows/types'
@@ -80,6 +84,8 @@ export default async function ReleasesPage() {
     verification: VerificationEvidence[]
     authoritativeSystem: string | null
     checkVerdicts: CheckVerdict[]
+    signals: ActiveWorkflowSignal[]
+    health: WorkflowHealth
     mayDecide: boolean
     projected: string
     projectionAgrees: boolean
@@ -140,6 +146,15 @@ export default async function ReleasesPage() {
         }
       }
 
+      // Open conditions for this instance, derived from the signal event chain.
+      let signals: ActiveWorkflowSignal[] = []
+      try {
+        signals = (await listActiveWorkflowSignals(instance.project_id, db))
+          .filter(sig => sig.payload.instance_id === instance.id)
+      } catch {
+        signals = []
+      }
+
       cards.push({
         instanceId: instance.id,
         instanceKey: instance.instance_key,
@@ -155,6 +170,8 @@ export default async function ReleasesPage() {
         verification,
         authoritativeSystem: adapter?.authoritativeSystem ?? null,
         checkVerdicts,
+        signals,
+        health: deriveWorkflowHealth(signals, derived.awaiting_human_gate),
         mayDecide: assertProjectAllowed(instance.project_id, allowedProjectIds),
         projected: instance.current_state,
         projectionAgrees: derived.current_state === instance.current_state,
@@ -263,6 +280,47 @@ export default async function ReleasesPage() {
                         lands with the read-only verification phase.
                       </div>
                     </div>
+                  )}
+
+                  <div className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 ${HEALTH_TONE[card.health]}`}>
+                    <span className="flex items-center gap-2 text-xs font-medium">
+                      {card.health === 'critical' || card.health === 'failed'
+                        ? <ShieldAlert className="h-4 w-4" />
+                        : <ShieldCheck className="h-4 w-4" />}
+                      {HEALTH_LABEL[card.health]}
+                    </span>
+                    <span className="text-[11px] opacity-70">
+                      {card.signals.length === 0
+                        ? 'no open conditions'
+                        : `${card.signals.length} open condition${card.signals.length === 1 ? '' : 's'}`}
+                    </span>
+                  </div>
+
+                  {card.signals.length > 0 && (
+                    <ul className="space-y-1.5">
+                      {card.signals.map(sig => (
+                        <li key={sig.signalKey}
+                            className={`rounded border p-2.5 text-[11px] ${SIGNAL_TONE[sig.payload.severity]}`}>
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="font-mono uppercase">{sig.payload.severity}</span>
+                            <span className="font-mono">{sig.payload.failure_class}</span>
+                            {sig.payload.check_key && (
+                              <span className="opacity-70">{sig.payload.check_key}</span>
+                            )}
+                            <span className="opacity-50">state: {sig.payload.state}</span>
+                            <span className="opacity-50">detected {sig.producedAt}</span>
+                            {sig.kind === 'workflow.escalation.regressed' && (
+                              <span className="font-mono opacity-70">(regressed)</span>
+                            )}
+                            {sig.payload.provenance && (
+                              <span className="opacity-50">via {sig.payload.provenance}</span>
+                            )}
+                          </div>
+                          <div className="mt-1 opacity-80">{sig.payload.summary}</div>
+                          <div className="mt-1 opacity-60">→ {sig.payload.remediation}</div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
 
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/50">
@@ -435,6 +493,32 @@ export default async function ReleasesPage() {
       </OSLayer>
     </OSPage>
   )
+}
+
+/**
+ * Health tone. Critical is deliberately the loudest thing on the card — a leak
+ * or a corrupt history must not look like an ordinary blocked check.
+ */
+const HEALTH_TONE: Record<WorkflowHealth, string> = {
+  healthy:  'border-emerald-400/20 bg-emerald-400/[0.04] text-emerald-200/80',
+  waiting:  'border-white/10 bg-white/[0.02] text-white/60',
+  blocked:  'border-amber-400/25 bg-amber-400/[0.06] text-amber-200/90',
+  failed:   'border-rose-400/30 bg-rose-400/[0.07] text-rose-200',
+  critical: 'border-rose-500/60 bg-rose-500/15 text-rose-100',
+}
+
+const HEALTH_LABEL: Record<WorkflowHealth, string> = {
+  healthy:  'Healthy',
+  waiting:  'Waiting on a human',
+  blocked:  'Blocked',
+  failed:   'Failed verification',
+  critical: 'CRITICAL — do not advance',
+}
+
+const SIGNAL_TONE: Record<string, string> = {
+  critical: 'border-rose-500/50 bg-rose-500/10 text-rose-100',
+  high:     'border-rose-400/25 bg-rose-400/[0.06] text-rose-200/90',
+  normal:   'border-amber-400/20 bg-amber-400/[0.04] text-amber-200/80',
 }
 
 /**

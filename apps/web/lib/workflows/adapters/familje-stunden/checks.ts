@@ -33,6 +33,7 @@ const artifactCheck = (
   check_key, state, description,
   allowed_provenance: ['attested'],
   binds_artifacts: true,
+  required: true,
 })
 
 /** Claims about the repository at a commit rather than about artefacts. */
@@ -42,15 +43,18 @@ const repoCheck = (
   check_key, state, description,
   allowed_provenance: ['attested'],
   binds_artifacts: false,
+  required: true,
 })
 
 /** Something Omnira observes itself. An attestation is not accepted. */
 const observedCheck = (
   check_key: string, state: string, description: string,
+  required = true,
 ): AttestableCheck => ({
   check_key, state, description,
   allowed_provenance: ['automated'],
   binds_artifacts: false,
+  required,
 })
 
 export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
@@ -90,8 +94,10 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // ── Observed by Omnira, never attested ───────────────────────────────────
   observedCheck('anonymous_protected_access_denied', 'approval_release',
     'Unauthenticated callers are refused by every protected endpoint'),
+  // Informational: a recorded computation, not a gate. Worth having in the
+  // audit; it holds nothing up if it has not been recorded yet.
   observedCheck('release_instant_computed', 'planning',
-    'The requested release instant, computed from the calendar and the zone'),
+    'The requested release instant, computed from the calendar and the zone', false),
 ]
 
 const BY_KEY = new Map(FAMILJE_STUNDEN_CHECKS.map(c => [`${c.state}:${c.check_key}`, c]))

@@ -24,6 +24,7 @@ import { sha256 } from '@/lib/architecture-knowledge/hash'
 import { stripFrontMatter } from '@/lib/architecture-knowledge/normalize'
 import {
   authorityRankFor, isKnowledgeStatus, isKnowledgeType, isSourceOfTruth,
+  resolveTrustedSourceOfTruth,
 } from './policy'
 import type {
   KnowledgeAuthorityRank, KnowledgeDiagnostic, KnowledgeProvenance,
@@ -37,7 +38,10 @@ export interface ParsedKnowledgeDocument {
   type: KnowledgeType | null
   status: KnowledgeStatus | null
   project: string | null
-  sourceOfTruth: KnowledgeSourceOfTruth | null
+  /** Exactly what the note declared, recognized or null. For diagnostics. */
+  declaredSourceOfTruth: KnowledgeSourceOfTruth | null
+  /** What a consumer may act on, after the pointer contract is applied. */
+  sourceOfTruth: KnowledgeSourceOfTruth
   canonicalPath: string | null
   authorityRank: KnowledgeAuthorityRank
   /** Body with the frontmatter block removed. */
@@ -128,13 +132,20 @@ export function parseKnowledgeDocument(raw: string, relativePath: string): Parse
 
   const canonicalPath = frontMatter.canonical_path?.trim() || null
   // A note claiming the repository is authoritative must say WHICH file, or the
-  // claim is unverifiable and the pointer half of the contract is missing.
+  // claim is unverifiable. It is NOT honoured: the trusted classification below
+  // degrades to 'vault', so the note cannot award itself repository authority by
+  // typing one line of frontmatter.
   if (sourceOfTruth === 'repository' && !canonicalPath) {
     diagnostics.push({
       issue: 'canonical_pointer_missing', field: 'canonical_path',
-      detail: 'source_of_truth is repository but no canonical_path was given',
+      detail:
+        'declared source_of_truth: repository but no canonical_path was given; ' +
+        'the claim is unverifiable and is treated as vault',
     })
   }
+
+  // What a consumer may act on. Distinct from what the note declared.
+  const trustedSourceOfTruth = resolveTrustedSourceOfTruth(sourceOfTruth, canonicalPath)
 
   const project = frontMatter.project?.trim() || null
 
@@ -145,9 +156,10 @@ export function parseKnowledgeDocument(raw: string, relativePath: string): Parse
     type,
     status,
     project,
-    sourceOfTruth,
+    declaredSourceOfTruth: sourceOfTruth,
+    sourceOfTruth: trustedSourceOfTruth,
     canonicalPath,
-    authorityRank: authorityRankFor(sourceOfTruth, status),
+    authorityRank: authorityRankFor(trustedSourceOfTruth, status),
     body,
     headings: headingsFrom(body),
     contentHash: sha256(raw),
@@ -160,10 +172,10 @@ export function provenanceFor(doc: ParsedKnowledgeDocument, providerId: string):
     provider: providerId,
     sourcePath: doc.path,
     contentHash: doc.contentHash,
-    // Unstated source-of-truth defaults to 'vault': the note speaks only for
-    // itself. It never defaults to 'repository', which would silently borrow
-    // canonical authority the note has not earned.
-    sourceOfTruth: doc.sourceOfTruth ?? 'vault',
+    // The TRUSTED classification, not the raw declaration. An unverifiable
+    // repository claim has already degraded to 'vault' in parseKnowledgeDocument,
+    // so provenance can never advertise repository authority without a pointer.
+    sourceOfTruth: doc.sourceOfTruth,
     canonicalPath: doc.canonicalPath,
   }
 }

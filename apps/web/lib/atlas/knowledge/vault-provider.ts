@@ -250,9 +250,13 @@ export function createVaultKnowledgeProvider(config: VaultProviderConfig): Knowl
       if (path.split(/[/\\]/).includes('..')) return null
 
       const normalized = path.split(/[\\/]/).join('/')
-      // `get` may read Inbox/Archive by exact path — the folder policy shapes
-      // ordinary search results, not a caller's explicit, named request.
-      if (isExcludedPath(normalized, true)) return null
+      // Folder policy applies to `get` exactly as it applies to `search`. A
+      // caller must not be able to ingest unreviewed capture (00 Inbox) or
+      // superseded material (90 Archive) merely by possessing or constructing a
+      // path. Operators and Claude still inspect those notes through the
+      // Obsidian CLI or the filesystem — that need does not justify widening
+      // the generic Atlas-facing provider.
+      if (isExcludedPath(normalized, false)) return null
 
       const absolute = resolve(realRoot, normalized)
       let real: string

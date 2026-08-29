@@ -65,6 +65,20 @@ export interface KnowledgeDiagnostic {
  * Where a hit came from and how to check it. `canonicalPath` is a POINTER, not
  * permission to crawl: it names the authoritative repository file so a reader
  * can go and look, and it is never dereferenced by this provider.
+ *
+ * ── sourceOfTruth IS THE TRUSTED CLASSIFICATION, NOT THE DECLARATION ─────────
+ * This is what a consumer may act on, after the repository pointer contract has
+ * been applied — not the literal frontmatter value. A note declaring
+ * `source_of_truth: repository` with no `canonical_path` is making an
+ * unverifiable claim, so it is reported here as 'vault' and carries a
+ * `canonical_pointer_missing` diagnostic.
+ *
+ * The invariant that follows, and which callers may rely on:
+ *   sourceOfTruth === 'repository'  ⟹  canonicalPath !== null
+ *
+ * Without that, a note could award itself the top of the authority ladder by
+ * typing one line of frontmatter, and a consumer told "the repository is
+ * authoritative" would have no file to go and read.
  */
 export interface KnowledgeProvenance {
   /** Provider id, e.g. 'obsidian-vault'. */
@@ -73,8 +87,9 @@ export interface KnowledgeProvenance {
   sourcePath: string
   /** SHA-256 of the raw file bytes, so a caller can detect drift. */
   contentHash: string
+  /** Trusted classification. 'repository' guarantees a non-null canonicalPath. */
   sourceOfTruth: KnowledgeSourceOfTruth
-  /** Repo-relative canonical file when sourceOfTruth is 'repository'. */
+  /** Repo-relative canonical file. Always present when sourceOfTruth is 'repository'. */
   canonicalPath: string | null
 }
 

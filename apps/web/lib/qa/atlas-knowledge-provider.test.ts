@@ -198,9 +198,85 @@ describe('frontmatter — fail closed', () => {
 
   it('repository source-of-truth without canonical_path is flagged', async () => {
     const doc = await provider.get('60 Memory/pointerless.md')
-    expect(doc!.provenance.sourceOfTruth).toBe('repository')
     expect(doc!.provenance.canonicalPath).toBeNull()
     expect(doc!.diagnostics.some((d) => d.issue === 'canonical_pointer_missing')).toBe(true)
+  })
+})
+
+/**
+ * The repository pointer contract.
+ *
+ * An earlier revision granted authority rank 1 to any note whose frontmatter
+ * said `source_of_truth: repository`, whether or not it named a canonical file.
+ * That let a note award itself the top of the authority ladder by typing one
+ * line — the exact failure this layer exists to prevent. The tests below pin
+ * both halves of the rule, because a diagnostic alone did not catch it.
+ */
+describe('repository pointer contract — a claim must be verifiable to be honoured', () => {
+  it('VALID: repository + canonical_path earns authority rank 1', async () => {
+    const doc = await provider.get('10 Architecture/canonical-pointer.md')
+    expect(doc!.provenance.sourceOfTruth).toBe('repository')
+    expect(doc!.provenance.canonicalPath).toBe('docs/architecture/intelligence-fabric/README.md')
+    expect(doc!.authorityRank).toBe(1)
+  })
+
+  it('INVALID: repository without canonical_path must NOT be rank 1', async () => {
+    const doc = await provider.get('60 Memory/pointerless.md')
+    expect(doc!.diagnostics.some((d) => d.issue === 'canonical_pointer_missing')).toBe(true)
+    expect(doc!.authorityRank).not.toBe(1)
+    // It declared `status: approved`, so it lands on the approved rung — earned
+    // by its own editorial status, not by the unverifiable repository claim.
+    expect(doc!.authorityRank).toBe(3)
+  })
+
+  it('INVALID: provenance degrades to vault rather than advertising repository', async () => {
+    const doc = await provider.get('60 Memory/pointerless.md')
+    expect(doc!.provenance.sourceOfTruth).toBe('vault')
+    expect(doc!.provenance.canonicalPath).toBeNull()
+  })
+
+  it('the invariant holds for every hit: repository implies a canonical pointer', async () => {
+    const result = await provider.search({ query: 'routing', limit: 20, includeExcludedFolders: true })
+    const all = await provider.search({ query: '', limit: 20, includeExcludedFolders: true })
+    for (const hit of [...result.hits, ...all.hits]) {
+      if (hit.provenance.sourceOfTruth === 'repository') {
+        expect(hit.provenance.canonicalPath, `${hit.path} claims repository with no pointer`).not.toBeNull()
+      }
+      if (hit.authorityRank === 1) {
+        expect(hit.provenance.sourceOfTruth).toBe('repository')
+        expect(hit.provenance.canonicalPath).not.toBeNull()
+      }
+    }
+  })
+
+  it('a pointerless claim cannot outrank an equivalent valid repository note', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omnira-vault-pointer-'))
+    try {
+      mkdirSync(join(dir, '10 Architecture'), { recursive: true })
+      // Identical subject, identical status. The ONLY difference is that one
+      // names a canonical file and the other just claims the word.
+      writeFileSync(join(dir, '10 Architecture', 'a-valid.md'),
+        '---\ntype: architecture\nstatus: approved\nsource_of_truth: repository\n' +
+        'canonical_path: docs/architecture/thing.md\n---\n\n# Widget\n\nThe widget subject.\n', 'utf8')
+      writeFileSync(join(dir, '10 Architecture', 'b-pointerless.md'),
+        '---\ntype: architecture\nstatus: approved\nsource_of_truth: repository\n---\n\n' +
+        '# Widget\n\nThe widget subject.\n', 'utf8')
+
+      const p = createVaultKnowledgeProvider({ vaultRoot: dir })
+      const result = await p.search({ query: 'widget' })
+      expect(result.hits).toHaveLength(2)
+
+      const valid = result.hits.find((h) => h.path.endsWith('a-valid.md'))!
+      const pointerless = result.hits.find((h) => h.path.endsWith('b-pointerless.md'))!
+      expect(valid.authorityRank).toBe(1)
+      expect(pointerless.authorityRank).toBe(3)
+      // Equal relevance, so the authority tie-break decides — and it puts the
+      // verifiable note first.
+      expect(valid.score).toBe(pointerless.score)
+      expect(result.hits[0].path).toBe(valid.path)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -253,6 +329,20 @@ describe('path safety — fails closed', () => {
   it('rejects hidden/system paths by exact request', async () => {
     expect(await provider.get('.obsidian/notes.md')).toBeNull()
     expect(await provider.get('.git/leak.md')).toBeNull()
+  })
+
+  it('folder policy applies to get() too — excluded material is unreadable by exact path', async () => {
+    // Resolved policy: a caller must not be able to ingest unreviewed capture or
+    // superseded material merely by possessing or constructing a path. Operators
+    // still reach these notes through the Obsidian CLI or the filesystem.
+    expect(await provider.get('00 Inbox/inbox-capture.md')).toBeNull()
+    expect(await provider.get('90 Archive/archived.md')).toBeNull()
+  })
+
+  it('included notes remain readable by exact path', async () => {
+    expect(await provider.get('10 Architecture/context-boundary.md')).not.toBeNull()
+    expect(await provider.get('20 Decisions/reviewed-decision.md')).not.toBeNull()
+    expect(await provider.get('60 Memory/bare.md')).not.toBeNull()
   })
 
   it('a symlink escaping the vault is never returned by search', async () => {

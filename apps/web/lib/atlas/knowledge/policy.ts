@@ -59,6 +59,38 @@ export const KNOWLEDGE_BOUNDS = {
 } as const
 
 /**
+ * The repository pointer contract, in ONE place.
+ *
+ * A note claiming `source_of_truth: repository` is claiming that some file in
+ * the repository — not this note — is authoritative. That claim is only
+ * meaningful if it says WHICH file. Without a `canonical_path` there is nothing
+ * to check it against, so the claim is unverifiable and must not be honoured:
+ * it degrades to `vault`, meaning the note speaks only for itself.
+ *
+ * This is the fail-closed direction. The opposite — honouring the literal word
+ * "repository" — would let any note award itself the highest authority in the
+ * ladder by typing one line of frontmatter, which is exactly the failure this
+ * layer exists to prevent.
+ *
+ * Phase-1 scope: presence of a pointer, not verification that the pointed-at
+ * file exists. Resolving canonical paths against the repository is a later,
+ * explicit decision; this function deliberately does no I/O.
+ *
+ * The degradation is never silent — document.ts records a
+ * `canonical_pointer_missing` diagnostic naming what was declared.
+ */
+export function resolveTrustedSourceOfTruth(
+  declared: string | null,
+  canonicalPath: string | null,
+): 'repository' | 'vault' | 'external' {
+  if (declared === 'repository') return canonicalPath ? 'repository' : 'vault'
+  if (declared === 'external') return 'external'
+  // Unstated or unrecognized: the note speaks only for itself. Never inferred
+  // as 'repository', which would borrow authority it has not earned.
+  return 'vault'
+}
+
+/**
  * VAULT_POLICY.md §5 precedence, as a rank. Lower wins.
  *
  *   1  repository canonical state
@@ -72,14 +104,19 @@ export const KNOWLEDGE_BOUNDS = {
  * so a future books provider slots into the same ladder rather than inventing a
  * parallel one.
  *
+ * IMPORTANT: the first argument is the TRUSTED classification from
+ * `resolveTrustedSourceOfTruth`, never a raw frontmatter value. Passing a
+ * declaration straight from a note would reintroduce the unverifiable-claim
+ * defect this ladder is meant to be safe against.
+ *
  * FAIL CLOSED: an unrecognized or absent status ranks as draft. A note whose
  * metadata we could not understand must never be treated as approved.
  */
 export function authorityRankFor(
-  sourceOfTruth: string | null,
+  trustedSourceOfTruth: 'repository' | 'vault' | 'external' | null,
   status: KnowledgeStatus | null,
 ): KnowledgeAuthorityRank {
-  if (sourceOfTruth === 'repository') return 1
+  if (trustedSourceOfTruth === 'repository') return 1
   if (status === 'approved') return 3
   if (status === 'reviewed') return 4
   return 5

@@ -164,28 +164,59 @@ export function causationChain(
  *
  * `undefined` is dropped, matching JSON.stringify. Cycles throw rather than
  * silently truncating.
+ *
+ * A repeated reference is NOT a cycle. An event payload may legitimately reach
+ * the same object twice — two fields sharing one value object, a value that
+ * appears in both an object and a list — and that structure is a DAG with a
+ * finite serialization. Only a reference that is its own ancestor cannot
+ * terminate.
  */
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalize(value, new WeakSet()))
 }
 
-function canonicalize(value: unknown, seen: WeakSet<object>): unknown {
+/**
+ * `ancestors` is the ACTIVE RECURSION PATH, not everything seen so far.
+ *
+ * That distinction is the whole cycle test: an object is added on the way down
+ * and removed on the way back up, so membership means "this object is currently
+ * an ancestor of itself", which is exactly a cycle. A set that only ever grew
+ * would instead mean "seen anywhere in the document", and would reject a shared
+ * sibling reference that serializes perfectly well.
+ *
+ * Still a `WeakSet`: it already supports the `delete` this needs, so the fix is
+ * a change of meaning rather than a change of collection.
+ */
+function canonicalize(value: unknown, ancestors: WeakSet<object>): unknown {
   if (value === null || typeof value !== 'object') {
     return typeof value === 'bigint' ? value.toString() : value
   }
-  if (seen.has(value)) throw new Error('canonicalJson: circular reference')
-  seen.add(value)
+  if (ancestors.has(value)) throw new Error('canonicalJson: circular reference')
+  ancestors.add(value)
 
-  if (Array.isArray(value)) {
-    return value.map((item) => canonicalize(item, seen))
-  }
+  // `finally` rather than a plain `delete` after the loop, so the path unwinds
+  // even when a value deeper in the walk throws.
+  //
+  // Today that is defensive rather than load-bearing: `canonicalJson` builds a
+  // fresh ancestry per top-level call and nothing catches inside the recursion,
+  // so a throw abandons the whole call anyway. It is written this way because
+  // scope-based cleanup is what makes `ancestors` genuinely path-scoped instead
+  // of merely usually-path-scoped — and it stays correct if this ever gains an
+  // internal catch or a caller-supplied set.
+  try {
+    if (Array.isArray(value)) {
+      return value.map((item) => canonicalize(item, ancestors))
+    }
 
-  const source = value as Record<string, unknown>
-  const out: Record<string, unknown> = {}
-  for (const key of Object.keys(source).sort()) {
-    const field = source[key]
-    if (field === undefined) continue
-    out[key] = canonicalize(field, seen)
+    const source = value as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(source).sort()) {
+      const field = source[key]
+      if (field === undefined) continue
+      out[key] = canonicalize(field, ancestors)
+    }
+    return out
+  } finally {
+    ancestors.delete(value)
   }
-  return out
 }

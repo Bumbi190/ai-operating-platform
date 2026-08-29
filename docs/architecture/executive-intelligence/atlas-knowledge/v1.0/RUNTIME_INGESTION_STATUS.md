@@ -57,20 +57,60 @@ implementation. Every retrieval result is labelled `authorityKind = canonical_ta
 
 ## What this is NOT
 
-**This is not "Executive Intelligence Stage 1 complete".**
+**Knowledge activation is not, by itself, Executive Intelligence Stage 1.** That was and remains
+true of *this activation*: registering and indexing the canonical package is the first subphase of
+canonical Stage 1 (FM.2), not the target.
 
 Canonical Stage 1 is defined by FM.2 (*Implementation Scope and Maturity*) and requires
 Executive Context, Daily Executive Brief, Decision Ledger V1, Executive Mission Brief V1,
 explicit human authorization, safe Manager/Workforce handoff, project-scoped status and
-evidence, and basic traceability and review. Knowledge activation is the **first subphase** of
-that target, not the target.
+evidence, and basic traceability and review.
 
-EI-S1.2 closed two of the runtime gaps established by the EI-S1.0 audit: the apex
-`executive_brief` producer now exists, and the legacy `lib/atlas/executive.ts` path no longer
-powers any live surface. Still open: Decision Ledger V1, Executive Mission Brief V1, the Stage 1
-authorization object, the Manager/Workforce handoff artifacts, the remaining principal-scoped
-read hardening on the internal `CRON_SECRET` intelligence route, and the final FM.2 conformance
-review.
+### HISTORICAL — as written at EI-S1.2 (2026-08-18)
+
+*Preserved verbatim rather than rewritten, so the record shows what was true when this file was
+established and what has since changed.*
+
+> EI-S1.2 closed two of the runtime gaps established by the EI-S1.0 audit: the apex
+> `executive_brief` producer now exists, and the legacy `lib/atlas/executive.ts` path no longer
+> powers any live surface. Still open: Decision Ledger V1, Executive Mission Brief V1, the Stage 1
+> authorization object, the Manager/Workforce handoff artifacts, the remaining principal-scoped
+> read hardening on the internal `CRON_SECRET` intelligence route, and the final FM.2 conformance
+> review.
+
+### CURRENT — Stage 1 completed through EI-S1.6
+
+Every item on that "still open" list has since shipped. This file was not updated at the time and
+stated a superseded position until this reconciliation; the authoritative record is
+[`../../README.md`](../../README.md), *Current canonical status*.
+
+| FM.2 Stage 1 capability | Status |
+|---|---|
+| Executive Context | SHIPPED |
+| Daily Executive Brief (apex, canonical §13.1 shape) | SHIPPED — EI-S1.2 |
+| Decision Ledger V1 | SHIPPED |
+| Executive Mission Brief V1 | SHIPPED |
+| Explicit human authorization | SHIPPED |
+| Safe Manager/Workforce handoff | SHIPPED |
+| Project-scoped status and evidence | SHIPPED |
+| Basic traceability and review | SHIPPED |
+| Principal-scoped read hardening (internal `CRON_SECRET` route) | SHIPPED — EI-S1.5A; no `CRON_SECRET`-only read surface exists |
+| Final FM.2 conformance review | **PASS** — all ten required capabilities proven |
+
+**Executive Intelligence Stage 1 is COMPLETE.**
+
+Two boundaries this does not move, and they are the reason this file exists:
+
+- **Architecture Knowledge itself remains SHADOW-ONLY.** Stage 1 completion is a statement about
+  the Executive *runtime*, not about this package. No knowledge text enters the live model prompt,
+  there is still no user-visible grounding surface, and every record still carries
+  `implementation_status = unknown_not_verified_in_this_package`.
+- **Stage 1 complete does not mean the full long-term Executive architecture is implemented.**
+  It means the FM.2 Stage 1 boundary is met. Later epics — including the triage gate, the unified
+  deviation/significance model and the full Attention model — are not claimed complete here.
+
+Carried debts adjudicated `NON_BLOCKING_BEFORE_STAGE_2` in the final review are recorded in the
+README and are carried, not resolved.
 
 Everything on the canonical FM.2 exclusion list — Full Approval Inbox, full policy engine,
 Damage Boundary engine, Trust Score, Autonomy Licensing, automatic autonomy progression, full

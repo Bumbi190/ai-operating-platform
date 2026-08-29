@@ -22,6 +22,7 @@ export default defineConfig({
       "lib/architecture-knowledge/**/*.test.ts",
       "lib/trading/**/*.test.ts",
       "components/platform/intelligence/**/*.test.ts",
+      "components/platform/trading/**/*.test.ts",
     ],
   },
 });

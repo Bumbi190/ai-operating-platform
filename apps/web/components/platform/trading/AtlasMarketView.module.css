@@ -1,0 +1,815 @@
+/*
+  Atlas Market View — Trading workspace.
+
+  Every colour resolves from the Omnira token set in app/globals.css. Nothing
+  here introduces a palette: the accent is --os-accent (cyan under the vNext
+  generation, indigo under legacy, without this file knowing which), surfaces
+  are the --omnira-glass tiers, and status colours are the existing
+  emerald/amber/rose semantics.
+
+  Two trading-specific colour meanings are declared once, at the top, so they
+  cannot drift between the chart and the panels:
+    rising  → emerald
+    falling → rose
+*/
+
+.workspace {
+  --mv-rise: var(--omnira-emerald);
+  --mv-fall: var(--omnira-rose);
+  --mv-grid: rgba(255, 255, 255, 0.045);
+  --mv-axis: rgba(255, 255, 255, 0.14);
+  --mv-panel-bg: var(--omnira-glass-2);
+  --mv-panel-edge: var(--omnira-edge);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-5);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-4);
+}
+
+.headerTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--rhythm-4);
+}
+
+.identity {
+  min-width: 0;
+}
+
+.identityEyebrow {
+  margin: 0 0 var(--rhythm-1);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgb(var(--os-accent-tint-rgb));
+}
+
+.identityTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--rhythm-3);
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--omnira-text-0);
+  font-variant-numeric: tabular-nums;
+}
+
+.identitySubtitle {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--omnira-text-3);
+}
+
+/*
+  The safety banner. Loud on purpose: this is the element that stops a reader
+  assuming a fixture chart is a market feed. It states the mode in a word and
+  then explains it in a sentence, so the meaning never depends on the colour.
+*/
+.safetyBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--rhythm-3) var(--rhythm-4);
+  border-radius: 12px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-2);
+  max-width: 380px;
+}
+
+.safetyLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.safetyDetail {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--omnira-text-3);
+}
+
+.safetyBanner[data-banner='FIXTURE'] {
+  border-color: rgba(139, 92, 246, 0.38);
+  background: rgba(139, 92, 246, 0.10);
+}
+.safetyBanner[data-banner='FIXTURE'] .safetyLabel { color: var(--omnira-violet-soft); }
+
+.safetyBanner[data-banner='SIMULATION'] {
+  border-color: rgba(34, 211, 238, 0.38);
+  background: rgba(34, 211, 238, 0.10);
+}
+.safetyBanner[data-banner='SIMULATION'] .safetyLabel { color: var(--omnira-cyan-soft); }
+
+.safetyBanner[data-banner='LIVE'] {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.12);
+}
+.safetyBanner[data-banner='LIVE'] .safetyLabel { color: var(--omnira-emerald); }
+
+.safetyBanner[data-banner='STALE'] {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+}
+.safetyBanner[data-banner='STALE'] .safetyLabel { color: var(--omnira-amber); }
+
+.safetyBanner[data-banner='UNKNOWN'] {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+}
+.safetyBanner[data-banner='UNKNOWN'] .safetyLabel { color: var(--omnira-text-1); }
+
+.safetyBanner[data-banner='BLOCKED'] {
+  border-color: rgba(248, 113, 113, 0.48);
+  background: rgba(248, 113, 113, 0.13);
+}
+.safetyBanner[data-banner='BLOCKED'] .safetyLabel { color: var(--omnira-rose); }
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+
+.headerControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rhythm-3);
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-1);
+  gap: 2px;
+}
+
+.segment {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--omnira-text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+  font-variant-numeric: tabular-nums;
+}
+
+.segment:hover { color: var(--omnira-text-1); background: var(--omnira-glass-2); }
+
+.segment[data-active] {
+  background: rgb(var(--os-accent-rgb) / 0.16);
+  color: var(--os-accent-soft);
+  box-shadow: inset 0 0 0 1px rgb(var(--os-accent-rgb) / 0.3);
+}
+
+.segment:focus-visible,
+.scenarioButton:focus-visible {
+  outline: 2px solid var(--os-accent);
+  outline-offset: 2px;
+}
+
+.sessionStrip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rhythm-3);
+  padding: 6px var(--rhythm-3);
+  border-radius: 10px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-1);
+}
+
+.sessionClock {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.sessionZone {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--omnira-text-3);
+}
+
+.sessionWindow {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+  padding-left: var(--rhythm-3);
+  border-left: 1px solid var(--mv-panel-edge);
+}
+
+.sessionName { font-size: 11px; font-weight: 600; color: var(--omnira-text-2); }
+.sessionRange { font-size: 10px; color: var(--omnira-text-3); font-variant-numeric: tabular-nums; }
+.sessionState { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--omnira-text-3); }
+
+.sessionWindow[data-state='OPEN'] .sessionName { color: var(--omnira-emerald); }
+.sessionWindow[data-state='OPEN'] .sessionState { color: var(--omnira-emerald); }
+
+.provenanceChip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: auto;
+  padding: 6px var(--rhythm-3);
+  border-radius: 10px;
+  border: 1px dashed var(--omnira-edge-strong);
+  background: var(--omnira-glass-1);
+}
+
+.provenanceOrigin {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--omnira-violet-soft);
+}
+
+.provenanceLabel { font-size: 11.5px; color: var(--omnira-text-2); }
+.provenanceProvider { font-size: 10px; color: var(--omnira-text-3); }
+
+/* ── Scenario bar ─────────────────────────────────────────────────────────── */
+
+.scenarioBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rhythm-2);
+  padding: var(--rhythm-3);
+  border-radius: 12px;
+  border: 1px dashed rgba(139, 92, 246, 0.32);
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.scenarioLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--omnira-violet-soft);
+  margin-right: var(--rhythm-2);
+}
+
+.scenarioButton {
+  appearance: none;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-1);
+  color: var(--omnira-text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.scenarioButton:hover { color: var(--omnira-text-0); border-color: var(--omnira-edge-hover); }
+
+.scenarioButton[data-active] {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: var(--omnira-violet-soft);
+}
+
+/* ── Canvas ───────────────────────────────────────────────────────────────── */
+
+.canvas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--rhythm-5);
+}
+
+@media (min-width: 1024px) {
+  .canvas { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+
+  /*
+    Five stacked panels run considerably taller than the chart, which would
+    otherwise leave a tall empty column beside the lower half of the rail. The
+    chart stays put and the analysis scrolls past it — which is also the right
+    behaviour for the surface: the chart is the thing you keep looking at.
+  */
+  .chartColumn { position: sticky; top: var(--rhythm-4); align-self: start; }
+}
+
+@media (min-width: 1760px) {
+  .canvas { grid-template-columns: minmax(0, 1fr) 400px; gap: var(--rhythm-6); }
+}
+
+@media (min-width: 2560px) {
+  .canvas { grid-template-columns: minmax(0, 1fr) 460px; }
+}
+
+.chartColumn { min-width: 0; }
+
+.chartFrame {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--mv-panel-edge);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0%, rgba(255, 255, 255, 0.008) 100%),
+    var(--omnira-bg-2);
+  padding: var(--rhythm-2);
+  overflow: hidden;
+}
+
+/*
+  A stale chart is visibly de-saturated as a second, redundant signal. The
+  banner already says so in words — this exists so the difference is legible
+  from across a room, not so the words become optional.
+*/
+.chartFrame[data-stale] {
+  filter: saturate(0.45);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.chartSvg { display: block; width: 100%; height: auto; }
+
+.chartGrid { stroke: var(--mv-grid); stroke-width: 1; }
+.chartAxis { stroke: var(--mv-axis); stroke-width: 1; }
+
+.chartAxisLabel {
+  font-size: 10px;
+  fill: var(--omnira-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.chartAxisValue {
+  font-size: 9px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Opaque backing so a level badge hides the gridline label beneath it. */
+.chartBadgeBacking { fill: var(--omnira-bg-2); rx: 3px; }
+
+.chartLevelLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chartZoneLabel { font-size: 9.5px; fill: var(--omnira-text-3); }
+.chartMarkerLabel { font-size: 9.5px; fill: var(--omnira-amber); }
+
+.chartEmpty { font-size: 13px; fill: var(--omnira-text-3); }
+
+.chartCandle { stroke: var(--mv-fall); }
+.chartCandle rect { fill: var(--mv-fall); }
+.chartCandle[data-rising] { stroke: var(--mv-rise); }
+.chartCandle[data-rising] rect { fill: var(--mv-rise); }
+
+.chartLiquidityZone {
+  fill: rgba(212, 165, 116, 0.10);
+  stroke: rgba(212, 165, 116, 0.34);
+  stroke-width: 1;
+}
+.chartLiquidityZone[data-status='SWEPT'] {
+  fill: rgba(212, 165, 116, 0.05);
+  stroke-dasharray: 3 3;
+}
+
+.chartFvg {
+  fill: rgba(139, 92, 246, 0.12);
+  stroke: rgba(139, 92, 246, 0.32);
+  stroke-width: 1;
+}
+.chartFvg[data-direction='SHORT'] {
+  fill: rgba(248, 113, 113, 0.10);
+  stroke: rgba(248, 113, 113, 0.30);
+}
+/* An inverted gap (iFVG) reads as a distinct object, not a faded normal one. */
+.chartFvg[data-state='INVERTED'] {
+  fill: rgba(34, 211, 238, 0.14);
+  stroke: rgba(34, 211, 238, 0.55);
+  stroke-dasharray: 4 2;
+}
+.chartFvg[data-state='MITIGATED'] { fill: rgba(255, 255, 255, 0.04); stroke: rgba(255, 255, 255, 0.14); }
+
+.chartManipulation { fill: var(--omnira-amber); opacity: 0.9; }
+
+/* ── Rail and panels ──────────────────────────────────────────────────────── */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-4);
+  min-width: 0;
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  /* Tablet: two panels abreast rather than one very long column. */
+  .rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.panel {
+  border-radius: 14px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--mv-panel-bg);
+  padding: var(--rhythm-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-3);
+  min-width: 0;
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--rhythm-2) var(--rhythm-3);
+}
+
+/*
+  A long status pill (INGEN EXECUTION PROVIDER) would otherwise squeeze the
+  panel title into a wrap. Let the pill drop to its own line instead — the
+  title is the thing that should stay on one line.
+*/
+.panelHeader > div:first-child { flex: 1 1 auto; min-width: 0; }
+
+.panelEyebrow {
+  margin: 0 0 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(var(--os-accent-tint-rgb));
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  letter-spacing: -0.01em;
+}
+
+.panelHeaderRight { flex-shrink: 0; }
+
+.panelNote {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--omnira-text-2);
+}
+.panelNote[data-tone='critical'] { color: var(--omnira-rose); }
+
+.panelFootnote {
+  margin: 0;
+  padding-top: var(--rhythm-2);
+  border-top: 1px solid var(--mv-panel-edge);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--omnira-text-3);
+}
+
+.thesisHeadline {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  text-wrap: balance;
+}
+
+.thesisDetail {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--omnira-text-2);
+}
+
+/* ── Value rows ───────────────────────────────────────────────────────────── */
+
+.valueList { display: flex; flex-direction: column; gap: 1px; margin: 0; }
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--rhythm-3);
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.valueRow:last-child { border-bottom: 0; }
+
+.valueLabel {
+  display: flex;
+  flex-direction: column;
+  font-size: 11.5px;
+  color: var(--omnira-text-2);
+  margin: 0;
+}
+
+.valueHint {
+  font-size: 9.5px;
+  color: var(--omnira-text-3);
+  letter-spacing: 0.02em;
+}
+
+.valueValue {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.valueRow[data-tone='critical'] .valueValue { color: var(--omnira-rose); }
+.valueRow[data-tone='warning'] .valueValue { color: var(--omnira-amber); }
+.valueRow[data-tone='positive'] .valueValue { color: var(--omnira-emerald); }
+
+.priceValue { font-variant-numeric: tabular-nums; }
+.priceSuffix { font-size: 9.5px; font-weight: 500; color: var(--omnira-text-3); margin-left: 4px; }
+
+/* An unknown value is drawn, never left blank. */
+.unknownValue {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--omnira-text-3);
+  font-style: normal;
+}
+
+/* ── State pills ──────────────────────────────────────────────────────────── */
+
+.statePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.stateDot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+.statePill[data-tone='positive'] {
+  color: var(--omnira-emerald);
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.statePill[data-tone='negative'] {
+  color: var(--omnira-rose);
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.statePill[data-tone='warning'] {
+  color: var(--omnira-amber);
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+/*
+  UNKNOWN gets its own visual identity — a dashed border — rather than simply
+  being dim. Dimness reads as "less important"; a dashed edge reads as
+  "incomplete", which is the actual claim.
+*/
+.statePill[data-tone='unknown'] {
+  color: var(--omnira-text-2);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.24);
+  border-style: dashed;
+}
+.statePill[data-tone='neutral'] {
+  color: var(--omnira-text-2);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--omnira-edge);
+}
+
+/* ── Setup ────────────────────────────────────────────────────────────────── */
+
+.setupSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rhythm-2);
+}
+
+.gradeBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--omnira-text-1);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--omnira-edge);
+}
+
+.gradeBadge[data-grade='A+'] {
+  color: var(--omnira-aqua-bright);
+  background: rgb(var(--os-accent-rgb) / 0.2);
+  border-color: rgb(var(--os-accent-rgb) / 0.45);
+}
+.gradeBadge[data-grade='A'] {
+  color: var(--os-accent-soft);
+  background: rgb(var(--os-accent-rgb) / 0.12);
+  border-color: rgb(var(--os-accent-rgb) / 0.3);
+}
+.gradeBadge[data-grade='NONE'] { color: var(--omnira-text-3); border-style: dashed; }
+
+.sessionTag {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--omnira-text-3);
+}
+
+.confirmationList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.confirmationRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--rhythm-3);
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.confirmationRow:last-child { border-bottom: 0; }
+
+.confirmationLabel {
+  display: flex;
+  flex-direction: column;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--omnira-text-1);
+}
+
+/* ── Execution boundary ───────────────────────────────────────────────────── */
+
+/*
+  The strongest wording on the page, and the element the tests assert on. It is
+  not a disabled button and not a tooltip: it is a permanent statement that this
+  surface has no order path. `data-executable` is never set in Stage 1 — if it
+  ever is, the styling turns alarming rather than reassuring.
+*/
+.executionBoundary {
+  margin: 0;
+  padding: var(--rhythm-3);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--omnira-text-2);
+}
+
+.executionBoundary[data-executable] {
+  border-color: var(--omnira-rose);
+  background: rgba(248, 113, 113, 0.16);
+  color: var(--omnira-rose);
+  font-weight: 600;
+}
+
+/* ── Explanation ──────────────────────────────────────────────────────────── */
+
+.explanation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--rhythm-5);
+  padding: var(--rhythm-5);
+  border-radius: 14px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-1);
+}
+
+@media (min-width: 1024px) {
+  .explanation { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.7fr); }
+}
+
+.explanationMain { min-width: 0; }
+
+.explanationEyebrow {
+  margin: 0 0 var(--rhythm-2);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(var(--os-accent-tint-rgb));
+}
+
+.explanationHeadline {
+  margin: 0 0 var(--rhythm-2);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+  text-wrap: balance;
+}
+
+.explanationBody {
+  margin: 0 0 var(--rhythm-3);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--omnira-text-2);
+  max-width: 62ch;
+}
+
+.explanationDisclaimer {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--omnira-text-3);
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-2);
+  min-width: 0;
+}
+
+.timelineEntry {
+  display: flex;
+  gap: var(--rhythm-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding-left: var(--rhythm-3);
+  border-left: 1px solid var(--mv-panel-edge);
+}
+
+.timelineTime {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--os-accent-soft);
+}
+
+.timelineText { color: var(--omnira-text-2); }
+
+.explanationMeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.explanationMeta div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--rhythm-2);
+  font-size: 10.5px;
+}
+
+.explanationMeta dt { color: var(--omnira-text-3); }
+.explanationMeta dd {
+  margin: 0;
+  color: var(--omnira-text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  word-break: break-all;
+}
+
+.keyboardHint {
+  margin: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--omnira-text-3);
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .segment,
+  .scenarioButton {
+    transition: none;
+  }
+}

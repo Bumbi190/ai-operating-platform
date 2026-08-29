@@ -88,6 +88,9 @@ export function resolveWorkspace(
   if (pathname === '/action-center') {
     return { href: pathname, label: 'Action Center', icon: 'inbox' }
   }
+  if (pathname === '/trading' || pathname.startsWith('/trading/')) {
+    return { href: pathname, label: 'Trading', icon: 'candlestick-chart' }
+  }
 
   // ── Projektsidor ──────────────────────────────────────────────────────────
   if (pathname === '/projects/new') {

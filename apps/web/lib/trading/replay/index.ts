@@ -134,6 +134,53 @@ export {
 } from './load-state'
 export type { LoadOutcome, ReplayLoadState } from './load-state'
 
+// ─── Provider observation seam ────────────────────────────────────────────────
+export {
+  POSITION_OBSERVATION_KINDS,
+  isKnownFlat,
+  observationSourceOf,
+  observationsOf,
+  positionObservationGrantsAuthority,
+  validatePositionObservationBatch,
+} from './position-observation'
+export type {
+  ObservedPositionBatch,
+  PositionObservation,
+  PositionObservationBatch,
+  PositionObservationKind,
+  PositionObservationQuery,
+  PositionObservationSource,
+  UnavailablePositionObservation,
+} from './position-observation'
+
+/*
+ * `fixturePositionObservations` and `defaultFixtureObservationSource` are
+ * deliberately NOT exported here, for the same reason `buildReplayTimeline` is
+ * not: they author fixture data without a source in the way, and application
+ * code has no business doing that. `createFixturePositionObservationSource` IS
+ * public — it is a source, so nothing that uses it bypasses a seam.
+ */
+export { createFixturePositionObservationSource } from './fixture-provider'
+export type {
+  FixtureObservationOptions,
+  FixturePositionObservationConfig,
+} from './fixture-provider'
+
+// ─── Deterministic multi-stream assembly ──────────────────────────────────────
+export {
+  REPLAY_STREAM_KINDS,
+  STREAM_TIE_BREAK_PRIORITY,
+  compareStreamEntries,
+  isSameStreamEntry,
+  mergeReplayStreams,
+} from './streams'
+export type {
+  MergedStreamEntry,
+  ReplayStream,
+  ReplayStreamEntry,
+  ReplayStreamKind,
+} from './streams'
+
 // ─── Source seam ──────────────────────────────────────────────────────────────
 export {
   ALL_INSTRUMENTS,

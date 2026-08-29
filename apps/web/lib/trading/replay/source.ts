@@ -13,15 +13,17 @@
  * observed at a provider. So it cannot be something a market-data source
  * returns without destroying the very boundary that makes that source safe.
  *
- * This is therefore an APPLICATION-level source. It sits one layer above:
+ * This is therefore an APPLICATION-level source. It sits one layer above, and
+ * as of Stage 1.7 it genuinely has two inputs rather than one:
  *
  *     MarketViewDataSource ──────────┐
- *     (future) provider observations ├──▶ ReplayTimelineSource ──▶ ReplayTimeline
+ *     PositionObservationSource ─────┼──▶ ReplayTimelineSource ──▶ ReplayTimeline
  *     (future) strategy/app state ───┘
  *
- * Today only the first input exists and the rest are authored fixtures. When
- * real observation sources arrive they join here, and neither the replay engine
- * nor the view changes shape.
+ * The two are loaded concurrently and merged by a comparator that cannot see
+ * which of them finished first. When a real market feed or a real read-only
+ * provider adapter arrives it substitutes for one of these seams, and neither
+ * the replay engine nor the view changes shape.
  *
  * It is NOT an execution adapter. Nothing here reaches a broker, and the query
  * it accepts is the same provider-neutral `MarketViewQuery` — instrument and
@@ -37,6 +39,12 @@ import type {
 } from '../market-view'
 import { MARKET_INSTRUMENTS, MARKET_TIMEFRAMES, MARKET_VIEW_SCENARIOS, createMockMarketViewDataSource } from '../market-view'
 import type { EventOrigin } from './events'
+import { defaultFixtureObservationSource } from './fixture-provider'
+import {
+  validatePositionObservationBatch,
+  type PositionObservationBatch,
+  type PositionObservationSource,
+} from './position-observation'
 import { assembleReplayTimeline, type ReplayTimeline } from './timelines'
 
 /**
@@ -82,6 +90,19 @@ export interface FixtureReplaySourceConfig {
    * Defaults to the Stage 1 fixture source.
    */
   readonly marketData?: MarketViewDataSource
+  /**
+   * The provider-observation seam this source reads open positions through.
+   *
+   * Injectable for the same two reasons as `marketData`: a test can prove the
+   * seam is on the path, and a future read-only provider adapter can be
+   * substituted without touching the authoring.
+   *
+   * The default is built per selection rather than once, because a fixture
+   * observation is pinned to a bar of the series being replayed — one
+   * calibrated against a different timeframe would land at an instant this
+   * replay never reaches.
+   */
+  readonly observations?: PositionObservationSource
 }
 
 /**
@@ -93,9 +114,10 @@ export interface FixtureReplaySourceConfig {
  * the path instead of sitting unused beside it.
  *
  * Everything above the market data — lifecycle, planned trades, risk and prop
- * reports, observed positions — is authored by `assembleReplayTimeline`. Those
- * are fixture assertions, exactly as they were in Stage 1.5. This bridge
- * changes how data arrives, not how much the fixtures know.
+ * reports — is authored by `assembleReplayTimeline`. Those are application
+ * fixture assertions. Observed positions are NOT among them: they arrive from
+ * the second seam, because what a broker reports is not something the
+ * application gets to assert.
  */
 export function createFixtureReplayTimelineSource(
   config: FixtureReplaySourceConfig,
@@ -114,10 +136,67 @@ export function createFixtureReplayTimelineSource(
     timeframes: () => marketData.timeframes(),
 
     async load(query: MarketViewQuery): Promise<ReplayTimeline | null> {
-      const base = await marketData.load(query)
+      const observationSource = config.observations
+        ?? defaultFixtureObservationSource(scenario, query.timeframe)
+
+      /*
+       * BOTH SEAMS ARE READ CONCURRENTLY, AND THE RESULT DOES NOT CARE.
+       *
+       * `allSettled` rather than `all` on purpose. `all` rejects with whichever
+       * failure happens to land first, which would make even the ERROR message
+       * a function of completion order — the exact dependency this stage exists
+       * to remove. Settling both and then inspecting them in a fixed order
+       * makes success and failure alike deterministic.
+       */
+      const [marketResult, observationResult] = await Promise.allSettled([
+        marketData.load(query),
+        observationSource.observe({ instrument: query.instrument }),
+      ])
+      if (marketResult.status === 'rejected') throw marketResult.reason
+      if (observationResult.status === 'rejected') throw observationResult.reason
+
+      const base = marketResult.value
+      const batch: PositionObservationBatch = observationResult.value
+
       // The market-data seam could not answer. That propagates as
       // unavailability rather than becoming an empty timeline.
       if (base === null) return null
+
+      if (observationSource.origin !== this.origin) {
+        throw new Error(
+          `ReplayTimelineSource ${this.id} declares origin ${this.origin} `
+          + `but reads observations from a ${observationSource.origin} source`,
+        )
+      }
+
+      validatePositionObservationBatch(observationSource, { instrument: query.instrument }, batch)
+
+      /*
+       * A source that does not observe this instrument cannot be asked about it.
+       *
+       * Its answer would be an empty batch, which means "nothing is open" — and
+       * that is a claim it has no standing to make. Refusing to trust it is the
+       * fail-closed reading: we do not know, so we do not show.
+       */
+      if (!observationSource.instruments().includes(query.instrument)) return null
+
+      /*
+       * ─────────────────────────────────────────────────────────────────────
+       * UNAVAILABLE MUST NEVER BECOME FLAT
+       * ─────────────────────────────────────────────────────────────────────
+       * `ReplayProjection` exposes positions as a list, and a list has no way
+       * to say "we could not find out". So an unavailable provider cannot be
+       * rendered honestly downstream — an empty list there would read as a flat
+       * account, turning *"I do not know whether exposure exists"* into *"there
+       * is none"*.
+       *
+       * Failing the whole load closed is the safe answer. The operator sees
+       * that there is no timeline, which is true, instead of a calm workspace
+       * that is false. Safety over convenience: the cost of being wrong in this
+       * direction is a missing screen, and in the other direction it is a
+       * hidden position.
+       */
+      if (batch.status === 'UNAVAILABLE') return null
 
       /*
        * The answer must be an answer to the question that was asked.
@@ -157,7 +236,7 @@ export function createFixtureReplayTimelineSource(
         )
       }
 
-      return assembleReplayTimeline(scenario, base)
+      return assembleReplayTimeline(scenario, base, batch.observations)
     },
   }
 }

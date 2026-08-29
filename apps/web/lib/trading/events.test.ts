@@ -158,6 +158,102 @@ describe('deterministic serialization', () => {
     expect(() => canonicalJson(cyclic)).toThrow(/circular/)
   })
 
+  /*
+   * A repeated reference is not a cycle.
+   *
+   * The cycle guard tracks the ACTIVE RECURSION PATH, so membership means "this
+   * object is currently its own ancestor". An earlier implementation used a
+   * grow-only visited set, which made every second sighting of the same object
+   * look like a cycle and rejected structures that serialize perfectly well —
+   * `{ a: shared, b: shared }` threw. These cases pin the distinction.
+   */
+  describe('shared references are a DAG, not a cycle', () => {
+    it('serializes a shared sibling reference at each occurrence', () => {
+      const shared = { value: 1 }
+      expect(canonicalJson({ a: shared, b: shared })).toBe('{"a":{"value":1},"b":{"value":1}}')
+    })
+
+    it('serializes a deeply nested shared reference', () => {
+      const shared = { v: 1 }
+      expect(canonicalJson({ a: { deep: { shared } }, b: { other: { shared } } }))
+        .toBe('{"a":{"deep":{"shared":{"v":1}}},"b":{"other":{"shared":{"v":1}}}}')
+    })
+
+    it('serializes the same object reached through an object and an array', () => {
+      const shared = { v: 1 }
+      expect(canonicalJson({ obj: shared, list: [shared] }))
+        .toBe('{"list":[{"v":1}],"obj":{"v":1}}')
+    })
+
+    it('serializes a repeated shared array', () => {
+      const shared = [1, 2]
+      expect(canonicalJson({ a: shared, b: shared })).toBe('{"a":[1,2],"b":[1,2]}')
+    })
+
+    it('serializes the same reference many times over', () => {
+      const shared = { v: 1 }
+      expect(canonicalJson([shared, shared, shared])).toBe('[{"v":1},{"v":1},{"v":1}]')
+    })
+
+    it('keeps a shared reference byte-identical to an inlined copy', () => {
+      // The point of the whole fix: sharing is a memory detail, not a semantic
+      // one, so it must not be observable in the output.
+      const shared = { v: 1 }
+      expect(canonicalJson({ a: shared, b: shared }))
+        .toBe(canonicalJson({ a: { v: 1 }, b: { v: 1 } }))
+    })
+  })
+
+  describe('true cycles still throw', () => {
+    it('rejects a self cycle', () => {
+      const value: Record<string, unknown> = {}
+      value.self = value
+      expect(() => canonicalJson(value)).toThrow(/circular/)
+    })
+
+    it('rejects an indirect object cycle', () => {
+      const a: Record<string, unknown> = {}
+      const b: Record<string, unknown> = { a }
+      a.b = b
+      expect(() => canonicalJson(a)).toThrow(/circular/)
+    })
+
+    it('rejects an array cycle', () => {
+      const arr: unknown[] = []
+      arr.push(arr)
+      expect(() => canonicalJson(arr)).toThrow(/circular/)
+    })
+
+    it('rejects a mixed object/array cycle', () => {
+      const obj: Record<string, unknown> = {}
+      obj.list = [obj]
+      expect(() => canonicalJson(obj)).toThrow(/circular/)
+    })
+
+    it('rejects a cycle that is only reachable below a shared reference', () => {
+      // Both behaviours at once: the shared branch must serialize, and the cycle
+      // beneath it must still be caught.
+      const shared: Record<string, unknown> = { v: 1 }
+      const cyclic: Record<string, unknown> = { shared }
+      cyclic.back = cyclic
+      expect(() => canonicalJson({ a: shared, b: cyclic })).toThrow(/circular/)
+    })
+
+    it('does not let a thrown call affect a later independent one', () => {
+      // An API-level regression, and deliberately not more than that: each
+      // top-level `canonicalJson` builds its own ancestry, so this would pass
+      // even without the `finally`. It guards the public behaviour — throwing
+      // once must not leave the serializer unusable — rather than proving
+      // anything about how the ancestry path is unwound.
+      const cyclic: Record<string, unknown> = {}
+      cyclic.self = cyclic
+      expect(() => canonicalJson(cyclic)).toThrow(/circular/)
+
+      const shared = { v: 1 }
+      expect(canonicalJson({ a: shared, b: shared })).toBe('{"a":{"v":1},"b":{"v":1}}')
+    })
+  })
+
   it('gives two structurally identical events the same bytes', () => {
     const base = { eventId: 'e1', severity: 'INFO', payload: { x: 1, y: 2 } }
     const shuffled = { payload: { y: 2, x: 1 }, severity: 'INFO', eventId: 'e1' }

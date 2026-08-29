@@ -528,6 +528,102 @@ v1.0, Risk förblir Canonical v1.0, och Trading Core-koden är orörd.
 
 ---
 
+## Beslut F — Level-1 Provider Runtime Data Model Completion
+
+**Datum:** 2026-08-29
+**Föranlett av:** Trading Stage 1.8a steg 0. Inför runtime-transkriptionen av Level 1-kontraktet
+konstaterades att kontraktet **inte var slutet under sin egen typvokabulär**.
+
+### F1 — Den upptäckta luckan
+
+`Result<T>` refereras i fjorton av femton metodsignaturer i Canonical v1.0 §6 och definieras
+aldrig. Ytterligare femton typer namnges utan att definieras — i något av dokumenten under
+`docs/trading-system`. En implementatör kunde därför inte transkribera §6 utan att **uppfinna**
+semantik, och den första uppfinningen hade blivit de facto canon utan granskning.
+
+Ansvarsfördelningen var låst. Vokabulären var det inte.
+
+### F2 — Canonical v1.0 → v1.1
+
+Ny canonical version:
+
+```
+specifications/execution-provider/
+  Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.1.md
+```
+
+v1.0 arkiveras **oförändrad** till `archive/`. Dess låsta hash
+`11cd194ebd82c83265002613558faa69d1c71cff7a1f37bfa0a906f38882172d` är därmed fortsatt
+direkt verifierbar mot filen. Ingen superseded-banner har lagts till, eftersom en sådan
+hade ändrat bytes och därmed förstört just den hash som ska gå att verifiera.
+
+### F3 — Substantiella ändringar i v1.1
+
+| Område | Ändring |
+|---|---|
+| Provider runtime-vokabulär | Komplett. Alla 16 tidigare odefinierade symboler definierade, plus åtta följdvokabulärer som uppstod under arbetet |
+| `Result<T>` / `ProviderError` | Definierade. `Result<T>` är **domänlokal** för provider-kontraktet, inte en repo-global utility. `ProviderError.message` är operatörs- och felsökningstext och aldrig beslutsunderlag |
+| `ProviderHealth` | Strukturerad yta — `verdict` + `reasonCodes` + `observedAt` — inte en naken `Verdict`. Löser motsättningen mellan v1.0 §7 och §4. `SECURITY_DEGRADED` skapar aldrig execution authority; huruvida en enskild nedströms policy måste fail closed är ett separat policybeslut som v1.1 inte föregriper |
+| `ProviderAccountSnapshot` | Provider-observationen särskild från persistensmodellens `AccountSnapshot` (Datamodell §65). Enda ändrade v1.0-signatur. Inget alias tillåts |
+| `PositionSnapshot` | Definierad som **provider-observation**, oberoende av persistensmodellens `Position` (Datamodell §40). Inget `originating_trade_id` — det kan en provider inte veta |
+| `ProviderTimestamp` / `ProviderClock` | `ProviderTimestamp` är en egen branded provider-domäntyp. Brandingen uttrycker **härkomst**, inte förtroende, färskhet eller klocksynk. Ingen implicit konvertering från lokal `Timestamp`, ingen wall-clock-fallback |
+| `Available<T>` | Förblir **skild** från replay-lagrets `ObservedValue<T>`. Identisk form betyder inte identiskt ägarskap |
+| Känt flat | Representeras som ett lyckat resultat med noll positioner — aldrig som `PositionSide.FLAT`. Två representationer av samma verklighet ger två sätt att räkna fel |
+| Marknadsdata | `quotes`, `bars` och `ticks` ligger **utanför** ExecutionProviderAdapter Level 1. "Read Adapter" i Systemarkitektur §22 är en bredare arkitektonisk kategori än Level 1-porten |
+| Reason codes | `PROVIDER_DISCONNECTED` och `SECURITY_DEGRADED` låsta i provider-vokabulären. Exakt två, inga andra |
+
+### F4 — Vad som är oförändrat
+
+| Oförändrat |
+|---|
+| **Exakt 15 Level 1-metoder** — namn, antal och ansvar |
+| **Noll order-metoder.** `submitOrder` / `modifyOrder` / `cancelOrder` / `preflightOrder` är frånvarande, inte avstängda |
+| Auktoritetsgränsen (Beslut E2). Authority is issued, not derived from data |
+| `CapabilityState`, `Available<T>`, `CredentialMode`, `FillHistory.completeness` |
+| `ContractSnapshot` och `HistoryRequest` |
+| Provider-neutralitet — inga endpoint-namn, ingen providerspecifik autentisering |
+
+### F5 — Avvisat vid granskning
+
+Tre förslag i kandidaten avslogs eftersom de inte var tvingade av låst canon:
+`requestedCredentialMode` på `ProviderConfig`, `maxPageSize` på `HistoryWindowCapability`,
+och `FLAT` som `PositionSide`-värde. Skälen står i v1.1 F4, F7 och F10.
+
+### F6 — Gatepåverkan
+
+**GATE-08 förblir ÖPPEN.** v1.1 definierar kontraktsresolutions*typer*, inte
+resolutions*policy*. Front month, continuous contract, symbolprefix-heuristik och
+rolloverkalender är uttryckligen förbjudna i implementationer av `resolveContract`, som i
+stället failar closed med `INVALID_INSTRUMENT_STATE` vid tvetydighet.
+
+**GATE-16 förblir STÄNGD.** Dess closure-grund var multi-provider-semantisk neutralitet —
+att en `TradovateAdapter` och en `RithmicProtocolAdapter` kan implementera samma Level 1 utan
+att kontraktet ändras. Den grunden är oförändrad. Att kontraktet var semantiskt neutralt och
+att det var implementerbart utan uppfinning är två olika egenskaper; gaten stängdes på den
+första, och Beslut F levererar den andra.
+
+### F7 — Vad Beslut F inte innebär
+
+Promotionen stänger **specifikationsluckan**. Den påstår ingenting om kod.
+
+Runtime-implementation är **ej påbörjad**. Provider-implementation är **ej påbörjad**.
+Rithmic-integration är **ej påbörjad**. De två nya reason codes är låsta i canon men **inte
+transkriberade** till Trading Cores register — det hör till Stage 1.8a. Execution och live
+trading är fortsatt förbjudna.
+
+### F8 — Ändrade filer
+
+| Fil | Not |
+|---|---|
+| `specifications/execution-provider/…Canonical v1.1.md` | F2 — ny, aktiv source of truth |
+| `archive/…Canonical v1.0.md` | F2 — flyttad via `git mv`, **bytes oförändrade**, historisk hash intakt |
+| `archive/README.md` | F2 — rad tillagd |
+| `SOURCE_OF_TRUTH.md` | F2 — provider-kontraktet pekar på v1.1 |
+| `CHECKSUMS.md` | F2 — v1.1 tillagd, v1.0 flyttad till arkivsektionen med oförändrad hash |
+| `reviews/Canonical Amendments v1.0.md` | F — detta avsnitt |
+
+---
+
 ## Dokument som medvetet **inte** ändrades
 
 | Dokument | Varför |

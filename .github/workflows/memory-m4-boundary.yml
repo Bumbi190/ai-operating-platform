@@ -1,0 +1,167 @@
+# Atlas Memory M4 — boundary gate.
+#
+# Turns the merged Memory M4 safety contracts into a real PR gate. This is a
+# focused gate, NOT a general repository CI system: it runs the Memory boundary
+# suites and nothing else.
+#
+# The failure mode this exists to eliminate: atlas-memory-recall-sql.test.ts
+# skips when PostgreSQL is unavailable, so a CI without a database would go
+# green having proven nothing about recall isolation. Two things prevent that:
+#   1. a PostgreSQL service container, and CI=true makes the suite FAIL rather
+#      than skip when it cannot reach one;
+#   2. a machine-readable check of the vitest JSON results that fails the job
+#      unless the SQL file actually ran with zero skipped tests.
+#
+# This workflow must never enable Memory. No ATLAS_MEMORY* variable is set
+# anywhere here, and a step asserts they are absent from the job environment.
+
+name: Memory M4 Boundary
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: memory-m4-boundary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boundary:
+    name: Memory M4 boundary suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # The exact interface atlas-memory-recall-sql.test.ts already supports.
+      # A superuser DSN: the suite creates and drops its OWN throwaway database
+      # and never touches an existing one. Never a Supabase/production target.
+      ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # package.json engines: node >=20
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+      - name: Assert no Memory flag is enabled in this job
+        run: |
+          set -euo pipefail
+          fail=0
+          for flag in ATLAS_MEMORY ATLAS_MEMORY_RECALL ATLAS_MEMORY_INJECT; do
+            value="${!flag-}"
+            if [ -n "$value" ]; then
+              echo "::error::$flag is set to '$value' in CI — the boundary gate must run with Memory OFF"
+              fail=1
+            else
+              echo "$flag: unset (OFF)"
+            fi
+          done
+          exit $fail
+
+      - name: Prove PostgreSQL is reachable
+        run: |
+          set -euo pipefail
+          psql --version
+          psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select version()"
+          psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select current_user, current_database()"
+
+      - name: Run Memory M4 boundary suites
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/atlas-memory-boundary.test.ts \
+            lib/qa/atlas-memory-recall-sql.test.ts \
+            lib/qa/atlas-memory-write-scope.test.ts \
+            lib/qa/atlas-memory-recall.test.ts \
+            lib/qa/atlas-memory-emit.test.ts \
+            lib/qa/atlas-memory-context.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/memory-boundary.json"
+
+      # The anti-skip proof. Console text is not evidence; the JSON results are.
+      # Fails if the SQL file is absent from the results, if anything in the run
+      # was skipped/pending/todo, or if the SQL file ran fewer than its 14
+      # isolation tests (15 with the reachability guard added for CI).
+      - name: Verify the SQL isolation suite RAN and did not skip
+        if: always()
+        run: |
+          set -euo pipefail
+          node - "$RUNNER_TEMP/memory-boundary.json" <<'NODE'
+          const fs = require('node:fs')
+          const [, , resultsPath] = process.argv
+          if (!fs.existsSync(resultsPath)) {
+            console.error(`::error::no vitest results at ${resultsPath} — the suites did not run`)
+            process.exit(1)
+          }
+          const report = JSON.parse(fs.readFileSync(resultsPath, 'utf8'))
+          const files = report.testResults ?? []
+          const SQL_FILE = 'atlas-memory-recall-sql.test.ts'
+          const MIN_SQL_TESTS = 14
+
+          const sql = files.find((f) => String(f.name).endsWith(SQL_FILE))
+          if (!sql) {
+            console.error(`::error::${SQL_FILE} is absent from the results — the SQL isolation boundary was NOT proven`)
+            console.error('files seen: ' + files.map((f) => String(f.name).split('/').pop()).join(', '))
+            process.exit(1)
+          }
+
+          const tally = (assertions) =>
+            assertions.reduce((acc, a) => ({ ...acc, [a.status]: (acc[a.status] ?? 0) + 1 }), {})
+          const sqlTally = tally(sql.assertionResults ?? [])
+          const passed = sqlTally.passed ?? 0
+          const notRun = (sqlTally.pending ?? 0) + (sqlTally.skipped ?? 0) + (sqlTally.todo ?? 0)
+
+          console.log(`${SQL_FILE}: ${JSON.stringify(sqlTally)}`)
+          let failed = false
+
+          if (notRun > 0) {
+            console.error(`::error::${notRun} test(s) in ${SQL_FILE} did not run — CI must never skip SQL isolation`)
+            failed = true
+          }
+          if (passed < MIN_SQL_TESTS) {
+            console.error(`::error::${SQL_FILE} passed only ${passed} test(s); expected at least ${MIN_SQL_TESTS}`)
+            failed = true
+          }
+
+          const totalSkipped = (report.numPendingTests ?? 0) + (report.numTodoTests ?? 0)
+          if (totalSkipped > 0) {
+            console.error(`::error::${totalSkipped} test(s) were skipped across the boundary run`)
+            failed = true
+          }
+          if ((report.numFailedTests ?? 0) > 0 || (report.numFailedTestSuites ?? 0) > 0) {
+            console.error(`::error::${report.numFailedTests} failing test(s) in the boundary run`)
+            failed = true
+          }
+
+          if (failed) process.exit(1)
+          console.log(
+            `Memory M4 boundary gate OK — ${report.numPassedTests} tests passed across ` +
+              `${files.length} files, 0 skipped; SQL isolation ran ${passed} tests.`,
+          )
+          NODE
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: npx --no tsc --noEmit --incremental false

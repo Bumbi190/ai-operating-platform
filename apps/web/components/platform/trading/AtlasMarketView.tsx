@@ -15,6 +15,7 @@ import {
   createFixtureReplayTimelineSource,
   identityOfTimeline,
   isCurrentGeneration,
+  isUsableSeed,
   loadTimelineState,
   pause,
   play,
@@ -115,21 +116,48 @@ export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) 
     [scenario],
   )
 
+  /*
+   * The seed is validated SYNCHRONOUSLY, before it can initialize anything.
+   *
+   * AN INVALID SEED MUST NEVER BECOME PRESENTATION STATE. Checking it in the
+   * effect would be too late: effects do not run during server rendering or
+   * static markup, so a mismatched seed would be painted first and corrected
+   * afterwards — an ES/1m chart under an NQ/5m header for one frame. That is
+   * the same query-identity fault the source refuses, so the view refuses it in
+   * the same way.
+   *
+   * A rejected seed is not an error: the caller passed something stale or
+   * wrong, and the safe, already-designed behaviour is simply to load through
+   * the source like any other selection. Throwing would turn a caller's mistake
+   * into a blank workspace.
+   *
+   * The initial selection is always the defaults, because that is what the
+   * three `useState` calls above were initialized with.
+   */
+  const seed = initialTimeline !== undefined
+    && isUsableSeed(
+      initialTimeline,
+      timelineIdentity(DEFAULT_SCENARIO, DEFAULT_INSTRUMENT, DEFAULT_TIMEFRAME),
+      source.origin,
+    )
+    ? initialTimeline
+    : null
+
   const [loadState, setLoadState] = useState<ReplayLoadState>(
-    () => (initialTimeline === undefined ? LOADING : readyState(initialTimeline)),
+    () => (seed === null ? LOADING : readyState(seed)),
   )
   const [cursor, setCursor] = useState<ReplayCursor>(() => (
-    initialTimeline === undefined
+    seed === null
       ? INITIAL_CURSOR
-      : seekTo(INITIAL_CURSOR, initialTimeline.events, initialTimeline.events.length - 1)
+      : seekTo(INITIAL_CURSOR, seed.events, seed.events.length - 1)
   ))
 
-  /** The selection a seeded timeline already satisfies, consumed once. */
-  const seededKey = useRef<string | null>(
-    initialTimeline === undefined
-      ? null
-      : identityOfTimeline(initialTimeline),
-  )
+  /**
+   * The selection a valid seed already satisfies, consumed once.
+   *
+   * Null for a rejected seed, so the normal source acquisition runs for it.
+   */
+  const seededKey = useRef<string | null>(seed === null ? null : identityOfTimeline(seed))
 
   /*
    * The generation guard.

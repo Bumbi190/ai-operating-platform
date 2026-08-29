@@ -47,6 +47,33 @@ export function identityOfTimeline(timeline: ReplayTimeline): string {
 }
 
 /**
+ * Whether a pre-supplied timeline may be used as initial presentation state.
+ *
+ * AN INVALID SEED MUST NEVER BECOME PRESENTATION STATE.
+ *
+ * A seed skips the source, so it also skips the identity and provenance checks
+ * the source performs. This is that check, applied synchronously — before the
+ * seed can initialize anything. Deferring it to an effect is not enough: effects
+ * do not run during server rendering or static markup, so a mismatched seed
+ * would be painted first and corrected afterwards, showing an ES/1m chart under
+ * an NQ/5m header for one frame.
+ *
+ * The same two questions the source asks: does this answer the selection that
+ * was actually made, and does its provenance agree with the source that would
+ * otherwise have produced it.
+ */
+export function isUsableSeed(
+  timeline: ReplayTimeline,
+  expectedIdentity: string,
+  expectedOrigin: string,
+): boolean {
+  return (
+    identityOfTimeline(timeline) === expectedIdentity
+    && timeline.base.provenance.origin === expectedOrigin
+  )
+}
+
+/**
  * What the view knows about its timeline right now.
  *
  * UNAVAILABLE and ERROR are distinct states, not one "no data" case: the first

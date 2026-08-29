@@ -126,6 +126,7 @@ export {
   errorState,
   identityOfTimeline,
   isCurrentGeneration,
+  isUsableSeed,
   loadTimelineState,
   readyState,
   timelineIdentity,

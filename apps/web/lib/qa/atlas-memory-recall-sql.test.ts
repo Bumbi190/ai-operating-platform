@@ -17,10 +17,12 @@
  *     production data.
  *   • Applies the real files from supabase/migrations — no hand-copied SQL, so
  *     the test cannot drift from what ships.
- *   • Skips (loudly) when no local Postgres/psql is available, e.g. in a CI
- *     container without a database. Override the target with
- *     ATLAS_SQL_TEST_URL (a superuser DSN able to CREATE DATABASE) and the
- *     binary with ATLAS_SQL_TEST_PSQL.
+ *   • Skips (loudly) for a local developer with no Postgres/psql available, but
+ *     FAILS instead of skipping wherever SQL proof is required — CI=true, or
+ *     ATLAS_SQL_TEST_REQUIRED=1 locally. A green run that skipped this suite
+ *     would prove nothing, so CI must never be able to reach one.
+ *     Override the target with ATLAS_SQL_TEST_URL (a superuser DSN able to
+ *     CREATE DATABASE) and the binary with ATLAS_SQL_TEST_PSQL.
  *
  * The Supabase-shaped prerequisites the atlas migrations assume (the
  * service_role/anon/authenticated roles, auth.uid(), public.projects) are
@@ -113,7 +115,15 @@ const AVAILABLE = (() => {
   }
 })()
 
-if (!AVAILABLE) {
+/**
+ * Where SQL proof is REQUIRED, an unreachable database must FAIL rather than
+ * skip — a green run that skipped this suite proves nothing. CI sets CI=true;
+ * ATLAS_SQL_TEST_REQUIRED=1 forces the same locally. A developer without
+ * Postgres still gets a loud skip.
+ */
+const SQL_REQUIRED = process.env.CI === 'true' || process.env.ATLAS_SQL_TEST_REQUIRED === '1'
+
+if (!AVAILABLE && !SQL_REQUIRED) {
   console.warn(
     '[atlas-memory-recall-sql] SKIPPED — no reachable local Postgres. ' +
       'The SQL half of the recall isolation boundary was NOT proven in this run. ' +
@@ -126,8 +136,11 @@ let dsn = ''
 
 // ── Suite ────────────────────────────────────────────────────────────────────
 
-describe.skipIf(!AVAILABLE)('BOUNDARY B — public.atlas_recall project isolation (real SQL)', () => {
+describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('BOUNDARY B — public.atlas_recall project isolation (real SQL)', () => {
   beforeAll(() => {
+    // When the database is unreachable but required, let the reachability test
+    // below report it cleanly instead of failing every test via a hook error.
+    if (!AVAILABLE) return
     run(ADMIN_URL, ['-c', `create database ${DB_NAME}`])
     dsn = dsnFor(DB_NAME)
 
@@ -189,6 +202,15 @@ describe.skipIf(!AVAILABLE)('BOUNDARY B — public.atlas_recall project isolatio
     return query(dsn, `select summary from public.atlas_recall(${arr}) order by summary`)
       .map((r) => r[0])
   }
+
+  it('PostgreSQL is reachable — this suite must never pass by skipping in CI', () => {
+    expect(
+      AVAILABLE,
+      'SQL proof is REQUIRED here (CI=true or ATLAS_SQL_TEST_REQUIRED=1) but no ' +
+        `PostgreSQL was reachable at ${ADMIN_URL.replace(/:[^:@/]*@/, ':***@')} ` +
+        `via psql=${PSQL ?? 'NOT FOUND'}. The recall isolation boundary was NOT proven.`,
+    ).toBe(true)
+  })
 
   it('the fixtures really are in the tables (harness is not vacuous)', () => {
     expect(query(dsn, 'select count(*) from atlas.memories')[0][0]).toBe('4')

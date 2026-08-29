@@ -813,3 +813,168 @@
     transition: none;
   }
 }
+
+/* ── Replay transport ─────────────────────────────────────────────────────── */
+
+/*
+  Development UI. Deliberately reads as instrumentation rather than as part of
+  the market surface — a dashed edge and the same violet the fixture banner
+  uses, so it is obvious this is a replay control and not a live feed control.
+*/
+.replayBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rhythm-4);
+  padding: var(--rhythm-3) var(--rhythm-4);
+  border-radius: 12px;
+  border: 1px dashed rgba(139, 92, 246, 0.32);
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.replayTransport { display: inline-flex; gap: var(--rhythm-2); }
+
+.replayButton {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-2);
+  color: var(--omnira-text-1);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.replayButton:hover:not(:disabled) { background: var(--omnira-glass-3); border-color: var(--omnira-edge-hover); }
+.replayButton:disabled { opacity: 0.35; cursor: default; }
+
+.replayButton[data-primary='true'] {
+  background: rgb(var(--os-accent-rgb) / 0.16);
+  border-color: rgb(var(--os-accent-rgb) / 0.34);
+  color: var(--os-accent-soft);
+}
+
+.replayButton:focus-visible,
+.replaySpeed:focus-visible,
+.replayScrubber input:focus-visible {
+  outline: 2px solid var(--os-accent);
+  outline-offset: 2px;
+}
+
+.replayScrubber { flex: 1 1 200px; min-width: 160px; display: flex; }
+.replayScrubber input { width: 100%; accent-color: var(--os-accent); cursor: pointer; }
+
+.replayReadout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rhythm-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.replayStep { font-size: 11.5px; font-weight: 600; color: var(--omnira-text-1); }
+.replayProgress { font-size: 11px; color: var(--omnira-text-3); }
+
+.replayClock {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.15;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--omnira-text-0);
+}
+
+/* Named on the surface: this is market time, not the browser's clock. */
+.replayClockLabel {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--omnira-violet-soft);
+}
+
+.replaySpeeds { display: inline-flex; gap: 2px; }
+
+.replaySpeed {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--omnira-text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.replaySpeed[data-active] {
+  background: rgb(var(--os-accent-rgb) / 0.14);
+  border-color: rgb(var(--os-accent-rgb) / 0.3);
+  color: var(--os-accent-soft);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Planned vs observed ──────────────────────────────────────────────────── */
+
+/*
+  Two visually distinct card treatments on purpose.
+
+  A plan is an idea: cyan accent, the same family the rest of the analysis uses.
+  An observed position is external fact: amber, the colour this surface already
+  uses for "something outside our control". A reader should be able to tell them
+  apart across the room, before reading either heading.
+*/
+.plannedCard,
+.observedCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rhythm-2);
+  padding: var(--rhythm-3);
+  border-radius: 10px;
+  border: 1px solid var(--mv-panel-edge);
+  background: var(--omnira-glass-1);
+}
+
+.plannedCard { border-left: 3px solid rgb(var(--os-accent-rgb) / 0.6); }
+.observedCard { border-left: 3px solid rgba(251, 191, 36, 0.6); }
+
+.observedCard[data-stale] { filter: saturate(0.5); border-left-color: rgba(251, 191, 36, 0.3); }
+
+.plannedHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rhythm-2);
+}
+
+.plannedInstrument {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--omnira-text-0);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Provenance on the card itself, never only in a page banner. */
+.observedSource {
+  margin: 0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--omnira-amber);
+}

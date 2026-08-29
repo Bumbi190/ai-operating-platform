@@ -5,16 +5,32 @@ import { useRouter } from 'next/navigation'
 import {
   MARKET_INSTRUMENTS,
   MARKET_VIEW_SCENARIOS,
-  buildFixtureSnapshot,
   type MarketInstrument,
   type MarketTimeframe,
   type MarketViewScenarioId,
 } from '@/lib/trading/market-view'
+import {
+  INITIAL_CURSOR,
+  buildReplayTimeline,
+  pause,
+  play,
+  projectReplay,
+  resetCursor,
+  seekTo,
+  setSpeed,
+  stepBackward,
+  stepForward,
+  tickIntervalMs,
+  type PlaybackSpeed,
+  type ReplayCursor,
+} from '@/lib/trading/replay'
 import { resolveMarketViewKeyAction, stepIndex } from '@/lib/trading/market-view/keyboard'
 import { TRADING_WORKSPACE_ID } from '@/lib/atlas/first-party-workspaces'
 import { MarketChart } from './MarketChart'
 import { MarketViewHeader } from './MarketViewHeader'
 import { ExplanationSurface } from './ExplanationSurface'
+import { ReplayControls } from './ReplayControls'
+import { ObservedPositionsPanel, PlannedTradesPanel } from './PositionPanels'
 import { ProposalPanel, PropPanel, RiskPanel, SetupPanel, ThesisPanel } from './panels'
 import styles from './AtlasMarketView.module.css'
 
@@ -39,11 +55,22 @@ import styles from './AtlasMarketView.module.css'
  *
  * WHY THE FIXTURES ARE BUILT CLIENT-SIDE
  * ──────────────────────────────────────
- * `buildFixtureSnapshot` is pure, seeded and dependency-free, so it produces
- * identical output on the server and in the browser. Building here rather than
- * serialising 72 instrument/timeframe/scenario combinations keeps the payload
- * to code, makes switching instant, and keeps SSR and hydration in agreement by
- * construction — both run the same function with the same three arguments.
+ * `buildReplayTimeline` and `projectReplay` are pure, seeded and
+ * dependency-free, so they produce identical output on the server and in the
+ * browser. Building here rather than serialising every combination keeps the
+ * payload to code, makes switching instant, and keeps SSR and hydration in
+ * agreement by construction — both run the same functions with the same
+ * arguments.
+ *
+ * REPLAY
+ * ──────
+ * The view holds a cursor; state is recomputed from the timeline for that
+ * cursor. The playback timer is the ONLY wall clock in this component, and it
+ * decides nothing but when to advance the cursor — market state comes from the
+ * event under the cursor, never from `Date.now()`.
+ *
+ * The cursor starts at the END of the timeline, so the workspace opens on the
+ * same state Stage 1 showed. Reset walks it back to the beginning.
  */
 
 const DEFAULT_SCENARIO: MarketViewScenarioId = 'long-developing'
@@ -56,10 +83,48 @@ export function AtlasMarketView() {
   const [instrument, setInstrument] = useState<MarketInstrument>(DEFAULT_INSTRUMENT)
   const [timeframe, setTimeframe] = useState<MarketTimeframe>(DEFAULT_TIMEFRAME)
 
-  const snapshot = useMemo(
-    () => buildFixtureSnapshot(scenario, instrument, timeframe),
+  const timeline = useMemo(
+    () => buildReplayTimeline(scenario, instrument, timeframe),
     [scenario, instrument, timeframe],
   )
+
+  // Opens at the end of the replay: the same state Stage 1 showed.
+  const [cursor, setCursor] = useState<ReplayCursor>(
+    () => seekTo(INITIAL_CURSOR, timeline.events, timeline.events.length - 1),
+  )
+
+  /*
+   * Changing scenario, instrument or timeframe is a different timeline, so the
+   * old cursor position is meaningless against it. Jump to that timeline's end
+   * rather than keeping an index that now points at an unrelated event. The
+   * playback speed is a UI preference and survives.
+   */
+  const timelineKey = `${scenario}:${instrument}:${timeframe}`
+  const [activeKey, setActiveKey] = useState(timelineKey)
+  if (activeKey !== timelineKey) {
+    setActiveKey(timelineKey)
+    setCursor((current) => ({
+      ...seekTo(INITIAL_CURSOR, timeline.events, timeline.events.length - 1),
+      speed: current.speed,
+    }))
+  }
+
+  const projection = useMemo(
+    () => projectReplay(timeline, cursor.position),
+    [timeline, cursor.position],
+  )
+  const snapshot = projection.snapshot
+
+  // The one wall clock in this component. It advances the cursor and decides
+  // nothing else; market state is a function of the cursor, not of this timer.
+  useEffect(() => {
+    if (!cursor.playing) return
+    const id = setInterval(
+      () => setCursor((current) => stepForward(current, timeline.events)),
+      tickIntervalMs(cursor.speed),
+    )
+    return () => clearInterval(id)
+  }, [cursor.playing, cursor.speed, timeline.events])
 
   const shiftInstrument = useCallback((delta: number) => {
     setInstrument((current) => {
@@ -118,12 +183,32 @@ export function AtlasMarketView() {
         ))}
       </div>
 
+      <ReplayControls
+        cursor={cursor}
+        events={timeline.events}
+        marketTimeLabel={snapshot.sessionState.canonicalTime}
+        marketZoneLabel={`${snapshot.sessionState.timezone} ${snapshot.sessionState.utcOffset}`}
+        onPlayPause={() => setCursor((c) => (c.playing ? pause(c) : play(c, timeline.events)))}
+        onStepBackward={() => setCursor((c) => stepBackward(c, timeline.events))}
+        onStepForward={() => setCursor((c) => stepForward(c, timeline.events))}
+        onReset={() => setCursor(resetCursor)}
+        onSeek={(position) => setCursor((c) => seekTo(c, timeline.events, position))}
+        onSpeed={(speed: PlaybackSpeed) => setCursor((c) => setSpeed(c, speed))}
+      />
+
       <div className={styles.canvas}>
         <div className={styles.chartColumn}>
           <MarketChart snapshot={snapshot} />
         </div>
 
         <aside className={styles.rail} aria-label="Marknadsanalys">
+          {/*
+            Planned and observed lead the rail — they are what the future
+            graph-first terminal keeps, and putting them first now makes that
+            redesign a layout change rather than a rewrite.
+          */}
+          <PlannedTradesPanel plans={projection.plannedTrades} />
+          <ObservedPositionsPanel positions={projection.observedPositions} />
           <ThesisPanel thesis={snapshot.thesis} />
           <SetupPanel setup={snapshot.setup} />
           <RiskPanel risk={snapshot.riskState} />

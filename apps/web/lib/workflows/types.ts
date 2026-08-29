@@ -137,7 +137,11 @@ export interface WorkflowInstance {
   /** Projection of the transition history. Never trusted as the source of truth. */
   current_state: string
   status: WorkflowInstanceStatus
+  /** When this instance next becomes eligible for evaluation. See schedule.ts. */
   wake_at: string | null
+  /** Observability only — the authoritative record is in workflow_evidence. */
+  last_tick_at: string | null
+  last_tick_outcome: string | null
   created_at: string
   closed_at: string | null
 }

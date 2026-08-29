@@ -91,6 +91,26 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   repoCheck('local_diff_scope_passed', 'frontend_deploy',
     'The change touches only the intended scope'),
 
+  // ── Deployed-source verification (PR7) ───────────────────────────────────
+  // Automated-only, and emphatically so: the whole point is that Omnira asks
+  // production what is running. An attestation here would be a claim about the
+  // deployed world made from a local checkout — precisely the mistake KFM 14
+  // warns about ("the local file shows what you INTENDED to deploy").
+  observedCheck('shared_manifest_consumers_in_sync', 'edge_deploy',
+    'Every consumer of the shared protected manifest is deployed with an identical copy'),
+  observedCheck('deployed_manifest_matches_expected', 'edge_deploy',
+    'The deployed shared manifest equals the hash pinned for this release'),
+  observedCheck('sign_protected_asset_source_current', 'edge_deploy',
+    'sign-protected-asset is deployed, active and JWT-verified with the shared manifest'),
+  observedCheck('get_protected_ebook_source_current', 'edge_deploy',
+    'get-protected-ebook is deployed, active and JWT-verified with the shared manifest'),
+  // Re-checked before release and after it: a redeploy between approval and
+  // release would otherwise pass unnoticed.
+  observedCheck('shared_manifest_consumers_in_sync', 'approval_release',
+    'Consumers still agree on the deployed shared manifest at release approval'),
+  observedCheck('shared_manifest_consumers_in_sync', 'post_release_qa',
+    'Consumers still agree on the deployed shared manifest after release'),
+
   // ── Observed by Omnira, never attested ───────────────────────────────────
   observedCheck('anonymous_protected_access_denied', 'approval_release',
     'Unauthenticated callers are refused by every protected endpoint'),

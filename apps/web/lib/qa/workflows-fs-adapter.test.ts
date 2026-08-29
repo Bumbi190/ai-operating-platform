@@ -340,8 +340,11 @@ describe('adapter registration', () => {
   })
 
   it('names exactly the states it can verify', () => {
+    // PR7 added edge_deploy: the state where "a merged shared file is not a
+    // deployed shared file" is established against production.
     expect(familjeStundenAdapter.verifiableStates()).toEqual([
-      'approval_release', 'backend_release_gate', 'planning', 'post_release_qa', 'scheduled_release',
+      'approval_release', 'backend_release_gate', 'edge_deploy', 'planning',
+      'post_release_qa', 'scheduled_release',
     ])
   })
 })

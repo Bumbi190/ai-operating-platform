@@ -100,6 +100,8 @@ const COMPONENT_FILES = [
   './MarketChart.tsx',
   './MarketViewHeader.tsx',
   './ExplanationSurface.tsx',
+  './ReplayControls.tsx',
+  './PositionPanels.tsx',
   './panels.tsx',
   './primitives.tsx',
 ]
@@ -291,12 +293,25 @@ describe('the proposal is not executable', () => {
     }
   })
 
-  it('renders no form, no submit input and no disabled-order affordance', () => {
+  it('renders no form and no submit input', () => {
     const markup = renderView()
     expect(markup).not.toContain('<form')
     expect(markup).not.toContain('type="submit"')
-    // A disabled button is a button someone can enable later. There is none.
-    expect(markup).not.toContain('disabled=""')
+  })
+
+  it('disables only replay transport controls, never an order affordance', () => {
+    // The original form of this test asserted no `disabled` attribute at all,
+    // to prove there was no greyed-out order button waiting to be enabled. The
+    // replay transport legitimately disables itself at the start and end of a
+    // timeline, so the assertion is narrowed to what it actually protects:
+    // every disabled control must be one of the transport buttons.
+    const markup = renderView()
+    const disabled = (markup.match(/<button[^>]*disabled[^>]*>[\s\S]*?<\/button>/g) ?? [])
+    expect(disabled.length).toBeGreaterThan(0) // start-of-replay disables Reset/Prev
+    for (const button of disabled) {
+      expect(button, `unexpected disabled control: ${button.slice(0, 120)}`)
+        .toMatch(/data-testid="replay-(reset|prev|next|playpause)"/)
+    }
   })
 
   it('offers only switching controls', () => {
@@ -305,6 +320,10 @@ describe('the proposal is not executable', () => {
       'NQ', 'MNQ', 'ES', '1m', '5m', '15m', '4H',
       'Long utvecklas', 'Short utvecklas', 'A+ bekräftad',
       'Risk blockerad', 'Ingen setup', 'Okänd / inaktuell',
+      // Replay transport and playback speed. Every one of these moves a cursor
+      // over authored fixture events; none of them reaches anything else.
+      '⏮', '◀', '▶', '❚❚',
+      '0.5×', '1×', '2×', '4×',
     ])
     for (const text of texts) {
       expect(allowed.has(text), `unexpected control: "${text}"`).toBe(true)
@@ -332,7 +351,13 @@ describe('authority boundary', () => {
     // The package's own import rules — what it may take from its siblings, and
     // why the barrel is off limits for values — are asserted separately in
     // lib/trading/market-view/import-discipline.test.ts.
-    const allowed = new Set(['@/lib/trading/market-view', '@/lib/trading/market-view/keyboard'])
+    const allowed = new Set([
+      '@/lib/trading/market-view',
+      '@/lib/trading/market-view/keyboard',
+      // The replay package is the Stage 1.5 public barrel, with the same import
+      // discipline — proven by lib/trading/replay/import-discipline.test.ts.
+      '@/lib/trading/replay',
+    ])
     for (const file of COMPONENT_FILES) {
       for (const specifier of importSpecifiers(file)) {
         if (!specifier.startsWith('@/lib/trading')) continue

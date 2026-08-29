@@ -21,7 +21,7 @@ baa8f819be69000dfc724858afde4249f4953fccc8fc84f34a73a36eeadb222a  book/final/Omn
 0ba015d015c9f9cfe7f4ad721f3b1224dc80fe955b0a547a847ce40c8cb73a89  specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md
 2eeb5708d5fb60ac9dda29827d81f89b36d51be661597553c755cd714c0fa106  specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md
 655447bd28a334c9618679cb09a00b2a59f280a3db48ab2458c0d499a9c7c3d2  specifications/architecture/Omnira Trading System – Systemarkitektur v0.3.md
-11cd194ebd82c83265002613558faa69d1c71cff7a1f37bfa0a906f38882172d  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.0.md
+11d9077a4f22043bdda759b59c126bd562d18fefba3537cce49c44fb0cd52cc8  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.1.md
 9f8dc9bd5791f3d35434352dc6c51db61f66b447b3519928963c9edc4645bfa7  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
 ```
 
@@ -54,12 +54,12 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 
 ```
 89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
-0987de4a95ca8b6d3b82234d18ddd1f3bd06cf5983714531e5abe41cbdf1ca4a  reviews/Canonical Amendments v1.0.md
+a5487045a3fe13ac41eb016c09b598e968ee48a61772c40eb4b27e67563d50ce  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md
 07cef499c61ee314bbe547bad89d1fd1d2b653badecdd948cee9b31658ded22c  reviews/Open Implementation Gates v1.0.md
 054e263e876c534d57f7b5be288c4c7bfed07ad833b2ecce6c6aa3c781cb8449  README.md
-83c0893c0e95d99a66f2fa0bfb84c827233a7f46274d38607ae50b538d7ef3e5  SOURCE_OF_TRUTH.md
+841ff0281036a28590e14c84f0d885e32a3ba3dd1beb9c5eb84303150c2c4222  SOURCE_OF_TRUTH.md
 ```
 
 ## Historiska original (.docx, oförändrade)
@@ -101,5 +101,6 @@ e079a8304e0fdf19cd8d0f6d09da3ccb644fea566639784a1fa2c620dfbc82ac  archive/Omnira
 8b668c4087af187fe973100e51d322a014d72af4101f42fded6240a64a31926c  archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.0.pdf
 4da6c4e899c591a042d4346981f15b6ff60d1ebb4baabb9f583434559ca1b6f7  archive/Omnira Trading System - Från strategi till autonom exekvering - Canonical v1.1.pdf
 ee18f1d2ddd1a3321b5e9ec851e7c8b76fe0283bfaa729295e1caa58ee4d71a7  archive/Omnira Trading System – Risk Engine Specification – Canonical v1.0 CANDIDATE.md
-b73a51e8416b293401b169f08bfbda185af9e1ecc179510fd87c98b839137206  archive/README.md
+11cd194ebd82c83265002613558faa69d1c71cff7a1f37bfa0a906f38882172d  archive/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.0.md
+16b1758f41ec20107777ac3e58374484b5fe5e193026486ba7f0162415701ddf  archive/README.md
 ```

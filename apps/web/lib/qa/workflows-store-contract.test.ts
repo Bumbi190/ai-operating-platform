@@ -205,6 +205,12 @@ describe('store — appendTransition validates before it writes', () => {
     await store.appendTransition(db, {
       instanceId: INSTANCE_ID, to: 'content_generation', reason: 'approved', actor: 'editor',
       authorizationId: 'auth-1',
+      // PR2 CHANGED THIS TEST, and the change is the point. Before, any uuid
+      // satisfied a gated advance. Now the id must resolve to a live, unexpired,
+      // unconditional grant pinned to this exact instance/state/evidence, so the
+      // test has to say which verdict it is standing in for. Omitting this does
+      // not skip the check — it selects the real ledger-backed verifier.
+      verifyAuthorization: async () => ({ valid: true, status: 'authorized', reason: 'effective' }),
     })
     const call = rpcCalls.find(c => c.name === 'workflow_append_transition')!
     // Derived from the transition history, NOT from the instance projection and

@@ -28,6 +28,8 @@
 
 import { checkPrerequisites, deriveCurrentState, getState } from './machine'
 import type { VerificationEvidence } from './adapters/types'
+import type { CheckVerdict } from './evidence-consumption'
+import type { WorkflowFailureClass } from './escalation'
 import type { WorkflowInstance, WorkflowSpec, WorkflowStateSpec, WorkflowTransition } from './types'
 import type { WorkflowGateState } from './gate'
 
@@ -126,6 +128,58 @@ export interface WorkflowTickEvaluation {
   verification: VerificationSummary | null
   /** Check keys that did not pass, for the audit record. Never their payloads. */
   verificationFindings: string[]
+  /**
+   * Conditions this evaluation found, each ready to become a signal. Empty when
+   * nothing is wrong — an absence here is not a claim that anything passed.
+   */
+  conditions: WorkflowCondition[]
+}
+
+/** One thing that is wrong, classified rather than flattened into "failed". */
+export interface WorkflowCondition {
+  failureClass: WorkflowFailureClass
+  checkKey: string | null
+  targetHash: string | null
+  provenance: string | null
+  summary: string
+}
+
+/**
+ * Map an evidence verdict to a failure class.
+ *
+ * `satisfied` returns null. Everything else is a distinct condition, because
+ * "the producer said no", "we could not look", "the answer was unusable" and
+ * "this was verified against different artefacts" need different responses.
+ */
+export function conditionForVerdict(
+  verdict: CheckVerdict, required: boolean,
+): WorkflowCondition | null {
+  const base = {
+    checkKey: verdict.check_key,
+    targetHash: null as string | null,
+    provenance: verdict.source,
+  }
+  switch (verdict.satisfaction) {
+    case 'satisfied':
+      return null
+    case 'failed':
+      return { ...base, failureClass: 'verification_failed', summary: verdict.reason }
+    case 'errored':
+      return { ...base, failureClass: 'verification_error', summary: verdict.reason }
+    case 'stale':
+      return { ...base, failureClass: 'verification_stale', summary: verdict.reason }
+    // Not a finding about the world — a finding about our ability to look. Only
+    // a REQUIRED check turns that into a condition; an informational one is
+    // recorded and shown without holding anything up.
+    case 'blocked':
+    case 'absent':
+    case 'unbound':
+    case 'provenance_refused':
+    case 'undeclared':
+      return required
+        ? { ...base, failureClass: 'verification_blocked', summary: `${verdict.satisfaction}: ${verdict.reason}` }
+        : null
+  }
 }
 
 /**
@@ -161,6 +215,13 @@ export interface EvaluateInput {
   now: string
   /** Read-only verification gathered by the caller. Empty when none ran. */
   verification?: readonly VerificationEvidence[]
+  /**
+   * Verdicts for the checks this state DECLARES, judged against recorded
+   * evidence (PR5). Empty when the definition declares none.
+   */
+  evidence?: readonly CheckVerdict[]
+  /** Which declared checks must be satisfied for safe advancement. */
+  requiredChecks?: ReadonlySet<string>
 }
 
 /**
@@ -176,6 +237,10 @@ export interface EvaluateInput {
  */
 export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluation {
   const { summary, findings } = summarizeVerification(input.verification ?? [])
+  const required = input.requiredChecks ?? new Set<string>()
+  const evidenceConditions = (input.evidence ?? [])
+    .map(v => conditionForVerdict(v, required.has(v.check_key)))
+    .filter((c): c is WorkflowCondition => c !== null)
   const base = {
     state: input.instance.current_state,
     gateStatus: input.gate?.status ?? null,
@@ -184,6 +249,7 @@ export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluati
     escalate: false,
     verification: summary,
     verificationFindings: findings,
+    conditions: evidenceConditions,
   }
 
   if (!isSchedulable(input.instance)) {
@@ -200,25 +266,49 @@ export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluati
       outcome: 'failed',
       escalate: true,
       reason: `transition history is not well-formed: ${derived.integrity.violations.join('; ')}`,
+      conditions: [{
+        failureClass: 'workflow_integrity_failure', checkKey: null, targetHash: null,
+        provenance: null,
+        summary: `transition history is not well-formed: ${derived.integrity.violations.join('; ')}`,
+      }],
     }
   }
   if (derived.current_state === null) {
-    return { ...base, outcome: 'failed', escalate: true, reason: 'instance has no transition history' }
+    return {
+      ...base, outcome: 'failed', escalate: true, reason: 'instance has no transition history',
+      // An integrity failure REPLACES the evidence conditions rather than adding
+      // to them: when the history cannot be trusted, findings derived from it
+      // are not independent facts worth escalating separately.
+      conditions: [{
+        failureClass: 'workflow_integrity_failure', checkKey: null, targetHash: null,
+        provenance: null, summary: 'instance has no transition history',
+      }],
+    }
   }
   // The projection disagreeing with history is a corruption signal, not a
   // rounding error — the guard in the database exists to make it impossible.
   if (derived.current_state !== input.instance.current_state) {
+    const driftReason =
+      `projection drift: stored "${input.instance.current_state}", derived "${derived.current_state}"`
     return {
-      ...base,
-      outcome: 'failed',
-      escalate: true,
-      reason: `projection drift: stored "${input.instance.current_state}", derived "${derived.current_state}"`,
+      ...base, outcome: 'failed', escalate: true, reason: driftReason,
+      conditions: [{
+        failureClass: 'workflow_integrity_failure', checkKey: null, targetHash: null,
+        provenance: null, summary: driftReason,
+      }],
     }
   }
 
   const state = getState(input.spec, derived.current_state)
   if (state === null) {
-    return { ...base, outcome: 'failed', escalate: true, reason: 'current state is not declared by the pinned definition' }
+    return {
+      ...base, outcome: 'failed', escalate: true,
+      reason: 'current state is not declared by the pinned definition',
+      conditions: [{
+        failureClass: 'workflow_integrity_failure', checkKey: null, targetHash: null,
+        provenance: null, summary: 'current state is not declared by the pinned definition',
+      }],
+    }
   }
   if (state.next_state === null) {
     return { ...base, outcome: 'terminal', reason: 'terminal state' }
@@ -232,12 +322,18 @@ export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluati
   completedAfter.delete(state.next_state)
   const prereq = checkPrerequisites(input.spec, state.next_state, completedAfter)
   if (!prereq.satisfied) {
+    const prereqReason =
+      `"${state.next_state}" requires ${prereq.missing.map(m => `"${m}"`).join(', ')} to be complete first`
     return {
       ...base,
       outcome: 'blocked',
       autoAdvanceable,
       missingPrerequisites: prereq.missing,
-      reason: `"${state.next_state}" requires ${prereq.missing.map(m => `"${m}"`).join(', ')} to be complete first`,
+      reason: prereqReason,
+      conditions: [...base.conditions, {
+        failureClass: 'prerequisite_blocked', checkKey: null, targetHash: null,
+        provenance: null, summary: prereqReason,
+      }],
     }
   }
 
@@ -253,7 +349,13 @@ export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluati
       }
     }
     if (status !== 'authorized') {
-      return { ...base, outcome: 'blocked', autoAdvanceable, reason: `gate is ${status}` }
+      return {
+        ...base, outcome: 'blocked', autoAdvanceable, reason: `gate is ${status}`,
+        conditions: [...base.conditions, {
+          failureClass: 'authorization_blocked', checkKey: null, targetHash: null,
+          provenance: null, summary: `gate is ${status}`,
+        }],
+      }
     }
     // Authorized — but authority is not the act.
     return applyVerification({
@@ -292,6 +394,19 @@ function applyVerification(evaluation: WorkflowTickEvaluation): WorkflowTickEval
       outcome: 'blocked',
       reason: `verification ${evaluation.verification === 'verification_failed' ? 'failed' : 'errored'}: ` +
               evaluation.verificationFindings.join(', '),
+    }
+  }
+  // Recorded evidence (PR5) blocks on exactly the same terms. A required check
+  // that failed, errored, went stale or was never satisfied cannot be advanced
+  // past, and no combination of other passing checks changes that.
+  const blocking = evaluation.conditions.filter(c =>
+    c.failureClass === 'verification_failed' || c.failureClass === 'verification_error' ||
+    c.failureClass === 'verification_stale'  || c.failureClass === 'verification_blocked')
+  if (blocking.length > 0) {
+    return {
+      ...evaluation,
+      outcome: 'blocked',
+      reason: `evidence: ${blocking.map(c => `${c.checkKey}:${c.failureClass}`).join(', ')}`,
     }
   }
   return evaluation

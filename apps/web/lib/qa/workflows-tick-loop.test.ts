@@ -35,7 +35,8 @@ function instance(over: Partial<WorkflowInstance> = {}): WorkflowInstance {
 function world(opts: { instances: WorkflowInstance[]; paused?: boolean; failEvaluate?: boolean } = { instances: [] }) {
   const instances = new Map(opts.instances.map(i => [i.id, { ...i }]))
   const evidence: Record<string, unknown>[] = []
-  const signals: { kind: string; payload: Record<string, unknown> }[] = []
+  /** PR6: the escalation lifecycle lives in atlas_signals, so the fake models it. */
+  const signals: { kind: string; payload: any; project_id: string; produced_at: string }[] = []
   const rpcCalls: { name: string; args: any }[] = []
 
   const transitions = [{
@@ -50,16 +51,41 @@ function world(opts: { instances: WorkflowInstance[]; paused?: boolean; failEval
       name === 'workflow_transitions' ? [...transitions] :
       name === 'workflow_evidence' ? [] :
       name === 'projects' ? [{ id: 'p1', execution_paused: opts.paused === true }] :
-      name === 'workflow_instances' ? [...instances.values()] : []
+      name === 'workflow_instances' ? [...instances.values()] :
+      name === 'atlas_signals' ? [...signals] : []
     const chain: any = {
-      select: () => chain, order: () => chain, limit: () => chain, not: () => chain, lte: () => chain,
-      eq: (c: string, v: unknown) => { rows = rows.filter(r => r[c] === v); return chain },
+      select: () => chain, limit: () => chain, not: () => chain, lte: () => chain,
+      // atlas_signals is read newest-first; the lifecycle derivation depends on it.
+      order: (col: string, o?: { ascending?: boolean }) => {
+        rows = [...rows].sort((a, b) => {
+          const x = String(a[col] ?? ''), y = String(b[col] ?? '')
+          return o?.ascending === false ? y.localeCompare(x) : x.localeCompare(y)
+        })
+        return chain
+      },
+      in: (c: string, vals: unknown[]) => { rows = rows.filter(r => vals.includes(r[c])); return chain },
+      eq: (c: string, v: unknown) => {
+        // Supports the payload->>signal_key filter the escalation reader uses.
+        if (c === 'payload->>signal_key') rows = rows.filter(r => r.payload?.signal_key === v)
+        else rows = rows.filter(r => r[c] === v)
+        return chain
+      },
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
-      single: async () => ({
-        data: rows[0] ?? null,
-        error: rows[0] ? null : { message: `${name} not found` },
-      }),
-      insert: (row: any) => { if (name === 'workflow_evidence') evidence.push(row); return chain },
+      single: async () => {
+        if (name === 'atlas_signals') {
+          const last = signals[signals.length - 1]
+          return { data: last ? { id: `sig-${signals.length}`, content_id: null, ...last } : null,
+                   error: last ? null : { message: 'atlas_signals not found' } }
+        }
+        return { data: rows[0] ?? null, error: rows[0] ? null : { message: `${name} not found` } }
+      },
+      insert: (row: any) => {
+        if (name === 'workflow_evidence') evidence.push(row)
+        if (name === 'atlas_signals') {
+          signals.push({ ...row, produced_at: row.produced_at ?? new Date(Date.now() + signals.length).toISOString() })
+        }
+        return chain
+      },
       then: (res: (v: { data: unknown[]; error: null }) => unknown) => res({ data: rows, error: null }),
     }
     return chain
@@ -97,8 +123,17 @@ function world(opts: { instances: WorkflowInstance[]; paused?: boolean; failEval
     },
   }
 
-  return { db, instances, evidence, signals, rpcCalls,
-    emitSignal: async (kind: string, payload: Record<string, unknown>) => { signals.push({ kind, payload }) } }
+  /** Stands in for recordSignal; the tick never builds a client in tests. */
+  const signalWriter = (async (args: any) => {
+    const row = { kind: args.kind, payload: args.payload, project_id: args.projectId,
+                  produced_at: new Date(Date.now() + signals.length).toISOString() }
+    signals.push(row)
+    return { id: `sig-${signals.length}`, contentId: null, projectId: args.projectId,
+             source: args.source ?? null, kind: args.kind, payload: args.payload,
+             version: args.version, producedAt: row.produced_at }
+  }) as any
+
+  return { db, instances, evidence, signals, rpcCalls, signalWriter }
 }
 
 /** An empty but READABLE ledger: no authorization exists for any target. */
@@ -106,7 +141,7 @@ const emptyLedger = { history: async () => [], byTarget: async () => [] }
 
 const run = (w: ReturnType<typeof world>) =>
   tickDueWorkflows(w.db as any, {
-    now: NOW, visibilitySeconds: VISIBILITY, emitSignal: w.emitSignal, ledger: emptyLedger,
+    now: NOW, visibilitySeconds: VISIBILITY, ledger: emptyLedger, signalWriter: w.signalWriter,
   })
 
 // ── Due selection ────────────────────────────────────────────────────────────
@@ -228,7 +263,7 @@ describe('tick — outcome handling', () => {
   it('an UNREADABLE ledger blocks rather than defaulting the gate open', async () => {
     const w = world({ instances: [instance()] })
     const r = await tickDueWorkflows(w.db as any, {
-      now: NOW, emitSignal: w.emitSignal,
+      now: NOW, signalWriter: w.signalWriter,
       ledger: { history: async () => { throw new Error('ledger down') },
                 byTarget: async () => { throw new Error('ledger down') } },
     })
@@ -242,18 +277,29 @@ describe('tick — outcome handling', () => {
     expect(r.evaluated[0].outcome).toBe('failed')
     expect(r.escalated).toBe(1)
     expect(w.signals).toHaveLength(1)
-    expect(w.signals[0].kind).toBe('workflow.integrity_failure')
+    expect(w.signals[0].kind).toBe('workflow.escalation.raised')
     expect(w.signals[0].payload.severity).toBe('critical')
+    expect(w.signals[0].payload.failure_class).toBe('workflow_integrity_failure')
+    expect(w.signals[0].payload.remediation).toMatch(/Do not advance this instance/)
   })
 
-  it('a signal failure never breaks the tick', async () => {
+  it('a repeated identical detection appends NO second signal', async () => {
+    // The property that stops a once-a-minute tick becoming a once-a-minute
+    // incident log.
     const w = world({ instances: [instance({ current_state: 'protected_upload' })] })
-    const r = await tickDueWorkflows(w.db as any, {
-      now: NOW, emitSignal: async () => { throw new Error('signal sink down') },
-    })
-    // The throw surfaces as an instance-level error, not a dead scheduler.
-    expect(r.claimed).toBe(1)
-    expect(r.errors).toHaveLength(1)
+    await run(w)
+    expect(w.signals).toHaveLength(1)
+    w.instances.get('i1')!.wake_at = PAST
+    const second = await run(w)
+    expect(w.signals).toHaveLength(1)
+    expect(second.escalated).toBe(0)
+  })
+
+  it('sends no email while escalation email is default-off', async () => {
+    const w = world({ instances: [instance({ current_state: 'protected_upload' })] })
+    const r = await run(w)
+    expect(r.escalated).toBe(1)
+    expect(r.notified).toBe(0)
   })
 })
 

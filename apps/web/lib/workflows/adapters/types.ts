@@ -22,6 +22,8 @@
  *            an unexpected status. Fail closed and surface it.
  */
 
+import type { AttestableCheck } from '../attestation'
+
 /** The outcome vocabulary written into workflow_evidence. */
 export type VerificationResult = 'pass' | 'fail' | 'blocked' | 'error'
 
@@ -136,4 +138,13 @@ export interface WorkflowAdapter {
   }): Promise<VerificationEvidence[]>
   /** Which states this adapter can say anything about. */
   verifiableStates(): string[]
+  /**
+   * The checks this workflow declares, and which provenance may satisfy each.
+   *
+   * Ingestion consults this: evidence for a (state, check_key) the definition
+   * does not declare is refused, and an attestation for an automated-only check
+   * is refused. An adapter with no catalogue accepts no attestations at all —
+   * fail closed, not open.
+   */
+  attestableChecks(): readonly AttestableCheck[]
 }

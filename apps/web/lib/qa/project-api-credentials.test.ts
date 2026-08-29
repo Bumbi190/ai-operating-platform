@@ -687,9 +687,17 @@ describe('inertness — Phase 1 changes no existing auth', () => {
     // route cannot quietly acquire credential auth by adding an import.
     expect(filesContaining('auth/project-api-credentials', `${WEB_ROOT}/app`)).toEqual([])
 
+    // PR5 added the second consumer, and deliberately as another route-scoped
+    // resolver rather than a direct route import — the rule this guard exists to
+    // enforce. The list is exhaustive on purpose: a third consumer must be a
+    // deliberate edit here, not a silent import.
     const libConsumers = filesContaining('auth/project-api-credentials', `${WEB_ROOT}/lib`)
       .filter(f => !f.endsWith('lib/auth/project-api-credentials.ts') && !f.includes('/qa/'))
-    expect(libConsumers).toEqual([`${WEB_ROOT}/lib/business/leads-auth.ts`])
+      .sort()
+    expect(libConsumers).toEqual([
+      `${WEB_ROOT}/lib/business/leads-auth.ts`,
+      `${WEB_ROOT}/lib/workflows/evidence-auth.ts`,
+    ].sort())
   })
 
   it('leaves lib/api-auth.ts holding cron auth and nothing global', () => {

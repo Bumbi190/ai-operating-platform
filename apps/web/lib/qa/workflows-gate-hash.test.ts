@@ -54,6 +54,8 @@ function evidence(over: Partial<WorkflowEvidence> = {}): WorkflowEvidence {
     source: 'attested',
     detail: {},
     recorded_at: '2026-08-02T10:00:00.000Z',
+    producer: null, producer_type: null, observed_at: null,
+    payload_hash: null, target_hash: null, attestation: {},
     ...over,
   }
 }

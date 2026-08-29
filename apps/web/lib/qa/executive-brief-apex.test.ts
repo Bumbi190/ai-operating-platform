@@ -680,7 +680,34 @@ describe('Apex Executive Brief — boundaries and legacy retirement', () => {
     expect(page).not.toContain('/api/atlas/intelligence/brief')
   })
 
-  it('leaves the legacy module with no live importer', () => {
+  it('the retired legacy module is GONE, not merely unimported', () => {
+    // Was: "no live module imports lib/atlas/executive.ts". That contract could
+    // only ever prove the file was idle, never that it could not come back. The
+    // file powered no live surface from EI-S1.2 and was kept on disk solely for
+    // the then-in-flight feat/omnira-ui-vnext branch; that branch has merged and
+    // vNext is the production default, so the retention reason is spent and the
+    // file is deleted. The guard now proves absence.
+    expect(existsSync(resolve(REPO_ROOT, 'apps/web/lib/atlas/executive.ts'))).toBe(false)
+  })
+
+  it('did not come back under another name', () => {
+    // The implementation plan floated renaming it to _legacy_executive.ts rather
+    // than deleting it. A compatibility wrapper would reinstate exactly the
+    // non-conformant path (P1/P3/P4/P6) this retirement removed, so no file may
+    // re-export the retired surface under any name.
+    for (const candidate of [
+      'apps/web/lib/atlas/_legacy_executive.ts',
+      'apps/web/lib/atlas/executive.legacy.ts',
+      'apps/web/lib/atlas/executive/index.ts',
+    ]) {
+      expect(existsSync(resolve(REPO_ROOT, candidate)), candidate).toBe(false)
+    }
+  })
+
+  it('nothing imports the retired path or its symbol', () => {
+    // Kept from the original contract and now strictly stronger: with the file
+    // deleted there is no self-exemption, so this also catches a re-introduction
+    // in any new file.
     const roots = ['apps/web/app', 'apps/web/lib', 'apps/web/scripts']
     const offenders: string[] = []
     const walk = (dir: string) => {
@@ -688,7 +715,6 @@ describe('Apex Executive Brief — boundaries and legacy retirement', () => {
         const rel = `${dir}/${entry.name}`
         if (entry.isDirectory()) { walk(rel); continue }
         if (!/\.tsx?$/.test(entry.name)) continue
-        if (rel.endsWith('apps/web/lib/atlas/executive.ts')) continue
         if (rel.includes('/qa/')) continue
         const src = readFileSync(resolve(REPO_ROOT, rel), 'utf8')
         const imports = /from\s+['"](?:@\/lib\/atlas\/executive|\.{1,2}\/executive)['"]/.test(src)

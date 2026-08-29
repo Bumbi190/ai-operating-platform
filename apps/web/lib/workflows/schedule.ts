@@ -27,6 +27,7 @@
  */
 
 import { checkPrerequisites, deriveCurrentState, getState } from './machine'
+import type { VerificationEvidence } from './adapters/types'
 import type { WorkflowInstance, WorkflowSpec, WorkflowStateSpec, WorkflowTransition } from './types'
 import type { WorkflowGateState } from './gate'
 
@@ -100,6 +101,18 @@ export type WorkflowTickOutcome =
   /** Pure orchestration, prerequisites met: the scheduler could advance this. */
   | 'ready_for_transition'
 
+/**
+ * What read-only verification said, if an adapter ran any.
+ *
+ * `null` means no adapter, or nothing verifiable for this state — NOT "verified
+ * clean". The distinction matters: absence of a finding is not a finding.
+ */
+export type VerificationSummary =
+  | 'verification_passed'
+  | 'verification_failed'
+  | 'verification_blocked'
+  | 'verification_error'
+
 export interface WorkflowTickEvaluation {
   outcome: WorkflowTickOutcome
   state: string | null
@@ -110,6 +123,32 @@ export interface WorkflowTickEvaluation {
   gateStatus: WorkflowGateState['status'] | null
   missingPrerequisites: string[]
   autoAdvanceable: boolean
+  verification: VerificationSummary | null
+  /** Check keys that did not pass, for the audit record. Never their payloads. */
+  verificationFindings: string[]
+}
+
+/**
+ * Reduce a set of verification records to one summary, worst-first.
+ *
+ * `fail` outranks `error` outranks `blocked`: a real authoritative NO is the most
+ * important thing that can be in this list, and must never be hidden behind a
+ * timeout that happened to be evaluated first.
+ */
+export function summarizeVerification(
+  evidence: readonly VerificationEvidence[],
+): { summary: VerificationSummary | null; findings: string[] } {
+  if (evidence.length === 0) return { summary: null, findings: [] }
+  const worst = (r: VerificationEvidence['result']) =>
+    r === 'fail' ? 3 : r === 'error' ? 2 : r === 'blocked' ? 1 : 0
+  const top = evidence.reduce((a, b) => (worst(b.result) > worst(a.result) ? b : a))
+  const findings = evidence.filter(e => e.result !== 'pass').map(e => `${e.check_key}:${e.result}`)
+  const summary: VerificationSummary =
+    top.result === 'fail' ? 'verification_failed'
+    : top.result === 'error' ? 'verification_error'
+    : top.result === 'blocked' ? 'verification_blocked'
+    : 'verification_passed'
+  return { summary, findings }
 }
 
 export interface EvaluateInput {
@@ -120,6 +159,8 @@ export interface EvaluateInput {
   gate: WorkflowGateState | null
   projectPaused: boolean
   now: string
+  /** Read-only verification gathered by the caller. Empty when none ran. */
+  verification?: readonly VerificationEvidence[]
 }
 
 /**
@@ -134,12 +175,15 @@ export interface EvaluateInput {
  * history already known to be sound.
  */
 export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluation {
+  const { summary, findings } = summarizeVerification(input.verification ?? [])
   const base = {
     state: input.instance.current_state,
     gateStatus: input.gate?.status ?? null,
     missingPrerequisites: [] as string[],
     autoAdvanceable: false,
     escalate: false,
+    verification: summary,
+    verificationFindings: findings,
   }
 
   if (!isSchedulable(input.instance)) {
@@ -212,24 +256,45 @@ export function evaluateWorkflowTick(input: EvaluateInput): WorkflowTickEvaluati
       return { ...base, outcome: 'blocked', autoAdvanceable, reason: `gate is ${status}` }
     }
     // Authorized — but authority is not the act.
-    return {
+    return applyVerification({
       ...base,
       outcome: autoAdvanceable ? 'ready_for_transition' : 'authorized_ready',
       autoAdvanceable,
       reason: autoAdvanceable
         ? 'authorized and orchestration-only'
         : `authorized; "${state.id}" declares work the scheduler does not perform`,
-    }
+    })
   }
 
-  return {
+  return applyVerification({
     ...base,
     outcome: autoAdvanceable ? 'ready_for_transition' : 'authorized_ready',
     autoAdvanceable,
     reason: autoAdvanceable
       ? 'orchestration-only and unblocked'
       : `"${state.id}" declares work the scheduler does not perform`,
+  })
+}
+
+/**
+ * Verification may only ever make an outcome WORSE.
+ *
+ * An authoritative FAIL or an unusable response blocks. A `blocked` verification
+ * — we could not look — is recorded but does not itself stop the workflow: it is
+ * evidence about our reach, not about the world, and treating it as a finding
+ * would let a missing credential masquerade as a release problem. What it can
+ * never do, in any branch, is turn something into an advance.
+ */
+function applyVerification(evaluation: WorkflowTickEvaluation): WorkflowTickEvaluation {
+  if (evaluation.verification === 'verification_failed' || evaluation.verification === 'verification_error') {
+    return {
+      ...evaluation,
+      outcome: 'blocked',
+      reason: `verification ${evaluation.verification === 'verification_failed' ? 'failed' : 'errored'}: ` +
+              evaluation.verificationFindings.join(', '),
+    }
   }
+  return evaluation
 }
 
 /**

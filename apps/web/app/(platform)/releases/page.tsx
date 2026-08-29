@@ -24,6 +24,8 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import type { WorkflowGateState } from '@/lib/workflows/gate'
 import { wakeState } from '@/lib/workflows/schedule'
+import { findAdapter } from '@/lib/workflows/adapters/registry'
+import type { VerificationEvidence } from '@/lib/workflows/adapters/types'
 import { GateActions } from './GateActions'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE, loadVendoredDefinitions } from '@/lib/workflows/definitions'
 import type { WorkflowSpec } from '@/lib/workflows/types'
@@ -73,6 +75,8 @@ export default async function ReleasesPage() {
     wake: { at: string | null; state: 'not_scheduled' | 'sleeping' | 'due' }
     lastTickAt: string | null
     lastTickOutcome: string | null
+    verification: VerificationEvidence[]
+    authoritativeSystem: string | null
     mayDecide: boolean
     projected: string
     projectionAgrees: boolean
@@ -97,6 +101,21 @@ export default async function ReleasesPage() {
       } catch {
         gate = null   // a gate we cannot resolve is shown as unresolved, never as open
       }
+      // Read-only verification for the CURRENT state. Never writes, and never
+      // reaches anything but the project's own authoritative systems.
+      let verification: VerificationEvidence[] = []
+      const adapter = findAdapter(instance.def_key)
+      if (adapter) {
+        try {
+          verification = await adapter.verifyState({
+            state: instance.current_state, instanceKey: instance.instance_key,
+            now: new Date().toISOString(),
+          })
+        } catch {
+          verification = []   // a failing adapter shows nothing, never a false pass
+        }
+      }
+
       cards.push({
         instanceId: instance.id,
         instanceKey: instance.instance_key,
@@ -109,6 +128,8 @@ export default async function ReleasesPage() {
         wake: { at: instance.wake_at, state: wakeState(instance.wake_at, new Date().toISOString()) },
         lastTickAt: instance.last_tick_at,
         lastTickOutcome: instance.last_tick_outcome,
+        verification,
+        authoritativeSystem: adapter?.authoritativeSystem ?? null,
         mayDecide: assertProjectAllowed(instance.project_id, allowedProjectIds),
         projected: instance.current_state,
         projectionAgrees: derived.current_state === instance.current_state,
@@ -279,6 +300,38 @@ export default async function ReleasesPage() {
                     </div>
                   )}
 
+                  {card.verification.length > 0 && (
+                    <div className="space-y-2 rounded border border-white/10 bg-white/[0.02] p-3">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="flex items-center gap-1.5 text-white/70">
+                          <ShieldCheck className="h-3 w-3" />
+                          Verification
+                        </span>
+                        <span className="text-white/35">
+                          authoritative source: {card.authoritativeSystem ?? '—'}
+                        </span>
+                      </div>
+                      <ul className="space-y-1">
+                        {card.verification.map(v => (
+                          <li key={v.check_key} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                            <span className={`w-14 shrink-0 font-mono uppercase ${VERIFY_TONE[v.result]}`}>
+                              {v.result}
+                            </span>
+                            <span className="font-mono text-white/70">{v.check_key}</span>
+                            <span className="text-white/40">— {v.observed}</span>
+                            {v.failure_kind && (
+                              <span className="font-mono text-white/30">({v.failure_kind})</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="text-[10px] text-white/30">
+                        Read-only. Omnira observes Familje-Stunden’s answers; it never
+                        decides access, and a check it could not run is never a pass.
+                      </div>
+                    </div>
+                  )}
+
                   {card.latest && (
                     <div className="text-xs text-white/50">
                       <span className="text-white/70">Latest transition:</span>{' '}
@@ -324,6 +377,14 @@ export default async function ReleasesPage() {
       </OSLayer>
     </OSPage>
   )
+}
+
+/** Verification result → colour. `blocked` is amber, not red: we could not look. */
+const VERIFY_TONE: Record<string, string> = {
+  pass: 'text-emerald-300/80',
+  fail: 'text-rose-300',
+  error: 'text-rose-300/80',
+  blocked: 'text-amber-300/80',
 }
 
 /**

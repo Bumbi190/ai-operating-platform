@@ -111,6 +111,30 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   observedCheck('shared_manifest_consumers_in_sync', 'post_release_qa',
     'Consumers still agree on the deployed shared manifest after release'),
 
+  // ── Deployment chain (PR8) ───────────────────────────────────────────────
+  // branch → PR → merge SHA → production deployment → deployed SHA. Automated
+  // only: each link is read from the authority that owns it, and no link may be
+  // inferred from another. A READY deployment on the wrong commit looks healthy
+  // from outside, which is why the SHA comparison is its own check.
+  observedCheck('github_pr_merged', 'frontend_deploy',
+    'The release pull request is merged'),
+  observedCheck('github_pr_checks_green', 'frontend_deploy',
+    'All commit checks on the merged ref report success'),
+  observedCheck('github_merge_sha_matches_expected', 'frontend_deploy',
+    'The merge SHA equals the independently pinned expected SHA'),
+  observedCheck('vercel_production_ready', 'frontend_deploy',
+    'A production deployment for the merge SHA is READY'),
+  observedCheck('vercel_deploy_sha_matches_merge_sha', 'frontend_deploy',
+    'The deployed SHA is exactly the merge SHA'),
+  observedCheck('production_alias_attached', 'frontend_deploy',
+    'The production deployment carries a production alias'),
+  // Re-checked later: a redeploy or rollback after approval would otherwise
+  // never be noticed.
+  observedCheck('vercel_deploy_sha_matches_merge_sha', 'approval_release',
+    'Production still runs exactly the approved merge SHA'),
+  observedCheck('vercel_deploy_sha_matches_merge_sha', 'post_release_qa',
+    'Production still runs exactly the approved merge SHA after release'),
+
   // ── Observed by Omnira, never attested ───────────────────────────────────
   observedCheck('anonymous_protected_access_denied', 'approval_release',
     'Unauthenticated callers are refused by every protected endpoint'),

@@ -82,6 +82,8 @@ export default async function ReleasesPage() {
     lastTickAt: string | null
     lastTickOutcome: string | null
     verification: VerificationEvidence[]
+    /** The deployment chain, rendered separately from flat verification. */
+    deployment: VerificationEvidence[]
     authoritativeSystem: string | null
     checkVerdicts: CheckVerdict[]
     signals: ActiveWorkflowSignal[]
@@ -124,6 +126,12 @@ export default async function ReleasesPage() {
           verification = []   // a failing adapter shows nothing, never a false pass
         }
       }
+
+      // The deployment chain gets its own panel: a READY deployment on the wrong
+      // commit looks healthy in a flat list, and that is precisely the failure
+      // this exists to surface.
+      const deployment = verification.filter(v => DEPLOYMENT_CHAIN_KEYS.includes(v.check_key))
+      verification = verification.filter(v => !DEPLOYMENT_CHAIN_KEYS.includes(v.check_key))
 
       // Declared checks for the current state, judged against what has actually
       // been recorded. Provenance and binding are decided here, not in the view.
@@ -168,6 +176,7 @@ export default async function ReleasesPage() {
         lastTickAt: instance.last_tick_at,
         lastTickOutcome: instance.last_tick_outcome,
         verification,
+        deployment,
         authoritativeSystem: adapter?.authoritativeSystem ?? null,
         checkVerdicts,
         signals,
@@ -415,6 +424,55 @@ export default async function ReleasesPage() {
                     </div>
                   )}
 
+                  {card.deployment.length > 0 && (() => {
+                    // A failed SHA comparison is the one finding that must not be
+                    // possible to skim past, so it changes the panel, not just a row.
+                    const broken = card.deployment.filter(
+                      v => v.result !== 'pass' && DEPLOYMENT_CRITICAL_KEYS.includes(v.check_key))
+                    return (
+                      <div className={`space-y-2 rounded border p-3 ${broken.length > 0
+                        ? 'border-rose-500/50 bg-rose-500/[0.07]'
+                        : 'border-white/10 bg-white/[0.02]'}`}>
+                        <div className="flex items-center gap-1.5 text-[11px] text-white/70">
+                          <GitBranch className="h-3 w-3" />
+                          Deployment chain
+                          {broken.length > 0 && (
+                            <span className="ml-auto flex items-center gap-1 rounded bg-rose-500/20 px-1.5 py-px font-mono text-[10px] uppercase text-rose-200">
+                              <AlertTriangle className="h-3 w-3" />
+                              production is not running the approved commit
+                            </span>
+                          )}
+                        </div>
+                        <ol className="space-y-1">
+                          {DEPLOYMENT_CHAIN_KEYS.map(key => {
+                            const v = card.deployment.find(d => d.check_key === key)
+                            if (!v) return null
+                            const critical = v.result !== 'pass' && DEPLOYMENT_CRITICAL_KEYS.includes(key)
+                            return (
+                              <li key={key} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                                <span className={`w-14 shrink-0 font-mono uppercase ${VERIFY_TONE[v.result]}`}>
+                                  {v.result}
+                                </span>
+                                <span className={critical ? 'text-rose-200' : 'text-white/70'}>
+                                  {CHAIN_LABEL[key] ?? key}
+                                </span>
+                                <span className={critical ? 'text-rose-300/80' : 'text-white/40'}>
+                                  — {v.observed}
+                                </span>
+                              </li>
+                            )
+                          })}
+                        </ol>
+                        <div className="text-[10px] text-white/30">
+                          Every link is read from the system that owns it, and none is
+                          inferred from another. The site answering normally is not
+                          evidence — only Vercel’s own git metadata decides which commit
+                          production is serving.
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {card.checkVerdicts.length > 0 && (
                     <div className="space-y-2 rounded border border-white/10 bg-white/[0.02] p-3">
                       <div className="flex items-center gap-1.5 text-[11px] text-white/70">
@@ -548,6 +606,34 @@ const PROVENANCE_BADGE: Record<string, string> = {
 }
 
 /** Verification result → colour. `blocked` is amber, not red: we could not look. */
+/**
+ * The chain, in the order it must hold. Rendered as a chain rather than a list
+ * so a broken link is read as a broken link and not as "one of six checks".
+ */
+const DEPLOYMENT_CHAIN_KEYS = [
+  'github_pr_merged',
+  'github_pr_checks_green',
+  'github_merge_sha_matches_expected',
+  'vercel_production_ready',
+  'vercel_deploy_sha_matches_merge_sha',
+  'production_alias_attached',
+]
+
+/** The two links whose failure means production is serving the wrong thing. */
+const DEPLOYMENT_CRITICAL_KEYS = [
+  'vercel_deploy_sha_matches_merge_sha',
+  'production_alias_attached',
+]
+
+const CHAIN_LABEL: Record<string, string> = {
+  github_pr_merged: 'Pull request merged',
+  github_pr_checks_green: 'Checks green',
+  github_merge_sha_matches_expected: 'Merge SHA as expected',
+  vercel_production_ready: 'Production READY',
+  vercel_deploy_sha_matches_merge_sha: 'Deployed SHA = merge SHA',
+  production_alias_attached: 'Production alias attached',
+}
+
 const VERIFY_TONE: Record<string, string> = {
   pass: 'text-emerald-300/80',
   fail: 'text-rose-300',

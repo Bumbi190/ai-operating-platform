@@ -119,6 +119,12 @@ export const CRITICAL_CHECK_KEYS: readonly string[] = [
   'deployed_manifest_matches_expected',
   'sign_protected_asset_source_current',
   'get_protected_ebook_source_current',
+  // PR8 — the deployment chain's two safety links. Production READY on a SHA
+  // other than the approved merge is the failure that looks completely healthy
+  // from outside; a missing production alias during release means the domain is
+  // serving something other than the verified deployment.
+  'vercel_deploy_sha_matches_merge_sha',
+  'production_alias_attached',
 ]
 
 export function severityFor(

@@ -111,6 +111,14 @@ export const FAILURE_SEVERITY: Record<WorkflowFailureClass, Severity> = {
 export const CRITICAL_CHECK_KEYS: readonly string[] = [
   'anonymous_protected_access_denied',
   'release_gate_exists',
+  // PR7 — deployed-source drift. A protected-content consumer running stale
+  // access or manifest logic is the condition where the gate says YES and the
+  // allowlist says NO, which surfaces as a permissions bug and hides real
+  // exposure. Consumers disagreeing means at least one was never redeployed.
+  'shared_manifest_consumers_in_sync',
+  'deployed_manifest_matches_expected',
+  'sign_protected_asset_source_current',
+  'get_protected_ebook_source_current',
 ]
 
 export function severityFor(

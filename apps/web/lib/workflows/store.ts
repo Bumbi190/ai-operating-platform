@@ -235,6 +235,38 @@ export interface AppendTransitionInput {
   evidenceRef?: string | null
   /** Required when the move crosses a state's declared human gate. */
   authorizationId?: string | null
+  /**
+   * Seam for the gate check. Production callers omit it and get the real
+   * ledger-backed verifier; tests inject a stub so the machine's rules can be
+   * exercised without a session or a database.
+   *
+   * There is no way to switch it OFF — an absent verifier means the DEFAULT one,
+   * never "skip the check".
+   */
+  verifyAuthorization?: WorkflowAuthorizationVerifier
+}
+
+/**
+ * Answers one question: may this authorization carry this instance across the
+ * gate on its current state? Returns a reason, never a bare boolean, so a
+ * refusal can say whether the grant was denied, expired or merely stale.
+ */
+export type WorkflowAuthorizationVerifier = (
+  db: WorkflowDb,
+  instanceId: string,
+  authorizationId: string,
+) => Promise<{ valid: boolean; status: string; reason: string }>
+
+/**
+ * Lazily imported to break a genuine cycle: lib/workflows/authorization.ts needs
+ * this module's readers (instance, definition, evidence) to derive the pinned
+ * target. Importing it at module scope here would make the two files
+ * co-dependent at init time. The import is inside the call, so the cycle is
+ * resolved by the time it runs and neither module needs restructuring.
+ */
+const defaultVerifier: WorkflowAuthorizationVerifier = async (db, instanceId, authorizationId) => {
+  const { assertWorkflowAuthorizationValid } = await import('./authorization')
+  return assertWorkflowAuthorizationValid(db, instanceId, authorizationId)
 }
 
 export class InvalidTransitionError extends Error {
@@ -281,6 +313,34 @@ export async function appendTransition(
     instance.status,
   )
   if (!decision.ok) throw new InvalidTransitionError(decision.errors)
+
+  // The machine has confirmed the move is graph-legal and, if gated, that an
+  // authorization id was supplied. It cannot confirm the id MEANS anything —
+  // that requires the ledger. Do it here, before any write.
+  //
+  // Failing closed is the point: an unreadable or unresolvable authorization is
+  // refused, never assumed valid.
+  if (decision.requires_authorization) {
+    const authorizationId = input.authorizationId
+    if (!authorizationId) {
+      throw new InvalidTransitionError([`leaving "${derived.current_state}" requires an authorization`])
+    }
+    const verify = input.verifyAuthorization ?? defaultVerifier
+    let assertion: Awaited<ReturnType<WorkflowAuthorizationVerifier>>
+    try {
+      assertion = await verify(db, instance.id, authorizationId)
+    } catch (e) {
+      throw new InvalidTransitionError([
+        `authorization ${authorizationId} could not be verified: ${e instanceof Error ? e.message : 'unknown error'}`,
+      ])
+    }
+    if (!assertion.valid) {
+      throw new InvalidTransitionError([
+        `authorization ${authorizationId} is not valid for this gate ` +
+        `(${assertion.status}: ${assertion.reason})`,
+      ])
+    }
+  }
 
   const { data, error } = await (db as AnyDb).rpc('workflow_append_transition', {
     p_instance_id: instance.id,

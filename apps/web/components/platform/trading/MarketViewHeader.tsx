@@ -56,8 +56,25 @@ const SESSION_STATE_LABELS = {
   UNKNOWN: 'okänd',
 } as const
 
+const LOAD_COPY = {
+  LOADING: { label: 'LADDAR', detail: 'Hämtar tidslinje från källan.' },
+  UNAVAILABLE: { label: 'EJ TILLGÄNGLIG', detail: 'Källan har ingen tidslinje för detta urval.' },
+  ERROR: { label: 'KÄLLFEL', detail: 'Tidslinjen kunde inte hämtas.' },
+} as const
+
 export interface MarketViewHeaderProps {
-  snapshot: TradingMarketViewSnapshot
+  /**
+   * Null while the source is loading, unavailable or failed.
+   *
+   * Deliberately nullable rather than defaulted to a blank snapshot: an empty
+   * snapshot would render as a calm, connected market with no data, which is
+   * exactly the impression this surface must never give.
+   */
+  snapshot: TradingMarketViewSnapshot | null
+  loadStatus: 'LOADING' | 'READY' | 'UNAVAILABLE' | 'ERROR'
+  /** Source identity, which exists even when no timeline does. */
+  sourceLabel: string
+  sourceOrigin: string
   instrument: MarketInstrument
   timeframe: MarketTimeframe
   onInstrumentChange: (instrument: MarketInstrument) => void
@@ -66,14 +83,17 @@ export interface MarketViewHeaderProps {
 
 export function MarketViewHeader({
   snapshot,
+  loadStatus,
+  sourceLabel,
+  sourceOrigin,
   instrument,
   timeframe,
   onInstrumentChange,
   onTimeframeChange,
 }: MarketViewHeaderProps) {
-  const banner = resolveSafetyBanner(snapshot)
-  const copy = BANNER_COPY[banner]
-  const session = snapshot.sessionState
+  const banner = snapshot === null ? null : resolveSafetyBanner(snapshot)
+  const copy = banner === null ? null : BANNER_COPY[banner]
+  const session = snapshot?.sessionState ?? null
 
   return (
     <header className={styles.header}>
@@ -88,12 +108,21 @@ export function MarketViewHeader({
 
         <div
           className={styles.safetyBanner}
-          data-banner={banner}
+          data-banner={banner ?? loadStatus}
           role="status"
           data-testid="safety-banner"
         >
-          <span className={styles.safetyLabel}>{copy.label}</span>
-          <span className={styles.safetyDetail}>{copy.detail}</span>
+          {/*
+            With no snapshot there is no market state to describe, so the banner
+            reports the SOURCE state instead. It never falls back to a market
+            claim it cannot support.
+          */}
+          <span className={styles.safetyLabel}>
+            {copy?.label ?? LOAD_COPY[loadStatus as keyof typeof LOAD_COPY]?.label ?? 'OKÄND'}
+          </span>
+          <span className={styles.safetyDetail}>
+            {copy?.detail ?? LOAD_COPY[loadStatus as keyof typeof LOAD_COPY]?.detail ?? ''}
+          </span>
         </div>
       </div>
 
@@ -138,29 +167,40 @@ export function MarketViewHeader({
           ))}
         </div>
 
-        <div className={styles.sessionStrip} aria-label="Sessionsfönster">
-          <span className={styles.sessionClock}>
-            {session.canonicalTime}
-            <span className={styles.sessionZone}>
-              {session.timezone} {session.utcOffset}
-            </span>
-          </span>
-          {session.windows.map((window) => (
-            <span key={window.session} className={styles.sessionWindow} data-state={window.state}>
-              <span className={styles.sessionName}>{window.label}</span>
-              <span className={styles.sessionRange}>
-                {window.opensAt}–{window.closesAt}
+        {session === null ? null : (
+          <div className={styles.sessionStrip} aria-label="Sessionsfönster">
+            <span className={styles.sessionClock}>
+              {session.canonicalTime}
+              <span className={styles.sessionZone}>
+                {session.timezone} {session.utcOffset}
               </span>
-              <span className={styles.sessionState}>{SESSION_STATE_LABELS[window.state]}</span>
             </span>
-          ))}
-        </div>
+            {session.windows.map((window) => (
+              <span key={window.session} className={styles.sessionWindow} data-state={window.state}>
+                <span className={styles.sessionName}>{window.label}</span>
+                <span className={styles.sessionRange}>
+                  {window.opensAt}–{window.closesAt}
+                </span>
+                <span className={styles.sessionState}>{SESSION_STATE_LABELS[window.state]}</span>
+              </span>
+            ))}
+          </div>
+        )}
 
+        {/*
+          Source identity survives every load state — it is a property of what
+          the view is pointed at, not of whether data arrived. The snapshot's own
+          provenance is shown once it exists, and a test asserts the two agree.
+        */}
         <div className={styles.provenanceChip} data-testid="provenance-chip">
-          <span className={styles.provenanceOrigin}>{snapshot.provenance.origin}</span>
-          <span className={styles.provenanceLabel}>{snapshot.provenance.sourceLabel}</span>
+          <span className={styles.provenanceOrigin}>
+            {snapshot?.provenance.origin ?? sourceOrigin}
+          </span>
+          <span className={styles.provenanceLabel}>
+            {snapshot?.provenance.sourceLabel ?? sourceLabel}
+          </span>
           <span className={styles.provenanceProvider}>
-            {snapshot.provenance.providerLabel ?? 'Ingen provider ansluten'}
+            {snapshot?.provenance.providerLabel ?? 'Ingen provider ansluten'}
           </span>
         </div>
       </div>

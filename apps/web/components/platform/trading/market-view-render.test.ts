@@ -25,6 +25,9 @@ import {
   type MarketViewScenarioId,
   type TradingMarketViewSnapshot,
 } from '@/lib/trading/market-view'
+// The synchronous fixture helper is deliberately not on the public barrel — see
+// the note in index.ts. Tests reach for it directly, so the bypass is visible.
+import { buildReplayTimeline } from '@/lib/trading/replay/timelines'
 
 // The view calls useRouter for the Escape-to-Atlas action. Static rendering has
 // no app-router context, so the hook is stubbed; nothing else about the tree is
@@ -35,7 +38,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/trading',
 }))
 
-let AtlasMarketView: (props: Record<string, never>) => JSX.Element
+let AtlasMarketView: (props: Record<string, unknown>) => JSX.Element
 let MarketChart: (props: { snapshot: TradingMarketViewSnapshot }) => JSX.Element
 let SetupPanel: (props: { setup: TradingMarketViewSnapshot['setup'] }) => JSX.Element
 let RiskPanel: (props: { risk: TradingMarketViewSnapshot['riskState'] }) => JSX.Element
@@ -54,7 +57,22 @@ beforeAll(async () => {
   TradingPage = (await import('@/app/(platform)/trading/page')).default as never
 })
 
-function renderView(): string {
+/**
+ * The workspace with a timeline already in hand.
+ *
+ * Acquisition is async now, and `renderToStaticMarkup` cannot await, so a
+ * static render of the bare component correctly shows the LOADING frame. The
+ * seed lets these assertions keep testing the composed ready workspace; the
+ * loading, unavailable and error frames have their own tests.
+ */
+function renderView(scenario: MarketViewScenarioId = 'long-developing'): string {
+  return renderToStaticMarkup(
+    createElement(AtlasMarketView, { initialTimeline: buildReplayTimeline(scenario, 'NQ', '5m') }),
+  )
+}
+
+/** The bare component, with no seed — the real first frame in a browser. */
+function renderViewUnseeded(): string {
   return renderToStaticMarkup(createElement(AtlasMarketView, {}))
 }
 

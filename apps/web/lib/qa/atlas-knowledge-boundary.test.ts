@@ -28,7 +28,10 @@ const KNOWLEDGE_DIR = path.join(WEB_ROOT, 'lib/atlas/knowledge')
 const KNOWLEDGE_FILES = ['types.ts', 'policy.ts', 'document.ts', 'rank.ts', 'vault-provider.ts', 'vault-walk.ts']
 
 const PROJECTION_DIR = path.join(KNOWLEDGE_DIR, 'projection')
-const PROJECTION_FILES = ['source.ts', 'eligibility.ts', 'secret-scan.ts', 'report.ts']
+const PROJECTION_FILES = [
+  'source.ts', 'eligibility.ts', 'secret-scan.ts', 'report.ts',
+  'snapshot.ts', 'canonical-json.ts', 'canonical-path.ts',
+]
 const projectionEntries = PROJECTION_FILES.map((f) => path.join(PROJECTION_DIR, f))
 
 // ── module graph (local imports only) ────────────────────────────────────────
@@ -259,6 +262,9 @@ describe('NO PRODUCTION CONSUMER — Phase 1 wires nothing', () => {
       'lib/qa/atlas-knowledge-boundary.test.ts',
       'lib/qa/atlas-knowledge-projection.test.ts',
       'lib/qa/atlas-knowledge-provider.test.ts',
+      // Slice 3A: the snapshot core is pure and local, and its only consumer is
+      // its own suite. It builds bytes; nothing uploads or reads them yet.
+      'lib/qa/atlas-knowledge-snapshot.test.ts',
       'scripts/knowledge-projection-report.ts',
       'scripts/knowledge-shadow.ts',
     ])
@@ -317,6 +323,7 @@ describe('PROJECTION SOURCE — a local boundary, never an Atlas one', () => {
   it('the only importers are the operator script and its QA suite', () => {
     expect(projectionImporters()).toEqual([
       'lib/qa/atlas-knowledge-projection.test.ts',
+      'lib/qa/atlas-knowledge-snapshot.test.ts',
       'scripts/knowledge-projection-report.ts',
     ])
   })

@@ -101,6 +101,12 @@ export const CORE_REASON_CODES = [
   'ENVIRONMENT_UNKNOWN',
   'MODE_FORBIDS_EXECUTION',
   'MODE_ENVIRONMENT_MISMATCH',
+  // Provider observation (Execution Provider Adapter Canonical v1.2 §8).
+  // The adapter reports these; neither creates authority. SECURITY_DEGRADED is a
+  // registered least-privilege weakening, never an implicit approval — whether a
+  // given downstream policy must fail closed on it is that policy's decision.
+  'PROVIDER_DISCONNECTED',
+  'SECURITY_DEGRADED',
   // Referential integrity
   'ACCOUNT_MISMATCH',
   'INSTRUMENT_MISMATCH',

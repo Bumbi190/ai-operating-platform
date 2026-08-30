@@ -36,7 +36,7 @@ import {
 } from '@/lib/trading/replay'
 import { resolveMarketViewKeyAction, stepIndex } from '@/lib/trading/market-view/keyboard'
 import { TRADING_WORKSPACE_ID } from '@/lib/atlas/first-party-workspaces'
-import { MarketChart } from './MarketChart'
+import { ChartShell, fullscreenOwnsEscape } from './ChartShell'
 import { MarketViewHeader } from './MarketViewHeader'
 import { ExplanationSurface } from './ExplanationSurface'
 import { ReplayControls } from './ReplayControls'
@@ -242,6 +242,19 @@ export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) 
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      /*
+       * While the chart is fullscreen, Esc belongs to the browser.
+       *
+       * Without this the operator presses Esc expecting the chart to close and
+       * is navigated back to Atlas instead — losing the workspace to a key
+       * that, in fullscreen, means exactly one thing. The browser's own handler
+       * still runs; we simply do not add a second meaning on top of it.
+       *
+       * Read from the document rather than from local state, so a fullscreen
+       * exit triggered anywhere else cannot leave this guard stuck on.
+       */
+      if (fullscreenOwnsEscape(document)) return
+
       const action = resolveMarketViewKeyAction(event, document)
       if (action === null) return
       // Native controls keep their own keys; a focused button is not the rail.
@@ -316,7 +329,7 @@ export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) 
         <>
           <div className={styles.canvas}>
             <div className={styles.chartColumn}>
-              <MarketChart snapshot={snapshot} />
+              <ChartShell snapshot={snapshot} instrument={instrument} timeframe={timeframe} />
             </div>
 
             <aside className={styles.rail} aria-label="Marknadsanalys">

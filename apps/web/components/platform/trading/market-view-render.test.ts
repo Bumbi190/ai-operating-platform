@@ -342,6 +342,11 @@ describe('the proposal is not executable', () => {
       // over authored fixture events; none of them reaches anything else.
       '⏮', '◀', '▶', '❚❚',
       '0.5×', '1×', '2×', '4×',
+      // Fullscreen toggle. A VIEW control: it changes how much of the screen
+      // the chart occupies and reaches nothing else. Listed explicitly so this
+      // allowlist keeps doing its real job — proving no control can place,
+      // modify or cancel anything.
+      '⤢', '⤡',
     ])
     for (const text of texts) {
       expect(allowed.has(text), `unexpected control: "${text}"`).toBe(true)

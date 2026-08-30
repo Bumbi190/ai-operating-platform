@@ -69,13 +69,37 @@ export async function GET() {
     claimableUnderPause = (data ?? []).length
   }
 
+  // PR9b: budget headroom for the caller's own projects. Read-only — this asks
+  // what the gate WOULD say; it never reserves.
+  let budgets: { slug: string; budget_sek: number; committed_sek: number;
+                 reserved_sek: number; headroom_sek: number }[] = []
+  let budgetedIds = new Set<string>()
+  try {
+    const { data } = await db.rpc('budget_headroom', { p_stale_minutes: 30 })
+    const rows = (data ?? []) as any[]
+    budgetedIds = new Set(rows.map(b => b.project_id as string))
+    budgets = rows.filter(b => ids.includes(b.project_id)).map(b => ({
+      slug: b.slug,
+      budget_sek: Number(b.budget_sek), committed_sek: Number(b.committed_sek),
+      reserved_sek: Number(b.reserved_sek), headroom_sek: Number(b.headroom_sek),
+    }))
+  } catch { budgets = [] }
+
+  // A project spending with no budget row would be refused the moment the gate is
+  // enforced, so it must surface BEFORE that flip, not during it.
+  const unbudgeted = ids.filter(id => !budgetedIds.has(id))
+  if (unbudgeted.length > 0) findings.push('projects_without_budget')
+  if (budgets.some(b => b.headroom_sek <= 0)) findings.push('budget_exhausted')
+
   if (counts.running_past_lease > 0) findings.push('runs_running_past_lease')
   if (counts.cancel_requested_still_running > 0) findings.push('cancel_requested_not_honoured')
   if (claimableUnderPause > 0) findings.push('paused_project_has_claimable_runs')
 
   return NextResponse.json({
     flags,
-    counts: { ...counts, claimable_under_pause: claimableUnderPause },
+    counts: { ...counts, claimable_under_pause: claimableUnderPause,
+              projects_without_budget: unbudgeted.length },
+    budgets,
     findings,
     healthy: findings.length === 0,
     observed_at: nowIso,

@@ -22,6 +22,7 @@
 
 import { isFencingEnabled } from './fencing'
 import { isCancelEnabled } from './cancel'
+import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 
 export interface ExecutionSafetyFlags {
   /** Writes from an executing run are conditioned on its claim_id. */
@@ -32,6 +33,8 @@ export interface ExecutionSafetyFlags {
   policy_gate: boolean
   /** The unified executor (validation + quality gate + checkpointed resume). */
   unified_executor: boolean
+  /** PR9b: a budget refusal is HONOURED rather than merely recorded. */
+  spend_gate: boolean
 }
 
 /**
@@ -44,6 +47,7 @@ export function executionSafetyFlags(): ExecutionSafetyFlags {
     cancel:           isCancelEnabled(),
     policy_gate:      process.env.H1_POLICY_GATE === '1',
     unified_executor: process.env.H1_UNIFIED_EXECUTOR === '1',
+    spend_gate:       isSpendGateEnforced(),
   }
 }
 
@@ -56,5 +60,8 @@ export function unsafeExecutionFlags(f: ExecutionSafetyFlags = executionSafetyFl
   const unsafe: string[] = []
   if (!f.fencing) unsafe.push('fencing_disabled')
   if (!f.cancel) unsafe.push('cancel_disabled')
+  // Advisory-by-design for now, but it must be VISIBLE that spend is only being
+  // observed rather than limited — an unenforced budget reads as a budget.
+  if (!f.spend_gate) unsafe.push('spend_gate_advisory_only')
   return unsafe
 }

@@ -24,7 +24,13 @@ const DEFAULT_MEDIA_SLUG = 'ai-media-automation'
 let ratesCache: { at: number; rates: Record<string, number> } | null = null
 const RATES_TTL_MS = 5 * 60 * 1000
 
-async function getRates(): Promise<Record<string, number>> {
+/**
+ * Exported for the PR9b budget gate, which must estimate a call's cost BEFORE
+ * making it. It deliberately shares this accessor rather than keeping its own
+ * price table: two tables would drift, and the estimate would stop matching the
+ * figure later written to cost_events.
+ */
+export async function getRates(): Promise<Record<string, number>> {
   if (ratesCache && Date.now() - ratesCache.at < RATES_TTL_MS) return ratesCache.rates
   const fallback = {
     usd_sek: 10.5,

@@ -30,12 +30,16 @@
  * import throws. It belongs here the day a server route consumes this provider.)
  */
 
-import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { realpathSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import { normalizeQuery, tokenize } from '@/lib/architecture-knowledge/normalize'
-import { parseKnowledgeDocument, provenanceFor, type ParsedKnowledgeDocument } from './document'
+import { provenanceFor } from './document'
 import { KNOWLEDGE_BOUNDS, isExcludedPath } from './policy'
+import {
+  VaultRootError, isInsideRoot, modifiedAtOf, readVaultDocument, resolveVaultRoot,
+  walkVaultMarkdown,
+} from './vault-walk'
 import { compareScored, scoreDocument } from './rank'
 import type {
   KnowledgeDocument, KnowledgeHit, KnowledgeProvider, KnowledgeQuery, KnowledgeSearchResult,
@@ -50,28 +54,9 @@ export interface VaultProviderConfig {
   providerId?: string
 }
 
-/** Thrown when the configured root is unusable. Never thrown for a bad query. */
-export class VaultRootError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'VaultRootError'
-  }
-}
-
-/**
- * True when `candidate` is the root itself or lives beneath it. Compares REAL
- * paths, so a symlink escaping the vault fails here even though its literal path
- * looked contained.
- */
-function isInsideRoot(realRoot: string, candidate: string): boolean {
-  if (candidate === realRoot) return true
-  return candidate.startsWith(realRoot.endsWith(sep) ? realRoot : realRoot + sep)
-}
-
-/** Source-relative, POSIX-style path for a file inside the vault. */
-function relativePathOf(realRoot: string, absolute: string): string {
-  return absolute.slice(realRoot.length + 1).split(sep).join('/')
-}
+// Traversal, containment and the root contract live in ./vault-walk so the
+// operator-only projection source shares ONE implementation of them.
+export { VaultRootError } from './vault-walk'
 
 /**
  * Deterministic excerpt: the body's leading prose, blank runs collapsed, cut at
@@ -88,82 +73,12 @@ function excerptOf(body: string, budget: number): { text: string; truncated: boo
 export function createVaultKnowledgeProvider(config: VaultProviderConfig): KnowledgeProvider {
   const providerId = config.providerId ?? VAULT_PROVIDER_ID
 
-  if (!config.vaultRoot || !config.vaultRoot.trim()) {
-    throw new VaultRootError('vaultRoot is required')
-  }
+  const realRoot = resolveVaultRoot(config.vaultRoot)
 
-  let realRoot: string
-  try {
-    realRoot = realpathSync(resolve(config.vaultRoot))
-  } catch {
-    throw new VaultRootError(`vault root is not readable: ${config.vaultRoot}`)
-  }
-  if (!statSync(realRoot).isDirectory()) {
-    throw new VaultRootError(`vault root is not a directory: ${config.vaultRoot}`)
-  }
+  const collectFiles = (includeExcludedFolders: boolean): string[] =>
+    walkVaultMarkdown(realRoot, includeExcludedFolders)
 
-  /** Walk the vault, deterministically, returning allowed Markdown files. */
-  function collectFiles(includeExcludedFolders: boolean): string[] {
-    const found: string[] = []
-
-    const walk = (absoluteDir: string): void => {
-      let entries
-      try {
-        entries = readdirSync(absoluteDir, { withFileTypes: true })
-      } catch {
-        return // unreadable directory — skip rather than fail the whole search
-      }
-      // Sort by name so traversal order never depends on the filesystem.
-      for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'sv-SE'))) {
-        const absolute = join(absoluteDir, entry.name)
-
-        // Resolve through symlinks and refuse anything that leaves the vault.
-        let real: string
-        try {
-          real = realpathSync(absolute)
-        } catch {
-          continue // broken symlink
-        }
-        if (!isInsideRoot(realRoot, real)) continue
-
-        const relative = relativePathOf(realRoot, absolute)
-        if (isExcludedPath(relative, includeExcludedFolders)) continue
-
-        let isDir: boolean
-        try {
-          isDir = statSync(real).isDirectory()
-        } catch {
-          continue
-        }
-
-        if (isDir) { walk(absolute); continue }
-        if (!entry.name.toLowerCase().endsWith('.md')) continue
-        found.push(absolute)
-      }
-    }
-
-    walk(realRoot)
-    return found
-  }
-
-  /** Read + parse one file. Returns null when it cannot be trusted or read. */
-  function loadDocument(absolute: string): ParsedKnowledgeDocument | null {
-    try {
-      if (statSync(absolute).size > KNOWLEDGE_BOUNDS.maxFileBytes) return null
-      const raw = readFileSync(absolute, 'utf8')
-      return parseKnowledgeDocument(raw, relativePathOf(realRoot, absolute))
-    } catch {
-      return null
-    }
-  }
-
-  function modifiedAtOf(absolute: string): string {
-    try {
-      return statSync(absolute).mtime.toISOString()
-    } catch {
-      return new Date(0).toISOString()
-    }
-  }
+  const loadDocument = (absolute: string) => readVaultDocument(realRoot, absolute)
 
   return {
     id: providerId,

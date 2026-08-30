@@ -54,7 +54,10 @@ import {
   type WorkflowGateState,
 } from './gate'
 import { getState } from './machine'
-import { listEvidence, readDefinitionById, readInstance, type WorkflowDb } from './store'
+import {
+  listEvidence, readDefinitionById, readInstance,
+  type WorkflowAuthorizationVerifier, type WorkflowDb,
+} from './store'
 
 /**
  * The only ledger capability this module may hold. Deliberately NOT the full
@@ -165,4 +168,56 @@ export async function systemAssertGateOpen(
 }
 
 /** Re-exported so callers use the shipped mapping rather than inventing one. */
+/**
+ * The scheduler's verifier for `appendTransition`.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ * `appendTransition` falls back to a DEFAULT verifier that resolves the ledger
+ * through `principal-read` — a session-scoped path. That is correct for a human
+ * crossing a gate from the UI and wrong for the tick, which is a cron with no
+ * session: the read fails closed and a legitimately authorized transition is
+ * refused. PR3 built this module for exactly that reason; this is the adapter
+ * that lets the scheduler use it.
+ *
+ * ── IT IS STRICTLY NARROWER, NOT MORE PERMISSIVE ────────────────────────────
+ * Everything `systemDeriveWorkflowGate` already enforces still applies — the
+ * chain is fetched `byTarget(project, 'workflow_gate', instance:state)` and
+ * judged by `isEffectiveNow` against the recomputed target hash, project, action
+ * kind, expiry and every closing act. An unreadable ledger is a refusal, not an
+ * open gate.
+ *
+ * On top of that this REQUIRES the effective grant to be the one the caller
+ * named. Without that last check a transition could cite authorization A while
+ * actually being carried by unrelated grant B — the ledger would then record a
+ * decision that never happened.
+ *
+ * Read-only by construction: `systemLedgerReader` returns only `history` and
+ * `byTarget`, and `append` is absent from the LedgerReader TYPE, so this path
+ * cannot create or alter an authorization even by mistake.
+ */
+export const systemAuthorizationVerifier: WorkflowAuthorizationVerifier = async (
+  db, instanceId, authorizationId,
+) => {
+  let gate: WorkflowGateState
+  try {
+    gate = await systemDeriveWorkflowGate(db as WorkflowDb, instanceId)
+  } catch (e) {
+    return {
+      valid: false, status: 'malformed',
+      reason: `system gate could not be derived: ${e instanceof Error ? e.message : 'unknown error'}`,
+    }
+  }
+  if (gate.status !== 'authorized' || !gate.canAdvance) {
+    return { valid: false, status: gate.status, reason: `gate is ${gate.status}` }
+  }
+  // The grant that opens this gate must be the grant that was cited.
+  if (gate.authorizationId !== authorizationId) {
+    return {
+      valid: false, status: gate.status,
+      reason: 'the authorization that opens this gate is not the one supplied',
+    }
+  }
+  return { valid: true, status: gate.status, reason: 'system-verified live grant for this exact pin' }
+}
+
 export { gateStatusFromEffectiveness }

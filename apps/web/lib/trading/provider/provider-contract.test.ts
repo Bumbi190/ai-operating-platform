@@ -51,7 +51,6 @@ import {
   unavailable,
   unknown,
   type Available,
-  type ExecutionProviderAdapter,
   type ProviderTimestamp,
   type Result,
 } from './index'
@@ -129,12 +128,17 @@ describe('the Level-1 method surface is exactly canonical', () => {
     expect(src).toMatch(/getRecentFills\(a: AccountId, window: HistoryRequest\): Promise<Result<FillHistory>>/)
   })
 
-  it('is satisfied by a structurally complete implementation', () => {
-    // A type-level fixture, not a fake provider: it proves the interface is
-    // implementable and that no member was mistyped, without shipping an adapter.
-    const shape = {} as ExecutionProviderAdapter
-    expect(typeof shape).toBe('object')
-  })
+  /*
+   * There is deliberately no "implementable" fixture here.
+   *
+   * `{} as ExecutionProviderAdapter` proves nothing: the assertion bypasses
+   * structural checking, so an empty object satisfies it no matter how the
+   * interface is shaped. A genuine compile-time proof would need a real
+   * implementation, and Stage 1.8a ships no adapter.
+   *
+   * Completeness is already established above from the source itself: fifteen
+   * methods, the exact canonical names, the exact return shapes, and no extras.
+   */
 })
 
 // ─── §1.1 — zero execution surface, §7.1/F16.1 — zero market data ─────────────
@@ -387,13 +391,32 @@ describe('cross-layer ownership is preserved', () => {
     }
   })
 
-  it('proves Available<T> and ObservedValue<T> are not interchangeable', async () => {
-    const { present: replayPresent } = await import('../replay')
-    const fromReplay = replayPresent(1)
-    // Structurally alike today, but different owners. The compile-time proof is
-    // that neither package references the other's type at all (asserted above);
-    // this checks they are at least not the same object identity by accident.
-    expect(fromReplay).not.toBe(present(1))
+  it('keeps Available<T> and ObservedValue<T> in separate ownership with zero cross-layer dependency', () => {
+    /*
+     * The invariant is OWNERSHIP, not nominal incompatibility.
+     *
+     * TypeScript is structurally typed, and Canonical v1.2 F14.1 does not ask
+     * for these two to become branded — it asks that neither package own or
+     * import the other's vocabulary, and that a mapping between them live in a
+     * normalization layer that does not exist yet. Branding `Available<T>`
+     * purely to force nominal rejection would be inventing structure canon
+     * does not require.
+     *
+     * So the proof is the dependency graph, in both directions.
+     */
+    const providerSrc = PACKAGE_FILES.map((f) => code(f)).join('\n')
+    expect(providerSrc).not.toContain('ObservedValue')
+    expect(providerSrc).not.toMatch(/from '\.\.\/replay/)
+
+    const replayDir = join(HERE, '..', 'replay')
+    for (const name of readdirSync(replayDir).filter((n) => n.endsWith('.ts'))) {
+      expect(code(join(replayDir, name)), name).not.toMatch(/from '\.\.\/provider/)
+      expect(code(join(replayDir, name)), name).not.toContain('Available<')
+    }
+
+    // Each type is declared by exactly one package.
+    expect(code(join(HERE, 'primitives.ts'))).toMatch(/export type Available<T> =/)
+    expect(code(join(replayDir, 'observed-position.ts'))).toMatch(/export type ObservedValue<T> =/)
   })
 
   it('keeps ProviderAccountSnapshot distinct from any persistence AccountSnapshot', () => {
@@ -484,13 +507,19 @@ describe('the two canonical provider reason codes', () => {
     expect(isReasonCode('SECURITY_DEGRADED')).toBe(true)
   })
 
-  it('adds exactly two codes and nothing else', async () => {
-    const { CORE_REASON_CODES, RISK_REASON_CODES } = await import('../reason-codes')
-    // 29 Core codes on main, plus exactly the two canonical provider codes.
-    // The risk registry is untouched by this stage.
-    expect(CORE_REASON_CODES).toHaveLength(31)
-    expect(RISK_REASON_CODES).toHaveLength(18)
-  })
+  /*
+   * NO ABSOLUTE REGISTRY COUNT IS ASSERTED HERE.
+   *
+   * "Stage 1.8a added exactly two codes" is a property of THIS PR's diff, not a
+   * permanent runtime invariant. Pinning `CORE_REASON_CODES.length` would make
+   * an unrelated, legitimate future code break the provider contract test for
+   * no reason — and a hardcoded allowlist of every Core code would be the same
+   * mistake wearing a longer coat.
+   *
+   * The diff property is proven where it belongs: `git diff` against the PR
+   * base. What survives here is the permanent invariant — the two canonical
+   * provider codes exist and parse.
+   */
 })
 
 // ─── Availability semantics the whole contract rests on ───────────────────────

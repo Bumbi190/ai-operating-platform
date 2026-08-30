@@ -88,10 +88,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    * 52 → 53: `workflow_action_binding` (PR9c — immutable action-binding columns
    *          on runs, all-or-nothing CHECK, binding-immutability trigger,
    *          action-identity unique index, and claim_runs lease default 280→320).
+   * 53 → 54: `action_failure_model` (PR9d — UNKNOWN/PARTIAL statuses, action
+   *          phase/outcome columns, outcome state-machine trigger, append-only
+   *          reconciliation ledger, and a reaper that never requeues a bound
+   *          action past DISPATCH_STARTED).
    */
-  it('enforces exactly the expected number of migrations — currently 53', () => {
+  it('enforces exactly the expected number of migrations — currently 54', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(53)
+    expect(enforced).toBe(54)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

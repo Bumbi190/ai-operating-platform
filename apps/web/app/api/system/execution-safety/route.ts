@@ -22,6 +22,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { executionSafetyFlags, unsafeExecutionFlags } from '@/lib/ai/execution-flags'
+import { listOpenIncidents } from '@/lib/workflows/reconciliation'
+import { severityForActionOutcome } from '@/lib/workflows/escalation'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,6 +93,27 @@ export async function GET() {
   if (unbudgeted.length > 0) findings.push('projects_without_budget')
   if (budgets.some(b => b.headroom_sek <= 0)) findings.push('budget_exhausted')
 
+  // PR9d — actions frozen awaiting a human. An ambiguous outcome means the side
+  // effect MAY have happened, so the only safe next step is to ask the
+  // authoritative system, never to try again.
+  const raw = await listOpenIncidents(db, ids)
+  const incidents = raw.map(i => ({
+    run_id: i.runId,
+    action_kind: i.actionKind,
+    action_class: i.actionClass,
+    outcome: i.outcome,
+    severity: severityForActionOutcome(i.actionClass, i.outcome),
+    reason: i.reason,
+    idempotency_key_prefix: i.idempotencyKeyPrefix,
+    remote_operation_id: i.remoteOperationId,
+    reconciliations_recorded: i.reconciliationCount,
+    guidance: (i.outcome === 'UNKNOWN' || i.outcome === 'PARTIAL')
+      ? 'DO NOT RETRY — reconcile first'
+      : 'record the outstanding evidence; do not repeat the side effect',
+  }))
+  if (incidents.some(i => i.severity === 'critical')) findings.push('ambiguous_action_incident')
+  else if (incidents.length > 0) findings.push('action_incident_open')
+
   if (counts.running_past_lease > 0) findings.push('runs_running_past_lease')
   if (counts.cancel_requested_still_running > 0) findings.push('cancel_requested_not_honoured')
   if (claimableUnderPause > 0) findings.push('paused_project_has_claimable_runs')
@@ -98,8 +121,10 @@ export async function GET() {
   return NextResponse.json({
     flags,
     counts: { ...counts, claimable_under_pause: claimableUnderPause,
-              projects_without_budget: unbudgeted.length },
+              projects_without_budget: unbudgeted.length,
+              open_action_incidents: incidents.length },
     budgets,
+    incidents,
     findings,
     healthy: findings.length === 0,
     observed_at: nowIso,

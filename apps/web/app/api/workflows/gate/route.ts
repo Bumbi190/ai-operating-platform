@@ -26,6 +26,7 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { assertSameOrigin, badRequest, isUuid, readJsonBody, unknownAction } from '@/lib/atlas/executive/http'
 import { requestWorkflowAuthorization } from '@/lib/workflows/authorization'
 import { rearmForAuthorization } from '@/lib/workflows/rearm'
+import { assertWorkflowActionReady } from '@/lib/workflows/action-run'
 import { readInstance } from '@/lib/workflows/store'
 
 export const dynamic = 'force-dynamic'
@@ -44,7 +45,7 @@ export const dynamic = 'force-dynamic'
  * possible outcome of any call is that a legitimately-granted instance is
  * evaluated a little earlier, which is what a grant already earned.
  */
-const ACTIONS = ['request_authorization', 'rearm'] as const
+const ACTIONS = ['request_authorization', 'rearm', 'action_readiness'] as const
 
 export async function POST(request: Request) {
   const sameOrigin = assertSameOrigin(request)
@@ -71,6 +72,24 @@ export async function POST(request: Request) {
   // Unknown and foreign answer identically: no instance-id oracle.
   if (!instance || !assertProjectAllowed(instance.project_id, access.allowedProjectIds)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
+
+  // ── action_readiness ── read-only diagnostics for a bound workflow action.
+  // Answers "could this run legally begin work right now, and if not why" without
+  // starting anything. There is deliberately no execute action on this route.
+  if (action === 'action_readiness') {
+    if (!isUuid(body.runId)) return badRequest('runId')
+    // The ownership gate above authenticated the INSTANCE. A run id is not
+    // covered by it, so the run must be proven to belong to that instance —
+    // otherwise this would report readiness for any run in any project.
+    // `as any`: generated DB types predate PR9c's binding columns — the same
+    // convention PR9a used for cancel_requested.
+    const { data: owned } = await (db as any).from('runs')
+      .select('id').eq('id', body.runId).eq('workflow_instance_id', instance.id).maybeSingle()
+    // Unknown and foreign answer identically: no run-id oracle.
+    if (!owned) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    const readiness = await assertWorkflowActionReady(db, body.runId as string)
+    return NextResponse.json({ ok: true, readiness }, { status: 200 })
   }
 
   // ── rearm ── pull the next scheduler evaluation forward after a human grant.

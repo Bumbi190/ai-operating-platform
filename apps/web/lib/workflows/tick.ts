@@ -35,6 +35,7 @@ import {
   recordWorkflowTick,
   type WorkflowDb,
 } from './store'
+import { ensureReadOnlyActionRuns, type SchedulingDecision } from './action-scheduling'
 import { computeEvidenceTargetHash } from './attestation'
 import { summarizeStateEvidence } from './evidence-consumption'
 import {
@@ -188,6 +189,28 @@ export async function tickDueWorkflows(
     try {
       const evaluation = await evaluateDueWorkflow(db, instance, { now, ledger: options.ledger })
 
+      // ── PR9f: the READ_ONLY seam ──────────────────────────────────────────
+      // Create bound observation runs for this state's canonical READ_ONLY
+      // actions. The tick NEVER calls a handler: it creates a run and the drain
+      // executes it later, so the observation is claimed, fenced, cancellable
+      // and reapable like any other work. It performs no transition and takes
+      // no authorization — READ_ONLY needs none, and any other class would be
+      // refused three layers down.
+      let scheduled: SchedulingDecision[] = []
+      try {
+        // Pause and instance-status guards live inside the seam, so a future
+        // caller cannot forget them.
+        scheduled = await ensureReadOnlyActionRuns(db, instance)
+      } catch (e) {
+        // A seam failure must not look like a dead scheduler, and must never be
+        // mistaken for "nothing needed scheduling".
+        result.errors.push({
+          instanceId: instance.id,
+          error: `action scheduling failed: ${e instanceof Error ? e.message : 'unknown error'}`,
+        })
+      }
+      const createdAction = scheduled.some(d => d.outcome === 'created')
+
       const seconds = nextWakeAfter(evaluation.outcome)
       const nextWakeAt = seconds === null
         ? null
@@ -201,7 +224,11 @@ export async function tickDueWorkflows(
         auto_advanceable: evaluation.autoAdvanceable,
         verification: evaluation.verification,
         verification_findings: evaluation.verificationFindings,
-      }, nextWakeAt)
+        scheduled_actions: scheduled.map(d => ({ kind: d.actionKind, outcome: d.outcome })),
+      // Having just created an observation, do NOT come back in a minute to
+      // find it still running. The executor re-arms the instance when the run
+      // finishes, which is both sooner and more accurate than polling.
+      }, createdAction ? null : nextWakeAt)
 
       // ── Escalation ───────────────────────────────────────────────────────
       // Each condition becomes at most one OPEN signal. A repeated identical

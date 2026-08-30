@@ -20,12 +20,21 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { assertSameOrigin, badRequest, isUuid, readJsonBody, unknownAction } from '@/lib/atlas/executive/http'
-import { registerVendoredDefinition, readDefinition, instantiate, readInstanceByKey } from '@/lib/workflows/store'
+import {
+  registerVendoredDefinition, readDefinition, instantiate, readInstanceByKey,
+  readInstance as readInstanceById, scheduleWorkflowWake,
+} from '@/lib/workflows/store'
 import { loadVendoredDefinitions } from '@/lib/workflows/definitions'
 
 export const dynamic = 'force-dynamic'
 
-const ACTIONS = ['register_definition', 'create_instance'] as const
+/**
+ * `schedule_readonly_evaluation` makes an instance ELIGIBLE for the next
+ * scheduler pass. It is deliberately incapable of naming what will run: no
+ * action kind, no class, no target hash, no handler. It sets one timestamp, and
+ * the canonical registry decides the rest.
+ */
+const ACTIONS = ['register_definition', 'create_instance', 'schedule_readonly_evaluation'] as const
 
 /** Only definitions vendored in this build may be registered. */
 const REGISTERABLE = new Set(['familje-stunden.monthly-release'])
@@ -68,6 +77,34 @@ export async function POST(request: Request) {
     } catch (e) {
       return NextResponse.json({ error: 'registration_refused', detail: (e as Error).message }, { status: 409 })
     }
+  }
+
+  if (action === 'schedule_readonly_evaluation') {
+    if (!isUuid(body.instanceId)) return badRequest('instanceId')
+    // A caller may not describe the work — only ask for an evaluation.
+    for (const forbidden of ['actionKind', 'actionClass', 'targetVersionHash', 'handler', 'authorizationId']) {
+      if (body[forbidden] !== undefined) return badRequest(`reserved:${forbidden}`)
+    }
+    const instance = await readInstanceById(db, body.instanceId as string)
+    // Unknown and foreign answer identically: no instance-id oracle.
+    if (!instance || !assertProjectAllowed(instance.project_id, access.allowedProjectIds)) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    }
+    if (instance.status !== 'active') {
+      return NextResponse.json({ error: 'instance_not_active', detail: `instance is ${instance.status}` },
+        { status: 409 })
+    }
+    const { data: project } = await (db as any).from('projects')
+      .select('execution_paused').eq('id', instance.project_id).maybeSingle()
+    if (project?.execution_paused === true) {
+      return NextResponse.json({ error: 'project_paused' }, { status: 409 })
+    }
+
+    // Sets wake_at only. No transition, no authorization, no run, no execution.
+    const updated = await scheduleWorkflowWake(
+      db, instance.id, new Date().toISOString(), access.userId,
+      typeof body.reason === 'string' ? body.reason.slice(0, 300) : 'operator-requested evaluation')
+    return NextResponse.json({ ok: true, instance: summarize(updated) }, { status: 200 })
   }
 
   // ── create_instance ──

@@ -92,10 +92,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          phase/outcome columns, outcome state-machine trigger, append-only
    *          reconciliation ledger, and a reaper that never requeues a bound
    *          action past DISPATCH_STARTED).
+   * 54 → 55: `readonly_action_authorization` (PR9f — authorization is required
+   *          exactly when ACTION_CLASS_POLICY says so: every class except
+   *          READ_ONLY. Narrower, not weaker; the nine identity columns keep
+   *          all-or-nothing).
    */
-  it('enforces exactly the expected number of migrations — currently 54', () => {
+  it('enforces exactly the expected number of migrations — currently 55', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(54)
+    expect(enforced).toBe(55)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

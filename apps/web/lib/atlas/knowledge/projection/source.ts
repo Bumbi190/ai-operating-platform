@@ -33,7 +33,17 @@ export const PROJECTION_SOURCE_ID = 'obsidian-vault-projection'
 export interface ProjectionSourceConfig {
   /** Absolute path to the vault root. Required — never defaulted to an owner path. */
   vaultRoot: string
-  /** Declared project-slug → project-id map. Empty in Slice 1; Slice 2 owns it. */
+  /**
+   * Trusted canonical project-slug → project-id (uuid) map, mirroring
+   * `public.projects`.
+   *
+   * `undefined` and `{}` are NOT the same and must not be collapsed:
+   *   undefined → no mapping was available to this evaluation
+   *   {}        → a mapping WAS available and this slug is absent from it
+   * The first is an operator setup gap; the second is a statement about the
+   * slug. Defaulting one to the other would make the honest answer unreachable
+   * through this source, which is exactly what it used to do.
+   */
   projectScopeMap?: Record<string, string>
   sourceId?: string
 }
@@ -112,7 +122,8 @@ export function createKnowledgeProjectionSource(
 ): KnowledgeProjectionSource {
   const sourceId = config.sourceId ?? PROJECTION_SOURCE_ID
   const realRoot = resolveVaultRoot(config.vaultRoot)
-  const projectScopeMap = config.projectScopeMap ?? {}
+  // Passed through unchanged — see ProjectionSourceConfig. No `?? {}`.
+  const projectScopeMap = config.projectScopeMap
 
   return {
     id: sourceId,

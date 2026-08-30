@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
+import { generateSoundEffect } from '@/lib/media/elevenlabs'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -85,25 +86,12 @@ export async function POST(request: Request) {
 
   try {
     // ── Call ElevenLabs Sound Generation API ──────────────────────────────
-    const elevenRes = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: prompt,
-        duration_seconds: 22,   // max supported — Remotion loops it
-        prompt_influence: 0.3,  // subtle influence keeps it ambient, not literal
-      }),
-    })
-
-    if (!elevenRes.ok) {
-      const errText = await elevenRes.text().catch(() => elevenRes.statusText)
-      throw new Error(`ElevenLabs sound-generation failed (${elevenRes.status}): ${errText}`)
-    }
-
-    const audioBuffer = Buffer.from(await elevenRes.arrayBuffer())
+    const audioBuffer = await generateSoundEffect(
+      prompt,
+      22,                      // max supported — Remotion loops it
+      { projectId },
+      0.3,                     // subtle influence keeps it ambient, not literal
+    )
 
     // ── Upload to Supabase storage ─────────────────────────────────────────
     const musicUrl = await uploadMusic(projectId, scriptId, audioBuffer)

@@ -14,6 +14,37 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+/**
+ * Governance G1 — what the static path is allowed to touch.
+ *
+ * The property this suite protects is that the static path skips CONTEXT
+ * building: no projects, runs, memory, cost_events or opportunity reads, which
+ * is where its latency win comes from. It is not a claim that the request
+ * performs no I/O of any kind.
+ *
+ * A governed billable call prices itself from `cost_rates` (cached 5 minutes,
+ * process-wide) before reserving. That read is governance, not context, and it
+ * cannot be removed without removing the spend ceiling from Atlas chat — a
+ * reservation that consults no prices is not a reservation.
+ */
+const GOVERNANCE_TABLES = ['cost_rates']
+
+/** Context tables the static path must never touch. */
+const contextTablesFrom = (tables: string[]) => tables.filter(t => !GOVERNANCE_TABLES.includes(t))
+
+
+// ── Governance G1 ────────────────────────────────────────────────────────────
+// These suites exercise prompt construction, routing and error contracts — not
+// spend governance. The provider boundary is stubbed to run its callback so a
+// DB-less unit test is not refused for having no resolvable project. That the
+// routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
+// which reads the real source, and by that suite's lifecycle tests.
+vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
+  return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }
+})
+
+
 // `server-only` is a Next.js build guard with no runtime implementation outside
 // the framework; several modules in the import graph pull it in.
 vi.mock('server-only', () => ({}))
@@ -117,10 +148,10 @@ describe('authentication is unchanged', () => {
 })
 
 describe('STATIC path execution contract', () => {
-  it('performs NO database reads at all', async () => {
+  it('performs NO context reads — only the governance price lookup', async () => {
     const { res } = await post(userMsg('Hej'))
     expect(res.status).toBe(200)
-    expect(touchedTables).toEqual([])
+    expect(contextTablesFrom(touchedTables)).toEqual([])
   })
 
   it('sends NO tools to the model', async () => {
@@ -243,7 +274,7 @@ describe('FULL → STATIC history transition', () => {
     expect(res.status).toBe(200)
     expect(text).toContain('"reqType":"static_conversation"')
     // No new dynamic context was built for turn 2.
-    expect(touchedTables).toEqual([])
+    expect(contextTablesFrom(touchedTables)).toEqual([])
     // No tools offered for turn 2.
     expect(streamCalls[0].tools).toEqual([])
     // Prior history is passed through untouched — and is plain text.
@@ -262,7 +293,7 @@ describe('FULL → STATIC history transition', () => {
 
     expect(res.status).toBe(200)
     expect(text).toContain('"reqType":"static_conversation"')
-    expect(touchedTables).toEqual([])
+    expect(contextTablesFrom(touchedTables)).toEqual([])
     expect(streamCalls[0].tools).toEqual([])
     expect(streamCalls[0].messages).toEqual(history)
   })
@@ -318,7 +349,7 @@ describe('the two paths are genuinely different', () => {
     await post(userMsg('Hur har The Prompt gått idag?'))
     const fullTables = [...touchedTables]
 
-    expect(staticTables).toEqual([])
+    expect(contextTablesFrom(staticTables)).toEqual([])
     expect(fullTables.length).toBeGreaterThan(5)
   })
 

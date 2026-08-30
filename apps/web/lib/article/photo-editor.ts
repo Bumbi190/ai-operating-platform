@@ -20,6 +20,8 @@
 
 import { Anthropic } from '@anthropic-ai/sdk'
 import { logLlmCost } from '@/lib/cost/track'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const PHOTO_EDITOR_MODEL = 'claude-sonnet-4-6'
 const SUBMIT_BRIEF_TOOL = 'submit_brief'
@@ -176,7 +178,9 @@ function findToolUse(content: unknown): { input: unknown } | undefined {
  * brief failures do not block image generation.
  */
 export async function runPhotoEditor(input: PhotoEditorInput): Promise<EditorBrief> {
-  const claude = new Anthropic()
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Photo Editor', operation: 'Generate Editor Brief',
+  })
   const response = await claude.messages.create({
     model: PHOTO_EDITOR_MODEL,
     max_tokens: 1200,
@@ -222,12 +226,6 @@ export async function runPhotoEditor(input: PhotoEditorInput): Promise<EditorBri
       },
     ],
     tool_choice: { type: 'tool', name: SUBMIT_BRIEF_TOOL },
-  })
-
-  // Log cost for visibility during shadow eval. Non-blocking.
-  void logLlmCost(PHOTO_EDITOR_MODEL, response.usage, {
-    agent: 'Photo Editor',
-    operation: 'Generate Editor Brief',
   })
 
   const toolUse = findToolUse(response.content)

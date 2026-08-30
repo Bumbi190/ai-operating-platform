@@ -20,6 +20,18 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+// ── Governance G1 ────────────────────────────────────────────────────────────
+// These suites exercise prompt construction, routing and error contracts — not
+// spend governance. The provider boundary is stubbed to run its callback so a
+// DB-less unit test is not refused for having no resolvable project. That the
+// routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
+// which reads the real source, and by that suite's lifecycle tests.
+vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
+  return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }
+})
+
+
 const WEB_ROOT = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
@@ -366,7 +378,10 @@ describe('tts never spends before auth', () => {
     const fn = src.slice(src.indexOf('export async function POST'))
     const authAt = fn.indexOf('requireUserSession()')
     const bodyAt = fn.indexOf('await request.json()')
-    const fetchAt = fn.indexOf("fetch('https://api.openai.com")
+    // G1 moved the network call into the governed OpenAI adapter, so the thing
+    // auth must precede is the governed call, not a raw fetch. The property is
+    // the same: no billable work before the session is proven.
+    const fetchAt = fn.indexOf('openAISpeech(')
     expect(authAt).toBeGreaterThan(-1)
     expect(authAt).toBeLessThan(bodyAt)
     expect(authAt).toBeLessThan(fetchAt)

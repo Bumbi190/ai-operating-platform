@@ -100,7 +100,7 @@ export const MEDIA_GENERATION_PREREQUISITES = [
   'provider_execution_gate',
   /** `config.ts` — test/production credential separation. Shipped. */
   'credential_mode_separation',
-  /** `gate.ts` MediaSpendPolicy — declared, refusing default. NOT implemented. */
+  /** Governed by `lib/cost/governed-spend.ts` once a MuAPI path becomes billable. */
   'spend_policy',
   /** Per-project budget with reconciliation against cost_events. NOT SHIPPED. */
   'project_budget',

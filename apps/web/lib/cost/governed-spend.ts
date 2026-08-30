@@ -1,0 +1,279 @@
+/**
+ * lib/cost/governed-spend.ts — the canonical provider spend boundary.
+ *
+ * ── WHAT THIS CLOSES ────────────────────────────────────────────────────────
+ * The Governance Hard Gate audit found 33 runtime call sites that can spend real
+ * money and exactly ONE that reserved budget first. Every other path constructed
+ * a provider SDK inline or fetched a provider hostname directly, so
+ * `project_budgets` bounded roughly 3% of spend and `H1_SPEND_GATE` would have
+ * enforced a ceiling over almost nothing.
+ *
+ * This module is the one place a billable call may be made from. It owns project
+ * resolution, the estimate, the reservation, the refusal and the settlement.
+ * Provider adapters own the request shape and nothing else.
+ *
+ *     withGovernedSpend            ← project, estimate, reserve, refuse, settle
+ *          ↓
+ *     provider adapter             ← Anthropic / Ideogram / OpenAI / ElevenLabs
+ *          ↓
+ *     provider SDK or fetch
+ *
+ * ── ONE BUDGET SYSTEM ───────────────────────────────────────────────────────
+ * `reserveSpend` / `settleSpend` / `releaseSpend`, `project_budgets`,
+ * `spend_reservations`, `cost_rates` and `cost_events` are REUSED unchanged.
+ * Nothing here introduces a second budget store, a second rate table or a second
+ * approval concept — that was the explicit failure mode the audit warned about
+ * after finding a dead parallel `MediaSpendPolicy` seam.
+ *
+ * ── FAIL CLOSED (audit F-002) ───────────────────────────────────────────────
+ * The old ElevenLabs call site read:
+ *
+ *     const reservation = projectId ? await reserveSpend(…) : null
+ *     if (reservation && !reservation.allowed) throw …
+ *
+ * so an unresolvable project — a missing row, or a transient database error that
+ * `resolveCostProjectId` swallowed into `null` — skipped the gate entirely and
+ * the provider was called anyway. A database blip silently disabled the only
+ * enforcement Omnira had.
+ *
+ * Here, every way of NOT getting an answer refuses: no project reference, an
+ * unresolvable one, a lookup that threw, a non-finite estimate, a reservation
+ * RPC that failed. `unavailable` is never read as `allowed`. The one deliberate
+ * exception is the enforcement flag itself: `H1_SPEND_GATE` off means the
+ * refusal is RECORDED and overridden, which is the existing advisory rollout
+ * semantics and is decided inside `reserveSpend`, not here.
+ *
+ * ── AMBIGUITY IS NOT A REFUND ───────────────────────────────────────────────
+ * `withSpendGate` released the reservation on every thrown error. That is wrong
+ * for a call that may already have been billed: a timeout after the provider
+ * accepted the request would hand the budget back and let the next caller spend
+ * it a second time. Failures are therefore classified, and the DEFAULT for an
+ * unrecognised failure is to SETTLE — keep the money counted. Only a failure an
+ * adapter can prove never reached the provider releases the headroom.
+ */
+
+import 'server-only'
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
+
+/**
+ * Which project a billable call is charged to. Required — there is no default.
+ *
+ * A hidden default is exactly how the audit found every voiceover, including
+ * Familje-Stunden's, billed to `ai-media-automation`: `resolveCostProjectId()`
+ * was called with no argument and silently resolved one hardcoded slug. Callers
+ * that genuinely have no project of their own must name a compatibility slug
+ * explicitly at the call site, where a reviewer can see it.
+ */
+export type ProjectRef = { projectId: string } | { projectSlug: string }
+
+/**
+ * The compatibility mapping for platform-level work that predates per-project
+ * attribution — Atlas chat and Atlas TTS serve every project at once and belong
+ * to none of them.
+ *
+ * Deliberately a named constant rather than a fallback inside the resolver: it
+ * is declared at each call site, greppable, and listed in the G1 report as a
+ * decision G2 must make when it introduces budget scopes. It is NOT a fallback —
+ * if this slug fails to resolve, the call is refused like any other.
+ */
+export const PLATFORM_COMPAT_PROJECT_SLUG = 'ai-media-automation'
+
+/**
+ * The media pipeline's own project.
+ *
+ * This is not a compatibility mapping — script generation, scene images, news
+ * images and pipeline voiceover genuinely belong to `ai-media-automation`, and
+ * that is where their cost has always been recorded. Named here so the
+ * attribution is a stated decision rather than a string repeated in fifteen
+ * files, and so a reviewer can see which calls are correctly attributed and
+ * which (see `PLATFORM_COMPAT_PROJECT_SLUG`) are awaiting one.
+ */
+export const MEDIA_PIPELINE_PROJECT_SLUG = 'ai-media-automation'
+
+/** Convenience for the common case. Still explicit at every call site. */
+export const MEDIA_PIPELINE_PROJECT: ProjectRef = { projectSlug: MEDIA_PIPELINE_PROJECT_SLUG }
+export const PLATFORM_COMPAT_PROJECT: ProjectRef = { projectSlug: PLATFORM_COMPAT_PROJECT_SLUG }
+
+export type SpendRefusalReason =
+  | 'project_unresolved'
+  | 'project_lookup_failed'
+  | 'invalid_estimate'
+  | SpendVerdict['reason']
+
+/** Thrown instead of calling the provider. Carries why, never a credential. */
+export class SpendRefusedError extends Error {
+  readonly reason: SpendRefusalReason
+  readonly provider: string
+  readonly operation: string
+  readonly verdict: SpendVerdict | null
+
+  constructor(args: {
+    reason: SpendRefusalReason
+    provider: string
+    operation: string
+    detail?: string
+    verdict?: SpendVerdict | null
+  }) {
+    super(
+      `Spend refused for ${args.provider}/${args.operation}: ${args.reason}`
+      + (args.detail ? ` — ${args.detail}` : ''),
+    )
+    this.name = 'SpendRefusedError'
+    this.reason = args.reason
+    this.provider = args.provider
+    this.operation = args.operation
+    this.verdict = args.verdict ?? null
+  }
+}
+
+/**
+ * Thrown by an adapter to state that the provider was demonstrably NOT billed —
+ * the request never left the process, or the provider rejected it before doing
+ * any work. This is the ONLY way to get a reservation released after dispatch
+ * was attempted, and it is a claim the adapter has to be able to defend.
+ */
+export class ProviderNotDispatchedError extends Error {
+  readonly cause: unknown
+  constructor(message: string, cause?: unknown) {
+    super(message)
+    this.name = 'ProviderNotDispatchedError'
+    this.cause = cause
+  }
+}
+
+const projectIdCache = new Map<string, string | null>()
+
+/**
+ * Resolve a project reference to a UUID.
+ *
+ * Distinguishes "no such project" from "could not ask", because the caller
+ * refuses on both but the operator needs to tell them apart.
+ */
+export async function resolveGovernedProjectId(
+  ref: ProjectRef,
+): Promise<{ ok: true; projectId: string } | { ok: false; reason: 'project_unresolved' | 'project_lookup_failed' }> {
+  if ('projectId' in ref) {
+    return ref.projectId
+      ? { ok: true, projectId: ref.projectId }
+      : { ok: false, reason: 'project_unresolved' }
+  }
+  const slug = ref.projectSlug
+  if (!slug) return { ok: false, reason: 'project_unresolved' }
+  if (projectIdCache.has(slug)) {
+    const cached = projectIdCache.get(slug) ?? null
+    return cached ? { ok: true, projectId: cached } : { ok: false, reason: 'project_unresolved' }
+  }
+  try {
+    const db = createAdminClient()
+    const { data, error } = await db.from('projects').select('id').eq('slug', slug).limit(1).maybeSingle()
+    // A query error is NOT "no such project" — never cache it, never treat it as
+    // an answer. This is the exact conflation that made F-002 fail open.
+    if (error) return { ok: false, reason: 'project_lookup_failed' }
+    const id = (data?.id as string | undefined) ?? null
+    projectIdCache.set(slug, id)
+    return id ? { ok: true, projectId: id } : { ok: false, reason: 'project_unresolved' }
+  } catch {
+    return { ok: false, reason: 'project_lookup_failed' }
+  }
+}
+
+export interface GovernedSpendInput {
+  /** Required. No default, no fallback. */
+  project: ProjectRef
+  /** Ledger provider name, e.g. 'anthropic'. Matches cost_events.provider. */
+  provider: string
+  /** What is being paid for, e.g. 'messages.create'. */
+  operation: string
+  /**
+   * Conservative UPPER BOUND in SEK, computed before the call from the shared
+   * rate accessor. Never an optimistic figure: the reservation is what stops a
+   * concurrent caller, so under-estimating re-opens the race it exists to close.
+   */
+  estimatedSek: number
+  /**
+   * Stable identity for ONE logical spend, so a retry reserves once.
+   *
+   * ── PLUMBED, DELIBERATELY UNUSED IN G1 (audit F-105 / F-106) ──────────────
+   * `spend_reservations.idempotency_key` is unique and `budget_reserve` handles
+   * replay — but its replay branch returns BEFORE `pg_advisory_xact_lock` and
+   * BEFORE the budget is read, so a key whose reservation is already `settled`
+   * comes back `allowed = true` with no new reservation and no budget check.
+   * Sending stable keys onto today's RPC would therefore convert a dead feature
+   * into a live bypass: the second spend would never be counted.
+   *
+   * G1 carries the identity end-to-end so the call sites are already the right
+   * shape, and NO adapter passes one. Omitting it means every attempt takes its
+   * own reservation, which over-reserves on retry but can never under-reserve —
+   * strictly safer than today, where 32 of 33 sites reserved nothing at all.
+   * A guard test asserts no adapter passes this until G2 fixes the RPC.
+   */
+  idempotencyKey?: string
+}
+
+/**
+ * Reserve, then call, then settle or release. The provider call happens ONLY
+ * after an allowed reservation — there is no branch through this function that
+ * reaches `run()` without one.
+ */
+export async function withGovernedSpend<T>(
+  input: GovernedSpendInput,
+  run: () => Promise<T>,
+): Promise<T> {
+  const { provider, operation } = input
+
+  if (!Number.isFinite(input.estimatedSek) || input.estimatedSek < 0) {
+    throw new SpendRefusedError({
+      reason: 'invalid_estimate', provider, operation,
+      detail: `estimate ${String(input.estimatedSek)} is not a usable amount`,
+    })
+  }
+
+  const resolved = await resolveGovernedProjectId(input.project)
+  if (!resolved.ok) {
+    throw new SpendRefusedError({
+      reason: resolved.reason, provider, operation,
+      detail: 'a billable call may not proceed without a known project',
+    })
+  }
+
+  const verdict = await reserveSpend({
+    projectId: resolved.projectId,
+    estimatedSek: input.estimatedSek,
+    idempotencyKey: input.idempotencyKey,
+    provider,
+    operation,
+  })
+
+  if (!verdict.allowed) {
+    // The reservation row, if any, is already 'released' by budget_reserve when
+    // it refuses; releasing again is a harmless no-op that also covers the
+    // replay path, where the id belongs to a reservation we did not create.
+    await releaseSpend(verdict.reservationId)
+    throw new SpendRefusedError({
+      reason: verdict.reason, provider, operation,
+      detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom ${verdict.headroomSek ?? 'unknown'} SEK`,
+      verdict,
+    })
+  }
+
+  try {
+    const result = await run()
+    await settleSpend(verdict.reservationId, input.estimatedSek)
+    return result
+  } catch (e) {
+    if (e instanceof ProviderNotDispatchedError) {
+      // The adapter can prove nothing was billed. Free the headroom now rather
+      // than making a burst of auth failures starve the budget for 30 minutes.
+      await releaseSpend(verdict.reservationId)
+      throw e.cause ?? e
+    }
+    // Everything else is AMBIGUOUS: a timeout, a socket reset mid-response, a
+    // parse failure after the provider already did the work. Settling keeps the
+    // estimate counted, so the worst case is over-counting one call rather than
+    // handing back budget for a call that was charged.
+    await settleSpend(verdict.reservationId, input.estimatedSek)
+    throw e
+  }
+}

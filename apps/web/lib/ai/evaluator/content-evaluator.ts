@@ -21,6 +21,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { detectSlop, slopToQualityScore } from './slop-detector'
 import { toJson } from '@/lib/supabase/json'
 
@@ -229,7 +231,9 @@ function scoreBrandAlignment(text: string): { score: number; hardFails: string[]
 async function scoreHookWithHaiku(
   hookText: string
 ): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string | null }> {
-  const client = new Anthropic()
+  const client = getAnthropic({
+    project: PLATFORM_COMPAT_PROJECT, agent: 'Content Evaluator', operation: 'Evaluate Content',
+  })
 
   const prompt = `You are a script quality evaluator for "The Prompt" — an AI news channel.
 Brand: Bloomberg QuickTake meets AI. Tone: fast, factual, premium. No hype.

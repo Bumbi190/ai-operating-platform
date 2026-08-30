@@ -20,35 +20,14 @@ import { toJson } from '@/lib/supabase/json'
 
 const DEFAULT_MEDIA_SLUG = 'ai-media-automation'
 
-// ── Rate cache (5 min TTL) ──────────────────────────────────────────────────
-let ratesCache: { at: number; rates: Record<string, number> } | null = null
-const RATES_TTL_MS = 5 * 60 * 1000
-
 /**
- * Exported for the PR9b budget gate, which must estimate a call's cost BEFORE
- * making it. It deliberately shares this accessor rather than keeping its own
- * price table: two tables would drift, and the estimate would stop matching the
- * figure later written to cost_events.
+ * Re-exported so every existing importer keeps working. The implementation
+ * lives in `./rates` — see that file for why it was split out. There is still
+ * exactly ONE accessor, which is what stops the estimate and the ledger drifting.
  */
-export async function getRates(): Promise<Record<string, number>> {
-  if (ratesCache && Date.now() - ratesCache.at < RATES_TTL_MS) return ratesCache.rates
-  const fallback = {
-    usd_sek: 10.5,
-    elevenlabs_usd_per_1k_chars: 0.24,
-    ideogram_v3_usd_per_image: 0.08,
-    gpt_image_usd_per_image: 0.042,
-  }
-  try {
-    const db = createAdminClient()
-    const { data } = await db.from('cost_rates').select('key, value')
-    const rates: Record<string, number> = { ...fallback }
-    for (const row of data ?? []) rates[row.key as string] = Number(row.value)
-    ratesCache = { at: Date.now(), rates }
-    return rates
-  } catch {
-    return fallback
-  }
-}
+export { getRates } from './rates'
+
+import { getRates } from './rates'
 
 // ── Project slug → id cache ─────────────────────────────────────────────────
 const projectIdCache = new Map<string, string | null>()

@@ -8,11 +8,13 @@
  * Body: { project_id: string }
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { Anthropic } from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { generateIdeogramV3 } from '@/lib/media/image-client'
+import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300
@@ -60,15 +62,27 @@ New video every day. This is The Prompt.`,
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return new Response('Unauthorized', { status: 401 })
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
   const { project_id } = await request.json() as { project_id: string }
   if (!project_id) return new Response('project_id required', { status: 400 })
 
+  // ISOLATION: the caller must own the project they name. This route already
+  // used project_id for storage paths and DB writes with only a session check;
+  // G1 additionally makes it select which BUDGET is drawn down, so an
+  // unvalidated id would let one project spend another's headroom. Same helper
+  // and same silent-404 shape as the sibling music route — no existence probing.
+  if (!assertProjectAllowed(project_id, access.allowedProjectIds)) {
+    return new Response('Not found', { status: 404 })
+  }
+
   const db      = createAdminClient()
-  const claude  = new Anthropic()
+  // Real project attribution: this route is called WITH a project_id, so the
+  // spend is charged to the project that asked for it rather than a default.
+  const claude  = getAnthropic({
+    project: { projectId: project_id }, agent: 'Image Director', operation: 'Plan Intro Image',
+  })
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -145,25 +159,16 @@ Output ONLY the prompt string.`,
           ? imgPromptRes.content[0].text.trim()
           : 'Dark editorial newsroom at night, stacks of newspapers catching morning light through industrial windows, cinematic vertical composition. Include bold white text at bottom center: "THE PROMPT"'
 
-        const apiKey = process.env.IDEOGRAM_API_KEY
-        if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
-
-        const ideogramRes = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
-          method: 'POST',
-          headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const imageUrl = await generateIdeogramV3(
+          { project: { projectId: project_id }, operation: 'Intro Image', agent: 'Image Director' },
+          {
             prompt:          visualPrompt,
             aspect_ratio:    '9x16',
             style_type:      'DESIGN',
             rendering_speed: 'DEFAULT',
             negative_prompt: 'blurry, low quality, distorted, watermark, logo, cartoon, anime, people, face, hands',
-          }),
-        })
-
-        if (!ideogramRes.ok) throw new Error(`Ideogram error: ${await ideogramRes.text()}`)
-        const imgData = await ideogramRes.json() as { data: Array<{ url: string }> }
-        const imageUrl = imgData.data?.[0]?.url
-        if (!imageUrl) throw new Error('Ideogram returned no image')
+          },
+        )
 
         emit({ step: 'uploading_image', label: 'Uploading image...', progress: 85 })
         const storedUrl = await uploadSceneImage(project_id, scriptId, 0, imageUrl)

@@ -31,6 +31,8 @@
 
 import { requireUserSession } from '@/lib/auth/session'
 import { getAtlasServiceErrorMessage } from '@/lib/atlas/provider-errors'
+import { openAISpeech } from '@/lib/ai/openai-client'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -88,15 +90,24 @@ export async function POST(request: Request) {
   }
 
   const tTts = Date.now()
-  const res = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type':  'application/json',
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15_000),
-  })
+  // Atlas speech was outside BOTH the budget gate and cost_events. It is now
+  // governed and logged; the payload, timeout and error envelope are unchanged.
+  let res: Response
+  try {
+    res = await openAISpeech(
+      { project: PLATFORM_COMPAT_PROJECT, agent: 'Atlas', operation: 'Atlas TTS' },
+      payload,
+      { signal: AbortSignal.timeout(15_000) },
+    )
+  } catch (e) {
+    const code = 'ATLAS_TTS_REQUEST_FAILED' as const
+    const status = (e as { status?: number })?.status
+    console.error('[atlas-tts] OpenAI request failed', { status: status ?? 'refused' })
+    return Response.json(
+      { code, error: getAtlasServiceErrorMessage(code) },
+      { status: 502 },
+    )
+  }
 
   if (!res.ok) {
     const code = 'ATLAS_TTS_REQUEST_FAILED' as const

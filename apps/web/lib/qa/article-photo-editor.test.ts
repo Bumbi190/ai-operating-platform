@@ -59,6 +59,18 @@ vi.mock('@/lib/cost/track', () => ({
 
 import { runPhotoEditor, ANTI_STOCK_BANLIST, EDITORIAL_STYLES } from '@/lib/article/photo-editor'
 
+// ── Governance G1 ────────────────────────────────────────────────────────────
+// These suites exercise prompt construction, routing and error contracts — not
+// spend governance. The provider boundary is stubbed to run its callback so a
+// DB-less unit test is not refused for having no resolvable project. That the
+// routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
+// which reads the real source, and by that suite's lifecycle tests.
+vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
+  return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }
+})
+
+
 const VALID_BRIEF = {
   story: 'Anthropic is taking Claude Fable 5 offline under a US government order.',
   visual_metaphor: 'A regulatory pause on a household name in AI.',

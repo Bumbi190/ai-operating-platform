@@ -13,7 +13,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveIssueId } from '@/lib/atlas/dream'
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 
 // DreamAnalyzer skill — inline för att undvika paketimport-komplexitet
 const dreamAnalyzerSkill = {
@@ -84,7 +85,8 @@ export function extractJsonObject(raw: string): string {
   return s.trim()
 }
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+// Governed per call: the boundary needs project + operation context, which a
+// module-level singleton cannot carry.
 
 // Max antal insikter per projekt — gamla rensas vid upsert
 const MAX_INSIGHTS = 20
@@ -239,7 +241,9 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
     summary: string
   }
 
-  const response = await anthropic.messages.create({
+  const response = await getAnthropic({
+    project: PLATFORM_COMPAT_PROJECT, agent: 'Dream', operation: 'Dream Analysis',
+  }).messages.create({
     model: dreamAnalyzerSkill.defaultModel,
     max_tokens: dreamAnalyzerSkill.config.max_tokens ?? 2000,
     temperature: dreamAnalyzerSkill.config.temperature ?? 0.3,

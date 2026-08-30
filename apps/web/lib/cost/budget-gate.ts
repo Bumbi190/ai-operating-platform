@@ -39,7 +39,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getRates } from './track'
+import { getRates } from './rates'
 import { isSpendGateEnforced } from './spend-gate-flag'
 
 export { isSpendGateEnforced }

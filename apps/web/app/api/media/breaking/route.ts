@@ -23,6 +23,8 @@ import { scoreScript } from '@/lib/media/quality'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300   // hela kedjan inkl. render-poll
@@ -48,7 +50,9 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { project_id?: string; url?: string; text?: string }
   const db = createAdminClient()
-  const claude = new Anthropic()
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Breaking News', operation: 'Breaking News',
+  })
   const steps: Record<string, unknown> = {}
 
   // ── Projekt ─────────────────────────────────────────────────────────────────

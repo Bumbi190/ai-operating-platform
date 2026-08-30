@@ -12,6 +12,18 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+// ── Governance G1 ────────────────────────────────────────────────────────────
+// These suites exercise prompt construction, routing and error contracts — not
+// spend governance. The provider boundary is stubbed to run its callback so a
+// DB-less unit test is not refused for having no resolvable project. That the
+// routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
+// which reads the real source, and by that suite's lifecycle tests.
+vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
+  return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }
+})
+
+
 vi.mock('server-only', () => ({}))
 
 let sessionUser: { id: string; email?: string } | null = null
@@ -161,7 +173,9 @@ describe('closed-slice regressions', () => {
     for (const q of ['Hej Atlas', 'Vem är du?', 'Tack']) {
       const r = await post(q)
       expect(r.reqType, q).toBe('static_conversation')
-      expect(touchedTables, q).toEqual([])
+      // `cost_rates` is the governed boundary pricing the call before it
+      // reserves — governance, not context. Every context table stays untouched.
+      expect(touchedTables.filter(t => t !== 'cost_rates'), q).toEqual([])
       expect(r.tools, q).toEqual([])
     }
   })

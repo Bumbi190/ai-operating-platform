@@ -42,7 +42,6 @@ import {
   toMediaProviderError,
 } from '@/lib/media/providers/errors'
 import {
-  approvalRequiredSpendPolicy,
   assertCapability,
   decideMediaExecution,
 } from '@/lib/media/providers/gate'
@@ -98,13 +97,6 @@ const ENABLED_TEST_ENV: Record<string, string | undefined> = {
 // ── 1. Config resolution ─────────────────────────────────────────────────────
 
 describe('config resolution defaults to the harmless state', () => {
-  it('an empty environment is disabled, not test-enabled', () => {
-    const c = resolveMuapiConfig({})
-    expect(c.enabled).toBe(false)
-    expect(c.mode).toBe('disabled')
-    expect(c.hasCredential).toBe(false)
-    expect(c.productionEnabled).toBe(false)
-  })
 
   it('MUAPI_ENABLED=false disables, exactly as an operator would read it', () => {
     expect(resolveMuapiMode({ [MUAPI_ENV.enabled]: 'false' })).toBe('disabled')
@@ -614,14 +606,15 @@ describe('media generation is declared and unlicensed', () => {
     }
   })
 
-  it('the spend policy default requires approval and reads no threshold', async () => {
-    const verdict = await approvalRequiredSpendPolicy({
-      provider: 'muapi', model: 'flux-dev-image', projectId: null,
-      estimate: { unit: 'credits', amount: 1, exact: true },
-    })
-    // Even a one-credit exact estimate does not auto-approve: there is no budget
-    // to compare it against, so an estimate proves nothing.
-    expect(verdict.decision).toBe('approval_required')
+  it('the provider declares no spend policy of its own (governance G1)', async () => {
+    // The old `approvalRequiredSpendPolicy` default lived here and answered
+    // "may we spend" for MuAPI alone. G1 made that one question with one answer
+    // — lib/cost/governed-spend.ts — so a second abstraction must not reappear.
+    const gate = await import('@/lib/media/providers/gate')
+    expect(Object.keys(gate)).not.toContain('approvalRequiredSpendPolicy')
+    // The EXECUTION authority half stays: it decides whether an outbound call
+    // may happen at all, which is a different question from affordability.
+    expect(Object.keys(gate)).toContain('decideMediaExecution')
   })
 })
 

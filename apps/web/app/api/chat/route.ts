@@ -49,6 +49,8 @@ import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/sh
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -581,7 +583,12 @@ export async function POST(request: Request) {
       { status: 503 },
     )
   }
-  const anthropic = new Anthropic({ apiKey: anthropicApiKey })
+  // Atlas chat serves every project at once and belongs to none of them, so it
+  // names the platform compatibility project explicitly. Listed in the G1 report
+  // as a mapping G2 must decide when it introduces budget scopes.
+  const anthropic = getAnthropic({
+    project: PLATFORM_COMPAT_PROJECT, agent: 'Atlas', operation: 'Atlas Chat',
+  })
 
   const { messages, conversation_id, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -802,7 +809,7 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
-          const llm = anthropic.messages.stream({
+          const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,

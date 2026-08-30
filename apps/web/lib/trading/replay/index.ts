@@ -60,19 +60,24 @@ export type { PlannedTradeView } from './planned-trade'
 
 // ─── Observed position ────────────────────────────────────────────────────────
 export {
+  OBSERVED_POSITION_DIRECTIONS,
   OBSERVED_POSITION_STATES,
   observationIsStale,
   observedOrNull,
   observedPositionGrantsAuthority,
+  parseQuantityText,
   present,
+  quantityText,
   unavailable,
   unknownValue,
 } from './observed-position'
 export type {
   ObservationSource,
   ObservedPosition,
+  ObservedPositionDirection,
   ObservedPositionState,
   ObservedValue,
+  QuantityText,
 } from './observed-position'
 
 // ─── State ────────────────────────────────────────────────────────────────────

@@ -354,7 +354,7 @@ describe('a plan is not a position', () => {
     const position = projectReplay(timeline, timeline.events.length - 1).observedPositions[0]
     expect(position.unrealizedPnl).toEqual({ state: 'UNAVAILABLE' })
     expect(position.takeProfit).toEqual({ state: 'UNAVAILABLE' })
-    expect(position.quantity).toEqual({ state: 'PRESENT', value: 1 })
+    expect(position.quantity).toEqual({ state: 'PRESENT', value: '1' })
   })
 
   it('degrades every reading to UNKNOWN on a stale feed', () => {

@@ -36,7 +36,13 @@ import {
   type Timestamp,
   type TradingMarketViewSnapshot,
 } from '../market-view'
-import { present, unavailable, unknownValue, type ObservedPosition } from './observed-position'
+import {
+  present,
+  quantityText,
+  unavailable,
+  unknownValue,
+  type ObservedPosition,
+} from './observed-position'
 import {
   observationSourceOf,
   type PositionObservation,
@@ -98,7 +104,9 @@ function observedPosition(
     instrument: base.instrument,
     state: 'OPEN',
     direction: 'LONG',
-    quantity: present(1),
+    // Authored as an exact decimal STRING, never a JS number literal: the
+    // number path is the one that loses provider precision.
+    quantity: present(quantityText('1')),
     averageEntry: present(entry),
     lastPrice: present(base.candles[base.candles.length - 1].close),
     unrealizedPnl: unavailable(),

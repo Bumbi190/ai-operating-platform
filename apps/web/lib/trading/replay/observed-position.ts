@@ -30,13 +30,90 @@
  * three.
  */
 
+import { parseDecimal } from '../decimal'
+import type { Branded } from '../ids'
 import type {
-  DisplayDirection,
   MarketFreshness,
   MarketInstrument,
   PriceText,
   Timestamp,
 } from '../market-view'
+
+// ─── Exact observed quantity ──────────────────────────────────────────────────
+
+/**
+ * An exact position size, in text form.
+ *
+ * WHY NOT `number`
+ * ────────────────
+ * A provider reports quantity as an exact `Decimal`, and JS `number` cannot hold
+ * one. Measured on the canonical parser's own accepted range:
+ *
+ *     '0.000000000001'    → Number() → 1e-12                 exponent form,
+ *                                                            which parseDecimal rejects
+ *     '99999999999999999' → Number() → 100000000000000000    THE VALUE CHANGED
+ *
+ * Futures quantities are usually small integers, and that is exactly why the
+ * old `number` survived this long — it was right for every fixture and wrong for
+ * the model. A representation that silently corrupts a legal provider value is
+ * not made safe by the values we happen to see today.
+ *
+ * WHY NOT `PriceText`
+ * ───────────────────
+ * A quantity is not a price. They share an exact-decimal-text representation and
+ * nothing else, and one branded type for both would let a size be rendered where
+ * a price belongs without a compiler complaint.
+ *
+ * Text rather than the `Decimal` value object for the same reason `PriceText` is
+ * text: `Decimal` stores a `bigint`, which `JSON.stringify` throws on, so it
+ * cannot cross a React Server Component boundary. This is the same value,
+ * exactly, in the form the boundary accepts.
+ *
+ * Validated through the canonical `parseDecimal` — there is no second numeric
+ * parser here, and no path from a JS number.
+ */
+export type QuantityText = Branded<string, 'QuantityText'>
+
+/**
+ * Parse an untrusted value into a QuantityText. Fails closed to null.
+ *
+ * Accepts only what `parseDecimal` accepts: no floats, no exponent notation, no
+ * leading '+', no bare '.'. The normalized `Decimal.text` is what is stored, so
+ * the value round-trips through `parseDecimal` unchanged.
+ */
+export function parseQuantityText(raw: unknown): QuantityText | null {
+  const parsed = parseDecimal(raw)
+  return parsed === null ? null : (parsed.text as QuantityText)
+}
+
+/** Assert a QuantityText at a boundary you control. Throws on malformed input. */
+export function quantityText(raw: string): QuantityText {
+  const parsed = parseQuantityText(raw)
+  if (parsed === null) throw new Error(`Malformed quantity: ${JSON.stringify(raw)}`)
+  return parsed
+}
+
+// ─── Observed direction ───────────────────────────────────────────────────────
+
+/**
+ * The direction of an observed position.
+ *
+ * SEPARATE FROM `DisplayDirection`, WHICH CANNOT SAY "UNKNOWN".
+ * `DisplayDirection` is LONG · SHORT · NEUTRAL, and NEUTRAL is a *strategy*
+ * statement — no bias, nothing to lean on. An observed position whose direction
+ * the provider could not report is not neutral; it is unknown, and rendering it
+ * as NEUTRAL would assert a fact nobody established.
+ *
+ * There is no NEUTRAL here for the same reason there is no FLAT in the provider
+ * contract: a position that is not open is absent from the list, not present
+ * with a zero-ish direction.
+ *
+ * Replay-owned. Deliberately NOT an alias of the provider contract's
+ * `PositionSide`, and replay imports nothing from `lib/trading/provider`. A
+ * future normalization package maps one to the other, member for member.
+ */
+export const OBSERVED_POSITION_DIRECTIONS = ['LONG', 'SHORT', 'UNKNOWN'] as const
+export type ObservedPositionDirection = (typeof OBSERVED_POSITION_DIRECTIONS)[number]
 
 /**
  * A reading that a provider may or may not supply.
@@ -102,8 +179,8 @@ export interface ObservedPosition {
   readonly source: ObservationSource
   readonly instrument: MarketInstrument
   readonly state: ObservedPositionState
-  readonly direction: DisplayDirection
-  readonly quantity: ObservedValue<number>
+  readonly direction: ObservedPositionDirection
+  readonly quantity: ObservedValue<QuantityText>
   readonly averageEntry: ObservedValue<PriceText>
   readonly lastPrice: ObservedValue<PriceText>
   readonly unrealizedPnl: ObservedValue<PriceText>

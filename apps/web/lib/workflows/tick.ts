@@ -35,6 +35,7 @@ import {
   recordWorkflowTick,
   type WorkflowDb,
 } from './store'
+import { advanceAuthorizedWorkflow, type AdvanceResult } from './advance'
 import { ensureReadOnlyActionRuns, type SchedulingDecision } from './action-scheduling'
 import { computeEvidenceTargetHash } from './attestation'
 import { summarizeStateEvidence } from './evidence-consumption'
@@ -211,6 +212,25 @@ export async function tickDueWorkflows(
       }
       const createdAction = scheduled.some(d => d.outcome === 'created')
 
+      // ── PR9g: carry out a human's decision to cross a gate ────────────────
+      // Only when the gate DERIVES `authorized` from the ledger. The grant pins
+      // one instance, one state and one from→to move, and its target_id stops
+      // matching the moment the state changes — so it can be spent exactly once
+      // and can never authorize the next gate. Everything is re-derived inside
+      // advanceAuthorizedWorkflow, and workflow_append_transition re-validates
+      // the grant again in SQL.
+      let advance: AdvanceResult | null = null
+      if (evaluation.outcome === 'authorized_ready' || evaluation.outcome === 'ready_for_transition') {
+        try {
+          advance = await advanceAuthorizedWorkflow(db, instance, { now, ledger: options.ledger })
+        } catch (e) {
+          result.errors.push({
+            instanceId: instance.id,
+            error: `gate advance failed: ${e instanceof Error ? e.message : 'unknown error'}`,
+          })
+        }
+      }
+
       const seconds = nextWakeAfter(evaluation.outcome)
       const nextWakeAt = seconds === null
         ? null
@@ -225,10 +245,16 @@ export async function tickDueWorkflows(
         verification: evaluation.verification,
         verification_findings: evaluation.verificationFindings,
         scheduled_actions: scheduled.map(d => ({ kind: d.actionKind, outcome: d.outcome })),
+        gate_advance: advance
+          ? { outcome: advance.outcome, from: advance.fromState, to: advance.toState }
+          : null,
       // Having just created an observation, do NOT come back in a minute to
       // find it still running. The executor re-arms the instance when the run
       // finishes, which is both sooner and more accurate than polling.
-      }, createdAction ? null : nextWakeAt)
+      // A completed advance re-evaluates immediately: the instance is in a new
+      // state whose gate, prerequisites and evidence are all different, and the
+      // operator should see that reflected without waiting out a backoff.
+      }, createdAction ? null : advance?.outcome === 'advanced' ? now : nextWakeAt)
 
       // ── Escalation ───────────────────────────────────────────────────────
       // Each condition becomes at most one OPEN signal. A repeated identical

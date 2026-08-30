@@ -23,6 +23,13 @@ import { appendTransition, InvalidTransitionError } from '@/lib/workflows/store'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE, findVendoredDefinition } from '@/lib/workflows/definitions'
 import type { WorkflowEvidence, WorkflowInstance, WorkflowSpec } from '@/lib/workflows/types'
 
+/**
+ * PR9g-1: gate targets bind DECLARED checks only, so these fixtures state which
+ * keys the definition declares. An undeclared row (scheduler bookkeeping) is
+ * ignored by the pin — proven in workflows-gate-hash.test.ts.
+ */
+const DECLARED_KEYS = ['audio_files_19_of_19', 'speech_rate_in_band']
+
 const SPEC: WorkflowSpec = findVendoredDefinition(FAMILJE_STUNDEN_MONTHLY_RELEASE, 1)!.spec
 const PROJECT = '33333333-3333-4333-8333-333333333333'
 const INSTANCE_ID = '11111111-1111-4111-8111-111111111111'
@@ -49,6 +56,7 @@ const EVIDENCE: WorkflowEvidence[] = [{
 
 const TARGET = computeWorkflowGateTarget({
   instance: INSTANCE, spec: SPEC, state: 'local_qa', evidence: EVIDENCE,
+  declaredCheckKeys: DECLARED_KEYS,
 })
 
 // ── Chain builders ───────────────────────────────────────────────────────────
@@ -138,7 +146,8 @@ describe('gate inherits the ledger verdict', () => {
 describe('a grant is bound to exactly one target', () => {
   const otherTarget = (over: Partial<Parameters<typeof computeWorkflowGateTarget>[0]>) =>
     computeWorkflowGateTarget({
-      instance: INSTANCE, spec: SPEC, state: 'local_qa', evidence: EVIDENCE, ...over,
+      instance: INSTANCE, spec: SPEC, state: 'local_qa', evidence: EVIDENCE,
+      declaredCheckKeys: DECLARED_KEYS, ...over,
     })
 
   it('an authorization for ANOTHER INSTANCE is stale here', () => {
@@ -409,6 +418,7 @@ describe('mutant — a gate check that ignores the target pin', () => {
     const movedPin = computeWorkflowGateTarget({
       instance: INSTANCE, spec: SPEC, state: 'local_qa',
       evidence: [{ ...EVIDENCE[0], result: 'fail' }],
+      declaredCheckKeys: DECLARED_KEYS,
     })
     // Mutant: drop `target` from the query — the grant still looks effective.
     const mutant = isEffectiveNow(chain, { at: NOW, projectId: PROJECT, actionKind: WORKFLOW_GATE_ACTION_KIND })

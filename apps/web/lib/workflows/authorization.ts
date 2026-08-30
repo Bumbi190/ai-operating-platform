@@ -26,6 +26,7 @@
 
 import 'server-only'
 
+import { findAdapter } from './adapters/registry'
 import { requestAuthorization } from '@/lib/atlas/authorization/principal-write'
 import {
   findEffectiveAuthorizationForTarget,
@@ -56,6 +57,8 @@ interface GateContext {
   instance: WorkflowInstance
   spec: WorkflowSpec
   evidence: Awaited<ReturnType<typeof listEvidence>>
+  /** Declared checks for the instance's current state — see WorkflowGateInput. */
+  declaredCheckKeys: string[]
 }
 
 async function loadGateContext(db: WorkflowDb, instanceId: string): Promise<GateContext> {
@@ -63,7 +66,13 @@ async function loadGateContext(db: WorkflowDb, instanceId: string): Promise<Gate
   if (!instance) throw new Error(`workflow authorization: unknown instance ${instanceId}`)
   const def = await readDefinitionById(db, instance.def_id)
   const evidence = await listEvidence(db, instance.id)
-  return { instance, spec: def.spec, evidence }
+  // Declared checks only — scheduler bookkeeping must not move the gate pin.
+  const adapter = findAdapter(instance.def_key)
+  const declaredCheckKeys = adapter
+    ? adapter.attestableChecks()
+        .filter(c => c.state === instance.current_state).map(c => c.check_key)
+    : []
+  return { instance, spec: def.spec, evidence, declaredCheckKeys }
 }
 
 // ── Request ──────────────────────────────────────────────────────────────────
@@ -112,6 +121,7 @@ export async function requestWorkflowAuthorization(
     spec: ctx.spec,
     state: ctx.instance.current_state,
     evidence: ctx.evidence,
+    declaredCheckKeys: ctx.declaredCheckKeys,
   }
   const target = computeWorkflowGateTarget(gateInput)
 
@@ -177,6 +187,7 @@ export async function deriveWorkflowGateStatus(
     spec: ctx.spec,
     state: ctx.instance.current_state,
     evidence: ctx.evidence,
+    declaredCheckKeys: ctx.declaredCheckKeys,
   }
 
   const state = getState(ctx.spec, ctx.instance.current_state)
@@ -204,6 +215,7 @@ export async function readWorkflowAuthorization(
     spec: ctx.spec,
     state: ctx.instance.current_state,
     evidence: ctx.evidence,
+    declaredCheckKeys: ctx.declaredCheckKeys,
   }
   const target = computeWorkflowGateTarget(gateInput)
 

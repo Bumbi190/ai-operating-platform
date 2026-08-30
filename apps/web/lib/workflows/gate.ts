@@ -68,6 +68,21 @@ export interface WorkflowGateInput {
   state: string
   /** Evidence recorded against that state. Order-insensitive. */
   evidence: readonly WorkflowEvidence[]
+  /**
+   * The check keys the canonical contract DECLARES for this state.
+   *
+   * Only declared checks may influence the gate target. `workflow_evidence` also
+   * carries scheduler bookkeeping — `workflow_schedule_wake` writes
+   * `scheduler.wake_scheduled` and `workflow_record_tick` writes
+   * `scheduler.evaluation` — and including those made a granted authorization go
+   * `stale` the moment the scheduler touched the instance. The re-arm step
+   * writes one itself, so a grant would have been invalidated by the very act of
+   * making it usable.
+   *
+   * Same defect PR9f-1 fixed for ACTION targets, in the gate layer. Passed in so
+   * this module stays pure; callers derive it from `adapter.attestableChecks()`.
+   */
+  declaredCheckKeys: readonly string[]
 }
 
 /**
@@ -95,8 +110,9 @@ export function workflowGateTargetPayload(input: WorkflowGateInput): Record<stri
   }
 
   // Sorted so the caller's read order can never move the hash.
+  const declared = new Set(input.declaredCheckKeys)
   const evidence: GateEvidenceFact[] = input.evidence
-    .filter(e => e.state === input.state)
+    .filter(e => e.state === input.state && declared.has(e.check_key))
     .map(e => ({
       check_key: e.check_key,
       result: e.result,

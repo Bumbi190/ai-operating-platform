@@ -624,6 +624,85 @@ trading är fortsatt förbjudna.
 
 ---
 
+## Beslut G — Self-Contained Contract and Asynchronous Port Semantics
+
+**Datum:** 2026-08-30
+**Föranlett av:** Trading Stage 1.8a steg 0, andra försöket. Runtime-transkriptionen stoppades
+igen — den här gången av två luckor som uppstod i själva v1.1-promotionen.
+
+### G1 — Det aktiva kontraktet ska vara självbärande
+
+v1.1 skrevs som ett amendment som *citerade* v1.0:s §1–§9 i stället för att återge dem. Vid
+promotionen ersatte v1.1 v1.0 som enda aktiva källa, och de citerade sektionerna följde inte
+med. Resultatet var att aktiv canon krävde en arkiverad fil för att kunna implementeras,
+medan `archive/README.md` förbjuder arkiverade filer som implementationsunderlag.
+
+Regeln låses: **ingen aktiv providertyp får kräva en arkiverad specifikation för att förstås.**
+
+### G2 — Sju definitioner återges oförändrade
+
+`CapabilityState` (§3) · `ProviderCapabilities` (§3.1, fjorton fält) · `CredentialMode` (§4) ·
+`Available<T>` (§5) · `ContractSnapshot` (§7.1, elva fält) · `HistoryRequest` och
+`FillHistory` (§7.2).
+
+Varje sektion bär märkningen **UNCHANGED RESTATEMENT FROM CANONICAL v1.0**. Ingen definition
+är omdesignad. Arkiverad v1.0 lästes enbart som historiskt källmaterial.
+
+Ägarskapet gjordes samtidigt maskinellt kontrollerbart: §7.0 deklarerar `ProviderId`,
+`ContractId` och `ProviderTimestamp` explicit som **providerkontraktets** branded ids. Core
+bidrar med brandingmekanismen, inte med dessa typers semantik.
+
+### G3–G5 — Porten är asynkron
+
+v1.0 och v1.1 uttalade aldrig frågan; signaturerna lästes implicit synkront. En
+nätverksansluten provider kan inte ärligt uppfylla ett synkront kontrakt.
+
+```
+Result<T>  →  Promise<Result<T>>     fjorton metoder
+void       →  Promise<void>          endast disconnect
+```
+
+`disconnect` blir **inte** `Promise<Result<void>>`. Det skulle införa ny felsemantik i stället
+för enbart asynkron slutförandesemantik, och v1.0 gav `disconnect` inget felutfall.
+
+`getRecentFills` behåller **båda** sina parametrar — `(accountId: AccountId, window:
+HistoryRequest)`. Att slå ihop dem till en enda `HistoryRequest` skulle ta bort informationen
+om vems fills som efterfrågas, vilket vore en ändring av affärssemantik och inte av
+portsemantik.
+
+### G6 — Observationer är readonly
+
+v1.0 §7 sade att observationer är immutabla; ingen sade vad det betyder i TypeScript. §10
+låser det: providerobservationer och värdeobjekt transkriberas med readonly-fält och
+readonly-samlingar. Adapterinstansen själv är inte immutabel, och ingen mutationsmetod införs.
+
+### G7 — Asynkronitet implicerar ingen transport
+
+Portsemantik, ingenting annat. Den implicerar inte Rithmic, WebSocket, HTTP, trådar,
+bakgrundsarbetare, retry-, timeout- eller reconnect-policy. Felsemantiken är oförändrad: ett
+misslyckande är `Result` med `ok: false`, aldrig ett kastat fel och aldrig ett tomt värde.
+
+### G8 — Ingen övrig affärssemantik ändrad
+
+Femton metoder, samma namn, samma ansvar, samma parametrar. Noll order-metoder. Noll nya
+typer. Auktoritetsgränsen oförändrad — en Promise kan inte minta en capability. GATE-08
+förblir öppen, GATE-16 förblir stängd. De två reason codes från Beslut F är fortfarande inte
+transkriberade till Trading Core; det hör till Stage 1.8a.
+
+### G9 — Ändrade filer
+
+| Fil | Not |
+|---|---|
+| `specifications/execution-provider/…Canonical v1.2.md` | G1–G8 — ny, aktiv source of truth |
+| `archive/…Canonical v1.1.md` | Flyttad via `git mv`, **bytes oförändrade**, hash `11d9077a…` intakt |
+| `archive/…Canonical v1.0.md` | Orörd |
+| `archive/README.md` | Rad tillagd för v1.1 |
+| `SOURCE_OF_TRUTH.md` | Provider-kontraktet pekar på v1.2 |
+| `CHECKSUMS.md` | v1.2 tillagd, v1.1 flyttad till arkivsektionen med oförändrad hash |
+| `reviews/Canonical Amendments v1.0.md` | G — detta avsnitt |
+
+---
+
 ## Dokument som medvetet **inte** ändrades
 
 | Dokument | Varför |

@@ -53,6 +53,41 @@ const SHAPES: ShapeRule[] = [
   { name: 'long opaque blob', re: /\b[A-Za-z0-9+/]{40,}={0,2}\b/g, accept: NOT_PURE_HEX },
 ]
 
+/** What replaces a credential-shaped value anywhere it would otherwise be shown. */
+export const SECRET_PLACEHOLDER = '[REDACTED — SECRET SHAPE DETECTED]'
+
+/**
+ * True when the text contains anything shaped like a credential.
+ *
+ * Detection and redaction share SHAPES deliberately: two lists would drift, and
+ * the drift direction is "we detected it but printed it anyway".
+ */
+export function containsSecretShape(text: string): boolean {
+  return SHAPES.some((shape) => {
+    const matches = text.match(shape.re) ?? []
+    return (shape.accept ? matches.filter(shape.accept) : matches).length > 0
+  })
+}
+
+/**
+ * Replace every credential-shaped substring with SECRET_PLACEHOLDER.
+ *
+ * The single choke point for rendering source-controlled text. A note's own
+ * metadata is attacker-controlled in the only sense that matters here: whatever
+ * someone pasted into it. `scanForSecretShapes` never returns matched values,
+ * but a ParsedKnowledgeDocument certainly does carry source text — titles,
+ * paths, diagnostics quoting rejected frontmatter — so anything rendered from a
+ * candidate has to come through here.
+ */
+export function redactSecretShapes(text: string): string {
+  let out = text
+  for (const shape of SHAPES) {
+    out = out.replace(shape.re, (match) =>
+      (shape.accept && !shape.accept(match)) ? match : SECRET_PLACEHOLDER)
+  }
+  return out
+}
+
 /** Findings, deterministically ordered by pattern name. Values never included. */
 export function scanForSecretShapes(content: string): SecretFinding[] {
   const findings: SecretFinding[] = []

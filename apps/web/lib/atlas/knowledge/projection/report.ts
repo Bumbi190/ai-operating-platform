@@ -10,7 +10,31 @@
  */
 
 import { PENDING_POLICY_DECISIONS, type IneligibilityReason } from './eligibility'
+import { containsSecretShape, redactSecretShapes } from './secret-scan'
 import type { ProjectionCandidate, ProjectionListing } from './source'
+
+/**
+ * THE choke point for rendering source-controlled text.
+ *
+ * Every field below comes from a note someone wrote: path, title, project,
+ * canonical_path, and diagnostics that quote rejected frontmatter verbatim. A
+ * credential pasted into any of them would otherwise be detected AND echoed by
+ * the same report — the scanner staying clean is not enough if the renderer
+ * leaks. One rule, applied to every such field, rather than per-field patches
+ * that the next field forgets.
+ */
+function safe(value: string): string {
+  return redactSecretShapes(value)
+}
+
+/**
+ * A path is the operator's way to find a note, so it is redacted only when it
+ * actually carries a credential shape — and then the note stays identifiable by
+ * its stable id and content hash, which are derived values and never source text.
+ */
+function safePath(path: string, id: string): string {
+  return containsSecretShape(path) ? `[REDACTED PATH — SECRET SHAPE DETECTED] (id ${id})` : path
+}
 
 /** What each reason code means, and what the operator would do about it. */
 export const REASON_GUIDANCE: Record<IneligibilityReason, string> = {
@@ -18,10 +42,12 @@ export const REASON_GUIDANCE: Record<IneligibilityReason, string> = {
   status_not_approved: 'status is not "approved" — review and approve it',
   type_missing_or_unrecognized: 'type is missing or outside the vocabulary',
   canonical_pointer_missing: 'source_of_truth: repository without canonical_path',
+  source_of_truth_unrecognized: 'source_of_truth declared but outside the vocabulary',
   classification_missing: 'no classification declared (vocabulary lands in Slice 2)',
   classification_unrecognized: 'classification outside the provisional vocabulary',
   classification_local_only: 'classified local_only — deliberately never published',
   scope_missing: 'no publication scope: declare scope: platform, or a project',
+  scope_unrecognized: 'scope declared but outside the vocabulary (only platform resolves today)',
   project_scope_unmapped: 'project has no declared project-id mapping (Slice 2)',
   secret_detected: 'credential-shaped material found — remove it before publishing',
 }
@@ -42,18 +68,18 @@ function summarizeReasons(candidates: ProjectionCandidate[]): [IneligibilityReas
 
 function renderCandidate(c: ProjectionCandidate): string[] {
   const lines: string[] = []
-  lines.push(`${c.eligibility.eligible ? 'ELIGIBLE  ' : 'ineligible'}  ${c.path}`)
-  lines.push(`    title           ${c.title}`)
+  lines.push(`${c.eligibility.eligible ? 'ELIGIBLE  ' : 'ineligible'}  ${safePath(c.path, c.id)}`)
+  lines.push(`    title           ${safe(c.title)}`)
   lines.push(`    id / hash       ${c.id} / ${c.contentHash.slice(0, 16)}…`)
   lines.push(`    type / status   ${c.type ?? '—'} / ${c.status ?? '—'}`)
-  lines.push(`    project         ${c.project ?? '—'}`)
+  lines.push(`    project         ${c.project ? safe(c.project) : '—'}`)
   lines.push(
     `    source-of-truth ${c.trustedSourceOfTruth}` +
       (c.declaredSourceOfTruth && c.declaredSourceOfTruth !== c.trustedSourceOfTruth
         ? `  (declared ${c.declaredSourceOfTruth}, not honoured)`
         : ''),
   )
-  lines.push(`    canonical path  ${c.canonicalPath ?? '—'}`)
+  lines.push(`    canonical path  ${c.canonicalPath ? safe(c.canonicalPath) : '—'}`)
   lines.push(`    classification  ${c.eligibility.classification ?? '— (none declared)'}`)
   lines.push(
     `    scope           ${
@@ -70,7 +96,9 @@ function renderCandidate(c: ProjectionCandidate): string[] {
     const shapes = c.eligibility.secretFindings.map((f) => `${f.pattern}×${f.count}`).join(', ')
     lines.push(`    SECRET SHAPES   ${shapes}`)
   }
-  for (const d of c.diagnostics) lines.push(`    ! ${d.issue} — ${d.field}: ${d.detail}`)
+  // Diagnostics quote rejected frontmatter values verbatim — the most direct
+  // leak path of all, and the one the original implementation missed.
+  for (const d of c.diagnostics) lines.push(`    ! ${d.issue} — ${d.field}: ${safe(d.detail)}`)
   for (const r of c.eligibility.reasons) lines.push(`    ✗ ${r} — ${REASON_GUIDANCE[r]}`)
   return lines
 }
@@ -96,7 +124,7 @@ export function renderProjectionReport(listing: ProjectionListing, options: Repo
 
   if (listing.unreadable.length) {
     lines.push('UNREADABLE')
-    for (const p of listing.unreadable) lines.push(`  ${p}`)
+    for (const p of listing.unreadable) lines.push(`  ${safe(p)}`)
     lines.push('')
   }
 

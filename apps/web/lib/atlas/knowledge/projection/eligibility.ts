@@ -60,10 +60,12 @@ export type IneligibilityReason =
   | 'folder_excluded'
   | 'type_missing_or_unrecognized'
   | 'canonical_pointer_missing'
+  | 'source_of_truth_unrecognized'
   | 'classification_missing'
   | 'classification_unrecognized'
   | 'classification_local_only'
   | 'scope_missing'
+  | 'scope_unrecognized'
   | 'project_scope_unmapped'
   | 'secret_detected'
 
@@ -98,10 +100,12 @@ const REASON_ORDER: readonly IneligibilityReason[] = [
   'status_not_approved',
   'type_missing_or_unrecognized',
   'canonical_pointer_missing',
+  'source_of_truth_unrecognized',
   'classification_missing',
   'classification_unrecognized',
   'classification_local_only',
   'scope_missing',
+  'scope_unrecognized',
   'project_scope_unmapped',
   'secret_detected',
 ]
@@ -135,6 +139,16 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityResult 
     reasons.add('canonical_pointer_missing')
   }
 
+  // A source_of_truth that was DECLARED but not recognized is unknown trust
+  // metadata, and unknown trust metadata fails closed. Phase-1 already degrades
+  // it to `vault` for ranking, which is right for local retrieval — but "we did
+  // not understand what this note claims about itself" is not a state anything
+  // should be published from. Absence stays different from garbage: a note that
+  // declares nothing simply speaks for itself.
+  if (rawFrontMatter.source_of_truth !== undefined && doc.declaredSourceOfTruth === null) {
+    reasons.add('source_of_truth_unrecognized')
+  }
+
   // Classification — PENDING POLICY. Absence is never publishable.
   const declaredClassification = rawFrontMatter.classification?.trim() || null
   let classification: ProvisionalClassification | null = null
@@ -153,8 +167,14 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityResult 
   // Scope — PENDING POLICY. Never inferred, never defaulted to platform.
   let scope: ResolvedScope | null = null
   const declaredScope = rawFrontMatter.scope?.trim() || null
-  if (declaredScope === 'platform') {
-    scope = { kind: 'platform' }
+  if (declaredScope !== null) {
+    // An EXPLICIT scope is honoured or refused on its own terms. It must never
+    // fall through to project mapping: `scope: bananas` alongside a mapped
+    // project would otherwise publish as project-scoped, which is the note
+    // getting a scope it never asked for. Slice 2 decides whether values such as
+    // `scope: project` join the vocabulary; until then only `platform` resolves.
+    if (declaredScope === 'platform') scope = { kind: 'platform' }
+    else reasons.add('scope_unrecognized')
   } else if (doc.project) {
     const projectId = projectScopeMap[doc.project]
     if (projectId) scope = { kind: 'project', projectId }

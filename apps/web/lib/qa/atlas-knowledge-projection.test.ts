@@ -20,7 +20,9 @@ import {
   createKnowledgeProjectionSource, assertReconciled, ProjectionReconciliationError,
 } from '@/lib/atlas/knowledge/projection/source'
 import { evaluateEligibility } from '@/lib/atlas/knowledge/projection/eligibility'
-import { scanForSecretShapes } from '@/lib/atlas/knowledge/projection/secret-scan'
+import {
+  scanForSecretShapes, redactSecretShapes, containsSecretShape, SECRET_PLACEHOLDER,
+} from '@/lib/atlas/knowledge/projection/secret-scan'
 import { renderProjectionReport } from '@/lib/atlas/knowledge/projection/report'
 import { parseKnowledgeDocument } from '@/lib/atlas/knowledge/document'
 import { KNOWLEDGE_BOUNDS } from '@/lib/atlas/knowledge/policy'
@@ -338,5 +340,162 @@ describe('operator report', () => {
     const text = renderProjectionReport(listing)
     expect(text).toContain('reconciled           yes')
     expect(text).not.toContain('SECRET-BODY-SENTINEL')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAIL-CLOSED CORRECTIONS (pre-merge review of PR #121)
+//
+// Three defects, all of the same family: the detector was right and something
+// downstream was wrong. Detecting a secret while echoing it, and refusing to
+// understand metadata while publishing from it anyway, are both "we knew and
+// shipped it regardless".
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SECRET = 'ghp_abcdefghijklmnopqrstuvwxyz012345'
+
+describe('secret safety — the REPORT must not echo what the scanner caught', () => {
+  function reportFor(files: Record<string, string>, map?: Record<string, string>) {
+    const root = tempVault()
+    for (const [rel, content] of Object.entries(files)) write(root, rel, content)
+    const listing = createKnowledgeProjectionSource({ vaultRoot: root, projectScopeMap: map }).listAll()
+    return { listing, text: renderProjectionReport(listing) }
+  }
+
+  it('1. secret in the note body', () => {
+    const { listing, text } = reportFor({
+      '10 Architecture/a.md': eligibleNote({}, `token: ${SECRET}\n`),
+    })
+    expect(listing.candidates[0].eligibility.reasons).toContain('secret_detected')
+    expect(text).not.toContain(SECRET)
+    expect(text).toContain('GitHub token')
+    expect(text).toContain(listing.candidates[0].id) // still locatable
+  })
+
+  it('2. secret in the H1 title', () => {
+    const { listing, text } = reportFor({
+      '10 Architecture/b.md':
+        `---\ntype: architecture\nstatus: approved\nclassification: internal\nscope: platform\n---\n\n# ${SECRET}\n\nbody\n`,
+    })
+    expect(listing.candidates[0].eligibility.reasons).toContain('secret_detected')
+    expect(text).not.toContain(SECRET)
+    expect(text).toContain(SECRET_PLACEHOLDER)
+    expect(text).toContain(listing.candidates[0].contentHash.slice(0, 16))
+  })
+
+  it('3. secret in the project field', () => {
+    const { listing, text } = reportFor({
+      '10 Architecture/c.md': eligibleNote({ project: SECRET, scope: '' }),
+    }, { [SECRET]: 'proj-1' })
+    expect(listing.candidates[0].eligibility.reasons).toContain('secret_detected')
+    expect(text).not.toContain(SECRET)
+  })
+
+  it('4. secret in canonical_path', () => {
+    const { listing, text } = reportFor({
+      '10 Architecture/d.md': eligibleNote({ source_of_truth: 'repository', canonical_path: `docs/${SECRET}.md` }),
+    })
+    expect(listing.candidates[0].eligibility.reasons).toContain('secret_detected')
+    expect(text).not.toContain(SECRET)
+  })
+
+  it('5. secret in an invalid source_of_truth, echoed via diagnostic.detail', () => {
+    // The original leak: document.ts quotes the rejected value verbatim.
+    const { listing, text } = reportFor({
+      '10 Architecture/e.md': eligibleNote({ source_of_truth: SECRET }),
+    })
+    const c = listing.candidates[0]
+    expect(c.diagnostics.some((d) => d.detail.includes(SECRET))).toBe(true) // still in the object…
+    expect(text).not.toContain(SECRET)                                       // …never in the report
+    expect(c.eligibility.reasons).toContain('secret_detected')
+    expect(c.eligibility.reasons).toContain('source_of_truth_unrecognized')
+  })
+
+  it('6. secret in the filename/path', () => {
+    const { listing, text } = reportFor({
+      [`10 Architecture/${SECRET}.md`]: eligibleNote(),
+    })
+    expect(text).not.toContain(SECRET)
+    expect(text).toContain('[REDACTED PATH — SECRET SHAPE DETECTED]')
+    expect(text).toContain(listing.candidates[0].id) // located by id instead
+  })
+
+  it('scanForSecretShapes still returns pattern names only, never values', () => {
+    const findings = scanForSecretShapes(`x ${SECRET} y`)
+    expect(JSON.stringify(findings)).not.toContain(SECRET)
+    expect(findings.map((f) => f.pattern)).toContain('GitHub token')
+  })
+
+  it('redaction shares the detector rules — hashes survive, secrets do not', () => {
+    const sha = 'a'.repeat(64)
+    expect(redactSecretShapes(`hash ${sha}`)).toContain(sha)      // not a secret shape
+    expect(containsSecretShape(`hash ${sha}`)).toBe(false)
+    expect(redactSecretShapes(`t ${SECRET}`)).not.toContain(SECRET)
+    expect(redactSecretShapes(`t ${SECRET}`)).toContain(SECRET_PLACEHOLDER)
+  })
+})
+
+describe('source_of_truth — declared but unrecognized fails closed', () => {
+  function evalNote(fm: Record<string, string>) {
+    const raw = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n# T\n\nbody\n`
+    const doc = parseKnowledgeDocument(raw, '10 Architecture/x.md')
+    return { doc, result: evaluateEligibility({ doc, rawFrontMatter: doc.rawFrontMatter, content: raw }) }
+  }
+  const base = { type: 'architecture', status: 'approved', classification: 'internal', scope: 'platform' }
+
+  it('VALID: vault / external / repository+pointer remain eligible', () => {
+    expect(evalNote({ ...base, source_of_truth: 'vault' }).result.eligible).toBe(true)
+    expect(evalNote({ ...base, source_of_truth: 'external' }).result.eligible).toBe(true)
+    expect(evalNote({ ...base, source_of_truth: 'repository', canonical_path: 'docs/x.md' }).result.eligible).toBe(true)
+  })
+
+  it('VALID: omitting source_of_truth entirely is still fine — absence ≠ garbage', () => {
+    expect(evalNote(base).result.eligible).toBe(true)
+  })
+
+  it('INVALID: an unrecognized declared value is ineligible with its own reason', () => {
+    const { doc, result } = evalNote({ ...base, source_of_truth: 'bananas' })
+    expect(doc.diagnostics.some((d) => d.field === 'source_of_truth')).toBe(true)
+    expect(result.eligible).toBe(false)
+    expect(result.reasons).toContain('source_of_truth_unrecognized')
+  })
+
+  it('Phase-1 trusted-source semantics are untouched', () => {
+    const { doc } = evalNote({ ...base, source_of_truth: 'bananas' })
+    expect(doc.declaredSourceOfTruth).toBeNull()
+    expect(doc.sourceOfTruth).toBe('vault') // degraded, not inferred as repository
+  })
+})
+
+describe('scope — an explicit unknown value never falls through to project', () => {
+  function evalNote(fm: Record<string, string>, map?: Record<string, string>) {
+    const raw = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n# T\n\nbody\n`
+    const doc = parseKnowledgeDocument(raw, '10 Architecture/x.md')
+    return evaluateEligibility({ doc, rawFrontMatter: doc.rawFrontMatter, projectScopeMap: map, content: raw })
+  }
+  const base = { type: 'architecture', status: 'approved', classification: 'internal' }
+
+  it('scope: platform still resolves', () => {
+    expect(evalNote({ ...base, scope: 'platform' }).eligible).toBe(true)
+  })
+
+  it('absent scope + mapped project still resolves (provisional design kept)', () => {
+    const r = evalNote({ ...base, project: 'trading' }, { trading: 'proj-1' })
+    expect(r.eligible).toBe(true)
+    expect(r.scope).toEqual({ kind: 'project', projectId: 'proj-1' })
+  })
+
+  it('INVALID: scope: bananas + mapped project is STILL ineligible', () => {
+    const r = evalNote({ ...base, scope: 'bananas', project: 'trading' }, { trading: 'proj-1' })
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('scope_unrecognized')
+    expect(r.reasons).not.toContain('project_scope_unmapped') // refused on its own terms
+    expect(r.scope).toBeNull()
+  })
+
+  it('INVALID: scope: project is not yet vocabulary — Slice 2 decides', () => {
+    const r = evalNote({ ...base, scope: 'project', project: 'trading' }, { trading: 'proj-1' })
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('scope_unrecognized')
   })
 })

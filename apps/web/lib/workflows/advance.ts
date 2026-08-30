@@ -29,7 +29,7 @@ import 'server-only'
 
 import { getState } from './machine'
 import { appendTransition, listEvidence, readDefinitionById } from './store'
-import { systemDeriveWorkflowGate } from './system-authorization'
+import { systemAuthorizationVerifier, systemDeriveWorkflowGate } from './system-authorization'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
 import type { WorkflowInstance } from './types'
@@ -139,6 +139,11 @@ export async function advanceAuthorizedWorkflow(
       reason: `human gate satisfied: ${state.human_gate.decision ?? 'authorized'}`,
       actor: 'omnira.workflow.scheduler',
       authorizationId: gate.authorizationId,
+      // The tick has no session, so the DEFAULT principal-scoped verifier would
+      // fail closed and refuse a legitimately authorized move. The system
+      // verifier reads the same ledger read-only and additionally requires the
+      // grant opening this gate to be the one cited.
+      verifyAuthorization: systemAuthorizationVerifier,
     })
   } catch (e) {
     return {

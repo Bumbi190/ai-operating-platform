@@ -61,7 +61,14 @@ export interface CreateWorkflowActionRunInput {
    * a caller that could assert the class could assert away the human gate.
    */
   actionKind: string
-  authorizationId: string
+  /**
+   * Required for every class whose policy says so — which is every class except
+   * READ_ONLY. Omitting it for a write is refused below AND by the database, so
+   * the scheduler cannot create one by leaving this out. Making it optional is
+   * what stops an observation from having to FABRICATE an authorization, which
+   * would be indistinguishable in the ledger from a human decision.
+   */
+  authorizationId?: string | null
   sideEffectTarget?: Record<string, string> | null
   /** Omitted for a fresh deliberate action; supplied only to rejoin a retry. */
   attemptGroup?: string
@@ -127,6 +134,12 @@ export async function createWorkflowActionRun(
   // 5) the authorization must be currently effective for THIS instance
   const policy = ACTION_CLASS_POLICY[actionClass]
   if (policy.requiresAuthorization) {
+    if (!input.authorizationId) {
+      return {
+        ok: false, refusal: 'authorization_not_effective',
+        detail: `${actionClass} requires an authorization; none was supplied`,
+      }
+    }
     const assertion = await assertWorkflowAuthorizationValid(db, instance.id, input.authorizationId)
     if (!assertion.valid) {
       return { ok: false, refusal: 'authorization_not_effective', detail: assertion.reason }
@@ -197,7 +210,9 @@ export async function createWorkflowActionRun(
     action_kind: input.actionKind,
     action_class: actionClass,
     target_version_hash: target.versionHash,
-    authorization_id: input.authorizationId,
+    // Null only for a class that needs none. The DB refuses a null here for
+    // every other class (runs_unauthorized_action_is_read_only).
+    authorization_id: policy.requiresAuthorization ? input.authorizationId : null,
     idempotency_key: idempotencyKey,
     attempt_group: attemptGroup,
     authorized_at: new Date().toISOString(),
@@ -304,8 +319,13 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
   }
 
   if (policy?.requiresAuthorization) {
-    const assertion = await assertWorkflowAuthorizationValid(db, instance.id, run.authorization_id)
-    if (!assertion.valid) blockers.push('authorization_not_effective')
+    // A write-capable action with no authorization id is not merely unverified;
+    // it should not exist, and the DB refuses it. Treat it as ineffective.
+    if (!run.authorization_id) blockers.push('authorization_not_effective')
+    else {
+      const assertion = await assertWorkflowAuthorizationValid(db, instance.id, run.authorization_id)
+      if (!assertion.valid) blockers.push('authorization_not_effective')
+    }
   }
 
   // Re-derive the target from today's world and compare to the pinned one.

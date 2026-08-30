@@ -212,7 +212,9 @@ describe('registration and instance creation are deliberate operator acts', () =
   const admin = readFileSync(join(process.cwd(), 'app/api/workflows/admin/route.ts'), 'utf8')
 
   it('neither runs at deploy time — both are POST actions', () => {
-    expect(admin).toMatch(/const ACTIONS = \['register_definition', 'create_instance'\]/)
+    // PR9f adds schedule_readonly_evaluation — which also runs only on POST and
+    // cannot name what will execute.
+    expect(admin).toMatch(/const ACTIONS = \['register_definition', 'create_instance', 'schedule_readonly_evaluation'\]/)
     expect(admin).toMatch(/resolveProjectAccess/)
   })
 

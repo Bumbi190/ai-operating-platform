@@ -77,8 +77,12 @@ export type IneligibilityReason =
   | 'platform_scope_project_conflict'
   /** scope: project with no project slug at all. */
   | 'project_scope_missing'
-  /** scope: project with a slug that resolves to no canonical project. */
+  /** No canonical project mapping was supplied to this evaluation at all. */
+  | 'project_scope_mapping_unavailable'
+  /** A mapping was supplied and this slug is absent from it. */
   | 'project_scope_unmapped'
+  /** The slug maps, but to something that is not a canonical project id. */
+  | 'project_scope_mapping_invalid'
   | 'secret_detected'
 
 export interface EligibilityInput {
@@ -92,7 +96,13 @@ export interface EligibilityInput {
    * `id` uuid PK) — the same table `getAllowedProjectIds` scopes against and the
    * app routes on at `/projects/[slug]`. It is supplied to this evaluator rather
    * than read by it, so the pure core keeps no database dependency and, more
-   * importantly, CANNOT INVENT PROJECT IDENTITY. An absent mapping fails closed.
+   * importantly, CANNOT INVENT PROJECT IDENTITY.
+   *
+   * `undefined` means no mapping was available to this evaluation — reported as
+   * `project_scope_mapping_unavailable`, which is a different statement from
+   * "this slug is not a project". A supplied map is a TRUSTED INPUT: it does not
+   * prove database membership, it only bounds what this evaluation will accept.
+   * Lookups are own-property only and every value is shape-validated.
    */
   projectScopeMap?: Record<string, string>
   /** Full note text, for the secret scan. Never retained on the result. */
@@ -129,9 +139,22 @@ const REASON_ORDER: readonly IneligibilityReason[] = [
   'scope_unrecognized',
   'platform_scope_project_conflict',
   'project_scope_missing',
+  'project_scope_mapping_unavailable',
   'project_scope_unmapped',
+  'project_scope_mapping_invalid',
   'secret_detected',
 ]
+
+/**
+ * Canonical project ids are `public.projects.id` — a uuid primary key, with
+ * `slug` UNIQUE alongside it. Shape is validated, never repaired.
+ */
+const CANONICAL_PROJECT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isCanonicalProjectId(value: unknown): value is string {
+  return typeof value === 'string' && CANONICAL_PROJECT_ID_RE.test(value.trim())
+}
 
 function isPublicationClassification(v: unknown): v is PublicationClassification {
   return typeof v === 'string' && (PUBLICATION_CLASSIFICATIONS as readonly string[]).includes(v)
@@ -143,7 +166,7 @@ function isPublicationClassification(v: unknown): v is PublicationClassification
  * discovering them one publication attempt at a time.
  */
 export function evaluateEligibility(input: EligibilityInput): EligibilityResult {
-  const { doc, rawFrontMatter, projectScopeMap = {}, content } = input
+  const { doc, rawFrontMatter, projectScopeMap, content } = input
   const reasons = new Set<IneligibilityReason>()
 
   // §6.6 — Inbox is uncurated capture, Archive is superseded material.
@@ -209,11 +232,24 @@ export function evaluateEligibility(input: EligibilityInput): EligibilityResult 
     }
   } else if (declaredScope === 'project') {
     if (!project) reasons.add('project_scope_missing')
-    else {
+    else if (projectScopeMap === undefined) {
+      // "No registry was consulted" is not the same claim as "this slug is not a
+      // project", and reporting the second when only the first is known would
+      // lie to the operator. Both fail closed; they say different things.
+      reasons.add('project_scope_mapping_unavailable')
+    } else if (!Object.prototype.hasOwnProperty.call(projectScopeMap, project)) {
+      // OWN properties only. A plain object inherits __proto__, constructor,
+      // toString and friends, all of which are truthy — so `map[slug]` would
+      // hand back Object.prototype for `project: __proto__` and resolve a scope
+      // out of thin air. Identity must come from an entry someone put there.
+      reasons.add('project_scope_unmapped')
+    } else {
       const projectId = projectScopeMap[project]
-      // Exact lookup only. No fuzzy matching, no fallback, no invented id.
-      if (projectId) scope = { kind: 'project', projectId }
-      else reasons.add('project_scope_unmapped')
+      // The canonical registry is public.projects: `id` is a uuid primary key.
+      // A mapped value that is not one is a broken map, not a project — repair
+      // is the operator's job, never this evaluator's.
+      if (isCanonicalProjectId(projectId)) scope = { kind: 'project', projectId }
+      else reasons.add('project_scope_mapping_invalid')
     }
   } else {
     reasons.add('scope_unrecognized')

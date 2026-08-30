@@ -57,7 +57,12 @@ export const REASON_GUIDANCE: Record<IneligibilityReason, string> = {
     'scope: platform must not carry a project — remove the project field, ' +
     'scope: platform already carries that meaning (§6.3)',
   project_scope_missing: 'scope: project requires a project slug (§6.3)',
-  project_scope_unmapped: 'project slug has no canonical mapping in public.projects (§6.3)',
+  project_scope_mapping_unavailable:
+    'no canonical project mapping was supplied to this evaluation — supply one to ' +
+    'resolve project-scoped notes (§6.3)',
+  project_scope_unmapped: 'project slug is absent from the supplied canonical mapping (§6.3)',
+  project_scope_mapping_invalid:
+    'project slug maps to something that is not a canonical project id (uuid) — fix the mapping',
   secret_detected: 'credential-shaped material found — remove it before publishing (§6.2)',
 }
 
@@ -167,4 +172,83 @@ export function renderProjectionReport(listing: ProjectionListing, options: Repo
   )
 
   return lines.join('\n') + '\n'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFE OPERATOR JSON
+//
+// The text report routes every source-controlled string through `safe()`.
+// Machine-readable output has to route through the SAME rules or the redaction
+// is decorative: a secret would be detected, blocked from eligibility, redacted
+// in text mode, and then handed over verbatim by `--json`.
+//
+// This does NOT sanitize the internal candidate — that object legitimately still
+// carries source text, and claiming otherwise would be the same overreach the
+// earlier review caught. It builds a separate, deliberately narrow shape that is
+// safe to print.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SafeProjectionCandidateJson {
+  id: string
+  contentHash: string
+  path: string
+  title: string
+  type: string | null
+  status: string | null
+  project: string | null
+  declaredSourceOfTruth: string | null
+  trustedSourceOfTruth: string
+  canonicalPath: string | null
+  classification: string | null
+  scope: { kind: 'platform' } | { kind: 'project'; projectId: string } | null
+  modifiedAt: string
+  eligible: boolean
+  reasons: IneligibilityReason[]
+  /** Pattern names and counts only — never a matched value. */
+  secretFindings: { pattern: string; count: number }[]
+  /** Issue + field only. Details are dropped: they quote raw frontmatter. */
+  diagnostics: { issue: string; field: string }[]
+}
+
+export interface SafeProjectionReportJson {
+  sourceId: string
+  accounting: ProjectionListing['accounting']
+  unreadable: string[]
+  candidates: SafeProjectionCandidateJson[]
+}
+
+function safeCandidate(c: ProjectionCandidate): SafeProjectionCandidateJson {
+  return {
+    id: c.id,
+    contentHash: c.contentHash,
+    path: safePath(c.path, c.id),
+    title: safe(c.title),
+    type: c.type,
+    status: c.status,
+    project: c.project ? safe(c.project) : null,
+    declaredSourceOfTruth: c.declaredSourceOfTruth,
+    trustedSourceOfTruth: c.trustedSourceOfTruth,
+    canonicalPath: c.canonicalPath ? safe(c.canonicalPath) : null,
+    classification: c.eligibility.classification,
+    scope: c.eligibility.scope,
+    modifiedAt: c.modifiedAt,
+    eligible: c.eligibility.eligible,
+    reasons: c.eligibility.reasons,
+    secretFindings: c.eligibility.secretFindings.map((f) => ({ pattern: f.pattern, count: f.count })),
+    // `detail` is dropped rather than redacted: it exists to quote the exact
+    // rejected value back to a human, which is precisely what must not travel.
+    // The issue and field say what to fix; the text report shows the rest.
+    diagnostics: c.diagnostics.map((d) => ({ issue: d.issue, field: d.field })),
+  }
+}
+
+/** The only representation of a listing that may be printed as JSON. */
+export function toSafeProjectionReportJson(listing: ProjectionListing): SafeProjectionReportJson {
+  return {
+    sourceId: listing.sourceId,
+    accounting: listing.accounting,
+    unreadable: listing.unreadable.map((p) => safe(p)),
+    // Ordering is already deterministic from the source; preserved as-is.
+    candidates: listing.candidates.map(safeCandidate),
+  }
 }

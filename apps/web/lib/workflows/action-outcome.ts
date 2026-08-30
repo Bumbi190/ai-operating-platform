@@ -186,9 +186,21 @@ export function decideRetry(
   const policy = ACTION_CLASS_POLICY[actionClass]
 
   if (isAmbiguous(outcome)) {
+    // READ_ONLY is the one class where repeating is free: an observation has no
+    // side effect, so a lost response means only that we did not learn anything,
+    // not that we may have changed the world twice. Bounded by the same attempt
+    // budget as any other read; once exhausted it stops and the handler reports
+    // ERROR or BLOCKED rather than inventing a result.
+    if (actionClass === 'READ_ONLY' && outcome === 'UNKNOWN' && attempts < policy.maxAttempts) {
+      return { retry: true, reason: 'READ_ONLY: repeating an observation has no side effect' }
+    }
     return {
-      retry: false, requiresHuman: true,
-      reason: `${outcome} on ${actionClass}: the side effect may already have been applied — reconcile, never retry`,
+      retry: false,
+      // Exhausted read-only ambiguity is a dead end, not an incident.
+      requiresHuman: actionClass !== 'READ_ONLY',
+      reason: actionClass === 'READ_ONLY'
+        ? `${outcome} on READ_ONLY: attempt budget exhausted without a usable observation`
+        : `${outcome} on ${actionClass}: the side effect may already have been applied — reconcile, never retry`,
     }
   }
   if (outcome === 'SUCCEEDED' || outcome === 'SUCCEEDED_EVIDENCE_PENDING') {

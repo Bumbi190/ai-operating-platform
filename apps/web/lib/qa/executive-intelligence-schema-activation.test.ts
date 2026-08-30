@@ -82,10 +82,13 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          claim_runs without dropping claim_id fencing; adds
    *          request_run_cancel, set_project_execution_paused, cancel
    *          provenance columns and workflow_rearm).
+   * 51 → 52: `spend_budget_gate` (PR9b — spend_reservations ledger plus
+   *          budget_reserve/settle/release/headroom. Reuses project_budgets;
+   *          creates no second budget table).
    */
-  it('enforces exactly the expected number of migrations — currently 51', () => {
+  it('enforces exactly the expected number of migrations — currently 52', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(51)
+    expect(enforced).toBe(52)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

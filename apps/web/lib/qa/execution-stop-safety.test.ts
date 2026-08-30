@@ -209,8 +209,10 @@ describe('effective flag state is observable without leaking secrets', () => {
     try {
       process.env.H1_FENCING = '1'; process.env.H1_CANCEL = '1'
       process.env.H1_POLICY_GATE = '0'; delete process.env.H1_UNIFIED_EXECUTOR
+      process.env.H1_SPEND_GATE = '1'
       const f = executionSafetyFlags()
-      expect(f).toEqual({ fencing: true, cancel: true, policy_gate: false, unified_executor: false })
+      expect(f).toEqual({ fencing: true, cancel: true, policy_gate: false,
+                          unified_executor: false, spend_gate: true })
       for (const v of Object.values(f)) expect(typeof v).toBe('boolean')
     } finally { process.env = prev }
   })
@@ -236,13 +238,19 @@ describe('effective flag state is observable without leaking secrets', () => {
 
   it('flags fencing/cancel off as unsafe, and treats behaviour flags separately', async () => {
     const { unsafeExecutionFlags } = await import('../ai/execution-flags')
-    expect(unsafeExecutionFlags({ fencing: false, cancel: true, policy_gate: true, unified_executor: true }))
+    const base = { policy_gate: true, unified_executor: true, spend_gate: true }
+    expect(unsafeExecutionFlags({ ...base, fencing: false, cancel: true }))
       .toEqual(['fencing_disabled'])
-    expect(unsafeExecutionFlags({ fencing: true, cancel: false, policy_gate: true, unified_executor: true }))
+    expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: false }))
       .toEqual(['cancel_disabled'])
-    // policy_gate/unified_executor off is a behaviour choice, not a stop-safety defect
-    expect(unsafeExecutionFlags({ fencing: true, cancel: true, policy_gate: false, unified_executor: false }))
+    // policy_gate/unified_executor off is a behaviour choice, not a stop-safety
+    // defect. spend_gate off IS surfaced (PR9b) — an unenforced budget reads as
+    // a budget, so "we are only observing" has to be visible.
+    expect(unsafeExecutionFlags({ fencing: true, cancel: true, policy_gate: false,
+                                  unified_executor: false, spend_gate: true }))
       .toEqual([])
+    expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: true, spend_gate: false }))
+      .toEqual(['spend_gate_advisory_only'])
   })
 })
 
@@ -349,8 +357,24 @@ describe('execution-safety status surface', () => {
   it('is read-only and project-scoped', () => {
     expect(route).toMatch(/resolveProjectAccess/)
     expect(route).toMatch(/\.in\('project_id', ids\)/)
-    for (const w of [/\.update\(/, /\.insert\(/, /\.delete\(/, /\.upsert\(/, /\.rpc\(/]) {
+    for (const w of [/\.update\(/, /\.insert\(/, /\.delete\(/, /\.upsert\(/]) {
       expect(route).not.toMatch(w)
+    }
+    // PR9b added a read RPC here, so the blanket ban on .rpc( was replaced with
+    // an ALLOWLIST rather than dropped — the guard now names exactly which
+    // functions this surface may call, which is stricter than before. Every one
+    // must be read-only; budget_reserve/settle/release are writes and must never
+    // appear on a status endpoint.
+    const rpcs = [...route.matchAll(/\.rpc\('(\w+)'/g)].map(m => m[1])
+    expect(rpcs.every(fn => fn === 'budget_headroom')).toBe(true)
+    // Comment-stripped: the route's own prose explains what claim_runs does, and
+    // a guard that fired on the explanation would push a future author to delete
+    // it rather than keep the property.
+    const routeCode = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    for (const writer of ['budget_reserve', 'budget_settle', 'budget_release',
+                          'claim_runs', 'request_run_cancel', 'set_project_execution_paused',
+                          'workflow_rearm']) {
+      expect(routeCode).not.toContain(writer)
     }
   })
 })

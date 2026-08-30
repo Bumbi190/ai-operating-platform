@@ -78,10 +78,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          result vocabulary, replay index).
    * 49 → 50: `workflow_escalation_index` (PR6 — partial index for the
    *          signal_key lifecycle lookup; no column, constraint or trigger).
+   * 50 → 51: `execution_stop_safety` (PR9a — merges the kill switch INTO
+   *          claim_runs without dropping claim_id fencing; adds
+   *          request_run_cancel, set_project_execution_paused, cancel
+   *          provenance columns and workflow_rearm).
    */
-  it('enforces exactly the expected number of migrations — currently 50', () => {
+  it('enforces exactly the expected number of migrations — currently 51', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(50)
+    expect(enforced).toBe(51)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

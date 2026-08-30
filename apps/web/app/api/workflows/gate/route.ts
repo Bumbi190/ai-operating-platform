@@ -25,11 +25,26 @@ import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { assertSameOrigin, badRequest, isUuid, readJsonBody, unknownAction } from '@/lib/atlas/executive/http'
 import { requestWorkflowAuthorization } from '@/lib/workflows/authorization'
+import { rearmForAuthorization } from '@/lib/workflows/rearm'
 import { readInstance } from '@/lib/workflows/store'
 
 export const dynamic = 'force-dynamic'
 
-const ACTIONS = ['request_authorization'] as const
+/**
+ * `rearm` is deliberately a WORKFLOW action, not something the authorization
+ * route does. The Executive authority routes are import-allowlisted precisely so
+ * they cannot grow subsystem dependencies, and coupling the authority ledger to
+ * the scheduler is the exact shape we are avoiding: approval must be permission,
+ * never a trigger. So the workflow asks to be looked at sooner; the ledger stays
+ * unaware that a scheduler exists.
+ *
+ * Safe to expose: every real precondition is enforced inside public.workflow_rearm
+ * (instance active, project not paused, live grant for THIS instance's CURRENT
+ * state). A caller who invents an authorizationId achieves nothing — the worst
+ * possible outcome of any call is that a legitimately-granted instance is
+ * evaluated a little earlier, which is what a grant already earned.
+ */
+const ACTIONS = ['request_authorization', 'rearm'] as const
 
 export async function POST(request: Request) {
   const sameOrigin = assertSameOrigin(request)
@@ -56,6 +71,20 @@ export async function POST(request: Request) {
   // Unknown and foreign answer identically: no instance-id oracle.
   if (!instance || !assertProjectAllowed(instance.project_id, access.allowedProjectIds)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
+
+  // ── rearm ── pull the next scheduler evaluation forward after a human grant.
+  // Moves one timestamp. Starts nothing: the tick still re-derives the state,
+  // re-checks the gate and re-validates the authorization before doing anything.
+  if (action === 'rearm') {
+    if (!isUuid(body.authorizationId)) return badRequest('authorizationId')
+    const outcome = await rearmForAuthorization(db, body.authorizationId as string)
+    // A refusal is a correct answer, not an error — the grant stands either way,
+    // and the scheduler will reach the instance on its own schedule regardless.
+    return NextResponse.json(
+      outcome.rearmed ? { ok: true, rearmed: true } : { ok: true, rearmed: false, reason: outcome.reason },
+      { status: 200 },
+    )
   }
 
   const result = await requestWorkflowAuthorization(db, instance.id)

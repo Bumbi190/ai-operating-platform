@@ -34,6 +34,9 @@ interface Check {
 const CHECKS: Check[] = [
   { key: 'runs_drain',     label: 'Runs drain',     jobs: ['omnira_runs_drain'],     cadence: 'varje minut', type: 'interval', intervalMin: 1, graceMin: 5 },
   { key: 'runs_reaper',    label: 'Runs reaper',    jobs: ['omnira_runs_reaper'],    cadence: 'varje minut', type: 'interval', intervalMin: 1, graceMin: 5 },
+  // PR9a: the workflow scheduler ran unmonitored since PR3 — it could have died
+  // silently. Same cadence and grace as the runs drain; both are per-minute cron.
+  { key: 'workflow_tick',  label: 'Workflow tick',  jobs: ['omnira_workflow_tick'],  cadence: 'varje minut', type: 'interval', intervalMin: 1, graceMin: 5 },
   { key: 'pipeline_retry', label: 'Pipeline retry', jobs: ['omnira_pipeline_retry'], cadence: 'var 5:e min', type: 'interval', intervalMin: 5, graceMin: 10 },
   { key: 'news',           label: 'News Hunter',    jobs: ['omnira_news_morning'],   cadence: 'dagligen 06:30', type: 'daily', slotsUtc: ['06:30'], graceMin: 90, evidence: 'news' },
   { key: 'token_health',   label: 'Token Health',   jobs: ['omnira_token_health'],   cadence: 'dagligen 06:15', type: 'daily', slotsUtc: ['06:15'], graceMin: 90, evidence: 'token' },

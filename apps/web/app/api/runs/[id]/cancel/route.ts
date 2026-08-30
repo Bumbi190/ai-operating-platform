@@ -13,18 +13,40 @@
  * immediate transitions; only the cooperative running-cancel reaction (drain/executor)
  * is flag-gated. All writes are status-guarded (the correct invariant for at-rest /
  * externally-initiated lifecycle changes — claim_id fencing is for executing runs).
+ *
+ * ── PR9a: HONEST REPORTING ──────────────────────────────────────────────────
+ * Cancelling a RUNNING run used to answer `{ok:true, status:'cancel_requested'}`
+ * whether or not anything would ever act on it. With H1_CANCEL unset — which is
+ * how production actually stood — the flag was written and no code path read it,
+ * so the API reported success for an operation that could not happen. An operator
+ * cancelling a runaway action would have believed they had stopped it.
+ *
+ * The request is still persisted (durable intent survives until cancellation is
+ * enabled), but the response now states whether it will be ENFORCED. A caller can
+ * distinguish "it will stop" from "your intent is recorded and nothing is
+ * listening", which is the difference between a working kill switch and a
+ * comforting one.
+ *
+ * The running-case write goes through public.request_run_cancel so the tenancy
+ * guard lives at the DB boundary, and so reason/actor are recorded for audit.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { isCancelEnabled } from '@/lib/ai/cancel'
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
+
+  // Optional { reason } — recorded for audit. A malformed body is not an error;
+  // a cancel must never be blocked by its own annotation.
+  let body: { reason?: unknown } | null = null
+  try { body = await req.json() } catch { body = null }
 
   // Supabase saknar genererade DB-typer för cancel_requested — castar till any (samma
   // mönster som övriga admin-rutter), undviker types-regen-koppling i denna commit.
@@ -62,13 +84,31 @@ export async function POST(
       return NextResponse.json({ ok: true, status: 'cancelled' })
     }
     case 'running': {
-      // Can't cancel directly — an executor owns it. Set the durable flag; the
-      // cooperative check (drain/executor, gated by H1_CANCEL) stops it at the next
-      // step boundary. Conditional on status='running' → no effect on a run that just left.
-      await db.from('runs')
-        .update({ cancel_requested: true })
-        .eq('id', run.id).eq('status', 'running')
-      return NextResponse.json({ ok: true, status: 'cancel_requested' })
+      // Can't cancel directly — an executor owns it, and only that executor may
+      // write its terminal row (fenced on claim_id). Record durable intent; the
+      // cooperative check in the drain/executor stops it at the next step boundary.
+      // request_run_cancel is tenancy-guarded and status-guarded in SQL, so a run
+      // that just left 'running' is untouched.
+      const reason = typeof body?.reason === 'string' ? body.reason.slice(0, 500) : null
+      const { data: updated } = await db.rpc('request_run_cancel', {
+        p_run_id: run.id,
+        p_project_id: run.project_id,
+        p_actor: access.userId,
+        p_reason: reason,
+      })
+      const persisted = Number(updated) > 0
+      const enforced = isCancelEnabled()
+      return NextResponse.json({
+        // `ok` reports whether the intent was recorded; `enforced` reports whether
+        // anything will act on it. Never conflate the two.
+        ok: persisted,
+        status: enforced ? 'cancel_requested' : 'cancel_requested_not_enforced',
+        enforced,
+        ...(enforced ? {} : {
+          warning: 'Cancellation is not enabled in this environment — the request is '
+            + 'recorded and will be honoured once it is, but this run will NOT stop now.',
+        }),
+      })
     }
     default:
       // terminal — no-op.

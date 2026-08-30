@@ -34,6 +34,7 @@ import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
   policyClassForActionClass, WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
 } from './action-target'
+import { lookupAction } from './action-registry'
 
 // any: the Supabase client in this project has no generated DB types.
 type AnyDb = any
@@ -49,11 +50,17 @@ export type ActionBindingRefusal =
   | 'spend_enforcement_required'
   | 'duplicate_action_identity'
   | 'insert_rejected'
+  /** The kind is not in the canonical registry, so it has no class. */
+  | 'unknown_action_kind'
 
 export interface CreateWorkflowActionRunInput {
   instanceId: string
+  /**
+   * The ONLY thing the caller names about the action. Its class, retry budget
+   * and authorization requirement are all DERIVED from the canonical registry —
+   * a caller that could assert the class could assert away the human gate.
+   */
   actionKind: string
-  actionClass: ActionClass
   authorizationId: string
   sideEffectTarget?: Record<string, string> | null
   /** Omitted for a fresh deliberate action; supplied only to rejoin a retry. */
@@ -75,6 +82,18 @@ function uuid(): string {
 export async function createWorkflowActionRun(
   db: AnyDb, input: CreateWorkflowActionRunInput,
 ): Promise<CreateWorkflowActionRunResult> {
+  // 0) Canonical class FIRST, before any read or write. An unknown kind has no
+  //    class, and defaulting one — READ_ONLY least of all — is precisely how a
+  //    write gets treated as a read.
+  const canonical = lookupAction(input.actionKind)
+  if (!canonical) {
+    return {
+      ok: false, refusal: 'unknown_action_kind',
+      detail: `"${input.actionKind}" is not in the canonical action registry; it has no class and cannot be bound`,
+    }
+  }
+  const actionClass: ActionClass = canonical.action_class
+
   // 1) the instance
   const instance = await readInstance(db, input.instanceId)
   if (!instance) return { ok: false, refusal: 'instance_not_found', detail: 'no such workflow instance' }
@@ -98,7 +117,7 @@ export async function createWorkflowActionRun(
   try {
     target = computeWorkflowActionTarget({
       instance, spec: def.spec, state: instance.current_state,
-      actionKind: input.actionKind, actionClass: input.actionClass,
+      actionKind: input.actionKind, actionClass,
       sideEffectTarget: input.sideEffectTarget ?? null, evidence,
     })
   } catch (e) {
@@ -106,7 +125,7 @@ export async function createWorkflowActionRun(
   }
 
   // 5) the authorization must be currently effective for THIS instance
-  const policy = ACTION_CLASS_POLICY[input.actionClass]
+  const policy = ACTION_CLASS_POLICY[actionClass]
   if (policy.requiresAuthorization) {
     const assertion = await assertWorkflowAuthorizationValid(db, instance.id, input.authorizationId)
     if (!assertion.valid) {
@@ -171,12 +190,12 @@ export async function createWorkflowActionRun(
     kind: `workflow.action:${input.actionKind}`,
     input: {}, context: {},
     max_attempts: policy.maxAttempts,
-    policy_class: policyClassForActionClass(input.actionClass),
+    policy_class: policyClassForActionClass(actionClass),
     workflow_instance_id: instance.id,
     workflow_def_hash: instance.def_hash,
     workflow_from_state: instance.current_state,
     action_kind: input.actionKind,
-    action_class: input.actionClass,
+    action_class: actionClass,
     target_version_hash: target.versionHash,
     authorization_id: input.authorizationId,
     idempotency_key: idempotencyKey,

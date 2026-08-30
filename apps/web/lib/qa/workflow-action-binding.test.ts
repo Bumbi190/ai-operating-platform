@@ -192,7 +192,11 @@ describe('action target', () => {
       expect(target).toMatch(new RegExp(`${field}:`))
     }
     expect(target).toMatch(/kind: input\.actionKind/)
+    // Still bound into the hash — but PR9e-0 makes the value DERIVED, so the
+    // builder's input can no longer carry a caller-chosen class.
     expect(target).toMatch(/class: input\.actionClass/)
+    const runSrcNow = readFileSync(join(process.cwd(), 'lib/workflows/action-run.ts'), 'utf8')
+    expect(runSrcNow).toMatch(/actionKind: input\.actionKind, actionClass,/)
   })
 
   it('sorts evidence and side-effect keys so an equal set hashes equally', () => {
@@ -207,7 +211,8 @@ describe('the caller requests; the server derives', () => {
   it('MUTATION — a caller-supplied target hash would defeat the whole pin', () => {
     const inputType = runSrc.slice(runSrc.indexOf('interface CreateWorkflowActionRunInput'),
                                    runSrc.indexOf('export type CreateWorkflowActionRunResult'))
-    for (const forbidden of ['targetVersionHash', 'projectId', 'fromState', 'defHash', 'idempotencyKey']) {
+    for (const forbidden of ['targetVersionHash', 'projectId', 'fromState', 'defHash',
+                             'idempotencyKey', 'actionClass']) {
       expect(inputType).not.toMatch(new RegExp(`${forbidden}\\s*[?:]`))
     }
     // …and the hash is computed, never read from input.

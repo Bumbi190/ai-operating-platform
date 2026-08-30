@@ -79,14 +79,22 @@ describe('an observation yields only the outcome it proves', () => {
 // ── Retry ───────────────────────────────────────────────────────────────────
 
 describe('retry policy', () => {
-  it('MUTATION — no class may auto-retry an ambiguous outcome', () => {
-    for (const cls of [...MATERIAL, 'READ_ONLY', 'REVERSIBLE_WRITE'] as const) {
+  it('MUTATION — no WRITE-CAPABLE class may auto-retry an ambiguous outcome', () => {
+    // Narrowed deliberately in PR9e-0: READ_ONLY is the sole exception, because
+    // repeating an observation has no side effect. Every class that can change
+    // the world still refuses, and PARTIAL refuses for everyone — a partial
+    // observation is not a lost one, something concluded.
+    for (const cls of [...MATERIAL, 'REVERSIBLE_WRITE'] as const) {
       for (const outcome of ['UNKNOWN', 'PARTIAL'] as const) {
         const d = decideRetry(cls, outcome, 1)
-        expect(d.retry).toBe(false)
+        expect(d.retry, `${cls}/${outcome} must never auto-retry`).toBe(false)
         expect(d.reason).toMatch(/reconcile|already have been applied/)
       }
     }
+    expect(decideRetry('READ_ONLY', 'PARTIAL', 1).retry).toBe(false)
+    // The one exception, bounded by the attempt budget.
+    expect(decideRetry('READ_ONLY', 'UNKNOWN', 1).retry).toBe(true)
+    expect(decideRetry('READ_ONLY', 'UNKNOWN', 5).retry).toBe(false)
   })
 
   it('ambiguity on anything but READ_ONLY demands a human', () => {

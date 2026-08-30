@@ -174,7 +174,7 @@ describe('target hash', () => {
                          outputs: [], retry_policy: null, failure_transition: null,
                          description: '' }] } as never,
       state: 's', actionKind: 'compute_release_instant',
-      sideEffectTarget: null, evidence: [],
+      sideEffectTarget: null, evidence: [], declaredCheckKeys: [],
     }
     const asRead = canonicalTargetVersionHash(
       workflowActionTargetPayload({ ...base, actionClass: 'READ_ONLY' }))

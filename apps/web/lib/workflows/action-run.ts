@@ -119,13 +119,22 @@ export async function createWorkflowActionRun(
   const def = await readDefinitionById(db, instance.def_id)
   const evidence = await listEvidence(db, instance.id)
 
-  // 4) the target, derived — never accepted from the caller
+  // 4) the target, derived — never accepted from the caller.
+  //    The declared-check catalogue is resolved FIRST, because only declared
+  //    checks may influence the pin: workflow_evidence also carries scheduler
+  //    bookkeeping, and letting that in made the scheduler drift the target of
+  //    the run it had just created.
+  const adapter = findAdapter(instance.def_key)
+  const declaredCheckKeys = adapter
+    ? adapter.attestableChecks()
+        .filter(c => c.state === instance.current_state).map(c => c.check_key)
+    : []
   let target
   try {
     target = computeWorkflowActionTarget({
       instance, spec: def.spec, state: instance.current_state,
       actionKind: input.actionKind, actionClass,
-      sideEffectTarget: input.sideEffectTarget ?? null, evidence,
+      sideEffectTarget: input.sideEffectTarget ?? null, evidence, declaredCheckKeys,
     })
   } catch (e) {
     return { ok: false, refusal: 'state_not_in_definition', detail: (e as Error).message }
@@ -158,7 +167,6 @@ export async function createWorkflowActionRun(
   }
 
   // 7) required evidence for the state must actually be satisfied
-  const adapter = findAdapter(instance.def_key)
   if (adapter) {
     const declared = adapter.attestableChecks()
     // `required` is a property of the DECLARATION (PR6), not of the verdict —
@@ -333,10 +341,15 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
     try {
       const def = await readDefinitionById(db, instance.def_id)
       const evidence = await listEvidence(db, instance.id)
+      const adapter = findAdapter(instance.def_key)
+      const declaredCheckKeys = adapter
+        ? adapter.attestableChecks()
+            .filter(c => c.state === instance.current_state).map(c => c.check_key)
+        : []
       const target = computeWorkflowActionTarget({
         instance, spec: def.spec, state: instance.current_state,
         actionKind: run.action_kind, actionClass: run.action_class as ActionClass,
-        sideEffectTarget: null, evidence,
+        sideEffectTarget: null, evidence, declaredCheckKeys,
       })
       // Evidence is part of the payload, so new or changed evidence moves the
       // hash — reported as target drift, which is what it is.

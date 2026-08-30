@@ -56,6 +56,42 @@ export type ExecutorRefusal =
   | 'not_ready'
   | 'fenced'
 
+/**
+ * What a refusal MEANS for the run. Not every refusal is the same kind of dead
+ * end, and mapping them all to one state would either strand recoverable work or
+ * retry something that can never succeed.
+ *
+ *   permanent — the pinned act cannot happen as pinned. Terminal REJECTED. A
+ *               corrected attempt needs a NEW action identity, which is the
+ *               honest way to say "this is a different act now".
+ *   cancelled — asked to stop before the irreversible boundary.
+ *   temporary — a condition outside the run changed and may change back
+ *               (project paused, spend enforcement not yet active). Requeued.
+ *
+ * Target drift is deliberately PERMANENT. It is not a transient failure: the
+ * approval no longer describes the world, and retrying the same pinned run would
+ * attempt something nobody approved.
+ */
+export type RefusalDisposition = 'permanent' | 'cancelled' | 'temporary'
+
+export const REFUSAL_DISPOSITION: Record<ExecutorRefusal, RefusalDisposition> = {
+  not_an_action_run:     'permanent',
+  unknown_action_kind:   'permanent',
+  not_executable_family: 'permanent',
+  class_mismatch:        'permanent',
+  not_read_only:         'permanent',
+  no_handler:            'permanent',
+  not_ready:             'permanent',   // refined per-blocker below
+  fenced:                'temporary',   // another owner has it; write nothing
+}
+
+/**
+ * Readiness blockers that may legitimately clear on their own. Everything else —
+ * drift, a closed instance, a project mismatch, a revoked authorization — is
+ * permanent for THIS pinned run.
+ */
+const TEMPORARY_BLOCKERS = ['project_paused', 'spend_enforcement_required']
+
 export interface ExecuteResult {
   executed: boolean
   refusal?: ExecutorRefusal
@@ -63,6 +99,8 @@ export interface ExecuteResult {
   outcome?: ActionOutcome
   phase?: ActionPhase
   evidenceResult?: ReadOnlyHandlerOutput['result']
+  /** How the refusal was finalized, when one occurred. */
+  disposition?: RefusalDisposition
 }
 
 interface ActionRunRow {
@@ -87,52 +125,124 @@ interface ActionRunRow {
  * below is fenced on it, so a zombie whose claim was rotated cannot record
  * evidence or finalize a run the new owner is executing.
  */
+/**
+ * Finalize a refusal so the run never stays `running` holding its claim.
+ *
+ * Every write is fenced on the claim this invocation was handed: a stale worker
+ * must not be able to reject, cancel or requeue a run someone else now owns.
+ *
+ * Only ever called BEFORE dispatch. After DISPATCH_STARTED the PR9d failure
+ * model owns the outcome — an action that may have applied is never "rejected".
+ */
+async function finalizeRefusal(
+  db: AnyDb, runId: string, claimId: string | null, now: string,
+  refusal: ExecutorRefusal, detail: string, blockers: string[] = [],
+): Promise<RefusalDisposition> {
+  // `fenced` means another owner holds the run: write nothing at all.
+  if (refusal === 'fenced') return 'temporary'
+
+  let disposition: RefusalDisposition = REFUSAL_DISPOSITION[refusal]
+  if (refusal === 'not_ready') {
+    if (blockers.includes('cancel_requested')) disposition = 'cancelled'
+    else if (blockers.length > 0 && blockers.every(b => TEMPORARY_BLOCKERS.includes(b))) {
+      disposition = 'temporary'
+    }
+  }
+
+  const common = {
+    last_error: `${refusal}: ${detail}`,
+    claimed_at: null,
+    lease_until: null,
+    reconciliation_reason: null,
+  }
+
+  if (disposition === 'temporary') {
+    // Back to rest, claim released, reason recorded. It becomes claimable again
+    // when the external condition clears; the attempt budget still bounds it.
+    await fencedActionUpdate(db, runId, claimId, { ...common, status: 'pending' })
+    return 'temporary'
+  }
+
+  const cancelled = disposition === 'cancelled'
+  await fencedActionUpdate(db, runId, claimId, {
+    ...common,
+    status: cancelled ? 'cancelled' : 'rejected',
+    // Phase stays null: nothing was dispatched, and claiming otherwise would
+    // misreport this to the reaper and the failure model.
+    action_outcome: cancelled ? 'CANCELLED' : 'REJECTED',
+    outcome_recorded_at: now,
+    finished_at: now,
+    side_effect_summary: { refusal, disposition, blockers },
+  })
+  return disposition
+}
+
 export async function executeWorkflowAction(
   db: AnyDb, run: ActionRunRow, claimId: string | null, now: string,
 ): Promise<ExecuteResult> {
   if (!run.workflow_instance_id || !run.action_kind || !run.workflow_from_state) {
-    return { executed: false, refusal: 'not_an_action_run', detail: 'run carries no action binding' }
+    const d = 'run carries no action binding'
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_an_action_run', d)
+    return { executed: false, refusal: 'not_an_action_run', detail: d, disposition }
   }
 
   // ── Gate 1: the kind must be in the canonical registry at all.
   const canonical = lookupAction(run.action_kind)
   if (!canonical) {
-    return { executed: false, refusal: 'unknown_action_kind',
-      detail: `"${run.action_kind}" is not a canonical action` }
+    {
+    const d = `"${run.action_kind}" is not a canonical action`
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'unknown_action_kind', d)
+    return { executed: false, refusal: 'unknown_action_kind', detail: d, disposition }
+  }
   }
   // ── Gate 2: declared executable by an executor that exists.
   if (canonical.executor_family !== 'read_only_observation') {
-    return { executed: false, refusal: 'not_executable_family',
-      detail: `"${run.action_kind}" is declared ${canonical.executor_family}` }
+    {
+    const d = `"${run.action_kind}" is declared ${canonical.executor_family}`
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_executable_family', d)
+    return { executed: false, refusal: 'not_executable_family', detail: d, disposition }
+  }
   }
   // ── Gate 3: the stored class must agree with the registry. The stored value
   //    is immutable but was written by application code; the registry is the
   //    authority, so they are compared rather than either being trusted alone.
   if (run.action_class !== canonical.action_class) {
-    return { executed: false, refusal: 'class_mismatch',
-      detail: `run stores ${run.action_class}, registry says ${canonical.action_class}` }
+    {
+    const d = `run stores ${run.action_class}, registry says ${canonical.action_class}`
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'class_mismatch', d)
+    return { executed: false, refusal: 'class_mismatch', detail: d, disposition }
+  }
   }
   // ── Gate 4: and that agreed class must be READ_ONLY. Belt and braces: gates 2
   //    and 3 already imply it, and this still refuses if either ever loosens.
   if (canonical.action_class !== 'READ_ONLY' || !isExecutableReadOnly(run.action_kind)) {
-    return { executed: false, refusal: 'not_read_only',
-      detail: `"${run.action_kind}" is not a READ_ONLY observation` }
+    {
+    const d = `"${run.action_kind}" is not a READ_ONLY observation`
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_read_only', d)
+    return { executed: false, refusal: 'not_read_only', detail: d, disposition }
+  }
   }
 
   const handler = HANDLERS[run.action_kind as ExecutableReadOnlyActionKind]
   if (!handler) {
-    return { executed: false, refusal: 'no_handler', detail: 'no handler registered' }
+    const d = 'no handler registered'
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'no_handler', d)
+    return { executed: false, refusal: 'no_handler', detail: d, disposition }
   }
 
   // ── Binding, pause, cancel, target and evidence are all re-derived here.
   const readiness = await assertWorkflowActionReady(db, run.id)
   if (!readiness.ready) {
-    return { executed: false, refusal: 'not_ready', detail: readiness.detail }
+    const disposition = await finalizeRefusal(
+      db, run.id, claimId, now, 'not_ready', readiness.detail, readiness.blockers)
+    return { executed: false, refusal: 'not_ready', detail: readiness.detail, disposition }
   }
 
   const instance = await readInstance(db, run.workflow_instance_id)
   if (!instance) {
-    return { executed: false, refusal: 'not_ready', detail: 'instance disappeared between checks' }
+    const d = 'instance disappeared between checks'
+    const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_ready', d, ['instance_missing'])
+    return { executed: false, refusal: 'not_ready', detail: d, disposition }
   }
   const def = await readDefinitionById(db, instance.def_id)
 
@@ -166,6 +276,9 @@ export async function executeWorkflowAction(
       outcome_recorded_at: now,
       last_error: e instanceof Error ? e.message : 'handler threw',
     })
+    // Deliberately NOT finalizeRefusal: the phase says DISPATCH_STARTED, so the
+    // PR9d failure model owns this outcome. An action that may have applied is
+    // never "rejected".
     return { executed: false, refusal: 'not_ready', detail: 'handler threw; no evidence recorded', outcome }
   }
 

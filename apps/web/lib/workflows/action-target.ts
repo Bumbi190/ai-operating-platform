@@ -127,6 +127,21 @@ export interface WorkflowActionTargetInput {
    */
   sideEffectTarget: Record<string, string> | null
   evidence: WorkflowEvidence[]
+  /**
+   * The check keys the canonical contract DECLARES for this state.
+   *
+   * Only declared checks may influence the target. `workflow_evidence` is also
+   * where the scheduler keeps its own bookkeeping — `workflow_schedule_wake`
+   * writes `scheduler.wake_scheduled` and `workflow_record_tick` writes
+   * `scheduler.evaluation` — and including those made the scheduler move the
+   * target of the very run it had just created, 333 ms earlier, in the same
+   * tick. Readiness then correctly reported `target_drifted` forever.
+   *
+   * Passed in rather than looked up so this module stays pure and the caller
+   * must state which catalogue it means. There is no second catalogue: callers
+   * derive this from `adapter.attestableChecks()`.
+   */
+  declaredCheckKeys: readonly string[]
 }
 
 /**
@@ -145,8 +160,12 @@ export function workflowActionTargetPayload(input: WorkflowActionTargetInput): u
   if (!state) {
     throw new Error(`workflowActionTargetPayload: state "${input.state}" is not in the pinned definition`)
   }
+  // Declared checks only. An undeclared/audit row can never move the pin —
+  // which is what stops scheduler bookkeeping from invalidating an action, while
+  // a genuine declared observation still does exactly that.
+  const declared = new Set(input.declaredCheckKeys)
   const evidence = input.evidence
-    .filter(e => e.state === input.state)
+    .filter(e => e.state === input.state && declared.has(e.check_key))
     .map(e => ({
       check_key: e.check_key, result: e.result,
       source: e.source, recorded_at: e.recorded_at,

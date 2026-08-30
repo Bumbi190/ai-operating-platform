@@ -118,8 +118,36 @@ export async function GET() {
   if (counts.cancel_requested_still_running > 0) findings.push('cancel_requested_not_honoured')
   if (claimableUnderPause > 0) findings.push('paused_project_has_claimable_runs')
 
+  // PR9e — bound workflow action runs, read-only. Shows what the executor did
+  // without offering any way to make it do it again.
+  let actions: Record<string, unknown>[] = []
+  try {
+    const { data } = await db.from('runs')
+      .select('id, workflow_instance_id, action_kind, action_class, action_phase, '
+            + 'action_outcome, attempts, max_attempts, status, claim_id, target_version_hash')
+      .in('project_id', ids)
+      .not('workflow_instance_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    actions = ((data ?? []) as Record<string, string | number | null>[]).map(r => ({
+      run_id: r.id,
+      instance_id: r.workflow_instance_id,
+      action_kind: r.action_kind,
+      action_class: r.action_class,
+      phase: r.action_phase,
+      outcome: r.action_outcome,
+      attempts: `${r.attempts}/${r.max_attempts}`,
+      status: r.status,
+      claimed: r.claim_id !== null,
+      // Prefix only: the full hash is an identity, not a display value.
+      target_hash: typeof r.target_version_hash === 'string'
+        ? `${r.target_version_hash.slice(0, 12)}…` : null,
+    }))
+  } catch { actions = [] }
+
   return NextResponse.json({
     flags,
+    actions,
     counts: { ...counts, claimable_under_pause: claimableUnderPause,
               projects_without_budget: unbudgeted.length,
               open_action_incidents: incidents.length },

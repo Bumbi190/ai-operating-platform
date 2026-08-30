@@ -21,6 +21,7 @@ import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
+import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -80,6 +81,23 @@ export async function GET(request: Request) {
           }, db)
         }
         results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
+        continue
+      }
+
+      // ── PR9e: bound workflow actions take a separate, closed path ─────────
+      // Deliberately BEFORE any agent-step or marketing handling: a workflow
+      // action must never reach an LLM step, and legacy runs must never reach
+      // the action executor. `workflow_instance_id` is the discriminator, and
+      // it is null on all 1251 legacy runs, so their path is untouched.
+      if (isWorkflowActionRun(run)) {
+        const result = await executeWorkflowAction(db, run, run.claim_id, new Date().toISOString())
+        // The executor owns this run's terminal write (fenced on claim_id), so
+        // the drain records the outcome and moves on — it must not also flip
+        // status, which would overwrite what the executor just decided.
+        results.push({
+          run_id: run.id, status: result.executed ? 'action_executed' : 'action_refused',
+          action: result.detail,
+        })
         continue
       }
 

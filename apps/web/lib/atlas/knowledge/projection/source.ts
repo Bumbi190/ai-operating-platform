@@ -91,12 +91,20 @@ export interface KnowledgeProjectionSource {
 }
 
 /**
- * Text handed to the secret scan: the body plus every declared frontmatter
- * value, so a credential pasted into a metadata field is caught too. The note's
- * text is used and discarded — no candidate ever carries it.
+ * Text handed to the secret scan: everything that could end up serialized into a
+ * remote projection — the body, every declared frontmatter value, AND the
+ * source-relative path.
+ *
+ * The path belongs here because it is projection metadata, not just a local
+ * lookup key. Redacting a credential-shaped filename in the operator report is
+ * necessary but not sufficient: redaction governs what an operator SEES, while
+ * eligibility governs what LEAVES THE MACHINE. A note named after a token would
+ * otherwise render safely and publish anyway.
+ *
+ * The note's text is used and discarded — no candidate ever carries it.
  */
 function scannableTextOf(doc: ParsedKnowledgeDocument): string {
-  return [doc.body, ...Object.values(doc.rawFrontMatter)].join('\n')
+  return [doc.path, doc.body, ...Object.values(doc.rawFrontMatter)].join('\n')
 }
 
 export function createKnowledgeProjectionSource(

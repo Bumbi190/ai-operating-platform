@@ -411,13 +411,28 @@ describe('secret safety — the REPORT must not echo what the scanner caught', (
     expect(c.eligibility.reasons).toContain('source_of_truth_unrecognized')
   })
 
-  it('6. secret in the filename/path', () => {
+  it('6. secret in the filename/path — redacted AND ineligible', () => {
+    // Redaction governs what an operator SEES; eligibility governs what LEAVES
+    // THE MACHINE. The path is projection metadata, so a credential-shaped
+    // filename must fail the hard gate, not merely render safely.
     const { listing, text } = reportFor({
-      [`10 Architecture/${SECRET}.md`]: eligibleNote(),
+      [`10 Architecture/${SECRET}.md`]: eligibleNote({}, 'clean body\n'),
     })
+    const c = listing.candidates[0]
+    expect(c, 'candidate still exists locally for operator inspection').toBeDefined()
+    expect(c.eligibility.reasons).toContain('secret_detected')
+    expect(c.eligibility.eligible).toBe(false)
+    expect(c.eligibility.secretFindings.map((f) => f.pattern)).toContain('GitHub token')
     expect(text).not.toContain(SECRET)
     expect(text).toContain('[REDACTED PATH — SECRET SHAPE DETECTED]')
-    expect(text).toContain(listing.candidates[0].id) // located by id instead
+    expect(text).toContain(c.id)                              // stable id visible
+    expect(text).toContain(c.contentHash.slice(0, 16))        // stable hash visible
+  })
+
+  it('an ordinary safe path stays eligible when every other gate passes', () => {
+    const { listing } = reportFor({ '10 Architecture/ordinary-note.md': eligibleNote() })
+    expect(listing.candidates[0].eligibility.eligible).toBe(true)
+    expect(listing.candidates[0].eligibility.secretFindings).toEqual([])
   })
 
   it('scanForSecretShapes still returns pattern names only, never values', () => {

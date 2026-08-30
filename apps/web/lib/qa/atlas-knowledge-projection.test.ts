@@ -832,3 +832,91 @@ describe('safe operator JSON — --json cannot leak what the gate blocked', () =
       .toEqual(['10 Architecture/a.md', '10 Architecture/b.md', '10 Architecture/c.md'])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTEGRATION — the distinctions must survive the real ProjectionSource path
+//
+// Testing evaluateEligibility alone proved the evaluator was right while the
+// source quietly erased the answer: `config.projectScopeMap ?? {}` turned "no
+// mapping available" into "mapping available, slug absent", making the honest
+// reason unreachable through every real caller. These go through listAll().
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapping availability survives ProjectionSource.listAll()', () => {
+  const UUID = '550e8400-e29b-41d4-a716-446655440000'
+  const PROJECT_NOTE =
+    '---\ntype: architecture\nstatus: approved\nclassification: internal\n' +
+    'scope: project\nproject: trading\n---\n\n# T\n\nbody\n'
+
+  function candidateWith(map?: Record<string, string>) {
+    const root = tempVault()
+    write(root, '10 Architecture/p.md', PROJECT_NOTE)
+    return createKnowledgeProjectionSource({ vaultRoot: root, projectScopeMap: map })
+      .listAll().candidates[0]
+  }
+
+  it('NO map supplied → mapping_unavailable, never unmapped', () => {
+    const c = candidateWith()
+    expect(c.eligibility.eligible).toBe(false)
+    expect(c.eligibility.reasons).toContain('project_scope_mapping_unavailable')
+    expect(c.eligibility.reasons).not.toContain('project_scope_unmapped')
+  })
+
+  it('EMPTY map supplied → unmapped, never mapping_unavailable', () => {
+    const c = candidateWith({})
+    expect(c.eligibility.eligible).toBe(false)
+    expect(c.eligibility.reasons).toContain('project_scope_unmapped')
+    expect(c.eligibility.reasons).not.toContain('project_scope_mapping_unavailable')
+  })
+
+  it('own mapping to a canonical uuid → eligible with a resolved project scope', () => {
+    const c = candidateWith({ trading: UUID })
+    expect(c.eligibility.eligible).toBe(true)
+    expect(c.eligibility.scope).toEqual({ kind: 'project', projectId: UUID })
+  })
+
+  it('undefined and {} produce genuinely different reports', () => {
+    const root = tempVault()
+    write(root, '10 Architecture/p.md', PROJECT_NOTE)
+    const none = renderProjectionReport(
+      createKnowledgeProjectionSource({ vaultRoot: root }).listAll())
+    const empty = renderProjectionReport(
+      createKnowledgeProjectionSource({ vaultRoot: root, projectScopeMap: {} }).listAll())
+    expect(none).not.toBe(empty)
+    expect(none).toContain('no canonical project mapping was supplied')
+    expect(empty).toContain('absent from the supplied canonical mapping')
+  })
+})
+
+describe('canonical project id must be canonical AS SUPPLIED', () => {
+  const UUID = '550e8400-e29b-41d4-a716-446655440000'
+  function scopeFor(id: string) {
+    const root = tempVault()
+    write(root, '10 Architecture/p.md',
+      '---\ntype: architecture\nstatus: approved\nclassification: internal\n' +
+      'scope: project\nproject: trading\n---\n\n# T\n\nbody\n')
+    return createKnowledgeProjectionSource({ vaultRoot: root, projectScopeMap: { trading: id } })
+      .listAll().candidates[0].eligibility
+  }
+
+  it('a canonical uuid is accepted and returned byte-identical', () => {
+    const e = scopeFor(UUID)
+    expect(e.eligible).toBe(true)
+    expect(e.scope).toEqual({ kind: 'project', projectId: UUID })
+    if (e.scope?.kind === 'project') expect(e.scope.projectId).toBe(UUID) // no normalisation
+  })
+
+  it.each([
+    [' leading', ` ${UUID}`],
+    ['trailing ', `${UUID} `],
+    ['both', ` ${UUID} `],
+    ['whitespace-only', '   '],
+    ['tab-padded', `\t${UUID}`],
+    ['non-uuid', 'trading-project'],
+  ])('%s whitespace/shape → mapping_invalid, never repaired', (_label, id) => {
+    const e = scopeFor(id)
+    expect(e.eligible).toBe(false)
+    expect(e.reasons).toContain('project_scope_mapping_invalid')
+    expect(e.scope).toBeNull()
+  })
+})

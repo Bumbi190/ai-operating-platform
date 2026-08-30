@@ -147,13 +147,22 @@ const REASON_ORDER: readonly IneligibilityReason[] = [
 
 /**
  * Canonical project ids are `public.projects.id` — a uuid primary key, with
- * `slug` UNIQUE alongside it. Shape is validated, never repaired.
+ * `slug` UNIQUE alongside it.
+ *
+ * The value must be canonical AS SUPPLIED. Validating `value.trim()` and then
+ * resolving `value` would accept " <uuid> " and carry the padding into the
+ * resolved scope — validating one string and returning a different one. The map
+ * is a trusted boundary, not proof of database membership, so a value that is
+ * not already canonical is a broken mapping for the operator to fix, never
+ * something to silently normalise.
  */
 const CANONICAL_PROJECT_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function isCanonicalProjectId(value: unknown): value is string {
-  return typeof value === 'string' && CANONICAL_PROJECT_ID_RE.test(value.trim())
+  if (typeof value !== 'string') return false
+  if (value !== value.trim()) return false        // no surrounding whitespace
+  return CANONICAL_PROJECT_ID_RE.test(value)      // tested as supplied
 }
 
 function isPublicationClassification(v: unknown): v is PublicationClassification {

@@ -170,15 +170,68 @@ export function noRecordedResponse<T>(what: string): Result<T> {
   return failure('REFERENCE_MISMATCH', `Inget inspelat svar för ${what}.`)
 }
 
+/**
+ * The failure an AMBIGUOUS transcript produces.
+ *
+ * Two authored answers competing for one logical key is malformed input, not a
+ * choice to be made. Keeping the first would let array order decide what a
+ * provider is deemed to have said; keeping the last is the same defect wearing
+ * a different hat; merging them invents a third answer nobody recorded.
+ *
+ * Same harness-local semantics as `noRecordedResponse`, and the same reason
+ * code — `REFERENCE_MISMATCH` covers "the reference does not resolve to exactly
+ * one recorded answer" in both directions, none and many. **No new
+ * `ReasonCode`.** The message names the count for an operator reading a log and
+ * remains human/debug text; nothing branches on it.
+ */
+export function ambiguousRecordedResponse<T>(what: string, count: number): Result<T> {
+  return failure(
+    'REFERENCE_MISMATCH',
+    `Inspelningen innehåller ${count} svar för ${what}; referensen är tvetydig.`,
+  )
+}
+
+/**
+ * Resolve a logical key to EXACTLY ONE authored entry, or say why not.
+ *
+ * ORDER-INDEPENDENT BY CONSTRUCTION. It scans the whole array with no early
+ * return, so the result is a function of the array's CONTENTS and never of the
+ * order they were written in. Reversing the input cannot change the answer —
+ * which is the property the tests assert directly rather than inferring from a
+ * single ordering that happened to come out right.
+ */
+export type KeyedLookup<E> =
+  | { readonly kind: 'NONE' }
+  | { readonly kind: 'ONE'; readonly entry: E }
+  | { readonly kind: 'AMBIGUOUS'; readonly count: number }
+
+export function lookupUnique<E>(
+  entries: readonly E[],
+  matches: (entry: E) => boolean,
+): KeyedLookup<E> {
+  let found: E | undefined
+  let count = 0
+  for (const entry of entries) {
+    if (!matches(entry)) continue
+    count += 1
+    if (found === undefined) found = entry
+  }
+  if (count === 0 || found === undefined) return { kind: 'NONE' }
+  if (count > 1) return { kind: 'AMBIGUOUS', count }
+  return { kind: 'ONE', entry: found }
+}
+
 export function recordedForAccount<T>(
   entries: readonly RecordedByAccount<T>[],
   accountId: AccountId,
   what: string,
 ): Result<T> {
-  for (const entry of entries) {
-    if (entry.accountId === accountId) return entry.response
+  const found = lookupUnique(entries, (entry) => entry.accountId === accountId)
+  if (found.kind === 'NONE') return noRecordedResponse<T>(`${what} (konto ${accountId})`)
+  if (found.kind === 'AMBIGUOUS') {
+    return ambiguousRecordedResponse<T>(`${what} (konto ${accountId})`, found.count)
   }
-  return noRecordedResponse<T>(`${what} (konto ${accountId})`)
+  return found.entry.response
 }
 
 export function recordedForContract<T>(
@@ -186,10 +239,12 @@ export function recordedForContract<T>(
   contractId: ContractId,
   what: string,
 ): Result<T> {
-  for (const entry of entries) {
-    if (entry.contractId === contractId) return entry.response
+  const found = lookupUnique(entries, (entry) => entry.contractId === contractId)
+  if (found.kind === 'NONE') return noRecordedResponse<T>(`${what} (kontrakt ${contractId})`)
+  if (found.kind === 'AMBIGUOUS') {
+    return ambiguousRecordedResponse<T>(`${what} (kontrakt ${contractId})`, found.count)
   }
-  return noRecordedResponse<T>(`${what} (kontrakt ${contractId})`)
+  return found.entry.response
 }
 
 // ─── Instrument mapping ───────────────────────────────────────────────────────

@@ -60,6 +60,7 @@ import {
   type PositionObservation,
   type QuantityText,
 } from '../replay'
+import { lookupUnique, type KeyedLookup } from './transcript'
 import type {
   InstrumentMappingEntry,
   ObservationReplayMetadata,
@@ -168,6 +169,20 @@ export const NORMALIZATION_REFUSALS = [
   'INSTRUMENT_UNRESOLVED',
   'REPLAY_METADATA_MISSING',
   'DUPLICATE_POSITION_ID',
+  /*
+   * Two authored answers competing for one logical key.
+   *
+   * Package-local vocabulary, deliberately NOT a Core `ReasonCode`: these are
+   * facts about malformed authored harness configuration, not about a provider,
+   * and Core's reason codes describe the trading domain rather than the shape of
+   * a fixture table.
+   *
+   * Separate from the *_MISSING and *_UNRESOLVED refusals because they are
+   * different faults with different fixes — nothing recorded versus too much
+   * recorded — and collapsing them would make the second look like the first.
+   */
+  'AMBIGUOUS_INSTRUMENT_MAPPING',
+  'AMBIGUOUS_REPLAY_METADATA',
 ] as const
 export type NormalizationRefusal = (typeof NORMALIZATION_REFUSALS)[number]
 
@@ -200,25 +215,45 @@ function refuse(
   return { outcome: 'REFUSED', refusal, detail }
 }
 
-/** Explicit table lookup. No inference of any kind lives in this function. */
+/**
+ * The keys an authored table repeats.
+ *
+ * Scans the whole array and returns every duplicated key, so the answer depends
+ * on the table's CONTENTS and never on the order it was written in. Two entries
+ * sharing a key are malformed input whether they agree or not: nothing in this
+ * repository states that a duplicated mapping key is permitted, and an
+ * identical duplicate is still a table that has to be de-duplicated by someone
+ * before it can be read — which is a decision, not a lookup.
+ */
+function duplicateKeys<E>(entries: readonly E[], keyOf: (entry: E) => string): string[] {
+  const seen = new Set<string>()
+  const repeated = new Set<string>()
+  for (const entry of entries) {
+    const key = keyOf(entry)
+    if (seen.has(key)) repeated.add(key)
+    seen.add(key)
+  }
+  return [...repeated].sort()
+}
+
+/**
+ * Explicit table lookup. No inference of any kind lives in this function.
+ *
+ * `lookupUnique` scans the whole table with no early return, so a duplicated
+ * key can never resolve to "whichever was authored first".
+ */
 function mappedInstrument(
   mappings: readonly InstrumentMappingEntry[],
   instrumentId: string,
-): MarketInstrument | null {
-  for (const entry of mappings) {
-    if (entry.instrumentId === instrumentId) return entry.instrument
-  }
-  return null
+): KeyedLookup<InstrumentMappingEntry> {
+  return lookupUnique(mappings, (entry) => entry.instrumentId === instrumentId)
 }
 
 function metadataFor(
   entries: readonly ObservationReplayMetadataEntry[],
   positionId: string,
-): ObservationReplayMetadata | null {
-  for (const entry of entries) {
-    if (entry.positionId === positionId) return entry.metadata
-  }
-  return null
+): KeyedLookup<ObservationReplayMetadataEntry> {
+  return lookupUnique(entries, (entry) => entry.positionId === positionId)
 }
 
 // ─── The normalization ────────────────────────────────────────────────────────
@@ -249,6 +284,31 @@ export function normalizePositionSnapshots(
   snapshots: readonly PositionSnapshot[],
   context: PositionNormalizationContext,
 ): PositionBatchNormalization {
+  /*
+   * The authored tables are checked BEFORE anything is read out of them.
+   *
+   * A duplicated key makes the table unreadable, not merely awkward — and it is
+   * refused here even when the duplicate is for an instrument or a position
+   * this query would never have touched. A malformed table is a wiring fault,
+   * and catching it only when it happens to be consulted would mean the same
+   * fixture passes or fails depending on which question was asked of it.
+   */
+  const duplicateMappings = duplicateKeys(context.instrumentMappings, (e) => e.instrumentId)
+  if (duplicateMappings.length > 0) {
+    return refuse(
+      'AMBIGUOUS_INSTRUMENT_MAPPING',
+      `Instrumenttabellen har flera poster för ${duplicateMappings.join(', ')}.`,
+    )
+  }
+
+  const duplicateMetadata = duplicateKeys(context.replayMetadata, (e) => e.positionId)
+  if (duplicateMetadata.length > 0) {
+    return refuse(
+      'AMBIGUOUS_REPLAY_METADATA',
+      `Replay-metadata har flera poster för ${duplicateMetadata.join(', ')}.`,
+    )
+  }
+
   const seenPositionIds = new Set<string>()
   for (const snapshot of snapshots) {
     if (seenPositionIds.has(snapshot.positionId)) {
@@ -278,26 +338,47 @@ export function normalizePositionSnapshots(
       )
     }
 
-    const instrument = mappedInstrument(context.instrumentMappings, snapshot.instrumentId.value)
-    if (instrument === null) {
+    const mapping = mappedInstrument(context.instrumentMappings, snapshot.instrumentId.value)
+    /*
+     * Ambiguity is judged BEFORE the instrument is compared to the query.
+     *
+     * A position whose id maps to two instruments cannot be excluded as "some
+     * other instrument" — it might be the one being asked about. Excluding it
+     * would shrink the batch toward emptiness, and an empty batch is the
+     * positive claim that the account is flat.
+     */
+    if (mapping.kind === 'AMBIGUOUS') {
+      return refuse(
+        'AMBIGUOUS_INSTRUMENT_MAPPING',
+        `Position ${snapshot.positionId} har ${mapping.count} konkurrerande instrumentuppslag.`,
+      )
+    }
+    if (mapping.kind === 'NONE') {
       return refuse(
         'INSTRUMENT_UNRESOLVED',
         `Position ${snapshot.positionId} har inget explicit instrumentuppslag.`,
       )
     }
+    const instrument = mapping.entry.instrument
 
     // Positively identified as a different known instrument: not our question.
     if (instrument !== context.instrument) continue
 
     const metadata = metadataFor(context.replayMetadata, snapshot.positionId)
-    if (metadata === null) {
+    if (metadata.kind === 'AMBIGUOUS') {
+      return refuse(
+        'AMBIGUOUS_REPLAY_METADATA',
+        `Position ${snapshot.positionId} har ${metadata.count} konkurrerande metadataposter.`,
+      )
+    }
+    if (metadata.kind === 'NONE') {
       return refuse(
         'REPLAY_METADATA_MISSING',
         `Position ${snapshot.positionId} saknar inspelad replay-metadata.`,
       )
     }
 
-    observations.push(observationOf(snapshot, instrument, metadata, context.source))
+    observations.push(observationOf(snapshot, instrument, metadata.entry.metadata, context.source))
   }
 
   return { outcome: 'NORMALIZED', observations }

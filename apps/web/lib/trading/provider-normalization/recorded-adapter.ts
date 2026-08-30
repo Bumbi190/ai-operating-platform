@@ -58,6 +58,8 @@ import type {
   ReadOnlyReconciliation,
 } from '../provider'
 import {
+  ambiguousRecordedResponse,
+  lookupUnique,
   noRecordedResponse,
   recordedForAccount,
   recordedForContract,
@@ -145,10 +147,16 @@ export function createRecordedExecutionProviderAdapter(
      * those is GATE-08 work, and GATE-08 is open.
      */
     async resolveContract(spec: ContractSpec): Promise<Result<ContractRef>> {
-      for (const entry of transcript.contractResolutions) {
-        if (entry.canonicalSymbol === spec.canonicalSymbol) return entry.response
+      const what = `kontraktsuppslag (${spec.canonicalSymbol})`
+      const found = lookupUnique(
+        transcript.contractResolutions,
+        (entry) => entry.canonicalSymbol === spec.canonicalSymbol,
+      )
+      if (found.kind === 'NONE') return noRecordedResponse<ContractRef>(what)
+      if (found.kind === 'AMBIGUOUS') {
+        return ambiguousRecordedResponse<ContractRef>(what, found.count)
       }
-      return noRecordedResponse<ContractRef>(`kontraktsuppslag (${spec.canonicalSymbol})`)
+      return found.entry.response
     },
 
     async getContractSnapshot(c: ContractId): Promise<Result<ContractSnapshot>> {
@@ -181,6 +189,23 @@ export function createRecordedExecutionProviderAdapter(
      * what was searched, which is the same class of error as reporting a
      * truncated history as COMPLETE. Cursor paging is not recorded at all, so a
      * cursored request fails rather than silently returning page one again.
+     *
+     * ONE RECORDED FILL HISTORY PER ACCOUNT — AND WHY NOT MORE
+     * ───────────────────────────────────────────────────────
+     * The account alone is the complete lookup key here, and two recordings for
+     * one account are ambiguous rather than a menu to search. The alternative
+     * was to make the requested window part of the key so several windows could
+     * be recorded per account, and it was rejected: a FAILURE recording carries
+     * no `requested` window — a failed `Result` has no `FillHistory` to read one
+     * from — so a window-keyed transcript could not say which request a failure
+     * belonged to without inferring it, and inferring a request window from a
+     * failed result is exactly the kind of invention this harness exists to
+     * avoid.
+     *
+     * So the model is the smaller honest one: at most one recording per account,
+     * and the window is then checked against it. Nothing scans past a
+     * non-matching entry looking for a better one, because that search is what
+     * would let array order decide the answer.
      */
     async getRecentFills(a: AccountId, window: HistoryRequest): Promise<Result<FillHistory>> {
       if (window.cursor !== undefined) {
@@ -189,19 +214,25 @@ export function createRecordedExecutionProviderAdapter(
           'Inspelad historik saknar sidindelning; ingen cursor är inspelad.',
         )
       }
-      for (const entry of transcript.recentFills) {
-        if (entry.accountId !== a) continue
-        if (!entry.response.ok) return entry.response
-        const recorded = entry.response.value.requested
-        if (recorded.from !== window.from || recorded.to !== window.to) {
-          return failure<FillHistory>(
-            'REFERENCE_MISMATCH',
-            `Inspelad historik täcker ${recorded.from}–${recorded.to}, inte ${window.from}–${window.to}.`,
-          )
-        }
-        return entry.response
+
+      const what = `fyllnadshistorik (konto ${a})`
+      const found = lookupUnique(transcript.recentFills, (entry) => entry.accountId === a)
+      if (found.kind === 'NONE') return noRecordedResponse<FillHistory>(what)
+      if (found.kind === 'AMBIGUOUS') {
+        return ambiguousRecordedResponse<FillHistory>(what, found.count)
       }
-      return noRecordedResponse<FillHistory>(`fyllnadshistorik (konto ${a})`)
+
+      const response = found.entry.response
+      if (!response.ok) return response
+
+      const recorded = response.value.requested
+      if (recorded.from !== window.from || recorded.to !== window.to) {
+        return failure<FillHistory>(
+          'REFERENCE_MISMATCH',
+          `Inspelad historik täcker ${recorded.from}–${recorded.to}, inte ${window.from}–${window.to}.`,
+        )
+      }
+      return response
     },
 
     // ─── Reconciliation ───────────────────────────────────────────────────────

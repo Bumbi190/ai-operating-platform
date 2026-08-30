@@ -197,7 +197,10 @@ describe('observation never satisfies a human gate', () => {
 describe('wake semantics', () => {
   it('a freshly created action clears the wake instead of polling every minute', () => {
     // The executor re-arms when the run finishes — sooner and more accurate.
-    expect(tick).toMatch(/createdAction \? null : nextWakeAt/)
+    // PR9g extended the same expression with the advance case; the property
+    // under test is unchanged — a freshly created action still clears the wake.
+    expect(tick).toMatch(/createdAction \? null :/)
+    expect(tick).toMatch(/advance\?\.outcome === 'advanced' \? now : nextWakeAt/)
   })
 
   it('records what was scheduled in the tick outcome', () => {

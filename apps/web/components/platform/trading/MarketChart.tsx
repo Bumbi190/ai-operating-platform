@@ -36,8 +36,19 @@ import styles from './AtlasMarketView.module.css'
  *  3. No runtime dependency enters the Next build for a Stage 1 fixture
  *     surface.
  *
- * The viewBox is fixed and the element scales, so the same snapshot produces
- * byte-identical markup at every viewport width.
+ * SIZING
+ * ──────
+ * The chart draws into whatever box it is given. `width` and `height` are
+ * optional and fall back to a fixed design size, which matters for two reasons:
+ * `renderToStaticMarkup` has no layout to measure, and a server render has no
+ * DOM at all. Both therefore produce the same deterministic markup they always
+ * did, while a mounted browser passes the measured container box and the plot
+ * genuinely fills it.
+ *
+ * The viewBox tracks those same numbers, so one SVG unit is one CSS pixel and
+ * nothing is stretched: candle bodies keep their proportions and only the plot
+ * area grows. That is what lets a wide display gain chart WIDTH rather than
+ * proportionally more height.
  */
 
 const VIEW_WIDTH = 1200
@@ -104,12 +115,21 @@ function LevelLine({ geometry, price, label, tone, dash }: LevelLineProps) {
   )
 }
 
-export function MarketChart({ snapshot }: { snapshot: TradingMarketViewSnapshot }) {
+export function MarketChart({
+  snapshot,
+  width = VIEW_WIDTH,
+  height = VIEW_HEIGHT,
+}: {
+  snapshot: TradingMarketViewSnapshot
+  /** Measured container box. Omitted on the server and in static markup. */
+  width?: number
+  height?: number
+}) {
   const geometry = computeChartGeometry({
     candles: snapshot.candles,
     includePrices: visiblePrices(snapshot),
-    width: VIEW_WIDTH,
-    height: VIEW_HEIGHT,
+    width,
+    height,
   })
 
   const { plot } = geometry
@@ -124,7 +144,7 @@ export function MarketChart({ snapshot }: { snapshot: TradingMarketViewSnapshot 
   return (
     <div className={styles.chartFrame} data-stale={snapshot.provenance.freshness === 'STALE' || undefined}>
       <svg
-        viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+        viewBox={`0 0 ${width} ${height}`}
         className={styles.chartSvg}
         role="img"
         aria-label={chartLabel}
@@ -354,8 +374,8 @@ export function MarketChart({ snapshot }: { snapshot: TradingMarketViewSnapshot 
 
         {empty ? (
           <text
-            x={VIEW_WIDTH / 2}
-            y={VIEW_HEIGHT / 2}
+            x={width / 2}
+            y={height / 2}
             textAnchor="middle"
             className={styles.chartEmpty}
           >

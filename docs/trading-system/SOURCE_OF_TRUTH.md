@@ -17,7 +17,7 @@
 | Risk | `specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md` | **Canonical v1.0** | Låst. 0 öppna riskbeslut |
 | Bok | `book/chapters/*.md` och `book/final/…Canonical v1.0.pdf` | **Canonical v1.0** | Låst |
 | Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.3.md` | **v0.3** | Fas 0-baseline. Canonical för auktoritetskedjan (P5), execution safety-invarianten §24.1, vald första provider §22.2 och adapterkontraktet §22.3 |
-| Execution Provider Adapter | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.0.md` | **Canonical v1.0** | Låst provider-neutralt Level 1-kontrakt. Noll order-metoder |
+| Execution Provider Adapter | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.1.md` | **Canonical v1.1** | Låst provider-neutralt Level 1-kontrakt. Exakt 15 metoder, noll order-metoder. Runtime-vokabulären komplett (Beslut F) |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -32,6 +32,7 @@
 |---|---|
 | `specifications/risk/…v0.1.md` | Föregångare. Normativ endast för det som Canonical v1.0 inte ändrar. Dess OPEN-RISK-lista är **stängd**, inte aktuell |
 | `archive/…Canonical v1.0 CANDIDATE.md` | Superseded 2026-08-27 |
+| `archive/…Execution Provider Adapter – Level 1 Read Only – Canonical v1.0.md` | **Superseded 2026-08-29 av Canonical v1.1 (Beslut F).** Historisk canonical version — giltig som revisionsspår, inte som implementationsunderlag. Bevarad oförändrad; hash `11cd194e…` fortsatt verifierbar |
 | `archive/…Canonical Candidate v1.0.pdf` | Superseded av Canonical v1.0-PDF:en |
 | `book/source/*.docx`, `specifications/**/*.docx` | Historiska original. Kan avvika från `.md` |
 | `book/source/09 - MetaTrader 5-integration.docx` | **v1.0-källmaterial.** Behåller sitt ursprungliga namn. Aktiv kapitelkälla är `book/chapters/09 - Futures Execution Integration.md` |
@@ -148,8 +149,12 @@ Får inte härledas, avrundas eller ändras i kod.
 | ExecutionIntent-livstid | `now < expiresAt <= min(proposal, approval)` | Systemarkitektur §24.1, Beslut C |
 | Första execution provider | Rithmic R\|Protocol (ej exklusiv) | Systemarkitektur §22.2, Beslut E |
 | Andra planerade adapter | Tradovate | Beslut E |
-| Level 1 order-metoder | Noll | Execution Provider Adapter Canonical v1.0 §1.1 |
-| Capability-semantik | Endast SUPPORTED uppfyller säkerhetskrav | Adapter Canonical v1.0 §3 |
+| Level 1 order-metoder | Noll | Execution Provider Adapter Canonical v1.1 §1.1 / F0.1 |
+| Level 1 metodantal | Exakt 15 | Adapter Canonical v1.1 F15 |
+| Provider-observation grantar authority | Aldrig | Adapter Canonical v1.1 §2 |
+| Capability-semantik | Endast SUPPORTED uppfyller säkerhetskrav | Adapter Canonical v1.1 §3 |
+| Känt flat | Lyckat resultat med noll positioner — aldrig `PositionSide.FLAT` | Adapter Canonical v1.1 F10 |
+| `Available<T>` vs `ObservedValue<T>` | Skilda typer, inget alias | Adapter Canonical v1.1 F14.1 |
 
 ---
 

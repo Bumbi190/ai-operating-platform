@@ -340,11 +340,13 @@ describe('adapter registration', () => {
   })
 
   it('names exactly the states it can verify', () => {
-    // PR7 added edge_deploy: the state where "a merged shared file is not a
-    // deployed shared file" is established against production.
+    // Raised deliberately, one state per PR:
+    //   PR7 → edge_deploy      "a merged shared file is not a deployed shared file"
+    //   PR8 → frontend_deploy  "a merged commit is not the commit production serves"
+    // Kept exhaustive so a new verifiable state is a decision, not a side effect.
     expect(familjeStundenAdapter.verifiableStates()).toEqual([
-      'approval_release', 'backend_release_gate', 'edge_deploy', 'planning',
-      'post_release_qa', 'scheduled_release',
+      'approval_release', 'backend_release_gate', 'edge_deploy', 'frontend_deploy',
+      'planning', 'post_release_qa', 'scheduled_release',
     ])
   })
 })

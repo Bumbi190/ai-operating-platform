@@ -4,6 +4,7 @@ import {
   observedOrNull,
   plannedTradeIsExecutable,
   type ObservedPosition,
+  type ObservedPositionDirection,
   type ObservedValue,
   type PlannedTradeView,
 } from '@/lib/trading/replay'
@@ -110,6 +111,35 @@ const POSITION_STATE_LABELS = {
   UNKNOWN: 'OKÄND',
 } as const
 
+/**
+ * The direction of an OBSERVED position.
+ *
+ * Separate from `DirectionPill`, which renders a strategy's `DisplayDirection`
+ * and can say NEUTRAL. An observed position is never neutral: either the
+ * provider reported a side, or it did not. Rendering an unreported side as
+ * NEUTRAL would state a fact — "no bias" — that nobody established, so UNKNOWN
+ * is shown as unknown and toned as such.
+ */
+const OBSERVED_DIRECTION_LABELS: Readonly<Record<ObservedPositionDirection, string>> = {
+  LONG: 'LONG',
+  SHORT: 'SHORT',
+  UNKNOWN: 'OKÄND RIKTNING',
+}
+
+const OBSERVED_DIRECTION_TONES: Readonly<Record<ObservedPositionDirection, 'positive' | 'negative' | 'unknown'>> = {
+  LONG: 'positive',
+  SHORT: 'negative',
+  UNKNOWN: 'unknown',
+}
+
+function ObservedDirectionPill({ direction }: { direction: ObservedPositionDirection }) {
+  return (
+    <StatePill tone={OBSERVED_DIRECTION_TONES[direction]}>
+      {OBSERVED_DIRECTION_LABELS[direction]}
+    </StatePill>
+  )
+}
+
 export function ObservedPositionsPanel({ positions }: { positions: readonly ObservedPosition[] }) {
   return (
     <PanelSection
@@ -132,7 +162,7 @@ export function ObservedPositionsPanel({ positions }: { positions: readonly Obse
         >
           <header className={styles.plannedHeader}>
             <span className={styles.plannedInstrument}>{position.instrument}</span>
-            <DirectionPill direction={position.direction} />
+            <ObservedDirectionPill direction={position.direction} />
             <StatePill tone={position.state === 'UNKNOWN' ? 'unknown' : 'warning'}>
               {POSITION_STATE_LABELS[position.state]}
             </StatePill>

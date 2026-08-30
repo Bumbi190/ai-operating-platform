@@ -97,9 +97,13 @@ describe('replay package import discipline', () => {
         if (specifier.startsWith('../')) siblings.add(specifier)
       }
     }
-    // `../events` is Core's journal envelope; it is type-import-only itself, so
-    // reusing `canonicalJson` costs nothing at the bundle boundary.
-    expect([...siblings].sort()).toEqual(['../events', '../market-view'])
+    /*
+     * `../events` is Core's journal envelope and `../decimal` is the canonical
+     * exact-decimal parser. Both are type-import-only themselves — `decimal.ts`
+     * imports only `type { Branded } from './ids'` — so reusing `canonicalJson`
+     * and `parseDecimal` costs nothing at the bundle boundary.
+     */
+    expect([...siblings].sort()).toEqual(['../decimal', '../events', '../market-view'])
   })
 })
 

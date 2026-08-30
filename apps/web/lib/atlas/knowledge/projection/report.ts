@@ -9,7 +9,7 @@
  * bodies, never excerpts, and never a matched secret value.
  */
 
-import { PENDING_POLICY_DECISIONS, type IneligibilityReason } from './eligibility'
+import type { IneligibilityReason } from './eligibility'
 import { containsSecretShape, redactSecretShapes } from './secret-scan'
 import type { ProjectionCandidate, ProjectionListing } from './source'
 
@@ -38,18 +38,27 @@ function safePath(path: string, id: string): string {
 
 /** What each reason code means, and what the operator would do about it. */
 export const REASON_GUIDANCE: Record<IneligibilityReason, string> = {
-  folder_excluded: 'in 00 Inbox or 90 Archive — move it into a curated folder',
-  status_not_approved: 'status is not "approved" — review and approve it',
+  folder_excluded: 'in 00 Inbox or 90 Archive — never published (policy v1 §6.6)',
+  status_not_approved: 'status is not "approved" — editorial approval is required (§6.5)',
   type_missing_or_unrecognized: 'type is missing or outside the vocabulary',
   canonical_pointer_missing: 'source_of_truth: repository without canonical_path',
   source_of_truth_unrecognized: 'source_of_truth declared but outside the vocabulary',
-  classification_missing: 'no classification declared (vocabulary lands in Slice 2)',
-  classification_unrecognized: 'classification outside the provisional vocabulary',
-  classification_local_only: 'classified local_only — deliberately never published',
-  scope_missing: 'no publication scope: declare scope: platform, or a project',
-  scope_unrecognized: 'scope declared but outside the vocabulary (only platform resolves today)',
-  project_scope_unmapped: 'project has no declared project-id mapping (Slice 2)',
-  secret_detected: 'credential-shaped material found — remove it before publishing',
+  classification_missing: 'explicit classification required by Publication Policy v1 (§6.1)',
+  classification_unrecognized:
+    'classification outside the vocabulary — valid: public, internal, confidential, ' +
+    'local_only. "prohibited" is not a classification (§6.2)',
+  classification_confidential_remote_blocked:
+    'confidential is recognized but remote-blocked in transport v1 — stays local until ' +
+    'a constrained reader is authorized (§6.1)',
+  classification_local_only: 'classified local_only — never leaves this machine (§6.1)',
+  scope_missing: 'explicit scope required by Publication Policy v1 — declare platform or project (§6.3)',
+  scope_unrecognized: 'scope outside the vocabulary — valid: platform, project (§6.3)',
+  platform_scope_project_conflict:
+    'scope: platform must not carry a project — remove the project field, ' +
+    'scope: platform already carries that meaning (§6.3)',
+  project_scope_missing: 'scope: project requires a project slug (§6.3)',
+  project_scope_unmapped: 'project slug has no canonical mapping in public.projects (§6.3)',
+  secret_detected: 'credential-shaped material found — remove it before publishing (§6.2)',
 }
 
 export interface ReportOptions {
@@ -108,7 +117,7 @@ export function renderProjectionReport(listing: ProjectionListing, options: Repo
   const a = listing.accounting
   const lines: string[] = []
 
-  lines.push('OMNIRA KNOWLEDGE PROJECTION — ELIGIBILITY REPORT (Slice 1: no publication)')
+  lines.push('OMNIRA KNOWLEDGE PROJECTION — ELIGIBILITY REPORT (evaluation only; nothing is published)')
   lines.push('')
   lines.push(`source              ${listing.sourceId}`)
   if (options.vaultRoot) lines.push(`vault               ${options.vaultRoot}`)
@@ -143,13 +152,17 @@ export function renderProjectionReport(listing: ProjectionListing, options: Repo
     lines.push('')
   }
 
-  lines.push('PENDING POLICY DECISIONS (Slice 2)')
-  for (const d of PENDING_POLICY_DECISIONS) lines.push(`  · ${d}`)
+  lines.push('POLICY')
+  lines.push('  Publication Policy v1 is LOCKED — VAULT_POLICY.md §6.')
+  lines.push('  classification: public | internal | confidential | local_only')
+  lines.push('                  remote in v1: public, internal. confidential stays local.')
+  lines.push('  scope         : platform | project (always explicit; never inferred)')
+  lines.push('  Nothing is published by this report. It evaluates eligibility only.')
   lines.push('')
   lines.push(
     a.eligible === 0
-      ? 'RESULT: 0 notes are remotely publishable. For a vault whose classification and ' +
-        'scope vocabulary does not exist yet, that is the correct answer — not a failure.'
+      ? 'RESULT: 0 notes are remotely publishable. An empty eligible set is a valid ' +
+        'answer — curate notes rather than widening the policy.'
       : `RESULT: ${a.eligible} of ${a.candidatesEvaluated} notes would be remotely publishable.`,
   )
 

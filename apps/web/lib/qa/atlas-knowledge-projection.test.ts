@@ -19,7 +19,10 @@ import { join } from 'node:path'
 import {
   createKnowledgeProjectionSource, assertReconciled, ProjectionReconciliationError,
 } from '@/lib/atlas/knowledge/projection/source'
-import { evaluateEligibility } from '@/lib/atlas/knowledge/projection/eligibility'
+import {
+  evaluateEligibility, PUBLICATION_CLASSIFICATIONS,
+  REMOTELY_PUBLISHABLE_CLASSIFICATIONS, PUBLICATION_SCOPES,
+} from '@/lib/atlas/knowledge/projection/eligibility'
 import {
   scanForSecretShapes, redactSecretShapes, containsSecretShape, SECRET_PLACEHOLDER,
 } from '@/lib/atlas/knowledge/projection/secret-scan'
@@ -256,20 +259,17 @@ describe('eligibility — approval alone is never enough', () => {
     expect(r.reasons).toContain('classification_local_only')
   })
 
-  it('missing scope → ineligible; project scope needs an explicit mapping', () => {
+  it('missing scope → ineligible, even with a mapped project (policy v1: no inference)', () => {
     const noScope = evaluate({ type: 'architecture', status: 'approved', classification: 'internal' })
     expect(noScope.reasons).toContain('scope_missing')
 
-    const unmapped = evaluate({ type: 'architecture', status: 'approved', classification: 'internal', project: 'trading' })
-    expect(unmapped.reasons).toContain('project_scope_unmapped')
-    expect(unmapped.scope).toBeNull()
-
-    const mapped = evaluate(
+    const mappedButNoScope = evaluate(
       { type: 'architecture', status: 'approved', classification: 'internal', project: 'trading' },
       'routing', { trading: 'proj-123' },
     )
-    expect(mapped.eligible).toBe(true)
-    expect(mapped.scope).toEqual({ kind: 'project', projectId: 'proj-123' })
+    expect(mappedButNoScope.eligible).toBe(false)
+    expect(mappedButNoScope.reasons).toContain('scope_missing')
+    expect(mappedButNoScope.scope).toBeNull()
   })
 
   it.each(['draft', 'reviewed', 'archived'])('status %s → ineligible', (status) => {
@@ -329,8 +329,10 @@ describe('operator report', () => {
     write(root, '10 Architecture/a.md', '---\ntype: architecture\nstatus: approved\n---\n\n# A\n\nx\n')
     const text = renderProjectionReport(createKnowledgeProjectionSource({ vaultRoot: root }).listAll())
     expect(text).toContain('RESULT: 0 notes are remotely publishable')
-    expect(text).toContain('that is the correct answer — not a failure')
-    expect(text).toContain('PENDING POLICY DECISIONS')
+    expect(text).toContain('curate notes rather than widening the policy')
+    expect(text).toContain('Publication Policy v1 is LOCKED')
+    expect(text).not.toContain('PENDING POLICY DECISIONS')
+    expect(text).not.toContain('lands in Slice 2')
   })
 
   it('reports reconciliation and never prints note bodies', () => {
@@ -494,10 +496,11 @@ describe('scope — an explicit unknown value never falls through to project', (
     expect(evalNote({ ...base, scope: 'platform' }).eligible).toBe(true)
   })
 
-  it('absent scope + mapped project still resolves (provisional design kept)', () => {
+  it('absent scope + mapped project is NOW ineligible — inference removed by policy v1', () => {
     const r = evalNote({ ...base, project: 'trading' }, { trading: 'proj-1' })
-    expect(r.eligible).toBe(true)
-    expect(r.scope).toEqual({ kind: 'project', projectId: 'proj-1' })
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('scope_missing')
+    expect(r.scope).toBeNull()
   })
 
   it('INVALID: scope: bananas + mapped project is STILL ineligible', () => {
@@ -508,9 +511,199 @@ describe('scope — an explicit unknown value never falls through to project', (
     expect(r.scope).toBeNull()
   })
 
-  it('INVALID: scope: project is not yet vocabulary — Slice 2 decides', () => {
+  it('VALID: scope: project + mapped slug resolves (policy v1 vocabulary)', () => {
     const r = evalNote({ ...base, scope: 'project', project: 'trading' }, { trading: 'proj-1' })
+    expect(r.eligible).toBe(true)
+    expect(r.scope).toEqual({ kind: 'project', projectId: 'proj-1' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLICATION POLICY v1 — the locked owner contract (VAULT_POLICY.md §6)
+//
+// The policy lives in the vault; this suite is where the code is held to it.
+// Every case below is a sentence from §6 turned into an assertion.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Publication Policy v1 — vocabulary', () => {
+  it('classification is exactly the four owner-approved values', () => {
+    expect([...PUBLICATION_CLASSIFICATIONS]).toEqual(
+      ['public', 'internal', 'confidential', 'local_only'])
+    expect(PUBLICATION_CLASSIFICATIONS as readonly string[]).not.toContain('prohibited')
+  })
+
+  it('only public and internal may leave the machine in transport v1', () => {
+    expect([...REMOTELY_PUBLISHABLE_CLASSIFICATIONS]).toEqual(['public', 'internal'])
+  })
+
+  it('scope is exactly platform and project', () => {
+    expect([...PUBLICATION_SCOPES]).toEqual(['platform', 'project'])
+  })
+})
+
+describe('Publication Policy v1 — classification enforcement', () => {
+  function evalNote(fm: Record<string, string>, map?: Record<string, string>) {
+    const raw = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n# T\n\nbody\n`
+    const doc = parseKnowledgeDocument(raw, '10 Architecture/x.md')
+    return evaluateEligibility({ doc, rawFrontMatter: doc.rawFrontMatter, projectScopeMap: map, content: raw })
+  }
+  const gates = { type: 'architecture', status: 'approved', scope: 'platform' }
+
+  it('public + all gates → eligible', () => {
+    const r = evalNote({ ...gates, classification: 'public' })
+    expect(r.eligible).toBe(true)
+    expect(r.classification).toBe('public')
+  })
+
+  it('internal + all gates → eligible', () => {
+    const r = evalNote({ ...gates, classification: 'internal' })
+    expect(r.eligible).toBe(true)
+  })
+
+  it('confidential → RECOGNIZED but remote-blocked, with its own reason', () => {
+    const r = evalNote({ ...gates, classification: 'confidential' })
+    expect(r.eligible).toBe(false)
+    // Recognized: the classification is parsed and reported, not discarded.
+    expect(r.classification).toBe('confidential')
+    expect(r.reasons).toContain('classification_confidential_remote_blocked')
+    // Policy staging is NOT bad metadata — the operator must be able to tell them apart.
+    expect(r.reasons).not.toContain('classification_unrecognized')
+    expect(r.reasons).not.toContain('classification_local_only')
+  })
+
+  it('local_only → never remote, distinct from confidential', () => {
+    const r = evalNote({ ...gates, classification: 'local_only' })
+    expect(r.eligible).toBe(false)
+    expect(r.classification).toBe('local_only')
+    expect(r.reasons).toContain('classification_local_only')
+    expect(r.reasons).not.toContain('classification_confidential_remote_blocked')
+  })
+
+  it('prohibited → unrecognized, never a classification', () => {
+    const r = evalNote({ ...gates, classification: 'prohibited' })
+    expect(r.eligible).toBe(false)
+    expect(r.classification).toBeNull()
+    expect(r.reasons).toContain('classification_unrecognized')
+  })
+
+  it('missing classification → ineligible', () => {
+    const r = evalNote(gates)
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('classification_missing')
+  })
+
+  it.each(['Internal', 'PUBLIC', 'secret', 'restricted'])('unknown %s → ineligible', (value) => {
+    const r = evalNote({ ...gates, classification: value })
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('classification_unrecognized')
+  })
+
+  it('a classification never rescues a secret', () => {
+    const r = evalNote({ ...gates, classification: 'public', canonical_path: 'ghp_abcdefghijklmnopqrstuvwxyz012345' })
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('secret_detected')
+  })
+})
+
+describe('Publication Policy v1 — scope enforcement', () => {
+  function evalNote(fm: Record<string, string>, map?: Record<string, string>) {
+    const raw = `---\n${Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n# T\n\nbody\n`
+    const doc = parseKnowledgeDocument(raw, '10 Architecture/x.md')
+    return evaluateEligibility({ doc, rawFrontMatter: doc.rawFrontMatter, projectScopeMap: map, content: raw })
+  }
+  const gates = { type: 'architecture', status: 'approved', classification: 'internal' }
+  const MAP = { trading: 'proj-trading-uuid' }
+
+  it('scope: platform + no project → valid platform scope', () => {
+    const r = evalNote({ ...gates, scope: 'platform' })
+    expect(r.eligible).toBe(true)
+    expect(r.scope).toEqual({ kind: 'platform' })
+  })
+
+  it('scope: platform + project present → CONFLICT, never silently ignored', () => {
+    const r = evalNote({ ...gates, scope: 'platform', project: 'trading' }, MAP)
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('platform_scope_project_conflict')
+    expect(r.scope).toBeNull()
+  })
+
+  it('scope: project + mapped slug → resolved project scope', () => {
+    const r = evalNote({ ...gates, scope: 'project', project: 'trading' }, MAP)
+    expect(r.eligible).toBe(true)
+    expect(r.scope).toEqual({ kind: 'project', projectId: 'proj-trading-uuid' })
+  })
+
+  it('scope: project + no project slug → ineligible', () => {
+    const r = evalNote({ ...gates, scope: 'project' }, MAP)
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('project_scope_missing')
+  })
+
+  it('scope: project + unmapped slug → ineligible, no invented id', () => {
+    const r = evalNote({ ...gates, scope: 'project', project: 'not-a-real-project' }, MAP)
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('project_scope_unmapped')
+    expect(r.scope).toBeNull()
+  })
+
+  it('no fuzzy matching — a near-miss slug does not resolve', () => {
+    // Case, truncation and suffixes are all genuine misses. Lookup is exact.
+    for (const slug of ['Trading', 'tradin', 'trading-v2', 'trading_v2']) {
+      const r = evalNote({ ...gates, scope: 'project', project: slug }, MAP)
+      expect(r.eligible, slug).toBe(false)
+      expect(r.reasons).toContain('project_scope_unmapped')
+    }
+  })
+
+  it('surrounding whitespace is trimmed, which is not fuzzy matching', () => {
+    // Phase-1 trims every frontmatter value, so `project: trading ` IS the slug
+    // `trading` — an exact match after normalisation, not a near-miss that the
+    // resolver decided to forgive.
+    const r = evalNote({ ...gates, scope: 'project', project: 'trading ' }, MAP)
+    expect(r.eligible).toBe(true)
+    expect(r.scope).toEqual({ kind: 'project', projectId: 'proj-trading-uuid' })
+  })
+
+  it('missing scope + mapped project → STILL ineligible via scope_missing', () => {
+    const r = evalNote({ ...gates, project: 'trading' }, MAP)
+    expect(r.eligible).toBe(false)
+    expect(r.reasons).toContain('scope_missing')
+    expect(r.reasons).not.toContain('project_scope_unmapped')
+    expect(r.scope).toBeNull()
+  })
+
+  it('unknown explicit scope + mapped project → STILL ineligible via scope_unrecognized', () => {
+    const r = evalNote({ ...gates, scope: 'bananas', project: 'trading' }, MAP)
     expect(r.eligible).toBe(false)
     expect(r.reasons).toContain('scope_unrecognized')
+    expect(r.reasons).not.toContain('project_scope_unmapped')
+  })
+
+  it('a resolved project scope always carries a projectId', () => {
+    const r = evalNote({ ...gates, scope: 'project', project: 'trading' }, MAP)
+    expect(r.scope?.kind).toBe('project')
+    if (r.scope?.kind === 'project') expect(typeof r.scope.projectId).toBe('string')
+  })
+})
+
+describe('operator guidance reflects a LOCKED policy', () => {
+  it('no longer implies anything is pending or provisional', () => {
+    const root = tempVault()
+    write(root, '10 Architecture/a.md', '---\ntype: architecture\nstatus: approved\n---\n\n# A\n\nx\n')
+    const text = renderProjectionReport(createKnowledgeProjectionSource({ vaultRoot: root }).listAll())
+    for (const stale of ['vocabulary lands in Slice 2', 'PENDING POLICY DECISIONS',
+      'Slice 2)', 'PROVISIONAL', 'provisional']) {
+      expect(text, `stale wording: ${stale}`).not.toContain(stale)
+    }
+    expect(text).toContain('Publication Policy v1 is LOCKED')
+    expect(text).toContain('explicit classification required by Publication Policy v1')
+  })
+
+  it('explains confidential as policy staging, not as an error', () => {
+    const root = tempVault()
+    write(root, '10 Architecture/c.md',
+      '---\ntype: architecture\nstatus: approved\nclassification: confidential\nscope: platform\n---\n\n# C\n\nx\n')
+    const text = renderProjectionReport(createKnowledgeProjectionSource({ vaultRoot: root }).listAll())
+    expect(text).toContain('confidential is recognized but remote-blocked')
   })
 })

@@ -60,11 +60,19 @@ function evidence(over: Partial<WorkflowEvidence> = {}): WorkflowEvidence {
   }
 }
 
+/**
+ * PR9g-1: gate targets bind DECLARED checks only. These fixtures declare the
+ * keys they use, so an undeclared row in a test is ignored exactly as it is in
+ * production.
+ */
+const DECLARED = ['audio_files_19_of_19', 'speech_rate_in_band', 'aaa', 'bbb', 'zzz']
+
 const base = (over: Partial<Parameters<typeof computeWorkflowGateTarget>[0]> = {}) => ({
   instance: INSTANCE,
   spec: SPEC,
   state: 'local_qa',
   evidence: [evidence()],
+  declaredCheckKeys: DECLARED,
   ...over,
 })
 
@@ -72,6 +80,22 @@ const hash = (input: Parameters<typeof computeWorkflowGateTarget>[0]) =>
   computeWorkflowGateTarget(input).versionHash
 
 // ── Shape ────────────────────────────────────────────────────────────────────
+
+describe('gate target — declared scope (PR9g-1)', () => {
+  it('an UNDECLARED evidence key does not move the hash', () => {
+    // workflow_evidence also carries scheduler bookkeeping
+    // (scheduler.wake_scheduled, scheduler.evaluation). Including it made a
+    // granted authorization go stale the moment the scheduler touched the
+    // instance — and the re-arm step writes one itself.
+    const withAudit = base({ evidence: [evidence(), evidence({ id: 'e-audit', check_key: 'scheduler.evaluation' })] })
+    expect(hash(withAudit)).toBe(hash(base()))
+  })
+
+  it('a DECLARED evidence key still moves the hash', () => {
+    const extra = base({ evidence: [evidence(), evidence({ id: 'e2', check_key: 'aaa' })] })
+    expect(hash(extra)).not.toBe(hash(base()))
+  })
+})
 
 describe('gate target — shape', () => {
   it('names the workflow_gate target type and an instance:state id', () => {

@@ -41,6 +41,7 @@
 
 import 'server-only'
 
+import { findAdapter } from './adapters/registry'
 import { createAuthorizationEventStore, type AuthorizationEventStore } from '@/lib/atlas/authorization/store'
 import { isEffectiveNow } from '@/lib/atlas/authorization/derive'
 import type { AuthorizationEvent } from '@/lib/atlas/authorization/types'
@@ -84,7 +85,14 @@ export async function systemDeriveWorkflowGate(
 
   const def = await readDefinitionById(db, instance.def_id)
   const evidence = await listEvidence(db, instance.id)
-  const gateInput = { instance, spec: def.spec, state: instance.current_state, evidence }
+  const adapter = findAdapter(instance.def_key)
+  const declaredCheckKeys = adapter
+    ? adapter.attestableChecks()
+        .filter(c => c.state === instance.current_state).map(c => c.check_key)
+    : []
+  const gateInput = {
+    instance, spec: def.spec, state: instance.current_state, evidence, declaredCheckKeys,
+  }
 
   const state = getState(def.spec, instance.current_state)
   if (!state || state.human_gate.required !== true) return deriveWorkflowGate(gateInput)

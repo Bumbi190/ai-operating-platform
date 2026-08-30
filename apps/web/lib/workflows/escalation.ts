@@ -108,6 +108,44 @@ export const FAILURE_SEVERITY: Record<WorkflowFailureClass, Severity> = {
  * the release gate is fail-open. This is a set of check keys rather than a
  * project-specific branch: the engine ranks what an adapter declares critical.
  */
+/**
+ * PR9d — severity for an action outcome. Reuses the Action Center vocabulary
+ * (`critical | high | normal`); no new severity words.
+ *
+ * Ambiguity on anything that touches the world is CRITICAL, because the operator
+ * question is not "did a check fail" but "is there a duplicate charge, a
+ * half-finished upload or a newsletter that may have gone out twice". An
+ * EXTERNAL_COMMUNICATION UNKNOWN is critical for exactly that reason: the risk is
+ * a second send to real customers.
+ *
+ * SUCCEEDED_EVIDENCE_PENDING is HIGH rather than critical — the side effect
+ * landed correctly and only our own audit trail is behind, so nothing in the
+ * world is wrong, but the workflow still must not proceed on unrecorded evidence.
+ */
+export function severityForActionOutcome(
+  actionClass: string, outcome: string,
+): Severity {
+  if (outcome === 'UNKNOWN' || outcome === 'PARTIAL') {
+    return actionClass === 'READ_ONLY' ? 'normal'
+      : actionClass === 'REVERSIBLE_WRITE' ? 'high'
+      : 'critical'
+  }
+  if (outcome === 'SUCCEEDED_EVIDENCE_PENDING') return 'high'
+  if (outcome === 'FAILED') return actionClass === 'READ_ONLY' ? 'normal' : 'high'
+  return 'normal'
+}
+
+/**
+ * The signal key for an action incident.
+ *
+ * Bound to the IDEMPOTENCY KEY, which is the action's identity — so repeated
+ * scheduler passes over the same frozen incident collapse onto one signal instead
+ * of paging every minute, while a genuinely different act gets its own.
+ */
+export function actionIncidentSignalKey(idempotencyKey: string, outcome: string): string {
+  return `workflow.action.${outcome.toLowerCase()}:${idempotencyKey.slice(0, 32)}`
+}
+
 export const CRITICAL_CHECK_KEYS: readonly string[] = [
   'anonymous_protected_access_denied',
   'release_gate_exists',

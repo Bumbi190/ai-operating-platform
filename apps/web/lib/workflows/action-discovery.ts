@@ -32,11 +32,17 @@ export interface DiscoveredAction {
 /**
  * Which declared check each executable action answers. Kept beside discovery so
  * "has this observation already been made" can be asked without running it.
+ *
+ * A Map, not an object literal, because `checkAnsweredBy` is now reached with a
+ * caller-supplied action kind. Object property lookup walks the prototype
+ * chain, so `ANSWERS_CHECK['toString']` on a plain object yields a Function
+ * rather than undefined — a value that is not null and would therefore survive
+ * a `?? null`. A Map has no such inherited keys.
  */
-const ANSWERS_CHECK: Record<string, string> = {
-  compute_release_instant: 'release_instant_computed',
-  probe_anonymous_protected_access: 'anonymous_protected_access_denied',
-}
+const ANSWERS_CHECK: ReadonlyMap<string, string> = new Map([
+  ['compute_release_instant', 'release_instant_computed'],
+  ['probe_anonymous_protected_access', 'anonymous_protected_access_denied'],
+])
 
 /**
  * Canonical executable READ_ONLY actions for one definition state.
@@ -55,14 +61,22 @@ export function discoverReadOnlyActions(defKey: string, state: string): Discover
     // "this class is safe" and "an executor for it actually exists".
     if (meta.executor_family !== 'read_only_observation') continue
     if (meta.action_class !== 'READ_ONLY') continue
-    const checkKey = ANSWERS_CHECK[kind]
+    const checkKey = ANSWERS_CHECK.get(kind)
     if (!checkKey) continue          // no declared check ⇒ nothing to satisfy
     found.push({ actionKind: kind as ActionKind, checkKey, actionClass: 'READ_ONLY' })
   }
   return found.sort((a, b) => a.actionKind.localeCompare(b.actionKind))
 }
 
-/** The check an action answers, for evidence lookups. */
+/**
+ * The check an action answers, for evidence lookups AND for the pre-run gate's
+ * self-answered exemption.
+ *
+ * This is the ONLY mapping from an action to the check it may be exempt from.
+ * It is keyed by action kind alone, so an action can never exempt a check that
+ * belongs to a different action, and an unmapped or unknown kind returns null —
+ * which equals no check_key and therefore exempts nothing.
+ */
 export function checkAnsweredBy(kind: string): string | null {
-  return ANSWERS_CHECK[kind] ?? null
+  return ANSWERS_CHECK.get(kind) ?? null
 }

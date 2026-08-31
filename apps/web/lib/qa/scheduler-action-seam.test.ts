@@ -205,7 +205,9 @@ describe('wake semantics', () => {
   })
 
   it('records what was scheduled in the tick outcome', () => {
-    expect(tick).toMatch(/scheduled_actions: scheduled\.map/)
+    // PR9h-2 raised this pin: `scheduled.map` alone was satisfied by the
+    // {kind, outcome} projection that made a production refusal unreadable.
+    expect(tick).toMatch(/scheduled_actions: scheduled\.map\(summarizeSchedulingDecision\)/)
   })
 })
 

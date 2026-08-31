@@ -29,6 +29,7 @@ import { readInstance, listEvidence, readDefinitionById } from './store'
 import { assertWorkflowAuthorizationValid } from './authorization'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
+import { checkAnsweredBy } from './action-discovery'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
@@ -76,7 +77,17 @@ export interface CreateWorkflowActionRunInput {
 
 export type CreateWorkflowActionRunResult =
   | { ok: true; runId: string; idempotencyKey: string; targetVersionHash: string; attemptGroup: string }
-  | { ok: false; refusal: ActionBindingRefusal; detail: string }
+  | {
+      ok: false
+      refusal: ActionBindingRefusal
+      detail: string
+      /**
+       * DECLARED check keys that blocked binding, for the scheduler's audit row.
+       * Populated only by the evidence gate, and drawn only from the adapter's
+       * own catalogue — never from a caller and never from an exception.
+       */
+      blockingCheckKeys?: readonly string[]
+    }
 
 function uuid(): string {
   return crypto.randomUUID()
@@ -166,7 +177,27 @@ export async function createWorkflowActionRun(
     }
   }
 
-  // 7) required evidence for the state must actually be satisfied
+  // 7) required evidence for the state must actually be satisfied — EXCEPT the
+  //    one observation this action exists to make.
+  //
+  //    An action may not be gated on its own output. Requiring
+  //    `anonymous_protected_access_denied` before creating the run that PRODUCES
+  //    it is a deadlock with no exit: no evidence ⇒ no run ⇒ no evidence. PR9h
+  //    hit exactly that in production.
+  //
+  //    The exemption is deliberately narrow, and narrow in a way a reader can
+  //    verify at a glance:
+  //      • it comes from `checkAnsweredBy`, the single canonical action→check
+  //        mapping, and from no string comparison invented here;
+  //      • it is keyed by action kind, so an action can only ever exempt ITS OWN
+  //        check — never another action's;
+  //      • an unmapped or unknown kind yields null, and null is not a check_key,
+  //        so it exempts nothing;
+  //      • it filters the BLOCKING list only. The verdict is untouched: the
+  //        check stays unsatisfied, no PASS is synthesized, and every gate that
+  //        reads evidence later — the tick, the transition, the release —
+  //        still sees it as missing until real evidence is recorded.
+  //    It buys permission to OBSERVE, and nothing else.
   if (adapter) {
     const declared = adapter.attestableChecks()
     // `required` is a property of the DECLARATION (PR6), not of the verdict —
@@ -176,11 +207,14 @@ export async function createWorkflowActionRun(
       declared.filter(c => c.state === instance.current_state && c.required).map(c => c.check_key))
     const summary = summarizeStateEvidence(
       declared, instance.current_state, evidence, () => target.versionHash)
+    const selfAnswered = checkAnsweredBy(input.actionKind)
     const unmet = summary.verdicts.filter(v => requiredKeys.has(v.check_key) && !v.satisfies)
-    if (unmet.length > 0) {
+    const blocking = unmet.filter(v => v.check_key !== selfAnswered)
+    if (blocking.length > 0) {
+      const blockingCheckKeys = blocking.map(v => v.check_key).sort()
       return {
-        ok: false, refusal: 'evidence_not_satisfied',
-        detail: `${unmet.length} required check(s) not satisfied: ${unmet.map(u => u.check_key).join(', ')}`,
+        ok: false, refusal: 'evidence_not_satisfied', blockingCheckKeys,
+        detail: `${blockingCheckKeys.length} required check(s) not satisfied: ${blockingCheckKeys.join(', ')}`,
       }
     }
   }

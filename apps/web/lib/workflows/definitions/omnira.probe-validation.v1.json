@@ -1,0 +1,88 @@
+{
+  "ID": "omnira.probe-validation",
+  "version": 1,
+  "status": "active",
+  "purpose": "Validate Omnira's external READ_ONLY observation capability end to end through the real scheduler, run, executor and evidence path. This is a capability test, not a release process.",
+  "source_of_truth": "This file. Authored in the Omnira repository; it describes Omnira's own validation procedure and is not derived from any product workflow.",
+  "derived_from": [],
+  "canonical": {
+    "scope": "Capability validation only. This definition must never gain a human gate, a write action, a spend action or an external communication.",
+    "not_a_release": "It performs no release, touches no customer-facing system and produces no artefact."
+  },
+  "hard_gates": [
+    {
+      "id": "read_only_forever",
+      "rule": "Only READ_ONLY observations may ever be declared here. A write-capable action in this definition would give a gate-free workflow the ability to change the world.",
+      "enforced_at": [
+        "probe"
+      ]
+    }
+  ],
+  "retry_policies": {
+    "none": {
+      "max_attempts": 1
+    },
+    "transient": {
+      "max_attempts": 3,
+      "backoff": "exponential",
+      "initial_delay_s": 5
+    },
+    "network": {
+      "max_attempts": 5,
+      "backoff": "exponential",
+      "initial_delay_s": 10
+    },
+    "never_auto": {
+      "max_attempts": 1,
+      "note": "Requires a human decision before any retry."
+    }
+  },
+  "states": [
+    {
+      "id": "probe",
+      "description": "Observe that unauthenticated callers are refused by every protected Familje-Stunden endpoint.",
+      "prerequisites": [],
+      "inputs": [],
+      "outputs": [
+        "anonymous_access_observation"
+      ],
+      "automated_actions": [
+        "Probe both protected Edge Functions unauthenticated and record the exact statuses."
+      ],
+      "verification": [],
+      "human_gate": {
+        "required": false
+      },
+      "retry_policy": "network",
+      "next_state": "complete",
+      "failure_transition": "complete",
+      "notes": "No human gate by design: a READ_ONLY observation requires no authorization, and this definition may never carry anything that does."
+    },
+    {
+      "id": "complete",
+      "description": "The observation has been recorded.",
+      "prerequisites": [
+        "probe"
+      ],
+      "inputs": [],
+      "outputs": [],
+      "automated_actions": [],
+      "verification": [],
+      "human_gate": {
+        "required": false
+      },
+      "retry_policy": "none",
+      "next_state": null,
+      "failure_transition": null,
+      "notes": "Terminal."
+    }
+  ],
+  "escalation": [
+    {
+      "condition": "anonymous_access_allowed",
+      "detail": "A protected Familje-Stunden endpoint answered 2xx to an unauthenticated caller.",
+      "severity": "critical",
+      "reason": "This is a security finding, not a failed test — protected material would be publicly reachable."
+    }
+  ]
+}

@@ -35,6 +35,7 @@ export interface DiscoveredAction {
  */
 const ANSWERS_CHECK: Record<string, string> = {
   compute_release_instant: 'release_instant_computed',
+  probe_anonymous_protected_access: 'anonymous_protected_access_denied',
 }
 
 /**
@@ -47,8 +48,9 @@ const ANSWERS_CHECK: Record<string, string> = {
 export function discoverReadOnlyActions(defKey: string, state: string): DiscoveredAction[] {
   const found: DiscoveredAction[] = []
   for (const [kind, meta] of Object.entries(ACTION_REGISTRY)) {
-    if (meta.def_key !== defKey) continue
-    if (meta.state !== state) continue
+    // EXACT (def_key, state) against any declared placement. A kind declared in
+    // two workflows is discovered in each, and in neither by accident.
+    if (!meta.placements.some(pl => pl.def_key === defKey && pl.state === state)) continue
     // Both filters. Neither is redundant: they guard different mistakes —
     // "this class is safe" and "an executor for it actually exists".
     if (meta.executor_family !== 'read_only_observation') continue

@@ -44,7 +44,8 @@ describe('discovery reads canonical data only', () => {
 
   it('MUTATION — a MATERIAL kind is never discovered, even in its own state', () => {
     // upload_protected_artifacts IS registered for protected_upload.
-    expect(ACTION_REGISTRY.upload_protected_artifacts.state).toBe('protected_upload')
+    expect(ACTION_REGISTRY.upload_protected_artifacts.placements)
+      .toEqual([{ def_key: 'familje-stunden.monthly-release', state: 'protected_upload' }])
     expect(discoverReadOnlyActions(FS, 'protected_upload')).toEqual([])
   })
 

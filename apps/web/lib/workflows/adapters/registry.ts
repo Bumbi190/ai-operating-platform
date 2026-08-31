@@ -8,8 +8,9 @@
 
 import type { WorkflowAdapter } from './types'
 import { familjeStundenAdapter } from './familje-stunden'
+import { probeValidationAdapter } from './probe-validation'
 
-const ADAPTERS: WorkflowAdapter[] = [familjeStundenAdapter]
+const ADAPTERS: WorkflowAdapter[] = [familjeStundenAdapter, probeValidationAdapter]
 
 export function findAdapter(defKey: string): WorkflowAdapter | null {
   return ADAPTERS.find(a => a.defKey === defKey) ?? null

@@ -325,7 +325,10 @@ describe('adapter registration', () => {
   it('is reached through the definition, not by name', () => {
     expect(findAdapter(FAMILJE_STUNDEN_MONTHLY_RELEASE)).toBe(familjeStundenAdapter)
     expect(findAdapter('some.other.workflow')).toBeNull()
-    expect(registeredAdapters()).toHaveLength(1)
+    // PR9h registered a second adapter for Omnira's validation workflow. The
+    // property is that each is reached ONLY through its own def_key.
+    expect(registeredAdapters().map(a => a.defKey).sort())
+      .toEqual(['familje-stunden.monthly-release', 'omnira.probe-validation'])
   })
 
   it('exposes no execute, write or upload capability', () => {

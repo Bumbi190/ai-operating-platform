@@ -30,6 +30,7 @@ import {
 } from './action-registry'
 import { assertWorkflowActionReady } from './action-run'
 import { computeReleaseInstantHandler } from './handlers/compute-release-instant'
+import { probeAnonymousProtectedAccessHandler } from './handlers/probe-anonymous-protected-access'
 import type { ReadOnlyHandler, ReadOnlyHandlerOutput } from './handlers/types'
 import { outcomeForObservation, type ActionOutcome, type ActionPhase } from './action-outcome'
 import { readInstance, readDefinitionById, recordEvidence } from './store'
@@ -44,6 +45,7 @@ type AnyDb = any
  */
 const HANDLERS: Record<ExecutableReadOnlyActionKind, ReadOnlyHandler> = {
   compute_release_instant: computeReleaseInstantHandler,
+  probe_anonymous_protected_access: probeAnonymousProtectedAccessHandler,
 }
 
 export type ExecutorRefusal =

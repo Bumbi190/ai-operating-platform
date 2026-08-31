@@ -57,37 +57,70 @@ describe('lock ordering is unambiguous', () => {
   })
 })
 
-describe('replay verdicts are terminal-aware', () => {
-  it.each([
-    ['open',     'replay_open',     'true'],
-    ['settled',  'replay_settled',  'false'],
-    ['released', 'replay_released', 'false'],
-  ])('a %s reservation replays as %s (allowed=%s)', (status, reason, allowed) => {
-    const branch = sqlCode.slice(
-      sqlCode.indexOf(`v_existing.status = '${status}'`) >= 0
-        ? sqlCode.indexOf(`v_existing.status = '${status}'`)
-        : sqlCode.indexOf('else'),
-      sqlCode.indexOf(`'${reason}'`) + reason.length + 8,
-    )
-    expect(branch).toContain(reason)
-    expect(branch).toContain(allowed)
+describe('replay verdicts are terminal-aware and dispatch-aware', () => {
+  it('a fresh open reservation is REFUSED, not handed to a second caller', () => {
+    // One reservation holds a fixed amount of headroom; authorising two
+    // dispatches against it is an under-reservation and a ceiling bypass.
+    expect(sqlCode).toMatch(/'replay_in_flight'/)
+    const inFlight = sqlCode.slice(sqlCode.indexOf("'replay_in_flight'") - 200,
+                                   sqlCode.indexOf("'replay_in_flight'"))
+    expect(inFlight).toMatch(/return query select false/)
   })
 
-  it('the ONLY replay reason that can be allowed is replay_open', () => {
-    // Two sites return it — a fresh reservation, and a stale one that was
-    // re-decided against current budget and refreshed. Both are the same
-    // verdict; no OTHER replay reason may ever be allowed.
-    const allowedReplays = new Set(
+  it.each([
+    ['settled',  'replay_settled'],
+    ['released', 'replay_released'],
+  ])('a %s reservation replays as %s and is refused', (status, reason) => {
+    expect(sqlCode).toMatch(new RegExp(`'${reason}'`))
+    const at = sqlCode.indexOf(`'${reason}'`)
+    expect(sqlCode.slice(at - 200, at)).toMatch(/return query select false/)
+  })
+
+  it('the ONLY replay reason that can be allowed is replay_open, and only after a stale re-decision', () => {
+    const allowed = new Set(
       [...sqlCode.matchAll(/return query select (true|false), v_existing\.id, '(replay_\w+)'/g)]
         .filter(m => m[1] === 'true').map(m => m[2]))
-    expect([...allowedReplays]).toEqual(['replay_open'])
+    expect([...allowed]).toEqual(['replay_open'])
+    // and it sits inside the stale branch, which re-decides against current budget
+    const at = sqlCode.indexOf("'replay_open'")
+    expect(sqlCode.slice(at - 700, at)).toMatch(/p_estimated_sek <= v_rem/)
   })
 
-  it('a stale open reservation is re-decided, never replayed blind', () => {
-    // The bypass this closes: a stale row no longer holds headroom, so returning
-    // `allowed` would spend against a budget check older than p_stale_minutes.
-    expect(sqlCode).toMatch(/v_existing\.created_at > now\(\) - make_interval\(mins => p_stale_minutes\)/)
-    expect(sqlCode).toMatch(/v_existing\.estimated_sek <= v_rem/)
+  it('identity is bound BEFORE the state branch', () => {
+    const identity = sqlCode.indexOf('replay_identity_mismatch')
+    const stateBranch = sqlCode.indexOf("v_existing.status = 'open'")
+    expect(identity).toBeGreaterThan(-1)
+    expect(identity).toBeLessThan(stateBranch)
+  })
+
+  it.each([
+    ['project',   /v_existing\.project_id\s+is distinct from p_project_id/],
+    ['provider',  /v_existing\.provider\s+is distinct from p_provider/],
+    ['operation', /v_existing\.operation\s+is distinct from p_operation/],
+    ['estimate',  /p_estimated_sek > v_existing\.estimated_sek/],
+  ])('a mismatched %s is refused', (_label, re) => {
+    expect(sqlCode).toMatch(re)
+  })
+
+  it('the stale re-decision uses the REQUESTED estimate, not the stored one', () => {
+    // Using the stored amount would let a cheap old reservation clear the way
+    // for a dearer new request.
+    expect(sqlCode).toMatch(/if p_estimated_sek <= v_rem then/)
+    expect(sqlCode).not.toMatch(/if v_existing\.estimated_sek <= v_rem then/)
+  })
+})
+
+describe('gross-spend ceiling (negative cost cannot mint headroom)', () => {
+  it('enforcement sums only non-negative spend', () => {
+    expect(sqlCode).toMatch(/sum\(greatest\(c\.cost_sek, 0\)\)/)
+  })
+
+  it('and the ledger constraint stops the row being written at all', () => {
+    expect(sqlCode).toMatch(/add constraint cost_events_cost_nonneg\s+check \(cost_sek >= 0 and cost_usd >= 0\)/)
+  })
+
+  it('both directions are covered — clamp above, gross below', () => {
+    expect(sqlCode).toMatch(/least\(s\.lim, s\.lim - x\.spent - x\.held\)/)
   })
 })
 
@@ -153,11 +186,6 @@ describe('windows are deterministic and canonical', () => {
     // `(l_day at time zone z) + interval '1 day'` would be a fixed 24 hours.
     expect(sqlCode).toMatch(/\(l_day\s*\+\s*interval '1 day'\)\s*at time zone z/)
     expect(sqlCode).not.toMatch(/at time zone z\s*\+\s*interval/)
-  })
-
-  it('remaining is clamped to the limit, so a refund cannot raise the ceiling', () => {
-    expect(sqlCode).toMatch(/least\(s\.lim, s\.lim - x\.spent - x\.held\)/)
-    expect(sqlCode).not.toMatch(/select s\.scope, s\.lim, x\.spent, x\.held, s\.lim - x\.spent - x\.held\b/)
   })
 
   it('MUTATION — an unbounded window would be rejected', () => {

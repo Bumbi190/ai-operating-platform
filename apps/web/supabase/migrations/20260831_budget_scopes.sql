@@ -134,6 +134,28 @@ update public.project_budgets b
        weekly_sek = coalesce(b.weekly_sek, 400.0000)
   from public.projects p
  where p.id = b.project_id and p.slug = 'ai-media-automation';
+-- 3b) COST IS NON-NEGATIVE — the ledger invariant the ceiling rests on.
+--
+--  A ceiling bounds GROSS positive provider spend. That reading is only durable
+--  if the ledger cannot carry a negative row: with a NET ceiling, one erroneous
+--  -500 beside +90 of real spend authorises another +100 against a 100 limit and
+--  bills 190. `budget_scope_state` already clamps with `greatest(cost_sek, 0)`,
+--  and this constraint stops the row being written in the first place.
+--
+--  SAFE TO ADD, verified against production before writing it: 1150 rows, zero
+--  negative `cost_sek`, zero negative `cost_usd`, zero zero-cost rows, minimum
+--  0.0017 SEK, and only three providers — all forward spend. No refund or
+--  correction path exists anywhere in the codebase: every writer in
+--  `lib/cost/track.ts` computes units x price from non-negative inputs.
+--
+--  If a genuine refund path is ever wanted it must be a DELIBERATE act — its own
+--  column or table with its own provenance — not a sign flip in the spend ledger
+--  that silently raises a governance ceiling.
+alter table public.cost_events
+  drop constraint if exists cost_events_cost_nonneg;
+alter table public.cost_events
+  add constraint cost_events_cost_nonneg check (cost_sek >= 0 and cost_usd >= 0);
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4) THE ONE DEFINITION OF HEADROOM (audit F-204).
 --
@@ -220,7 +242,15 @@ create or replace function public.budget_scope_state(
   from scopes s, win
   cross join lateral (
     select
-      coalesce((select sum(c.cost_sek) from public.cost_events c
+      -- `greatest(cost_sek, 0)` is the GROSS-SPEND policy, in force even if the
+      -- constraint below were ever dropped: a negative row may never RELEASE
+      -- governance headroom. Verified against production before choosing it —
+      -- 1150 rows, zero negative, zero zero-cost, and no refund or correction
+      -- path exists. A ceiling therefore bounds gross positive provider spend,
+      -- which is the fail-closed reading: with a net ceiling, one erroneous
+      -- -500 row beside +90 of real spend would authorise another +100 against
+      -- a 100 limit and bill 190.
+      coalesce((select sum(greatest(c.cost_sek, 0)) from public.cost_events c
                  where c.created_at >= s.since and c.created_at < s.until
                    and (s.all_projects or c.project_id = p_project_id)), 0) as spent,
       coalesce((select sum(r.estimated_sek) from public.spend_reservations r
@@ -243,11 +273,16 @@ grant execute on function public.budget_scope_state(uuid, int) to service_role;
 --  Resolved AFTER both locks are held, so two callers cannot race the same key.
 --
 --    key absent           → normal path: evaluate every configured scope
---    reservation OPEN, fresh   → ALLOWED, same id, reason 'replay_open'
---                           It still holds the headroom it was granted, so
---                           re-checking would count it against itself. This is
---                           the retry the key exists for: one logical spend,
---                           one reservation.
+--    identity mismatch         → REFUSED, 'replay_identity_mismatch'
+--                           Different project, provider, operation, or a LARGER
+--                           estimate than the reservation holds. Checked before
+--                           the state branch, so a mismatch cannot learn the
+--                           state either.
+--    reservation OPEN, fresh   → REFUSED, 'replay_in_flight'
+--                           One reservation authorises ONE live dispatch. It
+--                           holds a fixed amount of headroom; handing it to a
+--                           second concurrent caller would authorise two
+--                           provider calls against one reservation.
 --    reservation OPEN, STALE   → re-decided against TODAY's ceilings.
 --                           A stale reservation stopped counting toward headroom
 --                           when it aged out, so replaying it as allowed would
@@ -328,10 +363,41 @@ begin
     select * into v_existing
       from public.spend_reservations where idempotency_key = p_idempotency_key;
     if found then
+      -- ── IDENTITY BINDING ──────────────────────────────────────────────────
+      -- A key names ONE spend. Matching the key alone would let a caller mint a
+      -- cheap reservation and then present the same key for a different project,
+      -- a different provider, a different operation or a LARGER estimate, and
+      -- have the old, smaller reservation authorise it. Every field the verdict
+      -- depends on is therefore compared, BEFORE the state branch, so a
+      -- mismatch cannot even learn which state the reservation is in.
+      --
+      -- Estimate rule: the held amount must COVER the request. A smaller request
+      -- against a larger reservation is safe (it over-reserves) and allowed; a
+      -- larger request is refused rather than silently under-reserved. Growing a
+      -- reservation would need a full re-evaluation of all six scopes under the
+      -- locks, which is a new spend — so it is expressed as one: mint a new key.
+      if v_existing.project_id      is distinct from p_project_id
+         or v_existing.provider     is distinct from p_provider
+         or v_existing.operation    is distinct from p_operation
+         or p_estimated_sek > v_existing.estimated_sek then
+        return query select false, v_existing.id, 'replay_identity_mismatch'::text,
+                            null::numeric, null::numeric, null::numeric, null::numeric, null::text;
+        return;
+      end if;
+
       if v_existing.status = 'open'
          and v_existing.created_at > now() - make_interval(mins => p_stale_minutes) then
-        -- Live and still holding its own headroom. The retry the key exists for.
-        return query select true, v_existing.id, 'replay_open'::text,
+        -- ── ONE RESERVATION AUTHORISES ONE LIVE DISPATCH ────────────────────
+        -- REFUSED, not allowed. A reservation of 30 SEK holds 30 SEK of
+        -- headroom; handing it to a second concurrent caller would authorise
+        -- two 30 SEK provider calls against it, which is an under-reservation
+        -- and a ceiling bypass. Budget idempotency is not provider-dispatch
+        -- idempotency, and this function can only promise the first.
+        --
+        -- A caller that legitimately needs to try again waits for the visibility
+        -- timeout below, or mints a new key — which is a new spend, honestly
+        -- accounted.
+        return query select false, v_existing.id, 'replay_in_flight'::text,
                             null::numeric, null::numeric, null::numeric, null::numeric, null::text;
       elsif v_existing.status = 'open' then
         -- STALE-OPEN. It stopped counting toward headroom when it aged out, so
@@ -345,7 +411,11 @@ begin
           from public.budget_scope_state(v_existing.project_id, p_stale_minutes) s
          order by s.remaining_sek asc limit 1;
 
-        if v_existing.estimated_sek <= v_rem then
+        -- Decided on the REQUESTED amount. Using the stored one would let a
+        -- cheaper old reservation clear the way for a dearer new request.
+        -- (Identity binding above already guarantees requested <= stored, so
+        -- this is the tighter of the two and the reservation still covers it.)
+        if p_estimated_sek <= v_rem then
           update public.spend_reservations
              set created_at = now()               -- holds headroom again from now
            where id = v_existing.id;

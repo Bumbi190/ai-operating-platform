@@ -57,6 +57,10 @@ export type SpendRefusal =
   | 'no_global_budget_configured'
   | 'budget_exceeded'
   | 'invalid_estimate'
+  /** G2 replay: another dispatch may be live on this reservation. */
+  | 'replay_in_flight'
+  /** G2 replay: the key names a different project/provider/operation/estimate. */
+  | 'replay_identity_mismatch'
   /** G2 replay: the spend already completed. A repeat is a NEW spend. */
   | 'replay_settled'
   /** G2 replay: previously refused or never dispatched. The key is spent. */
@@ -79,7 +83,11 @@ export interface SpendVerdict {
   wouldAllow: boolean
   /** True when a refusal was overridden because enforcement is off. */
   advisoryOverride: boolean
-  /** `replay_open` is an ALLOWED replay: the same reservation still holds. */
+  /**
+   * `replay_open` is the ONE allowed replay, and only for a reservation that had
+   * gone stale and was re-decided against current ceilings. A fresh open
+   * reservation replays as `replay_in_flight` — one reservation, one dispatch.
+   */
   reason: 'ok' | 'replay_open' | SpendRefusal
   reservationId: string | null
   budgetSek: number | null

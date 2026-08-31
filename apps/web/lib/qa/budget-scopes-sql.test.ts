@@ -93,7 +93,9 @@ insert into public.platform_config (id) values (1);
 create table public.cost_events (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references public.projects(id) on delete cascade,
-  provider text, cost_sek numeric(12,4) not null default 0,
+  provider text,
+  cost_sek numeric(12,4) not null default 0,
+  cost_usd numeric(12,6) not null default 0,
   created_at timestamptz not null default now());
 create table public.spend_reservations (
   id uuid primary key default gen_random_uuid(),
@@ -118,11 +120,12 @@ const G2_SQL = () =>
   readFileSync(join(process.cwd(), 'supabase/migrations/20260831_budget_scopes.sql'), 'utf8')
 
 /** One reservation attempt. Returns [allowed, reason, bindingScope]. */
-function reserve(project: string, est: string, key?: string): [string, string, string] {
+function reserve(project: string, est: string, key?: string,
+                 provider = 'testprov', operation = 'testop'): [string, string, string] {
   const k = key ? `'${key}'` : 'null'
   const r = query(dsn,
     `select allowed::text, reason, coalesce(binding_scope,'-')
-       from budget_reserve('${project}'::uuid, ${est}::numeric, ${k})`)[0]
+       from budget_reserve('${project}'::uuid, ${est}::numeric, ${k}, '${provider}', '${operation}')`)[0]
   return [r[0], r[1], r[2]]
 }
 
@@ -271,48 +274,68 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
   // ── F-106 ──────────────────────────────────────────────────────────────────
 
   describe('replay state machine (audit F-106)', () => {
-    it('a replay while OPEN returns the SAME reservation and holds budget once', () => {
+    it('ONE RESERVATION, ONE LIVE DISPATCH — a fresh open replay is REFUSED', () => {
+      // A reservation holds a fixed amount of headroom. Handing it to a second
+      // caller would authorise two provider calls against it: an under-
+      // reservation and a ceiling bypass. Budget idempotency is not
+      // provider-dispatch idempotency.
       reset()
-      const [a1, r1] = reserve(projectId('alpha'), '30', 'k-open')
-      expect([a1, r1]).toEqual(['true', 'ok'])
-      const [a2, r2] = reserve(projectId('alpha'), '30', 'k-open')
-      expect([a2, r2]).toEqual(['true', 'replay_open'])
+      expect(reserve(projectId('alpha'), '30', 'k-open').slice(0, 2)).toEqual(['true', 'ok'])
+      expect(reserve(projectId('alpha'), '30', 'k-open').slice(0, 2)).toEqual(['false', 'replay_in_flight'])
+      // still exactly one reservation, holding exactly once
       expect(query(dsn, `select count(*), coalesce(sum(estimated_sek),0)::text
                            from spend_reservations where idempotency_key='k-open'`)[0])
         .toEqual(['1', '30.0000'])
     })
 
-    it('THE BYPASS: a replay after SETTLED is REFUSED, not silently re-allowed', () => {
+    it('TWO CONCURRENT callers on one key: at most ONE is authorised', () => {
       reset()
-      expect(reserve(projectId('alpha'), '30', 'k-settled')[0]).toBe('true')
-      run(dsn, ['-c', `select budget_settle((select id from spend_reservations
-                        where idempotency_key='k-settled'), 30::numeric)`])
-      // Before G2 this returned allowed=true (status <> 'released') with no
-      // budget check at all — the second spend was never counted anywhere.
-      expect(reserve(projectId('alpha'), '30', 'k-settled').slice(0, 2))
-        .toEqual(['false', 'replay_settled'])
-      expect(query(dsn, `select count(*) from spend_reservations
-                           where idempotency_key='k-settled'`)[0][0]).toBe('1')
+      // Sequential here proves the verdict; the overlapping-transaction proof is
+      // in the concurrency suite below.
+      const a = reserve(projectId('alpha'), '30', 'k-conc')
+      const b = reserve(projectId('alpha'), '30', 'k-conc')
+      expect([a[0], b[0]].filter(v => v === 'true')).toHaveLength(1)
     })
 
-    it('a replay after RELEASED is refused — the key is spent', () => {
+    // ── Identity binding ─────────────────────────────────────────────────────
+
+    it('same key + DIFFERENT project is refused', () => {
       reset()
-      expect(reserve(projectId('alpha'), '5', 'k-rel')[0]).toBe('true')
-      run(dsn, ['-c', `select budget_release((select id from spend_reservations
-                        where idempotency_key='k-rel'))`])
-      expect(reserve(projectId('alpha'), '5', 'k-rel').slice(0, 2))
-        .toEqual(['false', 'replay_released'])
+      expect(reserve(projectId('alpha'), '10', 'k-id')[0]).toBe('true')
+      expect(reserve(projectId('beta'), '10', 'k-id').slice(0, 2))
+        .toEqual(['false', 'replay_identity_mismatch'])
     })
 
-    it('a settled key cannot resurrect once headroom has since shrunk', () => {
+    it('same key + DIFFERENT provider is refused', () => {
       reset()
-      expect(reserve(projectId('alpha'), '10', 'k-shrink')[0]).toBe('true')
-      run(dsn, ['-c', `select budget_settle((select id from spend_reservations
-                        where idempotency_key='k-shrink'), 10::numeric)`])
-      run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
-                        select id, 99 from projects where slug='alpha'`])
-      expect(reserve(projectId('alpha'), '10', 'k-shrink').slice(0, 2))
-        .toEqual(['false', 'replay_settled'])
+      expect(reserve(projectId('alpha'), '10', 'k-prov', 'elevenlabs', 'op')[0]).toBe('true')
+      expect(reserve(projectId('alpha'), '10', 'k-prov', 'ideogram', 'op').slice(0, 2))
+        .toEqual(['false', 'replay_identity_mismatch'])
+    })
+
+    it('same key + DIFFERENT operation is refused', () => {
+      reset()
+      expect(reserve(projectId('alpha'), '10', 'k-op', 'p', 'generateVoiceover')[0]).toBe('true')
+      expect(reserve(projectId('alpha'), '10', 'k-op', 'p', 'generateSoundEffect').slice(0, 2))
+        .toEqual(['false', 'replay_identity_mismatch'])
+    })
+
+    it('same key + LARGER estimate is refused — never under-reserved', () => {
+      // The bypass: mint a cheap reservation, then present the same key for a
+      // dearer operation and have the small reservation authorise it.
+      reset()
+      expect(reserve(projectId('alpha'), '5', 'k-grow')[0]).toBe('true')
+      expect(reserve(projectId('alpha'), '50', 'k-grow').slice(0, 2))
+        .toEqual(['false', 'replay_identity_mismatch'])
+    })
+
+    it('same key + SMALLER estimate is deterministic: refused as in_flight, never allowed', () => {
+      // Identity permits it (the reservation covers the request), so the verdict
+      // is decided by the dispatch rule — which refuses a live reservation.
+      reset()
+      expect(reserve(projectId('alpha'), '50', 'k-shrink-est')[0]).toBe('true')
+      expect(reserve(projectId('alpha'), '5', 'k-shrink-est').slice(0, 2))
+        .toEqual(['false', 'replay_in_flight'])
     })
 
     it('a STALE open reservation is re-decided against TODAY\'s budget, not waved through', () => {
@@ -324,6 +347,8 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
                         (project_id, estimated_sek, created_at, status, idempotency_key)
                         select id, 10, now() - interval '90 minutes', 'open', 'k-stale'
                         from projects where slug='alpha'`])
+      run(dsn, ['-c', `update spend_reservations set provider='testprov', operation='testop'
+                        where idempotency_key='k-stale'`])
       // budget is free → refreshed and allowed, still ONE reservation
       expect(reserve(projectId('alpha'), '10', 'k-stale').slice(0, 2)).toEqual(['true', 'replay_open'])
       expect(query(dsn, `select count(*) from spend_reservations
@@ -333,12 +358,27 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
                                   where scope='project_daily'`)[0][0])).toBe(10)
     })
 
+    it('a STALE replay with a LARGER estimate cannot under-reserve', () => {
+      reset()
+      run(dsn, ['-c', `insert into spend_reservations
+                        (project_id, estimated_sek, created_at, status, idempotency_key,
+                         provider, operation)
+                        select id, 5, now() - interval '90 minutes', 'open', 'k-stale-big',
+                               'testprov', 'testop'
+                        from projects where slug='alpha'`])
+      // The stale reservation holds 5; the new request wants 50.
+      expect(reserve(projectId('alpha'), '50', 'k-stale-big').slice(0, 2))
+        .toEqual(['false', 'replay_identity_mismatch'])
+    })
+
     it('a STALE open reservation is REFUSED when the budget has since gone', () => {
       reset()
       run(dsn, ['-c', `insert into spend_reservations
                         (project_id, estimated_sek, created_at, status, idempotency_key)
                         select id, 10, now() - interval '90 minutes', 'open', 'k-stale2'
                         from projects where slug='alpha'`])
+      run(dsn, ['-c', `update spend_reservations set provider='testprov', operation='testop'
+                        where idempotency_key='k-stale2'`])
       run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
                         select id, 99 from projects where slug='alpha'`])
       const [allowed, reason, scope] = reserve(projectId('alpha'), '10', 'k-stale2')
@@ -402,17 +442,53 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
       expect(Number(monthly)).toBe(0)
     })
 
-    it('a negative cost event cannot mint headroom ABOVE the ceiling', () => {
-      // Nothing constrains cost_sek to be non-negative. A refund or a sign bug
-      // would otherwise make `spent` negative and raise the ceiling.
+    it('the ledger REFUSES a negative cost row outright (layer 1)', () => {
       reset()
-      run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
-                        select id, -500 from projects where slug='alpha'`])
-      const remaining = query(dsn, `select remaining_sek from budget_scope_state('${projectId('alpha')}'::uuid)
-                                     where scope='project_daily'`)[0][0]
-      expect(Number(remaining)).toBe(100)                    // the limit, not 600
-      expect(reserve(projectId('alpha'), '200').slice(0, 2)).toEqual(['false', 'budget_exceeded'])
-      expect(reserve(projectId('alpha'), '100')[0]).toBe('true')
+      expect(() => run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
+                                     select id, -500 from projects where slug='alpha'`]))
+        .toThrow(/cost_events_cost_nonneg/)
+    })
+
+    it('and even without the constraint, a refund cannot mint headroom (layer 2)', () => {
+      // Defence in depth: `greatest(cost_sek, 0)` holds the GROSS-spend policy
+      // even if the constraint were ever dropped or bypassed by a superuser.
+      reset()
+      run(dsn, ['-c', 'alter table cost_events drop constraint cost_events_cost_nonneg'])
+      try {
+        run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
+                          select id, -500 from projects where slug='alpha'`])
+        const remaining = query(dsn, `select remaining_sek from budget_scope_state('${projectId('alpha')}'::uuid)
+                                       where scope='project_daily'`)[0][0]
+        expect(Number(remaining)).toBe(100)                  // the limit, not 600
+        expect(reserve(projectId('alpha'), '200').slice(0, 2)).toEqual(['false', 'budget_exceeded'])
+      } finally {
+        reset()
+        run(dsn, ['-c', `alter table cost_events add constraint cost_events_cost_nonneg
+                          check (cost_sek >= 0 and cost_usd >= 0)`])
+      }
+    })
+
+    it('THE REVIEW SCENARIO: +90 real spend, -500 refund, ceiling 100 → +100 REFUSED', () => {
+      // Under a NET ceiling this would compute 100 - (90-500) = 510 remaining and
+      // authorise another 100, billing 190 gross against a 100 limit.
+      reset()
+      run(dsn, ['-c', 'alter table cost_events drop constraint cost_events_cost_nonneg'])
+      try {
+        run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
+                          select id, 90 from projects where slug='alpha'`])
+        run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
+                          select id, -500 from projects where slug='alpha'`])
+        const st = query(dsn, `select spent_sek, remaining_sek from budget_scope_state('${projectId('alpha')}'::uuid)
+                                where scope='project_daily'`)[0]
+        expect(Number(st[0])).toBe(90)                       // gross, not net -410
+        expect(Number(st[1])).toBe(10)
+        expect(reserve(projectId('alpha'), '100').slice(0, 2)).toEqual(['false', 'budget_exceeded'])
+        expect(reserve(projectId('alpha'), '10')[0]).toBe('true')
+      } finally {
+        reset()
+        run(dsn, ['-c', `alter table cost_events add constraint cost_events_cost_nonneg
+                          check (cost_sek >= 0 and cost_usd >= 0)`])
+      }
     })
 
     it('a stale open reservation stops holding headroom', () => {
@@ -473,13 +549,15 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 concurrency (real overlapping t
   })
 
   /** Run one reservation inside a transaction that holds its locks for `holdMs`. */
-  function concurrentReserve(project: string, est: number, holdMs: number): Promise<string> {
+  function concurrentReserve(project: string, est: number, holdMs: number, key?: string): Promise<string> {
+    const k = key ? `'${key}'` : 'null'
+    const call = `budget_reserve('${project}'::uuid, ${est}::numeric, ${k}, 'prov', 'op')`
     const sql = holdMs > 0
       ? `begin; select allowed::text || '|' || reason || '|' || coalesce(binding_scope,'-')
-           from budget_reserve('${project}'::uuid, ${est}::numeric);
+           from ${call};
          select pg_sleep(${holdMs / 1000}); commit;`
       : `begin; select allowed::text || '|' || reason || '|' || coalesce(binding_scope,'-')
-           from budget_reserve('${project}'::uuid, ${est}::numeric); commit;`
+           from ${call}; commit;`
     return new Promise((resolve, reject) => {
       const p = spawn(PSQL!, ['-v', 'ON_ERROR_STOP=1', '-X', '-q', '-t', '-A', '-d', cdsn, '-c', sql],
         { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -511,6 +589,27 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 concurrency (real overlapping t
     const held = query(cdsn, `select coalesce(sum(estimated_sek),0)::text
                                 from spend_reservations where status='open'`)[0][0]
     expect(Number(held)).toBe(60)
+  }, 60_000)
+
+  it('ONE KEY, two overlapping callers: at most ONE dispatch is authorised', async () => {
+    // The blocker this closes: a 30 SEK reservation must never authorise two
+    // concurrent 30 SEK provider calls while only 30 SEK of headroom is held.
+    run(cdsn, ['-c', 'delete from spend_reservations; delete from cost_events;'])
+    const p1 = query(cdsn, `select id from projects where slug='p1'`)[0][0]
+
+    const first = concurrentReserve(p1, 30, 1500, 'k-dispatch')
+    await wait(400)
+    const second = await concurrentReserve(p1, 30, 0, 'k-dispatch')
+    const firstResult = await first
+
+    const verdicts = [firstResult.split('|')[0], second.split('|')[0]].sort()
+    expect(verdicts).toEqual(['false', 'true'])          // exactly one authorised
+    expect(second.split('|')[1]).toBe('replay_in_flight')
+
+    // and one reservation, holding 30 once — not 60 against a 30 hold
+    expect(query(cdsn, `select count(*), coalesce(sum(estimated_sek),0)::text
+                          from spend_reservations where idempotency_key='k-dispatch'`)[0])
+      .toEqual(['1', '30.0000'])
   }, 60_000)
 
   it('DIFFERENT projects: the global ceiling still cannot be exceeded', async () => {

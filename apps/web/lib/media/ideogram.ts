@@ -252,9 +252,15 @@ export async function generateNewsImages(
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
   /**
    * Business identity of the job these images belong to — typically a script id.
-   * Each image gets its own key derived from this plus its ordinal, so a retry
-   * of the JOB reserves once per image rather than N more times, and the images
-   * do not collide with each other. Omit and every attempt reserves afresh.
+   * Each image derives its own key from this plus its ordinal, so the images
+   * cannot collide with each other.
+   *
+   * DORMANT: no caller passes one. `withRetry` wraps this function from outside
+   * the governed boundary, so a retry arrives after the first attempt has
+   * already settled or released — a key would refuse the retry rather than reuse
+   * its reservation. Kept because the plumbing is correct and the shape is the
+   * one a dispatch-claim design (G3+) will need; activating it is a call-site
+   * change, not a refactor.
    */
   spendSubject?: string,
 ): Promise<string[]> {

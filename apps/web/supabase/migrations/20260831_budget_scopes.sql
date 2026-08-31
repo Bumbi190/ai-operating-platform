@@ -330,6 +330,33 @@ grant execute on function public.budget_scope_state(uuid, int) to service_role;
 --  reserves nothing. There is no "reserve what fits".
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- ── THE DROP IS REQUIRED, NOT TIDINESS ──────────────────────────────────────
+--  G2 adds an EIGHTH output column, `binding_scope`, so the function's row type
+--  changes from 7 columns to 8. PostgreSQL refuses that through
+--  `create or replace`:
+--
+--      ERROR:  42P13: cannot change return type of existing function
+--      DETAIL: Row type defined by OUT parameters is different.
+--
+--  This was found by the first production apply, which failed on exactly that
+--  and rolled back in full — the mechanism is transactional, so nothing partial
+--  landed. `budget_headroom` already needed the same treatment below; this one
+--  was missed because the test harness built a greenfield database in which
+--  `budget_reserve` did not yet exist, so there was no row type to conflict
+--  with. The harness now applies the predecessor migration first.
+--
+--  NO CASCADE, deliberately. RESTRICT (the default) means an unexpected
+--  persistent dependent aborts the whole migration instead of being silently
+--  dropped with the function. Verified against production before writing this:
+--  zero catalog dependents, zero views, matviews, rules, triggers, cron jobs or
+--  other function bodies referencing it. The only shared dependencies are the
+--  owner (`postgres`) and the `service_role` grant, both re-established below.
+--
+--  Owner is preserved by construction rather than by an explicit ALTER: the
+--  canonical migration mechanism runs as `postgres`, which is the owner of the
+--  predecessor and of all four functions the previous migration created.
+drop function if exists public.budget_reserve(uuid, numeric, text, text, text, int);
+
 create or replace function public.budget_reserve(
   p_project_id      uuid,
   p_estimated_sek   numeric,

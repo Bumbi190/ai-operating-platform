@@ -297,9 +297,32 @@ describe('migration safety', () => {
     expect(sqlCode).not.toMatch(/drop column/i)
   })
 
-  it('only drops the function it immediately replaces', () => {
+  it('drops only the two functions whose ROW TYPE changes, and recreates each', () => {
+    // A drop is not tidiness here: PostgreSQL cannot change a RETURNS TABLE row
+    // type through `create or replace`, and both of these gain a column.
+    // `budget_reserve` gains `binding_scope`; `budget_headroom` changes shape
+    // entirely. Any OTHER drop would be dropping something G2 does not replace.
     const drops = [...sqlCode.matchAll(/drop function if exists public\.(\w+)/g)].map(m => m[1])
-    expect(drops).toEqual(['budget_headroom'])
+    expect(drops.sort()).toEqual(['budget_headroom', 'budget_reserve'])
+    for (const fn of drops) {
+      const dropAt = sqlCode.indexOf(`drop function if exists public.${fn}`)
+      const createAt = sqlCode.indexOf(`create or replace function public.${fn}`)
+      expect(createAt, `${fn} must be recreated`).toBeGreaterThan(dropAt)
+    }
+  })
+
+  it('NEVER uses CASCADE — an unexpected dependent must abort the migration', () => {
+    // RESTRICT is the default and is the safety property: CASCADE would silently
+    // drop whatever depended on the function instead of failing closed.
+    expect(sqlCode).not.toMatch(/cascade/i)
+    expect(sqlCode).toMatch(/drop function if exists public\.budget_reserve\(uuid, numeric, text, text, text, int\);/)
+  })
+
+  it('the drop names the EXACT predecessor signature, not a guess', () => {
+    // A wrong signature silently drops nothing (`if exists`) and the migration
+    // then fails on 42P13 in production, which is precisely what happened.
+    expect(sqlCode).toMatch(
+      /drop function if exists public\.budget_reserve\(uuid, numeric, text, text, text, int\)/)
   })
 
   it('seeds explicit limits, never an unlimited placeholder', () => {

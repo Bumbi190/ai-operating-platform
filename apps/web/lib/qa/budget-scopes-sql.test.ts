@@ -73,6 +73,9 @@ if (!AVAILABLE && !SQL_REQUIRED) {
   )
 }
 
+let predecessorOut: string[] = []
+let upgradedOut: string[] = []
+
 const DB_NAME = `omnira_g2_${process.pid}_${Math.random().toString(36).slice(2, 8)}`
 let dsn = ''
 
@@ -97,27 +100,38 @@ create table public.cost_events (
   cost_sek numeric(12,4) not null default 0,
   cost_usd numeric(12,6) not null default 0,
   created_at timestamptz not null default now());
-create table public.spend_reservations (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  estimated_sek numeric(12,4) not null check (estimated_sek >= 0),
-  actual_sek numeric(12,4),
-  status text not null default 'open' check (status in ('open','settled','released')),
-  provider text, operation text, idempotency_key text unique,
-  created_at timestamptz not null default now(), resolved_at timestamptz);
 do $$ begin
-  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role')   then create role service_role;   end if;
+  if not exists (select 1 from pg_roles where rolname='anon')           then create role anon;           end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated')  then create role authenticated;  end if;
 end $$;
 `
 
-/** settle/release are unchanged by G2 — taken from the migration that owns them. */
-function settleReleaseSql(): string {
-  const src = readFileSync(join(process.cwd(), 'supabase/migrations/20260830_spend_budget_gate.sql'), 'utf8')
-  return src.slice(src.indexOf('-- 3) Settle:'), src.indexOf('-- 5) Read-only headroom'))
-}
+/**
+ * The PREDECESSOR migration, applied in full and unmodified.
+ *
+ * This is the whole point of the upgrade-path suite. The first production apply
+ * of G2 failed with `42P13: cannot change return type of existing function`,
+ * because `budget_reserve` grows an eighth OUT column and PostgreSQL will not
+ * change a row type through `create or replace`. The old harness never saw it:
+ * it cherry-picked `budget_settle`/`budget_release` out of the predecessor and
+ * let G2 CREATE `budget_reserve` from nothing, so there was no existing row type
+ * to conflict with — a greenfield install, not the upgrade production performs.
+ *
+ * Applying the real predecessor file makes this suite exercise the actual path:
+ * spend_budget_gate → budget_scopes.
+ */
+const PREDECESSOR = join(process.cwd(), 'supabase/migrations/20260830_spend_budget_gate.sql')
+const G2_MIGRATION = join(process.cwd(), 'supabase/migrations/20260831_budget_scopes.sql')
 
-const G2_SQL = () =>
-  readFileSync(join(process.cwd(), 'supabase/migrations/20260831_budget_scopes.sql'), 'utf8')
+/** OUT columns of a function, in order — the thing 42P13 is about. */
+function outColumns(d: string, fn: string): string[] {
+  return query(d, `select parameter_name from information_schema.parameters
+                    where specific_schema='public' and parameter_mode='OUT'
+                      and specific_name in (select specific_name from information_schema.routines
+                                            where routine_schema='public' and routine_name='${fn}')
+                    order by ordinal_position`).map(r => r[0])
+}
 
 /** One reservation attempt. Returns [allowed, reason, bindingScope]. */
 function reserve(project: string, est: string, key?: string,
@@ -143,8 +157,10 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
     run(ADMIN_URL, ['-c', `create database ${DB_NAME}`])
     dsn = dsnFor(DB_NAME)
     run(dsn, ['-c', FIXTURE])
-    run(dsn, ['-c', settleReleaseSql()])
-    run(dsn, ['-f', join(process.cwd(), 'supabase/migrations/20260831_budget_scopes.sql')])
+    run(dsn, ['-f', PREDECESSOR])      // real predecessor, in full
+    predecessorOut = outColumns(dsn, 'budget_reserve')
+    run(dsn, ['-f', G2_MIGRATION])     // the upgrade production performs
+    upgradedOut = outColumns(dsn, 'budget_reserve')
     run(dsn, ['-c', `
       insert into projects (slug) values ('alpha'), ('beta'), ('nobudget');
       insert into project_budgets (project_id, monthly_sek, daily_sek, weekly_sek)
@@ -164,6 +180,95 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
       throw new Error('SQL proof is REQUIRED (CI=true or ATLAS_SQL_TEST_REQUIRED=1) but no Postgres was reachable.')
     }
     expect(AVAILABLE).toBe(true)
+  })
+
+  // ── The upgrade path itself (regression for the failed production apply) ───
+
+  describe('predecessor → G2 upgrade path', () => {
+    it('the predecessor really was applied, with its 7-column row type', () => {
+      // If this is ever 8, the harness has stopped reproducing production and
+      // the 42P13 class of failure becomes invisible again.
+      expect(predecessorOut).toEqual([
+        'allowed', 'reservation_id', 'reason',
+        'budget_sek', 'committed_sek', 'reserved_sek', 'headroom_sek',
+      ])
+    })
+
+    it('G2 upgrades it to the 8-column row type including binding_scope', () => {
+      expect(upgradedOut).toEqual([
+        'allowed', 'reservation_id', 'reason',
+        'budget_sek', 'committed_sek', 'reserved_sek', 'headroom_sek', 'binding_scope',
+      ])
+      expect(upgradedOut).toHaveLength(predecessorOut.length + 1)
+    })
+
+    it('the input signature is UNCHANGED across the upgrade', () => {
+      // A drop/recreate is only safe if callers still bind the same way.
+      const sig = query(dsn, `select pg_get_function_identity_arguments(p.oid)
+                                from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                               where n.nspname='public' and p.proname='budget_reserve'`)[0][0]
+      expect(sig).toBe('p_project_id uuid, p_estimated_sek numeric, p_idempotency_key text, '
+        + 'p_provider text, p_operation text, p_stale_minutes integer')
+    })
+
+    it('MUTATION — removing the DROP reproduces the production failure', () => {
+      // The regression guard. Without `drop function ... budget_reserve`, the
+      // upgrade fails with 42P13 exactly as production did.
+      const db = `${DB_NAME}_mut`
+      run(ADMIN_URL, ['-c', `create database ${db}`])
+      const d = dsnFor(db)
+      try {
+        run(d, ['-c', FIXTURE])
+        run(d, ['-f', PREDECESSOR])
+        const withoutDrop = readFileSync(G2_MIGRATION, 'utf8')
+          .replace(/drop function if exists public\.budget_reserve\([^;]*\);/, '')
+        expect(() => run(d, ['-c', withoutDrop])).toThrow(/cannot change return type|42P13/)
+      } finally {
+        try { run(ADMIN_URL, ['-c', `drop database if exists ${db} with (force)`]) } catch { /* best effort */ }
+      }
+    }, 60_000)
+
+    it('the migration drops with RESTRICT — never CASCADE', () => {
+      // CASCADE would silently drop an unexpected dependent instead of aborting.
+      const code = readFileSync(G2_MIGRATION, 'utf8').replace(/--.*$/gm, '')
+      expect(code).toMatch(/drop function if exists public\.budget_reserve\(uuid, numeric, text, text, text, int\);/)
+      expect(code).not.toMatch(/cascade/i)
+    })
+  })
+
+  // ── Owner and privileges survive the drop/recreate (Phase 3) ───────────────
+
+  describe('the recreated function keeps the predecessor security model', () => {
+    it('is SECURITY DEFINER with an empty search_path', () => {
+      const r = query(dsn, `select p.prosecdef::text, coalesce(array_to_string(p.proconfig,','),'')
+                              from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                             where n.nspname='public' and p.proname='budget_reserve'`)[0]
+      expect(r[0]).toBe('true')
+      expect(r[1]).toMatch(/search_path=""/)
+    })
+
+    it('owner is unchanged from the predecessor', () => {
+      const owners = query(dsn, `select p.proname, pg_get_userbyid(p.proowner)
+                                   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                                  where n.nspname='public' and p.proname like 'budget_%'
+                                  order by p.proname`)
+      const distinct = new Set(owners.map(r => r[1]))
+      expect(distinct.size).toBe(1)      // all four agree, before and after
+    })
+
+    it.each(['budget_reserve', 'budget_scope_state', 'budget_headroom'])(
+      '%s grants execute to service_role and to nobody else', (fn) => {
+        for (const role of ['public', 'anon', 'authenticated']) {
+          expect(query(dsn, `select has_function_privilege('${role}',
+                              (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                                where n.nspname='public' and p.proname='${fn}'), 'execute')::text`)[0][0],
+            `${role} must not execute ${fn}`).toBe('false')
+        }
+        expect(query(dsn, `select has_function_privilege('service_role',
+                            (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                              where n.nspname='public' and p.proname='${fn}'), 'execute')::text`)[0][0])
+          .toBe('true')
+      })
   })
 
   // ── Scope enforcement ──────────────────────────────────────────────────────
@@ -562,8 +667,8 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 concurrency (real overlapping t
     run(ADMIN_URL, ['-c', `create database ${CDB}`])
     cdsn = dsnFor(CDB)
     run(cdsn, ['-c', FIXTURE])
-    run(cdsn, ['-c', settleReleaseSql()])
-    run(cdsn, ['-f', join(process.cwd(), 'supabase/migrations/20260831_budget_scopes.sql')])
+    run(cdsn, ['-f', PREDECESSOR])
+    run(cdsn, ['-f', G2_MIGRATION])
     run(cdsn, ['-c', `
       insert into projects (slug) values ('p1'), ('p2');
       insert into project_budgets (project_id, monthly_sek, daily_sek)

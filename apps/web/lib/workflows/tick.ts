@@ -36,7 +36,9 @@ import {
   type WorkflowDb,
 } from './store'
 import { advanceAuthorizedWorkflow, type AdvanceResult } from './advance'
-import { ensureReadOnlyActionRuns, type SchedulingDecision } from './action-scheduling'
+import {
+  ensureReadOnlyActionRuns, summarizeSchedulingDecision, type SchedulingDecision,
+} from './action-scheduling'
 import { computeEvidenceTargetHash } from './attestation'
 import { summarizeStateEvidence } from './evidence-consumption'
 import {
@@ -244,7 +246,12 @@ export async function tickDueWorkflows(
         auto_advanceable: evaluation.autoAdvanceable,
         verification: evaluation.verification,
         verification_findings: evaluation.verificationFindings,
-        scheduled_actions: scheduled.map(d => ({ kind: d.actionKind, outcome: d.outcome })),
+        // Bounded projection, allow-list built in action-scheduling. The
+        // decision's free-text `detail` is NOT persisted: it interpolates
+        // exception messages, and PR9h could not say WHY a run was refused
+        // without reading source afterwards. reason_code and
+        // blocking_check_keys answer that from the row itself.
+        scheduled_actions: scheduled.map(summarizeSchedulingDecision),
         gate_advance: advance
           ? { outcome: advance.outcome, from: advance.fromState, to: advance.toState }
           : null,

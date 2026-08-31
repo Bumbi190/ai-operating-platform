@@ -26,13 +26,25 @@
 --  but deliberately passed no keys — enabling them on this function would have
 --  converted a dead feature into a live bypass.
 --
---  ── THE FIX IS ORDERING, NOT CLEVERNESS ─────────────────────────────────────
+--  ── THE FIX: ORDERING, THEN REFUSING ────────────────────────────────────────
 --  Locks are taken FIRST, then the key is resolved, then the budget is read.
---  The replay verdict is now a closed state machine (below), and only a still-
---  OPEN reservation replays as allowed — because that reservation is itself
---  still holding the headroom it was granted. A settled or released key is
---  terminal and refused: repeating a completed spend is a NEW spend and needs a
---  new key.
+--  The replay verdict is a closed state machine (below) in which NO EXISTING
+--  IDEMPOTENCY KEY AUTHORIZES ANOTHER PROVIDER DISPATCH. Every replay state
+--  refuses — identity mismatch, open-and-fresh, open-and-stale, settled and
+--  released alike.
+--
+--  A reservation holds a fixed amount of headroom, and no state of it can be
+--  SHOWN to be free for a second dispatch. Fresh means another call may be live.
+--  Stale means only that no lifecycle progress has been OBSERVED — a visibility
+--  timeout does not prove the previous dispatch is dead, so stale replay is
+--  refused and the stale reservation is RELEASED rather than re-granted.
+--  Settled and released are terminal: repeating a completed spend is a NEW spend
+--  and needs a NEW key.
+--
+--  That is stricter than "one reservation per key", deliberately. Safe replay
+--  activation needs a real dispatch claim, or provider-side idempotency for the
+--  exact request; until one exists, runtime keys stay dormant and no shipped
+--  call site passes one.
 --
 --  ── ONE BUDGET AUTHORITY, TWO SCOPES ────────────────────────────────────────
 --  Per-project limits stay in `project_budgets`. The platform ceiling goes in

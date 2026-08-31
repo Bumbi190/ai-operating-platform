@@ -131,20 +131,53 @@ describe('replay verdicts are terminal-aware and dispatch-aware', () => {
 })
 
 describe('canonical comments describe the FINAL code', () => {
+  /**
+   * Comment prose wraps, and a claim split across two lines survives a naive
+   * grep — which is exactly how `only a still-\nOPEN reservation replays as
+   * allowed` outlived the first sweep of this file. Every check below runs
+   * against the comment text with line breaks and leading `--` collapsed, so a
+   * wrapped claim is caught the same as an unwrapped one.
+   */
+  const joined = sql.replace(/\n--\s*/g, ' ')
+
   it.each([
-    ['replay_open',                /replay_open/],
-    ['both callers allowed',       /both get `allowed`/],
-    ['may both dispatch',          /may both dispatch/],
+    ['replay_open',                  /replay_open/],
+    ['a still-OPEN reservation',     /still-\s*OPEN/i],
+    ['an OPEN reservation replaying as allowed', /OPEN reservation replays as allowed/i],
+    ['anything "replays as allowed"', /replays as allowed/i],
+    ['both callers allowed',         /both get `allowed`/],
+    ['may both dispatch',            /may both dispatch/],
+    ['reusing a reservation',        /reuse the reservation/i],
+    ['stale replay as a retry path', /normal retry path/i],
   ])('the migration makes no withdrawn claim about %s', (_l, re) => {
-    expect(sql).not.toMatch(re)
+    expect(joined).not.toMatch(re)
   })
 
-  it('states the invariant it actually implements', () => {
-    expect(sql).toMatch(/ZERO REPLAY STATES RETURN ALLOWED/)
+  it('states the invariant it actually implements, in the TOP-LEVEL header', () => {
+    // Not merely somewhere in the file: the header a reader meets first must be
+    // the one that is true.
+    const header = joined.slice(0, joined.indexOf('ONE BUDGET AUTHORITY'))
+    expect(header).toMatch(/NO EXISTING IDEMPOTENCY KEY AUTHORIZES ANOTHER PROVIDER DISPATCH/i)
+    expect(header).toMatch(/Every replay state\s+refuses/i)
+  })
+
+  it('gives the stale-open reason wherever stale replay is described', () => {
+    expect(joined).toMatch(/visibility timeout does not prove the previous dispatch is dead/i)
+    expect(joined).toMatch(/stale replay is\s+refused and the stale reservation is RELEASED/i)
+  })
+
+  it('names every refusing state in the header, so none reads as allowed', () => {
+    const header = joined.slice(0, joined.indexOf('ONE BUDGET AUTHORITY'))
+    for (const state of ['identity mismatch', 'open-and-fresh', 'open-and-stale',
+                         'settled', 'released']) {
+      expect(header.toLowerCase()).toContain(state)
+    }
   })
 
   it('historical references to the pre-G2 bypass stay, and stay labelled', () => {
     expect(sql).toMatch(/The old replay branch read `idempotency_key`/)
+    // …and are framed as history, not as current behaviour.
+    expect(joined).toMatch(/So a key whose reservation had already SETTLED came back/)
   })
 })
 

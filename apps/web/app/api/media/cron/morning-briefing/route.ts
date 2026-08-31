@@ -19,6 +19,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { Anthropic }      from '@anthropic-ai/sdk'
 import { calculateCost }  from '@/lib/ai/pricing'
 import { logLlmCost }     from '@/lib/cost/track'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -31,7 +33,9 @@ export async function GET(request: Request) {
   }
 
   const db     = createAdminClient()
-  const claude = new Anthropic()
+  const claude = getAnthropic({
+    project: PLATFORM_COMPAT_PROJECT, agent: 'CFO Briefing', operation: 'Morning Briefing',
+  })
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   // ── Hämta data parallellt ─────────────────────────────────────────────────
@@ -124,7 +128,6 @@ ${context}`,
     }],
   })
 
-  void logLlmCost('claude-haiku-4-5-20251001', msg.usage, { projectId: null, agent: 'CFO Briefing', operation: 'Morning Briefing' })
 
   const summary = msg.content[0].type === 'text' ? msg.content[0].text : ''
 

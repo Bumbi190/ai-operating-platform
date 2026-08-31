@@ -17,6 +17,8 @@ import { checkAutomationPaused } from '@/lib/media/safeguards'
 import { getToken } from '@/lib/media/token-store'
 import { logLlmCost } from '@/lib/cost/track'
 import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -30,7 +32,9 @@ function log(msg: string) {
 // ── Generera AI-svar ──────────────────────────────────────────────────────────
 
 async function generateReply(commentText: string, postHook: string | null): Promise<string | null> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const client = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Community Manager', operation: 'Reply to Comment',
+  })
 
   const context = postHook
     ? `The post was about: "${postHook}"`
@@ -60,7 +64,6 @@ Reply (or null if spam):`,
     }],
   })
 
-  void logLlmCost('claude-haiku-4-5-20251001', message.usage, { agent: 'Community Manager', operation: 'Reply to Comment' })
 
   const text = (message.content[0] as { text: string }).text.trim()
   if (text.toLowerCase() === 'null' || text.length < 5) return null

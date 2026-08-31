@@ -33,6 +33,8 @@ import { getBackgroundMusicUrl } from '@/lib/media/music'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
 import { Anthropic } from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 // Pipeline modes:
 // 'lite'  — 1 image with headline baked in, SimpleNewsReel composition (~5× cheaper)
@@ -179,7 +181,9 @@ export async function POST(request: Request) {
   const isLite = mode !== 'full'
 
   const db = createAdminClient()
-  const claude = new Anthropic()
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Pipeline', operation: 'Full Pipeline',
+  })
 
   const stream = new ReadableStream({
     async start(controller) {

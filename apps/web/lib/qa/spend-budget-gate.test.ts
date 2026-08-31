@@ -146,17 +146,27 @@ describe('no duplicated sources of truth', () => {
 
   it('estimates use the same rate accessor that writes cost_events', () => {
     // A second price table would drift and the estimate would stop matching the
-    // figure later recorded.
-    expect(gate).toMatch(/import \{ getRates \} from '\.\/track'/)
+    // figure later recorded. G1 moved the accessor into its own module so a
+    // provider adapter can price a call without importing the ledger writer —
+    // still exactly ONE implementation, which is what the invariant is about.
+    expect(gate).toMatch(/import \{ getRates \} from '\.\/rates'/)
     expect(gate).not.toMatch(/usd_sek\s*[:=]\s*10\.5\s*,/)   // no rival table
+    const rates = readFileSync(join(process.cwd(), 'lib/cost/rates.ts'), 'utf8')
+    expect(rates).toMatch(/export async function getRates/)
+    // track.ts must keep serving the same accessor, not define a second one.
     const track = readFileSync(join(process.cwd(), 'lib/cost/track.ts'), 'utf8')
-    expect(track).toMatch(/export async function getRates/)
+    expect(track).toMatch(/export \{ getRates \} from '\.\/rates'/)
+    expect(track).not.toMatch(/export async function getRates/)
   })
 
   it('the gate and the ledger charge the same project', () => {
+    // G1 replaced `resolveCostProjectId()` — which defaulted to one hardcoded
+    // slug and returned null on failure — with an explicit ProjectRef that the
+    // caller supplies and the boundary refuses to guess at.
     const el = readFileSync(join(process.cwd(), 'lib/media/elevenlabs.ts'), 'utf8')
-    expect(el).toMatch(/resolveCostProjectId/)
+    expect(el).toMatch(/project: ProjectRef/)
     expect(el).toMatch(/logVoiceCost/)
+    expect(el).not.toMatch(/resolveCostProjectId/)
   })
 })
 
@@ -183,16 +193,21 @@ describe('ElevenLabs — the spend Familje-Stunden names explicitly', () => {
   const el = readFileSync(join(process.cwd(), 'lib/media/elevenlabs.ts'), 'utf8')
 
   it('reserves BEFORE the provider call', () => {
-    const reserveAt = el.indexOf('reserveSpend(')
-    const fetchAt = el.indexOf('await fetch(', reserveAt > -1 ? 0 : undefined)
-    expect(reserveAt).toBeGreaterThan(-1)
-    expect(reserveAt).toBeLessThan(el.indexOf('api.elevenlabs.io'))
+    // The reservation is now taken by the shared boundary, which wraps the fetch
+    // rather than sitting beside it — an ordering the type system enforces,
+    // since the provider call is the callback withGovernedSpend invokes.
+    const gateAt = el.indexOf('withGovernedSpend(')
+    expect(gateAt).toBeGreaterThan(-1)
+    expect(gateAt).toBeLessThan(el.indexOf('api.elevenlabs.io'))
   })
 
-  it('releases when the call never landed, settles when it did', () => {
-    expect(el).toMatch(/catch \(e\) \{[\s\S]{0,200}releaseSpend/)          // dispatch failure
-    expect(el).toMatch(/if \(!response\.ok\)[\s\S]{0,200}releaseSpend/)    // provider refusal
-    expect(el).toMatch(/logVoiceCost[\s\S]{0,300}settleSpend/)            // settle after the real cost lands
+  it('a provably-undispatched failure releases; anything ambiguous does not', () => {
+    // Release is no longer reachable from a bare catch: it requires the adapter
+    // to raise ProviderNotDispatchedError, which is a claim it has to make.
+    expect(el).toMatch(/catch \(e\) \{[\s\S]{0,200}ProviderNotDispatchedError/)
+    expect(el).toMatch(/response\.status < 500[\s\S]{0,200}ProviderNotDispatchedError/)
+    expect(el).not.toMatch(/releaseSpend/)
+    expect(el).not.toMatch(/settleSpend/)
   })
 
   it('estimates from character count, which is knowable before the call', () => {

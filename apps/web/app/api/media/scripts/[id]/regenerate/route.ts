@@ -19,6 +19,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/supabase/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 180  // 3 parallel Ideogram calls can take up to 2min
@@ -125,7 +127,9 @@ export async function POST(
 
   // ── Regenerate script ────────────────────────────────────────────────────────
   if (what === 'script' || what === 'both') {
-    const claude = new Anthropic()
+    const claude = getAnthropic({
+      project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Regenerate Script',
+    })
 
     const newsItem = Array.isArray(script.media_news_items)
       ? script.media_news_items[0]

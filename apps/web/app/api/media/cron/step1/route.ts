@@ -22,6 +22,8 @@ import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
 import { toJson } from '@/lib/supabase/json'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -141,7 +143,15 @@ export async function GET(request: Request) {
   }
 
   const db     = createAdminClient()
-  const claude = new Anthropic()
+  const newsHunter = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'News Hunter', operation: 'Analyze News',
+  })
+  const scriptWriter = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Generate Script',
+  })
+  const scriptRewriter = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Rewrite Script',
+  })
   const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s
 
   const { searchParams } = new URL(request.url)
@@ -296,8 +306,7 @@ export async function GET(request: Request) {
 
       const top = candidateSave.candidate
       const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
-      const newsRes   = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
-      void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
+      const newsRes   = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
       news            = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
       newsItemId = candidateSave.newsItemId
     }
@@ -319,8 +328,7 @@ export async function GET(request: Request) {
     const top = candidateSave.candidate
     const articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
     // Analyze article
-    const newsRes = await withRetry(() => claude.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
-    void logLlmCost('claude-haiku-4-5-20251001', newsRes.usage, { agent: 'News Hunter', operation: 'Analyze News' })
+    const newsRes = await withRetry(() => newsHunter.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: NEWS_SYSTEM, messages: [{ role: 'user', content: `Analyze this article for short-form video:\n\n${articleText}` }] }))
     news = JSON.parse((newsRes.content[0].type === 'text' ? newsRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as NewsHunterOutput
     newsItemId = candidateSave.newsItemId
   }
@@ -354,11 +362,10 @@ export async function GET(request: Request) {
   // ── End article read ──────────────────────────────────────────────────────
 
   // Write script
-  const scriptRes = await withRetry(() => claude.messages.create({
+  const scriptRes = await withRetry(() => scriptWriter.messages.create({
     model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
     messages: [{ role: 'user', content: `Write a short-form video script:\n${scriptContext}` }],
   }))
-  void logLlmCost('claude-sonnet-4-6', scriptRes.usage, { agent: 'Script Writer', operation: 'Generate Script' })
   let script = JSON.parse((scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
 
   // Quality gate
@@ -368,11 +375,10 @@ export async function GET(request: Request) {
   // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
   // slightly weaker hook than to 504 and save nothing.
   if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
-    const rewriteRes = await withRetry(() => claude.messages.create({
+    const rewriteRes = await withRetry(() => scriptRewriter.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
-    void logLlmCost('claude-sonnet-4-6', rewriteRes.usage, { agent: 'Script Writer', operation: 'Rewrite Script' })
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
   }
 

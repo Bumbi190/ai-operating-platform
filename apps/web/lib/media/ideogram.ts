@@ -5,7 +5,9 @@
  * Each image corresponds to a ~12–15 second scene in the video.
  */
 
-import { logImageCost, logLlmCost } from '@/lib/cost/track'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { generateIdeogramV3 } from '@/lib/media/image-client'
+import { MEDIA_PIPELINE_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
 import {
   ANTI_STOCK_BANLIST,
   type EditorBrief,
@@ -88,6 +90,7 @@ export interface ArticleHeroRenderResult {
  */
 export async function generateArticleHeroImage(
   brief: EditorBrief,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<ArticleHeroRenderResult> {
   const styleRef = STYLE_REFERENCE_MAP[brief.editorial_style]
   if (!styleRef) {
@@ -111,25 +114,10 @@ export async function generateArticleHeroImage(
     style_type: 'REALISTIC',
   }
 
-  const apiKey = process.env.IDEOGRAM_API_KEY
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
-
-  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
-    method: 'POST',
-    headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...input, rendering_speed: 'DEFAULT' }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Ideogram API error ${res.status} (article hero): ${err}`)
-  }
-
-  const data = (await res.json()) as { data: Array<{ url: string }> }
-  const url = data.data?.[0]?.url
-  if (!url) throw new Error('Ideogram returned no image URL for article hero')
-
-  void logImageCost(1, 'ideogram', { operation: 'Article Hero Image (brief)' })
+  const url = await generateIdeogramV3(
+    { project, operation: 'Article Hero Image (brief)', agent: 'Image Director' },
+    { ...input, rendering_speed: 'DEFAULT' },
+  )
 
   return { url, input }
 }
@@ -138,38 +126,20 @@ export async function generateArticleHeroImage(
  * Generate a single cinematic image from a prompt using Ideogram v3.
  * Returns the image URL (hosted by Ideogram).
  */
-export async function generateIdeogramImage(prompt: string): Promise<string> {
-  const apiKey = process.env.IDEOGRAM_API_KEY
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
-
-  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
-    method: 'POST',
-    headers: {
-      'Api-Key': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+export async function generateIdeogramImage(
+  prompt: string,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
+): Promise<string> {
+  return generateIdeogramV3(
+    { project, operation: 'Scene Image', agent: 'Image Director' },
+    {
       prompt,
       aspect_ratio: '9x16',
       style_type: 'REALISTIC',
       rendering_speed: 'DEFAULT',
       negative_prompt: 'text, words, letters, numbers, captions, subtitles, watermark, logo, people, person, human, face, hands, crowd, blurry, low quality, distorted, cartoon, anime, stock photography look',
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Ideogram API error ${res.status}: ${err}`)
-  }
-
-  const data = await res.json() as {
-    data: Array<{ url: string }>
-  }
-
-  const url = data.data?.[0]?.url
-  if (!url) throw new Error('Ideogram returned no image URL')
-  void logImageCost(1, 'ideogram', { operation: 'Scene Image' })
-  return url
+    },
+  )
 }
 
 /**
@@ -184,9 +154,11 @@ export async function generateIdeogramImage(prompt: string): Promise<string> {
 export async function generateNewsImage(
   headline: string,
   script: string,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<string> {
-  const { Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic()
+  const client = getAnthropic({
+    project, agent: 'Image Director', operation: 'Plan Scenes',
+  })
 
   // Step 1: Claude writes a tight photojournalism prompt grounded in the news story
   const res = await client.messages.create({
@@ -235,37 +207,18 @@ Output ONLY the final prompt string. No explanation.`,
   })
 
   const visualPrompt = res.content[0].type === 'text' ? res.content[0].text.trim() : ''
-  void logLlmCost('claude-haiku-4-5-20251001', res.usage, { agent: 'Image Director', operation: 'Plan News Image' })
 
   // Step 2: Generate with REALISTIC mode — photojournalism aesthetic
-  const apiKey = process.env.IDEOGRAM_API_KEY
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
-
-  const ideogramRes = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
-    method: 'POST',
-    headers: {
-      'Api-Key': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  return generateIdeogramV3(
+    { project, operation: 'News Image', agent: 'Image Director' },
+    {
       prompt: visualPrompt,
       aspect_ratio: '9x16',
       style_type: 'REALISTIC',
       rendering_speed: 'DEFAULT',
       negative_prompt: 'text, words, letters, watermark, logo, people, person, face, hands, crowd, cartoon, anime, abstract, digital art, glowing orbs, neural network visualization, blurry, low quality, distorted, CGI render, science fiction, fantasy',
-    }),
-  })
-
-  if (!ideogramRes.ok) {
-    const err = await ideogramRes.text()
-    throw new Error(`Ideogram API error ${ideogramRes.status}: ${err}`)
-  }
-
-  const data = await ideogramRes.json() as { data: Array<{ url: string }> }
-  const url = data.data?.[0]?.url
-  if (!url) throw new Error('Ideogram returned no image URL')
-  void logImageCost(1, 'ideogram', { operation: 'News Image' })
-  return url
+    },
+  )
 }
 
 // ─── Scene Intent System ──────────────────────────────────────────────────────
@@ -295,9 +248,11 @@ export async function generateNewsImages(
   headline: string,
   script: string,
   count: number = 3,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<string[]> {
-  const { Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic()
+  const client = getAnthropic({
+    project, agent: 'Image Director', operation: 'Plan Scenes',
+  })
 
   // ── Step 1: Scene planning ──────────────────────────────────────────────────
   const planRes = await client.messages.create({
@@ -375,7 +330,6 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
   })
 
   const planText = planRes.content[0].type === 'text' ? planRes.content[0].text.trim() : '[]'
-  void logLlmCost('claude-haiku-4-5-20251001', planRes.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
   const planMatch = planText.match(/\[[\s\S]*\]/)
   const scenes = planMatch ? JSON.parse(planMatch[0]) as SceneIntent[] : []
 
@@ -408,33 +362,18 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 
       console.log(`  Scene ${i + 1} [${scene.narrative_purpose} / ${scene.emotional_intent}]: ${scene.visual_concept.slice(0, 65)}...`)
 
-      const apiKey = process.env.IDEOGRAM_API_KEY
-      if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
-
-      const ideogramRes = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
-        method: 'POST',
-        headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      return generateIdeogramV3(
+        { project, operation: 'Scene Image', agent: 'Image Director' },
+        {
           prompt,
           aspect_ratio: '9x16',
           style_type: 'REALISTIC',
           rendering_speed: 'TURBO',
           negative_prompt: negativePrompt,
-        }),
-      })
-
-      if (!ideogramRes.ok) {
-        const err = await ideogramRes.text()
-        throw new Error(`Ideogram API error ${ideogramRes.status}: ${err}`)
-      }
-
-      const data = await ideogramRes.json() as { data: Array<{ url: string }> }
-      const url = data.data?.[0]?.url
-      if (!url) throw new Error('Ideogram returned no image URL')
-      return url
+        },
+      )
     }),
   )
-  void logImageCost(urls.length, 'ideogram', { operation: 'Scene Image' })
   return urls
 }
 
@@ -447,10 +386,12 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 export async function generateSceneImages(
   script: string,
   hook: string,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<IdeogramImage[]> {
   // Use Claude to segment script → visual scene descriptions
-  const { Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic()
+  const client = getAnthropic({
+    project, agent: 'Image Director', operation: 'Plan Scenes',
+  })
 
   const systemPrompt = `You are the editorial photography director for a premium AI documentary short-form series — think Bloomberg QuickTake, Wired Magazine, BBC Click, and Apple product films.
 
@@ -524,7 +465,6 @@ Generate 8 cinematic scene prompts for this video.`
   })
 
   const text = response.content[0].type === 'text' ? response.content[0].text : ''
-  void logLlmCost('claude-sonnet-4-6', response.usage, { agent: 'Image Director', operation: 'Plan Scenes' })
 
   // Parse JSON (strip markdown fences if present)
   const jsonMatch = text.match(/\[[\s\S]*\]/)

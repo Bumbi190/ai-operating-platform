@@ -13,6 +13,8 @@
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export interface QualityScore {
   hook_strength: number          // Hook Score — stoppar de första <2s scrollen?
@@ -88,7 +90,9 @@ export async function scoreScript(
   script: string,
   sourceContext: string,
 ): Promise<QualityScore> {
-  const client = new Anthropic()
+  const client = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Quality Gate', operation: 'Score Content',
+  })
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',

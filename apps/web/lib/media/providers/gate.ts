@@ -27,11 +27,16 @@
  *                  production was live while it quietly was not.
  *
  * WHAT THIS GATE IS NOT: it is not a budget. It answers "may an outbound call
- * happen at all", never "is this call affordable". The spend seam at the bottom
- * of this file is where that second question will attach; today it is types and
- * a refusing default, because Omnira has cost TRACKING (`lib/cost/track.ts`,
- * the `cost_events` table) and no budget layer at all. Inventing a budget
- * system here would put Omnira's first spending authority inside a bootstrap.
+ * happen at all", never "is this call affordable". That second question now has
+ * exactly one answer in Omnira — `lib/cost/governed-spend.ts`, which owns
+ * project resolution, the estimate, the reservation and the settlement for every
+ * provider. A MuAPI adapter that becomes billable calls THAT boundary.
+ *
+ * This file used to declare its own `MediaSpendPolicy` types and a refusing
+ * default, written when Omnira had cost tracking and no budget layer. Governance
+ * G1 removed them: a second spend abstraction is a second place for "may we
+ * spend" to be answered, and the audit that produced G1 named exactly that as a
+ * thing to avoid. Nothing consumed them — no adapter, no route, no orchestrator.
  */
 
 import type { MediaCapability, MediaProviderErrorCode, MediaProviderId } from './types'
@@ -151,51 +156,3 @@ export function assertCapability(
     retryable: false,
   })
 }
-
-// ── Spend seam (declared, not implemented) ───────────────────────────────────
-
-/**
- * The shape a spend policy will have, written now so the call sites that will
- * need it are already the right shape, and so the eventual budget layer is a
- * new implementation rather than a refactor of every adapter.
- *
- * Deliberately NOT implemented beyond the refusing default below. The four
- * thresholds Omnira has named — project budget, autonomous spend threshold,
- * approval-required threshold, and reconciliation against actual cost — each
- * need a persistence decision (which table, scoped to which project, reconciled
- * against `cost_events` how) that belongs with the Media Orchestrator, not with
- * a provider adapter.
- */
-export interface MediaSpendRequest {
-  provider: MediaProviderId
-  model: string
-  projectId: string | null
-  /** From `MediaProvider.estimateCost`. Null when the vendor gave no estimate. */
-  estimate: { unit: 'credits' | 'usd'; amount: number; exact: boolean } | null
-}
-
-export type MediaSpendVerdict =
-  /** Under the autonomous threshold — an agent may proceed unattended. */
-  | { decision: 'allow'; reason: string }
-  /** Over the autonomous threshold — a human must approve before execution. */
-  | { decision: 'approval_required'; reason: string }
-  /** Over budget, or unestimable. Refused outright. */
-  | { decision: 'deny'; reason: string }
-
-export interface MediaSpendPolicy {
-  (req: MediaSpendRequest): Promise<MediaSpendVerdict>
-}
-
-/**
- * The production default: every billable spend requires human approval.
- *
- * Mirrors `unprovenAvailability` in `lib/atlas/mission/capability.ts` — absence
- * of a policy is never a permissive answer. Note this default does not consult
- * the estimate at all: with no budget to compare against, an estimate proves
- * nothing, and a default that reads it would imply a threshold exists.
- */
-export const approvalRequiredSpendPolicy: MediaSpendPolicy = async ({ provider, model }) => ({
-  decision: 'approval_required',
-  reason: `No spend policy is configured for ${provider}/${model}. `
-    + 'Until a project budget exists, every billable generation needs explicit approval.',
-})

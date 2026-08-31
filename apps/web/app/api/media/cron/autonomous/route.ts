@@ -40,6 +40,8 @@ import { sendPipelineAlert } from '@/lib/media/alert'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300
@@ -175,7 +177,9 @@ export async function GET(request: Request) {
 
   const startedAt = Date.now()
   const db        = createAdminClient()
-  const claude    = new Anthropic()
+  const claude    = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
+  })
 
   // ── 0a. Global pauscheck ──────────────────────────────────────────────────────
   const pauseCheck = await checkAutomationPaused(db)

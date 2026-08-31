@@ -14,7 +14,8 @@
  * Use getManager() singleton to avoid re-instantiation.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '@/lib/ai/anthropic'
+import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateCost } from './pricing'
 import { applyProjectScope } from '@/lib/atlas/isolation'
@@ -43,7 +44,19 @@ import {
 import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
 import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+/**
+ * Governed per call rather than once per module: the spend boundary needs the
+ * project and the operation, and a singleton can carry neither. Methods that
+ * receive a projectId charge it; the rest name the platform compat project
+ * explicitly, which is a G2 decision rather than a hidden default.
+ */
+function managerClient(operation: string, projectId?: string) {
+  return getAnthropic({
+    project: projectId ? { projectId } : PLATFORM_COMPAT_PROJECT,
+    agent: 'Manager',
+    operation,
+  })
+}
 
 /**
  * EI-S1.4D-R1 — the legacy/canonical discriminator for `manager_tasks`.
@@ -280,7 +293,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   async chat(message: string, projectId?: string, allowedProjectIds: string[] = []): Promise<string> {
     const context = await this.buildContext(projectId, allowedProjectIds)
 
-    const response = await anthropic.messages.create({
+    const response = await managerClient('Manager Chat', projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: MANAGER_SYSTEM_PROMPT,
@@ -313,7 +326,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
 
     const context = await this.buildContext(projectId)
 
-    const response = await anthropic.messages.create({
+    const response = await managerClient('Daily Plan', projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: MANAGER_SYSTEM_PROMPT,
@@ -374,7 +387,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
 
     const workflowName = (approval.runs as any)?.workflows?.name ?? 'Unknown'
 
-    const response = await anthropic.messages.create({
+    const response = await managerClient('Evaluate Output').messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 800,
       system: MANAGER_SYSTEM_PROMPT,
@@ -412,7 +425,7 @@ Return ONLY valid JSON:
   async planTasks(goal: string, projectId: string): Promise<ManagerTask[]> {
     const context = await this.buildContext(projectId)
 
-    const response = await anthropic.messages.create({
+    const response = await managerClient('Plan Tasks', projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: MANAGER_SYSTEM_PROMPT,

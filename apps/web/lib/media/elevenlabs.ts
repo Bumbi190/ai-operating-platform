@@ -15,8 +15,10 @@
 
 import { getBrandVoice, BRAND_MODEL, type BrandVoiceName } from '@/lib/voice/config'
 import { logVoiceCost } from '@/lib/cost/track'
-import { estimateVoiceSek, reserveSpend, settleSpend, releaseSpend } from '@/lib/cost/budget-gate'
-import { resolveCostProjectId } from '@/lib/cost/project'
+import { estimateVoiceSek } from '@/lib/cost/budget-gate'
+import {
+  MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, withGovernedSpend, type ProjectRef,
+} from '@/lib/cost/governed-spend'
 
 export interface WordTiming {
   word: string
@@ -41,84 +43,78 @@ export type { BrandVoiceName as VoiceName }
 export async function generateVoiceover(
   text: string,
   voiceName: BrandVoiceName = 'victoria',
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<VoiceResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set')
 
   const voice = getBrandVoice(voiceName)
 
-  // ── PR9b pre-spend gate ──────────────────────────────────────────────────
-  // TTS credits are exactly what Familje-Stunden's `no_spend_without_approval`
-  // hard gate names, and character count makes the cost knowable BEFORE the call
-  // rather than only after. Advisory until H1_SPEND_GATE=1: the reservation and
-  // the verdict are recorded either way, so the limits can be validated against
-  // real traffic before a refusal is ever honoured.
+  // ── Governed pre-spend boundary ──────────────────────────────────────────
+  // Character count makes the cost knowable BEFORE the call, so this is the one
+  // path that already reserved. It now goes through the shared boundary instead
+  // of hand-rolling the lifecycle, which is what closes audit F-002: the old
+  // `projectId ? reserve : null` skipped the gate entirely when the project
+  // could not be resolved, and a database blip was enough to trigger it.
   const estimatedSek = await estimateVoiceSek(text.length)
-  const projectId = await resolveCostProjectId()
-  const reservation = projectId
-    ? await reserveSpend({ projectId, estimatedSek, provider: 'elevenlabs', operation: 'generateVoiceover' })
-    : null
 
-  if (reservation && !reservation.allowed) {
-    throw new Error(
-      `Budget gate refused ElevenLabs spend: ${reservation.reason} `
-      + `(estimate ${estimatedSek.toFixed(2)} SEK, headroom ${reservation.headroomSek ?? '?'} SEK)`,
-    )
-  }
+  return withGovernedSpend(
+    { project, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek },
+    async () => {
+      let response: Response
+      try {
+        response = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${voice.id}/with-timestamps`,
+          {
+            method: 'POST',
+            signal: AbortSignal.timeout(30_000),
+            headers: {
+              'xi-api-key': apiKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              text,
+              model_id: BRAND_MODEL,
+              voice_settings: voice.settings,
+            }),
+          },
+        )
+      } catch (e) {
+        throw new ProviderNotDispatchedError('elevenlabs request never reached the provider', e)
+      }
 
-  let response: Response
-  try {
-    response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voice.id}/with-timestamps`,
-      {
-        method: 'POST',
-        signal: AbortSignal.timeout(30_000),
-        headers: {
-          'xi-api-key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text,
-          model_id: BRAND_MODEL,
-          voice_settings: voice.settings,
-        }),
-      },
-    )
-  } catch (e) {
-    // Never dispatched, or never answered — free the headroom rather than let it
-    // age out, so a burst of failures cannot starve the budget.
-    await releaseSpend(reservation?.reservationId ?? null)
-    throw e
-  }
+      if (!response.ok) {
+        const error = await response.text()
+        const failure = new Error(`ElevenLabs API error ${response.status}: ${error}`)
+        // A rejected request synthesised nothing. A 5xx may have, and settles.
+        if (response.status < 500) {
+          throw new ProviderNotDispatchedError(`elevenlabs refused with ${response.status}`, failure)
+        }
+        throw failure
+      }
 
-  if (!response.ok) {
-    const error = await response.text()
-    // A refused call is not a charge.
-    await releaseSpend(reservation?.reservationId ?? null)
-    throw new Error(`ElevenLabs API error ${response.status}: ${error}`)
-  }
+      const data = await response.json() as {
+        audio_base64: string
+        alignment: {
+          characters: string[]
+          character_start_times_seconds: number[]
+          character_end_times_seconds: number[]
+        }
+      }
 
-  const data = await response.json() as {
-    audio_base64: string
-    alignment: {
-      characters: string[]
-      character_start_times_seconds: number[]
-      character_end_times_seconds: number[]
-    }
-  }
+      const audioBuffer = Buffer.from(data.audio_base64, 'base64')
 
-  const audioBuffer = Buffer.from(data.audio_base64, 'base64')
+      await logVoiceCost(text.length, {
+        ...('projectId' in project ? { projectId: project.projectId } : { projectSlug: project.projectSlug }),
+        metadata: { voice: voiceName, model: BRAND_MODEL },
+      })
 
-  // Cost Intelligence — log the voiceover spend (best-effort, never blocks).
-  await logVoiceCost(text.length, { metadata: { voice: voiceName, model: BRAND_MODEL } })
-  // The real cost is now in cost_events; the reservation must stop counting or
-  // the same spend is counted twice.
-  await settleSpend(reservation?.reservationId ?? null, estimatedSek)
+      const words = buildWordTimings(data.alignment)
+      const durationMs = words.length > 0 ? words[words.length - 1].endMs : 0
 
-  const words = buildWordTimings(data.alignment)
-  const durationMs = words.length > 0 ? words[words.length - 1].endMs : 0
-
-  return { audioBuffer, words, durationMs }
+      return { audioBuffer, words, durationMs }
+    },
+  )
 }
 
 /**
@@ -164,4 +160,72 @@ function buildWordTimings(alignment: {
   }
 
   return words.filter(w => w.word.length > 0)
+}
+
+/**
+ * Generate a background music bed via ElevenLabs sound-generation.
+ *
+ * The audit found this path outside BOTH the budget gate and `cost_events` — it
+ * spent real credits and left no record anywhere, so it was invisible even to
+ * after-the-fact accounting. It is now governed and logged like every other
+ * billable call.
+ *
+ * Sound generation is billed per second of audio rather than per character, and
+ * `cost_rates` has no row for it yet. The estimate reuses the voice rate against
+ * the requested duration at a deliberately generous character-equivalent, which
+ * over-estimates — the safe direction for a ceiling — until G2 adds a real rate.
+ */
+export async function generateSoundEffect(
+  prompt: string,
+  durationSeconds: number,
+  project: ProjectRef,
+  promptInfluence = 0.3,
+): Promise<Buffer> {
+  const apiKey = process.env.ELEVENLABS_API_KEY
+  if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set')
+
+  // ~200 character-equivalents per second of generated audio. Pessimistic on
+  // purpose: an over-estimate reserves too much, an under-estimate lets a
+  // concurrent caller through.
+  const estimatedSek = await estimateVoiceSek(Math.ceil(durationSeconds * 200))
+
+  return withGovernedSpend(
+    { project, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek },
+    async () => {
+      let res: Response
+      try {
+        res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: prompt,
+            duration_seconds: durationSeconds,
+            prompt_influence: promptInfluence,
+          }),
+        })
+      } catch (e) {
+        throw new ProviderNotDispatchedError('elevenlabs sound-generation never reached the provider', e)
+      }
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.statusText)
+        const failure = new Error(`ElevenLabs sound-generation failed (${res.status}): ${errText}`)
+        if (res.status < 500) {
+          throw new ProviderNotDispatchedError(`elevenlabs refused with ${res.status}`, failure)
+        }
+        throw failure
+      }
+
+      const audioBuffer = Buffer.from(await res.arrayBuffer())
+
+      await logVoiceCost(Math.ceil(durationSeconds * 200), {
+        ...('projectId' in project ? { projectId: project.projectId } : { projectSlug: project.projectSlug }),
+        agent: 'Music Director',
+        operation: 'Generate Background Music',
+        metadata: { duration_seconds: durationSeconds, model: 'sound-generation' },
+      })
+
+      return audioBuffer
+    },
+  )
 }

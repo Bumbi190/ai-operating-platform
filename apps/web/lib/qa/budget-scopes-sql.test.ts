@@ -338,27 +338,43 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
         .toEqual(['false', 'replay_in_flight'])
     })
 
-    it('a STALE open reservation is re-decided against TODAY\'s budget, not waved through', () => {
-      // It stopped counting toward headroom when it aged out, so replaying it as
-      // allowed would spend against a check made over 30 minutes ago — what a
-      // cron re-running tomorrow with the same subject would hit.
+    it('STALE OPEN IS REFUSED — a timeout does not prove the dispatch is dead', () => {
+      // The final hardening. A visibility timeout proves only that no lifecycle
+      // progress was OBSERVED; the original provider request may still be
+      // running. Re-deciding it against current budget and returning `allowed`
+      // would still let one reservation authorise a second dispatch.
       reset()
       run(dsn, ['-c', `insert into spend_reservations
-                        (project_id, estimated_sek, created_at, status, idempotency_key)
-                        select id, 10, now() - interval '90 minutes', 'open', 'k-stale'
+                        (project_id, estimated_sek, created_at, status, idempotency_key,
+                         provider, operation)
+                        select id, 10, now() - interval '90 minutes', 'open', 'k-stale',
+                               'testprov', 'testop'
                         from projects where slug='alpha'`])
-      run(dsn, ['-c', `update spend_reservations set provider='testprov', operation='testop'
-                        where idempotency_key='k-stale'`])
-      // budget is free → refreshed and allowed, still ONE reservation
-      expect(reserve(projectId('alpha'), '10', 'k-stale').slice(0, 2)).toEqual(['true', 'replay_open'])
+      expect(reserve(projectId('alpha'), '10', 'k-stale').slice(0, 2))
+        .toEqual(['false', 'replay_stale'])
+      // released, so it can never silently start counting toward headroom again
+      expect(query(dsn, `select status from spend_reservations
+                           where idempotency_key='k-stale'`)[0][0]).toBe('released')
+      // and still exactly one row: refusing does not mint a second reservation
       expect(query(dsn, `select count(*) from spend_reservations
                            where idempotency_key='k-stale'`)[0][0]).toBe('1')
-      // and it holds headroom again rather than staying invisible
-      expect(Number(query(dsn, `select held_sek from budget_scope_state('${projectId('alpha')}'::uuid)
-                                  where scope='project_daily'`)[0][0])).toBe(10)
     })
 
-    it('a STALE replay with a LARGER estimate cannot under-reserve', () => {
+    it('stale is refused even when the budget is completely free', () => {
+      // Budget availability is irrelevant: the question is whether a dispatch
+      // may already be live, and a timeout cannot answer it.
+      reset()
+      run(dsn, ['-c', `insert into spend_reservations
+                        (project_id, estimated_sek, created_at, status, idempotency_key,
+                         provider, operation)
+                        select id, 1, now() - interval '90 minutes', 'open', 'k-stale-free',
+                               'testprov', 'testop'
+                        from projects where slug='alpha'`])
+      expect(reserve(projectId('alpha'), '1', 'k-stale-free').slice(0, 2))
+        .toEqual(['false', 'replay_stale'])
+    })
+
+    it('a STALE replay with a LARGER estimate is refused on identity first', () => {
       reset()
       run(dsn, ['-c', `insert into spend_reservations
                         (project_id, estimated_sek, created_at, status, idempotency_key,
@@ -366,26 +382,38 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
                         select id, 5, now() - interval '90 minutes', 'open', 'k-stale-big',
                                'testprov', 'testop'
                         from projects where slug='alpha'`])
-      // The stale reservation holds 5; the new request wants 50.
       expect(reserve(projectId('alpha'), '50', 'k-stale-big').slice(0, 2))
         .toEqual(['false', 'replay_identity_mismatch'])
     })
 
-    it('a STALE open reservation is REFUSED when the budget has since gone', () => {
+    it('ZERO replay states return allowed — the whole invariant, in one test', () => {
       reset()
+      // one key per terminal state, then assert every replay refuses
+      expect(reserve(projectId('alpha'), '5', 'z-open')[0]).toBe('true')
+
+      expect(reserve(projectId('alpha'), '5', 'z-settled')[0]).toBe('true')
+      run(dsn, ['-c', `select budget_settle((select id from spend_reservations
+                        where idempotency_key='z-settled'), 5::numeric)`])
+
+      expect(reserve(projectId('alpha'), '5', 'z-released')[0]).toBe('true')
+      run(dsn, ['-c', `select budget_release((select id from spend_reservations
+                        where idempotency_key='z-released'))`])
+
       run(dsn, ['-c', `insert into spend_reservations
-                        (project_id, estimated_sek, created_at, status, idempotency_key)
-                        select id, 10, now() - interval '90 minutes', 'open', 'k-stale2'
+                        (project_id, estimated_sek, created_at, status, idempotency_key,
+                         provider, operation)
+                        select id, 5, now() - interval '90 minutes', 'open', 'z-stale',
+                               'testprov', 'testop'
                         from projects where slug='alpha'`])
-      run(dsn, ['-c', `update spend_reservations set provider='testprov', operation='testop'
-                        where idempotency_key='k-stale2'`])
-      run(dsn, ['-c', `insert into cost_events (project_id, cost_sek)
-                        select id, 99 from projects where slug='alpha'`])
-      const [allowed, reason, scope] = reserve(projectId('alpha'), '10', 'k-stale2')
-      expect([allowed, reason, scope]).toEqual(['false', 'budget_exceeded', 'project_daily'])
-      // released, so it can never silently hold headroom again
-      expect(query(dsn, `select status from spend_reservations
-                           where idempotency_key='k-stale2'`)[0][0]).toBe('released')
+
+      const replays = ['z-open', 'z-settled', 'z-released', 'z-stale']
+        .map(k => reserve(projectId('alpha'), '5', k))
+      expect(replays.map(r => r[0])).toEqual(['false', 'false', 'false', 'false'])
+      expect(replays.map(r => r[1]).sort())
+        .toEqual(['replay_in_flight', 'replay_released', 'replay_settled', 'replay_stale'])
+
+      // identity mismatch too
+      expect(reserve(projectId('beta'), '5', 'z-open')[1]).toBe('replay_identity_mismatch')
     })
 
     it('different subjects do NOT collide into one reservation', () => {

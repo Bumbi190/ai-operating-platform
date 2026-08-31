@@ -206,13 +206,14 @@ export interface GovernedSpendInput {
    * own headroom); settled and released are terminal refusals. A key can
    * therefore no longer resurrect a completed spend.
    *
-   * WHAT IT GUARANTEES: at most one reservation per key, and — since the
-   * correction pass — at most one LIVE dispatch authorised by it. A replay while
-   * the reservation is open and fresh is REFUSED (`replay_in_flight`), because a
-   * reservation holds a fixed amount of headroom and handing it to a second
-   * caller would authorise two provider calls against it. Identity is bound too:
-   * project, provider, operation and an estimate the reservation covers, or
-   * `replay_identity_mismatch`.
+   * WHAT IT GUARANTEES: at most one reservation per key, and — since the final
+   * hardening — that an existing key can NEVER authorise a second provider
+   * dispatch. Every replay state refuses: `replay_in_flight` while the
+   * reservation is live, `replay_stale` once it has aged out (a visibility
+   * timeout proves only that nothing was OBSERVED finishing, not that the
+   * original request is dead), `replay_settled`, `replay_released`, and
+   * `replay_identity_mismatch` if the key names a different project, provider,
+   * operation or a larger estimate. Zero replay states return allowed.
    *
    * STILL DORMANT AT RUNTIME. No adapter passes one, for a reason measured
    * rather than assumed (`budget-retry-lifecycle.test.ts`): every retry wrapper

@@ -279,17 +279,14 @@ grant execute on function public.budget_scope_state(uuid, int) to service_role;
 --                           the state branch, so a mismatch cannot learn the
 --                           state either.
 --    reservation OPEN, fresh   → REFUSED, 'replay_in_flight'
---                           One reservation authorises ONE live dispatch. It
---                           holds a fixed amount of headroom; handing it to a
---                           second concurrent caller would authorise two
---                           provider calls against one reservation.
---    reservation OPEN, STALE   → re-decided against TODAY's ceilings.
---                           A stale reservation stopped counting toward headroom
---                           when it aged out, so replaying it as allowed would
---                           spend against a budget check made over
---                           p_stale_minutes ago. It is refreshed if it still
---                           fits, or released and refused if it does not — one
---                           reservation per key either way.
+--                           One reservation authorises ONE dispatch. It holds a
+--                           fixed amount of headroom; handing it to a second
+--                           caller would authorise two provider calls against
+--                           one reservation.
+--    reservation OPEN, STALE   → REFUSED, 'replay_stale', reservation released
+--                           A visibility timeout proves only that no progress
+--                           has been OBSERVED — not that the original request
+--                           never ran or is no longer running.
 --    reservation SETTLED  → REFUSED, reason 'replay_settled'
 --                           The spend completed. Repeating it is a NEW spend and
 --                           needs a NEW key. Returning allowed here IS the F-106
@@ -297,12 +294,18 @@ grant execute on function public.budget_scope_state(uuid, int) to service_role;
 --    reservation RELEASED → REFUSED, reason 'replay_released'
 --                           Refused or never dispatched; the key is spent.
 --
---  WHAT THE KEY DOES NOT PROMISE: one RESERVATION, not one provider dispatch.
---  Two callers racing the same key while it is still open both get `allowed` and
---  may both dispatch — bounded by the single reservation, so no ceiling is
---  exceeded, but not de-duplicated at the provider. Only provider-side
---  idempotency can promise that, and claiming it here would be a promise this
---  function cannot keep.
+--  ZERO REPLAY STATES RETURN ALLOWED. That is the whole invariant: an existing
+--  key can never authorise another provider dispatch. A caller that genuinely
+--  wants to spend again mints a NEW key, which is a new reservation and is
+--  honestly accounted.
+--
+--  This is deliberately stricter than "one reservation per key". A reservation
+--  holds a fixed amount of headroom, and no state of it can be shown to be free
+--  for a second dispatch: fresh means another call may be live, and stale means
+--  only that we have not OBSERVED one finishing. Safe replay activation needs a
+--  real dispatch claim or provider-side idempotency for the exact request, and
+--  is deliberately left to a later design. Runtime keys are dormant until then —
+--  no shipped call site passes one.
 --
 --  ── LOCK ORDER: PROJECT, THEN PLATFORM ──────────────────────────────────────
 --  Always this order, and this is the only acquisition site — a deadlock needs
@@ -387,47 +390,36 @@ begin
 
       if v_existing.status = 'open'
          and v_existing.created_at > now() - make_interval(mins => p_stale_minutes) then
-        -- ── ONE RESERVATION AUTHORISES ONE LIVE DISPATCH ────────────────────
-        -- REFUSED, not allowed. A reservation of 30 SEK holds 30 SEK of
-        -- headroom; handing it to a second concurrent caller would authorise
-        -- two 30 SEK provider calls against it, which is an under-reservation
-        -- and a ceiling bypass. Budget idempotency is not provider-dispatch
-        -- idempotency, and this function can only promise the first.
-        --
-        -- A caller that legitimately needs to try again waits for the visibility
-        -- timeout below, or mints a new key — which is a new spend, honestly
-        -- accounted.
+        -- ── ONE RESERVATION AUTHORISES ONE DISPATCH ─────────────────────────
+        -- REFUSED. A reservation of 30 SEK holds 30 SEK of headroom; handing it
+        -- to a second caller would authorise two 30 SEK provider calls against
+        -- it, which is an under-reservation and a ceiling bypass. Budget
+        -- idempotency is not provider-dispatch idempotency, and this function
+        -- can only promise the first.
         return query select false, v_existing.id, 'replay_in_flight'::text,
                             null::numeric, null::numeric, null::numeric, null::numeric, null::text;
       elsif v_existing.status = 'open' then
-        -- STALE-OPEN. It stopped counting toward headroom when it aged out, so
-        -- replaying it as `allowed` would let the caller spend against a budget
-        -- check made more than p_stale_minutes ago — the case a cron re-running
-        -- tomorrow with the same subject hits exactly. Re-decide it against
-        -- TODAY's ceilings instead: refresh it if it still fits (keeping one
-        -- reservation per key), release it and refuse if it does not.
-        select s.scope, s.limit_sek, s.spent_sek, s.held_sek, s.remaining_sek
-          into v_scope, v_lim, v_spent, v_held, v_rem
-          from public.budget_scope_state(v_existing.project_id, p_stale_minutes) s
-         order by s.remaining_sek asc limit 1;
-
-        -- Decided on the REQUESTED amount. Using the stored one would let a
-        -- cheaper old reservation clear the way for a dearer new request.
-        -- (Identity binding above already guarantees requested <= stored, so
-        -- this is the tighter of the two and the reservation still covers it.)
-        if p_estimated_sek <= v_rem then
-          update public.spend_reservations
-             set created_at = now()               -- holds headroom again from now
-           where id = v_existing.id;
-          return query select true, v_existing.id, 'replay_open'::text,
-                              v_lim, v_spent, v_held, v_rem, v_scope;
-        else
-          update public.spend_reservations
-             set status = 'released', resolved_at = now()
-           where id = v_existing.id;
-          return query select false, v_existing.id, 'budget_exceeded'::text,
-                              v_lim, v_spent, v_held, v_rem, v_scope;
-        end if;
+        -- ── STALE-OPEN: ALSO REFUSED, and this is the load-bearing part ─────
+        -- A visibility timeout proves only that no lifecycle progress has been
+        -- OBSERVED. It does not prove the original provider request never
+        -- executed, or that it is not still executing. An earlier draft
+        -- re-decided a stale reservation against current ceilings and returned
+        -- it as allowed; that still let one reservation authorise a second
+        -- dispatch whenever the first call outlived p_stale_minutes.
+        --
+        -- The reservation is released — it has already stopped counting toward
+        -- headroom, and leaving it open would let it silently start counting
+        -- again on a later read. A caller that genuinely wants to spend again
+        -- must mint a NEW key, which is a new reservation, honestly accounted.
+        --
+        -- A safe replay path needs a real dispatch claim, or provider-side
+        -- idempotency for the exact request. Until one exists, ZERO replay
+        -- states return allowed, which is why runtime keys stay dormant.
+        update public.spend_reservations
+           set status = 'released', resolved_at = now()
+         where id = v_existing.id;
+        return query select false, v_existing.id, 'replay_stale'::text,
+                            null::numeric, null::numeric, null::numeric, null::numeric, null::text;
       elsif v_existing.status = 'settled' then
         return query select false, v_existing.id, 'replay_settled'::text,
                             null::numeric, null::numeric, null::numeric, null::numeric, null::text;

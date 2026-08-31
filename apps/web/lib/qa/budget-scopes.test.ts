@@ -76,14 +76,28 @@ describe('replay verdicts are terminal-aware and dispatch-aware', () => {
     expect(sqlCode.slice(at - 200, at)).toMatch(/return query select false/)
   })
 
-  it('the ONLY replay reason that can be allowed is replay_open, and only after a stale re-decision', () => {
-    const allowed = new Set(
-      [...sqlCode.matchAll(/return query select (true|false), v_existing\.id, '(replay_\w+)'/g)]
-        .filter(m => m[1] === 'true').map(m => m[2]))
-    expect([...allowed]).toEqual(['replay_open'])
-    // and it sits inside the stale branch, which re-decides against current budget
-    const at = sqlCode.indexOf("'replay_open'")
-    expect(sqlCode.slice(at - 700, at)).toMatch(/p_estimated_sek <= v_rem/)
+  it('ZERO replay states return allowed — no key may authorise a second dispatch', () => {
+    const allowed = [...sqlCode.matchAll(/return query select (true|false), v_existing\.id/g)]
+      .filter(m => m[1] === 'true')
+    expect(allowed).toEqual([])
+    // and the reason that used to be allowed is gone entirely
+    expect(sqlCode).not.toMatch(/replay_open/)
+  })
+
+  it('stale open is REFUSED and released, not re-decided into a new spend', () => {
+    // A visibility timeout proves only that no progress was OBSERVED. Re-deciding
+    // a stale reservation against current budget and allowing it would still let
+    // one reservation authorise a second dispatch if the first call outlived the
+    // timeout.
+    expect(sqlCode).toMatch(/'replay_stale'/)
+    const at = sqlCode.indexOf("'replay_stale'")
+    const branch = sqlCode.slice(at - 400, at)
+    expect(branch).toMatch(/set status = 'released'/)
+    expect(branch).toMatch(/return query select false/)
+  })
+
+  it('the stale branch no longer refreshes created_at into a fresh hold', () => {
+    expect(sqlCode).not.toMatch(/set created_at = now\(\)/)
   })
 
   it('identity is bound BEFORE the state branch', () => {
@@ -102,11 +116,35 @@ describe('replay verdicts are terminal-aware and dispatch-aware', () => {
     expect(sqlCode).toMatch(re)
   })
 
-  it('the stale re-decision uses the REQUESTED estimate, not the stored one', () => {
-    // Using the stored amount would let a cheap old reservation clear the way
-    // for a dearer new request.
-    expect(sqlCode).toMatch(/if p_estimated_sek <= v_rem then/)
-    expect(sqlCode).not.toMatch(/if v_existing\.estimated_sek <= v_rem then/)
+  it('no replay branch evaluates budget — refusal does not depend on headroom', () => {
+    // Budget availability is irrelevant to a replay: the question is whether a
+    // dispatch may already be live, which no ceiling can answer. The comparison
+    // belongs to the NORMAL path only, and must appear exactly once.
+    // Bounded by CODE, not by a comment — `sqlCode` has comments stripped.
+    const replayBlock = sqlCode.slice(
+      sqlCode.indexOf('if p_idempotency_key is not null then'),
+      sqlCode.indexOf('select exists (select 1 from public.project_budgets'))
+    expect(replayBlock).not.toMatch(/v_rem/)
+    expect(replayBlock).not.toMatch(/budget_scope_state/)
+    expect(sqlCode.match(/if p_estimated_sek <= v_rem then/g)).toHaveLength(1)
+  })
+})
+
+describe('canonical comments describe the FINAL code', () => {
+  it.each([
+    ['replay_open',                /replay_open/],
+    ['both callers allowed',       /both get `allowed`/],
+    ['may both dispatch',          /may both dispatch/],
+  ])('the migration makes no withdrawn claim about %s', (_l, re) => {
+    expect(sql).not.toMatch(re)
+  })
+
+  it('states the invariant it actually implements', () => {
+    expect(sql).toMatch(/ZERO REPLAY STATES RETURN ALLOWED/)
+  })
+
+  it('historical references to the pre-G2 bypass stay, and stay labelled', () => {
+    expect(sql).toMatch(/The old replay branch read `idempotency_key`/)
   })
 })
 

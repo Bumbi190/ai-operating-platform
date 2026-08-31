@@ -59,6 +59,8 @@ export type SpendRefusal =
   | 'invalid_estimate'
   /** G2 replay: another dispatch may be live on this reservation. */
   | 'replay_in_flight'
+  /** G2 replay: the reservation aged out; a dispatch may still be running. */
+  | 'replay_stale'
   /** G2 replay: the key names a different project/provider/operation/estimate. */
   | 'replay_identity_mismatch'
   /** G2 replay: the spend already completed. A repeat is a NEW spend. */
@@ -84,11 +86,12 @@ export interface SpendVerdict {
   /** True when a refusal was overridden because enforcement is off. */
   advisoryOverride: boolean
   /**
-   * `replay_open` is the ONE allowed replay, and only for a reservation that had
-   * gone stale and was re-decided against current ceilings. A fresh open
-   * reservation replays as `replay_in_flight` — one reservation, one dispatch.
+   * `ok` is the ONLY allowed verdict. Every replay state refuses: an existing key
+   * can never authorise a second provider dispatch, because no state of a
+   * reservation can be shown free for one — fresh means a call may be live,
+   * stale means only that none was OBSERVED finishing.
    */
-  reason: 'ok' | 'replay_open' | SpendRefusal
+  reason: 'ok' | SpendRefusal
   reservationId: string | null
   budgetSek: number | null
   committedSek: number | null

@@ -24,15 +24,18 @@ const base = { state: 'planning', defKey: 'familje-stunden.monthly-release', def
 // ── Closed surface ──────────────────────────────────────────────────────────
 
 describe('the execution surface is closed', () => {
-  it('exactly one kind is executable today', () => {
-    expect(executableActionKinds()).toEqual(['compute_release_instant'])
+  it('exactly two kinds are executable today — both READ_ONLY', () => {
+    // Raised one kind at a time: PR9e compute_release_instant, PR9h the probe.
+    expect(executableActionKinds()).toEqual([
+      'compute_release_instant', 'probe_anonymous_protected_access',
+    ])
   })
 
   it('MUTATION — every other known kind is declared non-executable', () => {
+    // The probe left this list in PR9h; every WRITE-capable kind remains.
     expect(nonExecutableActionKinds().sort()).toEqual([
       'apply_release_gate_migration', 'generate_page_audio',
-      'probe_anonymous_protected_access', 'send_release_newsletter',
-      'upload_protected_artifacts',
+      'send_release_newsletter', 'upload_protected_artifacts',
     ])
     for (const k of nonExecutableActionKinds()) {
       expect(executableActionKinds()).not.toContain(k)
@@ -156,7 +159,8 @@ describe('evidence', () => {
     const { FAMILJE_STUNDEN_CHECKS } = await import('../workflows/adapters/familje-stunden/checks')
     const declared = FAMILJE_STUNDEN_CHECKS.filter(c => c.check_key === COMPUTE_RELEASE_INSTANT_CHECK)
     expect(declared.length).toBeGreaterThan(0)
-    expect(declared.some(c => c.state === ACTION_REGISTRY.compute_release_instant.state)).toBe(true)
+    expect(declared.some(c =>
+      ACTION_REGISTRY.compute_release_instant.placements.some(pl => pl.state === c.state))).toBe(true)
   })
 
   it('an evidence-write failure never repeats the observation', () => {

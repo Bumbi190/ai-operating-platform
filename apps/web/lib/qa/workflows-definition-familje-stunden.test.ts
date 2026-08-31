@@ -58,8 +58,16 @@ describe('vendored definition — provenance', () => {
 })
 
 describe('vendored definition — parses', () => {
-  it('loads without throwing and yields exactly one definition', () => {
-    expect(loadVendoredDefinitions()).toHaveLength(1)
+  it('loads without throwing; Familje-Stunden is the only VENDORED_UPSTREAM one', () => {
+    const all = loadVendoredDefinitions()
+    // PR9h added an Omnira-authored validation definition alongside it. The
+    // property worth pinning is not the count but the provenance split: exactly
+    // one definition is copied from a product repo, and it is this one.
+    const upstream = all.filter(d => d.provenance === 'vendored_upstream')
+    expect(upstream).toHaveLength(1)
+    expect(upstream[0].def_key).toBe('familje-stunden.monthly-release')
+    expect(all.filter(d => d.provenance === 'authored_here').map(d => d.def_key))
+      .toEqual(['omnira.probe-validation'])
   })
 
   it('declares all 19 states in canonical order', () => {

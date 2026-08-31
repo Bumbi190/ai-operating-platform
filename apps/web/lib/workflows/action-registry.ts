@@ -46,13 +46,29 @@ import { loadVendoredDefinitions } from './definitions'
  */
 export type ExecutorFamily = 'read_only_observation' | 'not_executable'
 
-export interface CanonicalAction {
-  readonly action_class: ActionClass
-  readonly executor_family: ExecutorFamily
-  /** The definition this action belongs to. */
+/** One place a kind is declared: a definition and the state within it. */
+export interface ActionPlacement {
   readonly def_key: string
   /** The state whose `automated_actions` this implements. */
   readonly state: string
+}
+
+export interface CanonicalAction {
+  /**
+   * The classification. SINGLE and canonical — it does NOT vary by placement.
+   * An action that is READ_ONLY in one workflow and a write in another would
+   * mean the class is a property of context rather than of the act, and every
+   * guard downstream reads the class.
+   */
+  readonly action_class: ActionClass
+  readonly executor_family: ExecutorFamily
+  /**
+   * Every definition+state this kind is declared in. A kind may legitimately
+   * appear in more than one workflow — the same observation is the same act
+   * wherever it is asked for — but its class travels with the kind, not the
+   * placement.
+   */
+  readonly placements: readonly ActionPlacement[]
   readonly description: string
 }
 
@@ -70,8 +86,7 @@ export const ACTION_REGISTRY = {
   compute_release_instant: {
     action_class: 'READ_ONLY',
     executor_family: 'read_only_observation',
-    def_key: 'familje-stunden.monthly-release',
-    state: 'planning',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'planning' }],
     description: 'Compute release_at_utc from the month key (DST-correct, no I/O).',
   },
 
@@ -79,39 +94,46 @@ export const ACTION_REGISTRY = {
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the
   // compile-time guard has something real to exclude.
+  /**
+   * Declared in TWO workflows, with ONE classification.
+   *
+   * Familje-Stunden asks for it at `approval_release`, where it is a release
+   * safety check. Omnira's validation workflow asks for the same observation at
+   * `probe`, where it is the capability test. Same act, same class, same
+   * handler — reached in the canonical release only when that release genuinely
+   * gets there, which is thirteen gates away and not something a test may fake.
+   */
   probe_anonymous_protected_access: {
     action_class: 'READ_ONLY',
-    executor_family: 'not_executable',   // needs FAMILJE_STUNDEN_SUPABASE_URL first
-    def_key: 'familje-stunden.monthly-release',
-    state: 'approval_release',
+    executor_family: 'read_only_observation',
+    placements: [
+      { def_key: 'familje-stunden.monthly-release', state: 'approval_release' },
+      { def_key: 'omnira.probe-validation',         state: 'probe' },
+    ],
     description: 'Probe both protected Edge Functions unauthenticated; expect 401.',
   },
   upload_protected_artifacts: {
     action_class: 'MATERIAL_WRITE',
     executor_family: 'not_executable',
-    def_key: 'familje-stunden.monthly-release',
-    state: 'protected_upload',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'protected_upload' }],
     description: 'Upload release artefacts to the private bucket with upsert=false.',
   },
   apply_release_gate_migration: {
     action_class: 'MATERIAL_WRITE',
     executor_family: 'not_executable',
-    def_key: 'familje-stunden.monthly-release',
-    state: 'backend_release_gate',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'backend_release_gate' }],
     description: 'Apply the idempotent month_releases migration.',
   },
   send_release_newsletter: {
     action_class: 'EXTERNAL_COMMUNICATION',
     executor_family: 'not_executable',
-    def_key: 'familje-stunden.monthly-release',
-    state: 'newsletter',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'newsletter' }],
     description: 'Send the monthly newsletter. Unrecallable once sent.',
   },
   generate_page_audio: {
     action_class: 'FINANCIAL',
     executor_family: 'not_executable',
-    def_key: 'familje-stunden.monthly-release',
-    state: 'audio_generation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'audio_generation' }],
     description: 'Generate page audio via TTS. Spends provider credits.',
   },
 } as const satisfies Record<string, CanonicalAction>
@@ -183,21 +205,23 @@ export function assertRegistryMatchesDefinition(): RegistryDefinitionMismatch[] 
   const mismatches: RegistryDefinitionMismatch[] = []
 
   for (const [kind, meta] of Object.entries(ACTION_REGISTRY) as [ActionKind, CanonicalAction][]) {
-    const def = defs.find(d => d.def_key === meta.def_key)
-    if (!def) {
-      mismatches.push({ action_kind: kind, reason: 'definition_not_vendored',
-        detail: `${meta.def_key} is not vendored in this build` })
-      continue
-    }
-    const state = def.spec.states.find(s => s.id === meta.state)
-    if (!state) {
-      mismatches.push({ action_kind: kind, reason: 'state_not_in_definition',
-        detail: `state "${meta.state}" does not exist in ${meta.def_key}` })
-      continue
-    }
-    if (state.automated_actions.length === 0) {
-      mismatches.push({ action_kind: kind, reason: 'state_declares_no_automated_action',
-        detail: `state "${meta.state}" declares no automated_actions, so no action belongs to it` })
+    for (const placement of meta.placements) {
+      const def = defs.find(d => d.def_key === placement.def_key)
+      if (!def) {
+        mismatches.push({ action_kind: kind, reason: 'definition_not_vendored',
+          detail: `${placement.def_key} is not vendored in this build` })
+        continue
+      }
+      const state = def.spec.states.find(s => s.id === placement.state)
+      if (!state) {
+        mismatches.push({ action_kind: kind, reason: 'state_not_in_definition',
+          detail: `state "${placement.state}" does not exist in ${placement.def_key}` })
+        continue
+      }
+      if (state.automated_actions.length === 0) {
+        mismatches.push({ action_kind: kind, reason: 'state_declares_no_automated_action',
+          detail: `state "${placement.state}" declares no automated_actions, so no action belongs to it` })
+      }
     }
   }
   return mismatches

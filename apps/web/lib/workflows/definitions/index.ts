@@ -22,6 +22,7 @@
  */
 
 import rawFamiljeStundenMonthlyReleaseV1 from './familje-stunden.monthly-release.v1.json'
+import rawOmniraProbeValidationV1 from './omnira.probe-validation.v1.json'
 import { computeDefHash, parseWorkflowSpec } from '../spec'
 import type { WorkflowSpec } from '../types'
 
@@ -31,8 +32,12 @@ export interface VendoredDefinition {
   /** Where the canonical file lives, for provenance in an audit. */
   source_repo: string
   source_path: string
-  /** SHA-256 of the vendored YAML, which is byte-identical to upstream. */
+  /**
+   * SHA-256 of the file. For `vendored_upstream` it is byte-identical to the
+   * upstream document; for `authored_here` it is simply this repo's own file.
+   */
   source_sha256: string
+  provenance: DefinitionProvenance
   spec: WorkflowSpec
   def_hash: string
 }
@@ -42,7 +47,22 @@ interface VendorEntry {
   source_repo: string
   source_path: string
   source_sha256: string
+  provenance: DefinitionProvenance
 }
+
+/**
+ * Where a definition came from, and therefore what its hash MEANS.
+ *
+ * `vendored_upstream` — copied byte-identically from a product repository that
+ *   owns the process. Omnira may not edit it; a change upstream is a NEW
+ *   VERSION, and `source_sha256` is the proof of fidelity.
+ *
+ * `authored_here` — written in this repository, describing something Omnira
+ *   itself does. It is NOT a product process and must never be presented as
+ *   one. Kept in the same array so registration, pinning and immutability are
+ *   identical, but labelled so an audit can never mistake the two.
+ */
+export type DefinitionProvenance = 'vendored_upstream' | 'authored_here'
 
 const VENDORED: VendorEntry[] = [
   {
@@ -50,6 +70,16 @@ const VENDORED: VendorEntry[] = [
     source_repo: 'familje-stunden-v2',
     source_path: 'docs/MONTHLY_RELEASE_WORKFLOW_V1.yaml',
     source_sha256: '88d9cc31fe57181e974d1e37c8968eee40bc8cc11e1745fe0a85205e98fa1bed',
+    provenance: 'vendored_upstream',
+  },
+  {
+    // Omnira's own capability test. Deliberately NOT attributed to
+    // Familje-Stunden: it describes no release and owns no product process.
+    raw: rawOmniraProbeValidationV1,
+    source_repo: 'ai-operating-platform',
+    source_path: 'apps/web/lib/workflows/definitions/omnira.probe-validation.v1.json',
+    source_sha256: '713ba6e3a06d432e46d6d129de2680cc48426541742f7b1a188f0e6b663dad86',
+    provenance: 'authored_here',
   },
 ]
 
@@ -79,6 +109,7 @@ export function loadVendoredDefinitions(): VendoredDefinition[] {
       source_repo: entry.source_repo,
       source_path: entry.source_path,
       source_sha256: entry.source_sha256,
+      provenance: entry.provenance,
       spec: parsed.spec,
       def_hash: computeDefHash(parsed.spec),
     }

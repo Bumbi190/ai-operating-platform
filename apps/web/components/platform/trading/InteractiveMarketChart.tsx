@@ -1,0 +1,414 @@
+'use client'
+
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  IChartApi,
+  IPriceLine,
+  ISeriesApi,
+  Time,
+  UTCTimestamp,
+} from 'lightweight-charts'
+import type { TradingMarketViewSnapshot } from '@/lib/trading/market-view'
+import { MarketChart } from './MarketChart'
+import { BoxPrimitive, MarkerPrimitive, type BoxStyle } from './chart-overlays'
+import {
+  chartCandlesOf,
+  chartGapsOf,
+  chartLevelsOf,
+  chartMarkersOf,
+  chartZonesOf,
+  shouldFitViewport,
+  type ChartLevelKind,
+  type ViewportKey,
+  type ViewportState,
+} from './chart-presentation'
+import styles from './AtlasMarketView.module.css'
+
+/**
+ * Omnira Trading — the interactive market chart.
+ *
+ * WHAT CHANGED, AND WHAT DID NOT
+ * ──────────────────────────────
+ * The chart is now a real financial chart: it pans, zooms, has independent time
+ * and price scales, and carries a crosshair. What did NOT change is who owns the
+ * truth. `TradingMarketViewSnapshot` is still the source of presentation truth;
+ * Lightweight Charts is only the renderer and the interaction engine.
+ *
+ * It detects nothing. No liquidity, no fair value gap, no manipulation, no
+ * grade, no entry, no stop, no target, no contract. Every annotation arrives
+ * already decided, and this component draws what it was handed.
+ *
+ * SSR AND THE FALLBACK
+ * ────────────────────
+ * The library is loaded with a dynamic `import()` inside the mount effect, so
+ * nothing from it is ever evaluated during a server render and no browser API is
+ * touched without a DOM. Until the chart exists, the deterministic SVG
+ * `MarketChart` renders in its place — which also means the server produces the
+ * same markup it always did, and the existing `renderToStaticMarkup` regression
+ * tests keep working against the same component they always tested.
+ *
+ * MEASUREMENT COMES FROM THE SHELL
+ * ────────────────────────────────
+ * `ChartShell` already owns a `ResizeObserver` and already owns fullscreen.
+ * This component takes the measured box as props and resizes the chart to it —
+ * so there is exactly one observer, one fullscreen implementation, and
+ * fullscreen reflow is automatic because the shell's box is what changes.
+ */
+
+/** Resolve an Omnira design token to a concrete colour for the canvas. */
+function token(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value.length > 0 ? value : fallback
+}
+
+interface Palette {
+  readonly aqua: string
+  readonly rose: string
+  readonly emerald: string
+  readonly gold: string
+  readonly goldSoft: string
+  readonly violet: string
+  readonly accent: string
+  readonly text2: string
+  readonly text3: string
+  readonly edge: string
+}
+
+function readPalette(): Palette {
+  return {
+    aqua: token('--omnira-aqua', '#a5f3fc'),
+    rose: token('--omnira-rose', '#f87171'),
+    emerald: token('--omnira-emerald', '#34d399'),
+    gold: token('--omnira-gold', '#d4a574'),
+    goldSoft: token('--omnira-gold-soft', '#e8c89a'),
+    violet: token('--omnira-violet', '#8b5cf6'),
+    accent: token('--os-accent', '#22d3ee'),
+    text2: token('--omnira-text-2', 'rgba(255,255,255,0.72)'),
+    text3: token('--omnira-text-3', 'rgba(255,255,255,0.60)'),
+    edge: token('--omnira-edge', 'rgba(255,255,255,0.10)'),
+  }
+}
+
+/** Atlas level styling. One place, so a level cannot acquire a colour by accident. */
+function levelStyle(kind: ChartLevelKind, palette: Palette): {
+  color: string
+  lineStyle: number
+} {
+  // 0 Solid · 1 Dotted · 2 Dashed · 3 LargeDashed · 4 SparseDotted
+  switch (kind) {
+    case 'FOUR_HOUR_OPEN': return { color: palette.accent, lineStyle: 0 }
+    case 'LIQUIDITY': return { color: palette.gold, lineStyle: 2 }
+    case 'ENTRY': return { color: palette.aqua, lineStyle: 0 }
+    case 'STOP_LOSS': return { color: palette.rose, lineStyle: 2 }
+    case 'TAKE_PROFIT': return { color: palette.emerald, lineStyle: 2 }
+    case 'BREAK_EVEN': return { color: palette.goldSoft, lineStyle: 1 }
+    default: {
+      const exhaustive: never = kind
+      return exhaustive
+    }
+  }
+}
+
+/** Zones are gold; gaps are violet. The model's own state decides the emphasis. */
+function zoneStyle(palette: Palette) {
+  return (box: { state: string; label: string }): BoxStyle => ({
+    fill: box.state === 'SWEPT' ? 'rgba(212,165,116,0.06)' : 'rgba(212,165,116,0.13)',
+    stroke: box.state === 'SWEPT' ? 'rgba(212,165,116,0.35)' : palette.gold,
+    label: box.label,
+  })
+}
+
+function gapStyle(palette: Palette) {
+  return (box: { state: string; variant: string; label: string }): BoxStyle => ({
+    fill: box.state === 'FILLED' ? 'rgba(139,92,246,0.05)' : 'rgba(139,92,246,0.12)',
+    stroke: box.state === 'FILLED' ? 'rgba(139,92,246,0.32)' : palette.violet,
+    label: box.label,
+  })
+}
+
+export interface InteractiveMarketChartProps {
+  readonly snapshot: TradingMarketViewSnapshot
+  /** Measured container box from `ChartShell`. Absent on the server. */
+  readonly width?: number
+  readonly height?: number
+}
+
+export function InteractiveMarketChart({
+  snapshot,
+  width,
+  height,
+}: InteractiveMarketChartProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const priceLinesRef = useRef<IPriceLine[]>([])
+  const zonesRef = useRef<BoxPrimitive | null>(null)
+  const gapsRef = useRef<BoxPrimitive | null>(null)
+  const markersRef = useRef<MarkerPrimitive | null>(null)
+  const paletteRef = useRef<Palette | null>(null)
+  /** What the current viewport was fitted for, and whether data existed. */
+  const viewportRef = useRef<ViewportState | null>(null)
+  const [ready, setReady] = useState(false)
+
+  // ─── Create the chart exactly once ──────────────────────────────────────────
+  useEffect(() => {
+    const container = containerRef.current
+    if (container === null) return
+
+    let disposed = false
+    let chart: IChartApi | null = null
+
+    void (async () => {
+      /*
+       * Dynamic import: the library is never evaluated on the server, and never
+       * before there is a DOM to attach to.
+       */
+      const lib = await import('lightweight-charts')
+      if (disposed) return
+
+      const palette = readPalette()
+      paletteRef.current = palette
+
+      chart = lib.createChart(container, {
+        layout: {
+          background: { type: lib.ColorType.Solid, color: 'transparent' },
+          textColor: palette.text3,
+          fontSize: 10,
+          attributionLogo: false,
+        },
+        grid: {
+          vertLines: { color: 'rgba(255,255,255,0.04)' },
+          horzLines: { color: 'rgba(255,255,255,0.04)' },
+        },
+        rightPriceScale: { borderColor: palette.edge, scaleMargins: { top: 0.12, bottom: 0.12 } },
+        timeScale: {
+          borderColor: palette.edge,
+          timeVisible: true,
+          secondsVisible: false,
+          /*
+           * Room to the right of the newest bar, in bar widths.
+           *
+           * This is WHITESPACE, not invented candles — the library scrolls into
+           * empty space by design. Without it the newest bar is welded to the
+           * right edge and a drag has nowhere to go, which reads as "panning is
+           * broken" rather than "you are already at the end".
+           */
+          rightOffset: 6,
+          /* Neither edge is pinned, so history is freely reachable. */
+          fixLeftEdge: false,
+          fixRightEdge: false,
+        },
+        crosshair: {
+          mode: lib.CrosshairMode.Normal,
+          vertLine: { color: palette.text3, width: 1, style: 2, labelBackgroundColor: '#0b1020' },
+          horzLine: { color: palette.text3, width: 1, style: 2, labelBackgroundColor: '#0b1020' },
+        },
+        localization: {
+          /*
+           * UTC, explicitly. The market instant is absolute; formatting it in
+           * the viewer's local zone would make two people reading the same
+           * candle disagree about when it happened. This matches the axis the
+           * SVG chart has always drawn.
+           */
+          timeFormatter: (time: unknown) =>
+            new Date((time as number) * 1000).toISOString().slice(11, 16) + ' UTC',
+        },
+        handleScroll: true,
+        handleScale: true,
+        autoSize: false,
+        /*
+         * Created at the measured size, never at a default one. A chart born
+         * at the wrong width computes its first layout for that width, and
+         * the fit that follows is then thrown away by the corrective resize.
+         */
+        ...(width !== undefined && height !== undefined && width > 0 && height > 0
+          ? { width, height }
+          : {}),
+      })
+
+      const series = chart.addSeries(lib.CandlestickSeries, {
+        upColor: palette.emerald,
+        downColor: palette.rose,
+        borderUpColor: palette.emerald,
+        borderDownColor: palette.rose,
+        wickUpColor: palette.emerald,
+        wickDownColor: palette.rose,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      })
+
+      const zones = new BoxPrimitive([], zoneStyle(palette))
+      const gaps = new BoxPrimitive([], gapStyle(palette))
+      const markers = new MarkerPrimitive([], { fill: palette.violet, text: palette.text2 })
+      series.attachPrimitive(zones)
+      series.attachPrimitive(gaps)
+      series.attachPrimitive(markers)
+
+      chartRef.current = chart
+      seriesRef.current = series
+      zonesRef.current = zones
+      gapsRef.current = gaps
+      markersRef.current = markers
+      setReady(true)
+    })()
+
+    return () => {
+      disposed = true
+      /*
+       * One teardown for everything the chart owns. `chart.remove()` disposes
+       * the series, its attached primitives, its price lines and every internal
+       * subscription, so there is no orphan left behind and no second chart can
+       * accumulate across a remount.
+       */
+      priceLinesRef.current = []
+      zonesRef.current = null
+      gapsRef.current = null
+      markersRef.current = null
+      seriesRef.current = null
+      const existing = chartRef.current ?? chart
+      chartRef.current = null
+      if (existing !== null) existing.remove()
+      setReady(false)
+    }
+  }, [])
+
+  /*
+   * ─── Resize to the shell's measured box ───────────────────────────────────
+   *
+   * DECLARED BEFORE THE DATA EFFECT ON PURPOSE. React runs effects in
+   * declaration order, and the fit below must be computed against the size the
+   * chart will actually have. With the order reversed the chart fits at one
+   * width and the corrective resize then discards that range, leaving the
+   * library's default bar spacing and the candles crammed into part of the
+   * plot — which reads to an operator as "panning does not work".
+   */
+  useEffect(() => {
+    const chart = chartRef.current
+    if (chart === null) return
+    if (width === undefined || height === undefined) return
+    if (width <= 0 || height <= 0) return
+    /*
+     * Resizing preserves the logical viewport: the chart keeps the bar range it
+     * was showing. Entering and leaving fullscreen therefore reflows without
+     * discarding where the operator had navigated to.
+     */
+    chart.resize(width, height)
+  }, [width, height, ready])
+
+  // ─── Data, overlays, and the fit policy ─────────────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    const palette = paletteRef.current
+    if (chart === null || series === null || palette === null) return
+
+    series.setData(
+      chartCandlesOf(snapshot.candles).map((candle) => ({
+        time: candle.time as UTCTimestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      })),
+    )
+
+    // Price lines are recreated wholesale: a level that disappeared from the
+    // snapshot must disappear from the chart, and a stale line is a lie.
+    for (const line of priceLinesRef.current) series.removePriceLine(line)
+    priceLinesRef.current = chartLevelsOf(snapshot).map((level) => {
+      const style = levelStyle(level.kind, palette)
+      return series.createPriceLine({
+        price: level.price,
+        color: style.color,
+        lineWidth: 1,
+        lineStyle: style.lineStyle,
+        axisLabelVisible: true,
+        title: level.label,
+      })
+    })
+
+    zonesRef.current?.setBoxes(chartZonesOf(snapshot.liquidityZones))
+    gapsRef.current?.setBoxes(chartGapsOf(snapshot.fairValueGaps))
+    markersRef.current?.setMarkers(chartMarkersOf(snapshot.manipulation))
+
+    /*
+     * THE VIEWPORT POLICY, IN ONE PLACE.
+     *
+     * Fit on first mount and when the thing being looked at changes. Do NOT fit
+     * on ordinary data updates — replay advancing one candle must not yank an
+     * operator back from wherever they were inspecting.
+     */
+    const key: ViewportKey = { instrument: snapshot.instrument, timeframe: snapshot.timeframe }
+    const hasCandles = snapshot.candles.length > 0
+    if (shouldFitViewport(viewportRef.current, key, hasCandles)) {
+      chart.timeScale().fitContent()
+    }
+    /*
+     * Record whether this pass actually had data to fit. Replay's first frames
+     * are legitimately empty, and a fit performed then must not count as the
+     * one fit this chart is allowed before the operator takes over.
+     */
+    viewportRef.current = {
+      key,
+      fittedWithData: (viewportRef.current?.fittedWithData ?? false) || hasCandles,
+    }
+  }, [snapshot, ready])
+
+  const resetView = useCallback(() => {
+    chartRef.current?.timeScale().fitContent()
+  }, [])
+
+  return (
+    <div className={styles.interactiveChart} data-testid="interactive-chart">
+      <div
+        ref={containerRef}
+        className={styles.interactiveChartCanvas}
+        data-ready={ready || undefined}
+        role="application"
+        aria-label={
+          `Interaktiv marknadsgraf, ${snapshot.instrument} ${snapshot.timeframe}. `
+          + 'Dra för att panorera, rulla för att zooma.'
+        }
+      />
+
+      {/*
+        The deterministic fallback. It is what the server renders and what a
+        browser shows for the moment before the engine is ready, so the chart
+        area is never blank and never non-deterministic in a static render.
+      */}
+      {ready ? null : (
+        <div className={styles.interactiveChartFallback} aria-hidden="true">
+          <MarketChart snapshot={snapshot} width={width} height={height} />
+        </div>
+      )}
+
+      <button
+        type="button"
+        className={styles.chartShellButton}
+        onClick={resetView}
+        aria-label="Återställ vy"
+        title="Återställ vy"
+        data-testid="chart-reset-view"
+      >
+        <span aria-hidden="true">⤾</span>
+      </button>
+
+      {/*
+        Lightweight Charts is Apache-2.0 and its licence requires TradingView to
+        be identified as the product's creator with a link. The built-in logo is
+        disabled above and replaced by this, which is the same attribution in
+        Omnira's own type — compliant, and not a pasted third-party badge.
+      */}
+      <a
+        className={styles.chartAttribution}
+        href="https://www.tradingview.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="chart-attribution"
+      >
+        Charts by TradingView
+      </a>
+    </div>
+  )
+}

@@ -178,7 +178,13 @@ describe('the chart is sized by its container, not by its aspect ratio', () => {
   })
 
   it('passes the measured box down to the chart', () => {
-    expect(read('./ChartShell.tsx')).toMatch(/width=\{box\?\.width\} height=\{box\?\.height\}/)
+    const source = read('./ChartShell.tsx')
+    // Both measured dimensions reach the chart. Asserted independently of
+    // formatting: what matters is that the measurement is handed down, not
+    // that the two props share a line.
+    expect(source).toMatch(/width=\{box\?\.width\}/)
+    expect(source).toMatch(/height=\{box\?\.height\}/)
+    expect(source).toMatch(/<InteractiveMarketChart/)
   })
 })
 

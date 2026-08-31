@@ -97,9 +97,9 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          READ_ONLY. Narrower, not weaker; the nine identity columns keep
    *          all-or-nothing).
    */
-  it('enforces exactly the expected number of migrations — currently 55', () => {
+  it('enforces exactly the expected number of migrations — currently 56', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(55)
+    expect(enforced).toBe(56)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

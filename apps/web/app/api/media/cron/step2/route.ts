@@ -18,6 +18,8 @@ import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { spendIdempotencyKey } from '@/lib/cost/spend-identity'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -76,8 +78,22 @@ export async function GET(request: Request) {
     // Generate voice + images in parallel (independent operations)
     console.log(`[cron/step2] Generating voice + 3 images in parallel...`)
     const [voiceResult, rawImageUrls] = await Promise.all([
-      withRetry(() => generateVoiceover(scriptText, 'victoria'), { attempts: 2, label: 'ElevenLabs voice' }),
-      withRetry(() => generateNewsImages(newsTitle, scriptText, 3), { attempts: 2, label: 'Ideogram images' }),
+      // G2: both calls are retried, and both have a genuinely stable subject —
+      // one voiceover and three scene images per script. Keying them means the
+      // second attempt REUSES the first reservation instead of taking another,
+      // which is exactly what `spend_reservations.idempotency_key` exists for.
+      // Safe only since G2 closed F-106: before it, a settled key replayed as
+      // allowed with no budget check.
+      withRetry(() => generateVoiceover(
+        scriptText, 'victoria', MEDIA_PIPELINE_PROJECT,
+        spendIdempotencyKey({
+          project: MEDIA_PIPELINE_PROJECT, provider: 'elevenlabs',
+          operation: 'generateVoiceover', subject: script.id,
+        }),
+      ), { attempts: 2, label: 'ElevenLabs voice' }),
+      withRetry(() => generateNewsImages(
+        newsTitle, scriptText, 3, MEDIA_PIPELINE_PROJECT, script.id,
+      ), { attempts: 2, label: 'Ideogram images' }),
     ])
 
     // Upload everything in parallel

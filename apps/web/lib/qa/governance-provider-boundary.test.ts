@@ -121,14 +121,40 @@ describe('provider escape guard', () => {
 
 // ── Adapters must not send an idempotency key yet (audit F-106) ──────────────
 
-describe('idempotency plumbing is present but unused', () => {
-  it('no adapter passes idempotencyKey while budget_reserve replay is unsafe', () => {
-    for (const f of [...SANCTIONED]) {
-      expect(code(readFileSync(join(ROOT, f), 'utf8'))).not.toMatch(/idempotencyKey\s*:/)
+describe('idempotency identity is minted, never hand-rolled', () => {
+  // G1 asserted the opposite of the first test below: NO adapter could pass a
+  // key, because budget_reserve's replay branch returned before the lock and
+  // before the budget read (F-106). G2 closed that, so the tripwire is replaced
+  // by the invariant that now matters — a key must come from the canonical
+  // helper. A hand-built key that is too broad turns legitimate work into a
+  // `replay_settled` refusal, which is a worse failure than not keying at all.
+  const CANONICAL = 'lib/cost/spend-identity.ts'
+
+  it('every mint goes through spendIdempotencyKey', () => {
+    const minters = [...SANCTIONED, 'lib/media/ideogram.ts', 'app/api/media/cron/step2/route.ts']
+    for (const f of minters) {
+      const src = code(readFileSync(join(ROOT, f), 'utf8'))
+      if (!/idempotencyKey/.test(src)) continue
+      // It may FORWARD one it was handed, or MINT one via the helper — never
+      // assemble a key literal of its own.
+      const mints = /idempotencyKey:\s*`/.test(src) || /idempotencyKey:\s*'/.test(src)
+      expect(mints, `${f} builds an idempotency key literal instead of using the helper`).toBe(false)
     }
   })
 
-  it('the primitive still accepts one, so G2 only has to start passing it', () => {
+  it('the canonical helper excludes anything time-varying', () => {
+    const src = code(readFileSync(join(ROOT, CANONICAL), 'utf8'))
+    expect(src).toMatch(/export function spendIdempotencyKey/)
+    for (const forbidden of [/Date\.now\(/, /new Date\(/, /Math\.random/, /randomUUID/]) {
+      expect(src).not.toMatch(forbidden)
+    }
+  })
+
+  it('the key is versioned, so identity semantics can change without collisions', () => {
+    expect(code(readFileSync(join(ROOT, CANONICAL), 'utf8'))).toMatch(/`v1:\$\{/)
+  })
+
+  it('the primitive still accepts one', () => {
     expect(code(readFileSync(join(ROOT, 'lib/cost/governed-spend.ts'), 'utf8')))
       .toMatch(/idempotencyKey\?: string/)
   })

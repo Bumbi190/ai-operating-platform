@@ -44,6 +44,8 @@ export interface ImageGovernanceContext {
   agent?: string
   runId?: string | null
   scriptId?: string | null
+  /** Stable identity for THIS image. Omit unless the subject is truly unique. */
+  idempotencyKey?: string
 }
 
 /**
@@ -64,7 +66,8 @@ export async function generateIdeogramV3(
   const estimatedSek = await estimateImageSek(1, 'ideogram')
 
   return withGovernedSpend(
-    { project: ctx.project, provider: 'ideogram', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, provider: 'ideogram', operation: ctx.operation, estimatedSek,
+      idempotencyKey: ctx.idempotencyKey },
     async () => {
       let res: Response
       try {

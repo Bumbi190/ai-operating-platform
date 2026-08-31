@@ -71,19 +71,27 @@ export async function GET() {
     claimableUnderPause = (data ?? []).length
   }
 
-  // PR9b: budget headroom for the caller's own projects. Read-only — this asks
-  // what the gate WOULD say; it never reserves.
-  let budgets: { slug: string; budget_sek: number; committed_sek: number;
-                 reserved_sek: number; headroom_sek: number }[] = []
+  // G2: headroom per SCOPE for the caller's own projects. Read-only — it asks
+  // what the gate WOULD say and never reserves.
+  //
+  // This reads `budget_scope_state` through `budget_headroom`, the same function
+  // `budget_reserve` decides on. Before G2 the two computed headroom separately
+  // and could disagree for the same project at the same instant (audit F-204);
+  // now neither contains the arithmetic, so they cannot drift.
+  let budgets: { slug: string; scope: string; limit_sek: number; spent_sek: number;
+                 held_sek: number; remaining_sek: number }[] = []
   let budgetedIds = new Set<string>()
   try {
     const { data } = await db.rpc('budget_headroom', { p_stale_minutes: 30 })
     const rows = (data ?? []) as any[]
+    // A project appears here once per CONFIGURED scope; one row is enough to
+    // prove it has a budget at all.
     budgetedIds = new Set(rows.map(b => b.project_id as string))
     budgets = rows.filter(b => ids.includes(b.project_id)).map(b => ({
       slug: b.slug,
-      budget_sek: Number(b.budget_sek), committed_sek: Number(b.committed_sek),
-      reserved_sek: Number(b.reserved_sek), headroom_sek: Number(b.headroom_sek),
+      scope: String(b.scope),
+      limit_sek: Number(b.limit_sek), spent_sek: Number(b.spent_sek),
+      held_sek: Number(b.held_sek), remaining_sek: Number(b.remaining_sek),
     }))
   } catch { budgets = [] }
 
@@ -91,7 +99,8 @@ export async function GET() {
   // enforced, so it must surface BEFORE that flip, not during it.
   const unbudgeted = ids.filter(id => !budgetedIds.has(id))
   if (unbudgeted.length > 0) findings.push('projects_without_budget')
-  if (budgets.some(b => b.headroom_sek <= 0)) findings.push('budget_exhausted')
+  // ANY exhausted scope exhausts the project — the tightest one decides.
+  if (budgets.some(b => b.remaining_sek <= 0)) findings.push('budget_exhausted')
 
   // PR9d — actions frozen awaiting a human. An ambiguous outcome means the side
   // effect MAY have happened, so the only safe next step is to ask the

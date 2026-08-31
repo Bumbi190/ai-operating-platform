@@ -8,6 +8,7 @@
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { generateIdeogramV3 } from '@/lib/media/image-client'
 import { MEDIA_PIPELINE_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
+import { spendIdempotencyKey } from '@/lib/cost/spend-identity'
 import {
   ANTI_STOCK_BANLIST,
   type EditorBrief,
@@ -249,6 +250,13 @@ export async function generateNewsImages(
   script: string,
   count: number = 3,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
+  /**
+   * Business identity of the job these images belong to — typically a script id.
+   * Each image gets its own key derived from this plus its ordinal, so a retry
+   * of the JOB reserves once per image rather than N more times, and the images
+   * do not collide with each other. Omit and every attempt reserves afresh.
+   */
+  spendSubject?: string,
 ): Promise<string[]> {
   const client = getAnthropic({
     project, agent: 'Image Director', operation: 'Plan Scenes',
@@ -363,7 +371,13 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
       console.log(`  Scene ${i + 1} [${scene.narrative_purpose} / ${scene.emotional_intent}]: ${scene.visual_concept.slice(0, 65)}...`)
 
       return generateIdeogramV3(
-        { project, operation: 'Scene Image', agent: 'Image Director' },
+        {
+          project, operation: 'Scene Image', agent: 'Image Director',
+          idempotencyKey: spendSubject
+            ? spendIdempotencyKey({ project, provider: 'ideogram',
+                                    operation: 'Scene Image', subject: `${spendSubject}#${i}` })
+            : undefined,
+        },
         {
           prompt,
           aspect_ratio: '9x16',

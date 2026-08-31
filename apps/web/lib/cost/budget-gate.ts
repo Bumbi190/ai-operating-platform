@@ -21,6 +21,12 @@
  * concurrent callers see each other. It is released if the call never happened
  * and settled once the real cost lands.
  *
+ * ── G2: SIX SCOPES, ONE VERDICT ────────────────────────────────────────────
+ * The SQL now evaluates project daily/weekly/monthly and platform
+ * daily/weekly/monthly under one lock pair, and returns the TIGHTEST. Nothing
+ * in this file computes a limit — it forwards a verdict, which is what keeps
+ * exactly one budget authority.
+ *
  * ── ADVISORY BY DEFAULT ────────────────────────────────────────────────────
  * `H1_SPEND_GATE` (default OFF) decides whether a refusal is HONOURED. SQL always
  * returns the honest verdict and always records the reservation, so advisory mode
@@ -47,10 +53,24 @@ export { isSpendGateEnforced }
 export type SpendRefusal =
   /** No budget row. Fail closed: unconfigured is NOT unlimited. */
   | 'no_budget_configured'
+  /** G2: no platform ceiling. An absent global limit is never "no limit". */
+  | 'no_global_budget_configured'
   | 'budget_exceeded'
   | 'invalid_estimate'
+  /** G2 replay: the spend already completed. A repeat is a NEW spend. */
+  | 'replay_settled'
+  /** G2 replay: previously refused or never dispatched. The key is spent. */
+  | 'replay_released'
   /** The gate itself could not be consulted — never confused with "allowed". */
   | 'unavailable'
+
+/**
+ * Which ceiling decided. G2 evaluates six scopes and reports the tightest, so a
+ * refusal says WHICH limit refused rather than only that one did.
+ */
+export type BudgetScope =
+  | 'project_daily' | 'project_weekly' | 'project_monthly'
+  | 'global_daily'  | 'global_weekly'  | 'global_monthly'
 
 export interface SpendVerdict {
   /** Whether the caller may proceed, AFTER applying the enforcement flag. */
@@ -59,12 +79,15 @@ export interface SpendVerdict {
   wouldAllow: boolean
   /** True when a refusal was overridden because enforcement is off. */
   advisoryOverride: boolean
-  reason: 'ok' | 'replay' | SpendRefusal
+  /** `replay_open` is an ALLOWED replay: the same reservation still holds. */
+  reason: 'ok' | 'replay_open' | SpendRefusal
   reservationId: string | null
   budgetSek: number | null
   committedSek: number | null
   reservedSek: number | null
   headroomSek: number | null
+  /** The tightest configured scope — the one the verdict was decided on. */
+  bindingScope: BudgetScope | null
 }
 
 function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: SpendVerdict['reason'] }): SpendVerdict {
@@ -79,6 +102,7 @@ function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: Spend
     committedSek: p.committedSek ?? null,
     reservedSek: p.reservedSek ?? null,
     headroomSek: p.headroomSek ?? null,
+    bindingScope: p.bindingScope ?? null,
   }
 }
 
@@ -113,6 +137,7 @@ export async function reserveSpend(input: ReserveInput): Promise<SpendVerdict> {
       committedSek: row.committed_sek === null ? null : Number(row.committed_sek),
       reservedSek: row.reserved_sek === null ? null : Number(row.reserved_sek),
       headroomSek: row.headroom_sek === null ? null : Number(row.headroom_sek),
+      bindingScope: (row.binding_scope ?? null) as BudgetScope | null,
     })
   } catch {
     return verdict({ wouldAllow: false, reason: 'unavailable' })

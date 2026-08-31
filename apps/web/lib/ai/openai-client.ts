@@ -232,9 +232,3 @@ export async function openAISpeech(
     },
   )
 }
-
-/** Thrown-through failure for a refused speech request, for the route to map. */
-export function speechFailureResponse(e: unknown): Response | null {
-  const r = (e as { response?: unknown })?.response
-  return r instanceof Response ? r : null
-}

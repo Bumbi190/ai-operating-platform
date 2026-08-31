@@ -44,6 +44,11 @@ export async function generateVoiceover(
   text: string,
   voiceName: BrandVoiceName = 'victoria',
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
+  /**
+   * Stable identity for THIS voiceover, so the caller's retry reserves once.
+   * Omit unless the caller has a genuinely unique subject (see spend-identity).
+   */
+  idempotencyKey?: string,
 ): Promise<VoiceResult> {
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set')
@@ -59,7 +64,7 @@ export async function generateVoiceover(
   const estimatedSek = await estimateVoiceSek(text.length)
 
   return withGovernedSpend(
-    { project, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek },
+    { project, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey },
     async () => {
       let response: Response
       try {

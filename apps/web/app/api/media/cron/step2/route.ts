@@ -18,6 +18,7 @@ import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -76,8 +77,23 @@ export async function GET(request: Request) {
     // Generate voice + images in parallel (independent operations)
     console.log(`[cron/step2] Generating voice + 3 images in parallel...`)
     const [voiceResult, rawImageUrls] = await Promise.all([
-      withRetry(() => generateVoiceover(scriptText, 'victoria'), { attempts: 2, label: 'ElevenLabs voice' }),
-      withRetry(() => generateNewsImages(newsTitle, scriptText, 3), { attempts: 2, label: 'Ideogram images' }),
+      // NO idempotency key — deliberately, and proven rather than assumed.
+      // `withRetry` sits OUTSIDE the governed boundary, so attempt 1 has already
+      // settled (5xx) or released (transport failure) its reservation before the
+      // error reaches the retry loop. A stable key therefore makes attempt 2
+      // `replay_settled` / `replay_released` — it does not reuse the reservation,
+      // it DESTROYS the retry and replaces the real 503 with a spend refusal.
+      // Measured in `budget-retry-lifecycle.test.ts` against this exact stack.
+      //
+      // A key here would also hand one reservation to two dispatches under
+      // concurrency. Budget idempotency is not provider-dispatch idempotency.
+      // The identity helper and the SQL replay machine are both ready; runtime
+      // activation waits for a dispatch-claim design (G3+), because a retry that
+      // is refused is worse than a retry that reserves twice.
+      withRetry(() => generateVoiceover(scriptText, 'victoria', MEDIA_PIPELINE_PROJECT),
+        { attempts: 2, label: 'ElevenLabs voice' }),
+      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, MEDIA_PIPELINE_PROJECT),
+        { attempts: 2, label: 'Ideogram images' }),
     ])
 
     // Upload everything in parallel

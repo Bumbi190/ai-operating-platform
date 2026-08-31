@@ -195,19 +195,33 @@ export interface GovernedSpendInput {
   /**
    * Stable identity for ONE logical spend, so a retry reserves once.
    *
-   * ── PLUMBED, DELIBERATELY UNUSED IN G1 (audit F-105 / F-106) ──────────────
-   * `spend_reservations.idempotency_key` is unique and `budget_reserve` handles
-   * replay — but its replay branch returns BEFORE `pg_advisory_xact_lock` and
-   * BEFORE the budget is read, so a key whose reservation is already `settled`
-   * comes back `allowed = true` with no new reservation and no budget check.
-   * Sending stable keys onto today's RPC would therefore convert a dead feature
-   * into a live bypass: the second spend would never be counted.
+   * ── SAFE SINCE G2 (audit F-105 / F-106 closed) ────────────────────────────
+   * G1 plumbed this but no adapter passed one, because `budget_reserve`'s replay
+   * branch returned BEFORE the advisory lock and BEFORE the budget read — a key
+   * whose reservation had already settled came back `allowed = true` with no new
+   * reservation and no budget check.
    *
-   * G1 carries the identity end-to-end so the call sites are already the right
-   * shape, and NO adapter passes one. Omitting it means every attempt takes its
-   * own reservation, which over-reserves on retry but can never under-reserve —
-   * strictly safer than today, where 32 of 33 sites reserved nothing at all.
-   * A guard test asserts no adapter passes this until G2 fixes the RPC.
+   * G2 moved the locks above the replay and made the verdict a closed state
+   * machine: only a still-OPEN reservation replays as allowed (it is holding its
+   * own headroom); settled and released are terminal refusals. A key can
+   * therefore no longer resurrect a completed spend.
+   *
+   * WHAT IT GUARANTEES: at most one reservation per key, and — since the final
+   * hardening — that an existing key can NEVER authorise a second provider
+   * dispatch. Every replay state refuses: `replay_in_flight` while the
+   * reservation is live, `replay_stale` once it has aged out (a visibility
+   * timeout proves only that nothing was OBSERVED finishing, not that the
+   * original request is dead), `replay_settled`, `replay_released`, and
+   * `replay_identity_mismatch` if the key names a different project, provider,
+   * operation or a larger estimate. Zero replay states return allowed.
+   *
+   * STILL DORMANT AT RUNTIME. No adapter passes one, for a reason measured
+   * rather than assumed (`budget-retry-lifecycle.test.ts`): every retry wrapper
+   * in this codebase sits OUTSIDE this boundary, so attempt 1 has already
+   * settled or released before attempt 2 begins. A key would therefore turn a
+   * retryable 503 into a spend refusal. Activation waits for a dispatch-claim
+   * design; until then, every attempt takes its own reservation, which
+   * over-reserves on retry and can never under-reserve.
    */
   idempotencyKey?: string
 }
@@ -253,7 +267,9 @@ export async function withGovernedSpend<T>(
     await releaseSpend(verdict.reservationId)
     throw new SpendRefusedError({
       reason: verdict.reason, provider, operation,
-      detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom ${verdict.headroomSek ?? 'unknown'} SEK`,
+      detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom `
+        + `${verdict.headroomSek ?? 'unknown'} SEK`
+        + (verdict.bindingScope ? ` (binding scope: ${verdict.bindingScope})` : ''),
       verdict,
     })
   }

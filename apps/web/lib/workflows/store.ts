@@ -23,6 +23,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDefHash } from './spec'
 import { findVendoredDefinition } from './definitions'
 import { deriveCurrentState, getState, validateTransition } from './machine'
+import { automatedObservationTargetHash } from './evidence-binding'
+import { checkAnsweredBy } from './action-discovery'
 import type {
   EvidenceResult,
   EvidenceSource,
@@ -361,6 +363,25 @@ export async function appendTransition(
   return rowToTransition(Array.isArray(data) ? data[0] : data)
 }
 
+/**
+ * The binding columns of one action run. Narrow on purpose: this is the
+ * authority for an observation's pin, so it should be impossible to read
+ * anything else through it.
+ */
+async function readActionRunBinding(db: WorkflowDb, runId: string): Promise<{
+  workflow_instance_id: string | null
+  workflow_from_state: string | null
+  action_kind: string | null
+  target_version_hash: string | null
+} | null> {
+  const { data, error } = await (db as AnyDb)
+    .from('runs')
+    .select('workflow_instance_id, workflow_from_state, action_kind, target_version_hash')
+    .eq('id', runId).maybeSingle()
+  if (error) throw new Error(`readActionRunBinding failed for ${runId}: ${error.message}`)
+  return data ?? null
+}
+
 // ── Evidence ─────────────────────────────────────────────────────────────────
 
 export interface RecordEvidenceInput {
@@ -378,6 +399,20 @@ export interface RecordEvidenceInput {
     payloadHash: string
     targetHash: string
     metadata?: Record<string, unknown>
+  }
+  /**
+   * Target binding for an AUTOMATED observation made by a bound action run.
+   *
+   * It carries a run id and NOTHING ELSE — deliberately. No hash crosses this
+   * boundary, so there is no caller-supplied value to validate and none to
+   * forge: the pin is computed here from the run's own binding plus server-held
+   * definition state. An observation is not an attestation, so this grants no
+   * producer, no producer_type and no payload_hash, and the row stays
+   * `source: 'automated'` in every column that distinguishes the two.
+   */
+  observation?: {
+    /** A run bound to THIS instance, THIS state, and the action answering this check. */
+    runId: string
   }
 }
 
@@ -401,6 +436,15 @@ export async function recordEvidence(
     )
   }
 
+  // An observation binds an automated row. Allowing it on an attested row would
+  // give a producer two different pins and let it choose the flattering one.
+  if (input.observation && input.source !== 'automated') {
+    throw new Error('recordEvidence: an observation binding is only valid for automated evidence')
+  }
+  if (input.observation && input.attestation) {
+    throw new Error('recordEvidence: evidence cannot be both an observation and an attestation')
+  }
+
   // An attested row without a producer is an assertion wearing evidence's
   // clothes; the database refuses it too, but failing here says why.
   if (input.source === 'attested' && !input.attestation) {
@@ -408,6 +452,30 @@ export async function recordEvidence(
   }
   if (input.source === 'automated' && input.attestation) {
     throw new Error('recordEvidence: automated evidence must not carry an attestation envelope')
+  }
+  // The pin, derived from the bound run and the pinned definition. Every clause
+  // below is a way the run could fail to speak for this row.
+  let observationTargetHash: string | null = null
+  if (input.observation) {
+    const run = await readActionRunBinding(db, input.observation.runId)
+    if (!run) {
+      throw new Error(`recordEvidence: no such action run ${input.observation.runId}`)
+    }
+    if (run.workflow_instance_id !== input.instanceId) {
+      throw new Error('recordEvidence: the run is bound to a different workflow instance')
+    }
+    if (run.workflow_from_state !== input.state) {
+      throw new Error('recordEvidence: the run is bound to a different workflow state')
+    }
+    if (!run.action_kind || checkAnsweredBy(run.action_kind) !== input.checkKey) {
+      throw new Error(
+        `recordEvidence: run action "${run.action_kind ?? 'none'}" does not answer "${input.checkKey}"`)
+    }
+    if (!run.target_version_hash) {
+      throw new Error('recordEvidence: the run carries no action binding')
+    }
+    observationTargetHash = automatedObservationTargetHash(
+      instance, def.spec, input.state, input.checkKey)
   }
 
   const { data, error } = await (db as AnyDb)
@@ -423,7 +491,10 @@ export async function recordEvidence(
       producer_type: input.attestation?.producerType ?? null,
       observed_at: input.attestation?.observedAt ?? null,
       payload_hash: input.attestation?.payloadHash ?? null,
-      target_hash: input.attestation?.targetHash ?? null,
+      // An observation grants exactly ONE of these columns. producer,
+      // producer_type and payload_hash stay null, which is what keeps an
+      // automated row from ever reading as attested.
+      target_hash: input.attestation?.targetHash ?? observationTargetHash,
       attestation: input.attestation?.metadata ?? {},
     })
     .select(EVIDENCE_COLS)

@@ -39,7 +39,7 @@ import { advanceAuthorizedWorkflow, type AdvanceResult } from './advance'
 import {
   ensureReadOnlyActionRuns, summarizeSchedulingDecision, type SchedulingDecision,
 } from './action-scheduling'
-import { computeEvidenceTargetHash } from './attestation'
+import { evidenceTargetHashFor } from './evidence-binding'
 import { summarizeStateEvidence } from './evidence-consumption'
 import {
   decideNotification, escalationEmail, listActiveWorkflowSignals,
@@ -142,16 +142,9 @@ export async function evaluateDueWorkflow(
       requiredChecks = new Set(declared.filter(c => c.required).map(c => c.check_key))
       evidence = summarizeStateEvidence(
         adapter.attestableChecks(), instance.current_state, rows,
-        checkKey => {
-          const row = rows.find(r => r.check_key === checkKey)
-          const meta = (row?.attestation ?? {}) as
-            { source_commit?: string; artifact_manifest_hash?: string }
-          return computeEvidenceTargetHash({
-            instance, spec: def.spec, state: instance.current_state, checkKey,
-            sourceCommit: meta.source_commit ?? null,
-            artifactManifestHash: meta.artifact_manifest_hash ?? null,
-          })
-        },
+        // Shared with the pre-run gate and the READ_ONLY seam. Three readers
+        // asking the same question must not compute the pin three ways.
+        evidenceTargetHashFor(instance, def.spec, instance.current_state, rows),
       ).verdicts
     } catch (e) {
       // Unreadable evidence is never "nothing is wrong". Surface it as a

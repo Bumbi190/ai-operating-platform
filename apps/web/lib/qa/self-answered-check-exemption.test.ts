@@ -64,35 +64,32 @@ function fixtureInstance(defKey: string, state: string, status = 'active') {
 }
 
 /**
- * The target hash the gate will derive for this fixture.
+ * The EVIDENCE pin for one check.
  *
- * Evidence must be pinned to the CURRENT target to satisfy anything — unbound
- * evidence is refused by `evaluateCheck` regardless of its result. The payload
- * hashes evidence as {check_key, result, source, recorded_at} and never its
- * target_hash, so stamping the hash onto the rows does not move it: computing
- * once and stamping is a fixed point, not an approximation.
+ * Not the action pin: PR9h-3 established that evidence is judged against the
+ * `workflow.evidence` payload, which is per-check and does not include the
+ * evidence rows — so it is stable, and a row can be stamped without moving what
+ * it is judged against. The earlier version of this helper used the action
+ * hash, which happened to agree with the pre-PR9h-3 gate and with nothing else.
  */
-async function currentTargetHash(
-  defKey: string, spec: unknown, state: string, actionKind: string,
-  evidence: readonly Record<string, unknown>[],
+async function evidencePin(
+  defKey: string, spec: unknown, state: string, checkKey: string,
 ): Promise<string> {
-  const { computeWorkflowActionTarget } = await import('../workflows/action-target')
-  const declaredCheckKeys = (findAdapter(defKey)?.attestableChecks() ?? [])
-    .filter(c => c.state === state).map(c => c.check_key)
-  return computeWorkflowActionTarget({
-    instance: fixtureInstance(defKey, state) as never, spec: spec as never, state,
-    actionKind, actionClass: 'READ_ONLY', sideEffectTarget: null,
-    evidence: evidence as never, declaredCheckKeys,
-  }).versionHash
+  const { computeEvidenceTargetHash } = await import('../workflows/attestation')
+  return computeEvidenceTargetHash({
+    instance: fixtureInstance(defKey, state) as never, spec: spec as never,
+    state, checkKey, sourceCommit: null, artifactManifestHash: null,
+  })
 }
 
-/** Evidence rows bound to the target the gate will actually derive. */
+/** Evidence rows pinned to the target each of them is actually about. */
 async function boundEvidence(
-  defKey: string, spec: unknown, state: string, actionKind: string,
+  defKey: string, spec: unknown, state: string, _actionKind: string,
   rows: Record<string, unknown>[],
 ): Promise<Record<string, unknown>[]> {
-  const hash = await currentTargetHash(defKey, spec, state, actionKind, rows)
-  return rows.map(r => ({ ...r, target_hash: hash }))
+  return Promise.all(rows.map(async r => ({
+    ...r, target_hash: await evidencePin(defKey, spec, state, r.check_key as string),
+  })))
 }
 
 function makeDb(f: Fixture) {
@@ -197,8 +194,10 @@ describe('C — the self-answered required check no longer blocks its own action
     const declared = findAdapter(PROBE_DEF_KEY)!.attestableChecks()
     const rows = await boundEvidence(PROBE_DEF_KEY, probeSpec, 'probe', PROBE_ACTION,
       [evidenceRow(PROBE_CHECK, 'probe', 'blocked')])
-    const hash = rows[0].target_hash as string
-    const summary = summarizeStateEvidence(declared, 'probe', rows as never, () => hash)
+    const { evidenceTargetHashFor } = await import('../workflows/evidence-binding')
+    const summary = summarizeStateEvidence(declared, 'probe', rows as never,
+      evidenceTargetHashFor(fixtureInstance(PROBE_DEF_KEY, 'probe') as never,
+        probeSpec as never, 'probe', rows as never))
     const verdict = summary.verdicts.find(v => v.check_key === PROBE_CHECK)!
     expect(verdict.binding).toBe('current')      // it really was judged, not skipped
     expect(verdict.satisfaction).toBe('blocked')
@@ -211,8 +210,10 @@ describe('C — the self-answered required check no longer blocks its own action
     const declared = findAdapter(PROBE_DEF_KEY)!.attestableChecks()
     const rows = await boundEvidence(PROBE_DEF_KEY, probeSpec, 'probe', PROBE_ACTION,
       [evidenceRow(PROBE_CHECK, 'probe', 'pass')])
-    const hash = rows[0].target_hash as string
-    const summary = summarizeStateEvidence(declared, 'probe', rows as never, () => hash)
+    const { evidenceTargetHashFor } = await import('../workflows/evidence-binding')
+    const summary = summarizeStateEvidence(declared, 'probe', rows as never,
+      evidenceTargetHashFor(fixtureInstance(PROBE_DEF_KEY, 'probe') as never,
+        probeSpec as never, 'probe', rows as never))
     expect(summary.satisfied).toContain(PROBE_CHECK)
     expect(summary.allSatisfied).toBe(true)
   })
@@ -222,8 +223,10 @@ describe('C — the self-answered required check no longer blocks its own action
     const declared = findAdapter(PROBE_DEF_KEY)!.attestableChecks()
     const rows = await boundEvidence(PROBE_DEF_KEY, probeSpec, 'probe', PROBE_ACTION,
       [evidenceRow(PROBE_CHECK, 'probe', 'fail')])
-    const hash = rows[0].target_hash as string
-    const summary = summarizeStateEvidence(declared, 'probe', rows as never, () => hash)
+    const { evidenceTargetHashFor } = await import('../workflows/evidence-binding')
+    const summary = summarizeStateEvidence(declared, 'probe', rows as never,
+      evidenceTargetHashFor(fixtureInstance(PROBE_DEF_KEY, 'probe') as never,
+        probeSpec as never, 'probe', rows as never))
     expect(summary.satisfied).not.toContain(PROBE_CHECK)
     expect(summary.failing).toContain(PROBE_CHECK)
   })

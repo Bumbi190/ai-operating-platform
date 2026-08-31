@@ -248,7 +248,11 @@ describe('registration and instance creation are deliberate operator acts', () =
     expect(admin).toMatch(/definition_not_registered/)
   })
 
-  it('only vendored definitions are registerable', () => {
-    expect(admin).toMatch(/REGISTERABLE\.has\(defKey\)/)
+  it('only allowlisted definitions are registerable', () => {
+    // PR9h-1 replaced the Set with a typed literal list + narrowing predicate,
+    // so a typo is a build error rather than a runtime 400. Still closed.
+    expect(admin).toMatch(/const REGISTERABLE = \[/)
+    expect(admin).toMatch(/function isRegisterable/)
+    expect(admin).toMatch(/if \(!isRegisterable\(body\.defKey\)\) return badRequest\('defKey'\)/)
   })
 })

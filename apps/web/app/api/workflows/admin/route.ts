@@ -36,8 +36,28 @@ export const dynamic = 'force-dynamic'
  */
 const ACTIONS = ['register_definition', 'create_instance', 'schedule_readonly_evaluation'] as const
 
-/** Only definitions vendored in this build may be registered. */
-const REGISTERABLE = new Set(['familje-stunden.monthly-release'])
+/**
+ * The definitions an operator may register, named one by one.
+ *
+ * A closed literal list rather than "anything the loader knows": the loader is
+ * driven by imports, so a wildcard would mean any future file added to
+ * `definitions/` becomes registerable in production the moment it merges. Adding
+ * a workflow to this list is a deliberate act, and TypeScript narrows the value
+ * to these two strings so a typo is a build error rather than a 400 at runtime.
+ *
+ * Registration still resolves through `registerVendoredDefinition`, which reads
+ * the vendored/authored file itself — the caller names a key and nothing else.
+ */
+const REGISTERABLE = [
+  'familje-stunden.monthly-release',   // vendored_upstream — the product process
+  'omnira.probe-validation',           // authored_here — Omnira's capability test
+] as const
+
+type RegisterableDefKey = (typeof REGISTERABLE)[number]
+
+function isRegisterable(value: unknown): value is RegisterableDefKey {
+  return typeof value === 'string' && (REGISTERABLE as readonly string[]).includes(value)
+}
 
 export async function POST(request: Request) {
   const sameOrigin = assertSameOrigin(request)
@@ -57,9 +77,11 @@ export async function POST(request: Request) {
   const db = createAdminClient()
 
   if (action === 'register_definition') {
-    const defKey = typeof body.defKey === 'string' ? body.defKey : null
+    // Fail closed on anything not named above — including a path, a wildcard,
+    // or a key that merely resembles one of these.
+    if (!isRegisterable(body.defKey)) return badRequest('defKey')
+    const defKey: RegisterableDefKey = body.defKey
     const version = typeof body.version === 'number' ? body.version : null
-    if (!defKey || !REGISTERABLE.has(defKey)) return badRequest('defKey')
     if (version === null || !Number.isInteger(version) || version < 1) return badRequest('version')
 
     // Idempotent: an identical second call returns created:false. A changed

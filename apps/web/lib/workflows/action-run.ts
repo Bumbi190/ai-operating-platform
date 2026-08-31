@@ -30,6 +30,7 @@ import { assertWorkflowAuthorizationValid } from './authorization'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
 import { checkAnsweredBy } from './action-discovery'
+import { evidenceTargetHashFor } from './evidence-binding'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
@@ -205,8 +206,16 @@ export async function createWorkflowActionRun(
     // definition marks required may block an action.
     const requiredKeys = new Set(
       declared.filter(c => c.state === instance.current_state && c.required).map(c => c.check_key))
+    // The EVIDENCE pin, not the action pin. `target.versionHash` is a
+    // `workflow.action` hash and it includes the evidence rows themselves, so
+    // judging evidence against it was wrong twice: a different kind of pin, and
+    // one that moves whenever a row is appended. Before PR9h-3 that made every
+    // row read as unbound or stale, so no required check could ever be
+    // satisfied here — invisible only because nothing had produced bound
+    // evidence yet.
     const summary = summarizeStateEvidence(
-      declared, instance.current_state, evidence, () => target.versionHash)
+      declared, instance.current_state, evidence,
+      evidenceTargetHashFor(instance, def.spec, instance.current_state, evidence))
     const selfAnswered = checkAnsweredBy(input.actionKind)
     const unmet = summary.verdicts.filter(v => requiredKeys.has(v.check_key) && !v.satisfies)
     const blocking = unmet.filter(v => v.check_key !== selfAnswered)

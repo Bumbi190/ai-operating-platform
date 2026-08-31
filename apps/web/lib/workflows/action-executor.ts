@@ -297,6 +297,13 @@ export async function executeWorkflowAction(
       checkKey: output.checkKey,
       result: output.result,
       source: 'automated',            // hardcoded: a handler cannot claim attestation
+      // PR9h-3: pin the row to what it is about. The run id is all that is
+      // passed — recordEvidence derives the hash from the run's own binding and
+      // the pinned definition, so neither this executor nor the handler beneath
+      // it can influence what its evidence will be judged against. Without this
+      // the row is written unbound and can never satisfy anything, which is how
+      // a real PASS would have deadlocked the workflow.
+      observation: { runId: run.id },
       detail: {
         ...output.detail,
         action_kind: run.action_kind,

@@ -106,9 +106,14 @@ describe('the tick creates work; it does not do it', () => {
 // ── Create only when needed ─────────────────────────────────────────────────
 
 describe('the scheduler does not loop', () => {
-  it('skips when the check already has PASS evidence', () => {
-    expect(sched).toMatch(/\.eq\('result', 'pass'\)/)
+  it('skips when the check is SATISFIED — not merely when a pass row exists', () => {
+    // PR9h-3 raised this pin. `.eq('result','pass')` counted unbound and stale
+    // rows as satisfied, so the seam would refuse to schedule the observation
+    // that would have produced a usable one.
+    expect(sched).toMatch(/summarizeStateEvidence\(/)
+    expect(sched).toMatch(/verdict\?\.satisfies/)
     expect(sched).toMatch(/already_satisfied/)
+    expect(sched).not.toMatch(/\.eq\('result', 'pass'\)/)
   })
 
   it('skips while a run is pending or running', () => {

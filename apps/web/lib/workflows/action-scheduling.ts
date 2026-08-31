@@ -22,7 +22,11 @@
 import 'server-only'
 
 import { createWorkflowActionRun, type ActionBindingRefusal } from './action-run'
-import { checkAnsweredBy, discoverReadOnlyActions } from './action-discovery'
+import { discoverReadOnlyActions } from './action-discovery'
+import { evidenceTargetHashFor } from './evidence-binding'
+import { summarizeStateEvidence } from './evidence-consumption'
+import { findAdapter } from './adapters/registry'
+import { listEvidence, readDefinitionById } from './store'
 import type { WorkflowInstance } from './types'
 
 // any: the Supabase client in this project has no generated DB types.
@@ -161,17 +165,31 @@ export async function ensureReadOnlyActionRuns(
 async function ensureOne(
   db: AnyDb, instance: WorkflowInstance, actionKind: string, checkKey: string,
 ): Promise<SchedulingDecision> {
-  // 1) Already answered? A recorded PASS for this check in this state means the
-  //    observation exists; repeating it would only add noise.
+  // 1) Already answered? Asked with the CANONICAL satisfaction rules, not with
+  //    `result = 'pass'`.
+  //
+  //    A raw column read was the bug: an unbound or stale PASS is not a
+  //    satisfied check — `evaluateCheck` refuses both — but a raw read counts
+  //    them, so the seam would decline to schedule the very observation needed
+  //    to produce a usable row. That is a deadlock reachable from any legacy
+  //    row, and it is the same shape as the one PR9h-2 fixed one layer up.
+  //
+  //    The logic is not duplicated here: this calls `summarizeStateEvidence`
+  //    with the shared pin, exactly as the tick and the pre-run gate do.
   try {
-    const { data: evidence } = await db.from('workflow_evidence')
-      .select('id').eq('instance_id', instance.id)
-      .eq('state', instance.current_state).eq('check_key', checkKey)
-      .eq('result', 'pass').limit(1)
-    if ((evidence ?? []).length > 0) {
-      return { actionKind, outcome: 'already_satisfied', stage: 'evidence',
-        reasonCode: 'already_recorded_pass', blockingCheckKeys: [],
-        detail: `${checkKey} already recorded as pass` }
+    const adapter = findAdapter(instance.def_key)
+    if (adapter) {
+      const def = await readDefinitionById(db, instance.def_id)
+      const rows = await listEvidence(db, instance.id)
+      const summary = summarizeStateEvidence(
+        adapter.attestableChecks(), instance.current_state, rows,
+        evidenceTargetHashFor(instance, def.spec, instance.current_state, rows))
+      const verdict = summary.verdicts.find(v => v.check_key === checkKey)
+      if (verdict?.satisfies) {
+        return { actionKind, outcome: 'already_satisfied', stage: 'evidence',
+          reasonCode: 'already_recorded_pass', blockingCheckKeys: [],
+          detail: `${checkKey} is satisfied by evidence bound to the current target` }
+      }
     }
   } catch { /* unreadable evidence must not create a run either — fall through */ }
 

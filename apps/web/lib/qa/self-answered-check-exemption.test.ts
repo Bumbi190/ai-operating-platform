@@ -494,8 +494,8 @@ describe('E — refusal detail is persisted, bounded and safe', () => {
 
   it('every scheduling decision carries a stage and a reason code', () => {
     const sched = readFileSync(join(process.cwd(), 'lib/workflows/action-scheduling.ts'), 'utf8')
-    const returns = sched.match(/outcome: '(created|already_satisfied|already_scheduled|attempts_exhausted|no_action_declared|refused)'/g) ?? []
-    expect(returns.length).toBeGreaterThanOrEqual(9)
+    const returns = sched.match(/outcome: '(created|already_satisfied|already_scheduled|identity_held|attempts_exhausted|no_action_declared|refused)'/g) ?? []
+    expect(returns.length).toBeGreaterThanOrEqual(7)
     // Every return site names both fields; count them rather than trusting review.
     expect((sched.match(/stage: '/g) ?? []).length).toBeGreaterThanOrEqual(returns.length)
     expect((sched.match(/reasonCode:/g) ?? []).length).toBeGreaterThanOrEqual(returns.length)

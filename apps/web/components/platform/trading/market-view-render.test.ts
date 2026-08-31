@@ -347,6 +347,9 @@ describe('the proposal is not executable', () => {
       // allowlist keeps doing its real job — proving no control can place,
       // modify or cancel anything.
       '⤢', '⤡',
+      // Reset view. Also a VIEW control: it fits the chart to its own data
+      // and reaches nothing beyond the renderer's viewport.
+      '⤾',
     ])
     for (const text of texts) {
       expect(allowed.has(text), `unexpected control: "${text}"`).toBe(true)

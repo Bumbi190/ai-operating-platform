@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { TradingMarketViewSnapshot } from '@/lib/trading/market-view'
-import { MarketChart } from './MarketChart'
+import { InteractiveMarketChart } from './InteractiveMarketChart'
+import { ChartStatusBadges } from './ChartStatusBadges'
 import styles from './AtlasMarketView.module.css'
 
 /**
@@ -127,7 +128,13 @@ export function ChartShell({
       data-fullscreen={isFullscreen || undefined}
       data-testid="chart-shell"
     >
-      <MarketChart snapshot={snapshot} width={box?.width} height={box?.height} />
+      <InteractiveMarketChart
+        snapshot={snapshot}
+        width={box?.width}
+        height={box?.height}
+      />
+
+      <ChartStatusBadges snapshot={snapshot} />
 
       <div className={styles.chartShellControls}>
         {/*

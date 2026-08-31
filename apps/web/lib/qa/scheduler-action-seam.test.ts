@@ -117,13 +117,21 @@ describe('the scheduler does not loop', () => {
   })
 
   it('skips while a run is pending or running', () => {
-    expect(sched).toMatch(/prior\.status === 'pending' \|\| prior\.status === 'running'/)
+    // PR9h-4 moved the lifecycle decision into action-identity.ts, where it is
+    // pure and testable. The seam must not re-derive it from a status string.
+    expect(sched).toMatch(/classifyPriorObservation\(prior, lastExplicitScheduleAt\)/)
     expect(sched).toMatch(/already_scheduled/)
+    const ident = readFileSync(
+      join(process.cwd(), 'lib/workflows/action-identity.ts'), 'utf8')
+    expect(ident).toMatch(/ACTIVE_STATUSES = \['pending', 'running'\]/)
+    expect(ident).toMatch(/reason: 'active_run_exists'/)
   })
 
   it('MUTATION — an exhausted attempt budget does NOT mint a new attempt_group', () => {
     // Without this the scheduler becomes an infinite run factory.
-    expect(sched).toMatch(/prior\.attempts >= prior\.max_attempts/)
+    const ident = readFileSync(
+      join(process.cwd(), 'lib/workflows/action-identity.ts'), 'utf8')
+    expect(ident).toMatch(/prior\.attempts >= prior\.max_attempts/)
     expect(sched).toMatch(/attempts_exhausted/)
   })
 

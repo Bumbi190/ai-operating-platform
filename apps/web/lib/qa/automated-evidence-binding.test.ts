@@ -271,9 +271,11 @@ describe('the seam asks the canonical question', () => {
 
   it('no duplicate run while a matching run is open', async () => {
     const [d] = await schedule([row('blocked', CORRECT_PIN)],
-      [{ id: RUN_ID, status: 'running', attempts: 1, max_attempts: 5 }])
+      [{ id: RUN_ID, status: 'running', attempts: 1, max_attempts: 5,
+         created_at: '2026-01-02T00:00:00.000Z', action_outcome: null,
+         reconciliation_required: false }])
     expect(d.outcome).toBe('already_scheduled')
-    expect(d.reasonCode).toBe('run_in_flight')
+    expect(d.reasonCode).toBe('active_run_exists')
   })
 })
 

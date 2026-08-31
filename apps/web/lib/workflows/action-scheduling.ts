@@ -23,6 +23,9 @@ import 'server-only'
 
 import { createWorkflowActionRun, type ActionBindingRefusal } from './action-run'
 import { discoverReadOnlyActions } from './action-discovery'
+import {
+  classifyPriorObservation, type IdentityHoldReason, type PriorObservation,
+} from './action-identity'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
@@ -36,6 +39,8 @@ export type SchedulingOutcome =
   | 'created'
   | 'already_satisfied'
   | 'already_scheduled'
+  /** A prior run still owns this action identity. See action-identity.ts. */
+  | 'identity_held'
   | 'attempts_exhausted'
   | 'no_action_declared'
   | 'refused'
@@ -59,9 +64,14 @@ export type SchedulingReasonCode =
   | 'project_pause_unreadable'
   | 'no_canonical_action'
   | 'already_recorded_pass'
-  | 'run_in_flight'
-  | 'run_retryable'
-  | 'attempt_budget_spent'
+  /**
+   * `run_retryable` is deliberately absent. It was the PR9h-4 defect in one
+   * word: a `done` run reported as retryable, when `claim_runs` only ever
+   * claims `pending`. The classifier's vocabulary replaces it, so the mislabel
+   * is no longer expressible.
+   */
+  | IdentityHoldReason
+  | 'terminal_prior_released'
   | ActionBindingRefusal
 
 export interface SchedulingDecision {
@@ -81,6 +91,9 @@ export interface SchedulingDecision {
   /** Persisted. */
   stage: SchedulingStage
 }
+
+/** The bookkeeping row that marks a human asking for another evaluation. */
+const EXPLICIT_SCHEDULE_CHECK = 'scheduler.wake_scheduled'
 
 /** Caps for the persisted projection. A bounded row cannot become a payload. */
 const MAX_BLOCKING_KEYS = 10
@@ -165,6 +178,11 @@ export async function ensureReadOnlyActionRuns(
 async function ensureOne(
   db: AnyDb, instance: WorkflowInstance, actionKind: string, checkKey: string,
 ): Promise<SchedulingDecision> {
+  /** Newest operator schedule for this instance; null when never scheduled. */
+  let lastExplicitScheduleAt: string | null = null
+  /** Set when a terminal prior run released its identity, for the audit row. */
+  let releasedPrior: string | null = null
+
   // 1) Already answered? Asked with the CANONICAL satisfaction rules, not with
   //    `result = 'pass'`.
   //
@@ -181,6 +199,16 @@ async function ensureOne(
     if (adapter) {
       const def = await readDefinitionById(db, instance.def_id)
       const rows = await listEvidence(db, instance.id)
+      // The same read answers "was another observation explicitly asked for".
+      // `scheduler.wake_scheduled` is written by `workflow_schedule_wake` and
+      // nothing else, and that RPC is reachable only from the operator
+      // endpoint — the executor's re-arm and the tick's own record write no
+      // such row. So this is a human asking, never the machine re-entering.
+      lastExplicitScheduleAt = rows
+        .filter(r => r.check_key === EXPLICIT_SCHEDULE_CHECK)
+        .map(r => r.recorded_at)
+        .sort()
+        .pop() ?? null
       const summary = summarizeStateEvidence(
         adapter.attestableChecks(), instance.current_state, rows,
         evidenceTargetHashFor(instance, def.spec, instance.current_state, rows))
@@ -193,39 +221,38 @@ async function ensureOne(
     }
   } catch { /* unreadable evidence must not create a run either — fall through */ }
 
-  // 2/3) An existing run for this instance+kind that has not reached a terminal,
-  //      identity-releasing state. Pending and running are obvious; 'unknown'
-  //      and 'partial' also hold the identity (PR9d), and a failed READ_ONLY run
-  //      is a finished attempt, not a licence to mint a new one.
+  // 2/3) Does an existing run still OWN this action identity?
   try {
     const { data: existing } = await db.from('runs')
-      .select('id, status, attempts, max_attempts')
+      .select('id, status, attempts, max_attempts, created_at, action_outcome, reconciliation_required')
       .eq('workflow_instance_id', instance.id)
       .eq('action_kind', actionKind)
       .eq('workflow_from_state', instance.current_state)
       .not('status', 'in', '("cancelled","rejected")')
       .order('created_at', { ascending: false }).limit(1)
-    const prior = (existing ?? [])[0] as
-      { id: string; status: string; attempts: number; max_attempts: number } | undefined
+    const prior = (existing ?? [])[0] as PriorObservation | undefined
 
     if (prior) {
-      if (prior.status === 'pending' || prior.status === 'running') {
-        return { actionKind, outcome: 'already_scheduled', runId: prior.id,
-          stage: 'existing_run', reasonCode: 'run_in_flight', blockingCheckKeys: [],
-          detail: `run ${prior.id.slice(0, 8)} is ${prior.status}` }
+      // Whether the prior run still owns this identity is a PR9d question about
+      // outcome and phase, decided in one pure place. `explicitlyScheduledAt` is
+      // what stops a released identity from becoming a loop: the executor
+      // re-arms the instance after every run, so without it a terminal
+      // observation would mint its own successor forever.
+      const disposition = classifyPriorObservation(prior, lastExplicitScheduleAt)
+      if (disposition.holds) {
+        return {
+          actionKind,
+          outcome: disposition.reason === 'active_run_exists' ? 'already_scheduled'
+            : disposition.reason === 'attempt_budget_spent' ? 'attempts_exhausted'
+            : 'identity_held',
+          runId: prior.id, stage: 'existing_run',
+          reasonCode: disposition.reason, blockingCheckKeys: [], detail: disposition.detail,
+        }
       }
-      if (prior.attempts >= prior.max_attempts) {
-        // The retry budget is spent. A new attempt_group here would restart the
-        // whole thing every minute; the recorded evidence/escalation is the
-        // correct surface for a failing observation.
-        return { actionKind, outcome: 'attempts_exhausted', runId: prior.id,
-          stage: 'existing_run', reasonCode: 'attempt_budget_spent', blockingCheckKeys: [],
-          detail: `run ${prior.id.slice(0, 8)} used ${prior.attempts}/${prior.max_attempts} attempts` }
-      }
-      // Retryable and not terminal-by-budget: the drain's own retry handles it.
-      return { actionKind, outcome: 'already_scheduled', runId: prior.id,
-        stage: 'existing_run', reasonCode: 'run_retryable', blockingCheckKeys: [],
-        detail: `run ${prior.id.slice(0, 8)} is ${prior.status} with attempts left` }
+      // Released. Fall through to creation, which mints a FRESH attempt_group —
+      // a new observation is not attempt 2 of the old run, and the old run is
+      // never reopened. `runs` is append-only for binding columns anyway.
+      releasedPrior = disposition.detail
     }
   } catch { /* fall through to creation; the unique index is the real guard */ }
 
@@ -236,8 +263,10 @@ async function ensureOne(
   const created = await createWorkflowActionRun(db, { instanceId: instance.id, actionKind })
   if (created.ok) {
     return { actionKind, outcome: 'created', runId: created.runId,
-      stage: 'binding', reasonCode: null, blockingCheckKeys: [],
-      detail: `bound run created for ${actionKind}` }
+      stage: 'binding',
+      reasonCode: releasedPrior === null ? null : 'terminal_prior_released',
+      blockingCheckKeys: [],
+      detail: releasedPrior ?? `bound run created for ${actionKind}` }
   }
   if (created.refusal === 'duplicate_action_identity') {
     // Lost a race with a concurrent tick. The other tick's run is authoritative;

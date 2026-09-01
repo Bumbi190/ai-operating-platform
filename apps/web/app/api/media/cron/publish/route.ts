@@ -42,7 +42,14 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { checkAutomationPaused, handlePublishFailure } from '@/lib/media/safeguards'
+import { handlePublishFailure } from '@/lib/media/safeguards'
+import {
+  projectScope, type ExecutionContract, type StopRefusalReason,
+} from '@/lib/governance/execution-stop'
+import {
+  assertExecutionDispatchAllowed, isExecutionStopped, stopIsNotRetryable,
+} from '@/lib/governance/execution-dispatch'
+import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import {
   createReelContainer,
@@ -85,10 +92,31 @@ type ChannelFail = {
   permanent: boolean
   detail:    Record<string, unknown> | null
 }
-type ChannelResult = ChannelOk | ChannelFail
+/**
+ * A stop is NOT a channel failure. Giving it its own variant is the whole point:
+ * as a `ChannelFail` it would increment the publish failure counter, could send
+ * the script to human review, and would alert an operator that Meta broke —
+ * because that same operator pressed stop. Nothing was dispatched, so nothing
+ * failed; the work is deferred and stays resumable.
+ */
+type ChannelStopped = {
+  ok:      false
+  stopped: true
+  reason:  StopRefusalReason
+}
+type ChannelResult = ChannelOk | ChannelFail | ChannelStopped
 
-/** En kanal är "klar" när den lyckats eller failat permanent — inget mer att vänta på. */
+function isStopped(r: ChannelResult): r is ChannelStopped {
+  return r.ok === false && (r as ChannelStopped).stopped === true
+}
+
+/**
+ * En kanal är "klar" när den lyckats eller failat permanent — inget mer att vänta på.
+ * En STOPPAD kanal är aldrig klar: ingenting skickades, arbetet är uppskjutet och
+ * ska återupptas efter resume.
+ */
 function isSettled(r: ChannelResult): boolean {
+  if (isStopped(r)) return false
   return r.ok || r.permanent
 }
 
@@ -106,11 +134,11 @@ export async function GET(request: Request) {
   const db = createAdminClient()
 
   // ── Global pauscheck ──────────────────────────────────────────────────────────
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
-    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
-  }
+  // The legacy `checkAutomationPaused` stood here. It read the raw global flag
+  // only, so a paused PROJECT still published its own content, and it read once
+  // per route, so a pause committing between Instagram and Facebook did not stop
+  // Facebook. The canonical preflight below runs once the script — and therefore
+  // the real project — is known, and the load-bearing checks are per attempt.
 
   if (dryRun) log('dryrun', 'DRY RUN — inga skrivande anrop, inga DB-uppdateringar')
 
@@ -195,6 +223,7 @@ export async function GET(request: Request) {
     .from('media_scripts')
     .select(`
       id,
+      project_id,
       hook,
       script,
       cta,
@@ -231,6 +260,25 @@ export async function GET(request: Request) {
   }
 
   const script = scripts[0]
+
+  // The script's OWN project is the execution authority. MEDIA_PIPELINE_PROJECT
+  // is billing attribution; that every script happens to sit in that project
+  // today is a fact about the data, not about the system.
+  const execution: ExecutionContract = {
+    context: 'AUTONOMOUS',
+    scope: projectScope({ projectId: script.project_id as string }),
+  }
+
+  // EARLY, and optimisation only: do not claim a row we are not allowed to
+  // publish. Its answer is deliberately not carried into any dispatch — each
+  // channel and each retry re-decides below.
+  const eligibility = await resolveExecutionEligibility(execution)
+  if (!eligibility.allowed) {
+    log('safeguard', `STOPPAD före claim — ${eligibility.reason}`)
+    return NextResponse.json({
+      status: 'deferred_by_stop', reason: eligibility.reason, scriptId: script.id,
+    })
+  }
 
   // ── Idempotens: hävda raden ATOMISKT (approved → publishing) ──────────────────
   if (!dryRun) {
@@ -302,7 +350,37 @@ export async function GET(request: Request) {
   const results: Record<string, ChannelResult> = { instagram, facebook }
   const anyOk       = Object.values(results).some(r => r.ok)
   const allSettled  = Object.values(results).every(isSettled)
-  const hardFailure = Object.values(results).find((r): r is ChannelFail => !r.ok)
+  // A stop is not a hard failure and must never be reported as one.
+  const hardFailure = Object.values(results)
+    .find((r): r is ChannelFail => !r.ok && !isStopped(r))
+  const stopped     = Object.values(results).find(isStopped)
+
+  // ── DEFERRED BY STOP ────────────────────────────────────────────────────────
+  // Taken BEFORE the failure accounting below, which would otherwise increment
+  // the publish failure counter, possibly send the script to human review, and
+  // alert that Meta broke — all because an operator pressed stop.
+  //
+  // The row was claimed `approved → publishing` before any channel ran. Leaving
+  // it there would strand it: `publishing` is not in the queue predicate, so the
+  // script would need the 15-minute stale-claim sweeper to come back. Releasing
+  // it to `approved` makes it immediately resumable after resume, and any
+  // channel that already succeeded is protected by its own id column — Instagram
+  // will not publish twice.
+  if (stopped && !dryRun) {
+    await db.from('media_scripts').update({
+      status:                'approved',
+      publish_channel_state: toJson(channelState),
+    }).eq('id', script.id)
+    log('publish', `Uppskjuten av stopp (${stopped.reason}) — släppt tillbaka till kön, `
+      + `inga misslyckanden räknade`)
+    return NextResponse.json({
+      status:   'deferred_by_stop',
+      reason:   stopped.reason,
+      scriptId: script.id,
+      channels: results,
+      ranAt:    new Date().toISOString(),
+    })
+  }
 
   const publishedChannels = [
     instagram.ok && !instagram.skipped ? 'Instagram' : null,
@@ -333,7 +411,7 @@ export async function GET(request: Request) {
       log('done', `Published on ${platforms}${hardFailure ? ' (partiellt)' : ''}`)
     } else {
       // Ingen kanal lyckades och inget är värt att försöka igen → granskning.
-      const permanent = Object.values(results).every(r => r.ok || r.permanent)
+      const permanent = Object.values(results).every(r => r.ok || (!isStopped(r) && r.permanent))
       const { sentToReview, newRetryCount } = await handlePublishFailure(
         db, script.id, hardFailure?.error ?? 'okänt fel', { permanent },
       )
@@ -356,7 +434,7 @@ export async function GET(request: Request) {
 
   // ── Alerts per felande kanal ─────────────────────────────────────────────────
   for (const [channel, r] of Object.entries(results)) {
-    if (r.ok) continue
+    if (r.ok || isStopped(r)) continue
     await sendPipelineAlert({
       cronRoute: 'cron/publish',
       step:      `${channel}_publish`,
@@ -375,8 +453,10 @@ export async function GET(request: Request) {
   // ── Sammanfattnings-mail vid minst en lyckad kanal ───────────────────────────
   if (anyOk) {
     const warnings: string[] = []
-    if (!instagram.ok) warnings.push(`Instagram misslyckades: ${instagram.error}`)
-    if (!facebook.ok)  warnings.push(`Facebook misslyckades: ${facebook.error}`)
+    // A stop never appears in a run report as a channel failure — and cannot
+    // reach here anyway, because the deferred branch returned earlier.
+    if (!instagram.ok && !isStopped(instagram)) warnings.push(`Instagram misslyckades: ${instagram.error}`)
+    if (!facebook.ok  && !isStopped(facebook))  warnings.push(`Facebook misslyckades: ${facebook.error}`)
     if (facebook.ok && facebook.skipped === 'not_configured') warnings.push('Facebook ej konfigurerat')
 
     await sendRunReport({
@@ -443,11 +523,15 @@ export async function GET(request: Request) {
 
       // Faktiska, bundna retries med backoff — transienta fel försöks om DIREKT
       // i samma körning i stället för att vänta 10 timmar på nästa cron.
-      const result = await withRetry(() => publishContainer(creationId), {
+      const result = await withRetry(async () => {
+        await assertExecutionDispatchAllowed(
+          execution, { system: 'instagram', operation: 'media_publish' })
+        return publishContainer(creationId)
+      }, {
         attempts:    3,
         baseMs:      1_500,
         label:       'instagram media_publish',
-        isPermanent: isPermanentError,
+        isPermanent: stopIsNotRetryable(isPermanentError),
       })
 
       log('instagram', `Instagram OK: ${result.permalink}`)
@@ -456,6 +540,10 @@ export async function GET(request: Request) {
     } catch (err) {
       const summary   = errorSummary(err)
       const permanent = isPermanentError(err)
+      if (isExecutionStopped(err)) {
+        log('instagram', `Instagram uppskjuten av stopp (${err.reason}) — inte ett Meta-fel`)
+        return { ok: false, stopped: true, reason: err.reason }
+      }
       log('instagram', `Instagram failed (${permanent ? 'permanent' : 'transient'}): ${summary}`)
       return {
         ok: false,
@@ -515,11 +603,19 @@ export async function GET(request: Request) {
       log('instagram', 'dryRun — skulle skapat ny container')
       return 'dry-run-container'
     }
-    const creationId = await withRetry(() => createReelContainer(script.video_url!, caption), {
+    // Fresh decision INSIDE the callback: a pause can commit during a backoff
+    // sleep, so authorising once outside would let attempt 2 fly after the stop.
+    const creationId = await withRetry(async () => {
+      await assertExecutionDispatchAllowed(
+        execution, { system: 'instagram', operation: 'create_container' })
+      return createReelContainer(script.video_url!, caption)
+    }, {
       attempts:    3,
       baseMs:      1_500,
       label:       'instagram media_create',
-      isPermanent: isPermanentError,
+      // A stop must leave the loop at once. Sleeping and asking again would
+      // eventually report the operator's own pause as an exhausted Meta call.
+      isPermanent: stopIsNotRetryable(isPermanentError),
     })
     await db.from('media_scripts')
       .update({
@@ -548,17 +644,25 @@ export async function GET(request: Request) {
     }
 
     try {
-      const result = await withRetry(() => postReelToFacebook(script.video_url!, caption), {
+      const result = await withRetry(async () => {
+        await assertExecutionDispatchAllowed(
+          execution, { system: 'facebook', operation: 'post_reel' })
+        return postReelToFacebook(script.video_url!, caption)
+      }, {
         attempts:    3,
         baseMs:      1_500,
         label:       'facebook reel',
-        isPermanent: isPermanentError,
+        isPermanent: stopIsNotRetryable(isPermanentError),
       })
       log('facebook', `Facebook OK: ${result.url}`)
       return { ok: true, id: result.postId, url: result.url ?? null }
     } catch (err) {
       const summary   = errorSummary(err)
       const permanent = isPermanentError(err)
+      if (isExecutionStopped(err)) {
+        log('facebook', `Facebook uppskjuten av stopp (${err.reason}) — inte ett Facebook-fel`)
+        return { ok: false, stopped: true, reason: err.reason }
+      }
       log('facebook', `Facebook failed (${permanent ? 'permanent' : 'transient'}): ${summary}`)
       return {
         ok: false,

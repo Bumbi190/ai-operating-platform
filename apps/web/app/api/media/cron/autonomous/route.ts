@@ -25,7 +25,8 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { checkAutomationPaused, checkDailyRenderLimit } from '@/lib/media/safeguards'
+import { checkDailyRenderLimit } from '@/lib/media/safeguards'
+import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -182,11 +183,18 @@ export async function GET(request: Request) {
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
   })
 
-  // ── 0a. Global pauscheck ──────────────────────────────────────────────────────
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
-    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
+  // ── 0a. Kanonisk pipeline-preflight ───────────────────────────────────────────
+  // Optimering, inte garantin. Varje betald leverantör bakom denna pipeline har
+  // sin egen färska kontroll (G3C-1) och varje extern skrivning har sin (G3C-2B);
+  // detta gör bara att en redan stoppad pipeline inte börjar arbeta i onödan.
+  // Ersätter `checkAutomationPaused`, som bara läste den globala flaggan och
+  // därför aldrig kunde se ett PROJEKT-stopp.
+  const eligibility = await resolveExecutionEligibility({
+    context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT),
+  })
+  if (!eligibility.allowed) {
+    log('safeguard', `STOPPAD — ${eligibility.reason}`)
+    return NextResponse.json({ status: 'paused', reason: eligibility.reason })
   }
 
   // ── 0b. Daglig render-gräns ───────────────────────────────────────────────────

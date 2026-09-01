@@ -20,6 +20,8 @@ import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagra
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
     .from('media_scripts')
     .select(`
       id,
+      project_id,
       hook,
       cta,
       hashtags,
@@ -86,6 +89,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'nothing_to_do' })
   }
 
+  // The script's OWN project is the execution authority. Not
+  // MEDIA_PIPELINE_PROJECT: that is billing attribution, and the fact that every
+  // script currently happens to live in that same project is a coincidence of
+  // today's data, not a property of the system.
+  const execution: ExecutionContract = {
+    context: 'AUTONOMOUS',
+    scope: projectScope({ projectId: script.project_id as string }),
+  }
+
   log(`Processing script ${script.id} (video_status: ${script.video_status}, retries: ${script.retry_count ?? 0})`)
 
   // ── Step 1: Poll Lambda if still rendering ────────────────────────────────────
@@ -121,6 +133,24 @@ export async function GET(request: Request) {
           if (retryCount < MAX_RENDER_RETRIES) {
             // Re-trigger a fresh Lambda render with the same props
             log(`Render failed (attempt ${retryCount + 1}/${MAX_RENDER_RETRIES}): ${prog.error} — retrying...`)
+
+            // ── GOVERNANCE BOUNDARY: a new render is new external compute ──
+            // Placed BEFORE the try below on purpose. Inside it a throw is
+            // caught and falls through to "permanently failed", which would mark
+            // the video failed and alert an operator because THEY pressed stop.
+            // A stop is deferral, not a render failure.
+            try {
+              await assertExecutionDispatchAllowed(
+                execution, { system: 'remotion-lambda', operation: 'start_render' })
+            } catch (stopErr) {
+              if (!isExecutionStopped(stopErr)) throw stopErr
+              log(`New render deferred by stop (${stopErr.reason}) — retry_count untouched`)
+              return NextResponse.json({
+                status:   'render_retry_deferred_by_stop',
+                reason:   stopErr.reason,
+                scriptId: script.id,
+              })
+            }
 
             try {
               const inputProps = await buildVideoInputProps({
@@ -215,6 +245,22 @@ export async function GET(request: Request) {
     sourceUrl:  (newsItem as { url?: string } | null)?.url ?? undefined,
     sourceName: (newsItem as { source_name?: string } | null)?.source_name ?? undefined,
   })
+
+  // ── GOVERNANCE BOUNDARY: creating a container is a write to Meta ──
+  // Also before the try: that catch answers 500 `ig_container_failed`, which
+  // would report the operator's own pause as a Meta fault.
+  try {
+    await assertExecutionDispatchAllowed(
+      execution, { system: 'instagram', operation: 'create_container' })
+  } catch (stopErr) {
+    if (!isExecutionStopped(stopErr)) throw stopErr
+    log(`Instagram container deferred by stop (${stopErr.reason}) — video stays ready`)
+    return NextResponse.json({
+      status:   'ig_container_deferred_by_stop',
+      reason:   stopErr.reason,
+      scriptId: script.id,
+    })
+  }
 
   try {
     const creationId = await createReelContainer(videoUrl, caption)

@@ -19,7 +19,7 @@ import { startLambdaRender } from '@/lib/media/lambda-render'
 import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
-import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { projectScope } from '@/lib/governance/execution-stop'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
@@ -85,6 +85,11 @@ export async function GET(request: Request) {
   await db.from('media_scripts').update({ video_status: 'generating_images' }).eq('id', script.id)
 
   try {
+    // `projectId` is the row's OWN project and is the execution authority below.
+    // It used to be discarded in favour of projectScope(MEDIA_PIPELINE_PROJECT) —
+    // the billing slug. Every media script happens to live in that same project
+    // today, so the two coincided and nothing failed; the moment a second project
+    // produces media, pausing it would not have stopped its own renders.
     const { script: scriptText, project_id: projectId, hook } = script
     if (!scriptText || !projectId || !hook) throw new Error('Script saknar obligatoriskt fält: script, project_id eller hook')
 
@@ -99,7 +104,7 @@ export async function GET(request: Request) {
         ? (script.media_news_items[0] as { title?: string })?.title ?? hook
         : (script.media_news_items as { title?: string } | null)?.title ?? hook
 
-      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, scriptText, 8, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
+      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, scriptText, 8, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
       storedImageUrls = await Promise.all(
         rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
       )

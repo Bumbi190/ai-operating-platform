@@ -149,6 +149,13 @@ create table public.atlas_authorizations (
   target_type text, target_id text,
   expires_at timestamptz);
 
+-- TEST-ONLY. Never created by a migration and never present in production: it
+-- exists so a DO block can hand real exception diagnostics back as data.
+create table public.g3b_probe_result (
+  id serial primary key,
+  sqlstate_code text not null,
+  msg text not null default '');
+
 insert into public.platform_config (id) values (1);
 insert into public.projects (id, slug, name) values
   ('${PROJ}',  'alpha', 'Alpha'),
@@ -187,6 +194,41 @@ values (
  * Postgres for `position(... in prosrc)` keeps the whole body intact and returns
  * a scalar, which is what these structural checks actually need.
  */
+
+/**
+ * The EXACT SQLSTATE PostgreSQL raised, taken from real exception diagnostics.
+ *
+ * Message text is not evidence of an error class. A mutation that swapped
+ * `restrict_violation` for `insufficient_privilege` while keeping the wording
+ * would leave every message-based assertion green — and would silently collapse
+ * "execution stopped" and "authorization denied" into one machine-readable
+ * class, which is precisely the distinction G3B was built to keep.
+ *
+ * So this catches the exception inside a DO block, reads RETURNED_SQLSTATE via
+ * GET STACKED DIAGNOSTICS, and stores it as data. The handler's INSERT runs in
+ * the outer transaction after the failed subtransaction rolls back, so the probe
+ * records the failure without persisting whatever the statement half-did.
+ *
+ * Nothing here ships: the scratch table is fixture-only and no helper function
+ * is added to the schema under test.
+ */
+function sqlstateOf(sql: string): { code: string; msg: string } {
+  run(dsn, ['-c', `
+    do $probe$
+    declare v_state text; v_msg text;
+    begin
+      begin
+        perform ${sql.replace(/^\s*select\s+/i, '')};
+        insert into public.g3b_probe_result (sqlstate_code, msg) values ('00000', 'no error');
+      exception when others then
+        get stacked diagnostics v_state = returned_sqlstate, v_msg = message_text;
+        insert into public.g3b_probe_result (sqlstate_code, msg) values (v_state, v_msg);
+      end;
+    end $probe$;`])
+  const row = query(dsn, `select sqlstate_code, msg from public.g3b_probe_result order by id desc limit 1`)[0]
+  return { code: row?.[0] ?? '', msg: row?.slice(1).join('|') ?? '' }
+}
+
 const sqlLit = (t: string) => t.replace(/'/g, "''")
 const bodyPos = (fn: string, needle: string) =>
   Number(one(dsn, `select position('${sqlLit(needle)}' in p.prosrc)
@@ -195,6 +237,7 @@ const bodyPos = (fn: string, needle: string) =>
 const bodyHas = (fn: string, needle: string) => bodyPos(fn, needle) > 0
 
 let preG3bBody = ''
+let preG3bOwner = ''
 
 const d = AVAILABLE ? describe : describe.skip
 
@@ -213,6 +256,9 @@ beforeAll(() => {
   run(dsn, ['-f', MIG(GATE)])
   run(dsn, ['-f', MIG(G3A)])
   run(dsn, ['-c', SEED_DEF])
+  preG3bOwner = one(dsn, `select pg_get_userbyid(p.proowner) from pg_proc p
+                            join pg_namespace n on n.oid=p.pronamespace
+                           where n.nspname='public' and p.proname='workflow_append_transition'`)
   preG3bBody = one(dsn, `select prosrc from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                           where n.nspname='public' and p.proname='workflow_append_transition'`)
 }, 180_000)
@@ -321,6 +367,29 @@ d('G1–G5 · predecessor chain, then G3B', () => {
     expect(acl).toMatch(/service_role=X/)
     expect(acl).not.toMatch(/\banon=/)
     expect(acl).not.toMatch(/\bauthenticated=/)
+  })
+
+  it('G4b · OWNER is preserved by CREATE OR REPLACE', () => {
+    // Predecessor-relative: the owner captured BEFORE G3B must be the owner
+    // after it. CREATE OR REPLACE does not change ownership, and the migration
+    // contains no ALTER OWNER — this proves that rather than assuming it.
+    const after = one(dsn, `select pg_get_userbyid(p.proowner) from pg_proc p
+                              join pg_namespace n on n.oid=p.pronamespace
+                             where n.nspname='public' and p.proname='workflow_append_transition'`)
+    expect(preG3bOwner).not.toBe('')
+    expect(after, 'CREATE OR REPLACE must not change ownership').toBe(preG3bOwner)
+    // The SECURITY DEFINER setters must share that owner, or the guard's
+    // trusted-identity comparison would break.
+    for (const fn of ['stop_set_platform_automation', 'stop_set_project_execution']) {
+      expect(one(dsn, `select pg_get_userbyid(p.proowner) from pg_proc p
+                         join pg_namespace n on n.oid=p.pronamespace
+                        where n.nspname='public' and p.proname='${fn}'`)).toBe(after)
+    }
+    // In production this owner is `postgres`; the fixture's owner is whoever
+    // created the database, so the invariant that matters is SAMENESS.
+    expect(one(dsn, `select pg_get_userbyid(relowner) from pg_class
+                      where relname='workflow_instances' and relnamespace='public'::regnamespace`))
+      .toBe(after)
   })
 
   it('G5 · the gate + CAS survive, and the LOCKED stop reads are now present', () => {
@@ -698,5 +767,100 @@ d('G10 · lock order cannot silently reverse', () => {
     }
     expect(bodyHas('workflow_append_transition', 'current_setting')).toBe(false)
     expect(bodyHas('workflow_append_transition', 'set_config')).toBe(false)
+  })
+})
+
+// ── G. The SQLSTATE contract, from real diagnostics ─────────────────────────
+
+d('G11 · exact SQLSTATE per failure domain', () => {
+  const setGlobal = (v: boolean) =>
+    run(dsn, ['-c', `select public.stop_set_platform_automation(${v}, '${ACTOR}', 'sqlstate')`])
+  const setProject = (v: boolean) =>
+    run(dsn, ['-c', `select public.stop_set_project_execution('${PROJ}'::uuid, ${v}, '${ACTOR}', 'sqlstate')`])
+
+  it('GLOBAL stop → 23001 restrict_violation', () => {
+    clearStops(); const id = newInstance(); setGlobal(true)
+    const r = sqlstateOf(append(id))
+    expect(r.code).toBe('23001')                       // restrict_violation
+    expect(r.msg).toMatch(/GLOBAL execution is stopped/)   // secondary, semantic
+    clearStops()
+  })
+
+  it('PROJECT stop → 23001 restrict_violation', () => {
+    clearStops(); const id = newInstance(); setProject(true)
+    const r = sqlstateOf(append(id))
+    expect(r.code).toBe('23001')
+    expect(r.msg).toMatch(/PROJECT execution is stopped/)
+    clearStops()
+  })
+
+  it('AUTHORIZATION failure → 42501 insufficient_privilege, scopes clear', () => {
+    // The domain that must stay DISTINCT from a stop. If a mutation swapped the
+    // stop code for this one, the two failure classes would collapse into one.
+    clearStops()
+    const id = newInstance('planning')                 // gated state, no authorization
+    const r = sqlstateOf(append(id, 'planning', 'review'))
+    expect(r.code).toBe('42501')                       // insufficient_privilege
+    expect(r.code).not.toBe('23001')
+    expect(r.msg).toMatch(/human gate|authorization/)
+  })
+
+  it('the two domains really are different codes', () => {
+    // Stated as its own assertion because this IS the contract: a caller can
+    // tell "stopped" from "not authorized" without reading prose.
+    clearStops()
+    const gatedId = newInstance('planning')
+    const authCode = sqlstateOf(append(gatedId, 'planning', 'review')).code
+    const stopId = newInstance()
+    setProject(true)
+    const stopCode = sqlstateOf(append(stopId)).code
+    clearStops()
+    expect(authCode).toBe('42501')
+    expect(stopCode).toBe('23001')
+    expect(stopCode).not.toBe(authCode)
+  })
+
+  it('stale CAS → 40001 serialization_failure, unchanged by G3B', () => {
+    clearStops()
+    const id = newInstance('review')
+    const r = sqlstateOf(append(id, 'planning', 'review'))
+    expect(r.code).toBe('40001')                       // serialization_failure
+    expect(r.msg).toMatch(/stale transition/)
+  })
+
+  it('missing PLATFORM stop authority → P0002', () => {
+    clearStops(); const id = newInstance()
+    run(dsn, ['-c', `create table g3b_cfg_bak as select * from public.platform_config;
+                     delete from public.platform_config where id=1;`])
+    const r = sqlstateOf(append(id))
+    expect(r.code).toBe('P0002')                       // no_data_found
+    expect(r.msg).toMatch(/platform stop authority unavailable/)
+    run(dsn, ['-c', `insert into public.platform_config select * from g3b_cfg_bak; drop table g3b_cfg_bak;`])
+  })
+
+  it('missing PROJECT stop authority → P0002', () => {
+    clearStops()
+    run(dsn, ['-c', `alter table public.workflow_instances drop constraint workflow_instances_project_id_fkey`])
+    const id = 'dddddddd-0000-4000-8000-000000000001'
+    run(dsn, ['-c', `insert into public.workflow_instances
+      (id, def_id, def_key, def_version, def_hash, project_id, instance_key, current_state, status)
+      values ('${id}', '${DEF_ID}', 'g3b-probe', 1, '${DEF_HASH}',
+              '99999999-9999-9999-9999-999999999999', 'orphan-sqlstate', 'review', 'active')`])
+    const r = sqlstateOf(append(id))
+    expect(r.code).toBe('P0002')
+    expect(r.msg).toMatch(/project stop authority unavailable/)
+    run(dsn, ['-c', `delete from public.workflow_instances where id='${id}';
+      alter table public.workflow_instances
+        add constraint workflow_instances_project_id_fkey
+        foreign key (project_id) references public.projects(id) on delete restrict`])
+  })
+
+  it('a SUCCESSFUL transition reports no error at all', () => {
+    // Guards the guard: if sqlstateOf() silently swallowed everything it would
+    // report 00000 for the failures above too.
+    clearStops(); const id = newInstance()
+    const r = sqlstateOf(append(id))
+    expect(r.code).toBe('00000')
+    expect(transitionsFor(id)).toBe(1)
   })
 })

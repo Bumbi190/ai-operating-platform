@@ -43,21 +43,37 @@ const EXTERNAL_WRITE_SYMBOLS = [
 ]
 
 describe('G1 · every external write in the tree has a canonical dispatch boundary', () => {
-  it('no runtime module calls an external-write symbol without the boundary', () => {
+  it('every external write CALL SITE has its own authorization', () => {
+    /**
+     * Counted, not merely present. Two weaker forms of this guard were tried and
+     * both let a live mutation through:
+     *
+     *   • `body.includes('assertExecutionDispatchAllowed')` — satisfied by the
+     *     leftover IMPORT after the only call was deleted;
+     *   • file-granular presence — satisfied by Instagram's assertion while
+     *     Facebook's, in the same file, was gone.
+     *
+     * One authorization per external write is the invariant that actually holds
+     * per call site.
+     */
     const offenders: string[] = []
     for (const rel of runtimeFiles()) {
       const body = code(rel)
       // The module that DEFINES the primitive is the primitive, not a caller.
-      const called = EXTERNAL_WRITE_SYMBOLS.filter(sym =>
-        new RegExp(`\\b${sym}\\s*\\(`).test(body)
-        && !new RegExp(`export (async )?function ${sym}`).test(body))
-      if (called.length === 0) continue
-      if (!body.includes('assertExecutionDispatchAllowed')) {
-        offenders.push(`${rel} calls ${called.join('/')} unguarded`)
+      const writes = EXTERNAL_WRITE_SYMBOLS.flatMap(sym =>
+        new RegExp(`export (async )?function ${sym}`).test(body)
+          ? []
+          : (body.match(new RegExp(`\\b${sym}\\s*\\(`, 'g')) ?? []).map(() => sym))
+      if (writes.length === 0) continue
+      const asserts = (body.match(/assertExecutionDispatchAllowed\s*\(/g) ?? []).length
+      if (asserts < writes.length) {
+        offenders.push(`${rel}: ${writes.length} external write(s) [${
+          [...new Set(writes)].join(', ')}] but ${asserts} authorization(s)`)
       }
     }
     expect(offenders,
-      'every external write must cross the canonical dispatch boundary').toEqual([])
+      'each external write must cross the boundary — one channel’s check does '
+      + 'not cover another’s').toEqual([])
   })
 
   it('the inventory itself is non-empty and finds the known callers', () => {

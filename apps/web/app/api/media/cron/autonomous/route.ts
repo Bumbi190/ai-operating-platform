@@ -27,7 +27,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkDailyRenderLimit } from '@/lib/media/safeguards'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
-import { assertExecutionDispatchAllowed } from '@/lib/governance/execution-dispatch'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -504,9 +504,21 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
   let igResult: { mediaId: string; permalink?: string }
   try {
+    // ── GOVERNANCE BOUNDARY: Instagram publish ──
+    await assertExecutionDispatchAllowed(
+      { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+      { system: 'instagram', operation: 'post_reel' },
+    )
     igResult = await postReelToInstagram(videoUrl, caption)
     log('publish', `Instagram OK: ${igResult.permalink}`)
   } catch (igErr) {
+    if (isExecutionStopped(igErr)) {
+      // Nothing was published. The video stays ready and a later run picks it
+      // up; this is not an Instagram outage and must not be alerted as one.
+      log('publish', `Instagram uppskjuten av stopp (${igErr.reason})`)
+      return NextResponse.json(
+        { status: 'deferred_by_stop', reason: igErr.reason, scriptId })
+    }
     const msg = igErr instanceof Error ? igErr.message : String(igErr)
     log('publish', `Instagram failed: ${msg}`)
     await sendPipelineAlert({
@@ -523,9 +535,21 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
   if (hasFacebook) {
     try {
+      // ── GOVERNANCE BOUNDARY: Facebook is a SEPARATE authorization ──
+      // A pause committing after Instagram went out must stop this one.
+      await assertExecutionDispatchAllowed(
+        { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+        { system: 'facebook', operation: 'post_reel' },
+      )
       fbResult = await postReelToFacebook(videoUrl, caption)
       log('publish', `Facebook OK: ${fbResult.url}`)
     } catch (fbErr) {
+      if (isExecutionStopped(fbErr)) {
+        // Instagram already went out and is not rolled back; Facebook simply
+        // does not go. Not a Facebook fault — no alert, no failure record.
+        log('publish', `Facebook uppskjuten av stopp (${fbErr.reason}) — Instagram OK`)
+        fbResult = null
+      } else {
       const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
       log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
       await sendPipelineAlert({
@@ -535,6 +559,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         severity:  'warning',
         context:   { scriptId, note: 'Instagram publicerades OK — enbart Facebook failade' },
       })
+      }
     }
   }
 

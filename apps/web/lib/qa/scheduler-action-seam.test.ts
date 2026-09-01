@@ -213,8 +213,13 @@ describe('wake semantics', () => {
     // The executor re-arms when the run finishes — sooner and more accurate.
     // PR9g extended the same expression with the advance case; the property
     // under test is unchanged — a freshly created action still clears the wake.
-    expect(tick).toMatch(/createdAction \? null :/)
-    expect(tick).toMatch(/advance\?\.outcome === 'advanced' \? now : nextWakeAt/)
+    expect(tick).toMatch(/createdAction \? null/)
+    // PR9i widened the same expression to the completion advance. The property
+    // under test is unchanged: a freshly created action still clears the wake,
+    // and it is checked FIRST so a new advance case cannot take priority.
+    expect(tick).toMatch(
+      /\(advance\?\.outcome === 'advanced' \|\| completion\?\.outcome === 'advanced'\) \? now/)
+    expect(tick).toMatch(/: nextWakeAt\)/)
   })
 
   it('records what was scheduled in the tick outcome', () => {

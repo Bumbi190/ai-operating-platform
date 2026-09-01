@@ -185,6 +185,9 @@ const READERS = [
   'lib/workflows/action-run.ts',
   'lib/workflows/action-scheduling.ts',
   'lib/workflows/advance.ts',
+  // PR9i. Added here because the inventory guard below refused to pass without
+  // it — which is precisely what that guard is for.
+  'lib/workflows/advance-completed.ts',
   'app/(platform)/releases/page.tsx',
 ] as const
 

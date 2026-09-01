@@ -37,6 +37,9 @@ import {
 } from './store'
 import { advanceAuthorizedWorkflow, type AdvanceResult } from './advance'
 import {
+  advanceCompletedWorkflowState, type CompletionResult,
+} from './advance-completed'
+import {
   ensureReadOnlyActionRuns, summarizeSchedulingDecision, type SchedulingDecision,
 } from './action-scheduling'
 import { evidenceTargetHashFor } from './evidence-binding'
@@ -226,6 +229,32 @@ export async function tickDueWorkflows(
         }
       }
 
+      // ── PR9i: cross a state whose own work is finished ────────────────────
+      // Delegation only. The tick does NOT decide completion: it forwards the
+      // instance and the verification findings, and the module re-derives
+      // instance, project, definition, history, prerequisites, declared checks,
+      // evidence and action lifecycle from the database itself. The findings are
+      // passed because re-running `verifyState` would make live HTTP probes as a
+      // side effect of deciding; they can only ever cause a refusal.
+      //
+      // Attempted only for an ungated state the evaluation did not block. A
+      // gated state is refused inside the module too — this condition is a cheap
+      // filter, never the guarantee.
+      let completion: CompletionResult | null = null
+      const advancedByGate = advance?.outcome === 'advanced'
+      if (!advancedByGate && !createdAction && evaluation.outcome === 'authorized_ready') {
+        try {
+          completion = await advanceCompletedWorkflowState(db, instance, {
+            now, verificationFindings: evaluation.verificationFindings,
+          })
+        } catch (e) {
+          result.errors.push({
+            instanceId: instance.id,
+            error: `completion advance failed: ${e instanceof Error ? e.message : 'unknown error'}`,
+          })
+        }
+      }
+
       const seconds = nextWakeAfter(evaluation.outcome)
       const nextWakeAt = seconds === null
         ? null
@@ -248,13 +277,24 @@ export async function tickDueWorkflows(
         gate_advance: advance
           ? { outcome: advance.outcome, from: advance.fromState, to: advance.toState }
           : null,
+        // Bounded like scheduled_actions: a closed reason code and catalogue
+        // check keys, never the free-text detail.
+        completion_advance: completion
+          ? {
+              outcome: completion.outcome, from: completion.fromState, to: completion.toState,
+              reason_code: completion.reasonCode,
+              blocking_check_keys: [...completion.blockingCheckKeys],
+            }
+          : null,
       // Having just created an observation, do NOT come back in a minute to
       // find it still running. The executor re-arms the instance when the run
       // finishes, which is both sooner and more accurate than polling.
       // A completed advance re-evaluates immediately: the instance is in a new
       // state whose gate, prerequisites and evidence are all different, and the
       // operator should see that reflected without waiting out a backoff.
-      }, createdAction ? null : advance?.outcome === 'advanced' ? now : nextWakeAt)
+      }, createdAction ? null
+         : (advance?.outcome === 'advanced' || completion?.outcome === 'advanced') ? now
+         : nextWakeAt)
 
       // ── Escalation ───────────────────────────────────────────────────────
       // Each condition becomes at most one OPEN signal. A repeated identical

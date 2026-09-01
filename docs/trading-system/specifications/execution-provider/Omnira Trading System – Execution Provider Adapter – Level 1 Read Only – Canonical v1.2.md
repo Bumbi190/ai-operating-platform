@@ -389,8 +389,12 @@ Minst följande situationer ska kunna uttryckas:
 | Credential bredare än begärt | `SECURITY_DEGRADED` (warning, ej block i Fas 2) |
 
 `PROVIDER_DISCONNECTED` och `SECURITY_DEGRADED` är låsta i providervokabulären genom Beslut
-F och är ännu **inte** transkriberade till Trading Cores register. Det hör till Stage 1.8a.
-Inga ytterligare reason codes tillkommer.
+F. Transkriptionen till Trading Cores register skedde i Stage 1.8a. Ytterligare reason codes
+tillkommer inte genom *detta* dokument; providerkonnektivitetens koder låses separat i
+*Provider Connectivity Reason Codes Canonical v1.0* (Beslut H).
+
+`SECURITY_DEGRADED` betyder credential bredare än begärt. Den betyder inte nekad
+autentisering — det är `PROVIDER_AUTHENTICATION_FAILED` i Beslut H:s vokabulär.
 
 ---
 

@@ -5,6 +5,9 @@
  *  - Risk Engine Specification v0.1 §6 (base list, still normative)
  *  - Risk Engine Specification Canonical v1.0 §6 (additions)
  *  - Risk v0.1 §35 (NEWS_STATE_UNKNOWN), Systemarkitektur v0.1 §17, §25, §26
+ *  - Provider Connectivity Reason Codes Canonical v1.0 §3 (the nine PROVIDER_*
+ *    connectivity codes), which supersedes the closure sentence in Execution
+ *    Provider Adapter Canonical v1.2 §8. See Canonical Amendments v1.0, Beslut H.
  *
  * INVARIANTS:
  *  - Decisions carry machine-readable codes, never only prose. Analytics must be
@@ -105,8 +108,43 @@ export const CORE_REASON_CODES = [
   // The adapter reports these; neither creates authority. SECURITY_DEGRADED is a
   // registered least-privilege weakening, never an implicit approval — whether a
   // given downstream policy must fail closed on it is that policy's decision.
+  //
+  // SECURITY_DEGRADED means a credential broader than requested. It does NOT mean
+  // authentication was refused — that is PROVIDER_AUTHENTICATION_FAILED below.
+  // Both codes keep exactly the semantics they had before Beslut H.
   'PROVIDER_DISCONNECTED',
   'SECURITY_DEGRADED',
+  /*
+   * Provider connectivity (Provider Connectivity Reason Codes Canonical v1.0 §3).
+   *
+   * Nine observations a session runtime can make about a link, each narrow enough
+   * to be acted on without reading prose. They exist because the registry
+   * previously could not distinguish "the socket never opened" from "we
+   * authenticated and were then dropped": every connectivity failure collapsed
+   * onto PROVIDER_DISCONNECTED, which left a journal unable to say why a session
+   * ended.
+   *
+   * THEY CARRY NO RETRY POLICY. Nothing here means "retry", "fatal" or "severe",
+   * and no ordering implies rank. Whether a failure is worth another attempt is a
+   * runtime decision, held separately in the provider runtime, and deliberately
+   * not encoded in a value that also lands in historical rows — a code that
+   * carried policy would freeze that policy for every row ever written.
+   *
+   * They create no authority. A connectivity observation can never mint a
+   * RiskClearance, PropClearance, ApprovalGrant or ExecutionIntent.
+   *
+   * PROSPECTIVE ONLY. Rows written before Beslut H keep the code they carried;
+   * PROVIDER_DISCONNECTED stays valid and is never reinterpreted as one of these.
+   */
+  'PROVIDER_CONNECT_FAILED',
+  'PROVIDER_AUTHENTICATION_FAILED',
+  'PROVIDER_CONNECTION_LOST',
+  'PROVIDER_HEARTBEAT_TIMEOUT',
+  'PROVIDER_PROTOCOL_ERROR',
+  'PROVIDER_REMOTE_REJECTED',
+  'PROVIDER_SESSION_CANCELLED',
+  'PROVIDER_RECONNECT_EXHAUSTED',
+  'PROVIDER_FAILURE_UNKNOWN',
   // Referential integrity
   'ACCOUNT_MISMATCH',
   'INSTRUMENT_MISMATCH',

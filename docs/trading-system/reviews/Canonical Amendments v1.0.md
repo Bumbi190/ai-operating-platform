@@ -715,6 +715,73 @@ transkriberade till Trading Core; det hör till Stage 1.8a.
 
 ---
 
+## Beslut H — Kanoniska reason codes för providerkonnektivitet
+
+**Stänger:** Vokabulärluckan som R1A dokumenterade som OPEN
+**Karaktär:** Additiv utökning av reason code-registret, plus upphävandet av en enda mening
+
+R1A (provider session runtime) kan skilja på nio sätt som en providersession kan sluta på.
+Registret kunde inte uttrycka skillnaden: sju kollapsade till `PROVIDER_DISCONNECTED`, och
+nekad autentisering rapporterades tillfälligt som `SECURITY_DEGRADED` — en kod som enligt
+v1.2 §8 betyder *credential bredare än begärt* och alltså beskrev fel sak.
+
+R1A märkte den mappningen som tillfällig när den skrevs. Beslut H tar bort den.
+
+**Canonical betydelse:**
+
+```
+SessionFailure → ReasonCode är 1:1, total och injektiv
+Ingen konnektivitetsfailure rapporteras längre som
+  PROVIDER_DISCONNECTED eller SECURITY_DEGRADED
+```
+
+### H1 — Ny specifikation
+
+`specifications/execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md`
+skapad. Låser nio koder, deras semantik, förhållandet till de två befintliga
+providerkoderna, samt att retry-policy och auktoritet inte ingår.
+
+Execution Provider Adapter Canonical v1.2 skrivs **inte** om. Beslut H rör en mening i dess
+§8 och ingenting annat.
+
+### H2 — Execution Provider Adapter Canonical v1.2 §8, sista stycket
+
+**Före:**
+
+> `PROVIDER_DISCONNECTED` och `SECURITY_DEGRADED` är låsta i providervokabulären genom
+> Beslut F och är ännu **inte** transkriberade till Trading Cores register. Det hör till
+> Stage 1.8a. Inga ytterligare reason codes tillkommer.
+
+**Efter:**
+
+> `PROVIDER_DISCONNECTED` och `SECURITY_DEGRADED` är låsta i providervokabulären genom
+> Beslut F. Transkriptionen till Trading Cores register skedde i Stage 1.8a. Ytterligare
+> reason codes tillkommer inte genom *detta* dokument; providerkonnektivitetens koder låses
+> separat i *Provider Connectivity Reason Codes Canonical v1.0* (Beslut H).
+
+**Varför:** meningen skrevs innan någon runtime existerade som kunde observera
+skillnaderna. Den beskrev korrekt att Level 1-kontraktet inte behövde fler koder, men kunde
+inte förutse att en sessionsruntime skulle göra det. Endast den meningen ändras; §8:s
+tabell, förbudet mot providerspecifika felsträngar som beslutsunderlag och rätten att
+bevara rå providerresponse för journalen står oförändrade.
+
+### H3 — `apps/web/lib/trading/reason-codes.ts`
+
+Nio koder tillagda i gruppen för providerobservationer. Inget befintligt värde ändrat,
+omdöpt, flyttat eller borttaget. Källkommentaren pekar nu även på H1.
+
+### H4 — `apps/web/lib/trading/provider-runtime/failure.ts`
+
+`reasonCodeOf` är nu 1:1. Den förlustgivande mappningen beskrivs endast som historik och är
+märkt SUPERSEDED.
+
+### H5 — Prospektiv verkan
+
+Historiska rader migreras inte och omtolkas inte. En historisk `PROVIDER_DISCONNECTED`
+betyder vad den betydde när den skrevs.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -744,3 +811,6 @@ transkriberade till Trading Core; det hör till Stage 1.8a.
 | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.0.md` | E1 — ny, provider-neutralt kontrakt |
 | `research/Provider Evaluation – Futures Execution – 2026-08-28.md` | E5 — ny, implementationsunderlag |
 | `specifications/architecture/…v0.2.md → v0.3.md` | E3 — §22.2, §22.3, §18 |
+| `specifications/execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md` | H1 — ny, nio konnektivitetskoder |
+| `specifications/execution-provider/…Level 1 Read Only – Canonical v1.2.md` | H2 — §8, sista stycket |
+| `specifications/README.md` | H1 — indexrad |

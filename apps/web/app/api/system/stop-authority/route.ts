@@ -13,17 +13,28 @@
  * authority exercised through an authenticated server action, never through a
  * GET.
  *
- * SCOPE. Session-authenticated. Project rows and project stop events are
- * limited to projects the caller owns. Platform-scope events are returned to
- * any authenticated operator by design — the global switch is a shared control,
- * and "who stopped the platform I am standing on" is exactly what an operator
- * needs during an incident.
+ * SCOPE — LEAST PRIVILEGE, TWO TIERS.
+ *
+ * The first version of this surface returned the platform's stop HISTORY to any
+ * authenticated caller. That leaks cross-tenant governance: operator user ids
+ * and free-text incident reasons ("paused: vendor breach", "runaway spend on
+ * <customer>") are not things a tenant learns merely by holding a session.
+ *
+ *   PLATFORM OPERATOR — everything: global state, when, why, and the full
+ *     transition ledger with actors.
+ *   ANY OTHER AUTHENTICATED USER — the global paused BOOLEAN only. They are
+ *     entitled to know the platform is stopped, because it explains why their
+ *     own work is refused. They are not entitled to who stopped it or why.
+ *     Their own projects' state and events are returned, with the actor redacted
+ *     unless it is themselves — an operator who pauses a tenant's project must
+ *     not become identifiable to that tenant through this surface.
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolveExecutionStop } from '@/lib/governance/execution-stop'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +46,9 @@ export async function GET() {
 
   const db = createAdminClient()
   const ids = access.allowedProjectIds
+  const operator = await resolvePlatformOperator()
+  const isOperator = operator.ok
+  const selfActor = `user:${access.userId}`
 
   // The platform scope, resolved through the SAME resolver the runtime uses —
   // so this surface cannot report a state the enforcement path would disagree
@@ -85,15 +99,25 @@ export async function GET() {
             + 'actor, reason, created_at')
       .order('created_at', { ascending: false })
       .limit(EVENT_LIMIT)
-    // A caller who owns no projects still sees the platform switch. Building the
-    // `in.()` list unconditionally would emit `scope_id.in.()`, which PostgREST
-    // rejects — and the catch below would swallow it into a silently empty
-    // ledger, i.e. a governance surface that reports "no stop events" because
-    // the query was malformed.
-    const { data } = ids.length > 0
-      ? await q.or(`scope_type.eq.PLATFORM_AUTOMATION,scope_id.in.(${ids.join(',')})`)
-      : await q.eq('scope_type', 'PLATFORM_AUTOMATION')
-    events = (data ?? []) as Record<string, unknown>[]
+    // A caller who owns no projects still sees the platform switch (if they are
+    // an operator). Building the `in.()` list unconditionally would emit
+    // `scope_id.in.()`, which PostgREST rejects — and the catch below would
+    // swallow it into a silently empty ledger, i.e. a governance surface that
+    // reports "no stop events" because the query was malformed.
+    const projectFilter = ids.length > 0 ? `scope_id.in.(${ids.join(',')})` : null
+    const { data } =
+      isOperator && projectFilter
+        ? await q.or(`scope_type.eq.PLATFORM_AUTOMATION,${projectFilter}`)
+        : isOperator
+          ? await q.eq('scope_type', 'PLATFORM_AUTOMATION')
+          : projectFilter
+            // Non-operators are filtered to their OWN projects in the query, not
+            // after the fact: a redaction applied in application code after a
+            // broad read is one refactor away from being dropped.
+            ? await q.or(projectFilter)
+            : { data: [] }
+    events = ((data ?? []) as Record<string, unknown>[]).map(e =>
+      isOperator || e.actor === selfActor ? e : { ...e, actor: null })
   } catch (e) {
     console.error('[stop-authority] event read failed:',
       e instanceof Error ? e.message : String(e))
@@ -101,12 +125,16 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    // `paused` is deliberately visible to everyone: a tenant whose work is being
+    // refused is entitled to know the platform is stopped. When, why and by whom
+    // are operator-only.
     platform: {
       paused: platform.globalPaused,
       resolution: platform.resolution,
-      paused_at: platform.observed?.globalPausedAt ?? null,
-      paused_reason: platform.observed?.globalPausedReason ?? null,
+      paused_at:     isOperator ? platform.observed?.globalPausedAt ?? null : null,
+      paused_reason: isOperator ? platform.observed?.globalPausedReason ?? null : null,
     },
+    viewer: { platform_operator: isOperator },
     projects,
     events,
     observed_at: new Date().toISOString(),

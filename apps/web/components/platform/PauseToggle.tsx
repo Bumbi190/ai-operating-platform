@@ -2,18 +2,30 @@
 
 import { toggleAutomationPause } from '@/app/actions/automation'
 import { Power, Pause } from 'lucide-react'
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 
 export function PauseToggle({ paused }: { paused: boolean }) {
   const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   const handleToggle = () => {
+    setError(null)
     startTransition(async () => {
-      await toggleAutomationPause(!paused)
+      const r = await toggleAutomationPause(!paused)
+      // The button is NOT the authority — the server is. Rendering the refusal
+      // is the honest outcome: hiding the control for non-operators would make
+      // UI visibility look like a permission boundary, and a stop control that
+      // silently no-ops is worse than one that visibly refuses.
+      if (!r.ok) {
+        setError(r.error === 'not_operator'
+          ? 'Kräver plattformsoperatör'
+          : 'Kunde inte ändra pausläget — försök igen')
+      }
     })
   }
 
   return (
+    <div className="flex flex-col items-end gap-1">
     <button
       onClick={handleToggle}
       disabled={pending}
@@ -36,5 +48,7 @@ export function PauseToggle({ paused }: { paused: boolean }) {
         </>
       )}
     </button>
+      {error && <p className="text-[11px] text-red-300">{error}</p>}
+    </div>
   )
 }

@@ -43,13 +43,122 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
 
 /**
- * AUTONOMOUS            — unattended execution: schedulers, drains, workflow
- *                         ticks, cron-driven pipelines. A pause MUST stop these.
- * OPERATOR_INTERACTIVE  — a human at the keyboard, in-session. A pause must NOT
- *                         stop these; it is reported to them, not enforced
- *                         against them.
+ * AUTONOMOUS           — unattended execution: schedulers, drains, workflow
+ *                        ticks, cron-driven pipelines. A pause MUST stop these.
+ *
+ * OPERATOR_INTERACTIVE — ordinary operator ASSISTANCE, and nothing more: Atlas
+ *                        chat, reading state, inspecting governance, planning,
+ *                        asking questions. Never refused, because the console
+ *                        that lifts a pause is served by the paused platform.
+ *
+ *                        THIS IS NOT AN EXECUTION CONTEXT. It must never become
+ *                        the escape hatch for media generation, external
+ *                        communication, material writes, financial execution or
+ *                        workflow execution. Anything with a side effect is
+ *                        OPERATOR_EXECUTION, however it was triggered.
+ *
+ * OPERATOR_EXECUTION   — execution-bearing work a HUMAN asked for: generate an
+ *                        image, publish, send, run a workflow, or any other
+ *                        provider-backed or externally-visible action. A click
+ *                        is not an authorisation: the work still spends money
+ *                        and still touches the outside world, so it does not
+ *                        inherit the interactive bypass merely because a session
+ *                        exists.
+ *
+ * The split between the two operator contexts is the point of this vocabulary.
+ * Collapsing them would mean a stop authority that any human can walk around by
+ * pressing a button, which is the failure mode the third context exists to
+ * prevent.
  */
-export type ExecutionContext = 'AUTONOMOUS' | 'OPERATOR_INTERACTIVE'
+export type ExecutionContext =
+  | 'AUTONOMOUS'
+  | 'OPERATOR_INTERACTIVE'
+  | 'OPERATOR_EXECUTION'
+
+/**
+ * Does the GLOBAL automation pause stop human-requested execution?
+ *
+ * LOCKED: yes. Derived from the product's own behaviour, not from the flag's
+ * name. The audit of every current reader found:
+ *
+ *   • 4 unattended cron paths enforce it — consistent with either reading.
+ *   • 12 operator-triggered, provider-backed routes exist. Exactly ONE consults
+ *     the flag: `lib/article/hero-image.ts`, reached from the route documented
+ *     as "operator-triggered … Not a cron endpoint", which refuses with
+ *     `reason: 'automation_paused'` under the comment "respect the operator's
+ *     global automation pause".
+ *   • The operator-facing control promises "Pausa ALL automation", and the
+ *     banner reads "ALL automation är manuellt pausad".
+ *
+ * The other 11 routes ignore the flag, but that is the known ungated-path gap
+ * this governance programme exists to close — an audit finding, not a statement
+ * of intent. Reading "11 paths forgot to check" as "operator execution is
+ * deliberately exempt" would convert a defect into a policy.
+ *
+ * So the only DELIBERATE decision in the codebase enforces, and the only
+ * operator-facing promise says "all". The permissive reading additionally
+ * recreates the bypass this vocabulary was introduced to prevent: if a human
+ * click lifts the global stop, the global stop is advisory.
+ *
+ * This is a POLICY constant, not an implementation detail. Flipping it to false
+ * makes `automation_paused` an automation-only pause under which operator-
+ * requested spend continues; that is a product decision, and the truth table and
+ * its tests move with it.
+ */
+export const GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION = true
+
+/**
+ * Existing operator-triggered paths that bear EXECUTION, and therefore must be
+ * classified `OPERATOR_EXECUTION` — never `OPERATOR_INTERACTIVE` — when
+ * enforcement is wired in G3C.
+ *
+ * This list is the audit result, not a guess: every entry is a route that
+ * authenticates a human session AND reaches a provider or an external surface.
+ * Together they are the proof that the third context is not theoretical — today
+ * exactly ONE of them (`hero-image`, via lib/article/hero-image.ts) consults any
+ * stop authority at all, so eleven human-triggered spend paths currently run
+ * regardless of a global pause.
+ *
+ * G3A does NOT wire these. Classifying and enforcing them is G3C. The list is
+ * here so that work starts from evidence rather than from a fresh grep, and so a
+ * route that disappears or is renamed is caught by the test that walks it.
+ */
+export const OPERATOR_EXECUTION_PATHS_FOR_G3C = [
+  // Provider-backed generation, human-initiated
+  'app/api/content/articles/[id]/hero-image/route.ts',   // image gen — the ONE that checks today
+  'app/api/media/scripts/[id]/regenerate/route.ts',      // script regeneration
+  'app/api/media/news/hunt/route.ts',                    // news hunt
+  'app/api/media/pipeline/full/route.ts',                // full media pipeline
+  'app/api/media/pipeline/daily/route.ts',               // daily media pipeline
+  // External communication / publication — side effects that leave the platform
+  'app/api/media/publish/instagram/route.ts',            // EXTERNAL_COMMUNICATION
+  // Reads that still spend on providers
+  'app/api/media/insights/check/route.ts',
+  'app/api/content/articles/[id]/sync/route.ts',
+  'app/api/content/articles/[id]/review/route.ts',
+] as const
+
+/**
+ * DUAL-MODE paths — the sharpest lesson for G3C.
+ *
+ * These accept EITHER a `Bearer ${CRON_SECRET}` (unattended) OR an authenticated
+ * operator session, on the same endpoint, and then run the same pipeline:
+ *
+ *     let authed = !!cronSecret && authHeader === `Bearer ${cronSecret}`
+ *     if (!authed) { ...getUser(); authed = !!user }
+ *
+ * So the execution context here is NOT a property of the route. The same URL is
+ * AUTONOMOUS on one request and OPERATOR_EXECUTION on the next, and only the
+ * branch that actually authenticated knows which. This is precisely why context
+ * is an explicit parameter at the call boundary rather than something inferred
+ * from a route name or a path prefix: any route-level mapping would classify
+ * these two wrongly half the time, and the half it got wrong would be the
+ * unattended half that a pause is supposed to stop.
+ */
+export const DUAL_MODE_EXECUTION_PATHS_FOR_G3C = [
+  'app/api/media/breaking/route.ts',                     // cron OR operator
+  'app/api/content/articles/operator-generate/route.ts', // cron OR operator
+] as const
 
 export type StopScope = 'PLATFORM_AUTOMATION' | 'PROJECT_EXECUTION'
 
@@ -140,21 +249,36 @@ async function readStopState(
 /**
  * The single definition of "may this execute right now".
  *
- * Truth table for AUTONOMOUS (the enforcing context):
+ * ── THE TRUTH TABLE, ALL THREE CONTEXTS ────────────────────────────────────
  *
- *   global   project   →  allowed   reason
- *   ───────────────────────────────────────────────────────────
- *   clear    clear     →  true      —
- *   clear    paused    →  false     project_execution_paused
- *   paused   clear     →  false     global_automation_paused
- *   paused   paused    →  false     global_automation_paused
- *   unknown  *         →  false     stop_state_unavailable
- *   clear    unknown   →  false     stop_state_unavailable
+ *  global   project   AUTONOMOUS            OPERATOR_EXECUTION    OPERATOR_INTERACTIVE
+ *  ──────────────────────────────────────────────────────────────────────────────────
+ *  clear    clear     ✅                    ✅                    ✅
+ *  clear    paused    ❌ project_execution_paused                 ✅
+ *                                           ❌ project_execution_paused
+ *  paused   clear     ❌ global_automation_paused                 ✅
+ *                                           ❌ global_automation_paused †
+ *  paused   paused    ❌ global_automation_paused                 ✅
+ *                                           ❌ global_automation_paused †
+ *  unknown  *         ❌ stop_state_unavailable                   ✅
+ *                                           ❌ stop_state_unavailable
+ *  clear    unknown   ❌ stop_state_unavailable                   ✅
+ *                                           ❌ stop_state_unavailable
  *
- * The scopes are independent and compose by AND. Neither overrides the other,
- * and resuming one never resumes the other — a project paused for its own
- * reasons stays paused when the global switch is lifted, because the two
- * pauses were decided by different people for different reasons.
+ *  † governed by GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION (locked true — see its
+ *    derivation above). With it false, OPERATOR_EXECUTION would be allowed in
+ *    these two rows and refused only by the PROJECT scope, which is never
+ *    optional.
+ *
+ * OPERATOR_INTERACTIVE is allowed in EVERY row. That is deliberate and is the
+ * whole reason the third context exists: assistance stays available so the
+ * operator can diagnose and lift the pause, while execution does not ride along
+ * on that exemption.
+ *
+ * The two scopes are independent and compose by AND. Neither overrides the
+ * other, and resuming one never resumes the other — a project paused for its own
+ * reasons stays paused when the global switch is lifted, because the two pauses
+ * were decided by different people for different reasons.
  *
  * Global is reported before project when both are paused: it is the broader
  * authority, and telling an operator "project X is paused" while the entire
@@ -174,14 +298,17 @@ export async function resolveExecutionStop(
     // Unresolved. Interactive callers still proceed — an operator must be able
     // to reach the console during a database incident, and a pause we cannot
     // read is not a pause we may enforce against a human.
+    const assistanceOnly = input.context === 'OPERATOR_INTERACTIVE'
     return {
-      allowed: input.context === 'OPERATOR_INTERACTIVE',
+      allowed: assistanceOnly,
       context: input.context,
       scopesEvaluated,
       resolution: 'UNRESOLVED',
       globalPaused: null,
       projectPaused: null,
-      reason: input.context === 'AUTONOMOUS' ? 'stop_state_unavailable' : null,
+      // Execution-bearing work refuses whoever asked for it: an unreadable stop
+      // state is not permission, and a human clicking does not make it one.
+      reason: assistanceOnly ? null : 'stop_state_unavailable',
       observed: null,
     }
   }
@@ -208,6 +335,7 @@ export async function resolveExecutionStop(
   const projectUnknown = projectId !== null && projectPaused === null
   const resolution: StopResolution = projectUnknown ? 'UNRESOLVED' : 'RESOLVED'
 
+  // Ordinary assistance is never refused — see the truth table above.
   if (input.context === 'OPERATOR_INTERACTIVE') {
     return {
       allowed: true, context: input.context, scopesEvaluated, resolution,
@@ -215,10 +343,15 @@ export async function resolveExecutionStop(
     }
   }
 
+  // Both enforcing contexts refuse on the project scope and on an unresolved
+  // scope. They differ only in whether the GLOBAL flag binds them.
+  const globalBinds = input.context === 'AUTONOMOUS'
+    || GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION
+
   let reason: StopRefusalReason | null = null
-  if (globalPaused)            reason = 'global_automation_paused'
-  else if (projectUnknown)     reason = 'stop_state_unavailable'
-  else if (projectPaused)      reason = 'project_execution_paused'
+  if (globalPaused && globalBinds) reason = 'global_automation_paused'
+  else if (projectUnknown)         reason = 'stop_state_unavailable'
+  else if (projectPaused)          reason = 'project_execution_paused'
 
   return {
     allowed: reason === null, context: input.context, scopesEvaluated,

@@ -14,6 +14,17 @@
  * There is also no unauthenticated route here. A public pause endpoint is a
  * denial-of-service primitive, and a public resume endpoint is worse.
  *
+ * ── AUTHORITY, NOT JUST IDENTITY ───────────────────────────────────────────
+ * The global switch requires PLATFORM-OPERATOR authority, not merely a session.
+ * An authenticated user is somebody; a platform operator is somebody entitled to
+ * stop — and, more dangerously, to RESUME — every tenant at once. Pause is
+ * recoverable; an unauthorised resume re-enables unattended spend and external
+ * side effects while the reason for the pause is still live.
+ *
+ * The project switch stays gated on project OWNERSHIP, which is the correct
+ * authority for a single-project control and is not a substitute for the global
+ * one: owning one project cannot confer authority over all of them.
+ *
  * ── ACTOR PROVENANCE ───────────────────────────────────────────────────────
  * The actor is derived from the server-side session, never accepted as an
  * argument. These actions take no actor parameter at all, so there is nothing
@@ -24,6 +35,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import {
   operatorActor, setPlatformAutomationStop, setProjectExecutionStop,
   type StopMutationResult,
@@ -37,7 +49,7 @@ export interface StopActionResult {
   changed: boolean
   paused: boolean
   /** Stable code, never a raw database message. */
-  error?: 'forbidden' | 'failed'
+  error?: 'forbidden' | 'not_operator' | 'failed'
 }
 
 function ok(r: StopMutationResult): StopActionResult {
@@ -60,9 +72,20 @@ export async function toggleAutomationPause(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // AUTHORITY CHECK. Not "is there a session" — "is this the platform operator".
+  const operator = await resolvePlatformOperator()
+  if (!operator.ok) {
+    // One answer for "you are not an operator" and "no operator is configured":
+    // a non-operator must not learn the platform's authorization posture from a
+    // denial. The distinction is logged server-side, where it is diagnostic
+    // rather than informative to an unauthorised caller.
+    console.error(`[stop-authority] global mutation denied: ${operator.reason}`)
+    return { ok: false, changed: false, paused, error: 'not_operator' }
+  }
+
   try {
     const result = await setPlatformAutomationStop(createAdminClient(), {
-      paused, actor: operatorActor(user.id), reason: reason ?? null,
+      paused, actor: operator.actor, reason: reason ?? null,
     })
     revalidatePath('/atlas')
     revalidatePath('/system')

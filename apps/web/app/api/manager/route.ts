@@ -48,6 +48,7 @@ import type { DelegationRevocationReason } from '@/lib/atlas/delegation/types'
 import type { ProposedChange } from '@/lib/atlas/delegation/classify'
 import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
 import type { WorkPackageWriteResult } from '@/lib/atlas/workpackage/principal-write'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 /**
  * Map a Work Package boundary status to HTTP without inventing detail.
@@ -131,7 +132,7 @@ export async function POST(req: NextRequest) {
         if (project_id && !assertProjectAllowed(project_id, allowedProjectIds)) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
-        const plan = await manager.generateDailyPlan(project_id, force ?? false)
+        const plan = await manager.generateDailyPlan({ context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY }, project_id, force ?? false)
         return NextResponse.json({ plan })
       }
 
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
         // Scope exactly like /api/chat: a raw project_id is only honored if owned,
         // and the manager's context reads are bounded by allowedProjectIds.
         const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
-        const response = await manager.chat(message, scopedProjectId, allowedProjectIds)
+        const response = await manager.chat(message, { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY }, scopedProjectId, allowedProjectIds)
         return NextResponse.json({ response })
       }
 
@@ -179,7 +180,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
 
-        const evaluation = await manager.evaluateOutput(approval_id)
+        const evaluation = await manager.evaluateOutput(approval_id, { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY })
 
         // Persist evaluation to the canonical Stage 1 evaluations schema.
         // projectId is guaranteed by the ownership gate above.
@@ -204,7 +205,7 @@ export async function POST(req: NextRequest) {
         if (!assertProjectAllowed(project_id, allowedProjectIds)) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
-        const tasks = await manager.planTasks(goal, project_id)
+        const tasks = await manager.planTasks(goal, project_id, { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY })
         return NextResponse.json({ tasks })
       }
 

@@ -23,6 +23,7 @@ import {
 } from './approval'
 import type { LengthTier, NewsItemInput } from './types'
 import type { PublishSuccess } from '@/lib/publishing/types'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export type AutoPublishPolicy = 'none' | 'high'
 
@@ -31,6 +32,8 @@ export function defaultAutoPublishPolicy(): AutoPublishPolicy {
 }
 
 export interface RunPipelineOptions {
+  /** REQUIRED execution classification, propagated to the paid boundary. */
+  execution: ExecutionContract
   tier?: LengthTier
   trendingTopics?: string[]
   model?: string
@@ -53,13 +56,14 @@ export interface PipelineDecision {
 
 export async function runPublishPipeline(
   newsItem: NewsItemInput,
-  opts: RunPipelineOptions = {},
+  opts: RunPipelineOptions,
 ): Promise<PipelineDecision> {
   const policy = opts.autoPublish ?? defaultAutoPublishPolicy()
   const destinationKey = opts.destinationKey ?? 'the-prompt'
 
   // 1. Generate + QA (M1). Payload defaults to draft (published_at = null).
   const { draft, qa, payload } = await generateArticle(newsItem, {
+      execution: opts.execution,
     tier: opts.tier,
     trendingTopics: opts.trendingTopics,
     model: opts.model,

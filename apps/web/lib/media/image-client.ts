@@ -33,10 +33,18 @@ import {
   withGovernedSpend,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const IDEOGRAM_V3_GENERATE = 'https://api.ideogram.ai/v1/ideogram-v3/generate'
 
 export interface ImageGovernanceContext {
+  /**
+   * REQUIRED execution classification — why this work runs and which stop
+   * authorities bind it. Propagated to the governed boundary, never defaulted
+   * here: this module serves several upstream execution modes, so a default set
+   * at this layer would be a guess made far from the only place that knows.
+   */
+  execution: ExecutionContract
   /** Required. Which budget this image is charged to. */
   project: ProjectRef
   /** Recorded on cost_events.operation, e.g. 'Scene Image'. */
@@ -66,7 +74,7 @@ export async function generateIdeogramV3(
   const estimatedSek = await estimateImageSek(1, 'ideogram')
 
   return withGovernedSpend(
-    { project: ctx.project, provider: 'ideogram', operation: ctx.operation, estimatedSek,
+    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
       idempotencyKey: ctx.idempotencyKey },
     async () => {
       let res: Response
@@ -155,7 +163,7 @@ export async function generateIdeogramLegacy(
   const estimatedSek = await estimateImageSek(1, 'ideogram')
 
   return withGovernedSpend(
-    { project: ctx.project, provider: 'ideogram', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek },
     async () => {
       let res: Response
       try {

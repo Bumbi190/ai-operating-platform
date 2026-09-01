@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runDreamCycleForProject } from '@/lib/ai/dream'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   // Parallellt per projekt → total tid begränsas av det långsammaste anropet,
   // inte summan (håller oss under maxDuration även med fler projekt).
   const settled = await Promise.allSettled(
-    (projects ?? []).map(p => runDreamCycleForProject({ id: p.id, name: p.name })),
+    (projects ?? []).map(p => runDreamCycleForProject({ context: 'AUTONOMOUS' as const, scope: GLOBAL_ONLY }, { id: p.id, name: p.name })),
   )
 
   const results = (projects ?? []).map((p, i) => {

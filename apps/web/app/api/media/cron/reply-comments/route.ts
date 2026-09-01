@@ -19,6 +19,7 @@ import { logLlmCost } from '@/lib/cost/track'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -33,7 +34,7 @@ function log(msg: string) {
 
 async function generateReply(commentText: string, postHook: string | null): Promise<string | null> {
   const client = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Community Manager', operation: 'Reply to Comment',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Community Manager', operation: 'Reply to Comment',
   })
 
   const context = postHook

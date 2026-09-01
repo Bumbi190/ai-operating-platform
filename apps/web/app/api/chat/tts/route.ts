@@ -33,6 +33,7 @@ import { requireUserSession } from '@/lib/auth/session'
 import { getAtlasServiceErrorMessage } from '@/lib/atlas/provider-errors'
 import { openAISpeech } from '@/lib/ai/openai-client'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
@@ -95,7 +96,13 @@ export async function POST(request: Request) {
   let res: Response
   try {
     res = await openAISpeech(
-      { project: PLATFORM_COMPAT_PROJECT, agent: 'Atlas', operation: 'Atlas TTS' },
+      { project: PLATFORM_COMPAT_PROJECT,
+    execution: {
+      // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
+      // PLATFORM_COMPAT resolves to the media slug, and inheriting its project
+      // stop would take Atlas offline whenever the media project is paused.
+      context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY,
+    }, agent: 'Atlas', operation: 'Atlas TTS' },
       payload,
       { signal: AbortSignal.timeout(15_000) },
     )

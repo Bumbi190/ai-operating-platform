@@ -21,6 +21,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateArticle } from '@/lib/article'
 import { saveGeneratedArticle, type WebsiteContentType } from '@/lib/article/store'
 import type { LengthTier, NewsItemInput } from '@/lib/article/types'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
 
   try {
     const generated = await generateArticle(newsItem, {
+      execution: { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },
       tier: body.tier,
       publishedAt: null, // saved as draft → status='pending_review'
     })

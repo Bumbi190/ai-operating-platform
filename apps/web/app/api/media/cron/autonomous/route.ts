@@ -42,6 +42,7 @@ import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300
@@ -178,7 +179,7 @@ export async function GET(request: Request) {
   const startedAt = Date.now()
   const db        = createAdminClient()
   const claude    = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
   })
 
   // ── 0a. Global pauscheck ──────────────────────────────────────────────────────
@@ -214,7 +215,7 @@ export async function GET(request: Request) {
   log('hunt', 'Running News Hunter...')
   let hunterResult
   try {
-    hunterResult = await runNewsHunter(db, project.id, 5)
+    hunterResult = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, db, project.id, 5)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     log('hunt', `Failed: ${msg}`)
@@ -297,7 +298,7 @@ Angle: ${news.content_angle}`,
   // ── 6. Quality gate ───────────────────────────────────────────────────────────
   log('quality', 'Scoring script...')
   const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
+  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
   if (shouldRegenerate(qualityScore)) {
     log('quality', `Weak hook (${qualityScore.hook_strength}/10) — regenerating...`)
@@ -361,7 +362,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   log('voice', 'Generating voiceover...')
   await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-  const voiceResult = await generateVoiceover(script.script, 'victoria')
+  const voiceResult = await generateVoiceover(script.script, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria')
 
   // ── 9. Upload audio + timing ──────────────────────────────────────────────────
   log('voice', `Voice ready (${(voiceResult.durationMs / 1000).toFixed(1)}s) — uploading...`)
@@ -382,7 +383,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   const musicMood = qualityScore.hook_strength >= 8 ? 'urgency' : 'neutral'
 
   const [rawImageUrls, backgroundMusicUrl] = await Promise.all([
-    generateNewsImages(news.title, script.script, 5),
+    generateNewsImages(news.title, script.script, 5, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }),
     getBackgroundMusicUrl(musicMood),
   ])
 

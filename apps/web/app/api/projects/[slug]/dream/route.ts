@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { runDreamCycleForProject } from '@/lib/ai/dream'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 // ── GET — hämta befintliga dream-insikter ────────────────────────────────────
 
@@ -63,7 +64,7 @@ export async function POST(
   if (!project) return NextResponse.json({ error: 'Projekt hittades inte' }, { status: 404 })
 
   try {
-    const result = await runDreamCycleForProject(project)
+    const result = await runDreamCycleForProject({ context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY }, project)
     if (!result.ran) {
       return NextResponse.json({
         message: 'Inga körningar de senaste 24h — dream cycle hoppades över',

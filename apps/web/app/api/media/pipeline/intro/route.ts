@@ -15,6 +15,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { generateIdeogramV3 } from '@/lib/media/image-client'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
   // Real project attribution: this route is called WITH a project_id, so the
   // spend is charged to the project that asked for it rather than a default.
   const claude  = getAnthropic({
-    project: { projectId: project_id }, agent: 'Image Director', operation: 'Plan Intro Image',
+    project: { projectId: project_id }, execution: { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, agent: 'Image Director', operation: 'Plan Intro Image',
   })
 
   const stream = new ReadableStream({
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
         emit({ step: 'voice', label: 'Generating Victoria voiceover...', progress: 20 })
         await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-        const voiceResult = await generateVoiceover(INTRO.script, 'victoria')
+        const voiceResult = await generateVoiceover(INTRO.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, 'victoria')
 
         emit({ step: 'uploading_audio', label: 'Uploading audio...', progress: 45 })
         const [audioUrl, timingUrl] = await Promise.all([
@@ -160,7 +161,7 @@ Output ONLY the prompt string.`,
           : 'Dark editorial newsroom at night, stacks of newspapers catching morning light through industrial windows, cinematic vertical composition. Include bold white text at bottom center: "THE PROMPT"'
 
         const imageUrl = await generateIdeogramV3(
-          { project: { projectId: project_id }, operation: 'Intro Image', agent: 'Image Director' },
+          { project: { projectId: project_id }, execution: { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, operation: 'Intro Image', agent: 'Image Director' },
           {
             prompt:          visualPrompt,
             aspect_ratio:    '9x16',

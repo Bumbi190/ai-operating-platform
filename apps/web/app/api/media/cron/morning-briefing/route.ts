@@ -21,6 +21,7 @@ import { calculateCost }  from '@/lib/ai/pricing'
 import { logLlmCost }     from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
 
   const db     = createAdminClient()
   const claude = getAnthropic({
-    project: PLATFORM_COMPAT_PROJECT, agent: 'CFO Briefing', operation: 'Morning Briefing',
+    project: PLATFORM_COMPAT_PROJECT, execution: { context: 'AUTONOMOUS', scope: GLOBAL_ONLY }, agent: 'CFO Briefing', operation: 'Morning Briefing',
   })
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 

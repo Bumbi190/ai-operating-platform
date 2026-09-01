@@ -31,6 +31,7 @@ import {
 } from './types'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 const SUBMIT_ARTICLE_TOOL = 'submit_article'
@@ -98,7 +99,7 @@ export async function writeArticle(input: ArticleWriterInput): Promise<WriteArti
   const maxTokens = tier === 'deep' ? 2600 : tier === 'breaking' ? 900 : 1800
 
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Article Writer', operation: 'Write Article',
+    project: MEDIA_PIPELINE_PROJECT, execution: input.execution, agent: 'Article Writer', operation: 'Write Article',
   })
   const response = await claude.messages.create({
     model,

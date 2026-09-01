@@ -12,6 +12,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateSceneImages } from '@/lib/media/ideogram'
 import { uploadSceneImage } from '@/lib/media/storage'
 import { NextResponse } from 'next/server'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120  // image generation can take ~60s
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
 
   try {
     // Generate scene images via Claude + Ideogram
-    const sceneImages = await generateSceneImages(script.script ?? '', script.hook ?? '')
+    const sceneImages = await generateSceneImages(script.script ?? '', script.hook ?? '', { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) })
 
     // Upload each image to Supabase Storage
     const imageUrls = await Promise.all(

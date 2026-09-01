@@ -29,6 +29,7 @@ import {
 } from '@/lib/ai/openai-client'
 import { generateIdeogramLegacy, IdeogramHttpError } from '@/lib/media/image-client'
 import { PLATFORM_COMPAT_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 // ── Juni-referensbilder för konsekvent karaktärsstil ─────────────────────────
 // Alla referensbilder ligger i run-images/references/juni/ i Supabase Storage.
@@ -64,6 +65,7 @@ async function fetchReferenceBuffer(filename: string): Promise<Buffer | null> {
  */
 async function generateWithReference(
   project: ProjectRef,
+  execution: ExecutionContract,
   finalPrompt: string,
   size: '1024x1024' | '1024x1536',
   label: string,
@@ -80,7 +82,7 @@ async function generateWithReference(
       console.log(`[ImageGen] ${label} — referens: ${refFilename}, försök ${attempt}`)
       const refFile = await toFile(refBuffer, 'reference.png', { type: 'image/png' })
       const res = await openAIImageEdit(
-        { project, operation: 'Generate Image (reference)', agent: 'Image Director' },
+        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director' },
         {
           model: 'gpt-image-1',
           image: refFile,
@@ -146,6 +148,7 @@ interface IdeogramResponse {
  */
 async function generateWithIdeogram(
   project: ProjectRef,
+  execution: ExecutionContract,
   prompt: string,
   aspectRatio: 'ASPECT_1_1' | 'ASPECT_2_3',
   label: string,
@@ -165,7 +168,7 @@ async function generateWithIdeogram(
       let first
       try {
         first = await generateIdeogramLegacy(
-          { project, operation: 'Generate Image', agent: 'Image Director' },
+          { project, execution, operation: 'Generate Image', agent: 'Image Director' },
           {
             prompt,
             model: 'V_3',
@@ -258,6 +261,7 @@ async function runVisionQa(
   imageUrl: string,
   mode: QaMode,
   project: ProjectRef,
+  execution: ExecutionContract,
 ): Promise<QaResult> {
   try {
     const prompt = buildVisionQaPrompt(mode)
@@ -269,7 +273,7 @@ async function runVisionQa(
     const contentType = (imgRes.headers.get('content-type') ?? 'image/png') as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
 
     const response = await getAnthropic({
-      project, agent: 'Vision QA', operation: 'Vision QA',
+      project, execution, agent: 'Vision QA', operation: 'Vision QA',
     }).messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 80,
@@ -301,6 +305,8 @@ async function runVisionQa(
 }
 
 export interface RunStepInput {
+  /** REQUIRED execution classification, propagated to the paid boundary. */
+  execution: ExecutionContract
   systemPrompt: string
   userMessage: string
   model: string
@@ -371,7 +377,7 @@ async function runAnthropicStep(
 
   if (onChunk) {
     const stream = await getAnthropic({
-      project: runProject(input.cost), operation: input.cost?.operation ?? 'messages.stream',
+      project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.stream',
       agent: input.cost?.agent, runId: input.runId,
     }).messages.stream({
       model,
@@ -396,7 +402,7 @@ async function runAnthropicStep(
     outputTokens = finalMsg.usage.output_tokens
   } else {
     const response = await getAnthropic({
-      project: runProject(input.cost), operation: input.cost?.operation ?? 'messages.create',
+      project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.create',
       agent: input.cost?.agent, runId: input.runId,
     }).messages.create({
       model,
@@ -433,7 +439,7 @@ async function runOpenAIStep(
 
   if (onChunk) {
     const stream = await openAIChatCompletion(
-      { project: runProject(input.cost), operation: input.cost?.operation ?? 'chat.completions',
+      { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
         agent: input.cost?.agent, runId: input.runId },
       {
         model,
@@ -456,7 +462,7 @@ async function runOpenAIStep(
     }
   } else {
     const response = await openAIChatCompletion(
-      { project: runProject(input.cost), operation: input.cost?.operation ?? 'chat.completions',
+      { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
         agent: input.cost?.agent, runId: input.runId },
       {
         model,
@@ -571,7 +577,7 @@ async function runImageStep(
       try {
         console.log(`[ImageGen] ${label} — försök ${attempt}`)
         const res = await openAIImageGenerate(
-          { project: runProject(input.cost), operation: input.cost?.operation ?? 'Generate Image',
+          { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'Generate Image',
             agent: input.cost?.agent ?? 'Image Director', runId: input.runId },
           { model: 'gpt-image-1', prompt: finalPrompt, n: 1, size },
         )
@@ -630,7 +636,7 @@ async function runImageStep(
         const sagaPrompt = `${buildStylePrefix('saga')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`)
           : null
 
         if (ideogramUrl && runId) {
@@ -638,7 +644,7 @@ async function runImageStep(
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'saga')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost))
+            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost), input.execution)
             if (qa.pass) {
               console.log(`[QA PASS] saga-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -647,10 +653,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] saga-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'saga') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost))
+              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost), input.execution)
               if (qa2.pass) {
                 console.log(`[QA PASS] saga-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -669,7 +675,7 @@ async function runImageStep(
         console.log(`[ImageGen] Saga bild ${i + 1} — faller tillbaka till gpt-image-1`)
         const sagaGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW children's book illustration — same art style, same character designs — but showing a completely new scene. Bright flat cartoon children's book illustration, vibrant saturated colors, clean bold shapes, cheerful warm tones. ${NO_TEXT}. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const sagaRef = `saga-${i + 1}.png`
-        imageData = await generateWithReference(runProject(input.cost), sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef)
           ?? await generateWithRetry(sagaGptPrompt, '1024x1536', `saga bild ${i + 1} (utan ref)`)
 
       } else if (isActivityMode) {
@@ -678,14 +684,14 @@ async function runImageStep(
         const activityPrompt = `${buildStylePrefix('activity')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`)
           : null
 
         if (ideogramUrl && runId) {
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'aktivitet')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost))
+            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost), input.execution)
             if (qa.pass) {
               console.log(`[QA PASS] activity-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -694,10 +700,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] activity-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'aktivitet') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost))
+              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost), input.execution)
               if (qa2.pass) {
                 console.log(`[QA PASS] activity-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -716,13 +722,13 @@ async function runImageStep(
         console.log(`[ImageGen] Aktivitet bild ${i + 1} — faller tillbaka till gpt-image-1`)
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
-        imageData = await generateWithReference(runProject(input.cost), aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef)
           ?? await generateWithRetry(aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1} (utan ref)`)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
-        imageData = await generateWithReference(runProject(input.cost), coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef)
           ?? await generateWithRetry(coloringPrompt, '1024x1024', `färgläggning bild ${i + 1} (utan ref)`)
       }
 

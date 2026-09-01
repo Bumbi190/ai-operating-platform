@@ -16,6 +16,7 @@ import { themeByMonthIndex, resolveTheme } from '@/lib/marketing/kb/marketing-ca
 import {
   buildDrafterSystemPrompt, buildDrafterUserMessage, parseDraftResponse, assembleDraftPost,
 } from '@/lib/marketing/drafter'
+import { projectScope, GLOBAL_ONLY } from '@/lib/governance/execution-stop'
 
 const DRAFTER_MODEL = 'claude-sonnet-4-6'
 
@@ -66,6 +67,11 @@ export const channelDrafterHandler: MarketingHandler = async (db: AdminClient, r
     maxTokens: 2000,
     temperature: 0.6,
     cost: { projectId: b.project_id ?? null, agent: 'channel-drafter', operation: 'draft_copy' },
+    // AUTONOMOUS marketing drafting. A brief without a project is platform-level
+    // work, so it declares GLOBAL_ONLY rather than borrowing a billing slug.
+    execution: b.project_id
+      ? { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: b.project_id }) }
+      : { context: 'AUTONOMOUS' as const, scope: GLOBAL_ONLY },
   })
 
   // Montera deterministiskt draft_post.

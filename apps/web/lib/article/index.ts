@@ -12,8 +12,11 @@ import { toPublishPayload } from './to-contract'
 import type { ArticleDraft, ArticleQa, LengthTier, NewsItemInput } from './types'
 import type { PublishPayload, PublishSuccess } from '@/lib/publishing/types'
 import { publishArticle } from '@/lib/publishing/publish'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export interface GenerateArticleOptions {
+  /** REQUIRED execution classification, propagated to the paid boundary. */
+  execution: ExecutionContract
   tier?: LengthTier
   trendingTopics?: string[]
   model?: string
@@ -35,11 +38,12 @@ export interface GeneratedArticle {
  */
 export async function generateArticle(
   newsItem: NewsItemInput,
-  opts: GenerateArticleOptions = {},
+  opts: GenerateArticleOptions,
 ): Promise<GeneratedArticle> {
   const grounding = await buildGroundingFromSource(newsItem)
 
   const { draft } = await writeArticle({
+    execution: opts.execution,
     newsItem,
     groundingText: grounding.text,
     trendingTopics: opts.trendingTopics,
@@ -75,7 +79,7 @@ export interface PublishGeneratedResult {
  */
 export async function generateAndPublishArticle(
   newsItem: NewsItemInput,
-  opts: GenerateArticleOptions & { destinationKey?: string } = {},
+  opts: GenerateArticleOptions & { destinationKey?: string },
 ): Promise<PublishGeneratedResult> {
   const generated = await generateArticle(newsItem, opts)
 

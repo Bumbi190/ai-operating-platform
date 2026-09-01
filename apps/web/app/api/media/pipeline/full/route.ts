@@ -35,6 +35,7 @@ import { toJson } from '@/lib/supabase/json'
 import { Anthropic } from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 // Pipeline modes:
 // 'lite'  — 1 image with headline baked in, SimpleNewsReel composition (~5× cheaper)
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
 
   const db = createAdminClient()
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Pipeline', operation: 'Full Pipeline',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Pipeline', operation: 'Full Pipeline',
   })
 
   const stream = new ReadableStream({
@@ -251,7 +252,7 @@ Angle: ${news.content_angle}`,
         emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
 
         const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-        const qualityScore = await scoreScript(script.hook, script.script, sourceContext)
+        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
         if (shouldRegenerate(qualityScore)) {
           emit({
@@ -330,7 +331,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
         await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-        const voiceResult = await generateVoiceover(script.script, 'victoria')
+        const voiceResult = await generateVoiceover(script.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria')
 
         // ── Step 6: Upload audio + timing ────────────────────────────────────
         emit({ step: 'uploading_audio', label: 'Laddar upp ljud...', progress: 62 })
@@ -358,7 +359,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         if (isLite) {
           emit({ step: 'images', label: 'Genererar 5 scenbilder (Ideogram)...', progress: 74 })
           const [imageUrls3, backgroundMusicUrl] = await Promise.all([
-            generateNewsImages(news.title, script.script, 5),
+            generateNewsImages(news.title, script.script, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }),
             getBackgroundMusicUrl(musicMood),
           ])
 
@@ -386,7 +387,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           })
         } else {
           emit({ step: 'images', label: 'Genererar 5 scener (Ideogram)...', progress: 74 })
-          const sceneImages = await generateSceneImages(script.script, script.hook)
+          const sceneImages = await generateSceneImages(script.script, script.hook, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) })
 
           emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
           const imageUrls = await Promise.all(

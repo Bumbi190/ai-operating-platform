@@ -19,6 +19,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateArticle, generateAndPublishArticle } from '@/lib/article'
 import type { LengthTier, NewsItemInput } from '@/lib/article/types'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
     // QA-gated: when the draft fails QA nothing is published (skippedReason is returned).
     if (body.publish_draft === true) {
       const r = await generateAndPublishArticle(newsItem, {
+      execution: { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },
         tier: body.tier,
         trendingTopics: body.trending_topics,
       })
@@ -82,6 +85,7 @@ export async function POST(request: Request) {
     }
 
     const result = await generateArticle(newsItem, {
+      execution: { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },
       tier: body.tier,
       trendingTopics: body.trending_topics,
       publishedAt: null, // generation only — payload is a draft; nothing is published

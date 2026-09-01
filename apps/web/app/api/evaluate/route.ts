@@ -19,6 +19,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { evaluate, toDbRecord, ContentType } from '@/lib/ai/evaluator/content-evaluator'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { scopeProjectFilter } from '@/lib/atlas/isolation'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 const VALID_CONTENT_TYPES: ContentType[] = ['script', 'hook', 'caption', 'image_prompt', 'news', 'text']
 
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
 
   // Run evaluation (always — projectId is only needed for DB storage)
   const result = await evaluate({
+    execution: { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY },
     content,
     contentType: contentType as ContentType,
     deepScore,

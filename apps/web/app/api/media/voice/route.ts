@@ -16,6 +16,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { generateVoiceover, type VoiceName } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData } from '@/lib/media/storage'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
 
   try {
     // Generate voiceover with word-level timing
-    const result = await generateVoiceover(text, voice ?? 'victoria')
+    const result = await generateVoiceover(text, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, voice ?? 'victoria')
 
     // Upload audio + timing to Supabase Storage
     const [audioUrl, timingUrl] = await Promise.all([

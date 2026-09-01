@@ -17,6 +17,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runPublishPipeline, type AutoPublishPolicy } from '@/lib/article/pipeline'
 import type { LengthTier, NewsItemInput } from '@/lib/article/types'
+import { projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -63,6 +65,8 @@ export async function POST(request: Request) {
 
   try {
     const decision = await runPublishPipeline(newsItem, {
+      // AUTONOMOUS: cron-authenticated article pipeline on the media project.
+      execution: { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },
       tier: body.tier,
       trendingTopics: body.trending_topics,
       autoPublish: body.auto_publish, // omit → env/default 'none'

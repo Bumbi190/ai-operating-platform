@@ -16,6 +16,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { logRun } from '@/lib/media/run-log'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -70,7 +72,7 @@ export async function GET(request: Request) {
     try {
       console.log(`[news/cron] Running hunter for project: ${project.slug}`)
 
-      const result = await runNewsHunter(db, project.id, 3)
+      const result = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, db, project.id, 3)
 
       if (result.candidates.length === 0) {
         results.push({ project: project.slug, status: 'no_new_stories' })

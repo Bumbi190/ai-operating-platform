@@ -25,6 +25,7 @@ import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300   // hela kedjan inkl. render-poll
@@ -40,7 +41,8 @@ export async function POST(request: Request) {
   // ── Auth: cron-secret ELLER inloggad operatör ──────────────────────────────
   const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
-  let authed = !!cronSecret && authHeader === `Bearer ${cronSecret}`
+  const viaCron = !!cronSecret && authHeader === `Bearer ${cronSecret}`
+  let authed = viaCron
   if (!authed) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -48,10 +50,19 @@ export async function POST(request: Request) {
   }
   if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // DUAL-MODE. The context follows the branch that ACTUALLY authenticated, not
+  // the route: the same URL is machine-driven on one request and human-driven on
+  // the next, and only `viaCron` knows which. Both contexts are enforcing, so
+  // neither can reach OPERATOR_INTERACTIVE.
+  const execution = {
+    context: viaCron ? ('AUTONOMOUS' as const) : ('OPERATOR_EXECUTION' as const),
+    scope: projectScope(MEDIA_PIPELINE_PROJECT),
+  }
+
   const body = await request.json().catch(() => ({})) as { project_id?: string; url?: string; text?: string }
   const db = createAdminClient()
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Breaking News', operation: 'Breaking News',
+    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Breaking News', operation: 'Breaking News',
   })
   const steps: Record<string, unknown> = {}
 
@@ -74,7 +85,7 @@ export async function POST(request: Request) {
 
     if (!articleText) {
       // Auto-hunt: dagens största story
-      const hunt = await runNewsHunter(db, project.id, 5, [])
+      const hunt = await runNewsHunter(execution, db, project.id, 5, [])
       const top = hunt.candidates?.[0]
       if (!top) return NextResponse.json({ error: 'Ingen story hittades att newsjacka' }, { status: 404 })
       articleText = [top.story.title, top.story.summary ?? '', top.editorialNote ? `Key insight: ${top.editorialNote}` : '', `Source: ${top.story.sourceLabel}`].filter(Boolean).join('\n\n')
@@ -105,7 +116,7 @@ export async function POST(request: Request) {
       messages: [{ role: 'user', content: `Write a short-form video script for this AI news story:\n\nTitle: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}` }],
     })
     const script = parseJson<ScriptWriterOutput>(scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '')
-    const qualityScore = await scoreScript(script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`).catch(() => null)
+    const qualityScore = await scoreScript(execution, script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`).catch(() => null)
     steps.hook = script.hook
 
     const { data: scriptRow } = await db.from('media_scripts').insert({

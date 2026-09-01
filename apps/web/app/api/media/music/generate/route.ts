@@ -20,6 +20,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
 import { generateSoundEffect } from '@/lib/media/elevenlabs'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -88,7 +90,8 @@ export async function POST(request: Request) {
     // ── Call ElevenLabs Sound Generation API ──────────────────────────────
     const audioBuffer = await generateSoundEffect(
       prompt,
-      22,                      // max supported — Remotion loops it
+      22,
+      { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },                      // max supported — Remotion loops it
       { projectId },
       0.3,                     // subtle influence keeps it ambient, not literal
     )

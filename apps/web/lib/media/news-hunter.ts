@@ -10,13 +10,14 @@
  *   1. fetchAllSources()       — parallel fetch from all sources
  *   2. deduplicateAgainstDB()  — remove URLs already in media_news_items
  *   3. scoreAndRank()          — virality formula (source × engagement × recency)
- *   4. claudeEditorialPick()   — Claude selects top 3 with editorial reasoning
+ *   4. claudeEditorialPick(execution, )   — Claude selects top 3 with editorial reasoning
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -403,12 +404,14 @@ export function scoreAndRank(stories: RawStory[]): ScoredStory[] {
 // ─── Claude editorial pick ────────────────────────────────────────────────────
 
 export async function claudeEditorialPick(
+  /** REQUIRED execution classification, propagated from the caller. */
+  execution: ExecutionContract,
   stories: ScoredStory[],
   maxCandidates = 3,
   trendingTopics: string[] = [],   // Optional: trending topics from Hermes to guide selection
 ): Promise<{ candidates: HunterCandidate[]; summary: string }> {
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'News Hunter', operation: 'Analyze News',
+    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'News Hunter', operation: 'Analyze News',
   })
 
   // Feed top 20 to Claude for editorial judgment
@@ -507,6 +510,8 @@ Return ONLY valid JSON (no markdown fences):
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 export async function runNewsHunter(
+  /** REQUIRED execution classification, propagated from the caller. */
+  execution: ExecutionContract,
   db: SupabaseClient,
   projectId: string,
   maxCandidates = 3,
@@ -524,7 +529,7 @@ export async function runNewsHunter(
   const scored = scoreAndRank(fresh)
 
   // 4. Claude picks the best — with optional trend context
-  const { candidates, summary } = await claudeEditorialPick(scored, maxCandidates, trendingTopics)
+  const { candidates, summary } = await claudeEditorialPick(execution, scored, maxCandidates, trendingTopics)
 
   return {
     fetchedAt,

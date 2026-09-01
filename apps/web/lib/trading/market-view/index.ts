@@ -134,3 +134,13 @@ export type {
   PriceTick,
   TimeTick,
 } from './geometry'
+
+// ─── Deterministic candle generation ──────────────────────────────────────────
+/*
+ * Exported so a fixture historical source can build LONGER series from the very
+ * same generator the scenarios use, rather than growing a second one beside it.
+ * A fixture that generated candles differently from the fixtures would be a
+ * second definition of what a fixture candle is.
+ */
+export { TIMEFRAME_MINUTES, buildCandleSeries, candleTimeAt, seedFrom, ticksToPriceText } from './candles'
+export type { CandleSeries, CandleSeriesOptions } from './candles'

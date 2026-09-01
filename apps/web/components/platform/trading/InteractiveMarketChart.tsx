@@ -22,6 +22,13 @@ import {
   type ViewportKey,
   type ViewportState,
 } from './chart-presentation'
+import {
+  createFixtureHistoricalSource,
+  shouldLoadOlder,
+  type HistoricalCandleSource,
+} from '@/lib/trading/market-data'
+import { useHistoricalCandles } from './useHistoricalCandles'
+import { ChartHistoryStatus } from './ChartHistoryStatus'
 import styles from './AtlasMarketView.module.css'
 
 /**
@@ -132,12 +139,24 @@ export interface InteractiveMarketChartProps {
   /** Measured container box from `ChartShell`. Absent on the server. */
   readonly width?: number
   readonly height?: number
+  /**
+   * Where older candles come from.
+   *
+   * Provider-neutral by type. Defaults to the deterministic fixture history so
+   * the chart has something to page through today; a real Market Data Provider
+   * replaces this argument and nothing else.
+   */
+  readonly historySource?: HistoricalCandleSource
 }
+
+/** One shared fixture source, so a re-render does not rebuild the generator. */
+const DEFAULT_HISTORY_SOURCE = createFixtureHistoricalSource()
 
 export function InteractiveMarketChart({
   snapshot,
   width,
   height,
+  historySource = DEFAULT_HISTORY_SOURCE,
 }: InteractiveMarketChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -150,6 +169,24 @@ export function InteractiveMarketChart({
   /** What the current viewport was fitted for, and whether data existed. */
   const viewportRef = useRef<ViewportState | null>(null)
   const [ready, setReady] = useState(false)
+
+  /*
+   * Paged history. The chart renders `history.model.candles`, which starts as
+   * the snapshot's own candles and grows BACKWARDS as older pages arrive — so
+   * every Atlas annotation stays anchored to the bars it was authored against.
+   */
+  const history = useHistoricalCandles({
+    source: historySource,
+    instrument: snapshot.instrument,
+    timeframe: snapshot.timeframe,
+    baseCandles: snapshot.candles,
+  })
+  const historyRef = useRef(history)
+  historyRef.current = history
+  /** How many bars the previous render had, so a prepend can be measured. */
+  const renderedCountRef = useRef(0)
+  /** The pending arming frame, so it can be dropped if the chart goes away. */
+  const armFrameRef = useRef<number | null>(null)
 
   // ─── Create the chart exactly once ──────────────────────────────────────────
   useEffect(() => {
@@ -303,8 +340,26 @@ export function InteractiveMarketChart({
     const palette = paletteRef.current
     if (chart === null || series === null || palette === null) return
 
+    const candles = history.model.candles
+
+    /*
+     * VIEWPORT PRESERVATION ACROSS A PREPEND — the load-bearing UX rule.
+     *
+     * Prepending bars shifts every logical index by the number added, so the
+     * range the operator was looking at now names DIFFERENT bars. Reading the
+     * range before the write and shifting it by exactly that many afterwards
+     * leaves the same candles under the same pixels.
+     *
+     * There is deliberately no `fitContent()` and no `scrollToRealTime()` on
+     * this path: either would throw the operator back to the newest bar, which
+     * is precisely what someone scrolling into history does not want.
+     */
+    const timeScale = chart.timeScale()
+    const prepended = history.model.lastPrepended
+    const rangeBefore = prepended > 0 ? timeScale.getVisibleLogicalRange() : null
+
     series.setData(
-      chartCandlesOf(snapshot.candles).map((candle) => ({
+      chartCandlesOf(candles).map((candle) => ({
         time: candle.time as UTCTimestamp,
         open: candle.open,
         high: candle.high,
@@ -312,6 +367,14 @@ export function InteractiveMarketChart({
         close: candle.close,
       })),
     )
+
+    if (rangeBefore !== null) {
+      timeScale.setVisibleLogicalRange({
+        from: rangeBefore.from + prepended,
+        to: rangeBefore.to + prepended,
+      })
+    }
+    renderedCountRef.current = candles.length
 
     // Price lines are recreated wholesale: a level that disappeared from the
     // snapshot must disappear from the chart, and a stale line is a lie.
@@ -339,10 +402,53 @@ export function InteractiveMarketChart({
      * on ordinary data updates — replay advancing one candle must not yank an
      * operator back from wherever they were inspecting.
      */
-    const key: ViewportKey = { instrument: snapshot.instrument, timeframe: snapshot.timeframe }
-    const hasCandles = snapshot.candles.length > 0
+    /*
+     * THE KEY COMES FROM THE MODEL, NOT THE SNAPSHOT, and the difference is not
+     * cosmetic. A new snapshot reaches this effect one render before the model
+     * has switched to it — the hook dispatches SUBJECT_CHANGED in the same
+     * commit, so this pass still holds the previous subject's candles. Keyed on
+     * the snapshot, that pass would "fit" the old data under the new key and
+     * claim the fit; the pass that actually draws the new data would then find
+     * the key unchanged, skip its fit, and — since arming happens only with a
+     * fit — leave the trigger disarmed for good.
+     *
+     * The model's subject and its candles are set by the same action, so they
+     * cannot disagree. Keying on it means the chart fits the data it is drawing.
+     */
+    const key: ViewportKey = {
+      instrument: history.model.subject.instrument,
+      timeframe: history.model.subject.timeframe,
+    }
+    const hasCandles = candles.length > 0
     if (shouldFitViewport(viewportRef.current, key, hasCandles)) {
       chart.timeScale().fitContent()
+      /*
+       * ARMING THE HISTORY TRIGGER — one frame after the fit, and only here.
+       *
+       * `fitContent()` does not take effect synchronously; the chart applies it
+       * when it next paints. Until then `getVisibleLogicalRange()` still
+       * reports the library's startup default, which is deeply negative and
+       * therefore looks exactly like an operator who has dragged far into the
+       * whitespace before the oldest bar. Reading that range as navigation is
+       * how a chart loads its entire history on mount without being asked.
+       *
+       * So the trigger is armed from a frame scheduled AFTER the fit was
+       * requested: by the time it runs, the fit it is vouching for has been
+       * applied. Reaching this branch already means a non-empty dataset —
+       * `shouldFitViewport` refuses to fit an empty series — so "rendered,
+       * fitted, settled" are all established before any range is trusted.
+       *
+       * IF THE FRAME NEVER RUNS, THE TRIGGER NEVER ARMS. A hidden page
+       * suspends `requestAnimationFrame`, and a suspended callback leaves the
+       * chart inert rather than guessing. That is the safe failure, and it is
+       * the reason this is a frame and not a timeout: a timer would fire on a
+       * hidden page and arm a viewport that was never painted.
+       */
+      const armingGeneration = history.model.generation
+      armFrameRef.current = window.requestAnimationFrame(() => {
+        armFrameRef.current = null
+        historyRef.current.armViewport(armingGeneration)
+      })
     }
     /*
      * Record whether this pass actually had data to fit. Replay's first frames
@@ -353,7 +459,57 @@ export function InteractiveMarketChart({
       key,
       fittedWithData: (viewportRef.current?.fittedWithData ?? false) || hasCandles,
     }
-  }, [snapshot, ready])
+  }, [snapshot, history.model, ready])
+
+  /*
+   * Only on unmount. Deliberately NOT cleanup of the effect above: that effect
+   * re-runs on every data update, and cancelling there would let an ordinary
+   * replay tick between the fit and its frame leave the chart disarmed forever.
+   * Staleness is handled by the generation the frame carries, not by cancelling.
+   */
+  useEffect(() => () => {
+    if (armFrameRef.current !== null) {
+      cancelAnimationFrame(armFrameRef.current)
+      armFrameRef.current = null
+    }
+  }, [])
+
+  /*
+   * ─── The load-older trigger ───────────────────────────────────────────────
+   *
+   * Subscribed once, to the library's own visible-logical-range event. The
+   * decision itself lives in `shouldLoadOlder`, which is pure and tested at its
+   * boundary — this effect only forwards the range to it.
+   *
+   * The subscription exists from the moment the chart does, but it is INERT
+   * until the viewport has been armed: `shouldLoadOlder` checks arming before
+   * it looks at any coordinate. Mount, hydration, the initial `setData`, the
+   * initial fit, the corrective resize and fullscreen all move the visible
+   * range and all reach this handler — and none of them can request history,
+   * because none of them arms the trigger.
+   *
+   * No request storm is possible on a pan either: the machine refuses a second
+   * request while one is in flight, after exhaustion, and after a failure until
+   * an explicit retry. So the handler may fire on every frame of a drag and
+   * still issue at most one request.
+   */
+  useEffect(() => {
+    const chart = chartRef.current
+    if (chart === null) return
+
+    const timeScale = chart.timeScale()
+    const onRangeChange = (range: { from: number; to: number } | null) => {
+      if (range === null) return
+      const current = historyRef.current
+      if (!shouldLoadOlder(current.model, range.from)) return
+      current.requestOlder()
+    }
+
+    timeScale.subscribeVisibleLogicalRangeChange(onRangeChange)
+    return () => {
+      timeScale.unsubscribeVisibleLogicalRangeChange(onRangeChange)
+    }
+  }, [ready])
 
   const resetView = useCallback(() => {
     chartRef.current?.timeScale().fitContent()
@@ -370,6 +526,13 @@ export function InteractiveMarketChart({
           `Interaktiv marknadsgraf, ${snapshot.instrument} ${snapshot.timeframe}. `
           + 'Dra för att panorera, rulla för att zooma.'
         }
+      />
+
+      <ChartHistoryStatus
+        state={history.model.state}
+        detail={history.model.detail}
+        loadedCount={history.model.candles.length}
+        onRetry={history.retry}
       />
 
       {/*

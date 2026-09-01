@@ -67,6 +67,11 @@ function makeChain(table: string) {
 }
 
 vi.mock('server-only', () => ({}))
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: { id: 'operator-1' } } }) },
+  }),
+}))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (t: string) => makeChain(t),
@@ -138,6 +143,7 @@ vi.mock('@/lib/cost/track', () => ({ logLlmCost: vi.fn().mockResolvedValue(null)
 const fetchSpy = vi.fn()
 vi.stubGlobal('fetch', (...a: unknown[]) => fetchSpy(...a))
 
+import { POST as renderStart } from '@/app/api/media/render/start/route'
 import { GET as step3 } from '@/app/api/media/cron/step3/route'
 import { GET as step4 } from '@/app/api/media/cron/step4/route'
 import { GET as youtube } from '@/app/api/media/cron/youtube/route'
@@ -514,5 +520,51 @@ describe('step3 · a G3C-1 refusal stays a governance event through the orchestr
     // withRetry(attempts: 2) would sleep and ask again without the composed
     // permanence rule, turning the operator's pause into an exhausted call.
     expect(generateNewsImages).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+// ══ OPERATOR-TRIGGERED RENDER ════════════════════════════════════════════════
+
+describe('render/start · an operator pressing render is still execution', () => {
+  const post = (body: Record<string, unknown>) =>
+    renderStart(new Request('http://test/api/media/render/start', {
+      method: 'POST', body: JSON.stringify(body),
+    }))
+
+  beforeEach(() => {
+    dbState.scripts = [{
+      id: 'rs-1', project_id: PROJECT_A, hook: 'h',
+      audio_url: 'https://cdn/a.mp3', timing_url: 'https://cdn/t.json',
+      duration_ms: 60000, images: ['https://cdn/i.jpg'], video_status: 'none',
+    }]
+    startLambdaRender.mockResolvedValue({ renderId: 'r-op', bucketName: 'b-op' })
+  })
+
+  it('clear → the render starts', async () => {
+    const res = await post({ scriptId: 'rs-1' })
+    expect(startLambdaRender).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(200)
+  })
+
+  it('PROJECT paused → no Lambda call, and it is not reported as a render failure', async () => {
+    // The catch below the boundary writes `video_status: 'failed'`. Reporting
+    // the operator's own pause as a Lambda fault would also strand the script.
+    stop.project = true
+    const res  = await post({ scriptId: 'rs-1' })
+    const body = await res.json()
+
+    expect(startLambdaRender).toHaveBeenCalledTimes(0)
+    expect(res.status).toBe(409)
+    expect(body.error).toBe('execution_stopped')
+    expect(dbState.updates.some(u => u.payload.video_status === 'failed'),
+      'a stop must not mark the video failed').toBe(false)
+  })
+
+  it('GLOBAL paused → refused too; a human click is not an exemption', async () => {
+    stop.global = true
+    const res = await post({ scriptId: 'rs-1' })
+    expect(startLambdaRender).toHaveBeenCalledTimes(0)
+    expect(res.status).toBe(409)
   })
 })

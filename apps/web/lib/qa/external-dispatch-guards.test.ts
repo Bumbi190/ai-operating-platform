@@ -78,6 +78,24 @@ describe('G1 · every external write in the tree has a canonical dispatch bounda
     }
   })
 
+  it('no governance assertion is parked behind an unreachable branch', () => {
+    // The G1 scan proves the assertion is PRESENT. Presence is not effect: a
+    // neutered `if (false) await assert(...)` satisfies a symbol search while
+    // dispatching freely. Banning the dead-code form closes that gap for every
+    // caller, including the ones with no behavioural test of their own.
+    const offenders: string[] = []
+    for (const rel of runtimeFiles()) {
+      const body = code(rel)
+      if (!body.includes('assertExecutionDispatchAllowed')) continue
+      if (/(if \(\s*false\s*\)|&&\s*false|false\s*&&)[^;]{0,120}assertExecutionDispatchAllowed/.test(body)
+          || /assertExecutionDispatchAllowed[^;]{0,200}\|\|\s*true/.test(body)) {
+        offenders.push(rel)
+      }
+    }
+    expect(offenders, 'a disabled guard is worse than none — it looks present')
+      .toEqual([])
+  })
+
   it('the boundary is imported from the canonical module, never re-implemented', () => {
     for (const rel of DISPATCH_ROUTES) {
       expect(code(rel), `${rel} must use the shared helper`)

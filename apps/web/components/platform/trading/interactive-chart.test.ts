@@ -297,7 +297,10 @@ describe('the operator owns the viewport', () => {
   })
 
   it('calls fitContent only behind that policy', () => {
-    const source = read('./InteractiveMarketChart.tsx')
+    // Executable code only: prose that explains the rule necessarily names
+    // `fitContent()`, and a comment saying "there is deliberately no fitContent
+    // on the prepend path" must not read as a third call site.
+    const source = executable('./InteractiveMarketChart.tsx')
     const fits = source.match(/fitContent\(\)/g) ?? []
     // Exactly two: the guarded data effect, and the explicit reset control.
     expect(fits).toHaveLength(2)
@@ -517,6 +520,165 @@ describe('fullscreen remains the existing shell implementation', () => {
     // The chart component must not grow a second implementation.
     const chart = read('./InteractiveMarketChart.tsx')
     expect(chart).not.toMatch(/requestFullscreen|exitFullscreen|fullscreenElement/)
+  })
+})
+
+// ─── Stage 1.9B: historical paging in the chart ───────────────────────────────
+
+describe('historical prepend preserves the viewport', () => {
+  const source = executable('./InteractiveMarketChart.tsx')
+
+  it('reads the visible range before writing data and shifts it after', () => {
+    // The whole rule: prepending shifts every logical index, so the range must
+    // be shifted by exactly the number of bars added or the operator jumps.
+    expect(source).toMatch(/getVisibleLogicalRange\(\)/)
+    expect(source).toMatch(/setVisibleLogicalRange\(\{[\s\S]{0,120}rangeBefore\.from \+ prepended/)
+    expect(source).toMatch(/rangeBefore\.to \+ prepended/)
+  })
+
+  it('shifts by the model\'s own count rather than recomputing one', () => {
+    // The view and the machine cannot disagree if only one of them counts.
+    expect(source).toMatch(/history\.model\.lastPrepended/)
+  })
+
+  it('never calls fitContent on the prepend path', () => {
+    const start = source.indexOf('const rangeBefore')
+    const end = source.indexOf('renderedCountRef.current')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    expect(source.slice(start, end)).not.toMatch(/fitContent/)
+  })
+
+  it('never calls scrollToRealTime anywhere', () => {
+    // Snapping to the newest bar is the exact opposite of reading history.
+    expect(source).not.toMatch(/scrollToRealTime/)
+    expect(source).not.toMatch(/scrollToPosition/)
+  })
+
+  it('subscribes and unsubscribes the visible-range listener', () => {
+    expect(source).toMatch(/subscribeVisibleLogicalRangeChange/)
+    expect(source).toMatch(/unsubscribeVisibleLogicalRangeChange/)
+  })
+
+  it('asks the machine whether to load rather than deciding itself', () => {
+    expect(source).toMatch(/shouldLoadOlder\(/)
+    // No ad-hoc threshold comparison in the component.
+    expect(source).not.toMatch(/range\.from\s*[<>]=?\s*\d/)
+  })
+
+  it('takes its history source by prop, provider-neutrally', () => {
+    expect(source).toMatch(/historySource/)
+    expect(source).toMatch(/HistoricalCandleSource/)
+    for (const provider of [/rithmic/i, /tradovate/i, /projectx/i]) {
+      expect(source, String(provider)).not.toMatch(provider)
+    }
+  })
+})
+
+describe('the history trigger is armed, never inferred', () => {
+  const source = executable('./InteractiveMarketChart.tsx')
+
+  it('arms only after the initial fit, one frame later', () => {
+    /*
+     * Order is the entire mechanism: fit, then a frame, then arm. A chart that
+     * armed before the fit landed would read the library's unfitted startup
+     * range — deeply negative — as an operator who had dragged into history.
+     */
+    const branch = source.slice(source.indexOf('shouldFitViewport('))
+    const fit = branch.indexOf('fitContent()')
+    const frame = branch.indexOf('requestAnimationFrame(')
+    const armed = branch.indexOf('armViewport(')
+
+    expect(fit).toBeGreaterThan(-1)
+    expect(frame).toBeGreaterThan(fit)
+    expect(armed).toBeGreaterThan(frame)
+  })
+
+  it('never arms on a timer', () => {
+    /*
+     * A frame is suspended on a hidden page; a timer is not. Arming on a timer
+     * would vouch for a fit that was never painted — which is precisely the
+     * hidden-page case, and the one where staying disarmed is correct.
+     */
+    expect(source).not.toMatch(/setTimeout|setInterval|requestIdleCallback/)
+  })
+
+  it('drops a pending arming frame when the chart goes away', () => {
+    expect(source).toMatch(/cancelAnimationFrame/)
+  })
+
+  it('captures the generation before the frame, not inside it', () => {
+    const branch = source.slice(source.indexOf('shouldFitViewport('))
+    const captured = branch.indexOf('history.model.generation')
+    const frame = branch.indexOf('requestAnimationFrame(')
+    expect(captured).toBeGreaterThan(-1)
+    expect(captured).toBeLessThan(frame)
+  })
+
+  it('keys the fit on the model\'s subject, not on the incoming snapshot', () => {
+    /*
+     * The snapshot changes one render before the model does. Keyed on it, the
+     * pass holding the OLD candles claims the new subject's fit, the pass that
+     * actually draws the new data skips it — and since arming rides on the fit,
+     * the trigger would never re-arm after a switch.
+     */
+    const key = source.slice(source.indexOf('const key: ViewportKey'), source.indexOf('const hasCandles'))
+    expect(key).toMatch(/history\.model\.subject\.instrument/)
+    expect(key).toMatch(/history\.model\.subject\.timeframe/)
+    expect(key).not.toMatch(/snapshot\./)
+  })
+
+  it('leaves the range handler with no arming logic of its own', () => {
+    /*
+     * One gate, in the machine. A handler that also consulted arming could
+     * eventually consult it differently.
+     */
+    const start = source.indexOf('const onRangeChange')
+    const end = source.indexOf('subscribeVisibleLogicalRangeChange', start)
+    const handler = source.slice(start, end)
+    expect(handler).toMatch(/shouldLoadOlder\(/)
+    expect(handler).not.toMatch(/triggerArmed|armViewport|requestAnimationFrame/)
+  })
+
+  it('does not disarm on resize or fullscreen', () => {
+    /*
+     * Resizing reflows a viewport that is already established; it is not a new
+     * subject and must not cost the operator their armed trigger.
+     */
+    const resize = source.slice(source.indexOf('chart.resize(width, height)') - 400,
+      source.indexOf('chart.resize(width, height)') + 200)
+    expect(resize).not.toMatch(/armViewport|triggerArmed|VIEWPORT_ARMED/)
+    expect(executable('./ChartShell.tsx')).not.toMatch(/armViewport|triggerArmed|VIEWPORT_ARMED/)
+  })
+})
+
+describe('the history status surface', () => {
+  const status = executable('./ChartHistoryStatus.tsx')
+
+  it('covers every history state exactly once', () => {
+    for (const state of [
+      'IDLE', 'LOADING_INITIAL', 'READY', 'LOADING_OLDER',
+      'EXHAUSTED', 'UNAVAILABLE', 'ERROR',
+    ]) {
+      expect(status, `no branch for ${state}`).toMatch(new RegExp(`${state}:`))
+    }
+  })
+
+  it('offers retry only for failures, never for exhaustion', () => {
+    expect(status).toMatch(/EXHAUSTED: \{[^}]*retryable: false/)
+    expect(status).toMatch(/UNAVAILABLE: \{[^}]*retryable: true/)
+    expect(status).toMatch(/ERROR: \{[^}]*retryable: true/)
+  })
+
+  it('does not block the chart while loading', () => {
+    // A marker, not a spinner that replaces the plot.
+    expect(status).not.toMatch(/Spinner|overlay|backdrop-filter: blur\(2/)
+    const css = readFileSync(join(HERE, 'AtlasMarketView.module.css'), 'utf8')
+    expect(css).toMatch(/\.chartHistoryStatus \{[\s\S]*?pointer-events: none/)
+  })
+
+  it('shows the loaded count, so a failure cannot read as data loss', () => {
+    expect(status).toMatch(/loadedCount/)
   })
 })
 

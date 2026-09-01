@@ -298,8 +298,13 @@ export async function withGovernedSpend<T>(
   // ── G3C-1 · FINAL DISPATCH STOP CHECK ─────────────────────────────────────
   //
   // The last safe boundary before money leaves. It runs AFTER the reservation
-  // (so a stopped call cannot consume headroom either) and IMMEDIATELY BEFORE
-  // `run()`, with nothing between it and dispatch.
+  // and IMMEDIATELY BEFORE `run()`, with nothing between it and dispatch.
+  //
+  // Precisely: a stopped call DOES briefly hold a reservation — it is taken
+  // before this check — but it does not RETAIN that headroom, because the
+  // refusal path releases it below. Ordering is deliberate: reserving first
+  // means a stopped call and a permitted one contend for headroom identically,
+  // so the stop cannot become a way to jump the budget queue.
   //
   // A FRESH decision, every time. Any earlier check — in a route, an executor,
   // a previous retry attempt — is an optimisation, not the guarantee: the pause

@@ -28,8 +28,8 @@ vi.mock('@/lib/article/hero-image', () => ({
   // G3C-1: the route now supplies an explicit execution contract as the first
   // argument, so the mock captures it too — the route must classify, not the
   // module it calls.
-  generateHeroImage: async (execution: unknown, id: string) => {
-    receivedExecution = execution
+  generateHeroImage: async (context: unknown, id: string) => {
+    receivedExecution = context
     receivedArticleId = id
     if (!mockResult) throw new Error('test forgot to set mockResult')
     return mockResult
@@ -66,7 +66,10 @@ describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
     expect(receivedArticleId).toBe('article-1')
     // The ROUTE owns the classification: a session-authenticated hero-image
     // request is human-requested EXECUTION, never interactive assistance.
-    expect(receivedExecution).toMatchObject({ context: 'OPERATOR_EXECUTION' })
+    // The route declares WHY; the article's own project supplies WHICH — the
+    // helper derives the scope from the row it loads, so a caller cannot name a
+    // project the article does not belong to.
+    expect(receivedExecution).toBe('OPERATOR_EXECUTION')
     const json = (await res.json()) as Record<string, unknown>
     expect(json.ok).toBe(true)
     expect(json.status).toBe('ready')

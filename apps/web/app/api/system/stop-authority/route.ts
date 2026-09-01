@@ -103,8 +103,11 @@ export async function GET() {
     // PostgREST types this result as a union that includes an error shape, so it
     // is narrowed through `unknown`. The row shape is fixed by the explicit
     // column list above.
-    events = (((data ?? []) as unknown) as Record<string, unknown>[]).map(e =>
-      isOperator || e.actor === selfActor ? e : { ...e, actor: null })
+    // `row`, not `e` — the enclosing catch also binds `e`, and two different
+    // things called `e` one line apart is a reader's trap (and made a leakage
+    // guard unable to tell a ledger row from a caught error).
+    events = (((data ?? []) as unknown) as Record<string, unknown>[]).map(row =>
+      isOperator || row.actor === selfActor ? row : { ...row, actor: null })
   } catch (e) {
     console.error('[stop-authority] event read failed:',
       e instanceof Error ? e.message : String(e))

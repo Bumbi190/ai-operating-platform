@@ -73,7 +73,10 @@ describe('every governed spend supplies an explicit execution contract', () => {
       // A default PARAMETER, not a legitimate `const execution = {…}` — the
       // dual-mode route builds one from the branch that authenticated, which is
       // exactly the behaviour we want.
-      if (/execution\s*:\s*ExecutionContract\s*=/.test(body))
+      // A default PARAMETER only. `const execution: ExecutionContract = …` in a
+      // helper that DERIVES the scope from a row it owns is the correct pattern,
+      // not a default — hero-image builds one from `article.project_id`.
+      if (/\)\s*:\s*[\w<>\[\]| ]+\s*\{[\s\S]{0,200}execution:\s*ExecutionContract\s*=\s*\{/.test(body))
         offenders.push(`${rel}: default execution parameter`)
     }
     expect(offenders).toEqual([])
@@ -266,10 +269,185 @@ describe('the chat outbound CRON_SECRET seam is provenance, not a stop bypass', 
                        'app/api/media/cron/step3/route.ts']) {
       const body = code(rel)
       expect(body, `${rel} must be AUTONOMOUS`).toMatch(/context:\s*'AUTONOMOUS'/)
-      expect(body, `${rel} must carry the project scope`).toContain('projectScope(MEDIA_PIPELINE_PROJECT)')
+      // A PROJECT scope of some kind — since the scope correction these bind the
+      // row's own project rather than the billing slug, which is strictly better.
+      expect(body, `${rel} must carry a project scope`).toMatch(/scope:\s*projectScope\(/)
+      expect(body, `${rel} must not be GLOBAL_ONLY`).not.toMatch(/scope:\s*GLOBAL_ONLY/)
     }
     // Therefore: a provenance defect (the ledger will say "autonomous" for work
     // a human asked for), deferred to G3C-2 for protocol repair. NOT a G3C-1
     // blocker, because nothing escapes an authority because of it.
+  })
+})
+
+// ── F. GLOBAL_ONLY is governance-sensitive too ──────────────────────────────
+
+describe('every runtime GLOBAL_ONLY is reviewed and justified', () => {
+  /**
+   * THE INVERSE BUG. G3C-1 correctly separated billing from authority, and then
+   * over-applied it: several callers that HAD a real project UUID in hand
+   * declared GLOBAL_ONLY anyway, on the reasoning that the billing slug was a
+   * compatibility artefact. That is a project-stop bypass — a paused project's
+   * work would still dispatch, because nothing project-shaped ever reached the
+   * authority.
+   *
+   * GLOBAL_ONLY must mean "no project execution authority applies to this
+   * work". It must never mean "a project scope was inconvenient here".
+   *
+   * So it gets the same treatment as OPERATOR_INTERACTIVE: a reviewed inventory,
+   * each entry stating WHY no project binds.
+   */
+  const REVIEWED: Record<string, string> = {
+    // Ordinary Atlas assistance. Serves every project at once, belongs to none.
+    'app/api/chat/route.ts':
+      'Atlas chat + the manager chat it delegates to: assistance ABOUT a project '
+      + 'is not that project’s execution, and the context is INTERACTIVE anyway.',
+    'app/api/chat/tts/route.ts':
+      'Atlas TTS: reads assistance aloud. No project owns it.',
+    // Platform-wide CFO briefing: aggregates revenue and cost across ALL
+    // projects, so no single project’s pause should silence it.
+    'app/api/media/cron/morning-briefing/route.ts':
+      'Morning briefing aggregates every project; no single project owns it.',
+    // Conditional constructions — GLOBAL_ONLY only on the branch where no
+    // project was supplied at all.
+    'app/api/evaluate/route.ts':
+      'CONDITIONAL: binds the owned projectId when present; GLOBAL_ONLY only for '
+      + 'a bare platform evaluation with no project.',
+    'app/api/manager/route.ts':
+      'CONDITIONAL: daily_plan and chat bind the owned project when one is '
+      + 'supplied; evaluate and plan_tasks always bind. GLOBAL_ONLY only where no '
+      + 'project exists.',
+    'lib/marketing/workflows/channel-drafter.ts':
+      'CONDITIONAL: binds brief.project_id when present; a brief without a '
+      + 'project is platform-level drafting.',
+  }
+
+  it('no unreviewed file constructs GLOBAL_ONLY', () => {
+    const constructors = runtimeFiles().filter(rel => {
+      if (rel === 'lib/governance/execution-stop.ts') return false   // the vocabulary
+      return /scope:\s*GLOBAL_ONLY/.test(code(rel))
+    })
+    const unreviewed = constructors.filter(rel => !(rel in REVIEWED))
+    expect(unreviewed,
+      'a new GLOBAL_ONLY must be justified in the inventory — it is the scope '
+      + 'that answers to no project').toEqual([])
+  })
+
+  it('every reviewed entry carries a stated rationale', () => {
+    for (const [rel, why] of Object.entries(REVIEWED)) {
+      expect(why.length, `${rel} needs a real rationale`).toBeGreaterThan(40)
+    }
+  })
+
+  it('the four proven project-bound entrypoints are NOT global', () => {
+    // These are the exact bypasses the review found. Each had a real project
+    // UUID established by a trusted upstream boundary.
+    const bound: [string, string][] = [
+      ['app/api/projects/[slug]/dream/route.ts', 'projectScope({ projectId: project.id })'],
+      ['app/api/media/cron/dream/route.ts',      'projectScope({ projectId: p.id })'],
+      ['app/api/manager/route.ts',               'projectScope({ projectId: project_id })'],
+      ['app/api/evaluate/route.ts',              'projectScope({ projectId })'],
+    ]
+    for (const [rel, expected] of bound) {
+      expect(code(rel), `${rel} must bind its real project`).toContain(expected)
+    }
+  })
+
+  it('a project-scoped operation never falls back to GLOBAL_ONLY unconditionally', () => {
+    // Dream is the clearest case: both entrypoints know the exact project.
+    for (const rel of ['app/api/projects/[slug]/dream/route.ts',
+                       'app/api/media/cron/dream/route.ts']) {
+      expect(code(rel), `${rel} must not use GLOBAL_ONLY at all`)
+        .not.toMatch(/scope:\s*GLOBAL_ONLY/)
+    }
+  })
+
+  it('cron dream scopes INSIDE the iteration, so one pause is not a global pause', () => {
+    const body = code('app/api/media/cron/dream/route.ts')
+    // The contract must be built per project, not hoisted above the map.
+    expect(body).toMatch(/map\(p =>[\s\S]{0,400}projectScope\(\{ projectId: p\.id \}\)/)
+  })
+
+  it('helpers that OWN the ownership relationship derive the scope themselves', () => {
+    // hero-image takes a CONTEXT, not a contract: the article's project is
+    // established from the row it loads, so a caller cannot name a project the
+    // article does not belong to.
+    const body = code('lib/article/hero-image.ts')
+    expect(body).toMatch(/context: ExecutionContext/)
+    expect(body).toContain('projectScope({ projectId: article.project_id })')
+    expect(code('app/api/content/articles/[id]/hero-image/route.ts'))
+      .toContain("generateHeroImage('OPERATOR_EXECUTION'")
+  })
+
+  it('media routes holding a real script/article project bind THAT project', () => {
+    // Billing still flows through MEDIA_PIPELINE_PROJECT; execution does not.
+    for (const rel of ['app/api/media/music/generate/route.ts',
+                       'app/api/media/voice/route.ts',
+                       'app/api/media/scripts/[id]/regenerate/route.ts',
+                       'app/api/media/images/generate/route.ts']) {
+      const body = code(rel)
+      expect(body, `${rel} must scope to the row's own project`)
+        .toContain('projectScope({ projectId })')
+      expect(body, `${rel} still BILLS the pipeline project`)
+        .toContain('MEDIA_PIPELINE_PROJECT')
+    }
+  })
+})
+
+// ── G. Operator prose must not reach a client ───────────────────────────────
+
+describe('ExecutionStoppedError does not leak operator-authored text', () => {
+  /**
+   * The error carries the full StopDecision so a caller can reason about what
+   * happened. `decision.observed` may hold `paused_reason` — text an operator
+   * typed during an incident ("paused: vendor breach"). That is fine internally
+   * and must not reach a tenant.
+   */
+  it('the MESSAGE is built only from stable codes', () => {
+    const src = read('lib/governance/execution-stop.ts')
+    const ctor = src.slice(src.indexOf('export class ExecutionStoppedError'))
+    const superCall = ctor.slice(ctor.indexOf('super('), ctor.indexOf('this.name'))
+    // reason / context / scopeKind / provider / operation — all closed vocabularies.
+    expect(superCall).toContain('args.reason')
+    expect(superCall).toContain('args.context')
+    // The prose fields must not appear in the message at all.
+    expect(superCall).not.toContain('observed')
+    expect(superCall).not.toContain('paused_reason')
+    expect(superCall).not.toContain('decision')
+  })
+
+  it('no route serializes the error OBJECT — only its message', () => {
+    // A route doing `JSON.stringify(e)` or spreading the error would carry
+    // `decision.observed` out to the client.
+    const offenders: string[] = []
+    for (const rel of runtimeFiles().filter(r => r.startsWith('app/api/'))) {
+      const body = code(rel)
+      // Only names actually bound by a `catch (…)` count. A single-letter `e`
+      // elsewhere is usually a row or an element — the redaction map in the
+      // stop-authority route spreads `{ ...e }` where `e` is a stop_events ROW,
+      // and flagging that would be noise, not a finding.
+      const caught = [...body.matchAll(/catch\s*\(\s*(\w+)\s*\)/g)].map(m => m[1])
+      for (const name of new Set(caught)) {
+        const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        if (new RegExp(`JSON\\.stringify\\(\\s*${esc}\\s*\\)`).test(body))
+          offenders.push(`${rel}: stringify(${name})`)
+        if (new RegExp(`\\.\\.\\.\\s*${esc}\\b`).test(body))
+          offenders.push(`${rel}: spreads ${name}`)
+        if (new RegExp(`error:\\s*${esc}\\s*[,}]`).test(body))
+          offenders.push(`${rel}: returns the ${name} object`)
+      }
+    }
+    expect(offenders, 'routes must surface e.message, never the error object').toEqual([])
+  })
+
+  it('nothing reads a StopDecision’s observed prose outside the authority', () => {
+    // Narrow on purpose: `observedAt` / `observedPositions` all over trading and
+    // workflows are unrelated fields. The prose that matters is the operator's
+    // pause reason, reachable only through a StopDecision.
+    const readers = runtimeFiles().filter(rel =>
+      rel !== 'lib/governance/execution-stop.ts'
+      && rel !== 'app/api/system/stop-authority/route.ts'   // operator-only, already tiered
+      && /(decision|platform|eligibility)\.observed\b|observed\?\.(global|project)Paused/.test(code(rel)))
+    expect(readers, 'a stop decision’s operator prose is operator-only').toEqual([])
   })
 })

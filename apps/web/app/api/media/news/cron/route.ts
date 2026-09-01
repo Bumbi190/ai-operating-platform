@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     try {
       console.log(`[news/cron] Running hunter for project: ${project.slug}`)
 
-      const result = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, db, project.id, 3)
+      const result = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 3)
 
       if (result.candidates.length === 0) {
         results.push({ project: project.slug, status: 'no_new_stories' })

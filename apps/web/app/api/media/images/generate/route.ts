@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 
   try {
     // Generate scene images via Claude + Ideogram
-    const sceneImages = await generateSceneImages(script.script ?? '', script.hook ?? '', { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) })
+    const sceneImages = await generateSceneImages(script.script ?? '', script.hook ?? '', { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) })
 
     // Upload each image to Supabase Storage
     const imageUrls = await Promise.all(

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     const audioBuffer = await generateSoundEffect(
       prompt,
       22,
-      { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) },                      // max supported — Remotion loops it
+      { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) },                      // max supported — Remotion loops it
       { projectId },
       0.3,                     // subtle influence keeps it ambient, not literal
     )

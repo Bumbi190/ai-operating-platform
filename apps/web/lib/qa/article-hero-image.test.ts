@@ -216,7 +216,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('1. happy path: ready + url set, cost logged with articleId metadata, two updates (generating → ready)', async () => {
     storedRow = row()
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -248,7 +248,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('2. idempotent: existing status=generating returns skipped, no Ideogram/upload/cost/alert', async () => {
     storedRow = row({ hero_image_status: 'generating' })
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -264,7 +264,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('3. article not found: returns failed, no side effects', async () => {
     storedRow = null
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -280,7 +280,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     automationPause = { allowed: false, reason: 'Automation pausad: incident pågår' }
 
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -297,7 +297,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     ideogramShouldThrow = 'Ideogram API error 503: upstream timeout'
 
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -324,7 +324,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     uploadShouldThrow = 'Article hero upload failed: bucket quota exceeded'
 
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -346,7 +346,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       summary: 'SUMMARY_LOSES',
       title: 'TITLE_LOSES',
     })
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls[0].body).toBe('PROMPT_WINS')
     expect(ideogramCalls[0].headline).toBe('TITLE_LOSES')
 
@@ -359,7 +359,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       summary: 'SUMMARY_WINS',
       title: 'TITLE_HEADLINE',
     })
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls[0].body).toBe('SUMMARY_WINS')
     expect(ideogramCalls[0].headline).toBe('TITLE_HEADLINE')
 
@@ -372,7 +372,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       summary: null,
       title: 'TITLE_FALLBACK',
     })
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls[0].body).toBe('TITLE_FALLBACK')
     expect(ideogramCalls[0].headline).toBe('TITLE_FALLBACK')
 
@@ -385,7 +385,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       summary: null,
       title: null,
     })
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls[0].headline).toBe('AI news brief')
     expect(ideogramCalls[0].body).toBe('AI news brief')
   })
@@ -394,7 +394,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('8. shadow: runPhotoEditor receives body/category/tags from payload', async () => {
     storedRow = row()
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(editorCalls).toHaveLength(1)
     expect(editorCalls[0].title).toBe('AI agents now book your flights')
@@ -406,7 +406,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('9. shadow: brief is persisted into hero_editor_brief with metadata { generated_at, model }', async () => {
     storedRow = row()
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     const briefs = briefUpdates()
     expect(briefs).toHaveLength(1)
@@ -424,7 +424,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('10. shadow: brief generation failure does NOT block image generation', async () => {
     storedRow = row()
     editorShouldThrow = 'Anthropic 503 on the editor brief'
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     // Image flow STILL succeeds end-to-end despite the brief failure.
     expect(result.ok).toBe(true)
@@ -443,7 +443,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('11. shadow: brief is attempted even when image generation fails', async () => {
     storedRow = row()
     ideogramShouldThrow = 'Ideogram outage'
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(editorCalls).toHaveLength(1)
     expect(briefUpdates()).toHaveLength(1) // brief lands even though image failed
@@ -454,7 +454,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('12. shadow: paused automation skips both image AND editor brief', async () => {
     storedRow = row()
     automationPause = { allowed: false, reason: 'Automation paused' }
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(ideogramCalls).toHaveLength(0)
     expect(editorCalls).toHaveLength(0)
@@ -466,7 +466,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('13. Phase 2A: flag OFF preserves Phase 1 shadow behavior — writer path, no brief in render', async () => {
     storedRow = row()
     delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     // writer path used → generateNewsImage, NOT generateArticleHeroImage
@@ -483,7 +483,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('14. Phase 2A: flag ON + brief OK → generateArticleHeroImage drives, source="brief", render_input persisted', async () => {
     storedRow = row()
     process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -511,7 +511,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
     editorShouldThrow = 'Sonnet 503 on brief'
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     // brief failed → writer path used
@@ -528,7 +528,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
     articleHeroShouldThrow = 'Ideogram 503 on brief render'
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe('failed')
@@ -547,14 +547,14 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     storedRow = row()
     // First call: flag off → writer path
     delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls).toHaveLength(1)
     expect(articleHeroCalls).toHaveLength(0)
 
     // Second call: flag on → brief path
     storedRow = row({ hero_image_status: null })  // reset to pending so not skipped
     process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(ideogramCalls).toHaveLength(1)  // unchanged from before
     expect(articleHeroCalls).toHaveLength(1)
   })
@@ -567,7 +567,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
 
   it('18. sync: successful regen invokes syncPublishedArticle once, result attached to HeroImageResult', async () => {
     storedRow = row()
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     expect(syncCalls).toEqual([ARTICLE_ID])
@@ -582,7 +582,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     mockSyncResult = { ok: false, status: 'failed', reason: 'PublishError: category_not_found' }
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -606,7 +606,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   it('20. sync: NOT invoked on failure paths (Ideogram throws → no sync call)', async () => {
     storedRow = row()
     ideogramShouldThrow = 'Ideogram 503'
-    await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
     expect(syncCalls).toHaveLength(0)
   })
 
@@ -621,7 +621,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     mockSyncShouldThrow = 'admin client init blew up'
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    const result = await generateHeroImage(TEST_OPERATOR_EXECUTION_GLOBAL, ARTICLE_ID)
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     expect(result.ok).toBe(true)
     if (result.ok) {

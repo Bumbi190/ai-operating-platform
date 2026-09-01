@@ -215,7 +215,7 @@ export async function GET(request: Request) {
   log('hunt', 'Running News Hunter...')
   let hunterResult
   try {
-    hunterResult = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, db, project.id, 5)
+    hunterResult = await runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     log('hunt', `Failed: ${msg}`)

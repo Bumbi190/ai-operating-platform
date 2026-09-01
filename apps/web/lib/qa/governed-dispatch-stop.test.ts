@@ -354,3 +354,93 @@ describe('G3C-1 · an outer retry re-authorizes', () => {
     expect(contractsSeen).toHaveLength(2)   // both attempts asked
   })
 })
+
+// ── F. Project-scope binding at real entrypoints ────────────────────────────
+
+describe('G3C-1 · a paused PROJECT refuses its own work', () => {
+  /**
+   * THE INVERSE PROPERTY. The suite above proves billing cannot become
+   * authority. These prove the other direction — that work which genuinely
+   * belongs to a project is BOUND by that project, even when the bill is paid
+   * through a compatibility slug.
+   *
+   * Without these, a caller could separate billing from authority correctly and
+   * then declare GLOBAL_ONLY for project-bound work, and every existing test
+   * would still pass while a paused project kept dispatching.
+   */
+
+  /** Only project P is paused; everything else is clear. */
+  const pausedProject = (paused: string) => (contract: { scope: { kind: string; project?: { projectId?: string } } }) =>
+    contract.scope.kind === 'PROJECT' && contract.scope.project?.projectId === paused
+      ? refusedDecision('project_execution_paused')
+      : allowedDecision()
+
+  async function dispatchWith(execution: unknown, decide: (c: never) => StopDecision) {
+    stopDecision = allowedDecision()
+    const { withGovernedSpend } = await boundary()
+    // Route the decision through the per-contract stub.
+    const originalPush = contractsSeen.push.bind(contractsSeen)
+    contractsSeen.push = ((c: never) => { stopDecision = decide(c); return originalPush(c) }) as never
+    try {
+      return await withGovernedSpend(
+        { project: { projectSlug: 'ai-media-automation' }, execution,
+          provider: 'anthropic', operation: 'op', estimatedSek: 1 } as never,
+        provider,
+      )
+    } finally { contractsSeen.push = originalPush }
+  }
+
+  it('compatibility billing + a REAL execution project → the project still binds', async () => {
+    // THE MISSING CASE the review identified. The bill is paid through the
+    // shared compatibility slug (`ai-media-automation`), the execution names a
+    // different real project, and THAT project is paused.
+    //
+    // Independence has to work in both directions: the billing slug must not
+    // create authority, and it must not erase it either.
+    const decide = pausedProject('owned-by-someone-else')
+    await expect(dispatchWith(
+      { context: 'OPERATOR_EXECUTION',
+        scope: { kind: 'PROJECT', project: { projectId: 'owned-by-someone-else' } } },
+      decide as never,
+    )).rejects.toThrow(/project_execution_paused/)
+    expect(dispatches, 'a compat-billed call is still bound by its execution project').toBe(0)
+    expect(releaseCalls).toEqual(['res-1'])
+    // …and the authority was asked about the EXECUTION project, not the billed slug.
+    expect(resolvedProjectIds).toEqual(['owned-by-someone-else'])
+    expect(resolvedProjectIds).not.toContain('resolved-billing-id')
+  })
+
+  it('project P paused → P-scoped work refused, no dispatch', async () => {
+    const decide = pausedProject('P')
+    await expect(dispatchWith(
+      { context: 'OPERATOR_EXECUTION', scope: { kind: 'PROJECT', project: { projectId: 'P' } } },
+      decide as never,
+    )).rejects.toThrow(/project_execution_paused/)
+    expect(dispatches).toBe(0)
+    expect(releaseCalls).toEqual(['res-1'])
+    expect(settleCalls).toHaveLength(0)
+  })
+
+  it('project Q stays independently eligible while P is paused', async () => {
+    // The cron-dream property: one project's pause must not become a global one.
+    const decide = pausedProject('P')
+    await expect(dispatchWith(
+      { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: 'Q' } } },
+      decide as never,
+    )).resolves.toBe('provider-result')
+    expect(dispatches).toBe(1)
+    expect(settleCalls).toHaveLength(1)
+  })
+
+  it('the SAME work declared GLOBAL_ONLY would have escaped — which is the bug', async () => {
+    // Run the identical paused-project scenario with the scope the pre-correction
+    // code used. It dispatches. That is exactly the bypass the review found, and
+    // it is why the entrypoints now bind their real project.
+    const decide = pausedProject('P')
+    await expect(dispatchWith(
+      { context: 'OPERATOR_EXECUTION', scope: { kind: 'GLOBAL_ONLY' } },
+      decide as never,
+    )).resolves.toBe('provider-result')
+    expect(dispatches, 'GLOBAL_ONLY sees no project, so the pause never applies').toBe(1)
+  })
+})

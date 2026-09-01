@@ -65,7 +65,12 @@ export async function POST(req: NextRequest) {
 
   // Run evaluation (always — projectId is only needed for DB storage)
   const result = await evaluate({
-    execution: { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY },
+    // Conditional, because both cases are real: an evaluation attached to an
+    // owned project is that project's work and its stop must bind; a bare
+    // evaluation belongs to no project and GLOBAL_ONLY is the honest answer.
+    execution: projectId
+      ? { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) }
+      : { context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY },
     content,
     contentType: contentType as ContentType,
     deepScore,

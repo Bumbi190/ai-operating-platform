@@ -29,7 +29,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const result = await generateHeroImage({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, params.id)
+  const result = await generateHeroImage('OPERATOR_EXECUTION', params.id)
 
   if (result.ok) {
     return NextResponse.json({ ok: true, status: result.status, url: result.url })

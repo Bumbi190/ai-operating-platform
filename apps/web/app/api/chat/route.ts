@@ -1253,7 +1253,16 @@ async function executeTool(
     // regardless, so a spoofed id can never widen access.
     const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
     const manager = getManager()
-    const response = await manager.chat(message, { context: 'OPERATOR_INTERACTIVE' as const, scope: GLOBAL_ONLY }, scopedProjectId, allowedProjectIds)
+    const response = await manager.chat(
+      message,
+      // Atlas chat is ordinary assistance, so it keeps OPERATOR_INTERACTIVE and
+      // is never refused by a stop. GLOBAL_ONLY is correct here for the same
+      // reason: assistance ABOUT a project is not that project's execution.
+      // (/api/manager's chat action is OPERATOR_EXECUTION and DOES bind the
+      // project — different endpoint, different semantics.)
+      { context: 'OPERATOR_INTERACTIVE' as const, scope: GLOBAL_ONLY },
+      scopedProjectId, allowedProjectIds,
+    )
     return { response }
   }
 

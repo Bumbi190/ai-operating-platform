@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         // ── Step 4: Claude editorial pick ─────────────────────────────────────
         emit({ step: 'editorial', label: 'Claude is picking the best stories...', progress: 68 })
 
-        const { candidates, summary } = await claudeEditorialPick({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, scored, max_candidates)
+        const { candidates, summary } = await claudeEditorialPick({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, scored, max_candidates)
 
         // ── Step 5: Auto-save #1 if requested ────────────────────────────────
         if (auto_save && candidates.length > 0) {

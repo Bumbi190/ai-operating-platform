@@ -64,7 +64,13 @@ export async function POST(
   if (!project) return NextResponse.json({ error: 'Projekt hittades inte' }, { status: 404 })
 
   try {
-    const result = await runDreamCycleForProject({ context: 'OPERATOR_EXECUTION' as const, scope: GLOBAL_ONLY }, project)
+    const result = await runDreamCycleForProject(
+      // The dream cycle IS this project's work: the route resolved the row and
+      // checked ownership, so the project's own execution stop must refuse it.
+      // GLOBAL_ONLY here would have been a project-stop bypass.
+      { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project.id }) },
+      project,
+    )
     if (!result.ran) {
       return NextResponse.json({
         message: 'Inga körningar de senaste 24h — dream cycle hoppades över',

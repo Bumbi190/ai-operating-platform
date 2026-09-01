@@ -205,7 +205,7 @@ export async function GET(request: Request) {
 
   const [trendsResult, hunterRes] = await Promise.allSettled([
     callHermesTrends(7_000),               // hard 7s cap (was 25s default)
-    runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, db, project.id, 5, []),
+    runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5, []),
   ])
 
   if (trendsResult.status === 'fulfilled' && trendsResult.value) {

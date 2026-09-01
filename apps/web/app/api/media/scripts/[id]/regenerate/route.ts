@@ -129,7 +129,7 @@ export async function POST(
   // ── Regenerate script ────────────────────────────────────────────────────────
   if (what === 'script' || what === 'both') {
     const claude = getAnthropic({
-      project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Script Writer', operation: 'Regenerate Script',
+      project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope({ projectId }) }, agent: 'Script Writer', operation: 'Regenerate Script',
     })
 
     const newsItem = Array.isArray(script.media_news_items)
@@ -189,7 +189,7 @@ Write a new script that covers the same story but from a different entry point o
     const headline = String(updates.hook ?? script.hook ?? '')
     const text     = String(updates.script ?? script.script ?? '')
 
-    const imageUrls  = await generateNewsImages(headline, text, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) })
+    const imageUrls  = await generateNewsImages(headline, text, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) })
     const storedUrls = await Promise.all(
       imageUrls.map((url, i) => uploadSceneImage(projectId, id, i, url)),
     )

@@ -30,7 +30,13 @@ export async function GET(request: Request) {
   // Parallellt per projekt → total tid begränsas av det långsammaste anropet,
   // inte summan (håller oss under maxDuration även med fler projekt).
   const settled = await Promise.allSettled(
-    (projects ?? []).map(p => runDreamCycleForProject({ context: 'AUTONOMOUS' as const, scope: GLOBAL_ONLY }, { id: p.id, name: p.name })),
+    (projects ?? []).map(p => runDreamCycleForProject(
+      // Scoped PER PROJECT, inside the iteration. A single contract built
+      // outside the loop would make one project's pause stop every project's
+      // dream — the opposite of what a project-scoped kill switch means.
+      { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: p.id }) },
+      { id: p.id, name: p.name },
+    )),
   )
 
   const results = (projects ?? []).map((p, i) => {

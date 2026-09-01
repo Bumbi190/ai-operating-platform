@@ -183,7 +183,7 @@ export async function POST(request: Request) {
 
   const db = createAdminClient()
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Pipeline', operation: 'Full Pipeline',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope({ projectId: project_id }) }, agent: 'Pipeline', operation: 'Full Pipeline',
   })
 
   const stream = new ReadableStream({
@@ -252,7 +252,7 @@ Angle: ${news.content_angle}`,
         emit({ step: 'quality_check', label: 'Kvalitetsgranskning...', progress: 38 })
 
         const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+        const qualityScore = await scoreScript({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, script.hook, script.script, sourceContext)
 
         if (shouldRegenerate(qualityScore)) {
           emit({
@@ -331,7 +331,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
         await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-        const voiceResult = await generateVoiceover(script.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria')
+        const voiceResult = await generateVoiceover(script.script, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, 'victoria')
 
         // ── Step 6: Upload audio + timing ────────────────────────────────────
         emit({ step: 'uploading_audio', label: 'Laddar upp ljud...', progress: 62 })
@@ -359,7 +359,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         if (isLite) {
           emit({ step: 'images', label: 'Genererar 5 scenbilder (Ideogram)...', progress: 74 })
           const [imageUrls3, backgroundMusicUrl] = await Promise.all([
-            generateNewsImages(news.title, script.script, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }),
+            generateNewsImages(news.title, script.script, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }),
             getBackgroundMusicUrl(musicMood),
           ])
 
@@ -387,7 +387,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
           })
         } else {
           emit({ step: 'images', label: 'Genererar 5 scener (Ideogram)...', progress: 74 })
-          const sceneImages = await generateSceneImages(script.script, script.hook, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) })
+          const sceneImages = await generateSceneImages(script.script, script.hook, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) })
 
           emit({ step: 'uploading_images', label: 'Laddar upp bilder...', progress: 88 })
           const imageUrls = await Promise.all(

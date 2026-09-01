@@ -49,7 +49,7 @@ import {
   type PhotoEditorInput,
 } from '@/lib/article/photo-editor'
 import { syncPublishedArticle, type SyncResult } from '@/lib/publishing/sync'
-import type { ExecutionContract } from '@/lib/governance/execution-stop'
+import { projectScope, type ExecutionContract, type ExecutionContext } from '@/lib/governance/execution-stop'
 
 /** Feature flag: when '1', the brief drives image generation (Phase 2). */
 function isBriefDrivenEnabled(): boolean {
@@ -64,8 +64,18 @@ export type HeroImageResult =
   | { ok: false; url: null;   status: 'failed' | 'skipped'; reason: string }
 
 export async function generateHeroImage(
-  /** REQUIRED execution classification, propagated from the caller. */
-  execution: ExecutionContract,
+  /**
+   * REQUIRED execution CONTEXT — why this work is running. The caller knows
+   * that; only this function knows WHICH project it belongs to.
+   *
+   * The scope is deliberately not a parameter. Hero-image execution belongs to
+   * the article's own project, and that ownership is part of this function's
+   * canonical contract rather than something a caller may assert: the row is
+   * loaded here, the upload uses `article.project_id`, and the cost is logged
+   * against it. Accepting a caller-supplied scope would let a caller name a
+   * project the article does not belong to.
+   */
+  context: ExecutionContext,
   articleId: string,
 ): Promise<HeroImageResult> {
   const db = createAdminClient()
@@ -100,6 +110,11 @@ export async function generateHeroImage(
   if (article.hero_image_status === 'generating') {
     return { ok: false, url: null, status: 'skipped', reason: 'already_generating' }
   }
+
+  // The article's project IS the execution authority — established here, from
+  // the row itself, not asserted by the caller and not inherited from billing.
+  const execution: ExecutionContract =
+    { context, scope: projectScope({ projectId: article.project_id }) }
 
   // ── EARLY canonical eligibility (G3C-1) ───────────────────────────────────
   //

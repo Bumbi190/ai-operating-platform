@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   try {
     // Generate voiceover with word-level timing
-    const result = await generateVoiceover(text, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, voice ?? 'victoria')
+    const result = await generateVoiceover(text, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) }, voice ?? 'victoria')
 
     // Upload audio + timing to Supabase Storage
     const [audioUrl, timingUrl] = await Promise.all([

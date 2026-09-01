@@ -91,9 +91,9 @@ export async function GET(request: Request) {
       // The identity helper and the SQL replay machine are both ready; runtime
       // activation waits for a dispatch-claim design (G3+), because a retry that
       // is refused is worse than a retry that reserves twice.
-      withRetry(() => generateVoiceover(scriptText, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria', MEDIA_PIPELINE_PROJECT),
+      withRetry(() => generateVoiceover(scriptText, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, 'victoria', MEDIA_PIPELINE_PROJECT),
         { attempts: 2, label: 'ElevenLabs voice' }),
-      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, MEDIA_PIPELINE_PROJECT),
+      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT),
         { attempts: 2, label: 'Ideogram images' }),
     ])
 

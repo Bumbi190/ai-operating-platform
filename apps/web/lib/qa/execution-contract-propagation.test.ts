@@ -345,11 +345,60 @@ describe('every runtime GLOBAL_ONLY is reviewed and justified', () => {
     const bound: [string, string][] = [
       ['app/api/projects/[slug]/dream/route.ts', 'projectScope({ projectId: project.id })'],
       ['app/api/media/cron/dream/route.ts',      'projectScope({ projectId: p.id })'],
-      ['app/api/manager/route.ts',               'projectScope({ projectId: project_id })'],
       ['app/api/evaluate/route.ts',              'projectScope({ projectId })'],
     ]
     for (const [rel, expected] of bound) {
       expect(code(rel), `${rel} must bind its real project`).toContain(expected)
+    }
+    // The manager is asserted per OPERATION below, not per file: it dispatches
+    // many operations from one module, so a file-level match proves nothing
+    // about the one that was changed.
+  })
+
+  /**
+   * Extract one `case 'name': { … }` body by brace balance.
+   *
+   * A whole-file assertion cannot survive a multi-operation route. Reverting
+   * plan_tasks to GLOBAL_ONLY left `projectScope({ projectId: project_id })`
+   * in the file — daily_plan still contained it — so a file-level toContain
+   * passed while a real bypass was live. Operation granularity is the point.
+   */
+  function switchCase(body: string, name: string): string {
+    const start = body.indexOf(`case '${name}': {`)
+    if (start === -1) throw new Error(`manager route has no case '${name}'`)
+    const open = body.indexOf('{', start)
+    let depth = 0
+    for (let i = open; i < body.length; i++) {
+      if (body[i] === '{') depth++
+      else if (body[i] === '}' && --depth === 0) return body.slice(open, i + 1)
+    }
+    throw new Error(`unbalanced braces in case '${name}'`)
+  }
+
+  it('each manager operation binds or abstains for its OWN stated reason', () => {
+    const body = code('app/api/manager/route.ts')
+
+    // Ownership-gated and project-required: these must bind, unconditionally.
+    // `evaluate` derives its project from the approval row; `plan_tasks`
+    // requires project_id and 404s without it. Neither has a legitimate
+    // no-project branch, so neither may mention GLOBAL_ONLY at all.
+    for (const op of ['evaluate', 'plan_tasks']) {
+      const block = switchCase(body, op)
+      expect(block, `manager '${op}' must bind its ownership-checked project`)
+        .toMatch(/scope: projectScope\(/)
+      expect(block, `manager '${op}' has no no-project branch — GLOBAL_ONLY is a bypass`)
+        .not.toMatch(/scope:\s*GLOBAL_ONLY/)
+    }
+
+    // Genuinely conditional: a project is optional here, so both scopes appear
+    // — but the project branch must still exist. Losing it would make the
+    // fallback unconditional, which is the same bypass wearing a ternary.
+    for (const op of ['daily_plan', 'chat']) {
+      const block = switchCase(body, op)
+      expect(block, `manager '${op}' must still bind when a project IS supplied`)
+        .toMatch(/scope: projectScope\(/)
+      expect(block, `manager '${op}' abstains only on the no-project branch`)
+        .toMatch(/\?[\s\S]{0,200}projectScope\([\s\S]{0,200}:[\s\S]{0,120}GLOBAL_ONLY/)
     }
   })
 

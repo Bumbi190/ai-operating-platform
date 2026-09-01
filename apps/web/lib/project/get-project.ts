@@ -8,6 +8,10 @@ export type ResolvedProject = {
   slug: string
   color: string
   settings: ProjectSettings
+  /** Project-scope stop authority (G3A). Source of truth; see lib/governance/execution-stop.ts. */
+  executionPaused: boolean
+  pausedAt: string | null
+  pausedReason: string | null
 }
 
 /**
@@ -24,7 +28,7 @@ export const getProjectBySlug = cache(async (slug: string): Promise<ResolvedProj
   const supabase = await createClient()
   const { data } = await supabase
     .from('projects')
-    .select('id, name, slug, color, settings')
+    .select('id, name, slug, color, settings, execution_paused, paused_at, paused_reason')
     .eq('slug', slug)
     .single()
 
@@ -36,5 +40,10 @@ export const getProjectBySlug = cache(async (slug: string): Promise<ResolvedProj
     slug: data.slug as string,
     color: (data.color as string) ?? '#6366f1',
     settings: ((data.settings as ProjectSettings | null) ?? {}) as ProjectSettings,
+    // Defaults to NOT paused only because RLS already returned this row; an
+    // unreadable project is `null` above, not a silently-unpaused one.
+    executionPaused: (data.execution_paused as boolean | null) ?? false,
+    pausedAt: (data.paused_at as string | null) ?? null,
+    pausedReason: (data.paused_reason as string | null) ?? null,
   }
 })

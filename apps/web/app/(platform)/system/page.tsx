@@ -263,9 +263,11 @@ export default async function DashboardPage() {
                   <Power className="w-4 h-4" style={{ color: 'var(--state-critical)' }} />
                 </div>
                 <div>
-                  <p className="eyebrow eyebrow-gold !text-[9px]">Automation pausad</p>
+                  <p className="eyebrow eyebrow-gold !text-[9px]">Exekvering stoppad</p>
                   <p className="text-[13.5px] text-white/95 font-medium tracking-tight">
-                    {platformConfig.paused_reason ?? 'All automation är manuellt pausad'}
+                    {platformConfig.paused_reason
+                      ?? 'All exekvering är stoppad — automatisk och manuellt begärd. '
+                       + 'Atlas och styrning är fortfarande tillgängliga.'}
                     {platformConfig.paused_at && ` · sedan ${formatDistanceToNow(new Date(platformConfig.paused_at), { addSuffix: true, locale: sv })}`}
                   </p>
                 </div>

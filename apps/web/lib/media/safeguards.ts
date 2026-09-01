@@ -5,7 +5,11 @@
  * Varje cron-route anropar dessa kontroller vid start.
  *
  * Skydd:
- *  1. Global paus (automation_paused i platform_config)
+ *  1. Global exekveringsstopp (automation_paused i platform_config).
+ *     OBS: kolumnnamnet är legacy. Sedan G3A stoppar den globala spaken BÅDE
+ *     oövervakad automation OCH operatörsbegärd exekvering — men aldrig
+ *     operatörens assistans/läsning/styrning. Kanonisk semantik finns i
+ *     lib/governance/execution-stop.ts.
  *  2. MAX_DAILY_RENDERS — stoppar nya render-jobb om gränsen nåtts
  *  3. Retry-cap — stoppar publish-loopar och skickar till operatörsgranskning
  */
@@ -180,17 +184,17 @@ export async function handlePublishFailure(
   }
 }
 
-// ─── Pausa/återuppta automation (används av dashboard-toggle) ─────────────────
-
-export async function setAutomationPaused(
-  db: SupabaseClient,
-  paused: boolean,
-  reason?: string,
-): Promise<void> {
-  await db.from('platform_config').update({
-    automation_paused: paused,
-    paused_at:         paused ? new Date().toISOString() : null,
-    paused_reason:     paused ? (reason ?? null) : null,
-    updated_at:        new Date().toISOString(),
-  }).eq('id', 1)
-}
+// ─── Pausa/återuppta automation ──────────────────────────────────────────────
+//
+// FLYTTAD (G3A). `setAutomationPaused` bodde här och skrev `platform_config`
+// direkt med en UPDATE. Den skrev alltså om plattformens kill switch utan att
+// lämna något spår av vem som gjorde det, varför, eller vad värdet var innan —
+// och varje ny skrivning förstörde den föregående.
+//
+// Den kanoniska vägen är nu `setPlatformAutomationStop` i
+// `lib/governance/execution-stop.ts`, som ändrar boolean och skriver
+// audit-raden i SAMMA transaktion. Booleanen här är fortfarande sanningen;
+// det som tillkommit är bevisen.
+//
+// Lägg INTE tillbaka en direktskrivning här. Två skrivvägar betyder att
+// audit-loggens fullständighet blir en konvention i stället för en egenskap.

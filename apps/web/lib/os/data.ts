@@ -90,7 +90,14 @@ export async function fetchDashboardSnapshot(
     // Real entities
     supabase
       .from('projects')
-      .select('id, owner_id, name, slug, color, settings, created_at')
+      // Every column, because this is typed `Project = Row<'projects'>`. The
+      // stale generated types described a 7-column projects table, so a partial
+      // select silently satisfied the full Row type; regenerating them after G3A
+      // exposed that execution_paused / paused_at / paused_reason / atlas_mode
+      // were declared here while always arriving undefined at runtime.
+      // Single literal string: PostgREST infers the row type from the select
+      // text itself, so concatenating it collapses the result to an error type.
+      .select('id, owner_id, name, slug, color, settings, created_at, execution_paused, paused_at, paused_reason, atlas_mode')
       .order('created_at', { ascending: true }),
 
     admin

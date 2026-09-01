@@ -14,7 +14,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  resolveExecutionStop, operatorActor,
+  resolveExecutionStop, resolveExecutionStopForContract, operatorActor,
+  GLOBAL_ONLY, projectScope,
   setPlatformAutomationStop, setProjectExecutionStop,
 } from '@/lib/governance/execution-stop'
 
@@ -412,5 +413,114 @@ describe('G1/G2 boundaries are not weakened', () => {
     for (const t of ['budget_reserve', 'withGovernedSpend', 'anthropic', 'openai']) {
       expect(stop).not.toContain(t)
     }
+  })
+})
+
+
+// ── H. The CONTRACT resolver (G3C-1) ────────────────────────────────────────
+
+describe('resolveExecutionStopForContract · scope is obeyed, not advisory', () => {
+  /**
+   * G3C-1 added this wrapper and then leaned on it everywhere, but nothing
+   * exercised it: three mutations to its body survived the whole suite,
+   * including one that downgraded EVERY project scope to GLOBAL_ONLY — which
+   * would have made every project pause unenforceable while every test stayed
+   * green. The paid-dispatch tests could not catch it because they mock this
+   * function away; that is exactly why it needs its own.
+   */
+  const REF = { projectId: PROJECT }
+  const resolves = (id: string | null) => async () => id
+  const rejects = () => async () => { throw new Error('lookup exploded') }
+
+  /** Records what actually reached `stop_state`. */
+  function spy(row: StateRow | null) {
+    const seen: (string | null)[] = []
+    const client = db((_fn, args) => {
+      seen.push((args.p_project_id as string | null) ?? null)
+      return { data: row ? [row] : [], error: null }
+    })
+    return { client, seen }
+  }
+
+  it('GLOBAL_ONLY asks about no project at all', async () => {
+    const { client, seen } = spy(stateRow())
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'AUTONOMOUS', scope: GLOBAL_ONLY }, resolves(PROJECT))
+    expect(seen).toEqual([null])
+    expect(d.scopesEvaluated).toEqual(['PLATFORM_AUTOMATION'])
+  })
+
+  it('PROJECT scope forwards the RESOLVED project id to stop_state', async () => {
+    // The mutation that made this function ignore its scope entirely — treating
+    // every contract as GLOBAL_ONLY — is caught here and nowhere else.
+    const { client, seen } = spy(stateRow({ project_found: true, project_paused: false }))
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'AUTONOMOUS', scope: projectScope(REF) }, resolves(PROJECT))
+    expect(seen, 'the project scope must reach the database').toEqual([PROJECT])
+    expect(d.scopesEvaluated).toEqual(['PLATFORM_AUTOMATION', 'PROJECT_EXECUTION'])
+    expect(d.allowed).toBe(true)
+  })
+
+  it('a paused PROJECT refuses work carrying that project scope', async () => {
+    const { client } = spy(stateRow({ project_found: true, project_paused: true }))
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'OPERATOR_EXECUTION', scope: projectScope(REF) }, resolves(PROJECT))
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toBe('project_execution_paused')
+  })
+
+  it('an unresolvable project REFUSES execution-bearing work', async () => {
+    // Fail-closed. A scope we cannot establish is not an absent scope: the work
+    // claimed to belong to a project, so "we could not check" must not read as
+    // "nothing was paused".
+    for (const context of ['AUTONOMOUS', 'OPERATOR_EXECUTION'] as const) {
+      const { client, seen } = spy(stateRow())
+      const d = await resolveExecutionStopForContract(
+        client, { context, scope: projectScope(REF) }, resolves(null))
+      expect(d.allowed, `${context} must not proceed on an unresolved scope`).toBe(false)
+      expect(d.reason).toBe('stop_state_unavailable')
+      expect(d.resolution).toBe('UNRESOLVED')
+      expect(seen, 'it must not fall back to a global-only read').toEqual([])
+    }
+  })
+
+  it('an unresolvable project still lets INTERACTIVE assistance through', async () => {
+    // G3A's deliberate asymmetry, restated at the contract layer: a human must
+    // reach the console during an incident. This is the ONLY context that may
+    // proceed on an unresolved scope.
+    const { client } = spy(stateRow())
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'OPERATOR_INTERACTIVE', scope: projectScope(REF) }, resolves(null))
+    expect(d.allowed).toBe(true)
+    expect(d.reason).toBeNull()
+  })
+
+  it('a THROWING project lookup is unresolved, never permission', async () => {
+    const { client } = spy(stateRow())
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'AUTONOMOUS', scope: projectScope(REF) }, rejects())
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toBe('stop_state_unavailable')
+  })
+
+  it('the context reaches the decision unchanged', async () => {
+    // Relabelling OPERATOR_EXECUTION as OPERATOR_INTERACTIVE anywhere in this
+    // path would hand execution the assistance exemption.
+    for (const context of ['AUTONOMOUS', 'OPERATOR_EXECUTION', 'OPERATOR_INTERACTIVE'] as const) {
+      const { client } = spy(stateRow({ project_found: true, project_paused: false }))
+      const d = await resolveExecutionStopForContract(
+        client, { context, scope: projectScope(REF) }, resolves(PROJECT))
+      expect(d.context, 'the decision must report the context it was asked about')
+        .toBe(context)
+    }
+  })
+
+  it('OPERATOR_EXECUTION is refused by a GLOBAL pause, like autonomous work', async () => {
+    // The locked policy constant, proven through the contract path too.
+    const { client } = spy(stateRow({ global_paused: true, project_found: true, project_paused: false }))
+    const d = await resolveExecutionStopForContract(
+      client, { context: 'OPERATOR_EXECUTION', scope: projectScope(REF) }, resolves(PROJECT))
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toBe('global_automation_paused')
   })
 })

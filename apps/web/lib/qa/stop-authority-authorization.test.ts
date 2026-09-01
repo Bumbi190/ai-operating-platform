@@ -632,3 +632,119 @@ describe('what the global stop PROMISES matches what it DOES', () => {
     expect(seg).toMatch(/Pausa ALL automation/)
   })
 })
+
+// ── I. RPC bypass inventory (FINAL DB AUTHORITY) ────────────────────────────
+
+describe('the canonical stop RPCs have exactly one application caller', () => {
+  const CANONICAL = 'lib/governance/execution-stop.ts'
+  const RPCS = ['stop_set_platform_automation', 'stop_set_project_execution']
+
+  function runtimeSources(dir = process.cwd(), acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      if (['node_modules', '.next', '.git', 'supabase'].includes(entry)) continue
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) { runtimeSources(full, acc); continue }
+      if (!/\.tsx?$/.test(entry)) continue
+      const rel = relative(process.cwd(), full)
+      if (rel.startsWith('lib/qa/') || rel.startsWith('tests/')) continue
+      acc.push(rel)
+    }
+    return acc
+  }
+
+  it('no runtime module calls them except the canonical wrapper', () => {
+    // The DB grant must stay service-role callable — the server action needs it.
+    // So the architectural invariant is enforced here: one wrapper, so that
+    // actor derivation, error mapping and the audited contract cannot be
+    // re-implemented slightly differently somewhere else.
+    const callers = runtimeSources().filter(rel => {
+      if (rel === CANONICAL) return false
+      const body = readFileSync(join(process.cwd(), rel), 'utf8')
+      return RPCS.some(fn => body.includes(fn))
+    })
+    expect(callers, `only ${CANONICAL} may call the stop RPCs directly`).toEqual([])
+  })
+
+  it('the canonical wrapper is the one that calls them', () => {
+    const body = readFileSync(join(process.cwd(), CANONICAL), 'utf8')
+    for (const fn of RPCS) expect(body).toContain(`rpc('${fn}'`)
+  })
+
+  it('they are not exposed as a model-callable tool', () => {
+    // A generic tool that can resume execution can resume the execution that was
+    // stopped BECAUSE of the model. Scoped to files that actually declare an
+    // LLM tool surface — `input_schema` is the Anthropic tool shape — and
+    // excluding the operator actions module itself, which necessarily NAMES the
+    // functions it defines.
+    const OPERATOR_ACTIONS = 'app/actions/automation.ts'
+    for (const rel of runtimeSources()) {
+      if (rel === OPERATOR_ACTIONS || rel === CANONICAL) continue
+      const body = readFileSync(join(process.cwd(), rel), 'utf8')
+      if (!/input_schema|inputSchema/.test(body)) continue
+      for (const fn of [...RPCS, 'toggleAutomationPause', 'toggleProjectExecutionPause']) {
+        expect(body, `${rel} declares LLM tools and must not expose ${fn}`)
+          .not.toContain(fn)
+      }
+    }
+  })
+})
+
+// ── J. The DB write guard, pinned in source ─────────────────────────────────
+
+describe('the stop-state write guard', () => {
+  const mig = src('supabase/migrations/20260831_unified_stop_authority.sql')
+
+  it('is NOT security definer — the property the whole guard rests on', () => {
+    // Re-pinned here as well as in the SQL suite: this one line is the
+    // difference between a guard and a decoration, and a source pin fails even
+    // on a machine with no Postgres.
+    const guards = mig.slice(mig.indexOf('create or replace function public.stop_guard_platform_config'))
+    const upToTriggers = guards.slice(0, guards.indexOf('drop trigger if exists stop_guard_platform_config'))
+    expect(upToTriggers).not.toMatch(/security\s+definer/i)
+    expect((upToTriggers.match(/set search_path to ''/g) ?? []).length).toBe(2)
+  })
+
+  it('protects the whole state bundle, not just the booleans', () => {
+    for (const col of ['automation_paused', 'execution_paused', 'paused_at', 'paused_reason']) {
+      expect(mig, `${col} must be guarded`).toMatch(
+        new RegExp(`new\\.${col}\\s+is distinct from\\s+old\\.${col}`))
+    }
+  })
+
+  it('reasons on IS DISTINCT FROM, so a no-op stays harmless', () => {
+    const guards = mig.slice(mig.indexOf('create or replace function public.stop_guard_platform_config'))
+    expect(guards).toContain('is distinct from')
+    // Not "did the column appear in the SET clause".
+    expect(guards).not.toMatch(/tg_argv|column_name|information_schema/)
+  })
+
+  it('uses current_user, never session_user', () => {
+    // session_user keeps the original login role through SECURITY DEFINER
+    // execution and therefore cannot distinguish the audited path.
+    const guards = mig.slice(mig.indexOf('create or replace function public.stop_guard_platform_config'))
+    expect(guards).toContain('current_user')
+    expect(guards).not.toContain('session_user')
+  })
+
+  it('offers no bypass the application can reach', () => {
+    // Only the FUNCTION BODIES — the trigger DDL below them legitimately says
+    // "for each row execute function", which is not dynamic SQL.
+    const bodies = mig.slice(mig.indexOf('create or replace function public.stop_guard_platform_config'),
+                             mig.indexOf('drop trigger if exists stop_guard_platform_config'))
+    // No GUC/session bypass, no dynamic SQL, no opt-out parameter. The database
+    // execution identity is the only boundary.
+    for (const escape of ['current_setting', 'set_config', 'bypass', 'execute format', "execute '"]) {
+      expect(bodies.toLowerCase(), `guard body must not contain ${escape}`)
+        .not.toContain(escape.toLowerCase())
+    }
+    // ...and no trigger arguments, which would be a caller-supplied input.
+    expect(bodies).not.toContain('tg_argv')
+  })
+
+  it('does not blanket-revoke UPDATE on the shared tables', () => {
+    // The reason this is a trigger and not a REVOKE: both tables carry
+    // unrelated runtime writers that must keep working.
+    expect(mig).not.toMatch(/revoke[^;]*update[^;]*on table public\.(platform_config|projects)/i)
+    expect(mig).not.toMatch(/revoke all on table public\.(platform_config|projects)/i)
+  })
+})

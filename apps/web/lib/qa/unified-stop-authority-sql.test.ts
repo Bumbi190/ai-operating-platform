@@ -130,9 +130,43 @@ let dsn = ''
 const FIXTURE = `
 create extension if not exists pgcrypto;
 
+-- Roles are cluster-wide, not per-database, so a previous suite's role survives
+-- this database being dropped. Creating them unconditionally would make the
+-- whole fixture fail on the second run of the day.
+do $do$ begin
+  if not exists (select 1 from pg_roles where rolname='service_role')
+    then create role service_role; end if;
+  if not exists (select 1 from pg_roles where rolname='anon')
+    then create role anon; end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated')
+    then create role authenticated; end if;
+end $do$;
+
+-- REPRODUCE PRODUCTION'S DEFAULT ACL. This is the whole reason the privilege
+-- proofs below are worth running. Supabase ships pg_default_acl granting
+-- arwdDxtm on new public tables to anon, authenticated AND service_role, so a
+-- table gets full write access the moment it is created, with no GRANT written
+-- anywhere. Verified in production; spend_reservations.relacl shows exactly
+-- this shape.
+--
+-- Without these two lines the fixture would be a greenfield database where
+-- service_role starts with NOTHING, the revoke would be a no-op, and P22 would
+-- "prove" a property the migration never actually established — the same
+-- greenfield trap that let G2's 42P13 reach production.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on sequences to anon, authenticated, service_role;
+
+-- Tables are created BELOW this point, so they inherit the default ACL the
+-- same way production tables do.
+
 create table public.projects (
   id uuid primary key default gen_random_uuid(),
   slug text unique not null,
+  -- A harmless, production-shaped non-stop column, so "unrelated writes still
+  -- work" can be proven rather than asserted.
+  name text,
   execution_paused boolean not null default false,
   paused_at timestamptz,
   paused_reason text);
@@ -171,34 +205,6 @@ create table public.atlas_authorizations (
   event_type text not null,
   target_type text, target_id text,
   expires_at timestamptz);
-
--- Roles are cluster-wide, not per-database, so a previous suite's role survives
--- this database being dropped. Creating them unconditionally would make the
--- whole fixture fail on the second run of the day.
-do $do$ begin
-  if not exists (select 1 from pg_roles where rolname='service_role')
-    then create role service_role; end if;
-  if not exists (select 1 from pg_roles where rolname='anon')
-    then create role anon; end if;
-  if not exists (select 1 from pg_roles where rolname='authenticated')
-    then create role authenticated; end if;
-end $do$;
-
--- REPRODUCE PRODUCTION'S DEFAULT ACL. This is the whole reason the privilege
--- proofs below are worth running. Supabase ships pg_default_acl granting
--- arwdDxtm on new public tables to anon, authenticated AND service_role, so a
--- table gets full write access the moment it is created, with no GRANT written
--- anywhere. Verified in production; spend_reservations.relacl shows exactly
--- this shape.
---
--- Without these two lines the fixture would be a greenfield database where
--- service_role starts with NOTHING, the revoke would be a no-op, and P22 would
--- "prove" a property the migration never actually established — the same
--- greenfield trap that let G2's 42P13 reach production.
-alter default privileges in schema public
-  grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public
-  grant all on sequences to anon, authenticated, service_role;
 
 insert into public.platform_config (id) values (1);
 insert into public.projects (id, slug) values
@@ -557,6 +563,152 @@ d('P22 · service_role may READ the ledger and may not WRITE it directly', () =>
     const out = run(dsn, ['-t', '-A', '-c',
       `begin; set local role service_role; select global_paused from public.stop_state(null); commit;`])
     expect(out).toMatch(/[tf]/)
+  })
+})
+
+// ── F3. The stop-state write guard (FINAL DB AUTHORITY) ─────────────────────
+
+d('P23 · service_role cannot write stop state directly, but the setters can', () => {
+  // THE LAST BYPASS. service_role holds direct UPDATE on both tables in
+  // production and has rolbypassrls, so neither privileges nor RLS stop it
+  // writing the booleans behind the setters' back. These prove the trigger does.
+
+  const asServiceRole = (sql: string) =>
+    expectFailure(dsn, `set local role service_role; ${sql}`)
+  const okAsServiceRole = (sql: string) =>
+    run(dsn, ['-c', `begin; set local role service_role; ${sql}; commit;`])
+
+  it('P23a · the guard functions are SECURITY INVOKER — the load-bearing property', () => {
+    // A SECURITY DEFINER guard would run as ITS owner and therefore see the
+    // trusted identity even for a direct service_role UPDATE, silently
+    // authorising the exact bypass it exists to close.
+    for (const fn of ['stop_guard_platform_config', 'stop_guard_projects']) {
+      expect(one(dsn, `select prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                        where n.nspname='public' and p.proname='${fn}'`),
+        `${fn} MUST NOT be SECURITY DEFINER`).toBe('f')
+      expect(one(dsn, `select coalesce(array_to_string(proconfig,','),'') from pg_proc p
+                        join pg_namespace n on n.oid=p.pronamespace
+                       where n.nspname='public' and p.proname='${fn}'`))
+        .toContain('search_path=')
+    }
+  })
+
+  it('P23b · the identities the guard depends on are pinned', () => {
+    // If table owner and setter owner ever drift apart, the guard stops
+    // authorising the setters — or worse, starts authorising something else.
+    // Fail loudly rather than silently disabling the kill switch.
+    const owner = one(dsn, `select pg_get_userbyid(relowner) from pg_class
+                             where relname='platform_config' and relnamespace='public'::regnamespace`)
+    expect(owner).not.toBe('')
+    expect(one(dsn, `select pg_get_userbyid(relowner) from pg_class
+                      where relname='projects' and relnamespace='public'::regnamespace`)).toBe(owner)
+    for (const fn of ['stop_set_platform_automation', 'stop_set_project_execution']) {
+      expect(one(dsn, `select pg_get_userbyid(proowner)||'/'||prosecdef from pg_proc p
+                        join pg_namespace n on n.oid=p.pronamespace
+                       where n.nspname='public' and p.proname='${fn}'`),
+        `${fn} must be SECURITY DEFINER owned by the table owner`).toBe(`${owner}/true`)
+    }
+  })
+
+  it('P23c · PostgreSQL really does swap current_user inside SECURITY DEFINER', () => {
+    // The guard's entire premise, proven rather than documented. A temporary
+    // probe owned by the same trusted role as the real setters.
+    run(dsn, ['-c', `create function public.g3a_probe_current_user()
+                     returns text language sql security definer set search_path to ''
+                     as $fn$ select current_user::text $fn$;`])
+    const inside = run(dsn, ['-t', '-A', '-c',
+      `begin; set local role service_role; select public.g3a_probe_current_user(); commit;`])
+      .trim().split('\n').filter(Boolean).pop() ?? ''
+    const outside = run(dsn, ['-t', '-A', '-c',
+      `begin; set local role service_role; select current_user::text; commit;`])
+      .trim().split('\n').filter(Boolean).pop() ?? ''
+    const owner = one(dsn, `select pg_get_userbyid(relowner) from pg_class
+                             where relname='platform_config' and relnamespace='public'::regnamespace`)
+    expect(outside).toBe('service_role')       // direct execution
+    expect(inside).toBe(owner)                 // inside SECURITY DEFINER
+    expect(inside).not.toBe(outside)           // the distinction the guard reads
+    // Not a production object.
+    run(dsn, ['-c', `drop function public.g3a_probe_current_user();`])
+    expect(one(dsn, `select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                      where n.nspname='public' and p.proname='g3a_probe_current_user'`)).toBe('0')
+  })
+
+  it('P23d · direct PLATFORM stop writes are refused, whole bundle', () => {
+    const before = one(dsn, `select automation_paused, paused_at, paused_reason
+                               from public.platform_config where id=1`)
+    for (const [label, sql] of [
+      ['automation_paused', `update public.platform_config set automation_paused = not automation_paused where id=1`],
+      ['paused_at',         `update public.platform_config set paused_at = now() where id=1`],
+      ['paused_reason',     `update public.platform_config set paused_reason = 'forged' where id=1`],
+    ] as const) {
+      expect(asServiceRole(sql), `${label} must be refused`)
+        .toMatch(/stop_set_platform_automation|permission denied/i)
+    }
+    // Nothing moved.
+    expect(one(dsn, `select automation_paused, paused_at, paused_reason
+                       from public.platform_config where id=1`)).toBe(before)
+  })
+
+  it('P23e · direct PROJECT stop writes are refused, whole bundle', () => {
+    const before = one(dsn, `select execution_paused, paused_at, paused_reason
+                               from public.projects where id='${P_ALPHA}'`)
+    for (const [label, sql] of [
+      ['execution_paused', `update public.projects set execution_paused = not execution_paused where id='${P_ALPHA}'`],
+      ['paused_at',        `update public.projects set paused_at = now() where id='${P_ALPHA}'`],
+      ['paused_reason',    `update public.projects set paused_reason = 'forged' where id='${P_ALPHA}'`],
+    ] as const) {
+      expect(asServiceRole(sql), `${label} must be refused`)
+        .toMatch(/stop_set_project_execution|permission denied/i)
+    }
+    expect(one(dsn, `select execution_paused, paused_at, paused_reason
+                       from public.projects where id='${P_ALPHA}'`)).toBe(before)
+  })
+
+  it('P23f · UNRELATED writes still work — this is why the guard is surgical', () => {
+    // A blanket REVOKE would have broken these. Both table families keep an
+    // ordinary writable column.
+    okAsServiceRole(`update public.platform_config set updated_at = now() where id=1`)
+    okAsServiceRole(`update public.projects set name = 'renamed' where id='${P_BETA}'`)
+    expect(one(dsn, `select name from public.projects where id='${P_BETA}'`)).toBe('renamed')
+    // ...and a no-op that MENTIONS a protected column is harmless, because the
+    // guard reasons on IS DISTINCT FROM rather than on the SET clause.
+    okAsServiceRole(`update public.platform_config
+                       set paused_reason = paused_reason, updated_at = now() where id=1`)
+  })
+
+  it('P23g · the canonical setters still succeed as service_role, atomically', () => {
+    // The other half: closing the direct path must not close the audited one.
+    const before = Number(one(dsn, `select count(*) from public.stop_events`))
+    const wasPaused = one(dsn, `select automation_paused from public.platform_config where id=1`) === 't'
+    okAsServiceRole(`select public.stop_set_platform_automation(${!wasPaused}, '${ACTOR}', 'guarded path')`)
+    expect(one(dsn, `select automation_paused from public.platform_config where id=1`))
+      .toBe(wasPaused ? 'f' : 't')
+    // Boolean AND provenance moved, and exactly one ledger row appeared.
+    expect(Number(one(dsn, `select count(*) from public.stop_events`))).toBe(before + 1)
+    expect(one(dsn, `select scope_type, actor, reason from public.stop_events
+                     order by created_at desc limit 1`)).toBe(`PLATFORM_AUTOMATION|${ACTOR}|guarded path`)
+
+    const pWas = one(dsn, `select execution_paused from public.projects where id='${P_ALPHA}'`) === 't'
+    okAsServiceRole(`select public.stop_set_project_execution('${P_ALPHA}'::uuid, ${!pWas}, '${ACTOR}', 'guarded proj')`)
+    expect(Number(one(dsn, `select count(*) from public.stop_events`))).toBe(before + 2)
+    expect(one(dsn, `select scope_type, scope_id::text from public.stop_events
+                     order by created_at desc limit 1`)).toBe(`PROJECT_EXECUTION|${P_ALPHA}`)
+  })
+
+  it('P23h · a project cannot be CREATED already stopped, but normal creation works', () => {
+    // Normal creation relies entirely on column defaults — verified against the
+    // only application INSERT, which sets no stop column.
+    okAsServiceRole(`insert into public.projects (id, slug, name)
+                     values ('44444444-4444-4444-4444-444444444444', 'gamma', 'Gamma')`)
+    expect(one(dsn, `select execution_paused, paused_at is null from public.projects
+                      where slug='gamma'`)).toBe('f|t')
+    // Arriving at "paused" with no transition row would make the ledger describe
+    // a system that never stopped while a project sat stopped.
+    expect(asServiceRole(`insert into public.projects (slug, name, execution_paused)
+                          values ('delta', 'Delta', true)`)).toMatch(/already stopped/i)
+    expect(asServiceRole(`insert into public.projects (slug, name, paused_reason)
+                          values ('epsilon', 'Epsilon', 'forged')`)).toMatch(/already stopped/i)
+    expect(one(dsn, `select count(*) from public.projects where slug in ('delta','epsilon')`)).toBe('0')
   })
 })
 

@@ -338,7 +338,139 @@ revoke all on function public.stop_state(uuid) from public, anon, authenticated;
 grant execute on function public.stop_state(uuid) to service_role;
 
 
--- ── 6) Retire the unaudited alternate path ─────────────────────────────────
+-- ── 6) The stop-state write guard ──────────────────────────────────────────
+--
+-- WHY THIS EXISTS. Everything above routes the APPLICATION through the audited
+-- setters, but nothing yet stopped the application from going around them.
+-- Verified in production:
+--
+--   • `service_role` holds direct UPDATE on BOTH public.platform_config and
+--     public.projects (has_table_privilege = true for each).
+--   • `service_role` has rolbypassrls = true, so no RLS policy can stop it.
+--   • `service_role` is NOT a member of `postgres` and cannot SET ROLE postgres.
+--   • Both tables are owned by `postgres`, and every canonical stop function is
+--     SECURITY DEFINER owned by `postgres`.
+--
+-- So a service-role client could set `automation_paused = true` with a plain
+-- UPDATE and produce NO ledger row — the exact bypass the ledger exists to make
+-- impossible. Revoking table-level UPDATE is not an option: both are shared
+-- runtime tables and a blanket revoke would break unrelated writers.
+--
+-- THE WHOLE BUNDLE IS PROTECTED, not just the booleans. Leaving `paused_at` and
+-- `paused_reason` writable would let a caller keep the boolean untouched while
+-- falsifying WHEN the stop happened and WHY — making the current state disagree
+-- with an immutable ledger, which is worse than having no ledger.
+--
+-- ── WHY THESE FUNCTIONS MUST NOT BE SECURITY DEFINER ───────────────────────
+-- They are SECURITY INVOKER (PostgreSQL's default, stated by omission) and that
+-- is LOAD-BEARING, not stylistic.
+--
+-- PostgreSQL sets `current_user` to the function owner for the duration of a
+-- SECURITY DEFINER call. That is exactly the signal these guards read:
+--
+--   service_role → stop_set_platform_automation() [SECURITY DEFINER, owner
+--                  postgres] → the UPDATE runs with current_user = postgres
+--                  = the table's owner → ALLOWED, and the audit row is written
+--                  in the same transaction.
+--
+--   service_role → direct UPDATE → current_user = service_role ≠ owner
+--                  → REFUSED.
+--
+-- Marking a guard SECURITY DEFINER would make it run as ITS owner too, so it
+-- would observe the trusted identity even for a direct service_role UPDATE and
+-- silently authorise the very bypass it was written to close. A mutation test
+-- pins this.
+--
+-- `session_user` is deliberately NOT used: it keeps the original login role
+-- through SECURITY DEFINER execution, so it cannot distinguish these cases.
+--
+-- The trusted identity is read from the catalog as the table's OWN owner rather
+-- than hardcoded, so the guard states the actual rule — "stop state changes only
+-- while executing as the table owner" — and cannot drift from the table it
+-- protects. There is no bypass parameter, no GUC, no dynamic SQL, and nothing
+-- the application can pass to opt out: the execution identity IS the boundary.
+
+create or replace function public.stop_guard_platform_config()
+returns trigger language plpgsql set search_path to '' as $$
+declare v_owner name;
+begin
+  -- IS DISTINCT FROM, not "column appeared in the SET clause": a statement that
+  -- writes the same value back is a no-op and must stay harmless, or ordinary
+  -- writers that re-send the whole row would break for no safety gain.
+  if new.automation_paused is distinct from old.automation_paused
+     or new.paused_at      is distinct from old.paused_at
+     or new.paused_reason  is distinct from old.paused_reason
+  then
+    select pg_catalog.pg_get_userbyid(c.relowner) into v_owner
+      from pg_catalog.pg_class c where c.oid = tg_relid;
+
+    if current_user <> v_owner then
+      raise exception
+        'platform stop state is writable only through stop_set_platform_automation() '
+        '(current_user=%, required=%)', current_user, v_owner
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.stop_guard_projects()
+returns trigger language plpgsql set search_path to '' as $$
+declare v_owner name;
+begin
+  select pg_catalog.pg_get_userbyid(c.relowner) into v_owner
+    from pg_catalog.pg_class c where c.oid = tg_relid;
+
+  if tg_op = 'INSERT' then
+    -- A project created ALREADY paused would reach the paused state with no
+    -- transition row — the ledger would describe a system that had never
+    -- stopped, while a project sat stopped. Normal creation is unaffected: the
+    -- columns default to false/null/null and no application INSERT sets them.
+    if current_user <> v_owner
+       and (coalesce(new.execution_paused, false)
+            or new.paused_at is not null
+            or new.paused_reason is not null)
+    then
+      raise exception
+        'a project cannot be created already stopped; use stop_set_project_execution() '
+        'after creation (current_user=%)', current_user
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if new.execution_paused is distinct from old.execution_paused
+     or new.paused_at     is distinct from old.paused_at
+     or new.paused_reason is distinct from old.paused_reason
+  then
+    if current_user <> v_owner then
+      raise exception
+        'project stop state is writable only through stop_set_project_execution() '
+        '(current_user=%, required=%)', current_user, v_owner
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists stop_guard_platform_config on public.platform_config;
+create trigger stop_guard_platform_config
+  before update on public.platform_config
+  for each row execute function public.stop_guard_platform_config();
+
+drop trigger if exists stop_guard_projects on public.projects;
+create trigger stop_guard_projects
+  before insert or update on public.projects
+  for each row execute function public.stop_guard_projects();
+
+-- Trigger functions are invoked by the executor, not called by name; these
+-- revokes only stop someone trying to call them directly and do not affect
+-- whether the triggers fire.
+revoke all on function public.stop_guard_platform_config() from public, anon, authenticated, service_role;
+revoke all on function public.stop_guard_projects()        from public, anon, authenticated, service_role;
+
+
+-- ── 7) Retire the unaudited alternate path ─────────────────────────────────
 --
 -- set_project_execution_paused() wrote projects.execution_paused with no actor,
 -- no reason trail and no ledger row. Leaving it in place would mean the audit

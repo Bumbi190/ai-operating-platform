@@ -27,6 +27,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkDailyRenderLimit } from '@/lib/media/safeguards'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
+import { assertExecutionDispatchAllowed } from '@/lib/governance/execution-dispatch'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -179,23 +180,6 @@ export async function GET(request: Request) {
 
   const startedAt = Date.now()
   const db        = createAdminClient()
-  const claude    = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
-  })
-
-  // ── 0a. Kanonisk pipeline-preflight ───────────────────────────────────────────
-  // Optimering, inte garantin. Varje betald leverantör bakom denna pipeline har
-  // sin egen färska kontroll (G3C-1) och varje extern skrivning har sin (G3C-2B);
-  // detta gör bara att en redan stoppad pipeline inte börjar arbeta i onödan.
-  // Ersätter `checkAutomationPaused`, som bara läste den globala flaggan och
-  // därför aldrig kunde se ett PROJEKT-stopp.
-  const eligibility = await resolveExecutionEligibility({
-    context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT),
-  })
-  if (!eligibility.allowed) {
-    log('safeguard', `STOPPAD — ${eligibility.reason}`)
-    return NextResponse.json({ status: 'paused', reason: eligibility.reason })
-  }
 
   // ── 0b. Daglig render-gräns ───────────────────────────────────────────────────
   const renderCheck = await checkDailyRenderLimit(db)
@@ -218,6 +202,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No project found' }, { status: 404 })
   }
   log('start', `Project: ${project.slug}`)
+
+  // ── 1b. Kanonisk pipeline-preflight ───────────────────────────────────────────
+  // Ligger EFTER projektuppslaget med flit: hela poängen är att se projektets
+  // eget stopp, och före detta uppslag finns inget projekt att fråga om. Den är
+  // en optimering, inte garantin — varje betald leverantör har sin egen färska
+  // kontroll (G3C-1) och varje extern skrivning sin (G3C-2B). Ersätter
+  // `checkAutomationPaused`, som bara läste den globala flaggan.
+  const eligibility = await resolveExecutionEligibility({
+    context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }),
+  })
+  if (!eligibility.allowed) {
+    log('safeguard', `STOPPAD — ${eligibility.reason}`)
+    return NextResponse.json({ status: 'paused', reason: eligibility.reason })
+  }
+
+  // Billing stays on the pipeline project; execution answers to the row's own.
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT,
+    execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+    agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
+  })
 
   // ── 2. Hunt news ──────────────────────────────────────────────────────────────
   log('hunt', 'Running News Hunter...')
@@ -306,7 +311,7 @@ Angle: ${news.content_angle}`,
   // ── 6. Quality gate ───────────────────────────────────────────────────────────
   log('quality', 'Scoring script...')
   const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
 
   if (shouldRegenerate(qualityScore)) {
     log('quality', `Weak hook (${qualityScore.hook_strength}/10) — regenerating...`)
@@ -370,7 +375,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   log('voice', 'Generating voiceover...')
   await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-  const voiceResult = await generateVoiceover(script.script, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria')
+  const voiceResult = await generateVoiceover(script.script, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, 'victoria')
 
   // ── 9. Upload audio + timing ──────────────────────────────────────────────────
   log('voice', `Voice ready (${(voiceResult.durationMs / 1000).toFixed(1)}s) — uploading...`)
@@ -391,7 +396,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   const musicMood = qualityScore.hook_strength >= 8 ? 'urgency' : 'neutral'
 
   const [rawImageUrls, backgroundMusicUrl] = await Promise.all([
-    generateNewsImages(news.title, script.script, 5, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }),
+    generateNewsImages(news.title, script.script, 5, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }),
     getBackgroundMusicUrl(musicMood),
   ])
 
@@ -419,6 +424,11 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     backgroundMusicUrl: undefined,  // Pixabay CDN blocked by Lambda — skip for now
   })
 
+  // ── GOVERNANCE BOUNDARY: starting a render is new external compute ──
+  await assertExecutionDispatchAllowed(
+    { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+    { system: 'remotion-lambda', operation: 'start_render' },
+  )
   const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, 'SimpleNewsReel')
 
   await db.from('media_scripts').update({

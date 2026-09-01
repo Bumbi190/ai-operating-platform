@@ -35,7 +35,8 @@ function resolve(table: string, op: string | undefined, payload: Row | undefined
   if (table === 'media_scripts') {
     // The reply route looks up the originating post by id; the pipeline routes
     // select their own work queue.
-    const isLookup = calls.some(([m]) => m === 'or')
+    const isLookup = calls.some(([m, a]) =>
+      m === 'or' && String(a[0] ?? '').includes('instagram_media_id'))
     if (isLookup) return { data: dbState.lookupScript, error: null }
     const single = calls.some(([m]) => m === 'single' || m === 'maybeSingle')
     return { data: single ? (dbState.scripts[0] ?? null) : dbState.scripts, error: null }
@@ -107,6 +108,13 @@ vi.mock('@/lib/media/youtube', async () => {
 })
 
 vi.mock('@/lib/media/video-props', () => ({ buildVideoInputProps: async () => ({}) }))
+const generateNewsImages = vi.fn()
+vi.mock('@/lib/media/ideogram', () => ({
+  generateNewsImages: (...a: unknown[]) => generateNewsImages(...a),
+}))
+vi.mock('@/lib/media/storage', () => ({
+  uploadSceneImage: async (_p: string, _s: string, i: number) => `https://cdn/img-${i}.jpg`,
+}))
 vi.mock('@/lib/media/token-store', () => ({ getToken: async () => null }))
 vi.mock('@/lib/media/channel-persistence', () => ({ persistChannelSuccess: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/lib/media/run-log', () => ({ logRun: vi.fn().mockResolvedValue(null) }))
@@ -130,6 +138,7 @@ vi.mock('@/lib/cost/track', () => ({ logLlmCost: vi.fn().mockResolvedValue(null)
 const fetchSpy = vi.fn()
 vi.stubGlobal('fetch', (...a: unknown[]) => fetchSpy(...a))
 
+import { GET as step3 } from '@/app/api/media/cron/step3/route'
 import { GET as step4 } from '@/app/api/media/cron/step4/route'
 import { GET as youtube } from '@/app/api/media/cron/youtube/route'
 import { GET as replyComments } from '@/app/api/media/cron/reply-comments/route'
@@ -360,5 +369,150 @@ describe('authority is the row’s project, never billing attribution', () => {
 
     expect(uploadShort, 'an unreadable scope is not permission').toHaveBeenCalledTimes(0)
     expect(body.deferredCount).toBe(1)
+  })
+})
+
+
+// ══ STEP 3 — the initial render dispatch ═════════════════════════════════════
+
+describe('step3 · the INITIAL Lambda render is external compute too', () => {
+  /**
+   * Missed by the first pass of G3C-2B. The structural guard owned a hardcoded
+   * list of four route files; step3 starts a Remotion render and was filed under
+   * "latent scope bug", so it never entered that list and nothing noticed. The
+   * inventory is derived from the call sites now.
+   */
+  const s3 = (over: Row = {}) => ({
+    id: 's-3', project_id: PROJECT_A, video_status: null, hook: 'h',
+    audio_url: 'https://cdn/a.mp3', timing_url: 'https://cdn/t.json',
+    duration_ms: 60000, images: ['https://cdn/i0.jpg'], script: 'a script',
+    composition: 'SimpleNewsReel', render_attempts: 0,
+    media_news_items: { title: 'a headline' }, ...over,
+  })
+  const call = () => step3(req('/api/media/cron/step3?scriptId=s-3'))
+
+  beforeEach(() => {
+    dbState.scripts = [s3()]
+    startLambdaRender.mockResolvedValue({ renderId: 'r9', bucketName: 'b9' })
+  })
+
+  it('clear → the render starts', async () => {
+    const body = await (await call()).json()
+    expect(startLambdaRender).toHaveBeenCalledTimes(1)
+    expect(body.status).toBe('step3_done')
+  })
+
+  it('PROJECT paused → no Lambda call at all', async () => {
+    stop.project = true
+    const body = await (await call()).json()
+    expect(startLambdaRender).toHaveBeenCalledTimes(0)
+    expect(body.status).toBe('step3_deferred_by_stop')
+    expect(body.reason).toBe('project_execution_paused')
+  })
+
+  it('GLOBAL paused → no Lambda call at all', async () => {
+    stop.global = true
+    const body = await (await call()).json()
+    expect(startLambdaRender).toHaveBeenCalledTimes(0)
+    expect(body.reason).toBe('global_automation_paused')
+  })
+
+  it('attempt 1 fails transiently, the pause commits, attempt 2 makes ZERO Lambda calls', async () => {
+    // The step3 equivalent of publish's M3 proof. withRetry sleeps between
+    // attempts; authorising outside the callback would let attempt 2 launch new
+    // external compute after the operator stopped everything.
+    startLambdaRender.mockImplementationOnce(async () => {
+      stop.project = true
+      throw new Error('503 lambda unavailable')
+    })
+    startLambdaRender.mockResolvedValue({ renderId: 'r-second', bucketName: 'b' })
+
+    const body = await (await call()).json()
+
+    expect(startLambdaRender, 'the second attempt must not reach Lambda')
+      .toHaveBeenCalledTimes(1)
+    expect(body.status).toBe('step3_deferred_by_stop')
+  })
+
+  it('a stop consumes no render attempt and raises no pipeline alert', async () => {
+    stop.project = true
+    await call()
+    expect(dbState.updates.some(u => 'render_attempts' in u.payload),
+      'the operator’s pause must not burn a render attempt').toBe(false)
+    expect(dbState.updates.some(u => u.payload.video_status === 'failed'),
+      'a stop is not a render failure').toBe(false)
+    expect(dbState.updates.some(u => 'pipeline_next_retry_at' in u.payload),
+      'a stop must not schedule a pipeline retry').toBe(false)
+    expect(sendPipelineAlert).toHaveBeenCalledTimes(0)
+  })
+
+  it('the row is restored to its ORIGINAL video_status, not stranded', async () => {
+    // step3 claims the row as `generating_images` before doing anything. That
+    // value is not in the automatic selection predicate (`none` or NULL), so a
+    // row abandoned there is silently retired rather than postponed.
+    stop.project = true
+    await call()
+    const last = dbState.updates.filter(u => 'video_status' in u.payload).pop()
+    expect(last?.payload.video_status, 'restore the exact prior state').toBeNull()
+  })
+
+  it('an existing video_status is restored exactly, not replaced by a guess', async () => {
+    dbState.scripts = [s3({ video_status: 'none' })]
+    stop.global = true
+    await call()
+    const last = dbState.updates.filter(u => 'video_status' in u.payload).pop()
+    expect(last?.payload.video_status).toBe('none')
+  })
+})
+
+describe('step3 · a G3C-1 refusal stays a governance event through the orchestrator', () => {
+  /**
+   * Cross-slice integration. The paid image fallback is refused by G3C-1's own
+   * boundary, which throws ExecutionStoppedError. That error then travels into
+   * step3's generic catch — which increments render_attempts, marks the video
+   * failed, schedules a retry and alerts. A stop must not arrive there.
+   */
+  const noImages = (over: Row = {}) => ({
+    id: 's-3', project_id: PROJECT_A, video_status: null, hook: 'h',
+    audio_url: 'https://cdn/a.mp3', timing_url: 'https://cdn/t.json',
+    duration_ms: 60000, images: [], script: 'a script',
+    composition: 'SimpleNewsReel', render_attempts: 0,
+    media_news_items: { title: 'a headline' }, ...over,
+  })
+
+  it('a stopped image generation defers, and never reaches the render', async () => {
+    dbState.scripts = [noImages()]
+    const { ExecutionStoppedError } = await import('@/lib/governance/execution-stop')
+    generateNewsImages.mockRejectedValue(new ExecutionStoppedError({
+      reason: 'project_execution_paused', context: 'AUTONOMOUS', scopeKind: 'PROJECT',
+      decision: { allowed: false, context: 'AUTONOMOUS', scopesEvaluated: [],
+                  resolution: 'RESOLVED', globalPaused: false, projectPaused: true,
+                  reason: 'project_execution_paused', observed: null },
+    }))
+
+    const body = await (await step3(req('/api/media/cron/step3?scriptId=s-3'))).json()
+
+    expect(body.status).toBe('step3_deferred_by_stop')
+    expect(startLambdaRender, 'no render may follow a refused image step')
+      .toHaveBeenCalledTimes(0)
+    expect(dbState.updates.some(u => 'render_attempts' in u.payload)).toBe(false)
+    expect(sendPipelineAlert).toHaveBeenCalledTimes(0)
+  })
+
+  it('the refusal is not retried as a transient Ideogram fault', async () => {
+    dbState.scripts = [noImages()]
+    const { ExecutionStoppedError } = await import('@/lib/governance/execution-stop')
+    generateNewsImages.mockRejectedValue(new ExecutionStoppedError({
+      reason: 'global_automation_paused', context: 'AUTONOMOUS', scopeKind: 'PROJECT',
+      decision: { allowed: false, context: 'AUTONOMOUS', scopesEvaluated: [],
+                  resolution: 'RESOLVED', globalPaused: true, projectPaused: false,
+                  reason: 'global_automation_paused', observed: null },
+    }))
+
+    await step3(req('/api/media/cron/step3?scriptId=s-3'))
+
+    // withRetry(attempts: 2) would sleep and ask again without the composed
+    // permanence rule, turning the operator's pause into an exhausted call.
+    expect(generateNewsImages).toHaveBeenCalledTimes(1)
   })
 })

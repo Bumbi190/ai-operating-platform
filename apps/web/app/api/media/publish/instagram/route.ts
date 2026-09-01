@@ -19,6 +19,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300  // Video processing can take up to 5 min
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
   // Load script
   const { data: script, error } = await db
     .from('media_scripts')
-    .select('id, hook, script, cta, hashtags, video_url, video_status, status, media_news_items(url, source_name)')
+    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, media_news_items(url, source_name)')
     .eq('id', scriptId)
     .single()
 
@@ -57,6 +59,13 @@ export async function POST(request: Request) {
   // Capture as local — the `!script.video_url` narrowing above doesn't survive
   // into the ReadableStream start() closure.
   const videoUrl = script.video_url
+
+  // Session-authenticated, but a human pressing publish is still EXECUTION and a
+  // stop refuses it. Authority is the script's own project.
+  const execution: ExecutionContract = {
+    context: 'OPERATOR_EXECUTION',
+    scope: projectScope({ projectId: script.project_id as string }),
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -81,6 +90,10 @@ export async function POST(request: Request) {
         // ── Instagram ────────────────────────────────────────────────────────
         emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
 
+        // ── GOVERNANCE BOUNDARY: Instagram publish ──
+        await assertExecutionDispatchAllowed(
+          execution, { system: 'instagram', operation: 'post_reel' })
+
         const igResult = await postReelToInstagram(
           videoUrl,
           caption,
@@ -99,6 +112,11 @@ export async function POST(request: Request) {
         if (hasFacebook) {
           emit({ step: 'uploading', label: 'Publicerar på Facebook...', progress: 65 })
           try {
+            // ── GOVERNANCE BOUNDARY: Facebook is a SEPARATE authorization ──
+            // A pause committing after Instagram went out must stop this one.
+            await assertExecutionDispatchAllowed(
+              execution, { system: 'facebook', operation: 'post_reel' })
+
             fbResult = await postReelToFacebook(
               videoUrl,
               caption,
@@ -111,9 +129,17 @@ export async function POST(request: Request) {
               },
             )
           } catch (fbErr) {
-            // Facebook failure is non-fatal — Instagram already succeeded
-            console.error('[publish/facebook]', fbErr instanceof Error ? fbErr.message : fbErr)
-            emit({ step: 'fb_warning', label: '⚠️ Facebook posting failed (Instagram OK)', progress: 95 })
+            if (isExecutionStopped(fbErr)) {
+              // Not a Facebook failure: nothing was sent. Instagram is not rolled
+              // back, and the operator is told why rather than shown a fault that
+              // never happened.
+              emit({ step: 'fb_deferred', progress: 95,
+                     label: `⏸️ Facebook uppskjuten av stopp (${fbErr.reason}) — Instagram OK` })
+            } else {
+              // Facebook failure is non-fatal — Instagram already succeeded
+              console.error('[publish/facebook]', fbErr instanceof Error ? fbErr.message : fbErr)
+              emit({ step: 'fb_warning', label: '⚠️ Facebook posting failed (Instagram OK)', progress: 95 })
+            }
           }
         }
 
@@ -144,6 +170,13 @@ export async function POST(request: Request) {
         })
 
       } catch (err) {
+        if (isExecutionStopped(err)) {
+          // A stop is a deferral, not a publish error. Nothing was dispatched,
+          // the script keeps its unpublished state, and it stays resumable.
+          sseEvent(controller, { step: 'stopped', reason: err.reason,
+                                 message: 'Publicering uppskjuten av stopp' })
+          return
+        }
         const message = err instanceof Error ? err.message : 'Unknown error'
         console.error('[publish/instagram]', message)
         sseEvent(controller, { step: 'error', message })

@@ -18,6 +18,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender } from '@/lib/media/lambda-render'
 import { jsonStringArray } from '@/lib/supabase/json'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60  // Lambda kickoff is fast; 60s is plenty
@@ -73,6 +75,26 @@ export async function POST(request: Request) {
   // IMPORTANT: We set video_status='rendering' ONLY after successfully getting
   // a renderId. This prevents the script getting stuck in 'rendering' if Lambda
   // call times out or throws before returning.
+  // ── GOVERNANCE BOUNDARY: starting a render is new external compute ──
+  // OPERATOR_EXECUTION, not OPERATOR_INTERACTIVE: this route is
+  // session-authenticated, but a human pressing render is still execution, and a
+  // stop refuses it. Authority is the script's own project.
+  const execution: ExecutionContract = {
+    context: 'OPERATOR_EXECUTION',
+    scope: projectScope({ projectId: script.project_id as string }),
+  }
+  try {
+    await assertExecutionDispatchAllowed(
+      execution, { system: 'remotion-lambda', operation: 'start_render' })
+  } catch (stopErr) {
+    if (!isExecutionStopped(stopErr)) throw stopErr
+    // Deliberately BEFORE the try below, whose catch writes
+    // `video_status: 'failed'` — that would report the operator's own pause as a
+    // Lambda failure and strand the script.
+    return NextResponse.json(
+      { error: 'execution_stopped', reason: stopErr.reason }, { status: 409 })
+  }
+
   try {
     const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, resolvedComposition)
 

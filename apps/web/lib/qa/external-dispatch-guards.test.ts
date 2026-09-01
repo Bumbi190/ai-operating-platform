@@ -26,15 +26,87 @@ const DISPATCH_ROUTES = [
   'app/api/media/cron/reply-comments/route.ts',
 ]
 
-describe('G1 · every targeted external write has a canonical dispatch boundary', () => {
-  it.each(DISPATCH_ROUTES)('%s calls assertExecutionDispatchAllowed', rel => {
-    expect(code(rel)).toContain('assertExecutionDispatchAllowed')
+/**
+ * The symbols that put a packet on the wire. This is the inventory that matters:
+ * a hardcoded list of ROUTES is what let step3 escape the first time — it starts
+ * a Remotion render and was filed under "latent scope bug", so it never entered
+ * the four-route list and nothing noticed. Deriving the set from the calls
+ * themselves means a new caller anywhere fails this suite until it is guarded.
+ */
+const EXTERNAL_WRITE_SYMBOLS = [
+  'startLambdaRender',    // new remote compute
+  'createReelContainer',  // Meta container
+  'publishContainer',     // Instagram publish
+  'postReelToFacebook',   // Facebook publish
+  'uploadShort',          // YouTube publish
+  'postReelToInstagram',  // Instagram publish (operator route)
+]
+
+describe('G1 · every external write in the tree has a canonical dispatch boundary', () => {
+  it('no runtime module calls an external-write symbol without the boundary', () => {
+    const offenders: string[] = []
+    for (const rel of runtimeFiles()) {
+      const body = code(rel)
+      // The module that DEFINES the primitive is the primitive, not a caller.
+      const called = EXTERNAL_WRITE_SYMBOLS.filter(sym =>
+        new RegExp(`\\b${sym}\\s*\\(`).test(body)
+        && !new RegExp(`export (async )?function ${sym}`).test(body))
+      if (called.length === 0) continue
+      if (!body.includes('assertExecutionDispatchAllowed')) {
+        offenders.push(`${rel} calls ${called.join('/')} unguarded`)
+      }
+    }
+    expect(offenders,
+      'every external write must cross the canonical dispatch boundary').toEqual([])
+  })
+
+  it('the inventory itself is non-empty and finds the known callers', () => {
+    // Guards against the guard silently matching nothing.
+    const callers = runtimeFiles().filter(rel => {
+      const body = code(rel)
+      return EXTERNAL_WRITE_SYMBOLS.some(sym =>
+        new RegExp(`\\b${sym}\\s*\\(`).test(body)
+        && !new RegExp(`export (async )?function ${sym}`).test(body))
+    })
+    expect(callers.length, 'the scan must actually find call sites')
+      .toBeGreaterThanOrEqual(5)
+    for (const known of ['app/api/media/cron/step3/route.ts',
+                         'app/api/media/cron/step4/route.ts',
+                         'app/api/media/render/start/route.ts',
+                         'app/api/media/cron/autonomous/route.ts']) {
+      expect(callers, `${known} must be inside the inventory`).toContain(known)
+    }
   })
 
   it('the boundary is imported from the canonical module, never re-implemented', () => {
     for (const rel of DISPATCH_ROUTES) {
       expect(code(rel), `${rel} must use the shared helper`)
         .toMatch(/from '@\/lib\/governance\/execution-dispatch'/)
+    }
+  })
+})
+
+describe('G1b · every render-start is authorised per attempt', () => {
+  it('step3 asserts INSIDE its retry callback, not around it', () => {
+    const body = code('app/api/media/cron/step3/route.ts')
+    expect(body,
+      'attempt 1 can fail, the pause can commit during backoff, attempt 2 must re-ask')
+      .toMatch(/withRetry\(\s*async \(\) => \{ await assertExecutionDispatchAllowed/)
+    expect(body).toContain('stopIsNotRetryable()')
+  })
+
+  it('step3 does not authorise outside the retry', () => {
+    expect(code('app/api/media/cron/step3/route.ts'))
+      .not.toMatch(/assertExecutionDispatchAllowed\([^;]*\); const \{ renderId/)
+  })
+
+  it('every render-start caller binds the row’s project, never the billing slug', () => {
+    for (const rel of ['app/api/media/cron/step3/route.ts',
+                       'app/api/media/cron/step4/route.ts',
+                       'app/api/media/render/start/route.ts',
+                       'app/api/media/cron/autonomous/route.ts']) {
+      expect(code(rel), `${rel} must not scope execution to the billing project`)
+        .not.toMatch(/scope: projectScope\(MEDIA_PIPELINE_PROJECT\)/)
     }
   })
 })
@@ -144,12 +216,14 @@ describe('G5 · the row’s project binds execution, not the billing slug', () =
   })
 
   it('step3 binds the row it already loaded', () => {
-    // The latent defect: `projectId` was destructured from the script and then
-    // discarded for the billing slug. Every script sits in that one project
-    // today, so the two coincided and nothing failed.
+    // The latent defect: the row's project was loaded and then discarded for the
+    // billing slug. Every script sits in that one project today, so the two
+    // coincided and nothing failed — until a second project produces media.
     const body = code('app/api/media/cron/step3/route.ts')
-    expect(body).toContain('project_id: projectId')
-    expect(body).toContain('scope: projectScope({ projectId })')
+    expect(body).toContain('scope: projectScope({ projectId: script.project_id')
+    // One contract, reused by both the paid image fallback and the render.
+    expect(body).toMatch(/const execution: ExecutionContract/)
+    expect(body).toContain('generateNewsImages(newsTitle, scriptText, 8, execution)')
   })
 
   it('billing attribution is still present — only authority moved', () => {

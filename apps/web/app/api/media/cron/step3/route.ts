@@ -19,7 +19,10 @@ import { startLambdaRender } from '@/lib/media/lambda-render'
 import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
-import { projectScope } from '@/lib/governance/execution-stop'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import {
+  assertExecutionDispatchAllowed, isExecutionStopped, stopIsNotRetryable,
+} from '@/lib/governance/execution-dispatch'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic    = 'force-dynamic'
@@ -56,7 +59,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
+    .select('id, project_id, video_status, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -81,6 +84,20 @@ export async function GET(request: Request) {
 
   console.log(`[cron/step3] Generating images + starting render for script ${script.id}`)
 
+  // The row's OWN project is the execution authority for everything below —
+  // the paid image fallback and the Lambda render alike. Never the billing slug.
+  const execution: ExecutionContract = {
+    context: 'AUTONOMOUS',
+    scope: projectScope({ projectId: script.project_id as string }),
+  }
+
+  // Captured BEFORE the claim below. A governance deferral has to put the row
+  // back exactly where it was: automatic selection accepts `none` or NULL, so a
+  // row abandoned in `generating_images` would never be picked up again — the
+  // stop would silently retire the script instead of postponing it. Restoring
+  // the ORIGINAL value beats inventing `'none'`, which would be a guess.
+  const originalVideoStatus = (script.video_status as string | null) ?? null
+
   // Mark as processing to prevent double-runs
   await db.from('media_scripts').update({ video_status: 'generating_images' }).eq('id', script.id)
 
@@ -104,7 +121,13 @@ export async function GET(request: Request) {
         ? (script.media_news_items[0] as { title?: string })?.title ?? hook
         : (script.media_news_items as { title?: string } | null)?.title ?? hook
 
-      const rawImageUrls = await withRetry(() => generateNewsImages(newsTitle, scriptText, 8, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }), { attempts: 2, label: 'Ideogram images (step3)' })   // fler scener = bildbyte var ~6s (retention)
+      // G3C-1 refuses this dispatch when stopped. The composition matters: without
+      // it withRetry would sleep and ask again, turning the operator's own pause
+      // into an exhausted Ideogram call.
+      const rawImageUrls = await withRetry(
+        () => generateNewsImages(newsTitle, scriptText, 8, execution),
+        { attempts: 2, label: 'Ideogram images (step3)', isPermanent: stopIsNotRetryable() },
+      )   // fler scener = bildbyte var ~6s (retention)
       storedImageUrls = await Promise.all(
         rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
       )
@@ -127,9 +150,20 @@ export async function GET(request: Request) {
       backgroundMusicUrl: undefined,
     }), 8_000, 'buildVideoInputProps (timing-fetch)')
 
+    // ── GOVERNANCE BOUNDARY: starting a render is new external compute ──
+    // Inside the callback, so every attempt re-authorises. Hoisting it out would
+    // look identical and be worthless: attempt 1 can fail transiently, the pause
+    // can commit during the backoff, and attempt 2 would still launch.
     const { renderId, bucketName } = await withRetry(
-      () => withTimeout(startLambdaRender(script.id, inputProps, 'SimpleNewsReel'), 20_000, 'Remotion Lambda render-start'),
-      { attempts: 2, label: 'Remotion Lambda render-start' },
+      async () => {
+        await assertExecutionDispatchAllowed(
+          execution, { system: 'remotion-lambda', operation: 'start_render' })
+        return withTimeout(
+          startLambdaRender(script.id, inputProps, 'SimpleNewsReel'),
+          20_000, 'Remotion Lambda render-start')
+      },
+      { attempts: 2, label: 'Remotion Lambda render-start',
+        isPermanent: stopIsNotRetryable() },
     )
 
     await db.from('media_scripts').update({
@@ -151,6 +185,26 @@ export async function GET(request: Request) {
       next:       'publish cron runs at 08:00 / 18:00 UTC',
     })
   } catch (err) {
+    // ── DEFERRED BY STOP ──────────────────────────────────────────────────────
+    // Taken before the failure accounting below, which would otherwise consume a
+    // render attempt, mark the video failed, schedule a pipeline retry and alert
+    // an operator that the render broke — because that operator pressed stop.
+    // Nothing was dispatched, so nothing failed.
+    //
+    // Reachable from two places: the paid image fallback (refused by G3C-1) and
+    // the Lambda boundary above. A G3C-1 refusal must stay a governance event as
+    // it travels through this orchestrator.
+    if (isExecutionStopped(err)) {
+      await db.from('media_scripts')
+        .update({ video_status: originalVideoStatus })
+        .eq('id', script.id)
+      console.log(`[cron/step3] Uppskjuten av stopp (${err.reason}) — `
+        + `video_status återställd till ${originalVideoStatus ?? 'NULL'}, inga försök förbrukade`)
+      return NextResponse.json({
+        status: 'step3_deferred_by_stop', reason: err.reason, scriptId: script.id,
+      })
+    }
+
     const msg = err instanceof Error ? err.message : 'unknown'
     const attempts  = (script.render_attempts ?? 0) + 1
     const escalated = attempts >= 3

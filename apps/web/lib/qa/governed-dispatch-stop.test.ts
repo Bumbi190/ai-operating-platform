@@ -73,6 +73,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 let stopDecision: StopDecision
 let contractsSeen: unknown[] = []
 let projectRefsResolved: unknown[] = []
+let resolvedProjectIds: (string | null)[] = []
 
 vi.mock('@/lib/governance/execution-stop', async (orig) => {
   const actual = await orig<typeof import('@/lib/governance/execution-stop')>()
@@ -86,7 +87,11 @@ vi.mock('@/lib/governance/execution-stop', async (orig) => {
       // Exercise the resolver callback so a test can see WHICH ref was resolved.
       if (c.scope.kind === 'PROJECT') {
         projectRefsResolved.push(c.scope.project)
-        await resolveProjectId(c.scope.project)
+        // Record what the boundary's resolver ACTUALLY returns for this ref.
+        // Asserting only on the contract would miss a boundary that ignores the
+        // ref and hands back the billing id instead — which is precisely the
+        // mistake this separation exists to prevent. Found by mutation.
+        resolvedProjectIds.push(await resolveProjectId(c.scope.project))
       }
       return stopDecision
     },
@@ -117,7 +122,7 @@ const provider = async () => { dispatches += 1; return 'provider-result' }
 
 beforeEach(() => {
   reserveCalls = []; settleCalls = []; releaseCalls = []
-  contractsSeen = []; projectRefsResolved = []
+  contractsSeen = []; projectRefsResolved = []; resolvedProjectIds = []
   releaseThrows = false; reserveAllowed = true; dispatches = 0
   stopDecision = allowedDecision()
   vi.resetModules()
@@ -254,6 +259,10 @@ describe('G3C-1 · billing attribution is NOT stop authority', () => {
     // The resolver saw Y. X never reached the authority.
     expect(projectRefsResolved).toEqual([{ projectId: 'exec-Y' }])
     expect(JSON.stringify(contractsSeen)).not.toContain('bill-X')
+    // …AND resolved Y, not the billing id. A boundary that ignored the ref and
+    // returned `resolved.projectId` satisfies the line above and fails here.
+    expect(resolvedProjectIds).toEqual(['exec-Y'])
+    expect(resolvedProjectIds).not.toContain('resolved-billing-id')
   })
 
   it('billing X paused / execution Y clear → dispatch proceeds', async () => {

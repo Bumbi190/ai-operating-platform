@@ -9,6 +9,31 @@ Verifiera med:
 shasum -a 256 -c CHECKSUMS.sha256
 ```
 
+Kör från `docs/trading-system/`. Kommandot kontrollerar det maskinverifierbara
+manifestet mot disk.
+
+För den fullständiga kontrollen — båda manifesten mot disk **och** mot varandra:
+
+```bash
+node scripts/trading/verify-canon-manifest.mjs
+```
+
+Kör från repots rot. Det låsta förhållandet mellan filerna är **containment**,
+inte likhet:
+
+```
+CHECKSUMS.md ⊆ CHECKSUMS.sha256
+```
+
+`CHECKSUMS.md` är det kurerade, läsbara dokumentet. `CHECKSUMS.sha256` är ett
+maskinverifierbart **superset** som dessutom täcker indexfiler och en superseded
+specifikation. Varje sökväg i `CHECKSUMS.md` måste finnas i `CHECKSUMS.sha256`
+med samma hash; det omvända gäller inte, och en framtida förenkling till
+mängdlikhet vore fel.
+
+Inget av manifesten hashar sig självt, det andra manifestet, verifieraren eller
+CI-filer — det skulle skapa en cirkel där en fil måste innehålla sin egen hash.
+
 ## Slutlig PDF (Canonical v1.2)
 
 ```

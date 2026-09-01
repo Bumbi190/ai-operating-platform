@@ -1,0 +1,96 @@
+# Omnira Trading — canon manifest integrity.
+#
+# The failure this exists to detect, stated concretely because it already
+# happened three times: a canon amendment updates docs/trading-system/CHECKSUMS.md
+# and forgets docs/trading-system/CHECKSUMS.sha256. Nothing failed, nothing
+# warned, and the machine manifest drifted across the v1.1 promotion, the v1.2
+# promotion and R1A.1 — still pointing at an Execution Provider Adapter path that
+# had been archived two promotions earlier.
+#
+# WHAT THIS DOES AND DOES NOT GUARANTEE, TODAY.
+# This workflow DETECTS that drift deterministically and fails the job. It does
+# not by itself PREVENT a merge: blocking is a repository-policy property, and
+# this check is not yet in branch protection's required list. Promoting it to a
+# required status check is a separate, deliberate step taken after the workflow
+# exists on main and has proven green there. Until then: detected, not blocked.
+#
+# The invariant enforced is CONTAINMENT, not equality:
+#
+#     CHECKSUMS.md ⊆ CHECKSUMS.sha256
+#
+# The curated document is a human-readable subset; the machine manifest is a
+# superset that also covers index files and one superseded specification. That
+# relationship held at every commit that touched both files and is deliberate —
+# see the header of scripts/trading/verify-canon-manifest.mjs before "simplifying"
+# this into a set comparison.
+#
+# What this gate does NOT do: infer which files on disk ought to be canonical. No
+# rule here says every .md under specifications must be manifested, because no
+# specification says that. A file added to NEITHER manifest is outside this
+# gate's authority — registration in CHECKSUMS.md is what brings a document
+# under it.
+#
+# This is a focused documentation-integrity gate. It is unrelated to the Memory
+# M4 boundary gate and must not be merged into it: they fail for different
+# reasons and a maintainer reading a red check should know immediately which.
+#
+# Zero dependencies: the verifier uses node:fs, node:path and node:crypto only,
+# so there is no install step and nothing to resolve from a registry.
+
+name: Trading Canon Integrity
+
+# NO PATHS FILTER ON pull_request, AND THAT IS DELIBERATE.
+#
+# This check is intended to become a REQUIRED status check. A paths-filtered
+# workflow does not run at all on a PR that touches nothing it matches, so the
+# check is never created — and GitHub waits indefinitely for a required check
+# that will never report. Every PR must therefore produce a result for this
+# check, including PRs that touch no Trading documentation.
+#
+# The cost of running it unconditionally is negligible: Node built-ins only, no
+# npm ci, no build, no network beyond checkout and setup-node. Seconds.
+#
+# On an unrelated PR the manifests are simply clean and the check is green.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trading-canon-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  manifest:
+    name: Trading canon integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # package.json engines: node >=20
+
+      # No `npm ci`. The verifier imports only Node built-ins, and installing
+      # dependencies for it would make a documentation check depend on the
+      # application's lockfile resolving.
+
+      - name: Verify the manifest invariant
+        run: node scripts/trading/verify-canon-manifest.mjs
+
+      - name: Verifier self-tests
+        run: node scripts/trading/verify-canon-manifest.test.mjs
+
+      # The same manifest, checked by the tool the document tells operators to
+      # use. If these two ever disagree, one of them is wrong and the job should
+      # say so rather than trusting the one we wrote ourselves.
+      - name: Native sha256sum -c
+        working-directory: docs/trading-system
+        run: sha256sum -c CHECKSUMS.sha256

@@ -402,7 +402,11 @@ export function operatorActor(userId: string): string {
 }
 
 /**
- * Pause or resume ALL unattended automation.
+ * GLOBAL EXECUTION STOP — pause or resume.
+ *
+ * Stops unattended automation AND operator-requested execution; never operator
+ * assistance. The column is still named `automation_paused` for applied-history
+ * reasons — the name is legacy, the semantics are these.
  *
  * PAUSE/RESUME move exactly one boolean and record that it moved. They create
  * no authorization, renew none, extend none, revive nothing expired or revoked,
@@ -422,7 +426,12 @@ export async function setPlatformAutomationStop(
   return toMutationResult(data)
 }
 
-/** Pause or resume unattended execution for ONE project. Same guarantees. */
+/**
+ * PROJECT EXECUTION STOP for ONE project. Same guarantees as the global setter.
+ *
+ * Stops AUTONOMOUS and OPERATOR_EXECUTION alike for that project, and unlike the
+ * global scope this is never relaxed by policy — see the truth table.
+ */
 export async function setProjectExecutionStop(
   db: SupabaseClient,
   args: { projectId: string; paused: boolean; actor: string; reason?: string | null },

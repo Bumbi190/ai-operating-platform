@@ -4,7 +4,8 @@
  * Operator control over the stop authority (G3A).
  *
  * ── WHY THESE ARE SERVER ACTIONS AND NOT TOOLS ─────────────────────────────
- * Resume is the act of re-enabling unattended spend and external side effects.
+ * Resume is the act of re-enabling spend and external side effects — both
+ * unattended and operator-requested.
  * It is therefore explicit operator authority, exercised by an authenticated
  * human through a control they chose to press. It is deliberately NOT exposed
  * as a generic callable tool: a model that can resume execution can resume the
@@ -18,8 +19,9 @@
  * The global switch requires PLATFORM-OPERATOR authority, not merely a session.
  * An authenticated user is somebody; a platform operator is somebody entitled to
  * stop — and, more dangerously, to RESUME — every tenant at once. Pause is
- * recoverable; an unauthorised resume re-enables unattended spend and external
- * side effects while the reason for the pause is still live.
+ * recoverable; an unauthorised resume re-enables spend and external side
+ * effects — unattended AND operator-requested — while the reason for the pause
+ * is still live.
  *
  * The project switch stays gated on project OWNERSHIP, which is the correct
  * authority for a single-project control and is not a substitute for the global
@@ -113,7 +115,17 @@ export async function toggleAutomationPause(
 }
 
 /**
- * Pause or resume unattended execution for ONE project.
+ * PROJECT EXECUTION STOP — pause or resume, for ONE project.
+ *
+ * SCOPE, stated precisely. This stops BOTH unattended automation (AUTONOMOUS)
+ * AND operator-requested execution (OPERATOR_EXECUTION) for that project —
+ * generation, publishing, sending, workflow runs, any provider-backed or
+ * externally-visible work, however it was triggered. Unlike the global switch,
+ * the project scope is NEVER optional for execution: no policy constant relaxes
+ * it, in either enforcing context.
+ *
+ * It does NOT stop operator assistance. Reading the project, inspecting its
+ * governance, planning and these controls stay available.
  *
  * Ownership-gated on the same boundary the rest of the platform uses: a user
  * may only stop projects they own. Note that this is a per-scope control, not a

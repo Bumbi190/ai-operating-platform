@@ -45,18 +45,19 @@ export function ProjectPauseToggle({
             : 'bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20'
         } ${pending ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
         title={paused
-          ? `Projektets exekvering är pausad${pausedReason ? ` — ${pausedReason}` : ''}. Klicka för att återuppta.`
-          : 'Pausa all oövervakad exekvering för detta projekt'}
+          ? `Projektets exekvering är stoppad${pausedReason ? ` — ${pausedReason}` : ''}. Klicka för att återuppta.`
+          : 'Stoppar all exekvering för projektet: både automatisk och manuellt '
+            + 'begärd. Läsning och styrning av projektet påverkas inte.'}
       >
         {paused ? (
           <>
             <Power className="w-3.5 h-3.5" />
-            {pending ? 'Återupptar…' : 'Återuppta projekt'}
+            {pending ? 'Återupptar…' : 'Återuppta projektexekvering'}
           </>
         ) : (
           <>
             <Pause className="w-3.5 h-3.5" />
-            {pending ? 'Pausar…' : 'Pausa projekt'}
+            {pending ? 'Stoppar…' : 'Stoppa projektexekvering'}
           </>
         )}
       </button>

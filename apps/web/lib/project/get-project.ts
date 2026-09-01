@@ -26,18 +26,8 @@ export type ResolvedProject = {
  */
 export const getProjectBySlug = cache(async (slug: string): Promise<ResolvedProject | null> => {
   const supabase = await createClient()
-  // The generated types are STALE for these three columns: `execution_paused`,
-  // `paused_at` and `paused_reason` have existed on `projects` in production
-  // since 20260829_workflow_scheduler_project_pause, but database.types.ts was
-  // never regenerated and still describes the pre-pause shape. The cast is
-  // scoped to this query and disappears the moment the types are regenerated.
-  const { data } = await (supabase.from('projects') as unknown as {
-    select: (c: string) => {
-      eq: (c: string, v: string) => {
-        single: () => Promise<{ data: Record<string, unknown> | null }>
-      }
-    }
-  })
+  const { data } = await supabase
+    .from('projects')
     .select('id, name, slug, color, settings, execution_paused, paused_at, paused_reason')
     .eq('slug', slug)
     .single()

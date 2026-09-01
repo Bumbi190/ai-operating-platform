@@ -438,41 +438,72 @@ describe('operator-execution paths recorded for G3C', () => {
 
 // ── F. Mandatory post-apply cleanup ─────────────────────────────────────────
 
-describe('generated-types cleanup is enforced, not merely intended', () => {
+describe('generated types are canonical and the temporary casts are gone', () => {
   const types = () => src('lib/supabase/database.types.ts')
 
-  it('the temporary casts exist ONLY while the types are actually stale', () => {
-    // The deal: two narrow casts are accepted because database.types.ts predates
-    // both `projects.execution_paused` (in production since
-    // 20260829_workflow_scheduler_project_pause) and `stop_events` (this
-    // migration, not yet applied).
-    //
-    // Canonical regeneration is `supabase gen types typescript --project-id <ref>
-    // --schema public` (documented in lib/supabase/types.ts). It must be run
-    // AFTER this migration is applied and BEFORE final merge.
-    //
-    // This test is the tripwire: the moment the generated types learn either
-    // symbol, the corresponding cast is dead code and this fails, so the cleanup
-    // cannot be quietly skipped.
+  it('the generated types now KNOW the stop authority', () => {
+    // Regenerated from production after the G3A migration was applied, via
+    // `supabase gen types typescript --project-id <ref> --schema public`.
     const t = types()
-
-    if (t.includes('execution_paused')) {
-      expect(code('lib/project/get-project.ts'),
-        'types now know execution_paused — remove the cast in get-project.ts')
-        .not.toContain('as unknown as')
-    }
-    if (t.includes('stop_events')) {
-      expect(code('app/api/system/stop-authority/route.ts'),
-        'types now know stop_events — remove the cast in the stop-authority route')
-        .not.toContain('as unknown as')
+    for (const sym of ['stop_events', 'execution_paused', 'paused_at', 'paused_reason',
+                       'stop_set_platform_automation', 'stop_set_project_execution',
+                       'stop_state']) {
+      expect(t, `generated types must describe ${sym}`).toContain(sym)
     }
   })
 
-  it('each cast says why it exists and when it goes away', () => {
-    // A cast with no stated expiry is a permanent cast.
-    expect(src('lib/project/get-project.ts')).toMatch(/STALE|stale/)
-    expect(src('lib/project/get-project.ts')).toContain('regenerated')
-    expect(src('app/api/system/stop-authority/route.ts')).toContain('regenerated')
+  it('the retired legacy setter is NOT in the generated types', () => {
+    // It was dropped by the migration, so a regenerated file that still names it
+    // would mean the types were not actually regenerated from production.
+    expect(types()).not.toContain('set_project_execution_paused')
+  })
+
+  it('neither temporary query-builder cast survives', () => {
+    // These existed only because the generated file was stale. Now that it is
+    // canonical they are dead weight, and leaving them would quietly re-disable
+    // type checking on exactly the two governance surfaces that need it most.
+    for (const f of ['lib/project/get-project.ts',
+                     'app/api/system/stop-authority/route.ts']) {
+      const body = code(f)
+      expect(body, `${f} must not cast the query builder`)
+        .not.toMatch(/as unknown as \{\s*from:/)
+      expect(body, `${f} must not cast the query builder`)
+        .not.toMatch(/as unknown as \{\s*select:/)
+    }
+    // ...and the files still read the columns they need, through real types.
+    expect(code('lib/project/get-project.ts')).toContain('execution_paused')
+    expect(code('app/api/system/stop-authority/route.ts')).toContain("from('stop_events')")
+  })
+})
+
+describe('project-stop copy states the real scope', () => {
+  it('the project action documents BOTH enforcing contexts', () => {
+    const doc = src('app/actions/automation.ts')
+    const proj = doc.slice(doc.indexOf('PROJECT EXECUTION STOP'))
+    expect(proj).toContain('AUTONOMOUS')
+    expect(proj).toContain('OPERATOR_EXECUTION')
+    // The project scope is never relaxed by policy — unlike the global one.
+    expect(proj).toMatch(/NEVER optional/i)
+    expect(proj).toMatch(/does NOT stop operator assistance/i)
+  })
+
+  it('no project-facing copy claims the stop is merely "unattended"', () => {
+    // The locked table refuses OPERATOR_EXECUTION for a paused project, so
+    // promising only unattended work understates what the operator just did.
+    const toggle = src('components/platform/ProjectPauseToggle.tsx')
+    expect(toggle).not.toContain('oövervakad')
+    expect(toggle).toMatch(/både automatisk och manuellt/)
+    expect(src('app/actions/automation.ts'))
+      .not.toMatch(/resume unattended execution for ONE project/)
+    expect(src('lib/governance/execution-stop.ts'))
+      .not.toMatch(/Pause or resume unattended execution for ONE project/)
+  })
+
+  it('"unattended" survives only where it correctly means AUTONOMOUS', () => {
+    // The word is not banned — it is precise when describing the AUTONOMOUS
+    // context itself, and the derivation evidence depends on it.
+    const stop = src('lib/governance/execution-stop.ts')
+    expect(stop).toMatch(/AUTONOMOUS\s+—\s+unattended execution/)
   })
 })
 

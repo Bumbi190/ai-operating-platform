@@ -315,6 +315,526 @@ export type Database = {
           },
         ]
       }
+      atlas_authorizations: {
+        Row: {
+          action_kind: string
+          authority_basis: string
+          authority_description: string | null
+          authorization_id: string
+          conditions: Json
+          created_at: string
+          event_id: string
+          event_type: string
+          evidence: Json
+          expires_at: string | null
+          occurred_at: string
+          principal_id: string
+          project_id: string
+          reason: string | null
+          superseded_by: string | null
+          target_id: string
+          target_type: string
+          target_version_hash: string
+        }
+        Insert: {
+          action_kind: string
+          authority_basis?: string
+          authority_description?: string | null
+          authorization_id: string
+          conditions?: Json
+          created_at?: string
+          event_id?: string
+          event_type: string
+          evidence?: Json
+          expires_at?: string | null
+          occurred_at?: string
+          principal_id: string
+          project_id: string
+          reason?: string | null
+          superseded_by?: string | null
+          target_id: string
+          target_type: string
+          target_version_hash: string
+        }
+        Update: {
+          action_kind?: string
+          authority_basis?: string
+          authority_description?: string | null
+          authorization_id?: string
+          conditions?: Json
+          created_at?: string
+          event_id?: string
+          event_type?: string
+          evidence?: Json
+          expires_at?: string | null
+          occurred_at?: string
+          principal_id?: string
+          project_id?: string
+          reason?: string | null
+          superseded_by?: string | null
+          target_id?: string
+          target_type?: string
+          target_version_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_authorizations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_decision_ledger: {
+        Row: {
+          alternatives: Json
+          authority: Json | null
+          confidence: string | null
+          created_at: string
+          decision_id: string
+          effective_at: string | null
+          evidence: Json
+          expected_impact: string | null
+          expires_at: string | null
+          lifecycle_generation: number
+          materiality: Json
+          occurred_at: string
+          outcome: Json | null
+          principal_id: string
+          project_id: string
+          rationale: string | null
+          reason: string | null
+          recommendation: string | null
+          record_id: string
+          record_type: string
+          reversal_conditions: Json
+          review: Json | null
+          review_note: string | null
+          snapshot: Json | null
+          statement: string
+          superseded_by: string | null
+          title: string
+          version: number
+        }
+        Insert: {
+          alternatives?: Json
+          authority?: Json | null
+          confidence?: string | null
+          created_at?: string
+          decision_id: string
+          effective_at?: string | null
+          evidence?: Json
+          expected_impact?: string | null
+          expires_at?: string | null
+          lifecycle_generation?: number
+          materiality?: Json
+          occurred_at?: string
+          outcome?: Json | null
+          principal_id: string
+          project_id: string
+          rationale?: string | null
+          reason?: string | null
+          recommendation?: string | null
+          record_id?: string
+          record_type: string
+          reversal_conditions?: Json
+          review?: Json | null
+          review_note?: string | null
+          snapshot?: Json | null
+          statement: string
+          superseded_by?: string | null
+          title: string
+          version?: number
+        }
+        Update: {
+          alternatives?: Json
+          authority?: Json | null
+          confidence?: string | null
+          created_at?: string
+          decision_id?: string
+          effective_at?: string | null
+          evidence?: Json
+          expected_impact?: string | null
+          expires_at?: string | null
+          lifecycle_generation?: number
+          materiality?: Json
+          occurred_at?: string
+          outcome?: Json | null
+          principal_id?: string
+          project_id?: string
+          rationale?: string | null
+          reason?: string | null
+          recommendation?: string | null
+          record_id?: string
+          record_type?: string
+          reversal_conditions?: Json
+          review?: Json | null
+          review_note?: string | null
+          snapshot?: Json | null
+          statement?: string
+          superseded_by?: string | null
+          title?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_decision_ledger_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_delegation_ledger: {
+        Row: {
+          act_type: string
+          actor_id: string | null
+          actor_kind: string
+          envelope: Json | null
+          envelope_id: string
+          lineage_sequence: number
+          mission_bound_hash: string
+          mission_id: string
+          mission_version: number
+          note: string | null
+          occurred_at: string
+          project_id: string
+          record_id: string
+          rejections: Json
+          replan: Json | null
+          revoked_reason: string | null
+        }
+        Insert: {
+          act_type: string
+          actor_id?: string | null
+          actor_kind: string
+          envelope?: Json | null
+          envelope_id: string
+          lineage_sequence: number
+          mission_bound_hash: string
+          mission_id: string
+          mission_version: number
+          note?: string | null
+          occurred_at?: string
+          project_id: string
+          record_id?: string
+          rejections?: Json
+          replan?: Json | null
+          revoked_reason?: string | null
+        }
+        Update: {
+          act_type?: string
+          actor_id?: string | null
+          actor_kind?: string
+          envelope?: Json | null
+          envelope_id?: string
+          lineage_sequence?: number
+          mission_bound_hash?: string
+          mission_id?: string
+          mission_version?: number
+          note?: string | null
+          occurred_at?: string
+          project_id?: string
+          record_id?: string
+          rejections?: Json
+          replan?: Json | null
+          revoked_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_delegation_ledger_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_entities: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          kind: string
+          meta: Json
+          name: string | null
+          project_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          kind: string
+          meta?: Json
+          name?: string | null
+          project_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          kind?: string
+          meta?: Json
+          name?: string | null
+          project_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_entities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_intelligence: {
+        Row: {
+          body: Json
+          confidence: number
+          evidence: Json
+          id: string
+          kind: string
+          produced_at: string
+          produced_by: string
+          project_id: string | null
+          subject_id: string | null
+          subject_kind: string | null
+          subject_name: string | null
+          superseded_by: string | null
+          window_since: string | null
+          window_until: string | null
+        }
+        Insert: {
+          body?: Json
+          confidence: number
+          evidence?: Json
+          id?: string
+          kind: string
+          produced_at?: string
+          produced_by: string
+          project_id?: string | null
+          subject_id?: string | null
+          subject_kind?: string | null
+          subject_name?: string | null
+          superseded_by?: string | null
+          window_since?: string | null
+          window_until?: string | null
+        }
+        Update: {
+          body?: Json
+          confidence?: number
+          evidence?: Json
+          id?: string
+          kind?: string
+          produced_at?: string
+          produced_by?: string
+          project_id?: string | null
+          subject_id?: string | null
+          subject_kind?: string | null
+          subject_name?: string | null
+          superseded_by?: string | null
+          window_since?: string | null
+          window_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_intelligence_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atlas_intelligence_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "atlas_intelligence"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atlas_mission_ledger: {
+        Row: {
+          allowed_actions: Json
+          approval_gates: Json
+          assumptions: Json
+          authority: Json
+          authority_record: Json | null
+          authority_source: Json | null
+          blocker: Json | null
+          budget: Json | null
+          clears_blocker_id: string | null
+          closure: Json | null
+          completion_conditions: Json
+          constraints: Json
+          created_at: string
+          data_scope: Json
+          deadline: string | null
+          decision_provenance: Json | null
+          decision_ref: Json | null
+          deliverables: Json
+          dependencies: Json
+          dependency_observation: Json | null
+          escalation_triggers: Json
+          evidence: Json | null
+          evidence_requirements: Json
+          executive_owner: string
+          expected_outcome: string | null
+          forbidden_actions: Json
+          gate_resolution: Json | null
+          in_scope: Json
+          lifecycle_generation: number
+          mission_id: string
+          mission_owner: string | null
+          mission_type: string
+          objective: string
+          occurred_at: string
+          out_of_scope: Json
+          pause_conditions: Json
+          principal_id: string
+          project_id: string
+          project_mode: string | null
+          reason: string | null
+          record_id: string
+          record_type: string
+          report: Json | null
+          reporting: Json
+          review_note: string | null
+          risks: Json
+          stop_conditions: Json
+          strategic_context: string | null
+          success_criteria: Json
+          superseded_by: string | null
+          title: string
+          tools: Json
+          version: number
+        }
+        Insert: {
+          allowed_actions?: Json
+          approval_gates?: Json
+          assumptions?: Json
+          authority?: Json
+          authority_record?: Json | null
+          authority_source?: Json | null
+          blocker?: Json | null
+          budget?: Json | null
+          clears_blocker_id?: string | null
+          closure?: Json | null
+          completion_conditions?: Json
+          constraints?: Json
+          created_at?: string
+          data_scope?: Json
+          deadline?: string | null
+          decision_provenance?: Json | null
+          decision_ref?: Json | null
+          deliverables?: Json
+          dependencies?: Json
+          dependency_observation?: Json | null
+          escalation_triggers?: Json
+          evidence?: Json | null
+          evidence_requirements?: Json
+          executive_owner: string
+          expected_outcome?: string | null
+          forbidden_actions?: Json
+          gate_resolution?: Json | null
+          in_scope?: Json
+          lifecycle_generation?: number
+          mission_id: string
+          mission_owner?: string | null
+          mission_type: string
+          objective: string
+          occurred_at?: string
+          out_of_scope?: Json
+          pause_conditions?: Json
+          principal_id: string
+          project_id: string
+          project_mode?: string | null
+          reason?: string | null
+          record_id?: string
+          record_type: string
+          report?: Json | null
+          reporting?: Json
+          review_note?: string | null
+          risks?: Json
+          stop_conditions?: Json
+          strategic_context?: string | null
+          success_criteria?: Json
+          superseded_by?: string | null
+          title: string
+          tools?: Json
+          version?: number
+        }
+        Update: {
+          allowed_actions?: Json
+          approval_gates?: Json
+          assumptions?: Json
+          authority?: Json
+          authority_record?: Json | null
+          authority_source?: Json | null
+          blocker?: Json | null
+          budget?: Json | null
+          clears_blocker_id?: string | null
+          closure?: Json | null
+          completion_conditions?: Json
+          constraints?: Json
+          created_at?: string
+          data_scope?: Json
+          deadline?: string | null
+          decision_provenance?: Json | null
+          decision_ref?: Json | null
+          deliverables?: Json
+          dependencies?: Json
+          dependency_observation?: Json | null
+          escalation_triggers?: Json
+          evidence?: Json | null
+          evidence_requirements?: Json
+          executive_owner?: string
+          expected_outcome?: string | null
+          forbidden_actions?: Json
+          gate_resolution?: Json | null
+          in_scope?: Json
+          lifecycle_generation?: number
+          mission_id?: string
+          mission_owner?: string | null
+          mission_type?: string
+          objective?: string
+          occurred_at?: string
+          out_of_scope?: Json
+          pause_conditions?: Json
+          principal_id?: string
+          project_id?: string
+          project_mode?: string | null
+          reason?: string | null
+          record_id?: string
+          record_type?: string
+          report?: Json | null
+          reporting?: Json
+          review_note?: string | null
+          risks?: Json
+          stop_conditions?: Json
+          strategic_context?: string | null
+          success_criteria?: Json
+          superseded_by?: string | null
+          title?: string
+          tools?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_mission_ledger_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atlas_signals: {
         Row: {
           content_id: string | null
@@ -322,6 +842,8 @@ export type Database = {
           kind: string
           payload: Json
           produced_at: string
+          project_id: string | null
+          source: string | null
           version: string
         }
         Insert: {
@@ -330,6 +852,8 @@ export type Database = {
           kind: string
           payload: Json
           produced_at?: string
+          project_id?: string | null
+          source?: string | null
           version: string
         }
         Update: {
@@ -338,9 +862,19 @@ export type Database = {
           kind?: string
           payload?: Json
           produced_at?: string
+          project_id?: string | null
+          source?: string | null
           version?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "atlas_signals_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bug_reports: {
         Row: {
@@ -675,6 +1209,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collector_runs: {
+        Row: {
+          collector_id: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          metadata: Json
+          project_id: string | null
+          ran_at: string
+          signal_id: string | null
+          signal_kind: string | null
+          snapshot_date: string
+          status: string
+        }
+        Insert: {
+          collector_id: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          project_id?: string | null
+          ran_at?: string
+          signal_id?: string | null
+          signal_kind?: string | null
+          snapshot_date: string
+          status: string
+        }
+        Update: {
+          collector_id?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json
+          project_id?: string | null
+          ran_at?: string
+          signal_id?: string | null
+          signal_kind?: string | null
+          snapshot_date?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collector_runs_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -1423,9 +2007,15 @@ export type Database = {
       }
       manager_tasks: {
         Row: {
+          assigned_at: string | null
           created_at: string | null
+          delegation_bound_hash: string | null
+          delegation_envelope_id: string | null
           description: string | null
           id: string
+          mission_bound_hash: string | null
+          mission_id: string | null
+          mission_version: number | null
           owner: string | null
           priority: string
           project_id: string | null
@@ -1436,12 +2026,22 @@ export type Database = {
           status: string
           title: string
           updated_at: string | null
+          work_package: Json | null
+          work_package_hash: string | null
+          work_package_id: string | null
           workflow_id: string | null
+          workforce_role_id: string | null
         }
         Insert: {
+          assigned_at?: string | null
           created_at?: string | null
+          delegation_bound_hash?: string | null
+          delegation_envelope_id?: string | null
           description?: string | null
           id?: string
+          mission_bound_hash?: string | null
+          mission_id?: string | null
+          mission_version?: number | null
           owner?: string | null
           priority?: string
           project_id?: string | null
@@ -1452,12 +2052,22 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string | null
+          work_package?: Json | null
+          work_package_hash?: string | null
+          work_package_id?: string | null
           workflow_id?: string | null
+          workforce_role_id?: string | null
         }
         Update: {
+          assigned_at?: string | null
           created_at?: string | null
+          delegation_bound_hash?: string | null
+          delegation_envelope_id?: string | null
           description?: string | null
           id?: string
+          mission_bound_hash?: string | null
+          mission_id?: string | null
+          mission_version?: number | null
           owner?: string | null
           priority?: string
           project_id?: string | null
@@ -1468,7 +2078,11 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string | null
+          work_package?: Json | null
+          work_package_hash?: string | null
+          work_package_id?: string | null
           workflow_id?: string | null
+          workforce_role_id?: string | null
         }
         Relationships: [
           {
@@ -1490,6 +2104,13 @@ export type Database = {
             columns: ["workflow_id"]
             isOneToOne: false
             referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_tasks_workforce_role_fkey"
+            columns: ["workforce_role_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
             referencedColumns: ["id"]
           },
         ]
@@ -2060,6 +2681,9 @@ export type Database = {
       platform_config: {
         Row: {
           automation_paused: boolean
+          global_daily_sek: number | null
+          global_monthly_sek: number | null
+          global_weekly_sek: number | null
           id: number
           max_daily_renders: number
           max_retry_attempts: number
@@ -2069,6 +2693,9 @@ export type Database = {
         }
         Insert: {
           automation_paused?: boolean
+          global_daily_sek?: number | null
+          global_monthly_sek?: number | null
+          global_weekly_sek?: number | null
           id?: number
           max_daily_renders?: number
           max_retry_attempts?: number
@@ -2078,6 +2705,9 @@ export type Database = {
         }
         Update: {
           automation_paused?: boolean
+          global_daily_sek?: number | null
+          global_monthly_sek?: number | null
+          global_weekly_sek?: number | null
           id?: number
           max_daily_renders?: number
           max_retry_attempts?: number
@@ -2190,21 +2820,80 @@ export type Database = {
           },
         ]
       }
+      project_api_credentials: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          expires_at: string | null
+          id: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          project_id: string
+          revoked_at: string | null
+          scopes: string[]
+          secret_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          expires_at?: string | null
+          id?: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          project_id: string
+          revoked_at?: string | null
+          scopes?: string[]
+          secret_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          expires_at?: string | null
+          id?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          project_id?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          secret_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_api_credentials_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_budgets: {
         Row: {
+          daily_sek: number | null
           monthly_sek: number
           project_id: string
           updated_at: string
+          weekly_sek: number | null
         }
         Insert: {
+          daily_sek?: number | null
           monthly_sek?: number
           project_id: string
           updated_at?: string
+          weekly_sek?: number | null
         }
         Update: {
+          daily_sek?: number | null
           monthly_sek?: number
           project_id?: string
           updated_at?: string
+          weekly_sek?: number | null
         }
         Relationships: [
           {
@@ -2262,29 +2951,41 @@ export type Database = {
       }
       projects: {
         Row: {
+          atlas_mode: string
           color: string
           created_at: string
+          execution_paused: boolean
           id: string
           name: string
           owner_id: string
+          paused_at: string | null
+          paused_reason: string | null
           settings: Json
           slug: string
         }
         Insert: {
+          atlas_mode?: string
           color?: string
           created_at?: string
+          execution_paused?: boolean
           id?: string
           name: string
           owner_id: string
+          paused_at?: string | null
+          paused_reason?: string | null
           settings?: Json
           slug: string
         }
         Update: {
+          atlas_mode?: string
           color?: string
           created_at?: string
+          execution_paused?: boolean
           id?: string
           name?: string
           owner_id?: string
+          paused_at?: string | null
+          paused_reason?: string | null
           settings?: Json
           slug?: string
         }
@@ -2433,73 +3134,136 @@ export type Database = {
       }
       runs: {
         Row: {
+          action_class: string | null
+          action_kind: string | null
+          action_outcome: string | null
+          action_phase: string | null
+          attempt_group: string | null
           attempts: number
+          authorization_id: string | null
+          authorized_at: string | null
+          cancel_reason: string | null
           cancel_requested: boolean
+          cancelled_by: string | null
           claim_id: string | null
           claimed_at: string | null
           context: Json
           created_at: string
+          dispatch_started_at: string | null
           error: string | null
           error_history: Json
           finished_at: string | null
           id: string
+          idempotency_key: string | null
           input: Json
           kind: string | null
           last_error: string | null
           lease_until: string | null
           max_attempts: number
+          outcome_recorded_at: string | null
           policy_class: string | null
           project_id: string
+          reconciliation_reason: string | null
+          reconciliation_required: boolean
+          remote_confirmed_at: string | null
+          remote_operation_id: string | null
+          side_effect_summary: Json | null
           started_at: string | null
           status: string
           steps_snapshot: Json | null
+          target_version_hash: string | null
+          workflow_def_hash: string | null
+          workflow_from_state: string | null
           workflow_id: string | null
+          workflow_instance_id: string | null
         }
         Insert: {
+          action_class?: string | null
+          action_kind?: string | null
+          action_outcome?: string | null
+          action_phase?: string | null
+          attempt_group?: string | null
           attempts?: number
+          authorization_id?: string | null
+          authorized_at?: string | null
+          cancel_reason?: string | null
           cancel_requested?: boolean
+          cancelled_by?: string | null
           claim_id?: string | null
           claimed_at?: string | null
           context?: Json
           created_at?: string
+          dispatch_started_at?: string | null
           error?: string | null
           error_history?: Json
           finished_at?: string | null
           id?: string
+          idempotency_key?: string | null
           input?: Json
           kind?: string | null
           last_error?: string | null
           lease_until?: string | null
           max_attempts?: number
+          outcome_recorded_at?: string | null
           policy_class?: string | null
           project_id: string
+          reconciliation_reason?: string | null
+          reconciliation_required?: boolean
+          remote_confirmed_at?: string | null
+          remote_operation_id?: string | null
+          side_effect_summary?: Json | null
           started_at?: string | null
           status?: string
           steps_snapshot?: Json | null
+          target_version_hash?: string | null
+          workflow_def_hash?: string | null
+          workflow_from_state?: string | null
           workflow_id?: string | null
+          workflow_instance_id?: string | null
         }
         Update: {
+          action_class?: string | null
+          action_kind?: string | null
+          action_outcome?: string | null
+          action_phase?: string | null
+          attempt_group?: string | null
           attempts?: number
+          authorization_id?: string | null
+          authorized_at?: string | null
+          cancel_reason?: string | null
           cancel_requested?: boolean
+          cancelled_by?: string | null
           claim_id?: string | null
           claimed_at?: string | null
           context?: Json
           created_at?: string
+          dispatch_started_at?: string | null
           error?: string | null
           error_history?: Json
           finished_at?: string | null
           id?: string
+          idempotency_key?: string | null
           input?: Json
           kind?: string | null
           last_error?: string | null
           lease_until?: string | null
           max_attempts?: number
+          outcome_recorded_at?: string | null
           policy_class?: string | null
           project_id?: string
+          reconciliation_reason?: string | null
+          reconciliation_required?: boolean
+          remote_confirmed_at?: string | null
+          remote_operation_id?: string | null
+          side_effect_summary?: Json | null
           started_at?: string | null
           status?: string
           steps_snapshot?: Json | null
+          target_version_hash?: string | null
+          workflow_def_hash?: string | null
+          workflow_from_state?: string | null
           workflow_id?: string | null
+          workflow_instance_id?: string | null
         }
         Relationships: [
           {
@@ -2514,6 +3278,60 @@ export type Database = {
             columns: ["workflow_id"]
             isOneToOne: false
             referencedRelation: "workflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "runs_workflow_instance_id_fkey"
+            columns: ["workflow_instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      spend_reservations: {
+        Row: {
+          actual_sek: number | null
+          created_at: string
+          estimated_sek: number
+          id: string
+          idempotency_key: string | null
+          operation: string | null
+          project_id: string
+          provider: string | null
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          actual_sek?: number | null
+          created_at?: string
+          estimated_sek: number
+          id?: string
+          idempotency_key?: string | null
+          operation?: string | null
+          project_id: string
+          provider?: string | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          actual_sek?: number | null
+          created_at?: string
+          estimated_sek?: number
+          id?: string
+          idempotency_key?: string | null
+          operation?: string | null
+          project_id?: string
+          provider?: string | null
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spend_reservations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -2558,6 +3376,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stop_events: {
+        Row: {
+          actor: string
+          created_at: string
+          event: string
+          id: string
+          new_paused: boolean
+          previous_paused: boolean
+          reason: string | null
+          scope_id: string | null
+          scope_type: string
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          event: string
+          id?: string
+          new_paused: boolean
+          previous_paused: boolean
+          reason?: string | null
+          scope_id?: string | null
+          scope_type: string
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          event?: string
+          id?: string
+          new_paused?: boolean
+          previous_paused?: boolean
+          reason?: string | null
+          scope_id?: string | null
+          scope_type?: string
+        }
+        Relationships: []
       }
       token_health: {
         Row: {
@@ -2723,6 +3577,265 @@ export type Database = {
           },
         ]
       }
+      workflow_action_reconciliations: {
+        Row: {
+          action_kind: string
+          authoritative_system: string
+          created_at: string
+          detail: Json
+          id: string
+          idempotency_key: string
+          observed_at: string
+          remote_operation_id: string | null
+          result: string
+          run_id: string
+          target_version_hash: string
+          workflow_instance_id: string
+        }
+        Insert: {
+          action_kind: string
+          authoritative_system: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          idempotency_key: string
+          observed_at: string
+          remote_operation_id?: string | null
+          result: string
+          run_id: string
+          target_version_hash: string
+          workflow_instance_id: string
+        }
+        Update: {
+          action_kind?: string
+          authoritative_system?: string
+          created_at?: string
+          detail?: Json
+          id?: string
+          idempotency_key?: string
+          observed_at?: string
+          remote_operation_id?: string | null
+          result?: string
+          run_id?: string
+          target_version_hash?: string
+          workflow_instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_action_reconciliations_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_action_reconciliations_workflow_instance_id_fkey"
+            columns: ["workflow_instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_defs: {
+        Row: {
+          created_at: string
+          def_hash: string
+          def_key: string
+          id: string
+          spec: Json
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          def_hash: string
+          def_key: string
+          id?: string
+          spec: Json
+          version: number
+        }
+        Update: {
+          created_at?: string
+          def_hash?: string
+          def_key?: string
+          id?: string
+          spec?: Json
+          version?: number
+        }
+        Relationships: []
+      }
+      workflow_evidence: {
+        Row: {
+          attestation: Json
+          check_key: string
+          detail: Json
+          id: string
+          instance_id: string
+          observed_at: string | null
+          payload_hash: string | null
+          producer: string | null
+          producer_type: string | null
+          recorded_at: string
+          result: string
+          source: string
+          state: string
+          target_hash: string | null
+        }
+        Insert: {
+          attestation?: Json
+          check_key: string
+          detail?: Json
+          id?: string
+          instance_id: string
+          observed_at?: string | null
+          payload_hash?: string | null
+          producer?: string | null
+          producer_type?: string | null
+          recorded_at?: string
+          result: string
+          source: string
+          state: string
+          target_hash?: string | null
+        }
+        Update: {
+          attestation?: Json
+          check_key?: string
+          detail?: Json
+          id?: string
+          instance_id?: string
+          observed_at?: string | null
+          payload_hash?: string | null
+          producer?: string | null
+          producer_type?: string | null
+          recorded_at?: string
+          result?: string
+          source?: string
+          state?: string
+          target_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_evidence_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_instances: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id: string
+          instance_key: string
+          last_tick_at: string | null
+          last_tick_outcome: string | null
+          project_id: string
+          status: string
+          wake_at: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id?: string
+          instance_key: string
+          last_tick_at?: string | null
+          last_tick_outcome?: string | null
+          project_id: string
+          status?: string
+          wake_at?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          current_state?: string
+          def_hash?: string
+          def_id?: string
+          def_key?: string
+          def_version?: number
+          id?: string
+          instance_key?: string
+          last_tick_at?: string | null
+          last_tick_outcome?: string | null
+          project_id?: string
+          status?: string
+          wake_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_instances_def_fk"
+            columns: ["def_id", "def_key", "def_version", "def_hash"]
+            isOneToOne: false
+            referencedRelation: "workflow_defs"
+            referencedColumns: ["id", "def_key", "version", "def_hash"]
+          },
+          {
+            foreignKeyName: "workflow_instances_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_transitions: {
+        Row: {
+          actor: string
+          authorization_id: string | null
+          evidence_ref: string | null
+          from_state: string | null
+          id: string
+          instance_id: string
+          occurred_at: string
+          reason: string
+          seq: number
+          to_state: string
+        }
+        Insert: {
+          actor: string
+          authorization_id?: string | null
+          evidence_ref?: string | null
+          from_state?: string | null
+          id?: string
+          instance_id: string
+          occurred_at?: string
+          reason: string
+          seq?: never
+          to_state: string
+        }
+        Update: {
+          actor?: string
+          authorization_id?: string | null
+          evidence_ref?: string | null
+          from_state?: string | null
+          id?: string
+          instance_id?: string
+          occurred_at?: string
+          reason?: string
+          seq?: never
+          to_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_transitions_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflows: {
         Row: {
           active: boolean
@@ -2775,6 +3888,45 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      action_phase_rank: { Args: { p: string }; Returns: number }
+      atlas_memory_health: {
+        Args: never
+        Returns: {
+          events_episodic_90d: number
+          events_total: number
+          events_unconsolidated: number
+          last_event_at: string
+          last_memory_update_at: string
+          memories_active: number
+          memories_archived: number
+          memories_superseded: number
+        }[]
+      }
+      atlas_recall: {
+        Args: {
+          p_episodic_days?: number
+          p_focus_ids?: string[]
+          p_focus_kinds?: string[]
+          p_limit?: number
+          p_project_ids?: string[]
+        }
+        Returns: {
+          confidence: number
+          entity_id: string
+          entity_kind: string
+          evidence_count: number
+          focus_match: boolean
+          id: string
+          kind: string
+          last_seen_at: string
+          memory_class: string
+          pinned: boolean
+          project_id: string
+          salience: number
+          scope: string
+          summary: string
+        }[]
+      }
       atlas_record_event: {
         Args: {
           p_confidence?: number
@@ -2793,30 +3945,98 @@ export type Database = {
         }
         Returns: string
       }
+      budget_headroom: {
+        Args: { p_stale_minutes?: number }
+        Returns: {
+          held_sek: number
+          limit_sek: number
+          project_id: string
+          remaining_sek: number
+          scope: string
+          slug: string
+          spent_sek: number
+        }[]
+      }
+      budget_release: { Args: { p_reservation_id: string }; Returns: number }
+      budget_reserve: {
+        Args: {
+          p_estimated_sek: number
+          p_idempotency_key?: string
+          p_operation?: string
+          p_project_id: string
+          p_provider?: string
+          p_stale_minutes?: number
+        }
+        Returns: {
+          allowed: boolean
+          binding_scope: string
+          budget_sek: number
+          committed_sek: number
+          headroom_sek: number
+          reason: string
+          reservation_id: string
+          reserved_sek: number
+        }[]
+      }
+      budget_scope_state: {
+        Args: { p_project_id: string; p_stale_minutes?: number }
+        Returns: {
+          held_sek: number
+          limit_sek: number
+          remaining_sek: number
+          scope: string
+          spent_sek: number
+        }[]
+      }
+      budget_settle: {
+        Args: { p_actual_sek?: number; p_reservation_id: string }
+        Returns: number
+      }
       claim_runs: {
         Args: { p_lease_seconds?: number; p_limit: number }
         Returns: {
+          action_class: string | null
+          action_kind: string | null
+          action_outcome: string | null
+          action_phase: string | null
+          attempt_group: string | null
           attempts: number
+          authorization_id: string | null
+          authorized_at: string | null
+          cancel_reason: string | null
           cancel_requested: boolean
+          cancelled_by: string | null
           claim_id: string | null
           claimed_at: string | null
           context: Json
           created_at: string
+          dispatch_started_at: string | null
           error: string | null
           error_history: Json
           finished_at: string | null
           id: string
+          idempotency_key: string | null
           input: Json
           kind: string | null
           last_error: string | null
           lease_until: string | null
           max_attempts: number
+          outcome_recorded_at: string | null
           policy_class: string | null
           project_id: string
+          reconciliation_reason: string | null
+          reconciliation_required: boolean
+          remote_confirmed_at: string | null
+          remote_operation_id: string | null
+          side_effect_summary: Json | null
           started_at: string | null
           status: string
           steps_snapshot: Json | null
+          target_version_hash: string | null
+          workflow_def_hash: string | null
+          workflow_from_state: string | null
           workflow_id: string | null
+          workflow_instance_id: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -2836,6 +4056,213 @@ export type Database = {
         }[]
       }
       omnira_applied_migrations: { Args: never; Returns: string[] }
+      request_run_cancel: {
+        Args: {
+          p_actor?: string
+          p_project_id: string
+          p_reason?: string
+          p_run_id: string
+        }
+        Returns: number
+      }
+      stop_set_platform_automation: {
+        Args: { p_actor: string; p_paused: boolean; p_reason?: string }
+        Returns: {
+          changed: boolean
+          event_id: string
+          new_paused: boolean
+          previous_paused: boolean
+        }[]
+      }
+      stop_set_project_execution: {
+        Args: {
+          p_actor: string
+          p_paused: boolean
+          p_project_id: string
+          p_reason?: string
+        }
+        Returns: {
+          changed: boolean
+          event_id: string
+          new_paused: boolean
+          previous_paused: boolean
+        }[]
+      }
+      stop_state: {
+        Args: { p_project_id?: string }
+        Returns: {
+          global_paused: boolean
+          global_paused_at: string
+          global_paused_reason: string
+          project_found: boolean
+          project_paused: boolean
+          project_paused_at: string
+          project_paused_reason: string
+          project_requested: boolean
+        }[]
+      }
+      workflow_append_transition: {
+        Args: {
+          p_actor: string
+          p_authorization_id?: string
+          p_evidence_ref?: string
+          p_from_state: string
+          p_instance_id: string
+          p_reason: string
+          p_to_state: string
+        }
+        Returns: {
+          actor: string
+          authorization_id: string | null
+          evidence_ref: string | null
+          from_state: string | null
+          id: string
+          instance_id: string
+          occurred_at: string
+          reason: string
+          seq: number
+          to_state: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workflow_transitions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      workflow_claim_due: {
+        Args: { p_limit?: number; p_visibility_seconds?: number }
+        Returns: {
+          closed_at: string | null
+          created_at: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id: string
+          instance_key: string
+          last_tick_at: string | null
+          last_tick_outcome: string | null
+          project_id: string
+          status: string
+          wake_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "workflow_instances"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      workflow_clear_wake: {
+        Args: { p_actor: string; p_instance_id: string; p_reason: string }
+        Returns: {
+          closed_at: string | null
+          created_at: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id: string
+          instance_key: string
+          last_tick_at: string | null
+          last_tick_outcome: string | null
+          project_id: string
+          status: string
+          wake_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workflow_instances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      workflow_instantiate: {
+        Args: {
+          p_actor: string
+          p_def_id: string
+          p_initial_state: string
+          p_instance_key: string
+          p_project_id: string
+          p_reason: string
+        }
+        Returns: {
+          closed_at: string | null
+          created_at: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id: string
+          instance_key: string
+          last_tick_at: string | null
+          last_tick_outcome: string | null
+          project_id: string
+          status: string
+          wake_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workflow_instances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      workflow_projection_drift: {
+        Args: never
+        Returns: {
+          derived: string
+          instance_id: string
+          projected: string
+        }[]
+      }
+      workflow_rearm: {
+        Args: { p_authorization_id: string; p_instance_id: string }
+        Returns: number
+      }
+      workflow_record_tick: {
+        Args: {
+          p_detail?: Json
+          p_instance_id: string
+          p_next_wake_at?: string
+          p_outcome: string
+        }
+        Returns: undefined
+      }
+      workflow_schedule_wake: {
+        Args: {
+          p_actor: string
+          p_instance_id: string
+          p_reason: string
+          p_wake_at: string
+        }
+        Returns: {
+          closed_at: string | null
+          created_at: string
+          current_state: string
+          def_hash: string
+          def_id: string
+          def_key: string
+          def_version: number
+          id: string
+          instance_key: string
+          last_tick_at: string | null
+          last_tick_outcome: string | null
+          project_id: string
+          status: string
+          wake_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workflow_instances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never

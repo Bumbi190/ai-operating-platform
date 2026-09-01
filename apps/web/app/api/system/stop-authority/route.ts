@@ -77,23 +77,7 @@ export async function GET() {
   // The ledger. Platform events plus this caller's project events, newest first.
   let events: Record<string, unknown>[] = []
   try {
-    // `stop_events` is not in database.types.ts yet: this migration is
-    // deliberately NOT applied in this pass, and the generated types are
-    // regenerated from the applied schema. The cast is scoped to this one query
-    // so the rest of the route keeps its types; it goes away when the types are
-    // regenerated after apply.
-    const q = (db as unknown as {
-      from: (t: string) => {
-        select: (c: string) => {
-          order: (c: string, o: { ascending: boolean }) => {
-            limit: (n: number) => {
-              or: (f: string) => Promise<{ data: unknown[] | null }>
-              eq: (c: string, v: string) => Promise<{ data: unknown[] | null }>
-            }
-          }
-        }
-      }
-    })
+    const q = db
       .from('stop_events')
       .select('id, scope_type, scope_id, event, previous_paused, new_paused, '
             + 'actor, reason, created_at')
@@ -116,7 +100,10 @@ export async function GET() {
             // broad read is one refactor away from being dropped.
             ? await q.or(projectFilter)
             : { data: [] }
-    events = ((data ?? []) as Record<string, unknown>[]).map(e =>
+    // PostgREST types this result as a union that includes an error shape, so it
+    // is narrowed through `unknown`. The row shape is fixed by the explicit
+    // column list above.
+    events = (((data ?? []) as unknown) as Record<string, unknown>[]).map(e =>
       isOperator || e.actor === selfActor ? e : { ...e, actor: null })
   } catch (e) {
     console.error('[stop-authority] event read failed:',

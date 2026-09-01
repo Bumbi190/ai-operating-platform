@@ -13,6 +13,7 @@ import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import type { WorkflowStep } from '@/lib/supabase/types'
+import { projectScope } from '@/lib/governance/execution-stop'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -47,6 +48,8 @@ export async function runSteps(
     })
 
     const result = await runStep({
+      // AUTONOMOUS: the legacy runner is reached from the drain, never a human.
+      execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId }) },
       systemPrompt: agent.system_prompt,
       userMessage,
       model: agent.model,

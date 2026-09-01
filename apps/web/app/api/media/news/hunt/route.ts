@@ -31,6 +31,8 @@ import {
   claudeEditorialPick,
 } from '@/lib/media/news-hunter'
 import type { HunterCandidate } from '@/lib/media/news-hunter'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120  // RSS + HN + Reddit + Claude
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
         // ── Step 4: Claude editorial pick ─────────────────────────────────────
         emit({ step: 'editorial', label: 'Claude is picking the best stories...', progress: 68 })
 
-        const { candidates, summary } = await claudeEditorialPick(scored, max_candidates)
+        const { candidates, summary } = await claudeEditorialPick({ context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId: project_id }) }, scored, max_candidates)
 
         // ── Step 5: Auto-save #1 if requested ────────────────────────────────
         if (auto_save && candidates.length > 0) {

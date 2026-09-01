@@ -25,12 +25,15 @@ import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { detectSlop, slopToQualityScore } from './slop-detector'
 import { toJson } from '@/lib/supabase/json'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type ContentType = 'script' | 'hook' | 'caption' | 'image_prompt' | 'news' | 'text'
 
 export interface EvaluationInput {
+  /** REQUIRED execution classification, propagated to the paid hook scorer. */
+  execution: ExecutionContract
   content: string
   contentType: ContentType
   /** Optional: run the more expensive Haiku scoring pass */
@@ -229,10 +232,11 @@ function scoreBrandAlignment(text: string): { score: number; hardFails: string[]
  * Only called when deepScore: true.
  */
 async function scoreHookWithHaiku(
-  hookText: string
+  hookText: string,
+  execution: ExecutionContract,
 ): Promise<{ score: number; passSignals: string[]; issues: ScoreIssue[]; suggestion: string | null }> {
   const client = getAnthropic({
-    project: PLATFORM_COMPAT_PROJECT, agent: 'Content Evaluator', operation: 'Evaluate Content',
+    project: PLATFORM_COMPAT_PROJECT, execution, agent: 'Content Evaluator', operation: 'Evaluate Content',
   })
 
   const prompt = `You are a script quality evaluator for "The Prompt" — an AI news channel.
@@ -314,7 +318,7 @@ export async function evaluate(input: EvaluationInput): Promise<EvaluationResult
   if (deepScore && (contentType === 'script' || contentType === 'hook')) {
     // Extract hook: first 1–3 sentences
     const hookText = content.split(/[.!?]+/).slice(0, 3).join('. ')
-    const hookResult = await scoreHookWithHaiku(hookText)
+    const hookResult = await scoreHookWithHaiku(hookText, input.execution)
     hookStrength = hookResult.score
     hookPassSignals = hookResult.passSignals
     hookIssues = hookResult.issues

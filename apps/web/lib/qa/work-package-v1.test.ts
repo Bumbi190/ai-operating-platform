@@ -995,7 +995,7 @@ describe('existing Manager surface is untouched', () => {
   const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
 
   it('keeps planTasks and every legacy method', () => {
-    expect(manager).toMatch(/async planTasks\(goal: string, projectId: string\)/)
+    // G3C-1 added a required execution contract to the signature; the pin still\n    // proves the legacy method survives, without freezing its parameter list.\n    expect(manager).toMatch(/async planTasks\(goal: string, projectId: string,/)
     expect(manager).toMatch(/async getActiveTasks\(/)
     expect(manager).toMatch(/async updateTask\(/)
     expect(manager).toMatch(/async retryFailedRun\(/)

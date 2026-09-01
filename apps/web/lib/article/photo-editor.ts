@@ -22,6 +22,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const PHOTO_EDITOR_MODEL = 'claude-sonnet-4-6'
 const SUBMIT_BRIEF_TOOL = 'submit_brief'
@@ -39,6 +40,8 @@ export const EDITORIAL_STYLES = [
 export type EditorialStyle = (typeof EDITORIAL_STYLES)[number]
 
 export interface PhotoEditorInput {
+  /** REQUIRED execution classification, propagated to the paid boundary. */
+  execution: ExecutionContract
   title: string
   summary: string | null
   body: string | null
@@ -179,7 +182,7 @@ function findToolUse(content: unknown): { input: unknown } | undefined {
  */
 export async function runPhotoEditor(input: PhotoEditorInput): Promise<EditorBrief> {
   const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Photo Editor', operation: 'Generate Editor Brief',
+    project: MEDIA_PIPELINE_PROJECT, execution: input.execution, agent: 'Photo Editor', operation: 'Generate Editor Brief',
   })
   const response = await claude.messages.create({
     model: PHOTO_EDITOR_MODEL,

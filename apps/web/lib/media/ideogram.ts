@@ -14,6 +14,7 @@ import {
   type EditorBrief,
   type EditorialStyle,
 } from '@/lib/article/photo-editor'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export interface IdeogramImage {
   url: string
@@ -91,6 +92,7 @@ export interface ArticleHeroRenderResult {
  */
 export async function generateArticleHeroImage(
   brief: EditorBrief,
+  execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<ArticleHeroRenderResult> {
   const styleRef = STYLE_REFERENCE_MAP[brief.editorial_style]
@@ -116,7 +118,7 @@ export async function generateArticleHeroImage(
   }
 
   const url = await generateIdeogramV3(
-    { project, operation: 'Article Hero Image (brief)', agent: 'Image Director' },
+    { project, execution, operation: 'Article Hero Image (brief)', agent: 'Image Director' },
     { ...input, rendering_speed: 'DEFAULT' },
   )
 
@@ -129,10 +131,11 @@ export async function generateArticleHeroImage(
  */
 export async function generateIdeogramImage(
   prompt: string,
+  execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<string> {
   return generateIdeogramV3(
-    { project, operation: 'Scene Image', agent: 'Image Director' },
+    { project, execution, operation: 'Scene Image', agent: 'Image Director' },
     {
       prompt,
       aspect_ratio: '9x16',
@@ -155,10 +158,11 @@ export async function generateIdeogramImage(
 export async function generateNewsImage(
   headline: string,
   script: string,
+  execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<string> {
   const client = getAnthropic({
-    project, agent: 'Image Director', operation: 'Plan Scenes',
+    project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 
   // Step 1: Claude writes a tight photojournalism prompt grounded in the news story
@@ -211,7 +215,7 @@ Output ONLY the final prompt string. No explanation.`,
 
   // Step 2: Generate with REALISTIC mode — photojournalism aesthetic
   return generateIdeogramV3(
-    { project, operation: 'News Image', agent: 'Image Director' },
+    { project, execution, operation: 'News Image', agent: 'Image Director' },
     {
       prompt: visualPrompt,
       aspect_ratio: '9x16',
@@ -249,6 +253,7 @@ export async function generateNewsImages(
   headline: string,
   script: string,
   count: number = 3,
+  execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
   /**
    * Business identity of the job these images belong to — typically a script id.
@@ -265,7 +270,7 @@ export async function generateNewsImages(
   spendSubject?: string,
 ): Promise<string[]> {
   const client = getAnthropic({
-    project, agent: 'Image Director', operation: 'Plan Scenes',
+    project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 
   // ── Step 1: Scene planning ──────────────────────────────────────────────────
@@ -378,7 +383,7 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 
       return generateIdeogramV3(
         {
-          project, operation: 'Scene Image', agent: 'Image Director',
+          project, execution, operation: 'Scene Image', agent: 'Image Director',
           idempotencyKey: spendSubject
             ? spendIdempotencyKey({ project, provider: 'ideogram',
                                     operation: 'Scene Image', subject: `${spendSubject}#${i}` })
@@ -406,11 +411,12 @@ Return ONLY valid JSON — array of ${count} scene objects, no markdown:
 export async function generateSceneImages(
   script: string,
   hook: string,
+  execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<IdeogramImage[]> {
   // Use Claude to segment script → visual scene descriptions
   const client = getAnthropic({
-    project, agent: 'Image Director', operation: 'Plan Scenes',
+    project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 
   const systemPrompt = `You are the editorial photography director for a premium AI documentary short-form series — think Bloomberg QuickTake, Wired Magazine, BBC Click, and Apple product films.
@@ -497,7 +503,7 @@ Generate 8 cinematic scene prompts for this video.`
   const images = await Promise.all(
     scenes.map(async (scene, i) => {
       console.log(`  Scene ${i + 1}: ${scene.prompt.slice(0, 60)}...`)
-      const url = await generateIdeogramImage(scene.prompt)
+      const url = await generateIdeogramImage(scene.prompt, execution)
       return { url, prompt: scene.prompt }
     }),
   )

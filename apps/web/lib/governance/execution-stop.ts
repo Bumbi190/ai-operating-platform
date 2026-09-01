@@ -39,6 +39,10 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+// TYPE-ONLY, and deliberately so: `governed-spend` imports this module for the
+// dispatch check, so a value import here would be a cycle. `import type` is
+// erased at compile time, leaving no runtime edge.
+import type { ProjectRef } from '@/lib/cost/governed-spend'
 
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
 
@@ -157,8 +161,15 @@ export const OPERATOR_EXECUTION_PATHS_FOR_G3C = [
  */
 export const DUAL_MODE_EXECUTION_PATHS_FOR_G3C = [
   'app/api/media/breaking/route.ts',                     // cron OR operator
-  'app/api/content/articles/operator-generate/route.ts', // cron OR operator
 ] as const
+//
+// CORRECTED IN G3C-1. `app/api/content/articles/operator-generate/route.ts` was
+// listed here and is NOT dual-mode: it authenticates a session and returns 401
+// otherwise. Its only mention of CRON_SECRET is a comment explaining that it
+// deliberately does not use cron auth — and the G3A rot-guard matched that
+// comment, which is why a prose mention passed for an auth branch. The
+// replacement guard reads the comparison instead; see
+// execution-contract-propagation.test.ts.
 
 export type StopScope = 'PLATFORM_AUTOMATION' | 'PROJECT_EXECUTION'
 
@@ -204,6 +215,131 @@ export interface ResolveExecutionStopInput {
   context: ExecutionContext
   /** Omit for platform-level work that belongs to no single project. */
   projectId?: string | null
+}
+
+
+// ─── The execution contract ─────────────────────────────────────────────────
+
+/**
+ * WHICH STOP AUTHORITIES BIND THIS WORK.
+ *
+ * This is NOT the billing project, and the distinction is load-bearing rather
+ * than pedantic: `PLATFORM_COMPAT_PROJECT_SLUG` and `MEDIA_PIPELINE_PROJECT_SLUG`
+ * are the SAME slug (`ai-media-automation`). Atlas chat and Atlas TTS are billed
+ * to it for historical attribution reasons while belonging to no project at all.
+ *
+ * If stop scope were derived from billing attribution, pausing the media project
+ * would silently take Atlas offline — an operator lockout produced by an
+ * accounting decision. So scope is declared, never inferred.
+ *
+ *   GLOBAL_ONLY  platform-level work that belongs to no project. Only the global
+ *                authority binds it.
+ *   PROJECT      work that genuinely belongs to one project. BOTH authorities
+ *                bind it, and the project named here is the EXECUTION project,
+ *                which may differ from the billing project.
+ */
+export type ExecutionScope =
+  | { kind: 'GLOBAL_ONLY' }
+  | { kind: 'PROJECT'; project: ProjectRef }
+
+/**
+ * What every billable dispatch must declare about itself.
+ *
+ * Both fields are REQUIRED and neither has a default. That is the whole point:
+ * an optional context would be filled in by whichever value made the code
+ * compile, and the value that makes code compile is the permissive one. A caller
+ * that cannot say why it is executing has not established that it may.
+ */
+export interface ExecutionContract {
+  context: ExecutionContext
+  scope: ExecutionScope
+}
+
+/** Platform-level work: only the global authority binds it. */
+export const GLOBAL_ONLY: ExecutionScope = { kind: 'GLOBAL_ONLY' }
+/** Work belonging to one project. Names the EXECUTION project, not the billed one. */
+export const projectScope = (project: ProjectRef): ExecutionScope =>
+  ({ kind: 'PROJECT', project })
+
+/**
+ * A stop refused this execution.
+ *
+ * Deliberately NOT a `SpendRefusedError`. Budget and stop are different
+ * authorities answering different questions — "can we afford it" versus "may
+ * anything run at all" — and a caller that cannot tell them apart cannot report
+ * honestly, retry correctly, or explain itself to an operator. Collapsing them
+ * would also let a stop look like a transient budget condition worth retrying.
+ */
+export class ExecutionStoppedError extends Error {
+  readonly reason: StopRefusalReason
+  readonly context: ExecutionContext
+  readonly scopeKind: ExecutionScope['kind']
+  readonly decision: StopDecision
+
+  constructor(args: {
+    reason: StopRefusalReason
+    context: ExecutionContext
+    scopeKind: ExecutionScope['kind']
+    decision: StopDecision
+    provider?: string
+    operation?: string
+  }) {
+    const where = args.provider && args.operation
+      ? ` (${args.provider}/${args.operation})` : ''
+    super(`execution stopped: ${args.reason} [${args.context}/${args.scopeKind}]${where}`)
+    this.name = 'ExecutionStoppedError'
+    this.reason = args.reason
+    this.context = args.context
+    this.scopeKind = args.scopeKind
+    // The structured decision, which carries only stable codes and observed
+    // booleans — never a raw database message, SQL, or credential.
+    this.decision = args.decision
+  }
+}
+
+/**
+ * Resolve a contract against the canonical authority.
+ *
+ * The EXECUTION project is resolved here, independently of any billing lookup.
+ * Nothing in this function can see `resolveGovernedProjectId`'s result, which is
+ * what makes "billing is not authority" structural rather than a convention.
+ *
+ * A PROJECT scope whose project cannot be resolved is `stop_state_unavailable`
+ * for the enforcing contexts — an unresolvable scope is not an absent one.
+ */
+export async function resolveExecutionStopForContract(
+  db: SupabaseClient,
+  contract: ExecutionContract,
+  resolveProjectId: (ref: ProjectRef) => Promise<string | null>,
+): Promise<StopDecision> {
+  if (contract.scope.kind === 'GLOBAL_ONLY') {
+    return resolveExecutionStop(db, { context: contract.context })
+  }
+
+  let projectId: string | null = null
+  try {
+    projectId = await resolveProjectId(contract.scope.project)
+  } catch {
+    projectId = null
+  }
+
+  if (projectId === null) {
+    // Interactive assistance keeps G3A's semantics: it is reported to, never
+    // enforced against, even when a scope cannot be established.
+    const assistanceOnly = contract.context === 'OPERATOR_INTERACTIVE'
+    return {
+      allowed: assistanceOnly,
+      context: contract.context,
+      scopesEvaluated: ['PLATFORM_AUTOMATION', 'PROJECT_EXECUTION'],
+      resolution: 'UNRESOLVED',
+      globalPaused: null,
+      projectPaused: null,
+      reason: assistanceOnly ? null : 'stop_state_unavailable',
+      observed: null,
+    }
+  }
+
+  return resolveExecutionStop(db, { context: contract.context, projectId })
 }
 
 // ─── Reading the state ───────────────────────────────────────────────────────

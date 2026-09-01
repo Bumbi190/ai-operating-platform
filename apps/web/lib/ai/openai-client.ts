@@ -33,6 +33,7 @@ import {
   withGovernedSpend,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
 
@@ -47,6 +48,13 @@ const CHARS_PER_TOKEN = 3
 const OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK = 0.015
 
 export interface OpenAIGovernanceContext {
+  /**
+   * REQUIRED execution classification — why this work runs and which stop
+   * authorities bind it. Propagated to the governed boundary, never defaulted
+   * here: this module serves several upstream execution modes, so a default set
+   * at this layer would be a guess made far from the only place that knows.
+   */
+  execution: ExecutionContract
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   operation: string
@@ -113,7 +121,7 @@ export async function openAIChatCompletion(
 ): Promise<any> {
   const estimatedSek = await estimateOpenAIChatSek(params as any)
   return withGovernedSpend(
-    { project: ctx.project, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       try {
         return await raw().chat.completions.create(params as any)
@@ -135,7 +143,7 @@ export async function openAIImageGenerate(
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
   return withGovernedSpend(
-    { project: ctx.project, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       let res: any
       try {
@@ -160,7 +168,7 @@ export async function openAIImageEdit(
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
   return withGovernedSpend(
-    { project: ctx.project, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       let res: any
       try {
@@ -196,7 +204,7 @@ export async function openAISpeech(
   const estimatedSek = await estimateOpenAISpeechSek(charCount)
 
   return withGovernedSpend(
-    { project: ctx.project, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       let res: Response
       try {

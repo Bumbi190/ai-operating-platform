@@ -15,7 +15,9 @@
  *   • uploadArticleHeroImage()  — lib/media/storage.ts (sibling of
  *                                 uploadSceneImage; same media-assets bucket)
  *   • withRetry({ attempts: 2 }) — lib/media/retry.ts (same primitive step2 uses)
- *   • checkAutomationPaused()   — lib/media/safeguards.ts (operator's global pause)
+ *   • resolveExecutionEligibility() — lib/governance/execution-preflight.ts
+ *                                 (canonical G3 authority; replaced the legacy
+ *                                  checkAutomationPaused in G3C-1)
  *   • sendPipelineAlert()       — lib/media/alert.ts (Brevo on hard failure)
  *   • logImageCost()            — lib/cost/track.ts
  *
@@ -37,7 +39,7 @@ import {
 } from '@/lib/media/ideogram'
 import { uploadArticleHeroImage } from '@/lib/media/storage'
 import { withRetry } from '@/lib/media/retry'
-import { checkAutomationPaused } from '@/lib/media/safeguards'
+import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logImageCost } from '@/lib/cost/track'
 import {
@@ -47,6 +49,7 @@ import {
   type PhotoEditorInput,
 } from '@/lib/article/photo-editor'
 import { syncPublishedArticle, type SyncResult } from '@/lib/publishing/sync'
+import { projectScope, type ExecutionContract, type ExecutionContext } from '@/lib/governance/execution-stop'
 
 /** Feature flag: when '1', the brief drives image generation (Phase 2). */
 function isBriefDrivenEnabled(): boolean {
@@ -60,7 +63,21 @@ export type HeroImageResult =
   | { ok: true;  url: string; status: 'ready'; sync: SyncResult }
   | { ok: false; url: null;   status: 'failed' | 'skipped'; reason: string }
 
-export async function generateHeroImage(articleId: string): Promise<HeroImageResult> {
+export async function generateHeroImage(
+  /**
+   * REQUIRED execution CONTEXT — why this work is running. The caller knows
+   * that; only this function knows WHICH project it belongs to.
+   *
+   * The scope is deliberately not a parameter. Hero-image execution belongs to
+   * the article's own project, and that ownership is part of this function's
+   * canonical contract rather than something a caller may assert: the row is
+   * loaded here, the upload uses `article.project_id`, and the cost is logged
+   * against it. Accepting a caller-supplied scope would let a caller name a
+   * project the article does not belong to.
+   */
+  context: ExecutionContext,
+  articleId: string,
+): Promise<HeroImageResult> {
   const db = createAdminClient()
 
   // ── Load article row ──────────────────────────────────────────────────────
@@ -94,10 +111,29 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     return { ok: false, url: null, status: 'skipped', reason: 'already_generating' }
   }
 
-  // ── Reuse: respect the operator's global automation pause ─────────────────
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    return { ok: false, url: null, status: 'skipped', reason: pauseCheck.reason ?? 'automation_paused' }
+  // The article's project IS the execution authority — established here, from
+  // the row itself, not asserted by the caller and not inherited from billing.
+  const execution: ExecutionContract =
+    { context, scope: projectScope({ projectId: article.project_id }) }
+
+  // ── EARLY canonical eligibility (G3C-1) ───────────────────────────────────
+  //
+  // Replaces the legacy `checkAutomationPaused`, which read the raw global flag
+  // and knew nothing about project scope or execution context — two authorities
+  // for one question. This asks the CANONICAL authority with the SAME contract
+  // the paid boundary will use.
+  //
+  // Purely an optimisation: without it this path would claim the row and run the
+  // photo-editor brief (itself a paid Anthropic call) before discovering it is
+  // stopped. The decision is NOT carried forward — `withGovernedSpend` resolves
+  // a fresh one immediately before dispatch, because a pause can commit in the
+  // gap between here and there.
+  const eligibility = await resolveExecutionEligibility(execution)
+  if (!eligibility.allowed) {
+    return {
+      ok: false, url: null, status: 'skipped',
+      reason: eligibility.reason ?? 'stop_state_unavailable',
+    }
   }
 
   // ── Claim the work ────────────────────────────────────────────────────────
@@ -129,7 +165,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     // Brief-first: try synchronously so we can use it for rendering. On any
     // failure we null it and fall through to the writer path.
     try {
-      const input = extractEditorInput(article)
+      const input = extractEditorInput(execution, article)
       brief = await runPhotoEditor(input)
       await persistBrief(db, articleId, brief)
     } catch (err) {
@@ -139,7 +175,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     }
   } else {
     // Shadow mode (Phase 1): brief runs in parallel, never influences image.
-    briefShadowPromise = runEditorBriefShadow(db, article)
+    briefShadowPromise = runEditorBriefShadow(db, article, execution)
   }
 
   // ── Generate + upload (with retry, mirroring step2's call pattern) ────────
@@ -151,7 +187,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     if (brief) {
       // Phase 2 brief-driven path.
       const result = await withRetry(
-        () => generateArticleHeroImage(brief!),
+        () => generateArticleHeroImage(brief!, execution),
         { attempts: 2, label: 'Ideogram brief hero' },
       )
       ideogramUrl = result.url
@@ -160,7 +196,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
     } else {
       // Existing writer-prompt path (also used as fallback when flag-on brief fails).
       ideogramUrl = await withRetry(
-        () => generateNewsImage(headlineInput, bodyInput),
+        () => generateNewsImage(headlineInput, bodyInput, execution),
         { attempts: 2, label: 'Ideogram hero' },
       )
       source = 'fallback_writer'
@@ -244,7 +280,7 @@ export async function generateHeroImage(articleId: string): Promise<HeroImageRes
  * category, and tags out of the payload jsonb (which is how the publish
  * contract carries them). Used by both flag-on and flag-off paths.
  */
-function extractEditorInput(article: {
+function extractEditorInput(execution: ExecutionContract, article: {
   title: string | null
   summary: string | null
   payload: Record<string, unknown> | null
@@ -276,6 +312,7 @@ function extractEditorInput(article: {
         .filter(Boolean)
     : []
   return {
+    execution,
     title: article.title ?? '',
     summary: article.summary,
     body,
@@ -320,9 +357,10 @@ async function runEditorBriefShadow(
     summary: string | null
     payload: Record<string, unknown> | null
   },
+  execution: ExecutionContract,
 ): Promise<void> {
   try {
-    const brief = await runPhotoEditor(extractEditorInput(article))
+    const brief = await runPhotoEditor(extractEditorInput(execution, article))
     await persistBrief(db, article.id, brief)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

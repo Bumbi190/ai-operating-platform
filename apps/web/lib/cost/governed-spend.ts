@@ -56,6 +56,10 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
+import {
+  ExecutionStoppedError, resolveExecutionStopForContract,
+  type ExecutionContract,
+} from '@/lib/governance/execution-stop'
 
 /**
  * Which project a billable call is charged to. Required — there is no default.
@@ -180,8 +184,25 @@ export async function resolveGovernedProjectId(
 }
 
 export interface GovernedSpendInput {
-  /** Required. No default, no fallback. */
+  /**
+   * BILLING attribution. Required, no default, no fallback.
+   *
+   * This is which budget pays. It is NOT which stop authority binds — see
+   * `execution`. The two are deliberately separate fields because they are
+   * separate facts: `PLATFORM_COMPAT_PROJECT_SLUG` and
+   * `MEDIA_PIPELINE_PROJECT_SLUG` are the same slug, so deriving authority from
+   * attribution would let a media-project pause take Atlas offline.
+   */
   project: ProjectRef
+  /**
+   * EXECUTION classification. Required, no default, no optional shape.
+   *
+   * Says why this work is running (context) and which stop authorities bind it
+   * (scope). Required so a billable dispatch cannot reach a provider without
+   * having declared itself: an optional field would be omitted exactly where the
+   * omission is least safe.
+   */
+  execution: ExecutionContract
   /** Ledger provider name, e.g. 'anthropic'. Matches cost_events.provider. */
   provider: string
   /** What is being paid for, e.g. 'messages.create'. */
@@ -271,6 +292,56 @@ export async function withGovernedSpend<T>(
         + `${verdict.headroomSek ?? 'unknown'} SEK`
         + (verdict.bindingScope ? ` (binding scope: ${verdict.bindingScope})` : ''),
       verdict,
+    })
+  }
+
+  // ── G3C-1 · FINAL DISPATCH STOP CHECK ─────────────────────────────────────
+  //
+  // The last safe boundary before money leaves. It runs AFTER the reservation
+  // and IMMEDIATELY BEFORE `run()`, with nothing between it and dispatch.
+  //
+  // Precisely: a stopped call DOES briefly hold a reservation — it is taken
+  // before this check — but it does not RETAIN that headroom, because the
+  // refusal path releases it below. Ordering is deliberate: reserving first
+  // means a stopped call and a permitted one contend for headroom identically,
+  // so the stop cannot become a way to jump the budget queue.
+  //
+  // A FRESH decision, every time. Any earlier check — in a route, an executor,
+  // a previous retry attempt — is an optimisation, not the guarantee: the pause
+  // may have committed since. Caching a StopDecision here would reintroduce
+  // exactly the stale-read window G3B closed in SQL.
+  //
+  // The EXECUTION project is resolved independently of the billing project just
+  // resolved above. `resolved.projectId` is deliberately not passed anywhere
+  // near this call.
+  const decision = await resolveExecutionStopForContract(
+    createAdminClient(),
+    input.execution,
+    async ref => {
+      const r = await resolveGovernedProjectId(ref)
+      return r.ok ? r.projectId : null
+    },
+  )
+
+  if (!decision.allowed) {
+    // KNOWN-NOT-DISPATCHED: the provider was never called, so the headroom is
+    // free. Release rather than settle.
+    try {
+      await releaseSpend(verdict.reservationId)
+    } catch (releaseError) {
+      // A failed release must NEVER become a dispatch. The reservation stays
+      // conservatively open and ages out through normal stale handling; the one
+      // thing that does not happen is calling the provider anyway.
+      console.error('[governed-spend] release after stop refusal failed; the '
+        + 'refusal stands and the reservation will age out:',
+        releaseError instanceof Error ? releaseError.message : String(releaseError))
+    }
+    throw new ExecutionStoppedError({
+      reason: decision.reason ?? 'stop_state_unavailable',
+      context: input.execution.context,
+      scopeKind: input.execution.scope.kind,
+      decision,
+      provider, operation,
     })
   }
 

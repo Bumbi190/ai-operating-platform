@@ -19,6 +19,7 @@ import { estimateVoiceSek } from '@/lib/cost/budget-gate'
 import {
   MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, withGovernedSpend, type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export interface WordTiming {
   word: string
@@ -42,6 +43,12 @@ export type { BrandVoiceName as VoiceName }
  */
 export async function generateVoiceover(
   text: string,
+  /**
+   * REQUIRED execution classification. Positional and non-optional on purpose:
+   * this helper is reached from cron pipelines and from operator-triggered
+   * regeneration, and only the caller knows which.
+   */
+  execution: ExecutionContract,
   voiceName: BrandVoiceName = 'victoria',
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
   /**
@@ -64,7 +71,7 @@ export async function generateVoiceover(
   const estimatedSek = await estimateVoiceSek(text.length)
 
   return withGovernedSpend(
-    { project, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey },
+    { project, execution, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey },
     async () => {
       let response: Response
       try {
@@ -183,6 +190,8 @@ function buildWordTimings(alignment: {
 export async function generateSoundEffect(
   prompt: string,
   durationSeconds: number,
+  /** REQUIRED execution classification — see generateVoiceover. */
+  execution: ExecutionContract,
   project: ProjectRef,
   promptInfluence = 0.3,
 ): Promise<Buffer> {
@@ -195,7 +204,7 @@ export async function generateSoundEffect(
   const estimatedSek = await estimateVoiceSek(Math.ceil(durationSeconds * 200))
 
   return withGovernedSpend(
-    { project, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek },
+    { project, execution, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek },
     async () => {
       let res: Response
       try {

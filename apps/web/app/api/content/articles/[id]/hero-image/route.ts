@@ -18,6 +18,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateHeroImage } from '@/lib/article/hero-image'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -27,7 +29,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const result = await generateHeroImage(params.id)
+  const result = await generateHeroImage('OPERATOR_EXECUTION', params.id)
 
   if (result.ok) {
     return NextResponse.json({ ok: true, status: result.status, url: result.url })

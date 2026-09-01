@@ -15,6 +15,7 @@ import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
 import { isCancelEnabled, isCancelRequested, cancelledError } from '@/lib/ai/cancel'
 import type { WorkflowStep } from '@/lib/supabase/types'
+import { projectScope } from '@/lib/governance/execution-stop'
 
 export type AdminClient = ReturnType<typeof createAdminClient>
 // Supabase-klienten saknar genererade DB-typer — vi castar internt till any
@@ -158,6 +159,9 @@ export async function executeRunSteps(
       }
 
       let result = await runStep({
+        // AUTONOMOUS: the executor runs under the drain/scheduler, never a
+        // human, and its scope is the instance's own project.
+        execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId }) },
         systemPrompt: agent.system_prompt,
         userMessage,
         model: agent.model,
@@ -187,6 +191,10 @@ export async function executeRunSteps(
           : userMessage
 
         result = await runStep({
+          execution: {
+            context: 'AUTONOMOUS',
+            scope: projectScope({ projectId }),
+          },
           systemPrompt: agent.system_prompt,
           userMessage: correctedMessage,
           model: agent.model,

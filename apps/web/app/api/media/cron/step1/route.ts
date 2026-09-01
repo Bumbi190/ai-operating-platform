@@ -24,6 +24,7 @@ import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
 import { toJson } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -144,13 +145,13 @@ export async function GET(request: Request) {
 
   const db     = createAdminClient()
   const newsHunter = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'News Hunter', operation: 'Analyze News',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'News Hunter', operation: 'Analyze News',
   })
   const scriptWriter = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Generate Script',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Script Writer', operation: 'Generate Script',
   })
   const scriptRewriter = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Rewrite Script',
+    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Script Writer', operation: 'Rewrite Script',
   })
   const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s
 
@@ -204,7 +205,7 @@ export async function GET(request: Request) {
 
   const [trendsResult, hunterRes] = await Promise.allSettled([
     callHermesTrends(7_000),               // hard 7s cap (was 25s default)
-    runNewsHunter(db, project.id, 5, []),
+    runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5, []),
   ])
 
   if (trendsResult.status === 'fulfilled' && trendsResult.value) {
@@ -370,7 +371,7 @@ export async function GET(request: Request) {
 
   // Quality gate
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript(script.hook, script.script, sourceContext)
+  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
   // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
   // slightly weaker hook than to 504 and save nothing.

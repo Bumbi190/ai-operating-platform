@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveIssueId } from '@/lib/atlas/dream'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 // DreamAnalyzer skill — inline för att undvika paketimport-komplexitet
 const dreamAnalyzerSkill = {
@@ -111,6 +112,8 @@ export interface DreamResult {
  * (POST → 500; cron → logga och fortsätt till nästa projekt).
  */
 export async function runDreamCycleForProject(
+  /** REQUIRED execution classification, propagated from the caller. */
+  execution: ExecutionContract,
   project: { id: string; name: string },
 ): Promise<DreamResult> {
   const db = createAdminClient()
@@ -242,7 +245,7 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
   }
 
   const response = await getAnthropic({
-    project: PLATFORM_COMPAT_PROJECT, agent: 'Dream', operation: 'Dream Analysis',
+    project: PLATFORM_COMPAT_PROJECT, execution, agent: 'Dream', operation: 'Dream Analysis',
   }).messages.create({
     model: dreamAnalyzerSkill.defaultModel,
     max_tokens: dreamAnalyzerSkill.config.max_tokens ?? 2000,

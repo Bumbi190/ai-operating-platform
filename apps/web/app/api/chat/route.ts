@@ -51,6 +51,7 @@ import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, 
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -587,7 +588,13 @@ export async function POST(request: Request) {
   // names the platform compatibility project explicitly. Listed in the G1 report
   // as a mapping G2 must decide when it introduces budget scopes.
   const anthropic = getAnthropic({
-    project: PLATFORM_COMPAT_PROJECT, agent: 'Atlas', operation: 'Atlas Chat',
+    project: PLATFORM_COMPAT_PROJECT,
+    execution: {
+      // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
+      // PLATFORM_COMPAT resolves to the media slug, and inheriting its project
+      // stop would take Atlas offline whenever the media project is paused.
+      context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY,
+    }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
   const { messages, conversation_id, voice, mode, view } = await request.json() as {
@@ -1246,7 +1253,16 @@ async function executeTool(
     // regardless, so a spoofed id can never widen access.
     const scopedProjectId = assertProjectAllowed(project_id, allowedProjectIds) ? project_id : undefined
     const manager = getManager()
-    const response = await manager.chat(message, scopedProjectId, allowedProjectIds)
+    const response = await manager.chat(
+      message,
+      // Atlas chat is ordinary assistance, so it keeps OPERATOR_INTERACTIVE and
+      // is never refused by a stop. GLOBAL_ONLY is correct here for the same
+      // reason: assistance ABOUT a project is not that project's execution.
+      // (/api/manager's chat action is OPERATOR_EXECUTION and DOES bind the
+      // project — different endpoint, different semantics.)
+      { context: 'OPERATOR_INTERACTIVE' as const, scope: GLOBAL_ONLY },
+      scopedProjectId, allowedProjectIds,
+    )
     return { response }
   }
 

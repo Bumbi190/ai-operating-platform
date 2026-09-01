@@ -1,3 +1,4 @@
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 /**
  * lib/article/types.ts
  *
@@ -38,6 +39,8 @@ export interface NewsItemInput {
 
 /** Full Writer input (pure function — caller assembles everything; Writer never fetches). */
 export interface ArticleWriterInput {
+  /** REQUIRED execution classification, propagated to the paid boundary. */
+  execution: ExecutionContract
   newsItem: NewsItemInput
   /** Source body text (from Hermes read) when available. */
   groundingText?: string | null

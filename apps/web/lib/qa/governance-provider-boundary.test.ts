@@ -22,6 +22,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 
 // ── Escape guard ─────────────────────────────────────────────────────────────
 
@@ -173,6 +174,23 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   releaseSpend: (...a: unknown[]) => releaseSpend(...a),
 }))
 
+// G3C-1: the paid boundary now resolves the canonical stop authority immediately
+// before dispatch. These suites are about SPEND lifecycle, not stop policy, so
+// the authority is stubbed to "clear" — the stop behaviour itself is proven in
+// governed-dispatch-stop.test.ts, which stubs it the other way.
+vi.mock('@/lib/governance/execution-stop', async (orig) => {
+  const actual = await orig<typeof import('@/lib/governance/execution-stop')>()
+  return {
+    ...actual,
+    resolveExecutionStopForContract: async () => ({
+      allowed: true, context: 'AUTONOMOUS' as const,
+      scopesEvaluated: ['PLATFORM_AUTOMATION' as const],
+      resolution: 'RESOLVED' as const,
+      globalPaused: false, projectPaused: null, reason: null, observed: null,
+    }),
+  }
+})
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: () => ({ select: () => ({ eq: () => ({ limit: () => ({ maybeSingle }) }) }) }),
@@ -203,7 +221,7 @@ describe('withGovernedSpend lifecycle', () => {
     const order: string[] = []
     reserveSpend.mockImplementation(async () => { order.push('reserve'); return allowed })
     await withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
       async () => { order.push('provider'); return 'ok' },
     )
     expect(order).toEqual(['reserve', 'provider'])
@@ -212,7 +230,7 @@ describe('withGovernedSpend lifecycle', () => {
   it('settles after a successful call', async () => {
     const { withGovernedSpend } = await boundary()
     await withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'anthropic', operation: 'op', estimatedSek: 2 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 2 },
       async () => 'ok',
     )
     expect(settleSpend).toHaveBeenCalledWith('res-1', 2)
@@ -224,7 +242,7 @@ describe('withGovernedSpend lifecycle', () => {
     reserveSpend.mockResolvedValue(refused)
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'ideogram', operation: 'op', estimatedSek: 5 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'ideogram', operation: 'op', estimatedSek: 5 },
       provider,
     )).rejects.toBeInstanceOf(SpendRefusedError)
     expect(provider).not.toHaveBeenCalled()
@@ -237,7 +255,7 @@ describe('withGovernedSpend lifecycle', () => {
     maybeSingle.mockResolvedValue({ data: null, error: null })
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectSlug: 'does-not-exist' }, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
+      { project: { projectSlug: 'does-not-exist' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
       provider,
     )).rejects.toMatchObject({ reason: 'project_unresolved' })
     expect(provider).not.toHaveBeenCalled()
@@ -250,7 +268,7 @@ describe('withGovernedSpend lifecycle', () => {
     maybeSingle.mockResolvedValue({ data: null, error: { message: 'connection reset' } })
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectSlug: 'ai-media-automation' }, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
+      { project: { projectSlug: 'ai-media-automation' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
       provider,
     )).rejects.toMatchObject({ reason: 'project_lookup_failed' })
     expect(provider).not.toHaveBeenCalled()
@@ -261,7 +279,7 @@ describe('withGovernedSpend lifecycle', () => {
     reserveSpend.mockResolvedValue({ ...refused, reason: 'unavailable', reservationId: null })
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
       provider,
     )).rejects.toMatchObject({ reason: 'unavailable' })
     expect(provider).not.toHaveBeenCalled()
@@ -271,7 +289,7 @@ describe('withGovernedSpend lifecycle', () => {
     const { withGovernedSpend } = await boundary()
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectId: '' }, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
+      { project: { projectId: '' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 1 },
       provider,
     )).rejects.toMatchObject({ reason: 'project_unresolved' })
     expect(provider).not.toHaveBeenCalled()
@@ -281,7 +299,7 @@ describe('withGovernedSpend lifecycle', () => {
     const { withGovernedSpend } = await boundary()
     const provider = vi.fn()
     await expect(withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'anthropic', operation: 'op', estimatedSek: NaN },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: NaN },
       provider,
     )).rejects.toMatchObject({ reason: 'invalid_estimate' })
     expect(provider).not.toHaveBeenCalled()
@@ -292,7 +310,7 @@ describe('withGovernedSpend lifecycle', () => {
   it('an AMBIGUOUS failure settles — budget is not handed back for a possible charge', async () => {
     const { withGovernedSpend } = await boundary()
     await expect(withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'anthropic', operation: 'op', estimatedSek: 3 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'anthropic', operation: 'op', estimatedSek: 3 },
       async () => { throw new Error('socket hang up after dispatch') },
     )).rejects.toThrow('socket hang up')
     expect(settleSpend).toHaveBeenCalledWith('res-1', 3)
@@ -303,7 +321,7 @@ describe('withGovernedSpend lifecycle', () => {
     const { withGovernedSpend, ProviderNotDispatchedError } = await boundary()
     const cause = new Error('401 unauthorized')
     await expect(withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'ideogram', operation: 'op', estimatedSek: 3 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'ideogram', operation: 'op', estimatedSek: 3 },
       async () => { throw new ProviderNotDispatchedError('refused before work', cause) },
     )).rejects.toBe(cause)
     expect(releaseSpend).toHaveBeenCalledWith('res-1')
@@ -315,10 +333,10 @@ describe('withGovernedSpend lifecycle', () => {
   it('two project contexts reserve against DIFFERENT projects', async () => {
     const { withGovernedSpend } = await boundary()
     await withGovernedSpend(
-      { project: { projectId: 'proj-a' }, provider: 'elevenlabs', operation: 'op', estimatedSek: 1 },
+      { project: { projectId: 'proj-a' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'elevenlabs', operation: 'op', estimatedSek: 1 },
       async () => 'ok')
     await withGovernedSpend(
-      { project: { projectId: 'proj-b' }, provider: 'elevenlabs', operation: 'op', estimatedSek: 1 },
+      { project: { projectId: 'proj-b' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'elevenlabs', operation: 'op', estimatedSek: 1 },
       async () => 'ok')
     expect(reserveSpend.mock.calls.map(c => (c[0] as { projectId: string }).projectId))
       .toEqual(['proj-a', 'proj-b'])
@@ -327,7 +345,7 @@ describe('withGovernedSpend lifecycle', () => {
   it('the estimate reaches the reservation unchanged', async () => {
     const { withGovernedSpend } = await boundary()
     await withGovernedSpend(
-      { project: { projectId: 'proj-1' }, provider: 'openai', operation: 'speech', estimatedSek: 0.1234 },
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'speech', estimatedSek: 0.1234 },
       async () => 'ok')
     expect(reserveSpend).toHaveBeenCalledWith(expect.objectContaining({
       estimatedSek: 0.1234, provider: 'openai', operation: 'speech',

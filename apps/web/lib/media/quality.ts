@@ -15,6 +15,7 @@
 import { Anthropic } from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export interface QualityScore {
   hook_strength: number          // Hook Score — stoppar de första <2s scrollen?
@@ -86,12 +87,14 @@ Return ONLY valid JSON:
 }`
 
 export async function scoreScript(
+  /** REQUIRED execution classification, propagated from the caller. */
+  execution: ExecutionContract,
   hook: string,
   script: string,
   sourceContext: string,
 ): Promise<QualityScore> {
   const client = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, agent: 'Quality Gate', operation: 'Score Content',
+    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Quality Gate', operation: 'Score Content',
   })
 
   const res = await client.messages.create({

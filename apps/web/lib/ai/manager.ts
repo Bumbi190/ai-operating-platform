@@ -43,6 +43,7 @@ import {
 } from '@/lib/atlas/workpackage/principal-read'
 import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
 import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 /**
  * Governed per call rather than once per module: the spend boundary needs the
@@ -50,9 +51,9 @@ import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
  * receive a projectId charge it; the rest name the platform compat project
  * explicitly, which is a G2 decision rather than a hidden default.
  */
-function managerClient(operation: string, projectId?: string) {
+function managerClient(operation: string, execution: ExecutionContract, projectId?: string) {
   return getAnthropic({
-    project: projectId ? { projectId } : PLATFORM_COMPAT_PROJECT,
+    project: projectId ? { projectId } : PLATFORM_COMPAT_PROJECT, execution,
     agent: 'Manager',
     operation,
   })
@@ -290,10 +291,16 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
    * Conversational interface — answers questions, gives recommendations,
    * provides project updates. Used by /chat command center.
    */
-  async chat(message: string, projectId?: string, allowedProjectIds: string[] = []): Promise<string> {
+  async chat(
+    message: string,
+    /** REQUIRED execution classification, supplied by the authenticated caller. */
+    execution: ExecutionContract,
+    projectId?: string,
+    allowedProjectIds: string[] = [],
+  ): Promise<string> {
     const context = await this.buildContext(projectId, allowedProjectIds)
 
-    const response = await managerClient('Manager Chat', projectId).messages.create({
+    const response = await managerClient('Manager Chat', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: MANAGER_SYSTEM_PROMPT,
@@ -317,7 +324,11 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
    * Generates today's operational plan. Caches result in agent_messages.
    * Idempotent — returns cached plan if already generated today.
    */
-  async generateDailyPlan(projectId?: string, force = false): Promise<DailyPlan> {
+  async generateDailyPlan(
+    execution: ExecutionContract,
+    projectId?: string,
+    force = false,
+  ): Promise<DailyPlan> {
     // Return cached plan if available today
     if (!force) {
       const cached = await this.getTodaysPlan()
@@ -326,7 +337,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
 
     const context = await this.buildContext(projectId)
 
-    const response = await managerClient('Daily Plan', projectId).messages.create({
+    const response = await managerClient('Daily Plan', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: MANAGER_SYSTEM_PROMPT,
@@ -376,7 +387,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
    * Evaluates an approval's content for quality.
    * Returns structured score + feedback for human review aid.
    */
-  async evaluateOutput(approvalId: string): Promise<EvaluationResult> {
+  async evaluateOutput(approvalId: string, execution: ExecutionContract): Promise<EvaluationResult> {
     const { data: approval } = await this.db
       .from('approvals')
       .select('*, runs(workflows(name))')
@@ -387,7 +398,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
 
     const workflowName = (approval.runs as any)?.workflows?.name ?? 'Unknown'
 
-    const response = await managerClient('Evaluate Output').messages.create({
+    const response = await managerClient('Evaluate Output', execution).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 800,
       system: MANAGER_SYSTEM_PROMPT,
@@ -422,10 +433,10 @@ Return ONLY valid JSON:
   /**
    * Breaks a high-level goal into manager_tasks and persists them.
    */
-  async planTasks(goal: string, projectId: string): Promise<ManagerTask[]> {
+  async planTasks(goal: string, projectId: string, execution: ExecutionContract): Promise<ManagerTask[]> {
     const context = await this.buildContext(projectId)
 
-    const response = await managerClient('Plan Tasks', projectId).messages.create({
+    const response = await managerClient('Plan Tasks', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       system: MANAGER_SYSTEM_PROMPT,

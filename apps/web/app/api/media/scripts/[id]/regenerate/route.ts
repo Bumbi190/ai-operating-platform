@@ -21,6 +21,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 180  // 3 parallel Ideogram calls can take up to 2min
@@ -128,7 +129,7 @@ export async function POST(
   // ── Regenerate script ────────────────────────────────────────────────────────
   if (what === 'script' || what === 'both') {
     const claude = getAnthropic({
-      project: MEDIA_PIPELINE_PROJECT, agent: 'Script Writer', operation: 'Regenerate Script',
+      project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope({ projectId }) }, agent: 'Script Writer', operation: 'Regenerate Script',
     })
 
     const newsItem = Array.isArray(script.media_news_items)
@@ -188,7 +189,7 @@ Write a new script that covers the same story but from a different entry point o
     const headline = String(updates.hook ?? script.hook ?? '')
     const text     = String(updates.script ?? script.script ?? '')
 
-    const imageUrls  = await generateNewsImages(headline, text, 5)
+    const imageUrls  = await generateNewsImages(headline, text, 5, { context: 'OPERATOR_EXECUTION' as const, scope: projectScope({ projectId }) })
     const storedUrls = await Promise.all(
       imageUrls.map((url, i) => uploadSceneImage(projectId, id, i, url)),
     )

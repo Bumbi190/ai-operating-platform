@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runDreamCycleForProject } from '@/lib/ai/dream'
+import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -29,7 +30,13 @@ export async function GET(request: Request) {
   // Parallellt per projekt → total tid begränsas av det långsammaste anropet,
   // inte summan (håller oss under maxDuration även med fler projekt).
   const settled = await Promise.allSettled(
-    (projects ?? []).map(p => runDreamCycleForProject({ id: p.id, name: p.name })),
+    (projects ?? []).map(p => runDreamCycleForProject(
+      // Scoped PER PROJECT, inside the iteration. A single contract built
+      // outside the loop would make one project's pause stop every project's
+      // dream — the opposite of what a project-scoped kill switch means.
+      { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: p.id }) },
+      { id: p.id, name: p.name },
+    )),
   )
 
   const results = (projects ?? []).map((p, i) => {

@@ -252,7 +252,10 @@ describe('REGRESSION 8 · the read surface is least privilege', () => {
 
   it('redacts other actors from a non-operator, keeping only themselves', () => {
     expect(route).toContain('selfActor')
-    expect(route).toMatch(/isOperator \|\| e\.actor === selfActor/)
+    // Identifier-agnostic: the invariant is "operator, or the actor is you",
+    // not what the row variable is called. Pinning the name made this fail on
+    // a pure rename while a real redaction change could still slip past.
+    expect(route).toMatch(/isOperator \|\| \w+\.actor === selfActor/)
   })
 
   it('still calls no setter and performs no write', () => {
@@ -413,16 +416,30 @@ describe('operator-execution paths recorded for G3C', () => {
     }
   })
 
-  it('the two lists are correctly separated by auth mode', () => {
-    // Single-mode paths are operator-only; dual-mode paths also accept the cron
-    // secret and therefore cannot be classified by route at all.
+  it('the two lists are separated by the AUTH BRANCH, not by a substring', () => {
+    // ── WHY THIS TEST WAS REWRITTEN (G3C-1) ────────────────────────────────
+    // It used to assert that dual-mode entries "contain CRON_SECRET". That is a
+    // prose match, and prose lied: `operator-generate` carried a COMMENT saying
+    // it deliberately does NOT use cron auth, the substring matched, and the
+    // route sat in the dual-mode list for a whole slice while being
+    // session-only. A guard that reads documentation proves nothing about
+    // behaviour.
+    //
+    // This one reads the comparison. A route is dual-mode only if it actually
+    // COMPARES a bearer token against the secret AND also accepts a session.
+    const body = (rel: string) =>
+      src(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    const comparesCronSecret = (rel: string) =>
+      /process\.env\.CRON_SECRET/.test(body(rel)) && /[!=]==\s*`Bearer \$\{/.test(body(rel))
+    const acceptsSession = (rel: string) => /getUser\(\)/.test(body(rel))
+
     for (const rel of OPERATOR_EXECUTION_PATHS_FOR_G3C) {
-      expect(src(rel), `${rel} is listed single-mode but accepts CRON_SECRET`)
-        .not.toContain('CRON_SECRET')
+      expect(comparesCronSecret(rel), `${rel} is listed single-mode but has a cron branch`).toBe(false)
+      expect(acceptsSession(rel), `${rel} must authenticate a session`).toBe(true)
     }
     for (const rel of DUAL_MODE_EXECUTION_PATHS_FOR_G3C) {
-      expect(src(rel), `${rel} is listed dual-mode but has no cron branch`)
-        .toContain('CRON_SECRET')
+      expect(comparesCronSecret(rel), `${rel} is listed dual-mode but never compares the secret`).toBe(true)
+      expect(acceptsSession(rel), `${rel} is listed dual-mode but accepts no session`).toBe(true)
     }
     expect(DUAL_MODE_EXECUTION_PATHS_FOR_G3C.length).toBeGreaterThan(0)
   })

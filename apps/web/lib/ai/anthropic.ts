@@ -44,9 +44,17 @@ import {
   withGovernedSpend,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 /** Everything the boundary needs that the SDK does not carry. */
 export interface AnthropicGovernanceContext {
+  /**
+   * REQUIRED execution classification — why this work runs and which stop
+   * authorities bind it. Propagated to the governed boundary, never defaulted
+   * here: this module serves several upstream execution modes, so a default set
+   * at this layer would be a guess made far from the only place that knows.
+   */
+  execution: ExecutionContract
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   /** Recorded on cost_events.agent, e.g. 'Script Writer'. */
@@ -155,7 +163,7 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
         const estimatedSek = await estimateAnthropicSek(params)
         return withGovernedSpend(
           {
-            project: ctx.project,
+            project: ctx.project, execution: ctx.execution,
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.create',
             estimatedSek,
@@ -196,7 +204,7 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
         const estimatedSek = await estimateAnthropicSek(params)
         return withGovernedSpend(
           {
-            project: ctx.project,
+            project: ctx.project, execution: ctx.execution,
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.stream',
             estimatedSek,

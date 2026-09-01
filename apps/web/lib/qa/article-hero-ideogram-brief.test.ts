@@ -69,6 +69,7 @@ import {
   ARTICLE_HERO_ASPECT,
 } from '@/lib/media/ideogram'
 import type { EditorBrief } from '@/lib/article/photo-editor'
+import { TEST_OPERATOR_EXECUTION_GLOBAL, TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 
 // ── Governance G1 ────────────────────────────────────────────────────────────
 // These suites exercise prompt construction, routing and error contracts — not
@@ -92,7 +93,7 @@ const briefBase: EditorBrief = {
 
 describe('generateArticleHeroImage — Phase 2A brief-driven renderer', () => {
   it('calls Ideogram with aspect_ratio=16x10, style_type=REALISTIC, rendering_speed=DEFAULT', async () => {
-    await generateArticleHeroImage(briefBase)
+    await generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)
     expect(fetchCalls).toHaveLength(1)
     expect(fetchCalls[0].url).toBe('https://api.ideogram.ai/v1/ideogram-v3/generate')
     expect(fetchCalls[0].body.aspect_ratio).toBe('16x10')
@@ -102,7 +103,7 @@ describe('generateArticleHeroImage — Phase 2A brief-driven renderer', () => {
   })
 
   it('prompt contains brief.shot verbatim and the STYLE_REFERENCE_MAP entry', async () => {
-    await generateArticleHeroImage(briefBase)
+    await generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)
     const prompt = fetchCalls[0].body.prompt as string
     expect(prompt).toContain(briefBase.shot)
     expect(prompt).toContain(STYLE_REFERENCE_MAP.Economist)
@@ -110,7 +111,7 @@ describe('generateArticleHeroImage — Phase 2A brief-driven renderer', () => {
   })
 
   it('negative_prompt contains every ANTI_STOCK_BANLIST term + brief.avoid', async () => {
-    await generateArticleHeroImage(briefBase)
+    await generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)
     const neg = fetchCalls[0].body.negative_prompt as string
     for (const term of ANTI_STOCK_BANLIST) {
       expect(neg).toContain(term)
@@ -127,7 +128,7 @@ describe('generateArticleHeroImage — Phase 2A brief-driven renderer', () => {
   })
 
   it('returned input mirrors the request body for downstream persistence', async () => {
-    const result = await generateArticleHeroImage(briefBase)
+    const result = await generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)
     expect(result.url).toBe('https://ideogram.example/test-hero.png')
     expect(result.input.prompt).toBe(fetchCalls[0].body.prompt)
     expect(result.input.negative_prompt).toBe(fetchCalls[0].body.negative_prompt)
@@ -150,30 +151,30 @@ describe('generateArticleHeroImage — Phase 2A brief-driven renderer', () => {
   })
 
   it.each(EDITORIAL_STYLES)('renders correctly for editorial_style=%s', async (style) => {
-    await generateArticleHeroImage({ ...briefBase, editorial_style: style })
+    await generateArticleHeroImage({ ...briefBase, editorial_style: style }, TEST_AUTONOMOUS_GLOBAL)
     const prompt = fetchCalls[0].body.prompt as string
     expect(prompt).toContain(STYLE_REFERENCE_MAP[style])
   })
 
   it('throws when Ideogram returns non-2xx', async () => {
     fetchShouldFail = { status: 503, text: 'upstream timeout' }
-    await expect(generateArticleHeroImage(briefBase)).rejects.toThrow(/Ideogram API error 503/)
+    await expect(generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)).rejects.toThrow(/Ideogram API error 503/)
   })
 
   it('throws when Ideogram returns no image URL', async () => {
     fetchReturnsNoUrl = true
-    await expect(generateArticleHeroImage(briefBase)).rejects.toThrow(/no image URL/)
+    await expect(generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)).rejects.toThrow(/no image URL/)
   })
 
   it('throws when editorial_style is unknown (defensive guard)', async () => {
     await expect(
-      generateArticleHeroImage({ ...briefBase, editorial_style: 'NotARealStyle' as never }),
+      generateArticleHeroImage({ ...briefBase, editorial_style: 'NotARealStyle' as never }, TEST_AUTONOMOUS_GLOBAL),
     ).rejects.toThrow(/unknown editorial_style/)
     expect(fetchCalls).toHaveLength(0)  // never reached Ideogram
   })
 
   it('throws when IDEOGRAM_API_KEY is missing (so deploys fail loudly)', async () => {
     vi.stubEnv('IDEOGRAM_API_KEY', '')
-    await expect(generateArticleHeroImage(briefBase)).rejects.toThrow(/IDEOGRAM_API_KEY/)
+    await expect(generateArticleHeroImage(briefBase, TEST_AUTONOMOUS_GLOBAL)).rejects.toThrow(/IDEOGRAM_API_KEY/)
   })
 })

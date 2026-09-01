@@ -22,6 +22,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { TEST_OPERATOR_EXECUTION_GLOBAL, TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 
 // ── A reservation store with the SQL's semantics ─────────────────────────────
 type Status = 'open' | 'settled' | 'released'
@@ -74,6 +75,23 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   releaseSpend: (a: any) => releaseSpend(a),
   estimateVoiceSek: async () => 1,
 }))
+// G3C-1: the paid boundary now resolves the canonical stop authority immediately
+// before dispatch. These suites are about SPEND lifecycle, not stop policy, so
+// the authority is stubbed to "clear" — the stop behaviour itself is proven in
+// governed-dispatch-stop.test.ts, which stubs it the other way.
+vi.mock('@/lib/governance/execution-stop', async (orig) => {
+  const actual = await orig<typeof import('@/lib/governance/execution-stop')>()
+  return {
+    ...actual,
+    resolveExecutionStopForContract: async () => ({
+      allowed: true, context: 'AUTONOMOUS' as const,
+      scopesEvaluated: ['PLATFORM_AUTOMATION' as const],
+      resolution: 'RESOLVED' as const,
+      globalPaused: false, projectPaused: null, reason: null, observed: null,
+    }),
+  }
+})
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: () => ({ select: () => ({ eq: () => ({ limit: () => ({
     maybeSingle: async () => ({ data: { id: 'proj-1' }, error: null }) }) }) }) }) }),
@@ -92,7 +110,7 @@ async function runVoiceover(fetchImpl: () => any, key?: string) {
   vi.stubGlobal('fetch', vi.fn(fetchImpl))
   let error: any = null
   try {
-    await withRetry(() => generateVoiceover('hello', 'victoria', KEYED, key),
+    await withRetry(() => generateVoiceover('hello', TEST_AUTONOMOUS_GLOBAL, 'victoria', KEYED, key),
       { attempts: 2, baseMs: 1, label: 'test' })
   } catch (e) { error = e }
   return error

@@ -360,15 +360,51 @@ describe('the read model reads', () => {
 })
 
 describe('G1/G2 boundaries are not weakened', () => {
-  it('the provider spend boundary still contains no stop coupling (G3-F-001)', () => {
-    // Making withGovernedSpend refuse on automation_paused would turn an
-    // automation kill switch into an operator lockout: the operator's own
-    // interactive calls spend too.
+  it('the spend boundary couples to stop ONLY through the canonical authority (G1+G3)', () => {
+    // ── WHAT CHANGED, AND WHY ──────────────────────────────────────────────
+    // G3-F-001 originally said this file must contain NO stop coupling at all,
+    // and that was right at the time: the danger was a naive
+    // `if (automation_paused) refuse` here, which would turn an automation kill
+    // switch into an operator lockout, because the operator's own interactive
+    // calls spend too.
+    //
+    // G3C-1 removes that danger a better way — the boundary asks the canonical
+    // authority with an EXPLICIT execution context, so an interactive call is
+    // allowed while an autonomous one is refused. The blanket prohibition would
+    // now forbid the very mechanism that makes that distinction possible, so it
+    // is REPLACED rather than preserved.
+    //
+    // The new rule is narrower and stronger: coupling is permitted, but only
+    // through the one authority. No second policy may grow here.
     const gs = code('lib/cost/governed-spend.ts')
-    for (const t of ['automation_paused', 'execution_paused', 'resolveExecutionStop',
-                     'stop_state', 'ExecutionContext']) {
-      expect(gs, `governed-spend must stay free of ${t}`).not.toContain(t)
+
+    // ALLOWED — the canonical entry point.
+    expect(gs, 'the boundary must resolve stops through the canonical authority')
+      .toContain('resolveExecutionStopForContract')
+
+    // FORBIDDEN — any local re-implementation of the policy.
+    for (const t of [
+      'automation_paused',        // raw global flag
+      'execution_paused',         // raw project flag
+      'checkAutomationPaused',    // the legacy helper
+      "from('platform_config')",  // direct stop-row read
+      "rpc('stop_state'",         // the read model used as local policy
+    ]) {
+      expect(gs, `governed-spend must not implement stop policy itself (${t})`)
+        .not.toContain(t)
     }
+
+    // FORBIDDEN — inventing or defaulting the context it was handed.
+    expect(gs, 'the boundary must never default the execution context')
+      .not.toMatch(/execution\s*\?\?|context:\s*'(AUTONOMOUS|OPERATOR_)/)
+
+    // The ORIGINAL G1 spend invariants survive this evolution untouched.
+    for (const t of ['reserveSpend', 'settleSpend', 'releaseSpend', 'resolveGovernedProjectId']) {
+      expect(gs, `G1 invariant lost: ${t}`).toContain(t)
+    }
+    // Reservation still precedes dispatch, and the stop check sits between them.
+    expect(gs.indexOf('reserveSpend'))
+      .toBeLessThan(gs.indexOf('resolveExecutionStopForContract'))
   })
 
   it('the stop authority contains no spend or provider logic', () => {

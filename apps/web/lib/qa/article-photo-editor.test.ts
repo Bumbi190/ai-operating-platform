@@ -58,6 +58,7 @@ vi.mock('@/lib/cost/track', () => ({
 }))
 
 import { runPhotoEditor, ANTI_STOCK_BANLIST, EDITORIAL_STYLES } from '@/lib/article/photo-editor'
+import { TEST_OPERATOR_EXECUTION_GLOBAL, TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 
 // ── Governance G1 ────────────────────────────────────────────────────────────
 // These suites exercise prompt construction, routing and error contracts — not
@@ -81,6 +82,9 @@ const VALID_BRIEF = {
 
 function makeInput(over: Partial<Parameters<typeof runPhotoEditor>[0]> = {}) {
   return {
+    // Explicit: these tests assert request SHAPE, so the contract states the
+    // stance plainly rather than hiding it in an inline literal.
+    execution: TEST_OPERATOR_EXECUTION_GLOBAL,
     title: 'Anthropic Takes Claude Fable 5 Offline Under US Government Order',
     summary: 'A US government order forces Anthropic to shut down Fable 5.',
     body: 'On Tuesday, Anthropic confirmed that it would take Claude Fable 5 offline under a Department of Commerce order. The order cited an alleged jailbreak vulnerability…',

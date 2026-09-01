@@ -161,8 +161,15 @@ export const OPERATOR_EXECUTION_PATHS_FOR_G3C = [
  */
 export const DUAL_MODE_EXECUTION_PATHS_FOR_G3C = [
   'app/api/media/breaking/route.ts',                     // cron OR operator
-  'app/api/content/articles/operator-generate/route.ts', // cron OR operator
 ] as const
+//
+// CORRECTED IN G3C-1. `app/api/content/articles/operator-generate/route.ts` was
+// listed here and is NOT dual-mode: it authenticates a session and returns 401
+// otherwise. Its only mention of CRON_SECRET is a comment explaining that it
+// deliberately does not use cron auth — and the G3A rot-guard matched that
+// comment, which is why a prose mention passed for an auth branch. The
+// replacement guard reads the comparison instead; see
+// execution-contract-propagation.test.ts.
 
 export type StopScope = 'PLATFORM_AUTOMATION' | 'PROJECT_EXECUTION'
 

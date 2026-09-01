@@ -58,6 +58,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 // Must come AFTER vi.mock.
 import { writeArticle } from '@/lib/article/writer'
+import { TEST_OPERATOR_EXECUTION_GLOBAL, TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 
 // ── Governance G1 ────────────────────────────────────────────────────────────
 // These suites exercise prompt construction, routing and error contracts — not
@@ -82,6 +83,9 @@ const VALID_TOOL_INPUT = {
 
 function makeInput() {
   return {
+    // Explicit: these tests assert request SHAPE, so the contract states the
+    // stance plainly rather than hiding it in an inline literal.
+    execution: TEST_AUTONOMOUS_GLOBAL,
     newsItem: {
       id: '7712219e-259a-43ce-ac51-5bdae071ebf1',
       title: 'Anthropic Confidentially Files for IPO',

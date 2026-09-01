@@ -1601,7 +1601,7 @@ describe('structural guards', () => {
 
   it('keeps the existing Manager surface intact (§ regression)', () => {
     const manager = readFileSync(resolve(__dirname, '../ai/manager.ts'), 'utf8')
-    expect(manager).toMatch(/async planTasks\(goal: string, projectId: string\)/)
+    // G3C-1 added a required execution contract to the signature; the pin still\n    // proves the legacy method survives, without freezing its parameter list.\n    expect(manager).toMatch(/async planTasks\(goal: string, projectId: string,/)
     expect(manager).not.toMatch(/ManagerAgentV2/)
     expect(manager).toMatch(/async decideDelegation\(/)
   })

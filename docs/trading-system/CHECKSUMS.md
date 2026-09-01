@@ -80,6 +80,7 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 
 ```
 89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
+304d21e6e367dfe9e29f8422b45e270b80153fc398d8436aef918b6d4b18e68f  research/Provider Protocol och Session Integration – Design v0.1.md
 3d361d0e66e3453930119e61498d97a1f3c7df73fe0cbbfede8aa7ccb6084811  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md

@@ -96,10 +96,17 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          exactly when ACTION_CLASS_POLICY says so: every class except
    *          READ_ONLY. Narrower, not weaker; the nine identity columns keep
    *          all-or-nothing).
+   * 55 → 56: `budget_scopes` (G2 — six atomic budget scopes with one headroom
+   *          definition, advisory-lock reservation, and a replay state machine
+   *          in which zero states return allowed. Entry added retroactively in
+   *          G3A: G2 bumped the count without recording the reason here.)
+   * 56 → 57: `unified_stop_authority` (G3A — append-only stop_events ledger plus
+   *          the two audited setters and the stop_state read model. Retires
+   *          set_project_execution_paused, the unaudited alternate path.)
    */
-  it('enforces exactly the expected number of migrations — currently 56', () => {
+  it('enforces exactly the expected number of migrations — currently 57', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(56)
+    expect(enforced).toBe(57)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

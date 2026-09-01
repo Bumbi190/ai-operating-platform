@@ -8,6 +8,10 @@ export type ResolvedProject = {
   slug: string
   color: string
   settings: ProjectSettings
+  /** Project-scope stop authority (G3A). Source of truth; see lib/governance/execution-stop.ts. */
+  executionPaused: boolean
+  pausedAt: string | null
+  pausedReason: string | null
 }
 
 /**
@@ -22,9 +26,19 @@ export type ResolvedProject = {
  */
 export const getProjectBySlug = cache(async (slug: string): Promise<ResolvedProject | null> => {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('projects')
-    .select('id, name, slug, color, settings')
+  // The generated types are STALE for these three columns: `execution_paused`,
+  // `paused_at` and `paused_reason` have existed on `projects` in production
+  // since 20260829_workflow_scheduler_project_pause, but database.types.ts was
+  // never regenerated and still describes the pre-pause shape. The cast is
+  // scoped to this query and disappears the moment the types are regenerated.
+  const { data } = await (supabase.from('projects') as unknown as {
+    select: (c: string) => {
+      eq: (c: string, v: string) => {
+        single: () => Promise<{ data: Record<string, unknown> | null }>
+      }
+    }
+  })
+    .select('id, name, slug, color, settings, execution_paused, paused_at, paused_reason')
     .eq('slug', slug)
     .single()
 
@@ -36,5 +50,10 @@ export const getProjectBySlug = cache(async (slug: string): Promise<ResolvedProj
     slug: data.slug as string,
     color: (data.color as string) ?? '#6366f1',
     settings: ((data.settings as ProjectSettings | null) ?? {}) as ProjectSettings,
+    // Defaults to NOT paused only because RLS already returned this row; an
+    // unreadable project is `null` above, not a silently-unpaused one.
+    executionPaused: (data.execution_paused as boolean | null) ?? false,
+    pausedAt: (data.paused_at as string | null) ?? null,
+    pausedReason: (data.paused_reason as string | null) ?? null,
   }
 })

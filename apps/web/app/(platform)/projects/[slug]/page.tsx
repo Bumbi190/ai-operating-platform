@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import { DreamStatus } from '@/components/platform/DreamStatus'
+import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
 import type { RunStatus } from '@/lib/supabase/types'
 import { Bot, GitBranch, Play, FileOutput, ArrowRight, Plus, Radio } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -55,6 +56,13 @@ export default async function ProjectPage({
         <div>
           <h1 className="text-2xl font-bold">{project.name}</h1>
           <p className="text-sm text-muted-foreground font-mono">{project.slug}</p>
+        </div>
+        <div className="ml-auto">
+          <ProjectPauseToggle
+            projectId={project.id}
+            paused={project.executionPaused}
+            pausedReason={project.pausedReason}
+          />
         </div>
       </OSLayer>
 

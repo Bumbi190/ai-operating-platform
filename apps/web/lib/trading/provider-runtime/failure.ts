@@ -1,29 +1,24 @@
 /**
  * Omnira Trading — how a connectivity failure is named, and what it may claim.
  *
- * WHY A RUNTIME-LOCAL VOCABULARY
- * ──────────────────────────────
- * Trading Core's `ReasonCode` list is canon: `reason-codes.ts` states that codes
- * are stable and version-controlled, and that renaming one breaks every
- * historical journal row that used it. Adding `CONNECTION_FAILED` and friends to
- * that list would be a canonical-vocabulary change, and no locked specification
- * asks for one.
+ * TWO VOCABULARIES, ONE TRANSLATION
+ * ─────────────────────────────────
+ * `SessionFailure` is runtime-internal: it is what the reconnect policy reasons
+ * about. `ReasonCode` is canon: it is what leaves the boundary and lands in a
+ * journal row that must still mean the same thing years later.
  *
- * But the canon also has no connectivity codes. The only ones that touch this
- * area are `PROVIDER_DISCONNECTED`, `ENVIRONMENT_MISMATCH`, `ENVIRONMENT_UNKNOWN`
- * and `SECURITY_DEGRADED` — none of which distinguishes "the socket never
- * opened" from "we authenticated and were then dropped".
+ * Since Provider Connectivity Reason Codes Canonical v1.0 the translation
+ * between them is LOSSLESS AND 1:1 — every runtime failure has exactly one
+ * canonical code, and no two share one. `reasonCodeOf` is the single door.
  *
- * So the runtime names its own failures precisely, and translates them into the
- * canonical vocabulary at exactly one place: `reasonCodeOf`. The precise name
- * stays inside the runtime where it drives reconnect decisions; the canonical
- * code is what leaves the boundary. Nothing downstream ever sees a code Trading
- * Core does not already recognise.
- *
- * The translation is deliberately LOSSY AND CONSERVATIVE. Several distinct
- * runtime failures collapse onto `PROVIDER_DISCONNECTED`, because that is the
- * honest canonical statement available. That loss is recorded here rather than
- * hidden, and it is the reason the canon gap is worth closing later.
+ * SUPERSEDED — HISTORICAL NOTE ONLY. R1A shipped a deliberately lossy mapping:
+ * seven failures collapsed onto `PROVIDER_DISCONNECTED` and `AUTH_FAILED` was
+ * reported as `SECURITY_DEGRADED`, because the canon had no connectivity codes
+ * and inventing them locally would have been a vocabulary change no
+ * specification authorised. That compatibility mapping was always marked
+ * temporary and is now removed. `SECURITY_DEGRADED` never meant "credentials
+ * refused" — v1.2 §8 defines it as a credential broader than requested — and it
+ * no longer appears here at all.
  */
 
 import type { ReasonCode } from '../reason-codes'
@@ -79,38 +74,50 @@ export function isRetriable(failure: SessionFailure): boolean {
 /**
  * The canonical code a runtime failure is reported as.
  *
- * Total over the union — the `never` default makes a new failure a compile
- * error here rather than an untranslated one at runtime.
+ * TOTAL AND INJECTIVE. Total because the `never` default makes a new
+ * `SessionFailure` a compile error here rather than an untranslated one at
+ * runtime. Injective because each canonical code is claimed by exactly one
+ * failure — a test asserts it, so a copy-paste that pointed two failures at one
+ * code would fail rather than silently re-introduce the collapse this mapping
+ * was written to remove.
  *
- * `AUTH_FAILED` → `SECURITY_DEGRADED` IS A TEMPORARY COMPATIBILITY MAPPING, NOT
- * A SEMANTIC EQUIVALENCE. `SECURITY_DEGRADED` does not mean "credentials were
- * rejected"; it is simply the least wrong code the canon currently offers for a
- * failure that happened over a transport that was demonstrably up. Reporting a
- * refused credential as `PROVIDER_DISCONNECTED` would describe the wrong event
- * to an operator reading a journal, so the mapping is the better of two
- * imperfect options and nothing more.
- *
- * The same caveat applies to everything collapsing onto `PROVIDER_DISCONNECTED`:
- * it is a conservative placeholder, not a claim that those failures are alike.
- *
- * The canonical vocabulary gap is OPEN and is scheduled to be closed by a
- * separate authorised amendment (R1A.1 — Connectivity Reason Codes) before any
- * provider integration depends on these codes. Nothing here should be read as
- * final canonical semantics.
+ * NOTE WHAT IS ABSENT. No branch here consults a retry policy, a severity, or
+ * anything about what the caller should do next. `PROVIDER_CONNECTION_LOST`
+ * does not mean "retry"; `isRetriable` answers that, separately, and stays a
+ * runtime concern rather than a property frozen into a canonical value.
  */
 export function reasonCodeOf(failure: SessionFailure): ReasonCode {
   switch (failure) {
     case 'CONNECT_FAILED':
-    case 'CONNECTION_LOST':
-    case 'HEARTBEAT_TIMEOUT':
-    case 'PROTOCOL_ERROR':
-    case 'REMOTE_REJECTED':
-    case 'CANCELLED':
-    case 'RECONNECT_EXHAUSTED':
-    case 'UNKNOWN':
-      return 'PROVIDER_DISCONNECTED'
+      return 'PROVIDER_CONNECT_FAILED'
     case 'AUTH_FAILED':
-      return 'SECURITY_DEGRADED'
+      return 'PROVIDER_AUTHENTICATION_FAILED'
+    case 'CONNECTION_LOST':
+      return 'PROVIDER_CONNECTION_LOST'
+    case 'HEARTBEAT_TIMEOUT':
+      return 'PROVIDER_HEARTBEAT_TIMEOUT'
+    case 'PROTOCOL_ERROR':
+      return 'PROVIDER_PROTOCOL_ERROR'
+    case 'REMOTE_REJECTED':
+      return 'PROVIDER_REMOTE_REJECTED'
+    case 'CANCELLED':
+      /*
+       * A stop the operator asked for. Machine-readable context, not an error
+       * escalation: it implies no unhealthy provider, no rejection, and no
+       * security weakening, and on its own it triggers nothing.
+       */
+      return 'PROVIDER_SESSION_CANCELLED'
+    case 'RECONNECT_EXHAUSTED':
+      return 'PROVIDER_RECONNECT_EXHAUSTED'
+    case 'UNKNOWN':
+      /*
+       * FAIL-CLOSED INFORMATIONAL TRUTH. We know a connectivity failure
+       * happened and we do not know which kind. It is never promoted into a
+       * more specific code by inference, and never by reading prose — a guessed
+       * category is worse than an honest absence, because it is indistinguishable
+       * from an observed one once it reaches a journal.
+       */
+      return 'PROVIDER_FAILURE_UNKNOWN'
     default: {
       const exhaustive: never = failure
       return exhaustive

@@ -7,12 +7,14 @@
  * cooperates.
  */
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   authenticated,
   authenticationFailed,
   classifyClose,
   createFakeCredentials,
+  isRetriable,
   createFakeTransport,
   createManualScheduler,
   createProviderSessionRuntime,
@@ -114,14 +116,19 @@ describe('the session lifecycle', () => {
     expect(h.transport.opens).toBe(1)
   })
 
-  it('reports AUTH_FAILED as SECURITY_DEGRADED, not as a disconnection', async () => {
+  it('reports a refused credential as PROVIDER_AUTHENTICATION_FAILED', async () => {
+    /*
+     * It used to report SECURITY_DEGRADED, which the canon defines as a
+     * credential BROADER than requested — a different fact entirely. The
+     * connectivity codes made the honest statement available.
+     */
     const h = harness()
     h.authOutcome = authenticationFailed('AUTH_FAILED')
     const p = h.runtime.connect()
     h.transport.emitOpen()
     const result = await p
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.reasonCode).toBe('SECURITY_DEGRADED')
+    if (!result.ok) expect(result.error.reasonCode).toBe('PROVIDER_AUTHENTICATION_FAILED')
     expect(h.runtime.model.state).toBe('FAILED')
     // Not retriable: a refused credential will be refused again.
     expect(h.runtime.model.reconnectEligible).toBe(false)
@@ -133,7 +140,7 @@ describe('the session lifecycle', () => {
     h.transport.failNextOpen('econnrefused')
     const result = await h.runtime.connect()
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.reasonCode).toBe('PROVIDER_DISCONNECTED')
+    if (!result.ok) expect(result.error.reasonCode).toBe('PROVIDER_CONNECT_FAILED')
   })
 
   it('disconnect is idempotent', async () => {
@@ -225,7 +232,8 @@ describe('stale events cannot touch a newer session', () => {
     h.transport.emitOpen()
     const result = await p
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.reasonCode).toBe('PROVIDER_DISCONNECTED')
+    // An operator stop, named as one — not as a generic disconnection.
+    if (!result.ok) expect(result.error.reasonCode).toBe('PROVIDER_SESSION_CANCELLED')
     expect(h.runtime.model.state).toBe('DISCONNECTED')
   })
 
@@ -660,7 +668,125 @@ describe('failure mapping is total and canonical', () => {
   })
 
   it('an authentication failure is not reported as a disconnection', () => {
-    expect(reasonCodeOf('AUTH_FAILED')).toBe('SECURITY_DEGRADED')
-    expect(reasonCodeOf('CONNECTION_LOST')).toBe('PROVIDER_DISCONNECTED')
+    expect(reasonCodeOf('AUTH_FAILED')).toBe('PROVIDER_AUTHENTICATION_FAILED')
+    expect(reasonCodeOf('CONNECTION_LOST')).toBe('PROVIDER_CONNECTION_LOST')
+    // And neither is reported as the pre-amendment catch-all.
+    expect(reasonCodeOf('AUTH_FAILED')).not.toBe('SECURITY_DEGRADED')
+    expect(reasonCodeOf('CONNECTION_LOST')).not.toBe('PROVIDER_DISCONNECTED')
+  })
+})
+
+// ─── R1A.1 Connectivity reason codes, canon amendment ─────────────────────────
+
+describe('every session failure has exactly one canonical connectivity code', () => {
+  const EXPECTED: Readonly<Record<string, string>> = {
+    CONNECT_FAILED: 'PROVIDER_CONNECT_FAILED',
+    AUTH_FAILED: 'PROVIDER_AUTHENTICATION_FAILED',
+    CONNECTION_LOST: 'PROVIDER_CONNECTION_LOST',
+    HEARTBEAT_TIMEOUT: 'PROVIDER_HEARTBEAT_TIMEOUT',
+    PROTOCOL_ERROR: 'PROVIDER_PROTOCOL_ERROR',
+    REMOTE_REJECTED: 'PROVIDER_REMOTE_REJECTED',
+    CANCELLED: 'PROVIDER_SESSION_CANCELLED',
+    RECONNECT_EXHAUSTED: 'PROVIDER_RECONNECT_EXHAUSTED',
+    UNKNOWN: 'PROVIDER_FAILURE_UNKNOWN',
+  }
+
+  // A
+  it('maps all nine variants to the intended code', async () => {
+    const { SESSION_FAILURES } = await import('./failure')
+    expect(SESSION_FAILURES).toHaveLength(9)
+    for (const failure of SESSION_FAILURES) {
+      expect(reasonCodeOf(failure), failure).toBe(EXPECTED[failure])
+    }
+  })
+
+  // B
+  it('every new code is a recognised ReasonCode', async () => {
+    const { isReasonCode, CORE_REASON_CODES } = await import('../reason-codes')
+    for (const code of Object.values(EXPECTED)) {
+      expect(isReasonCode(code), code).toBe(true)
+      expect(CORE_REASON_CODES as readonly string[], code).toContain(code)
+    }
+  })
+
+  // C
+  it('is injective — no two failures share a canonical code', async () => {
+    const { SESSION_FAILURES } = await import('./failure')
+    const codes = SESSION_FAILURES.map(reasonCodeOf)
+    expect(new Set(codes).size).toBe(codes.length)
+  })
+
+  // D / E — the pre-amendment codes keep their own meanings.
+  it('leaves PROVIDER_DISCONNECTED and SECURITY_DEGRADED in place', async () => {
+    const { CORE_REASON_CODES, isReasonCode } = await import('../reason-codes')
+    for (const code of ['PROVIDER_DISCONNECTED', 'SECURITY_DEGRADED']) {
+      expect(CORE_REASON_CODES as readonly string[], code).toContain(code)
+      expect(isReasonCode(code), code).toBe(true)
+    }
+  })
+
+  // F
+  it('no session failure reports SECURITY_DEGRADED any more', async () => {
+    /*
+     * SECURITY_DEGRADED means a credential broader than requested. Reporting a
+     * refused credential as that was the temporary R1A compatibility mapping,
+     * and it is exactly what this amendment removes.
+     */
+    const { SESSION_FAILURES } = await import('./failure')
+    for (const failure of SESSION_FAILURES) {
+      expect(reasonCodeOf(failure), failure).not.toBe('SECURITY_DEGRADED')
+    }
+  })
+
+  it('and no session failure collapses onto PROVIDER_DISCONNECTED', async () => {
+    const { SESSION_FAILURES } = await import('./failure')
+    for (const failure of SESSION_FAILURES) {
+      expect(reasonCodeOf(failure), failure).not.toBe('PROVIDER_DISCONNECTED')
+    }
+  })
+
+  // G
+  it('CANCELLED is named as a cancellation, not an error', () => {
+    expect(reasonCodeOf('CANCELLED')).toBe('PROVIDER_SESSION_CANCELLED')
+    // It is not a fault, so it must not be retriable on its own.
+    expect(isRetriable('CANCELLED')).toBe(false)
+  })
+
+  // H
+  it('UNKNOWN stays UNKNOWN and is never promoted by inference', () => {
+    expect(reasonCodeOf('UNKNOWN')).toBe('PROVIDER_FAILURE_UNKNOWN')
+    for (const specific of [
+      'PROVIDER_CONNECTION_LOST', 'PROVIDER_PROTOCOL_ERROR', 'PROVIDER_AUTHENTICATION_FAILED',
+    ]) {
+      expect(reasonCodeOf('UNKNOWN'), specific).not.toBe(specific)
+    }
+  })
+
+  // I — exhaustiveness is enforced by the compiler, and the shape proves it.
+  it('an unmapped future failure would be a compile error', () => {
+    const source = readFileSync(new URL('./failure.ts', import.meta.url), 'utf8')
+    expect(source).toContain('const exhaustive: never = failure')
+    // Every current variant has its own case; nothing falls through to a default.
+    for (const failure of Object.keys(EXPECTED)) {
+      expect(source, failure).toContain(`case '${failure}':`)
+    }
+  })
+
+  // J — no policy or authority leaked into the canonical vocabulary.
+  it('the codes carry no retry, severity or authority metadata', async () => {
+    const registry = readFileSync(new URL('../reason-codes.ts', import.meta.url), 'utf8')
+    const executable = registry
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    // The registry is a list of string literals, not a table of properties.
+    for (const forbidden of [
+      'retryable', 'fatal:', 'severity', 'backoff', 'reconnectAfter',
+      'RiskClearance', 'PropClearance', 'ApprovalGrant', 'ExecutionIntent',
+    ]) {
+      expect(executable, forbidden).not.toContain(forbidden)
+    }
+    // And retry policy still lives in the runtime, where it belongs.
+    expect(isRetriable('CONNECTION_LOST')).toBe(true)
+    expect(isRetriable('AUTH_FAILED')).toBe(false)
   })
 })

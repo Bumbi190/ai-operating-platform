@@ -382,8 +382,13 @@ describe('the ambiguity refusals are package-local', () => {
       expect(core.CORE_REASON_CODES as readonly string[]).not.toContain(local)
       expect(core.RISK_REASON_CODES as readonly string[]).not.toContain(local)
     }
-    // The counts Stage 1.8a locked, unchanged by this hardening.
-    expect(core.CORE_REASON_CODES).toHaveLength(31)
+    /*
+     * The counts are a proxy for the claim above: this package adds nothing to
+     * Core. Core grew from 31 to 40 in R1A.1, which added the nine PROVIDER_*
+     * connectivity codes — none of them from here, and none of them one of the
+     * two local refusals named above.
+     */
+    expect(core.CORE_REASON_CODES).toHaveLength(40)
     expect(core.RISK_REASON_CODES).toHaveLength(18)
   })
 

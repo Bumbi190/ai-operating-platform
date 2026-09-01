@@ -10,7 +10,8 @@ Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
 | Risk | `risk/…Canonical v1.0.md` | **Canonical v1.0**, 0 öppna riskbeslut |
 | Risk (historik) | `risk/…v0.1.md` | Historiskt, superseded |
 | Arkitektur | `architecture/…v0.3.md` | **v0.3**, rev. 2026-08-28 (Beslut E) |
-| Execution Provider Adapter | `execution-provider/…Level 1 Read Only – Canonical v1.0.md` | **Canonical v1.0**. Provider-neutralt, noll order-metoder |
+| Execution Provider Adapter | `execution-provider/…Level 1 Read Only – Canonical v1.2.md` | **Canonical v1.2**. Provider-neutralt, noll order-metoder |
+| Provider Connectivity Reason Codes | `execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-01 (Beslut H). Nio konnektivitetskoder, prospektiv verkan |
 | Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
 | Prop firm | `prop-firm/` | Tom, GATE-09 |
 | Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |

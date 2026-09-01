@@ -21,7 +21,8 @@ baa8f819be69000dfc724858afde4249f4953fccc8fc84f34a73a36eeadb222a  book/final/Omn
 0ba015d015c9f9cfe7f4ad721f3b1224dc80fe955b0a547a847ce40c8cb73a89  specifications/strategy/Omnira Liquidity Manipulation – Trading Strategy Specification – Canonical v1.0.md
 2eeb5708d5fb60ac9dda29827d81f89b36d51be661597553c755cd714c0fa106  specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md
 655447bd28a334c9618679cb09a00b2a59f280a3db48ab2458c0d499a9c7c3d2  specifications/architecture/Omnira Trading System – Systemarkitektur v0.3.md
-48741ba6acb7e1979112a53ae7b246f5904ee9706953d9222a712a7650531212  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.2.md
+69e8198dd4525a6c015c7c44d77a70d8d6a2e10d0c1d58f4222893f3d67e4a39  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.2.md
+8a36a8e431addc2c4c021f767bdd9ebb5e74153621a427c5f9289e1621c19ecb  specifications/execution-provider/Omnira Trading System – Provider Connectivity Reason Codes – Canonical v1.0.md
 9f8dc9bd5791f3d35434352dc6c51db61f66b447b3519928963c9edc4645bfa7  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
 ```
 
@@ -54,7 +55,7 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 
 ```
 89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
-828cfaaf2c2a4c266f5eeb578908d9ec68015ec8d9b32cafe3045a632b044a88  reviews/Canonical Amendments v1.0.md
+3d361d0e66e3453930119e61498d97a1f3c7df73fe0cbbfede8aa7ccb6084811  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md
 07cef499c61ee314bbe547bad89d1fd1d2b653badecdd948cee9b31658ded22c  reviews/Open Implementation Gates v1.0.md

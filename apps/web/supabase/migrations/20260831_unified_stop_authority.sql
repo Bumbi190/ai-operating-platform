@@ -135,12 +135,38 @@ create trigger stop_events_no_truncate
   before truncate on public.stop_events
   for each statement execute function public.stop_events_append_only();
 
--- RLS on with NO policy: service_role bypasses RLS and reads it through the
--- owner-scoped read model; everyone else gets nothing. The ledger names actors
--- across every project, so a blanket authenticated-read policy — which
--- platform_config has — would turn it into a cross-tenant window.
+-- ── 2b) Explicit table privileges ──────────────────────────────────────────
+--
+-- These are NOT optional, and RLS does not cover them. Verified against
+-- production before writing this:
+--
+--   • `service_role` has rolbypassrls = TRUE, so `enable row level security`
+--     below is no defence at all against the application's own role. RLS here
+--     protects against anon/authenticated only.
+--   • `pg_default_acl` for tables created by `postgres` in `public` grants
+--     `arwdDxtm` — everything — to `anon`, `authenticated` AND `service_role`.
+--     A newly created table is therefore fully writable by service_role the
+--     instant it exists, with no GRANT written anywhere.
+--   • Confirmed on a real predecessor table: `spend_reservations.relacl` is
+--     `{postgres=arwdDxtm/postgres, anon=arwdDxtm/postgres,
+--       authenticated=arwdDxtm/postgres, service_role=arwdDxtm/postgres}`.
+--
+-- So staying silent about service_role would leave it holding INSERT. The
+-- append-only triggers would still refuse UPDATE/DELETE/TRUNCATE, but a direct
+-- INSERT would let the application fabricate ledger rows that no setter ever
+-- produced — an audit trail its own subject can write is not provenance.
+--
+-- The revoke MUST come after CREATE TABLE, because the default ACL is applied
+-- at creation time; a grant issued before the table exists has nothing to act on.
+--
+-- SELECT is granted back because the read model reads this table directly
+-- through PostgREST with the service key. The SECURITY DEFINER setters are
+-- unaffected by any of this: they execute as the table's OWNER, whose rights are
+-- implicit and cannot be revoked from it here.
 alter table public.stop_events enable row level security;
-revoke all on table public.stop_events from public, anon, authenticated;
+
+revoke all on table public.stop_events from public, anon, authenticated, service_role;
+grant select on table public.stop_events to service_role;
 
 
 -- ── 3) The global setter ───────────────────────────────────────────────────

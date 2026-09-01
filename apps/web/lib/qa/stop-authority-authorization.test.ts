@@ -13,9 +13,9 @@
  * execution escape hatch.
  */
 
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   isPlatformOperatorEmail, platformOperatorAllowlist,
@@ -56,6 +56,7 @@ describe('platform-operator authority', () => {
   beforeEach(() => {
     delete process.env.PLATFORM_OPERATOR_EMAILS
     delete process.env.BREVO_ADMIN_EMAIL
+    delete process.env.ARCHITECTURE_KNOWLEDGE_INTERNAL_EMAILS
   })
   afterEach(() => { process.env = { ...saved } })
 
@@ -87,13 +88,80 @@ describe('platform-operator authority', () => {
     expect(isPlatformOperatorEmail('')).toBe(false)
   })
 
-  it('supports multiple operators without a second identity system', () => {
+  // ── HARDENING 2 · precedence, not union ──────────────────────────────────
+  // PLATFORM_OPERATOR_EMAILS is canonical; BREVO_ADMIN_EMAIL is a compatibility
+  // fallback consulted ONLY when the canonical variable is absent or blank.
+  // Permanently unioning them would mean that changing an alert-email address
+  // silently grants the global kill switch.
+
+  it('PRECEDENCE 1 · neither configured → nobody is authorized', () => {
+    expect(platformOperatorAllowlist()).toEqual([])
+    for (const e of [OPERATOR, STRANGER, 'anyone@x.test']) {
+      expect(isPlatformOperatorEmail(e)).toBe(false)
+    }
+  })
+
+  it('PRECEDENCE 2 · only BREVO configured → the legacy identity works', () => {
+    process.env.BREVO_ADMIN_EMAIL = OPERATOR
+    expect(platformOperatorAllowlist()).toEqual([OPERATOR])
+    expect(isPlatformOperatorEmail(OPERATOR)).toBe(true)
+  })
+
+  it('PRECEDENCE 3 · only PLATFORM_OPERATOR_EMAILS → those identities work', () => {
     process.env.PLATFORM_OPERATOR_EMAILS = `a@x.test, ${OPERATOR}`
-    process.env.BREVO_ADMIN_EMAIL = 'seed@x.test'
-    expect(platformOperatorAllowlist().sort())
-      .toEqual(['a@x.test', OPERATOR, 'seed@x.test'].sort())
+    expect(platformOperatorAllowlist().sort()).toEqual(['a@x.test', OPERATOR].sort())
     expect(isPlatformOperatorEmail('a@x.test')).toBe(true)
     expect(isPlatformOperatorEmail(STRANGER)).toBe(false)
+  })
+
+  it('PRECEDENCE 4 · BOTH configured → ONLY the explicit list is honoured', () => {
+    // The cutover property. The Brevo address is deployed today and must lose
+    // its authority the moment an explicit list exists — otherwise the two
+    // privilege sources stay live forever.
+    process.env.PLATFORM_OPERATOR_EMAILS = OPERATOR
+    process.env.BREVO_ADMIN_EMAIL = 'alerts@vendor.test'
+    expect(platformOperatorAllowlist()).toEqual([OPERATOR])
+    expect(isPlatformOperatorEmail(OPERATOR)).toBe(true)
+    expect(isPlatformOperatorEmail('alerts@vendor.test')).toBe(false)
+  })
+
+  it('PRECEDENCE 5 · a BREVO address absent from the explicit list is REFUSED', () => {
+    // Restated as its own case because this is the exact regression that would
+    // reappear if someone "helpfully" re-unioned the two variables.
+    process.env.PLATFORM_OPERATOR_EMAILS = 'ops@omnira.test'
+    process.env.BREVO_ADMIN_EMAIL = OPERATOR
+    expect(isPlatformOperatorEmail(OPERATOR)).toBe(false)
+    expect(isPlatformOperatorEmail('ops@omnira.test')).toBe(true)
+  })
+
+  it('PRECEDENCE 6 · blank/whitespace values never become a wildcard', () => {
+    // A blank canonical variable must FALL BACK, not authorise nobody by
+    // accident and not authorise everybody by treating '' as a match.
+    process.env.PLATFORM_OPERATOR_EMAILS = ',   ,,  '
+    process.env.BREVO_ADMIN_EMAIL = OPERATOR
+    expect(platformOperatorAllowlist()).toEqual([OPERATOR])
+    expect(isPlatformOperatorEmail(OPERATOR)).toBe(true)
+    expect(isPlatformOperatorEmail('')).toBe(false)
+    expect(isPlatformOperatorEmail('   ')).toBe(false)
+
+    process.env.PLATFORM_OPERATOR_EMAILS = '   '
+    expect(platformOperatorAllowlist()).toEqual([OPERATOR])
+  })
+
+  it('PRECEDENCE 7 · the knowledge allowlist stays irrelevant either way', () => {
+    process.env.ARCHITECTURE_KNOWLEDGE_INTERNAL_EMAILS = STRANGER
+    process.env.PLATFORM_OPERATOR_EMAILS = OPERATOR
+    expect(isPlatformOperatorEmail(STRANGER)).toBe(false)
+    delete process.env.PLATFORM_OPERATOR_EMAILS
+    process.env.BREVO_ADMIN_EMAIL = OPERATOR
+    expect(isPlatformOperatorEmail(STRANGER)).toBe(false)
+  })
+
+  it('documents which variable is canonical and which is a fallback', () => {
+    const doc = src('lib/auth/platform-operator.ts')
+    expect(doc).toMatch(/CANONICAL/)
+    expect(doc).toMatch(/COMPATIBILITY FALLBACK/)
+    expect(doc).toMatch(/never unioned|not unioned/i)
   })
 
   it('does NOT inherit the knowledge-classification allowlist', () => {
@@ -405,5 +473,162 @@ describe('generated-types cleanup is enforced, not merely intended', () => {
     expect(src('lib/project/get-project.ts')).toMatch(/STALE|stale/)
     expect(src('lib/project/get-project.ts')).toContain('regenerated')
     expect(src('app/api/system/stop-authority/route.ts')).toContain('regenerated')
+  })
+})
+
+// ── G. Repository-wide direct-writer inventory (HARDENING 4) ────────────────
+
+describe('exactly ONE audited mutation path exists, repository-wide', () => {
+  const STOP_BOOLEANS = ['automation_paused', 'execution_paused']
+  const MUTATORS = ['update', 'insert', 'upsert']
+
+  /** Every runtime source file: excludes tests, fixtures, migrations, generated types. */
+  function runtimeFiles(dir = process.cwd(), acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      if (['node_modules', '.next', '.git', 'supabase'].includes(entry)) continue
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) { runtimeFiles(full, acc); continue }
+      if (!/\.tsx?$/.test(entry)) continue
+      const rel = relative(process.cwd(), full)
+      if (rel.startsWith('lib/qa/') || rel.startsWith('tests/')) continue
+      if (rel.endsWith('database.types.ts')) continue
+      acc.push(rel)
+    }
+    return acc
+  }
+
+  /** Payload text of every `.update(/.insert(/.upsert(` call, brace-depth aware. */
+  function mutationPayloads(source: string): string[] {
+    const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    const out: string[] = []
+    for (const verb of MUTATORS) {
+      const re = new RegExp(`\\.${verb}\\s*\\(`, 'g')
+      let m: RegExpExecArray | null
+      while ((m = re.exec(body)) !== null) {
+        let depth = 1
+        let i = m.index + m[0].length
+        for (; i < body.length && depth > 0; i++) {
+          if (body[i] === '(') depth++
+          else if (body[i] === ')') depth--
+        }
+        out.push(body.slice(m.index, i))
+      }
+    }
+    return out
+  }
+
+  it('no runtime file writes either stop boolean directly', () => {
+    // THE INVARIANT. G3A retired two unaudited writers — a TypeScript UPDATE and
+    // a SQL setter. Nothing stops a future module from quietly recreating one,
+    // and it would not fail any existing test: the booleans would still change,
+    // the system would still behave, and only the audit trail would be missing.
+    //
+    // Scoped to the whole repository on purpose. Pinning only
+    // lib/media/safeguards.ts would guard the one place we already fixed and
+    // miss the next one.
+    const offenders: string[] = []
+    for (const rel of runtimeFiles()) {
+      const source = readFileSync(join(process.cwd(), rel), 'utf8')
+      if (!STOP_BOOLEANS.some(b => source.includes(b))) continue
+      for (const payload of mutationPayloads(source)) {
+        for (const b of STOP_BOOLEANS) {
+          if (payload.includes(b)) offenders.push(`${rel} → ${payload.slice(0, 120)}`)
+        }
+      }
+    }
+    expect(offenders,
+      'direct stop-boolean writes must go through stop_set_platform_automation / ' +
+      'stop_set_project_execution:\n' + offenders.join('\n')).toEqual([])
+  })
+
+  it('the guard can actually see a violation (self-check)', () => {
+    // A scanner that never fires is indistinguishable from a broken scanner.
+    const planted = `
+      await db.from('platform_config').update({
+        automation_paused: true, updated_at: new Date().toISOString(),
+      }).eq('id', 1)
+    `
+    const found = mutationPayloads(planted).filter(pl =>
+      STOP_BOOLEANS.some(b => pl.includes(b)))
+    expect(found.length).toBe(1)
+    // ...and it does not fire on a READ of the same column.
+    const read = `await db.from('projects').select('execution_paused').eq('id', x)`
+    expect(mutationPayloads(read).filter(pl =>
+      STOP_BOOLEANS.some(b => pl.includes(b)))).toEqual([])
+  })
+
+  it('the canonical wrappers reach the booleans only through the RPCs', () => {
+    const stop = code('lib/governance/execution-stop.ts')
+    expect(stop).toContain("rpc('stop_set_platform_automation'")
+    expect(stop).toContain("rpc('stop_set_project_execution'")
+    // No table access whatsoever in the authority module.
+    expect(stop).not.toMatch(/\.from\('(platform_config|projects)'\)/)
+  })
+
+  it('the retired writers have not returned under any name', () => {
+    for (const rel of runtimeFiles()) {
+      const source = readFileSync(join(process.cwd(), rel), 'utf8')
+      expect(source, `${rel} re-exports the retired global writer`)
+        .not.toContain('export async function setAutomationPaused')
+      expect(source, `${rel} calls the retired SQL setter`)
+        .not.toContain("rpc('set_project_execution_paused'")
+    }
+  })
+})
+
+// ── H. Semantics consistency (HARDENING 3) ──────────────────────────────────
+
+describe('what the global stop PROMISES matches what it DOES', () => {
+  it('the DB column is NOT renamed — applied history keeps its name', () => {
+    // The name is legacy and stays legacy. Renaming it would rewrite the
+    // meaning of every applied migration and every existing reader.
+    expect(src('supabase/migrations/20260831_unified_stop_authority.sql'))
+      .toContain('automation_paused')
+    expect(src('supabase/migrations/20260831_unified_stop_authority.sql'))
+      .not.toMatch(/rename\s+column|rename\s+to/i)
+    expect(src('lib/media/safeguards.ts')).toContain('automation_paused')
+  })
+
+  it('the action no longer promises merely "unattended" work', () => {
+    // The contradiction this fixes: the resolver refuses OPERATOR_EXECUTION
+    // under the global flag, while the documentation said the switch paused
+    // "ALL unattended automation" — understating a kill switch is how someone
+    // presses it expecting less than they get.
+    const doc = src('app/actions/automation.ts')
+    expect(doc).not.toMatch(/Pause or resume ALL unattended automation/)
+    expect(doc).toContain('GLOBAL EXECUTION STOP')
+    expect(doc).toContain('OPERATOR_EXECUTION')
+    // ...and it still states the assistance carve-out, or the copy would now
+    // overstate in the other direction.
+    expect(doc).toMatch(/does NOT stop operator assistance/i)
+  })
+
+  it('the operator-facing copy says execution, not just automation', () => {
+    const toggle = src('components/platform/PauseToggle.tsx')
+    expect(toggle).not.toContain('Pausa all automation')
+    expect(toggle).not.toContain('Återuppta automation')
+    expect(toggle).toMatch(/Stoppa exekvering/)
+    expect(toggle).toMatch(/Återuppta exekvering/)
+    // The tooltip must name BOTH halves: what stops and what keeps working.
+    expect(toggle).toMatch(/både automatisk och manuellt begärd/)
+    expect(toggle).toMatch(/Atlas.*tillgängliga/)
+  })
+
+  it('the paused banner explains the real scope', () => {
+    const page = src('app/(platform)/system/page.tsx')
+    expect(page).not.toContain('All automation är manuellt pausad')
+    expect(page).toMatch(/All exekvering är stoppad/)
+    expect(page).toMatch(/Atlas och styrning är fortfarande tillgängliga/)
+  })
+
+  it('the resolver documents the legacy-name / current-semantics split', () => {
+    const stop = src('lib/governance/execution-stop.ts')
+    expect(stop).toContain('GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION')
+    // The derivation must stay attached to the constant, not drift into a PR
+    // description nobody reads at the call site.
+    const seg = stop.slice(stop.indexOf('Does the GLOBAL automation pause'),
+                           stop.indexOf('export const GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION'))
+    expect(seg).toMatch(/hero-image/)
+    expect(seg).toMatch(/Pausa ALL automation/)
   })
 })

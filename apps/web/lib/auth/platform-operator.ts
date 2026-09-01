@@ -30,6 +30,10 @@
  * source — it gives the EXISTING one a name, one implementation, and a reusable
  * boundary that future G4 governance surfaces can call.
  *
+ * `PLATFORM_OPERATOR_EMAILS` is the canonical configuration going forward;
+ * `BREVO_ADMIN_EMAIL` is a compatibility fallback and NOT the long-term
+ * governance authority. See `platformOperatorAllowlist` for the precedence.
+ *
  * `ARCHITECTURE_KNOWLEDGE_INTERNAL_EMAILS` is deliberately NOT consulted here.
  * That list governs knowledge classification. Reusing it would mean adding
  * someone to a document allowlist silently hands them the platform kill switch —
@@ -66,19 +70,38 @@ export type PlatformOperatorResult = PlatformOperatorOk | PlatformOperatorDenied
 /**
  * The configured operator allowlist, normalised.
  *
- * `PLATFORM_OPERATOR_EMAILS` (comma-separated) is the forward-looking name for
- * multiple operators. `BREVO_ADMIN_EMAIL` is the identity that is actually
- * deployed today, so it is included — without it this control would fail closed
- * against every user the moment it ships, including the platform's own operator.
+ * ── PRECEDENCE, NOT UNION ──────────────────────────────────────────────────
+ *   PLATFORM_OPERATOR_EMAILS  — CANONICAL. The explicit governance authority.
+ *   BREVO_ADMIN_EMAIL         — COMPATIBILITY FALLBACK ONLY, consulted solely
+ *                               when the canonical variable is absent or blank.
+ *
+ * These are checked in order and never unioned. Unioning them permanently would
+ * couple two unrelated privileges: `BREVO_ADMIN_EMAIL` is, by its name and its
+ * other uses, a NOTIFICATION address. Once an explicit operator list exists,
+ * changing where alert email is delivered must not silently hand the global kill
+ * switch to the new address — and it would, if the two lists were merged
+ * forever.
+ *
+ * The fallback is what keeps today working: `BREVO_ADMIN_EMAIL` is the identity
+ * actually deployed (Production + Preview) and is already a hard authorization
+ * gate elsewhere in this codebase, so without it this control would fail closed
+ * against everyone on day one, including the platform's own operator. It is a
+ * bootstrap, not the long-term authority: setting `PLATFORM_OPERATOR_EMAILS`
+ * completes the cutover and retires it in one step, with no window in which two
+ * privilege sources are both live.
  */
 export function platformOperatorAllowlist(): string[] {
-  const raw = [
-    ...(process.env.PLATFORM_OPERATOR_EMAILS ?? '').split(','),
-    process.env.BREVO_ADMIN_EMAIL,
-  ]
-  return [...new Set(
-    raw.map(v => v?.trim().toLowerCase()).filter((v): v is string => !!v),
+  const normalise = (values: (string | undefined)[]) => [...new Set(
+    values.map(v => v?.trim().toLowerCase()).filter((v): v is string => !!v),
   )]
+
+  // Blank, whitespace-only and ',  ,' all normalise to zero entries, so a
+  // misconfigured canonical variable falls back rather than authorising nobody
+  // by accident — and an empty string never becomes a wildcard entry.
+  const canonical = normalise((process.env.PLATFORM_OPERATOR_EMAILS ?? '').split(','))
+  if (canonical.length > 0) return canonical
+
+  return normalise([process.env.BREVO_ADMIN_EMAIL])
 }
 
 /**

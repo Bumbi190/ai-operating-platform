@@ -173,12 +173,32 @@ create table public.atlas_authorizations (
   expires_at timestamptz);
 
 -- Roles are cluster-wide, not per-database, so a previous suite's role survives
--- this database being dropped. Creating it unconditionally would make the whole
--- fixture fail on the second run of the day.
+-- this database being dropped. Creating them unconditionally would make the
+-- whole fixture fail on the second run of the day.
 do $do$ begin
   if not exists (select 1 from pg_roles where rolname='service_role')
     then create role service_role; end if;
+  if not exists (select 1 from pg_roles where rolname='anon')
+    then create role anon; end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated')
+    then create role authenticated; end if;
 end $do$;
+
+-- REPRODUCE PRODUCTION'S DEFAULT ACL. This is the whole reason the privilege
+-- proofs below are worth running. Supabase ships pg_default_acl granting
+-- arwdDxtm on new public tables to anon, authenticated AND service_role, so a
+-- table gets full write access the moment it is created, with no GRANT written
+-- anywhere. Verified in production; spend_reservations.relacl shows exactly
+-- this shape.
+--
+-- Without these two lines the fixture would be a greenfield database where
+-- service_role starts with NOTHING, the revoke would be a no-op, and P22 would
+-- "prove" a property the migration never actually established — the same
+-- greenfield trap that let G2's 42P13 reach production.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on sequences to anon, authenticated, service_role;
 
 insert into public.platform_config (id) values (1);
 insert into public.projects (id, slug) values
@@ -437,6 +457,106 @@ d('P17–P20 · the properties source-reading cannot establish', () => {
     expect(one(dsn, `select count(*) from public.stop_state(null)`)).toBe('0')
     run(dsn, ['-c', `insert into public.platform_config select * from g3a_saved;
                      drop table g3a_saved;`])
+  })
+})
+
+// ── F2. The ledger's table privileges (HARDENING 1) ─────────────────────────
+
+d('P22 · service_role may READ the ledger and may not WRITE it directly', () => {
+  // WHY THIS IS LOAD-BEARING. The application talks to Postgres as service_role,
+  // which has rolbypassrls=true in production — so RLS on this table is not a
+  // defence against the application itself. And Supabase's default ACL hands
+  // every new public table full `arwdDxtm` to service_role at CREATE time.
+  //
+  // If the migration stays silent about service_role, the append-only triggers
+  // still refuse UPDATE/DELETE/TRUNCATE, but a direct INSERT succeeds — and a
+  // ledger whose own subject can fabricate rows is not audit provenance. These
+  // proofs run as the real role, not as the owner.
+
+  const asServiceRole = (sql: string) =>
+    expectFailure(dsn, `set local role service_role; ${sql}`)
+  const okAsServiceRole = (sql: string) =>
+    run(dsn, ['-c', `begin; set local role service_role; ${sql}; commit;`])
+
+  it('the default ACL really did grant service_role write access at CREATE time', () => {
+    // GUARDS THE GUARD: if the fixture stops reproducing production's default
+    // ACL, every proof below becomes vacuous — service_role would start with
+    // nothing and the revoke would be testing itself.
+    //
+    // The privilege letters are deliberately matched as a version-independent
+    // prefix: PostgreSQL 17 (production) adds `m` for MAINTAIN, so production
+    // reads `arwdDxtm` while a PG16 host reads `arwdDxt`. Pinning the exact
+    // string would make this suite fail on the wrong Postgres for a reason that
+    // has nothing to do with the property being proven.
+    expect(one(dsn, `select defaclacl::text from pg_default_acl
+                      where defaclnamespace = 'public'::regnamespace limit 1`))
+      .toMatch(/service_role=arwdDxt/)
+    // And the write bits really were inherited by this very table before the
+    // migration revoked them — the ledger row proving the hazard was real.
+    expect(one(dsn, `select count(*) from pg_default_acl d
+                      where d.defaclnamespace = 'public'::regnamespace
+                        and d.defaclacl::text like '%service_role=arwdDxt%'`)).toBe('1')
+  })
+
+  it('SELECT succeeds', () => {
+    const out = run(dsn, ['-t', '-A', '-c',
+      `begin; set local role service_role; select count(*) from public.stop_events; commit;`])
+    expect(out.trim().split('\n').some(l => /^\d+$/.test(l.trim()))).toBe(true)
+    expect(one(dsn, `select has_table_privilege('service_role','public.stop_events','SELECT')`))
+      .toBe('t')
+  })
+
+  it('direct INSERT is DENIED — the ledger cannot be fabricated', () => {
+    const before = one(dsn, `select count(*) from public.stop_events`)
+    expect(asServiceRole(`insert into public.stop_events
+      (scope_type, scope_id, event, previous_paused, new_paused, actor)
+      values ('PLATFORM_AUTOMATION', null, 'PAUSED', false, true, 'user:forged')`))
+      .toMatch(/permission denied/i)
+    expect(one(dsn, `select count(*) from public.stop_events`)).toBe(before)
+    expect(one(dsn, `select has_table_privilege('service_role','public.stop_events','INSERT')`))
+      .toBe('f')
+  })
+
+  it('direct UPDATE, DELETE and TRUNCATE are DENIED at the privilege layer', () => {
+    // Denied by PRIVILEGE, not merely by the append-only trigger — two
+    // independent barriers, so losing either one alone is not sufficient.
+    expect(asServiceRole(`update public.stop_events set actor='x'`)).toMatch(/permission denied/i)
+    expect(asServiceRole(`delete from public.stop_events`)).toMatch(/permission denied/i)
+    expect(asServiceRole(`truncate public.stop_events`)).toMatch(/permission denied|must be owner/i)
+    for (const priv of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+      expect(one(dsn, `select has_table_privilege('service_role','public.stop_events','${priv}')`),
+        `service_role must not hold ${priv}`).toBe('f')
+    }
+  })
+
+  it('anon and authenticated hold NOTHING at all', () => {
+    for (const role of ['anon', 'authenticated']) {
+      for (const priv of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        expect(one(dsn, `select has_table_privilege('${role}','public.stop_events','${priv}')`),
+          `${role} must not hold ${priv}`).toBe('f')
+      }
+    }
+  })
+
+  it('the SECURITY DEFINER setters STILL append when invoked as service_role', () => {
+    // The other half of the invariant. Removing write privileges must close the
+    // direct path without closing the audited one — otherwise the migration is
+    // secure and broken.
+    const before = Number(one(dsn, `select count(*) from public.stop_events`))
+    const paused = one(dsn, `select automation_paused from public.platform_config where id=1`) === 't'
+    okAsServiceRole(`select public.stop_set_platform_automation(${!paused}, '${ACTOR}', 'via definer')`)
+    expect(Number(one(dsn, `select count(*) from public.stop_events`))).toBe(before + 1)
+    expect(one(dsn, `select actor, reason from public.stop_events
+                     order by created_at desc limit 1`)).toBe(`${ACTOR}|via definer`)
+    // ...and the same for the project scope.
+    okAsServiceRole(`select public.stop_set_project_execution('${P_BETA}'::uuid, true, '${ACTOR}', 'definer proj')`)
+    expect(Number(one(dsn, `select count(*) from public.stop_events`))).toBe(before + 2)
+  })
+
+  it('stop_state is still callable as service_role', () => {
+    const out = run(dsn, ['-t', '-A', '-c',
+      `begin; set local role service_role; select global_paused from public.stop_state(null); commit;`])
+    expect(out).toMatch(/[tf]/)
   })
 })
 

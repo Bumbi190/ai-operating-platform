@@ -57,7 +57,22 @@ function ok(r: StopMutationResult): StopActionResult {
 }
 
 /**
- * Pause or resume ALL unattended automation.
+ * GLOBAL EXECUTION STOP — pause or resume.
+ *
+ * SCOPE, stated precisely because the flag's name understates it. This stops
+ * BOTH unattended automation (AUTONOMOUS) AND operator-requested execution
+ * (OPERATOR_EXECUTION): generation, publishing, sending, workflow runs, any
+ * provider-backed or externally-visible work, however it was triggered.
+ *
+ * It does NOT stop operator assistance. Atlas chat, status views, governance
+ * inspection, planning and these controls themselves stay available — that is
+ * what makes this a stop rather than a lockout, and it is why the operator can
+ * still reach the console that lifts it.
+ *
+ * The underlying column is still called `automation_paused`: applied migration
+ * history and every existing reader keep that name. The NAME is legacy; the
+ * SEMANTICS are the ones above. See GLOBAL_PAUSE_STOPS_OPERATOR_EXECUTION in
+ * lib/governance/execution-stop.ts for the derivation.
  *
  * This moves one boolean and records that it moved. It grants nothing: no
  * authorization is created, renewed, extended, or revived, no expired or

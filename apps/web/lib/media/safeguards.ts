@@ -5,7 +5,11 @@
  * Varje cron-route anropar dessa kontroller vid start.
  *
  * Skydd:
- *  1. Global paus (automation_paused i platform_config)
+ *  1. Global exekveringsstopp (automation_paused i platform_config).
+ *     OBS: kolumnnamnet är legacy. Sedan G3A stoppar den globala spaken BÅDE
+ *     oövervakad automation OCH operatörsbegärd exekvering — men aldrig
+ *     operatörens assistans/läsning/styrning. Kanonisk semantik finns i
+ *     lib/governance/execution-stop.ts.
  *  2. MAX_DAILY_RENDERS — stoppar nya render-jobb om gränsen nåtts
  *  3. Retry-cap — stoppar publish-loopar och skickar till operatörsgranskning
  */

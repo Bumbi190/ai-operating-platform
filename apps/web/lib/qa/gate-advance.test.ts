@@ -177,7 +177,9 @@ describe('it stops at the next gate', () => {
   it('an advance re-evaluates once rather than looping', () => {
     // The new state has a different gate, different prerequisites and different
     // evidence; one immediate re-look, then normal backoff.
-    expect(tick).toMatch(/advance\?\.outcome === 'advanced' \? now : nextWakeAt/)
+    expect(tick).toMatch(
+      /\(advance\?\.outcome === 'advanced' \|\| completion\?\.outcome === 'advanced'\) \? now/)
+    expect(tick).toMatch(/: nextWakeAt\)/)
   })
 
   it('records what it did in the tick outcome', () => {

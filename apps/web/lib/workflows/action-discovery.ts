@@ -69,6 +69,23 @@ export function discoverReadOnlyActions(defKey: string, state: string): Discover
 }
 
 /**
+ * EVERY canonical action declared at this (def_key, state) — not only the
+ * executable READ_ONLY ones.
+ *
+ * `discoverReadOnlyActions` answers "what may the scheduler run here" and so
+ * filters by class and executor family. Completion asks a different question —
+ * "what work does this state declare" — and a MATERIAL_WRITE action that cannot
+ * execute yet is still declared work. Filtering it out here would let a state
+ * look complete because its work is unimplementable.
+ */
+export function registeredActionsAt(defKey: string, state: string): string[] {
+  return Object.entries(ACTION_REGISTRY)
+    .filter(([, meta]) => meta.placements.some(pl => pl.def_key === defKey && pl.state === state))
+    .map(([kind]) => kind)
+    .sort()
+}
+
+/**
  * The check an action answers, for evidence lookups AND for the pre-run gate's
  * self-answered exemption.
  *

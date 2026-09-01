@@ -103,10 +103,16 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    * 56 → 57: `unified_stop_authority` (G3A — append-only stop_events ledger plus
    *          the two audited setters and the stop_state read model. Retires
    *          set_project_execution_paused, the unaudited alternate path.)
+   * 57 → 58: `workflow_transition_stop_guard` (G3B — closes F-107. The
+   *          authoritative workflow_append_transition now re-reads BOTH stop
+   *          authorities under FOR SHARE row locks inside its own transaction,
+   *          so a transition can no longer commit on a stale pre-pause read
+   *          after a pause has committed. CREATE OR REPLACE: same signature,
+   *          same return type, gate and CAS untouched.)
    */
-  it('enforces exactly the expected number of migrations — currently 57', () => {
+  it('enforces exactly the expected number of migrations — currently 58', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(57)
+    expect(enforced).toBe(58)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

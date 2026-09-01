@@ -26,7 +26,7 @@ import type { WorkflowGateState } from '@/lib/workflows/gate'
 import { wakeState } from '@/lib/workflows/schedule'
 import { findAdapter } from '@/lib/workflows/adapters/registry'
 import type { VerificationEvidence } from '@/lib/workflows/adapters/types'
-import { computeEvidenceTargetHash } from '@/lib/workflows/attestation'
+import { evidenceTargetHashFor } from '@/lib/workflows/evidence-binding'
 import { summarizeStateEvidence, type CheckVerdict } from '@/lib/workflows/evidence-consumption'
 import {
   deriveWorkflowHealth, listActiveWorkflowSignals,
@@ -141,13 +141,10 @@ export default async function ReleasesPage() {
           const rows = await listEvidence(db, instance.id)
           checkVerdicts = summarizeStateEvidence(
             adapter.attestableChecks(), instance.current_state, rows,
-            checkKey => computeEvidenceTargetHash({
-              instance, spec: def.spec, state: instance.current_state, checkKey,
-              sourceCommit: (rows.find(r => r.check_key === checkKey)?.attestation as
-                { source_commit?: string } | undefined)?.source_commit ?? null,
-              artifactManifestHash: (rows.find(r => r.check_key === checkKey)?.attestation as
-                { artifact_manifest_hash?: string } | undefined)?.artifact_manifest_hash ?? null,
-            }),
+            // Behaviour-identical to the closure this replaces; it already used
+            // the right pin. Calling the shared helper is what lets the guard
+            // test pin EVERY reader without carving out an exception.
+            evidenceTargetHashFor(instance, def.spec, instance.current_state, rows),
           ).verdicts
         } catch {
           checkVerdicts = []

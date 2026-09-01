@@ -252,7 +252,10 @@ describe('REGRESSION 8 · the read surface is least privilege', () => {
 
   it('redacts other actors from a non-operator, keeping only themselves', () => {
     expect(route).toContain('selfActor')
-    expect(route).toMatch(/isOperator \|\| e\.actor === selfActor/)
+    // Identifier-agnostic: the invariant is "operator, or the actor is you",
+    // not what the row variable is called. Pinning the name made this fail on
+    // a pure rename while a real redaction change could still slip past.
+    expect(route).toMatch(/isOperator \|\| \w+\.actor === selfActor/)
   })
 
   it('still calls no setter and performs no write', () => {

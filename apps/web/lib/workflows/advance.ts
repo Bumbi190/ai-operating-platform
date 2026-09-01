@@ -31,6 +31,7 @@ import { getState } from './machine'
 import { appendTransition, listEvidence, readDefinitionById } from './store'
 import { systemAuthorizationVerifier, systemDeriveWorkflowGate } from './system-authorization'
 import { summarizeStateEvidence } from './evidence-consumption'
+import { evidenceTargetHashFor } from './evidence-binding'
 import { findAdapter } from './adapters/registry'
 import type { WorkflowInstance } from './types'
 import type { LedgerReader } from './system-authorization'
@@ -118,7 +119,16 @@ export async function advanceAuthorizedWorkflow(
     const required = declared.filter(c => c.state === from && c.required).map(c => c.check_key)
     if (required.length > 0) {
       const rows = await listEvidence(db, instance.id)
-      const summary = summarizeStateEvidence(declared, from, rows, () => gate.target?.versionHash ?? '')
+      // The EVIDENCE pin, shared with the tick, the pre-run gate and the
+      // READ_ONLY seam. This used to be `gate.target.versionHash`, which is a
+      // `workflow.gate` hash: a different canonical target kind, and one that
+      // also includes the evidence rows themselves. Correctly bound evidence
+      // could therefore never equal it, so every required check read as STALE
+      // and no gated state with required evidence could ever be crossed.
+      // It went unnoticed because the only state advanced so far — `planning` —
+      // declares zero REQUIRED checks, so this block was skipped entirely.
+      const summary = summarizeStateEvidence(
+        declared, from, rows, evidenceTargetHashFor(instance, def.spec, from, rows))
       const unmet = summary.verdicts.filter(v => required.includes(v.check_key) && !v.satisfies)
       if (unmet.length > 0) {
         return {

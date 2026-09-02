@@ -41,9 +41,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { toJson } from '@/lib/supabase/json'
 import {
   generateNewsImage,
-  generateArticleHeroImage,
+  buildArticleHeroRenderInput,
   type ArticleHeroRenderInput,
 } from '@/lib/media/ideogram'
+import { orchestrateImageGeneration } from '@/lib/media/orchestrator/orchestrate'
+import type { MediaSelection } from '@/lib/media/orchestrator/types'
 import { admitAssetFromUrl } from '@/lib/media/asset/admission'
 import { publicDeliveryUrl } from '@/lib/media/asset/store'
 import { withRetry } from '@/lib/media/retry'
@@ -206,80 +208,102 @@ export async function generateHeroImage(
     briefShadowPromise = runEditorBriefShadow(db, article, execution)
   }
 
-  // ── Generate + upload (with retry, mirroring step2's call pattern) ────────
+  // ── Generate + admit ──────────────────────────────────────────────────────
   try {
-    let ideogramUrl: string
     let renderInput: ArticleHeroRenderInput | null = null
     let source: HeroImageSource
+    let asset: Awaited<ReturnType<typeof admitAssetFromUrl>>['asset']
+    let selection: MediaSelection | null = null
 
     if (brief) {
-      // Phase 2 brief-driven path.
-      const result = await withRetry(
-        () => generateArticleHeroImage(brief!, execution),
-        { attempts: 2, label: 'Ideogram brief hero' },
-      )
-      ideogramUrl = result.url
-      renderInput = result.input
+      // ── Media Runtime Phase 2: the ORCHESTRATED path ────────────────────
+      //
+      // This branch no longer names a provider. It states what it needs; the
+      // orchestrator decides which eligible candidate serves it, dispatches
+      // through that candidate's existing governed adapter, and admits the
+      // result as a canonical Asset. Generation and admission are one step, so
+      // there is no window in which an image exists but nothing owns it.
+      //
+      // `allowUnlicensed` is set because this is operator-triggered article
+      // work, not an autonomous mission. It waives ONLY the mission capability
+      // licence — spend, stop authority, the provider gate, credential presence
+      // and reference rules all still apply, and the orchestrator has no way to
+      // waive them.
+      renderInput = buildArticleHeroRenderInput(brief)
       source = 'brief'
+
+      const result = await withRetry(
+        () => orchestrateImageGeneration(
+          {
+            projectId:   article.project_id,
+            execution,
+            // NOT a mission: this is an operator-triggered article route, so the
+            // Atlas mission capability licence is not the authority that binds
+            // it. Stated as a classification, not waived as a permission — and
+            // `caller` is a closed union, so a new one is a reviewed type change.
+            invocation:  { kind: 'internal-application', caller: 'article-hero' },
+            mediaType:   'image',
+            operation:   'Article Hero Image',
+            agent:       'Image Director',
+            brief:       { instruction: renderInput!.prompt, avoid: brief!.avoid },
+            aspectRatio: renderInput!.aspect_ratio,
+            // Article heroes ARE published — stated, never defaulted.
+            visibility:  'public',
+            storagePath: heroStoragePath(article.project_id, article.id),
+            // Ideogram-specific rendering parameter. Keyed, so it cannot ride
+            // along on another candidate's request if ranking picks one.
+            providerOptions: { ideogram: { style_type: renderInput!.style_type } },
+            // Hashed into provenance; the payload is never stored.
+            sourceBrief: brief,
+          },
+        ),
+        { attempts: 2, label: 'orchestrated brief hero' },
+      )
+      asset = result.asset
+      selection = result.selection
     } else {
-      // Existing writer-prompt path (also used as fallback when flag-on brief fails).
-      ideogramUrl = await withRetry(
+      // Existing writer-prompt path (also used as fallback when flag-on brief
+      // fails). Deliberately NOT orchestrated in Phase 2: it derives its prompt
+      // inside generateNewsImage via a Claude photo-direction step, so routing
+      // it would mean extracting that too. One proof path, not two.
+      source = 'fallback_writer'
+      const ideogramUrl = await withRetry(
         () => generateNewsImage(headlineInput, bodyInput, execution),
         { attempts: 2, label: 'Ideogram hero' },
       )
-      source = 'fallback_writer'
+      const admitted = await admitAssetFromUrl({
+        projectId:  article.project_id,
+        kind:       'image',
+        visibility: 'public',
+        sourceUrl:  ideogramUrl,
+        storage:    { path: heroStoragePath(article.project_id, article.id) },
+        provenance: {
+          source:   'generated',
+          provider: 'ideogram',
+          model:    'ideogram-v3',
+          providerMetadata: { heroImageSource: source },
+        },
+      })
+      asset = admitted.asset
     }
-
-    // ── Output → Asset admission (Media Runtime Phase 1) ───────────────────
-    //
-    // Replaces the direct uploadArticleHeroImage() call. That helper returned a
-    // public URL and nothing else, which is why every hero until now existed
-    // only as a URL string: a caller handed a URL stores a URL. Admission
-    // performs canon §21.5 — retrieve, validate type and integrity, checksum,
-    // store, capture provenance — and returns an ASSET whose identity survives
-    // the URL changing.
-    //
-    // Failure semantics are unchanged. Admission refuses by throwing, exactly as
-    // uploadArticleHeroImage did, so a refusal lands in the same catch below and
-    // still yields hero_image_status='failed' plus an alert. No new class of
-    // failure is introduced — a rejected image is the same outcome as a failed
-    // upload has always been.
-    //
-    // visibility: 'public' is stated deliberately and not defaulted. Article
-    // heroes ARE published — they render on The Prompt's homepage and are synced
-    // to the destination site below. Everything else defaults to 'internal'.
-    const { asset } = await admitAssetFromUrl({
-      projectId:  article.project_id,
-      kind:       'image',
-      visibility: 'public',
-      sourceUrl:  ideogramUrl,
-      storage:    { path: heroStoragePath(article.project_id, article.id) },
-      provenance: {
-        source:   'generated',
-        provider: 'ideogram',
-        model:    'ideogram-v3',
-        // The BRIEF is the canonical creative intent (§20.28); the provider
-        // prompt is one implementation of it. Both are hashed, never stored —
-        // "was this the same request?" stays answerable without this table
-        // becoming a content store.
-        brief:    brief ?? undefined,
-        request:  renderInput ?? undefined,
-        providerMetadata: { heroImageSource: source },
-      },
-    })
 
     // Delivery URL is DERIVED from the asset's current location, never treated
     // as the identity. hero_image_url stays populated because the publish sync
     // and every existing reader depend on it; hero_asset_id is what is durable.
     const publicUrl = publicDeliveryUrl(asset.storage)
 
-    void logImageCost(1, 'ideogram', {
+    // Attribution row. The PAID call was already reserved and settled inside the
+    // adapter the orchestrator dispatched to; this is the cost_events entry that
+    // names which one, so a hero can be traced to the provider that made it.
+    void logImageCost(1, (selection?.candidate === 'openai' ? 'openai' : 'ideogram'), {
       projectId: article.project_id,
       operation: 'Article Hero Image',
       // assetId rides in the existing metadata field, so cost_events links to
       // the asset with NO change to lib/cost/track.ts. cost_events remains the
       // only ledger; the asset never carries an amount.
-      metadata:  { articleId: article.id, source, assetId: asset.id },
+      metadata:  { articleId: article.id, source, assetId: asset.id,
+                   candidate: selection?.candidate ?? 'ideogram',
+                   model: selection?.model ?? 'ideogram-v3' },
     })
 
     // `hero_asset_id` is not in database.types.ts until the migration is applied

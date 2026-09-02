@@ -17,7 +17,7 @@
  * `lib/supabase/database.types.ts` until the migration is applied and the types
  * are regenerated (`supabase gen types typescript …`, per the note in
  * `lib/supabase/types.ts`). The repository already handles a not-yet-generated
- * table the same way — `(db as any).from('bug_reports')` in `lib/bugs/report.ts`
+ * table the same way — `db.from('bug_reports')` in `lib/bugs/report.ts`
  * — so this follows the existing convention rather than inventing one.
  *
  * The casts are confined to this file and to two table names. Once the migration
@@ -30,6 +30,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { toJson } from '@/lib/supabase/json'
 import { AssetRejectedError, PUBLIC_BUCKETS } from './validate'
 import {
   asAssetId,
@@ -184,7 +185,7 @@ export interface InsertAssetInput {
 export async function insertAsset(input: InsertAssetInput): Promise<Asset> {
   const db = createAdminClient()
 
-  const { data, error } = await (db as any).from('assets')
+  const { data, error } = await db.from('assets')
     .insert({
       project_id:      input.projectId,
       kind:            input.kind,
@@ -235,7 +236,7 @@ export interface InsertProvenanceInput {
 export async function insertProvenance(input: InsertProvenanceInput): Promise<AssetProvenance> {
   const db = createAdminClient()
 
-  const { data, error } = await (db as any).from('asset_provenance')
+  const { data, error } = await db.from('asset_provenance')
     .insert({
       asset_id:            input.assetId,
       source:              input.source,
@@ -250,7 +251,7 @@ export async function insertProvenance(input: InsertProvenanceInput): Promise<As
       cost_event_id:       input.costEventId ?? null,
       duration_ms:         input.durationMs ?? null,
       simulated:           input.simulated ?? false,
-      provider_metadata:   input.providerMetadata ?? {},
+      provider_metadata:   toJson(input.providerMetadata ?? {}),
     })
     .select('*')
     .single()
@@ -266,7 +267,7 @@ export async function insertProvenance(input: InsertProvenanceInput): Promise<As
 export async function deleteAssetRow(assetId: AssetId): Promise<void> {
   try {
     const db = createAdminClient()
-    await (db as any).from('assets').delete().eq('id', assetId)
+    await db.from('assets').delete().eq('id', assetId)
   } catch {
     // Same reasoning as removeAssetBytes: never mask the original failure.
   }
@@ -276,7 +277,7 @@ export async function deleteAssetRow(assetId: AssetId): Promise<void> {
 
 export async function getAsset(assetId: AssetId): Promise<Asset | null> {
   const db = createAdminClient()
-  const { data, error } = await (db as any).from('assets')
+  const { data, error } = await db.from('assets')
     .select('*')
     .eq('id', assetId)
     .maybeSingle()
@@ -303,7 +304,7 @@ export async function assertReferencesUsable(
   if (referenceAssetIds.length === 0) return
 
   const db = createAdminClient()
-  const { data, error } = await (db as any).from('assets')
+  const { data, error } = await db.from('assets')
     .select('id, project_id')
     .in('id', [...referenceAssetIds])
 

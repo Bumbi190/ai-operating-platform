@@ -148,10 +148,28 @@ Three mechanisms make it hold rather than merely intend it:
    `publicDeliveryUrl` can acquire that bug, because bucket and path are already
    known before a URL exists.
 
-**A found bug, worth naming.** That `outputs` route creates a *signed* URL but
-parses a *public* URL prefix. Since the bucket is public the signing adds no
-protection, and if the bucket were ever made private the split would silently
-yield `undefined`. Not fixed here (out of scope) — recorded in §Remaining Risks.
+**A found bug, worth naming — and a correction.** That `outputs` route creates a
+*signed* URL but recovers the path by splitting on a **public** URL prefix.
+
+An earlier revision of this document asserted the `outputs` bucket was public and
+that the signing therefore added no protection. **That was wrong.** Reading the
+live bucket table while applying the migration showed the actual flags:
+
+| bucket | public |
+| --- | --- |
+| `media-assets` | **true** |
+| `run-images` | **true** |
+| `outputs` | **false** |
+| `familje-stunden` | **false** |
+
+`outputs` is private. So the signing is real, and the defect is the *other* way
+round from what was claimed: the split on `/object/public/outputs/` cannot match a
+private object's URL shape, so `path` is `undefined` for anything stored since the
+bucket became private. Worse than described, not better. Still out of scope here —
+recorded in §Remaining Risks.
+
+The one assumption Phase 1 actually depends on is confirmed: `media-assets` is
+public, which is why `internal` assets must go elsewhere.
 
 **One correctness improvement over the legacy path.** The old helper chose the
 file extension from the response header — `contentType.includes('png') ? 'png' :
@@ -680,9 +698,33 @@ it alone changes nothing that runs today.
 **It is no longer unproven.** `lib/qa/media-asset-foundation-sql.test.ts` applies
 this exact file to a throwaway local database on every test run and asserts the
 schema it produces — which is how the cascade defect in §Private Draft Storage
-Hardening was found. What that proof does NOT cover: Supabase-specific storage
-behaviour, since the harness stubs `storage.buckets`. Only a real apply shows
-that.
+Hardening was found.
+
+### APPLIED (2026-09-02)
+
+The migration has now been applied to the canonical project.
+
+| | |
+| --- | --- |
+| Target | `iboepohjwrhtgshrqaol` — "AI Operating Platform" (eu-west-1) |
+| Environment | **production** — the repo has exactly one Supabase target (`NEXT_PUBLIC_SUPABASE_URL`); there is no staging or preview project |
+| How the target was confirmed | its migration ledger matches this repo's history exactly and ended at `stop_atomic_execution_admission`, with no `media_asset_foundation` |
+| Mechanism | `apply_migration(name='media_asset_foundation')` — the mechanism the guard's naming contract expects |
+| Result | success; recorded **exactly once** in `supabase_migrations.schema_migrations` |
+
+Post-apply verification (read-only): `public.assets` and `public.asset_provenance`
+exist; `media-assets-private` created with **`public = false`**; `media-assets`
+unchanged at `public = true`; `website_content.hero_asset_id` present with FK
+delete rule `SET NULL`; RLS enabled on both tables with 2 policies; 2 triggers on
+`asset_provenance`; 7 asset indexes; 8 CHECK constraints on `assets`; **0 rows** in
+both tables — no data was created or modified.
+
+`database.types.ts` was regenerated from the applied schema. The diff is exactly
+the two new tables plus `hero_asset_id`, with no table removed; the only other
+lines are added parentheses in the generator's boilerplate helper types, which are
+semantically identical. **All `(db as any)` casts are gone** — `store.ts` and
+`hero-image.ts` now use fully typed access, with one `toJson()` at the `jsonb`
+boundary, which is the repository's existing helper.
 
 ---
 
@@ -904,12 +946,12 @@ addressed **by asset identity** rather than by the convention-based filename
 
 | # | Item | Type | Impact |
 | --- | --- | --- | --- |
-| R1 | Migration must be applied before deploy or the Vercel build fails | FACT | Blocks merge/deploy. Intended guard behaviour. Slot is now **59 → 60** after the rebase |
+| R1 | ~~Migration must be applied before deploy~~ | **RESOLVED** | Applied to `iboepohjwrhtgshrqaol` on 2026-09-02, recorded once. The Vercel migration guard is satisfied |
 | R15 | A further migration landing on main before this merges would re-collide | INFERENCE | The same one-line reconciliation (count + changelog entry) would repeat. Cheap, but it is why this branch should merge promptly rather than sit |
 | R2 | ~~No private bucket exists~~ | **RESOLVED** | `media-assets-private` is created by the migration; drafts are admitted privately |
-| R2b | The private bucket does not exist until the migration is applied | FACT | Until then, admitting an `internal` asset would fail at the storage call — the same prerequisite as R1, not a separate one |
+| R2b | ~~Private bucket does not exist until applied~~ | **RESOLVED** | `media-assets-private` exists with `public = false` |
 | R2c | No `storage.objects` RLS exists, so a signed URL is bearer access for its lifetime | FACT | 1-hour default, minted only by service-role code; acceptable while no user-facing draft route exists. Revisit when one is built |
-| R3 | `(db as any)` casts in `store.ts` until types regenerate | FACT | Contained to one file and two table names; deletion after regen |
+| R3 | ~~`(db as any)` casts until types regenerate~~ | **RESOLVED** | Migration applied, types regenerated, all casts removed; typecheck clean |
 | R4 | Disk pressure on the dev host | FACT | Was 547 MB free at Phase 1; 13 GB free at the refresh. Still blocks local model work, but no longer blocks tooling |
 | R5 | Provider CDN hostnames still unknown | UNKNOWN | Host pinning stays optional until real hosts are observed |
 | R6 | Redirect and DNS-rebinding SSRF not defended | FACT | Needs per-hop control `fetch` does not expose |
@@ -918,9 +960,9 @@ addressed **by asset identity** rather than by the convention-based filename
 | R9 | `media-assets` bucket is public | FACT | Fine for published heroes; the reason R2 exists |
 | R10 | Seven other image call sites still write URL strings | FACT | Deliberate (forward-only). They are legacy until migrated. |
 | R11 | Checksums are recorded but never re-verified | INFERENCE | Bit-rot or replacement would go unnoticed; a verification pass is Phase 2+ |
-| R12 | `outputs` and `run-images` buckets exist in no migration | FACT | Pre-existing drift, outside this boundary. Both are excluded from `TRUSTED_BUCKETS` so the asset layer cannot write to them |
+| R12 | `outputs`, `run-images` and `familje-stunden` buckets exist in no migration | FACT | Pre-existing drift, outside this boundary — now confirmed against the live bucket table (`run-images` public, `outputs` and `familje-stunden` private). All are excluded from `TRUSTED_BUCKETS`, so the asset layer cannot write to them |
 | R13 | Cross-project read isolation rests on the app layer, not RLS | FACT | Every project shares one `owner_id` today, so the owner-scoped policy does not separate them. Matters when a second owner exists |
-| R14 | The local SQL proof stubs `storage.buckets` and `auth.uid()` | FACT | It proves the migration's SQL applies and its constraints work; it does not prove Supabase-specific storage behaviour, which only a real apply can |
+| R14 | ~~Local SQL proof stubs `storage.buckets` / `auth.uid()`~~ | **RESOLVED** | The real apply confirmed both: the bucket was created non-public and both RLS policies were created against the real `auth.uid()` |
 
 ---
 

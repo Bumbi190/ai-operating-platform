@@ -285,7 +285,7 @@ export async function generateHeroImage(
     // `hero_asset_id` is not in database.types.ts until the migration is applied
     // and types are regenerated, so the client is cast here exactly as
     // lib/bugs/report.ts does for bug_reports. Scoped to this one write.
-    await (db as any)
+    await db
       .from('website_content')
       .update({
         hero_image_url:          publicUrl,

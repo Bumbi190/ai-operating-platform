@@ -22,6 +22,8 @@ let alertCaptures: Array<Record<string, unknown>> = []
 let costCaptures: Array<{ count: number; provider: string; ctx: Record<string, unknown> }> = []
 let ideogramCalls: Array<{ headline: string; body: string }> = []
 let uploadCalls: Array<{ projectId: string; articleId: string; sourceUrl: string }> = []
+// Phase 1: what the asset-admission boundary was asked for (visibility + provenance).
+let admissionCalls: Array<{ visibility?: string; provenance: Record<string, unknown> }> = []
 let ideogramShouldThrow: string | null = null
 let uploadShouldThrow: string | null = null
 let automationPause: { allowed: boolean; reason?: string } = { allowed: true }
@@ -84,12 +86,43 @@ vi.mock('@/lib/media/ideogram', () => ({
   },
 }))
 
-vi.mock('@/lib/media/storage', () => ({
-  uploadArticleHeroImage: async (projectId: string, articleId: string, sourceUrl: string) => {
-    uploadCalls.push({ projectId, articleId, sourceUrl })
+// Media Runtime Phase 1: the hero path no longer calls uploadArticleHeroImage.
+// It calls admitAssetFromUrl (canon §21.5 Output-to-Asset admission), which
+// retrieves, validates, stores AND records provenance, then derives a delivery
+// URL from the returned asset's location.
+//
+// `uploadCalls` / `uploadShouldThrow` are kept as the capture surface so every
+// pre-existing assertion in this file keeps meaning what it meant: "the bytes
+// were placed exactly once" and "byte placement failed". Only the collaborator
+// changed, not the behaviour being asserted.
+vi.mock('@/lib/media/asset/admission', () => ({
+  admitAssetFromUrl: async (input: {
+    projectId: string
+    sourceUrl: string
+    visibility?: string
+    storage: { path: string }
+    provenance: Record<string, unknown>
+  }) => {
+    // Recover the article id from the path the caller built
+    // (images/articles/{projectId}/{articleId}-hero-{ts}).
+    const articleId = input.storage.path.split('/').pop()?.replace(/-hero-\d+$/, '') ?? ''
+    uploadCalls.push({ projectId: input.projectId, articleId, sourceUrl: input.sourceUrl })
+    admissionCalls.push({ visibility: input.visibility, provenance: input.provenance })
     if (uploadShouldThrow) throw new Error(uploadShouldThrow)
-    return `https://supabase.example/storage/v1/object/public/media-assets/images/articles/${projectId}/${articleId}-hero-1234567890.jpg`
+    return {
+      asset: {
+        id: 'asset-0000-0000-0000-000000000001',
+        projectId: input.projectId,
+        storage: { bucket: 'media-assets', path: `${input.storage.path}.png` },
+      },
+      provenance: {},
+    }
   },
+}))
+
+vi.mock('@/lib/media/asset/store', () => ({
+  publicDeliveryUrl: (location: { bucket: string; path: string }) =>
+    `https://supabase.example/storage/v1/object/public/${location.bucket}/${location.path}`,
 }))
 
 vi.mock('@/lib/media/retry', () => ({
@@ -194,6 +227,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     costCaptures = []
     ideogramCalls = []
     uploadCalls = []
+    admissionCalls = []
     ideogramShouldThrow = null
     uploadShouldThrow = null
     automationPause = { allowed: true }
@@ -636,5 +670,81 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     // And no alert fired — this is a sync-layer warning, not a generation failure.
     expect(alertCaptures).toHaveLength(0)
     warn.mockRestore()
+  })
+
+  // ── Media Runtime Phase 1 — canonical asset admission ─────────────────────
+
+  it('22. asset: the hero is admitted as a canonical asset and the article links to it', async () => {
+    storedRow = row()
+
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+    expect(result.ok).toBe(true)
+
+    // The article carries BOTH: hero_asset_id is the durable identity,
+    // hero_image_url is the derived delivery artifact every existing reader
+    // (and the publish sync) still depends on.
+    const img = imageUpdates()
+    const final = img[img.length - 1]
+    expect(final.hero_asset_id).toBe('asset-0000-0000-0000-000000000001')
+    expect(final.hero_image_url).toContain('media-assets/images/articles/')
+
+    // The delivery URL is derived from the asset's location, so it ends in the
+    // extension admission chose from the validated bytes — not one guessed from
+    // a provider header, as the legacy uploader did.
+    expect(String(final.hero_image_url)).toMatch(/\.png$/)
+  })
+
+  it('23. asset: visibility is stated explicitly as public, never left to default', async () => {
+    storedRow = row()
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+
+    // Article heroes ARE published. The default is 'internal' precisely so that
+    // a path which forgets to say so cannot publish by omission — this path
+    // says so deliberately, and that is what makes it safe.
+    expect(admissionCalls).toHaveLength(1)
+    expect(admissionCalls[0].visibility).toBe('public')
+  })
+
+  it('24. asset: provenance records the provider, model and hashed brief', async () => {
+    storedRow = row()
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+
+    const prov = admissionCalls[0].provenance as Record<string, unknown>
+    expect(prov.source).toBe('generated')
+    expect(prov.provider).toBe('ideogram')
+    expect(prov.model).toBe('ideogram-v3')
+    // The BRIEF is handed over as the canonical intent (§20.28) and the render
+    // input as the provider-specific request. Admission hashes both; neither
+    // payload is persisted.
+    expect(prov).toHaveProperty('request')
+  })
+
+  it('25. asset: the cost event is linked to the asset without a second ledger', async () => {
+    storedRow = row()
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+
+    expect(costCaptures).toHaveLength(1)
+    const meta = costCaptures[0].ctx.metadata as Record<string, unknown>
+    expect(meta.assetId).toBe('asset-0000-0000-0000-000000000001')
+    expect(meta.articleId).toBe(ARTICLE_ID)
+    // cost_events remains the only place an amount lives — the asset layer was
+    // handed no amount to record.
+    expect(costCaptures[0].provider).toBe('ideogram')
+  })
+
+  it('26. asset: a refused admission fails the hero exactly as a failed upload did', async () => {
+    storedRow = row()
+    uploadShouldThrow = 'Refusing to store a "internal" asset in the world-readable bucket'
+
+    const result = await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+
+    // No new failure class: an admission refusal lands in the same catch that
+    // an upload failure always did, so status/alerting behaviour is unchanged.
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe('failed')
+    expect(alertCaptures).toHaveLength(1)
+    const img = imageUpdates()
+    expect(img[img.length - 1].hero_image_status).toBe('failed')
+    expect(img[img.length - 1]).not.toHaveProperty('hero_asset_id')
   })
 })

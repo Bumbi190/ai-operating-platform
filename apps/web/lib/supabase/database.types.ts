@@ -255,6 +255,127 @@ export type Database = {
           },
         ]
       }
+      asset_provenance: {
+        Row: {
+          adapter_version: string | null
+          asset_id: string
+          brief_hash: string | null
+          cost_event_id: string | null
+          duration_ms: number | null
+          model: string | null
+          provider: string | null
+          provider_metadata: Json
+          provider_request_id: string | null
+          recorded_at: string
+          reference_asset_ids: string[]
+          request_hash: string | null
+          seed: string | null
+          simulated: boolean
+          source: string
+        }
+        Insert: {
+          adapter_version?: string | null
+          asset_id: string
+          brief_hash?: string | null
+          cost_event_id?: string | null
+          duration_ms?: number | null
+          model?: string | null
+          provider?: string | null
+          provider_metadata?: Json
+          provider_request_id?: string | null
+          recorded_at?: string
+          reference_asset_ids?: string[]
+          request_hash?: string | null
+          seed?: string | null
+          simulated?: boolean
+          source: string
+        }
+        Update: {
+          adapter_version?: string | null
+          asset_id?: string
+          brief_hash?: string | null
+          cost_event_id?: string | null
+          duration_ms?: number | null
+          model?: string | null
+          provider?: string | null
+          provider_metadata?: Json
+          provider_request_id?: string | null
+          recorded_at?: string
+          reference_asset_ids?: string[]
+          request_hash?: string | null
+          seed?: string | null
+          simulated?: boolean
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_provenance_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assets: {
+        Row: {
+          byte_size: number
+          checksum_sha256: string
+          created_at: string
+          duration_ms: number | null
+          height: number | null
+          id: string
+          kind: string
+          mime_type: string
+          project_id: string
+          status: string
+          storage_bucket: string
+          storage_path: string
+          visibility: string
+          width: number | null
+        }
+        Insert: {
+          byte_size: number
+          checksum_sha256: string
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          kind: string
+          mime_type: string
+          project_id: string
+          status?: string
+          storage_bucket: string
+          storage_path: string
+          visibility?: string
+          width?: number | null
+        }
+        Update: {
+          byte_size?: number
+          checksum_sha256?: string
+          created_at?: string
+          duration_ms?: number | null
+          height?: number | null
+          id?: string
+          kind?: string
+          mime_type?: string
+          project_id?: string
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          visibility?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atlas_actions: {
         Row: {
           action_type: string
@@ -3458,6 +3579,7 @@ export type Database = {
           destination_url: string | null
           external_id: string
           generated_by: string | null
+          hero_asset_id: string | null
           hero_editor_brief: Json | null
           hero_image_prompt: string | null
           hero_image_qa: Json | null
@@ -3497,6 +3619,7 @@ export type Database = {
           destination_url?: string | null
           external_id: string
           generated_by?: string | null
+          hero_asset_id?: string | null
           hero_editor_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
@@ -3536,6 +3659,7 @@ export type Database = {
           destination_url?: string | null
           external_id?: string
           generated_by?: string | null
+          hero_asset_id?: string | null
           hero_editor_brief?: Json | null
           hero_image_prompt?: string | null
           hero_image_qa?: Json | null
@@ -3568,6 +3692,13 @@ export type Database = {
           version?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "website_content_hero_asset_id_fkey"
+            columns: ["hero_asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "website_content_project_id_fkey"
             columns: ["project_id"]
@@ -4281,12 +4412,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4310,11 +4441,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4335,11 +4466,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4360,11 +4491,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4377,11 +4508,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

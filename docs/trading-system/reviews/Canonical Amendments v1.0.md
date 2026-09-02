@@ -782,6 +782,90 @@ betyder vad den betydde när den skrevs.
 
 ---
 
+## Beslut I — Market Data & Contract Lifecycle
+
+**Stänger:** GATE-08 **delvis** — arkitektur och kontraktslivscykel
+**Karaktär:** Ny kanonisk specifikation plus statusändring. Ingen befintlig kanonisk regel upphävs.
+
+GATE-08 har sedan starten hållit tre olösta frågor i samma knut: vilken provider som ska
+leverera marknadsdata, vilket kontrakt en bar tillhör, och vem som äger candlegränserna.
+Bara den första är ett kommersiellt val. De andra två är arkitektur, och de har blockerat
+Strategy Engine utan att behöva göra det.
+
+Beslut I löser arkitekturen och lämnar providervalet öppet.
+
+**Canonical betydelse:**
+
+```
+root ≠ kontrakt
+Omnira äger versionerade kontrakts- och sessionskalendrar
+providervända dataförfrågningar är kontraktsskopade
+Omnira äger 1m-rutnätet; högre timeframes härleds internt
+```
+
+### I1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Market Data & Contract Lifecycle –
+Canonical v1.0.md` skapad. Den låser:
+
+- **Root är inte kontrakt.** Root-vokabulären NQ / MNQ / ES är kanonisk; fysiskt
+  modulägarskap av typen är det inte, och en senare fas får flytta typen till ett lägre
+  domänpaket utan kanonisk ändring. Ingen andra root-vokabulär får skapas.
+- **Identitet skild från livscykel.** `ResolvedContract = { root, cycle }` med strukturell
+  likhet. `expiration`, `lastTradeAt`, `rollEffectiveAt` och `calendarVersion` är
+  livscykelfakta som får korrigeras — att lägga dem i identiteten hade gjort en rättelse
+  till en falsk rollover. Handelsplats ingår inte i v1.0:s slutna root-mängd; en
+  venue-tvetydig root kräver kanonisk utvidgning innan den tas in.
+- **Omnira äger versionerade kalendrar.** `ContractCalendar` innehåller konkreta lagrade
+  poster, inte en formel. En post är ogiltig tills alla livscykelfakta finns, och saknad
+  täckning ger REFUSE — aldrig en matematisk fallback.
+- **Börsfaktum skilt från Omnira-policy.** CME publicerar det *sedvanliga* U.S. Equity
+  Index-rolldatumet som måndagen före tredje fredagen och anger att deltagare får rulla när
+  de vill. Omnira **antar** det lagrade publicerade datumet som sin deterministiska
+  serievalsgräns. Det är Omniras policy, inte en börsregel Omnira återger.
+- **Konkreta poster slår formler.** CME:s 2026-tabell anger löptid 2026-06-18 för
+  juni-cykeln medan månadens tredje fredag är 2026-06-19 — en amerikansk federal helgdag.
+  En ovillkorlig "tredje fredagen"-mening hade därför varit sakfel.
+- **Roll effective instant i trade date-termer.** Rollen träder i kraft vid öppningen av den
+  Globex-session vars tilldelade CME trade date är rolldatumet — normalt söndag 18:00
+  America/New_York, inte måndag 18:00. En hel session skilde de två.
+- **Kontraktsskopade dataförfrågningar.** Root-upplösning sker före varje providervänd
+  konkret förfrågan; ingen källa avgör internt vilket kontrakt en root motsvarar. Det
+  befintliga `HistoricalCandleSource` omskopas till chart- och historiknavigering och är
+  inte strategiauktoritativt. Ett `ContractCandleSegment` bär exakt ett kontrakt; en
+  detektor tar aldrig emot en sammanfogad kontraktsöverskridande sekvens.
+- **Omnira äger 1m-rutnätet.** Providerns 1m-candles är observationer som accepteras först
+  efter normalisering mot Omniras rutnät. 5m, 15m och 4H härleds internt. 4H-ankaret är
+  18:00 America/New_York — det enda ankare som innehåller strategins två låsta opens 02:00
+  och 10:00.
+- **Continuous contracts** är förbjudna för execution, strategidetektion och SMT, och
+  tillåtna endast som DISPLAY_ONLY med utmärkt rollgräns respektive RESEARCH_ONLY.
+- **Strategi-4H-behörighet.** En 02:00- eller 10:00-bucket är fullbordat 4H-strategibevis
+  endast om den är COMPLETE **och** nådde sitt nominella fyratimmarsslut. En
+  helgdagstrunkerad bucket får förbli giltig marknadsdata men aldrig fullbordat
+  strategibevis. Datatäckning och nominell längd är två skilda fakta och slås aldrig ihop.
+- **Historiska beslut är oföränderliga och reproducerbara.** Ett inspelat
+  `ContractSelectionDecision` läses, aldrig räknas om. Saknas ett beslut måste anroparen
+  pinna en explicit historisk kalenderversion; en körning utan pinnad version vägras.
+
+### I2 — Vad Beslut I INTE innebär
+
+GATE-08 är **inte** helt stängd. Operativt val av marknadsdataprovider, licensiering och
+CME-avgiftsklassificering, population av `ContractCalendar` och `SessionCalendar` samt
+providerspecifikt live-flöde kvarstår öppna. Ingen ny toppnivågate har skapats.
+
+Strategy Specification Canonical v1.0 skrivs **inte** om. Execution Provider Adapter
+Canonical v1.2 skrivs **inte** om: det kontraktet definierar resolutions*typer*, och dess
+§7.1 förutser uttryckligen att en låst seriepolicy kan existera — Beslut I levererar den
+policyn utanför kontraktet.
+
+GATE-01, GATE-02, GATE-03, GATE-04, GATE-06, GATE-07, GATE-09, GATE-12, GATE-13, GATE-14
+och GATE-17 berörs inte.
+
+Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -813,4 +897,8 @@ betyder vad den betydde när den skrevs.
 | `specifications/architecture/…v0.2.md → v0.3.md` | E3 — §22.2, §22.3, §18 |
 | `specifications/execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md` | H1 — ny, nio konnektivitetskoder |
 | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.2.md` | H2 — §8, sista stycket |
-| `specifications/README.md` | H1 — indexrad |
+| `specifications/README.md` | H1 — indexrad. I1 — indexrad |
+| `specifications/market-data/…Market Data & Contract Lifecycle – Canonical v1.0.md` | I1 — ny, kontraktslivscykel och marknadsdatasemantik |
+| `reviews/Open Implementation Gates v1.0.md` | I1 — GATE-08 delvis stängd, understatus |
+| `SOURCE_OF_TRUTH.md` | I1 — kanonisk auktoritet, GATE-08 delvis stängd |
+| `specifications/architecture/…v0.3.md` | I1 — §22-kedja, rollover-pekare |

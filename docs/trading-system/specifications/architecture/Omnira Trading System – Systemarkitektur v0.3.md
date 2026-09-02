@@ -656,7 +656,25 @@ En futures-provider handlar kontrakt, inte generiska symboler. Adaptern ansvarar
 översätta Omniras instrumentidentitet till providerns kontraktsidentitet, inklusive
 vilket kontrakt som är aktuellt.
 
-Rollover-policy hör till marknadsdata- och kontraktsserielagret. Se GATE-08.
+Rollover-policy hör till marknadsdata- och kontraktsserielagret och är sedan
+2026-09-02 låst i `specifications/market-data/Omnira Trading System – Market Data &
+Contract Lifecycle – Canonical v1.0.md` (Beslut I). GATE-08 är därmed delvis
+stängd: arkitekturen är avgjord, operativt providerval kvarstår.
+
+Kedjan från canonical root till Strategy Engine är:
+
+```
+root  →  ContractCalendar-resolver  →  ResolvedContract
+      →  kontraktsskopad marknadsdatakälla
+      →  kanonisk 1m-normalisering
+      →  Omnira-aggregering (5m / 15m / 4H)
+      →  ContractCandleSegment  →  Strategy Engine
+```
+
+Root-upplösning sker **före** varje providervänd konkret kontraktsdataförfrågan.
+Ingen källa avgör internt vilket kontrakt en root motsvarar. Providernativa
+symboler och kontraktsidentifierare stannar under providergränsen och blir
+aldrig canonical identitet.
 
 ## 23. Read-Only First
 

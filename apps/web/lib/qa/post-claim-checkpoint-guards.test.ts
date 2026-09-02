@@ -29,8 +29,37 @@ const WIRED = [
 ] as const
 
 describe('G3C-3A · the checkpoint stays wired', () => {
-  it.each(WIRED)('%s reaches the canonical checkpoint', (file, symbol) => {
-    expect(code(file)).toContain(symbol)
+  /**
+   * Presence is not effect. A mutation that stubbed the call but left
+   * `void checkpointClaimedRun` behind satisfied a `toContain(symbol)` guard
+   * while the checkpoint no longer ran — the same flaw G3C-2B's symbol registry
+   * had. So the pin requires an AWAITED CALL whose verdict is actually branched
+   * on, and separately bans the dead-code forms that fake one.
+   */
+  it.each(WIRED)('%s really CALLS the canonical checkpoint', (file, symbol) => {
+    const body = code(file)
+    expect(body, 'an awaited call, not a mention')
+      .toMatch(new RegExp(`await ${symbol}\\(`))
+  })
+
+  it.each(WIRED)('%s branches on the verdict', (file) => {
+    const body = code(file)
+    // Every wiring site must consume the answer. A call whose result is thrown
+    // away is indistinguishable from no call at all.
+    expect(body).toMatch(/if \(!(entry|gate|preDispatch)\.allowed\)|if \(!again\.allowed\)|if \(!gate\.allowed\)/)
+  })
+
+  it('no wiring site parks the checkpoint behind unreachable code', () => {
+    const offenders: string[] = []
+    for (const [file] of WIRED) {
+      const body = code(file)
+      if (/(if \(\s*false\s*\)|&&\s*false|false\s*&&)[^;]{0,160}(checkpointClaimedRun|assertWorkflowActionStillAuthorized|isRunCheckpointRefusal)/.test(body)
+          || /void (checkpointClaimedRun|assertWorkflowActionStillAuthorized)/.test(body)) {
+        offenders.push(file)
+      }
+    }
+    expect(offenders, 'a disabled checkpoint is worse than none — it looks present')
+      .toEqual([])
   })
 
   it('the pre-dispatch contract has a REAL runtime caller', () => {
@@ -115,7 +144,12 @@ describe('G3C-3A · the checkpoint stays wired', () => {
 
   it('the drain handles checkpoint refusals before generic failure accounting', () => {
     const drain = code('app/api/runs/drain/route.ts')
-    const refusal = drain.indexOf('isRunCheckpointRefusal')
+    // A live branch, not a mention: `if (false && isRunCheckpointRefusal(e))`
+    // would otherwise satisfy an indexOf check while every refusal fell through
+    // to the failure path.
+    expect(drain, 'the refusal branch must be reachable')
+      .toMatch(/if \(isRunCheckpointRefusal\(e\)\) \{/)
+    const refusal = drain.indexOf('if (isRunCheckpointRefusal(e)) {')
     const failed = drain.indexOf("status: 'failed'")
     expect(refusal).toBeGreaterThan(-1)
     if (failed > -1) {

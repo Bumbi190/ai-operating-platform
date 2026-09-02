@@ -128,11 +128,16 @@ describe('market-view import discipline', () => {
     }
     /*
      * `../market-instrument` joined the list when the root vocabulary moved down
-     * out of this presentation package. It imports nothing at all, so it adds no
-     * edge to the transitive closure proven below.
+     * out of this presentation package, and `../market-timeframe` joined it when
+     * the timeframe vocabulary followed for the same reason: Canonical v1.0 §12
+     * makes 5m, 15m and 4H derived domain values, and a domain module cannot
+     * depend on a presentation package without inverting the dependency.
+     *
+     * Both import nothing at all, so neither adds an edge to the transitive
+     * closure proven below — which is asserted there rather than assumed here.
      */
     expect([...siblingValueImports].sort()).toEqual([
-      '../decimal', '../market-instrument', '../time',
+      '../decimal', '../market-instrument', '../market-timeframe', '../time',
     ])
   })
 })
@@ -182,6 +187,7 @@ describe('no Node builtin is reachable at runtime from the market-view package',
     expect([...seen].some((f) => f.endsWith('/time.ts'))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/decimal.ts'))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/market-instrument.ts'))).toBe(true)
+    expect([...seen].some((f) => f.endsWith('/market-timeframe.ts'))).toBe(true)
     // ids.ts is where node:crypto lives. Reaching it would mean the closure
     // includes the carrier, even if this particular walk found no `node:` edge.
     expect([...seen].some((f) => f.endsWith('/ids.ts'))).toBe(false)

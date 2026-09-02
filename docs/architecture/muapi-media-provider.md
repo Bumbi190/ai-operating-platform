@@ -183,12 +183,32 @@ Blocked until every unmet prerequisite in
 
 | Prerequisite            | State                                          |
 | ----------------------- | ---------------------------------------------- |
-| `spend_policy`          | declared in `gate.ts`, refusing default        |
-| `project_budget`        | **not built** — Omnira has cost tracking only  |
+| `spend_policy`          | **BUILT** (G1) — `lib/cost/governed-spend.ts`  |
+| `project_budget`        | **BUILT** (G1/G2) — see the correction below   |
 | `approval_gate`         | Ch27 Approval Inbox, not wired to media        |
-| `output_quality_control`| **not built**                                  |
+| `output_quality_control`| **not built** (designed: Familje-Stunden CCA)  |
 | `media_orchestrator`    | **not built**                                  |
 | `autonomy_license`      | must be issued by a human (§18.2)              |
+
+> **Correction (Media Runtime Phase 0, 2026-09-02).** The two rows above
+> previously read "**not built** — Omnira has cost tracking only". That was true
+> when this document was written and is now stale: Governance G1 and G2 shipped
+> afterwards. `lib/cost/governed-spend.ts` is the canonical provider spend
+> boundary (project resolution → estimate → reservation → refusal → settlement),
+> backed by `project_budgets`, `spend_reservations`, `cost_rates` and
+> `cost_events`, with atomic budget scopes and replay safety in
+> `20260831_budget_scopes.sql`.
+>
+> Note the consequence for this integration: a MuAPI path that becomes billable
+> must call `withGovernedSpend`, not grow a spend concept of its own. `gate.ts`
+> records that a parallel `MediaSpendPolicy` seam once lived in this directory
+> and that G1 deleted it for exactly that reason.
+>
+> `MEDIA_GENERATION_UNMET_PREREQUISITES` in
+> `lib/atlas/capability/media-generation.ts` still lists `spend_policy` and
+> `project_budget` as unmet. That list is a deliberate, hardcoded human decision
+> about media specifically, not a probe of what exists — wiring MuAPI to the
+> shipped boundary is the work that would justify removing them.
 
 Only then: `MUAPI_MODE=production` **and** `MUAPI_PRODUCTION_ENABLED=1` **and**
 `MUAPI_PROD_API_KEY`, plus flipping the capability license off `draft`.
@@ -212,12 +232,23 @@ general rules. Higgsfield or OpenArt makes the trade-off real; write it then.
 to extend. Note the prohibition: a generator must never also be the judge of
 whether its own output is publishable.
 
-**Spend layer.** Omnira has cost *tracking* (`lib/cost/track.ts`, the
-`cost_events` table) and no budget. The four thresholds named in
-`MediaSpendRequest` — project budget, autonomous threshold, approval threshold,
-reconciliation against actual cost — each need a persistence decision that
-belongs with the orchestrator.
+**Spend layer.** ~~Omnira has cost *tracking* and no budget.~~ **Superseded by
+Governance G1/G2** — see the correction above. Omnira has a budget, a
+reservation, a refusal and a settlement, all behind
+`lib/cost/governed-spend.ts`. The remaining media-specific work is not to build
+a spend layer but to route MuAPI through the one that exists.
 
 **Cost attribution.** `MediaRequestBase.costContext` is carried through the
 contract but not yet written to `cost_events`; wire it when execution is enabled
 so the first billable call is already attributed.
+
+**Canonical assets (Media Runtime Phase 1, shipped on
+`feat/omnira-media-runtime`).** Provider outputs are no longer the end of the
+line. `lib/media/asset/admission.ts` performs canon §21.5 Output-to-Asset
+admission — retrieve, validate, checksum, store, capture provenance — and
+returns an asset identity that survives the vendor URL expiring. When a MuAPI
+path becomes billable, its `MediaJobResult.assets[].url` should be admitted
+through that boundary rather than persisted as a URL, and
+`MediaJobResult.simulated` maps directly onto `asset_provenance.simulated` so a
+sandbox image can never be mistaken for a paid one. See
+`docs/architecture/media-runtime/PHASE1_RESULT.md`.

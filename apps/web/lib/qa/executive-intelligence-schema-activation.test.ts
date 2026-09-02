@@ -121,10 +121,29 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          deliberately gains NO global rule — re-arm is control, not
    *          execution. CREATE OR REPLACE only: same signatures, defaults,
    *          return types, owners, ACLs and search_path.)
+   * 59 → 60: `media_asset_foundation` (Media Runtime Phase 1 — canonical asset
+   *          identity. Adds public.assets and public.asset_provenance, one
+   *          nullable website_content.hero_asset_id, and the NON-PUBLIC storage
+   *          bucket `media-assets-private`. Closes the §21.7 defect that
+   *          generated media existed only as URL strings, and the companion
+   *          defect that a draft had nowhere private to live — `media-assets` is
+   *          public, so `visibility='internal'` beside bytes in it would have
+   *          been false privacy. Provenance is append-only by trigger, the same
+   *          construction as workflow_evidence; assets themselves are mutable
+   *          because location, visibility and status are meant to change.
+   *          Additive only — one new bucket, no existing bucket altered, no
+   *          existing row rewritten, no backfill — so applying it changes no
+   *          current behaviour. Private-storage hardening is folded into this
+   *          same file rather than a follow-up migration, and this entry was
+   *          renumbered 58→59 → 59→60 when the branch was rebased onto
+   *          `stop_atomic_execution_admission`. Both are allowed by the same
+   *          rule: doctrine scopes migration immutability to "already-applied"
+   *          migrations, and this one has never been applied anywhere
+   *          (docs/memory/2.0/stage-1/MEMORY_STAGE_1_FOUNDATION_PLAN.md:223).)
    */
-  it('enforces exactly the expected number of migrations — currently 59', () => {
+  it('enforces exactly the expected number of migrations — currently 60', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(59)
+    expect(enforced).toBe(60)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

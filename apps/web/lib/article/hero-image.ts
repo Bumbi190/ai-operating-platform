@@ -12,8 +12,15 @@
  * Reused primitives:
  *   • generateNewsImage()       — lib/media/ideogram.ts (Claude photo direction
  *                                 + Ideogram v3 REALISTIC editorial photo style)
- *   • uploadArticleHeroImage()  — lib/media/storage.ts (sibling of
- *                                 uploadSceneImage; same media-assets bucket)
+ *   • admitAssetFromUrl()       — lib/media/asset/admission.ts (Media Runtime
+ *                                 Phase 1). REPLACED uploadArticleHeroImage():
+ *                                 that helper returned only a public URL, so a
+ *                                 hero could exist only AS a URL. Admission
+ *                                 validates the bytes (§21.5) and returns an
+ *                                 asset identity that outlives the URL. This is
+ *                                 the ONE proof path for Phase 1; the other
+ *                                 image call sites still use lib/media/storage.ts
+ *                                 unchanged (forward-only).
  *   • withRetry({ attempts: 2 }) — lib/media/retry.ts (same primitive step2 uses)
  *   • resolveExecutionEligibility() — lib/governance/execution-preflight.ts
  *                                 (canonical G3 authority; replaced the legacy
@@ -37,7 +44,8 @@ import {
   generateArticleHeroImage,
   type ArticleHeroRenderInput,
 } from '@/lib/media/ideogram'
-import { uploadArticleHeroImage } from '@/lib/media/storage'
+import { admitAssetFromUrl } from '@/lib/media/asset/admission'
+import { publicDeliveryUrl } from '@/lib/media/asset/store'
 import { withRetry } from '@/lib/media/retry'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { sendPipelineAlert } from '@/lib/media/alert'
@@ -58,6 +66,26 @@ function isBriefDrivenEnabled(): boolean {
 
 /** Pipeline that produced the current hero_image_url (Phase 2 observability). */
 type HeroImageSource = 'brief' | 'fallback_writer'
+
+/**
+ * Where a hero image's bytes live.
+ *
+ * Same layout `uploadArticleHeroImage()` used — `images/articles/…` with a
+ * timestamp — so heroes stay visually grouped in the bucket and browser caches
+ * still break on regeneration. The path is constructed here from ids Omnira
+ * owns; no provider-supplied filename reaches it, and `assertPathSafe` in the
+ * admission boundary re-checks it regardless.
+ *
+ * This is a LOCATION, not an identity. Two heroes for the same article at
+ * different times are two assets with two paths, and the article points at
+ * whichever one is current.
+ *
+ * Returned WITHOUT an extension: admission appends the one matching the
+ * validated bytes, so the path can never claim a format the file is not.
+ */
+function heroStoragePath(projectId: string, articleId: string): string {
+  return `images/articles/${projectId}/${articleId}-hero-${Date.now()}`
+}
 
 export type HeroImageResult =
   | { ok: true;  url: string; status: 'ready'; sync: SyncResult }
@@ -202,18 +230,66 @@ export async function generateHeroImage(
       source = 'fallback_writer'
     }
 
-    const publicUrl = await uploadArticleHeroImage(article.project_id, article.id, ideogramUrl)
+    // ── Output → Asset admission (Media Runtime Phase 1) ───────────────────
+    //
+    // Replaces the direct uploadArticleHeroImage() call. That helper returned a
+    // public URL and nothing else, which is why every hero until now existed
+    // only as a URL string: a caller handed a URL stores a URL. Admission
+    // performs canon §21.5 — retrieve, validate type and integrity, checksum,
+    // store, capture provenance — and returns an ASSET whose identity survives
+    // the URL changing.
+    //
+    // Failure semantics are unchanged. Admission refuses by throwing, exactly as
+    // uploadArticleHeroImage did, so a refusal lands in the same catch below and
+    // still yields hero_image_status='failed' plus an alert. No new class of
+    // failure is introduced — a rejected image is the same outcome as a failed
+    // upload has always been.
+    //
+    // visibility: 'public' is stated deliberately and not defaulted. Article
+    // heroes ARE published — they render on The Prompt's homepage and are synced
+    // to the destination site below. Everything else defaults to 'internal'.
+    const { asset } = await admitAssetFromUrl({
+      projectId:  article.project_id,
+      kind:       'image',
+      visibility: 'public',
+      sourceUrl:  ideogramUrl,
+      storage:    { path: heroStoragePath(article.project_id, article.id) },
+      provenance: {
+        source:   'generated',
+        provider: 'ideogram',
+        model:    'ideogram-v3',
+        // The BRIEF is the canonical creative intent (§20.28); the provider
+        // prompt is one implementation of it. Both are hashed, never stored —
+        // "was this the same request?" stays answerable without this table
+        // becoming a content store.
+        brief:    brief ?? undefined,
+        request:  renderInput ?? undefined,
+        providerMetadata: { heroImageSource: source },
+      },
+    })
+
+    // Delivery URL is DERIVED from the asset's current location, never treated
+    // as the identity. hero_image_url stays populated because the publish sync
+    // and every existing reader depend on it; hero_asset_id is what is durable.
+    const publicUrl = publicDeliveryUrl(asset.storage)
 
     void logImageCost(1, 'ideogram', {
       projectId: article.project_id,
       operation: 'Article Hero Image',
-      metadata:  { articleId: article.id, source },
+      // assetId rides in the existing metadata field, so cost_events links to
+      // the asset with NO change to lib/cost/track.ts. cost_events remains the
+      // only ledger; the asset never carries an amount.
+      metadata:  { articleId: article.id, source, assetId: asset.id },
     })
 
-    await db
+    // `hero_asset_id` is not in database.types.ts until the migration is applied
+    // and types are regenerated, so the client is cast here exactly as
+    // lib/bugs/report.ts does for bug_reports. Scoped to this one write.
+    await (db as any)
       .from('website_content')
       .update({
         hero_image_url:          publicUrl,
+        hero_asset_id:           asset.id,
         hero_image_status:       'ready',
         hero_image_source:       source,
         hero_image_render_input: renderInput ? toJson(renderInput) : null,

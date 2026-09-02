@@ -173,7 +173,7 @@ Fullständig lista och klassificering: `reviews/Open Implementation Gates v1.0.m
 | GATE-04 SMT correspondence | Strategy Engine |
 | GATE-06 news-provider | Execution |
 | GATE-07 high-impact-klassificering | Execution |
-| GATE-08 marknadsdataprovider | Strategy Engine |
+| GATE-08 marknadsdataprovider (**delvis stängd** 2026-09-02) | Strategy Engine |
 | GATE-09 första PropFirmProfile | Prop Mode |
 | GATE-12 execution margin/slippage | Execution |
 | GATE-13 promotion thresholds | Live |
@@ -193,6 +193,22 @@ fick förtydligat scope i stället för nya duplicerande gates.
 **Stängda 2026-08-28:** GATE-15 (Rithmic R|Protocol som första provider) och GATE-16
 (Level 1-adapterkontraktet) genom Beslut E. GATE-17, GATE-08 och GATE-09 kvarstår öppna.
 Se `reviews/Canonical Amendments v1.0.md`.
+
+**Delvis stängd 2026-09-02:** GATE-08 — arkitektur och kontraktslivscykel genom
+Beslut I. `specifications/market-data/Omnira Trading System – Market Data &
+Contract Lifecycle – Canonical v1.0.md` är kanonisk auktoritet för:
+
+- kontraktsserieval och root→kontrakt-upplösning
+- rollover-policy och roll effective instant
+- candle- och timeframe-semantik, inklusive det kanoniska 1m-rutnätet och
+  4H-ankaret 18:00 America/New_York
+- `SessionCalendar`-policy
+- kontraktsskopad marknadsdatahärkomst
+
+Operativt providerval, licensiering och CME-avgiftsklassificering, kalenderdata-
+population och providerspecifikt live-flöde kvarstår öppna. GATE-17 och GATE-09
+kvarstår öppna. Företrädet för Strategy Canonical, Risk Canonical, Execution
+Provider Adapter Canonical och Provider Connectivity Reason Codes är oförändrat.
 
 ---
 

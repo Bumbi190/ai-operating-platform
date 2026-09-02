@@ -52,7 +52,7 @@ klassificeringen är att göra just den skillnaden explicit.
 | ~~GATE-05~~ | ~~London window-close / break-even-tvetydighet~~ | **STÄNGD 2026-08-27** |
 | GATE-06 | Val av news-provider | BLOCKS EXECUTION |
 | GATE-07 | High-impact USD-klassificering och providermappning | BLOCKS EXECUTION |
-| GATE-08 | Val av realtids-marknadsdataprovider | BLOCKS STRATEGY ENGINE |
+| GATE-08 | Val av realtids-marknadsdataprovider | **DELVIS STÄNGD 2026-09-02** |
 | GATE-09 | Första faktiska PropFirmProfile | BLOCKS PROP MODE |
 | ~~GATE-10~~ | ~~Daily-loss force close-semantik~~ | **STÄNGD 2026-08-27** |
 | ~~GATE-11~~ | ~~Reserved risk-semantik vid flera positioner~~ | **STÄNGD 2026-08-27** |
@@ -216,8 +216,36 @@ Utan (2) blir regeln beroende av en tredjepartsleverantörs interna märkning, s
 ## GATE-08 — Val av realtids-marknadsdataprovider och kontraktsserie
 
 **Klass:** BLOCKS STRATEGY ENGINE
+**Status:** **DELVIS STÄNGD 2026-09-02 (Beslut I)**
 
-> **Kvarstår öppen efter Beslut E.** Rithmic kan tekniskt leverera market- och
+```
+GATE-08 · Arkitektur och kontraktslivscykel     STÄNGD      Beslut I
+GATE-08 · Operativ marknadsdataprovider         ÖPPEN       val + licensiering
+GATE-08 · ContractCalendar-datapopulering       ÖPPEN       implementation/data
+GATE-08 · SessionCalendar-datapopulering        ÖPPEN       implementation/data
+GATE-08 · Providerspecifikt live-flöde          UPPSKJUTEN
+```
+
+**Stängt av Beslut I 2026-09-02.** `specifications/market-data/Omnira Trading
+System – Market Data & Contract Lifecycle – Canonical v1.0.md` låser arkitekturen
+för kontraktsidentitet, kontraktslivscykel, rollover-policy, candlegränser,
+timeframe-härledning och marknadsdatans fail-closed-semantik. Root är inte
+kontrakt; Omnira äger versionerade kontrakts- och sessionskalendrar; providervända
+dataförfrågningar är kontraktsskopade; 1m-rutnätet är Omnira-ägt och högre
+timeframes härleds internt.
+
+**Vad som återstår innan GATE-08 får förklaras HELT STÄNGD:**
+
+1. operativt val av marknadsdataprovider
+2. licensiering och CME-avgiftsklassificering verifierad mot Omniras faktiska
+   användningsfall
+3. `ContractCalendar` populerad och integritetsspårad för den täckta perioden
+4. `SessionCalendar` populerad och integritetsspårad
+5. providerspecifikt live-flöde implementerat och accepterat
+
+Ingen ny toppnivågate har skapats — det hade bara duplicerat denna.
+
+> **Kvarstod öppen efter Beslut E.** Rithmic kan tekniskt leverera market- och
 > referensdata, men Omniras canonical market data-, rollover- och licensieringsbeslut är
 > fortfarande separat. Execution provider **behöver inte** vara market data-provider.
 > Ingen aktuell CME-avgift canonicaliseras utan verifiering mot gällande officiell

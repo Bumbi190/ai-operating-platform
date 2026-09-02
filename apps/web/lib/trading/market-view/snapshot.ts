@@ -64,33 +64,31 @@
  * Consumers outside the package still import `@/lib/trading/market-view`, which
  * is this package's own public barrel.
  */
-import { asDecimal, parseDecimal } from '../decimal'
-import type { Branded } from '../ids'
 import type { Direction, SetupGrade, SmtState, TradingSession } from '../contracts'
+import type { MarketCandle } from '../market-candle'
 import type { MarketInstrument } from '../market-instrument'
+import type { PriceText } from '../market-price'
 import type { MarketTimeframe } from '../market-timeframe'
 import type { Timestamp } from '../time'
 import type { TradingEnvironment } from '../environment'
 
 // ─── Exact prices at a serialization boundary ─────────────────────────────────
 
-/**
- * An exact decimal value in text form — a price, a distance, or an amount of
- * money. Validated through the canonical decimal parser, so the same rejections
- * apply: no floats, no exponent notation, no leading '+', no bare '.'.
+/*
+ * RE-EXPORTED, NOT RESTATED — the third vocabulary to make this move.
+ *
+ * The exact-price vocabulary moved down to `../market-price` when Canonical
+ * v1.0 §12 made 5m, 15m and 4H candles DERIVED values: aggregation compares and
+ * sums prices, which is domain work sitting well below presentation, and a
+ * domain module cannot depend on this package without inverting the dependency
+ * direction.
+ *
+ * `priceMagnitude` deliberately did NOT go with them — see its own note below.
+ * Exactly one definition of `PriceText` exists, and
+ * `@/lib/trading/market-view` keeps precisely the API it had.
  */
-export type PriceText = Branded<string, 'PriceText'>
-
-/** Parse an untrusted value into a PriceText. Fails closed to null. */
-export function parsePriceText(raw: unknown): PriceText | null {
-  const parsed = parseDecimal(raw)
-  return parsed === null ? null : (parsed.text as PriceText)
-}
-
-/** Assert a PriceText at a boundary you control. Throws on malformed input. */
-export function priceText(raw: string): PriceText {
-  return asDecimal(raw).text as PriceText
-}
+export { parsePriceText, priceText } from '../market-price'
+export type { PriceText } from '../market-price'
 
 /**
  * The numeric value of a PriceText, for geometry only.
@@ -208,16 +206,19 @@ export interface MarketDataProvenance {
 
 // ─── Candles ──────────────────────────────────────────────────────────────────
 
-export interface MarketCandle {
-  /** Opening instant of the bar. Bars are keyed by open, never by close. */
-  readonly openTime: Timestamp
-  readonly open: PriceText
-  readonly high: PriceText
-  readonly low: PriceText
-  readonly close: PriceText
-  /** Absent where the source does not report it — never defaulted to zero. */
-  readonly volume: PriceText | null
-}
+/*
+ * RE-EXPORTED, NOT RESTATED.
+ *
+ * The candle body moved down to `../market-candle` alongside the price
+ * vocabulary. A derived 4H candle is assembled by the aggregation package from
+ * accepted 1m observations (Canonical v1.0 §12), which cannot reach up into a
+ * presentation module for the shape it produces.
+ *
+ * The body stayed exactly six fields on the way down. Canonical v1.0 §14 keeps
+ * contract identity in the segment envelope and §19 keeps completeness beside
+ * the bucket, so neither joined the candle during the move.
+ */
+export type { MarketCandle } from '../market-candle'
 
 // ─── Structural annotations ───────────────────────────────────────────────────
 

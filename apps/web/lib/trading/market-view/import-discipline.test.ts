@@ -61,21 +61,32 @@ interface ImportRecord {
  * survives — which is the conservative reading and the one that matters for
  * bundling.
  *
- * THE CLAUSE MAY NOT CONTAIN `=` OR `;`, AND THAT IS LOAD-BEARING.
+ * THE CLAUSE IS MATCHED BY SHAPE, AND THAT IS LOAD-BEARING.
  *
- * Without it, a type-alias DECLARATION such as `export type PriceText = …` is a
- * false start: the keyword and the `type` marker both match, and the lazy
- * middle then runs forward to the next `from '…'` anywhere below — swallowing a
- * real value re-export and reporting it as type-only. A value re-export from
- * `../ids` placed after any type alias would then be invisible to the very
- * check that exists to keep `node:crypto` out of the browser bundle.
+ * An earlier version matched a lazy middle that merely excluded `=` and `;`.
+ * That was enough to stop a type ALIAS (`export type PriceText = …`) from
+ * starting a false match, and not enough for anything else: `export function
+ * priceMagnitude(value: PriceText): number { return Number(value) }` contains
+ * neither character, so the lazy middle ran straight past it to the next
+ * `from '…'` anywhere below — reporting a re-export against the wrong
+ * specifier, and reporting a TYPE-only re-export as a value import.
  *
- * An import or re-export clause never contains `=` or `;` before its `from`, so
- * excluding both ends the false start without excluding anything real.
+ * A false value import is the safe direction, but the same mechanism consumes
+ * the real clause that followed, so the record for that line is fabricated
+ * rather than read. A guard whose evidence is fabricated proves nothing.
+ *
+ * So the clause is now matched against the only three shapes a real import or
+ * re-export clause can take — a braced list, a star alias, or a bare
+ * identifier optionally followed by a braced list. Every declaration keyword
+ * fails all three and can no longer start a match.
  */
 function imports(file: string): ImportRecord[] {
   const text = code(file)
-  const pattern = /(?:^|\n)\s*(import|export)\s+(type\s+)?([^=;]*?)\s*from\s+['"]([^'"]+)['"]/g
+  const clause = /\{[^{}]*\}|\*\s+as\s+[A-Za-z_$][\w$]*|[A-Za-z_$][\w$]*(?:\s*,\s*\{[^{}]*\})?/
+  const pattern = new RegExp(
+    String.raw`(?:^|\n)\s*(import|export)\s+(type\s+)?(${clause.source})\s*from\s+['"]([^'"]+)['"]`,
+    'g',
+  )
   return [...text.matchAll(pattern)].map((match) => ({
     specifier: match[4],
     typeOnly: Boolean(match[2]),
@@ -127,17 +138,18 @@ describe('market-view import discipline', () => {
       }
     }
     /*
-     * `../market-instrument` joined the list when the root vocabulary moved down
-     * out of this presentation package, and `../market-timeframe` joined it when
-     * the timeframe vocabulary followed for the same reason: Canonical v1.0 §12
-     * makes 5m, 15m and 4H derived domain values, and a domain module cannot
-     * depend on a presentation package without inverting the dependency.
+     * Three vocabularies have now moved down out of this presentation package,
+     * each for the same reason: Canonical v1.0 makes roots, timeframes and
+     * exact prices DOMAIN values, and a domain module cannot depend on a
+     * presentation package without inverting the dependency direction.
      *
-     * Both import nothing at all, so neither adds an edge to the transitive
-     * closure proven below — which is asserted there rather than assumed here.
+     * `../decimal` left this list in GATE-08C-2B — not because the dependency
+     * went away, but because it moved one hop further out. `../market-price`
+     * value-imports it now, so the closure below still reaches `decimal.ts`
+     * and asserts it, which is the check that actually matters.
      */
     expect([...siblingValueImports].sort()).toEqual([
-      '../decimal', '../market-instrument', '../market-timeframe', '../time',
+      '../market-instrument', '../market-price', '../market-timeframe', '../time',
     ])
   })
 })
@@ -188,6 +200,9 @@ describe('no Node builtin is reachable at runtime from the market-view package',
     expect([...seen].some((f) => f.endsWith('/decimal.ts'))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/market-instrument.ts'))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/market-timeframe.ts'))).toBe(true)
+    // Reached through `../market-price`, which is what keeps `decimal.ts` above
+    // in the closure after it stopped being a direct edge from this package.
+    expect([...seen].some((f) => f.endsWith('/market-price.ts'))).toBe(true)
     // ids.ts is where node:crypto lives. Reaching it would mean the closure
     // includes the carrier, even if this particular walk found no `node:` edge.
     expect([...seen].some((f) => f.endsWith('/ids.ts'))).toBe(false)

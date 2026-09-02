@@ -16,6 +16,10 @@ import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
+import {
+  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
+  isRunCheckpointRefusal,
+} from '@/lib/governance/run-execution-checkpoint'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { sendAdminNotification } from '@/lib/email/brevo'
@@ -84,6 +88,41 @@ export async function GET(request: Request) {
         continue
       }
 
+      // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
+      // G3C-2A guarantees nothing NEW is claimed after a pause commits. This run
+      // was claimed BEFORE it, possibly seconds before. Deliberately placed here:
+      // after the claim, before ANY family dispatches, so one boundary covers
+      // workflow actions, marketing and agent steps rather than three separate
+      // ones drifting apart.
+      const entry = await checkpointClaimedRun(db, {
+        runId: run.id, projectId: run.project_id, claimId: run.claim_id,
+        boundary: 'drain:entry',
+      })
+      if (!entry.allowed) {
+        if (entry.refusal === 'FENCED') {
+          // Another owner holds this run. Touch nothing — not even to record a
+          // failure against it.
+          results.push({ run_id: run.id, status: 'fenced', detail: entry.detail })
+          continue
+        }
+        if (entry.refusal === 'CANCELLED') {
+          const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+          results.push({
+            run_id: run.id, status: fenced ? 'fenced' : 'cancelled', detail: entry.detail,
+          })
+          continue
+        }
+        // STOPPED — not a failure. Back to the queue with no error, no alert and
+        // no backoff. claim_runs refuses to re-claim it while the stop stands,
+        // which is exactly what bounds this to one cycle per stop event.
+        const { fenced } = await releaseStoppedRun(db, run.id, run.claim_id)
+        results.push({
+          run_id: run.id, status: fenced ? 'fenced' : 'deferred_by_stop',
+          reason: entry.reason, detail: entry.detail,
+        })
+        continue
+      }
+
       // ── PR9e: bound workflow actions take a separate, closed path ─────────
       // Deliberately BEFORE any agent-step or marketing handling: a workflow
       // action must never reach an LLM step, and legacy runs must never reach
@@ -140,7 +179,7 @@ export async function GET(request: Request) {
           if (POLICY_GATE) outcome = decideGate(run.policy_class)
         } else {
           // Legacy lightweight path (flag off) — unchanged behavior for rollback. Ungated.
-          await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
+          await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>, run.claim_id)
         }
       }
 
@@ -218,6 +257,21 @@ export async function GET(request: Request) {
         results.push({ run_id: run.id, status: 'done' })
       }
     } catch (e) {
+      // ── G3C-3A · control flow, NOT failure ──────────────────────────────────
+      // Placed FIRST, ahead of every failure path below. A governance stop, a
+      // cancellation and a lost claim are three different non-failures, and none
+      // may increment a failure counter, write an error, schedule a retry backoff
+      // or raise a provider alert. The executors already performed the owned
+      // lifecycle write (release / terminalize / nothing at all) before throwing,
+      // so there is deliberately nothing to write here.
+      if (isRunCheckpointRefusal(e)) {
+        const status = e.refusal === 'STOPPED' ? 'deferred_by_stop'
+          : e.refusal === 'CANCELLED' ? 'cancelled' : 'fenced'
+        console.warn(`[run ${run.id}] ${e.boundary}: ${e.refusal} — not a failure`)
+        results.push({ run_id: run.id, status, detail: e.message })
+        continue
+      }
+
       // H1.P5 Commit 3: a cooperative cancel is NOT a failure. The executor already wrote
       // status='cancelled' (fenced) before throwing — do not touch the run or mark failed;
       // just skip its terminal write (which would otherwise overwrite 'cancelled').

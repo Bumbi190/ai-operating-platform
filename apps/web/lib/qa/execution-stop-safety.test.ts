@@ -183,11 +183,23 @@ describe('run cancellation', () => {
 
   it('the route reports enforcement honestly, not just persistence', async () => {
     const route = readFileSync(join(process.cwd(), 'app/api/runs/[id]/cancel/route.ts'), 'utf8')
-    // The old bug: `{ok:true, status:'cancel_requested'}` regardless of H1_CANCEL.
-    expect(route).toMatch(/cancel_requested_not_enforced/)
-    expect(route).toMatch(/enforced/)
-    expect(route).toMatch(/isCancelEnabled\(\)/)
+    // The original bug: `{ok:true, status:'cancel_requested'}` regardless of
+    // whether anything would act on it. The first fix reported
+    // `cancel_requested_not_enforced` while H1_CANCEL was off.
+    //
+    // G3C-3A changes the underlying truth rather than the wording: the canonical
+    // post-claim checkpoint reads cancel_requested unconditionally, so a
+    // persisted request IS now enforced and `true` is the honest answer. What
+    // must never regress is the DISTINCTION — `ok` is persistence, `enforced` is
+    // action — and the refusal to overclaim a remote cancellation.
+    expect(route).toMatch(/enforced: true/)
     expect(route).toMatch(/request_run_cancel/)
+    expect(route, 'ok reports persistence, separately from enforcement')
+      .toMatch(/ok: persisted/)
+    expect(route, 'the latency contract stays explicit')
+      .toMatch(/next safe boundary/)
+    expect(route, 'and it must not claim a remote cancellation')
+      .toMatch(/not remotely cancelled/)
   })
 
   it('honours cancel at claim time and between steps', async () => {

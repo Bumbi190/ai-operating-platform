@@ -149,7 +149,13 @@ describe('the handler wraps, and cannot become a general fetch', () => {
   it('MUTATION — no caller-supplied URL, host or path', () => {
     expect(handlerSrc).not.toMatch(/input\.(url|host|endpoint|path)/)
     expect(handlerSrc).not.toMatch(/fetch\(/)          // it never fetches directly
-    expect(handlerSrc).toMatch(/checkAnonymousProtectedAccessDenied\(input\.instanceKey, input\.now\)/)
+    // Exactly three things are forwarded, and none can move the request: the
+    // instance key (echoed into the body and the audit detail only), the
+    // timestamp, and — since G3C-3A — the governance callback the adapter must
+    // call before each outbound request. The base URL still comes from
+    // configuration inside the adapter, never from a caller.
+    expect(handlerSrc).toMatch(
+      /checkAnonymousProtectedAccessDenied\(\s*input\.instanceKey,\s*input\.now,\s*input\.beforeAttempt\)/)
   })
 
   it('does not reimplement classification', () => {

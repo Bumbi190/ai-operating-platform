@@ -122,8 +122,24 @@ export function checkReleaseInstant(monthKey: string, now: string): Verification
  * neither a refusal nor a success is an error: an unrecognised status must never
  * be read as "probably fine".
  */
+/**
+ * Called immediately before each individual outbound probe request.
+ *
+ * G3C-3A: this check emits several requests per invocation, so one decision at
+ * the top would authorise a whole burst. The callback lets the CALLER
+ * re-establish governance per request while this adapter stays free of
+ * governance logic — it knows only "ask before each packet", never what the
+ * answer means. Refusal is expressed by throwing, so it cannot be silently
+ * ignored by this loop.
+ *
+ * Optional on purpose: the same check is reused by adapter verification that
+ * belongs to no run and holds no claim, and requiring one there would break
+ * read-only verification for no benefit.
+ */
+export type BeforeProbeAttempt = () => Promise<void> | void
+
 export async function checkAnonymousProtectedAccessDenied(
-  monthKey: string, now: string,
+  monthKey: string, now: string, beforeAttempt?: BeforeProbeAttempt,
 ): Promise<VerificationEvidence> {
   const { baseUrl } = config()
   const key = 'anonymous_protected_access_denied'
@@ -147,6 +163,10 @@ export async function checkAnonymousProtectedAccessDenied(
       { variant: 'invalid_bearer', init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer not.a.jwt' }, body } },
     ]
     for (const { variant, init } of variants) {
+      // Re-authorise before EVERY request. A stop committing after request N
+      // must prevent request N+1; the already-dispatched one finishes, exactly
+      // as G3C-1 and G3C-2B promise.
+      if (beforeAttempt) await beforeAttempt()
       const outcome = await probe(url, init)
       attempts.push({ fn, variant, status: outcome.status, kind: outcome.kind })
     }

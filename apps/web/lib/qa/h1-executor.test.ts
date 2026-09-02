@@ -21,6 +21,7 @@ type FakeOpts = {
   agents: Record<string, unknown>   // agent id -> config object
   existingOutput?: boolean
   existingApproval?: boolean
+  claimId?: string                  // G3C-3A: the claim the checkpoint must match
   lookupErrorTables?: string[]      // tables whose select resolves to a DB error
   insertErrorTables?: string[]      // tables whose insert resolves to a DB error
   uniqueViolationTables?: string[]  // tables whose insert resolves to a 23505 unique violation
@@ -57,6 +58,19 @@ function makeFakeDb(opts: FakeOpts) {
     if (table === 'outputs')   return { data: opts.existingOutput ? { id: 'out-existing' } : null, error: null }
     if (table === 'approvals') return { data: opts.existingApproval ? { id: 'appr-existing' } : null, error: null }
     if (table === 'workflows') return { data: { name: 'wf', project_id: 'p', projects: { name: 'proj' } }, error: null }
+    // G3C-3A: the per-step post-claim checkpoint reads the run's ownership row.
+    // Serving it here is the fixture catching up with a real safety check, not a
+    // concession — an executor that cannot establish ownership must refuse, and
+    // that is exactly what these mocks were previously letting it skip.
+    if (table === 'runs') {
+      return {
+        data: {
+          id: 'run1', status: 'running', claim_id: opts.claimId ?? 'claim-1',
+          cancel_requested: false, project_id: 'p',
+        },
+        error: null,
+      }
+    }
     return { data: null, error: null }
   }
 
@@ -80,13 +94,42 @@ function makeFakeDb(opts: FakeOpts) {
             : null
         return Promise.resolve({ data: null, error })
       },
-      update: (row: unknown) => { (updates[table] ??= []).push(row); return { eq: () => Promise.resolve({ data: null, error: null }) } },
+      // Chainable, because ownership-conditioned writes carry several
+      // predicates (id + status + claim_id) and terminate in either `.select()`
+      // or an awaited `.eq()`. A single-`.eq()` stub silently breaks them.
+      update: (row: unknown) => {
+        (updates[table] ??= []).push(row)
+        const done = Promise.resolve({ data: [{ id: 'run1' }], error: null })
+        const chain: any = {
+          eq: () => chain,
+          select: () => done,
+          then: (onF: any, onR: any) => done.then(onF, onR),
+        }
+        return chain
+      },
       then: (onF: any, onR: any) => Promise.resolve(resolve(state)).then(onF, onR),
     }
     return b
   }
 
-  return { from: (t: string) => builder(t), _inserts: inserts, _updates: updates }
+  return {
+    from: (t: string) => builder(t),
+    // G3C-3A: the checkpoint asks the canonical stop authority and fails CLOSED
+    // when it cannot be read. These fixtures model a clear world, so they must
+    // answer — a fixture that stays silent correctly halts execution, which is
+    // exactly the behaviour proven elsewhere.
+    rpc: (fn: string) => fn === 'stop_state'
+      ? Promise.resolve({
+          data: [{
+            global_paused: false, global_paused_at: null, global_paused_reason: null,
+            project_requested: true, project_found: true,
+            project_paused: false, project_paused_at: null, project_paused_reason: null,
+          }],
+          error: null,
+        })
+      : Promise.resolve({ data: null, error: null }),
+    _inserts: inserts, _updates: updates,
+  }
 }
 
 function step(order: number, agent_id: string, output_key: string): WorkflowStep {
@@ -102,7 +145,7 @@ beforeEach(() => {
 describe('executeRunSteps — idempotent finalization (#1)', () => {
   it('inserts the output exactly once on a normal completion', async () => {
     const db = makeFakeDb({ agents: { a1: {} } })
-    await executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {})
+    await executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], { claimId: 'claim-1' })
     expect(db._inserts.outputs).toHaveLength(1)
   })
 
@@ -114,6 +157,7 @@ describe('executeRunSteps — idempotent finalization (#1)', () => {
     const db = makeFakeDb({ agents: { a1: {} }, uniqueViolationTables: ['outputs'] })
     await expect(
       executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {
+      claimId: 'claim-1',
         existingContext: { k0: 'already-done' },
         startFromOrder: 1,
       }),
@@ -124,7 +168,7 @@ describe('executeRunSteps — idempotent finalization (#1)', () => {
   it('throws when the output insert errors (so the run is not finalized empty)', async () => {
     const db = makeFakeDb({ agents: { a1: {} }, insertErrorTables: ['outputs'] })
     await expect(
-      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], {}),
+      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'a1', 'k0')], { claimId: 'claim-1' }),
     ).rejects.toThrow(/outputs insert failed/)
   })
 })
@@ -136,7 +180,7 @@ describe('executeRunSteps — maxImages preserved on validation retry (#4)', () 
       .mockReturnValueOnce({ valid: false, issues: ['bad'], correctionHint: 'fix it' } as any)
       .mockReturnValueOnce({ valid: true, issues: [] } as any)
 
-    await executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'k0')], {})
+    await executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'k0')], { claimId: 'claim-1' })
 
     expect(mockedRunStep).toHaveBeenCalledTimes(2)
     expect(mockedRunStep.mock.calls[0][0]).toMatchObject({ maxImages: 1 })
@@ -154,7 +198,7 @@ describe('executeRunSteps — quality metadata for skipped steps (#5)', () => {
     const existingContext = { sagabilder: JSON.stringify({ urls: ['u1'], errors: [] }) }
 
     await expect(
-      executeRunSteps(db as any, 'run1', 'proj1', steps, { existingContext, startFromOrder: 1 }),
+      executeRunSteps(db as any, 'run1', 'proj1', steps, { claimId: 'claim-1', existingContext, startFromOrder: 1 }),
     ).resolves.toBeDefined()
     expect(db._inserts.outputs).toHaveLength(1)
   })
@@ -165,7 +209,7 @@ describe('executeRunSteps — quality metadata for skipped steps (#5)', () => {
       { content: JSON.stringify({ urls: ['u1'], errors: [] }), tokensIn: 1, tokensOut: 1, durationMs: 1 } as any,
     )
     await expect(
-      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'sagabilder')], {}),
+      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'sagabilder')], { claimId: 'claim-1' }),
     ).resolves.toBeDefined()
     expect(db._inserts.outputs).toHaveLength(1)
   })
@@ -173,7 +217,7 @@ describe('executeRunSteps — quality metadata for skipped steps (#5)', () => {
   it('throws (not silently empty) when the agent hydration query errors', async () => {
     const db = makeFakeDb({ agents: { aimg: { max_images: 1 } }, lookupErrorTables: ['agents'] })
     await expect(
-      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'sagabilder')], {}),
+      executeRunSteps(db as any, 'run1', 'proj1', [step(0, 'aimg', 'sagabilder')], { claimId: 'claim-1' }),
     ).rejects.toThrow(/agent config hydration failed/)
   })
 })

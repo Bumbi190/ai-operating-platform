@@ -22,6 +22,16 @@ export interface ReadOnlyHandlerInput {
   defKey: string
   defVersion: number
   now: string
+  /**
+   * G3C-3A: re-authorise before each discrete outbound request.
+   *
+   * A handler that emits more than one packet must call this between them, so a
+   * stop committing mid-handler prevents the next request rather than only the
+   * next action. Throwing is the refusal; there is deliberately no boolean a
+   * handler could ignore. Optional because a handler with a single outbound
+   * request is already covered by the pre-dispatch checkpoint.
+   */
+  beforeAttempt?: () => Promise<void> | void
 }
 
 export interface ReadOnlyHandlerOutput {

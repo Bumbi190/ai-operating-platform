@@ -30,6 +30,16 @@ const dbState = {
 function resolve(table: string, op: string | undefined, payload: Row | undefined, calls: [string, unknown[]][]) {
   if (op === 'update' || op === 'insert') {
     dbState.updates.push({ table, payload: payload ?? {} })
+    // Apply it. A resume proof that spans two requests is fiction unless the
+    // second request actually observes what the first one wrote.
+    if (table === 'media_scripts' && dbState.scripts[0]) {
+      Object.assign(dbState.scripts[0], payload ?? {})
+    }
+    if (table === 'comment_replies' && dbState.comments[0]) {
+      // comment rows are matched by .eq('id', …); the payload carries no id, so
+      // only the status fields are merged onto the row under test.
+      Object.assign(dbState.comments[0], payload ?? {})
+    }
     return { data: { id: 'x' }, error: null }
   }
   if (table === 'media_scripts') {
@@ -101,10 +111,19 @@ vi.mock('@/lib/media/lambda-render', () => ({
 }))
 
 const createReelContainer = vi.fn()
+const postReelToInstagram = vi.fn()
 vi.mock('@/lib/media/instagram', async () => {
   const actual = await vi.importActual<typeof import('@/lib/media/instagram')>('@/lib/media/instagram')
-  return { ...actual, createReelContainer: (...a: unknown[]) => createReelContainer(...a) }
+  return {
+    ...actual,
+    createReelContainer:  (...a: unknown[]) => createReelContainer(...a),
+    postReelToInstagram:  (...a: unknown[]) => postReelToInstagram(...a),
+  }
 })
+const postReelToFacebook = vi.fn()
+vi.mock('@/lib/media/facebook', () => ({
+  postReelToFacebook: (...a: unknown[]) => postReelToFacebook(...a),
+}))
 
 const uploadShort = vi.fn()
 vi.mock('@/lib/media/youtube', async () => {
@@ -121,7 +140,22 @@ vi.mock('@/lib/media/storage', () => ({
   uploadSceneImage: async (_p: string, _s: string, i: number) => `https://cdn/img-${i}.jpg`,
 }))
 vi.mock('@/lib/media/token-store', () => ({ getToken: async () => null }))
-vi.mock('@/lib/media/channel-persistence', () => ({ persistChannelSuccess: vi.fn().mockResolvedValue(null) }))
+vi.mock('@/lib/media/channel-persistence', () => ({
+  // Behaves like the real helper for the purposes of these tests: it writes the
+  // channel id and stamps published_at on first success. Stubbing it to a no-op
+  // would make every resume proof vacuous.
+  persistChannelSuccess: async (
+    _db: unknown, _id: string, update: Record<string, unknown>, publishedAt: string,
+  ) => {
+    const row = dbState.scripts[0]
+    if (row) {
+      Object.assign(row, update)
+      if (row.published_at == null) row.published_at = publishedAt
+    }
+    dbState.updates.push({ table: 'media_scripts', payload: { ...update } })
+    return { publishedAtSet: true }
+  },
+}))
 vi.mock('@/lib/media/run-log', () => ({ logRun: vi.fn().mockResolvedValue(null) }))
 const sendPipelineAlert = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/lib/media/alert', () => ({
@@ -144,6 +178,7 @@ const fetchSpy = vi.fn()
 vi.stubGlobal('fetch', (...a: unknown[]) => fetchSpy(...a))
 
 import { POST as renderStart } from '@/app/api/media/render/start/route'
+import { POST as operatorPublish } from '@/app/api/media/publish/instagram/route'
 import { GET as step3 } from '@/app/api/media/cron/step3/route'
 import { GET as step4 } from '@/app/api/media/cron/step4/route'
 import { GET as youtube } from '@/app/api/media/cron/youtube/route'
@@ -163,6 +198,8 @@ beforeEach(() => {
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'FBtoken'
   process.env.FACEBOOK_PAGE_ID = 'PAGE'
   fetchSpy.mockResolvedValue({ ok: true, json: async () => ({ id: 'reply-1' }) })
+  postReelToInstagram.mockResolvedValue({ mediaId: 'IG_1', permalink: 'https://ig/1' })
+  postReelToFacebook.mockResolvedValue({ postId: 'FB_1', url: 'https://fb/1' })
 })
 
 // ══ STEP 4 ═══════════════════════════════════════════════════════════════════
@@ -566,5 +603,109 @@ describe('render/start · an operator pressing render is still execution', () =>
     const res = await post({ scriptId: 'rs-1' })
     expect(startLambdaRender).toHaveBeenCalledTimes(0)
     expect(res.status).toBe(409)
+  })
+})
+
+// ══ PARTIAL SUCCESS MUST STAY RESUMABLE ══════════════════════════════════════
+
+/** Drains the operator route's SSE stream into parsed events. */
+async function drain(res: Response): Promise<Record<string, unknown>[]> {
+  const text = await res.text()
+  return text.split('\n')
+    .filter(l => l.startsWith('data:'))
+    .map(l => JSON.parse(l.slice(5).trim()) as Record<string, unknown>)
+}
+
+describe('operator publish · a deferred channel is pending work, not abandoned', () => {
+  /**
+   * Guarding Facebook was only half the job. The route then marked the whole
+   * script `published`, and it rejects a published script on the next request —
+   * so a Facebook the operator merely paused could never be sent again. That is
+   * abandonment wearing the word "deferred".
+   */
+  const opScript = (over: Row = {}) => ({
+    id: 'op-1', project_id: PROJECT_A, hook: 'h', script: 's', cta: null, hashtags: [],
+    video_url: 'https://cdn/v.mp4', video_status: 'ready', status: 'approved',
+    instagram_media_id: null, instagram_url: null,
+    facebook_post_id: null, facebook_url: null, published_at: null,
+    media_news_items: { url: 'u', source_name: 'n' }, ...over,
+  })
+  const publish = () => operatorPublish(new Request('http://test/api/media/publish/instagram', {
+    method: 'POST', body: JSON.stringify({ scriptId: 'op-1' }),
+  }))
+
+  beforeEach(() => { dbState.scripts = [opScript()] })
+
+  it('Instagram succeeds, the pause commits, Facebook is never called', async () => {
+    postReelToInstagram.mockImplementation(async () => {
+      stop.project = true                       // pause commits between channels
+      return { mediaId: 'IG_1', permalink: 'https://ig/1' }
+    })
+
+    const events = await drain(await publish())
+
+    expect(postReelToInstagram).toHaveBeenCalledTimes(1)
+    expect(postReelToFacebook, 'Facebook must not be dispatched after the pause')
+      .toHaveBeenCalledTimes(0)
+    expect(events.some(e => e.step === 'fb_deferred')).toBe(true)
+  })
+
+  it('the Instagram success is persisted and the script is NOT terminal', async () => {
+    postReelToInstagram.mockImplementation(async () => {
+      stop.project = true
+      return { mediaId: 'IG_1', permalink: 'https://ig/1' }
+    })
+
+    await drain(await publish())
+
+    const row = dbState.scripts[0]
+    expect(row.instagram_media_id, 'a completed publication is permanent fact').toBe('IG_1')
+    expect(row.facebook_post_id, 'Facebook never went out').toBeNull()
+    expect(row.status, 'terminal status would make the pending Facebook unreachable')
+      .not.toBe('published')
+    expect(row.status, 'the original non-terminal status is preserved').toBe('approved')
+  })
+
+  it('RESUME: the same route re-run publishes Facebook once and never Instagram twice', async () => {
+    // The strongest proof in this slice: two requests either side of a pause.
+    postReelToInstagram.mockImplementation(async () => {
+      stop.project = true
+      return { mediaId: 'IG_1', permalink: 'https://ig/1' }
+    })
+    await drain(await publish())
+
+    stop.project = false                        // operator resumes
+    const events = await drain(await publish())
+
+    expect(postReelToInstagram, 'Instagram is externally true already — never again')
+      .toHaveBeenCalledTimes(1)
+    expect(postReelToFacebook, 'the deferred channel finally goes out')
+      .toHaveBeenCalledTimes(1)
+    expect(dbState.scripts[0].facebook_post_id).toBe('FB_1')
+    expect(dbState.scripts[0].status, 'terminal only once every channel is done')
+      .toBe('published')
+    expect(events.some(e => e.step === 'done')).toBe(true)
+  })
+
+  it('“Already published” is decided by channel ids, not the coarse status', async () => {
+    // A script whose Instagram is done but whose Facebook is not is NOT finished.
+    dbState.scripts = [opScript({
+      status: 'published', instagram_media_id: 'IG_OLD', published_at: '2026-01-01T00:00:00Z',
+    })]
+
+    await drain(await publish())
+
+    expect(postReelToInstagram).toHaveBeenCalledTimes(0)
+    expect(postReelToFacebook, 'the missing channel is still owed').toHaveBeenCalledTimes(1)
+  })
+
+  it('a genuinely complete script is refused', async () => {
+    dbState.scripts = [opScript({
+      instagram_media_id: 'IG_OLD', facebook_post_id: 'FB_OLD', status: 'published',
+    })]
+    const res = await publish()
+    expect(res.status).toBe(409)
+    expect(postReelToInstagram).toHaveBeenCalledTimes(0)
+    expect(postReelToFacebook).toHaveBeenCalledTimes(0)
   })
 })

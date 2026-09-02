@@ -440,3 +440,69 @@ describe('stopIsNotRetryable', () => {
     expect(isExecutionStopped(new Error('meta exploded'))).toBe(false)
   })
 })
+
+// ─── G9 · a deferred channel must remain reachable ───────────────────────────
+
+describe('G9 · partial success is never terminalised', () => {
+  /**
+   * Guarding a channel is only half the job. Both multi-channel routes refused
+   * Facebook correctly and then marked the whole script `published` — which the
+   * operator route rejects on the next request and the cron queue never selects.
+   * "Deferred" silently became "abandoned".
+   *
+   * autonomous is pinned structurally rather than behaviourally: its pipeline
+   * runs news-hunt → script → voice → images → render-poll → publish, and
+   * standing all of that up to exercise one branch would be a worse test than
+   * this one. The cross-route continuation it hands off to IS proven
+   * behaviourally, in publish-channel-independence.
+   */
+  it('autonomous returns the row to the queue instead of marking it published', () => {
+    const body = code('app/api/media/cron/autonomous/route.ts')
+    const deferral = body.indexOf('if (fbDeferredReason)')
+    expect(deferral, 'the deferral branch must exist').toBeGreaterThan(-1)
+    const branch = body.slice(deferral, deferral + 600)
+    expect(branch, 'hand the row back to the canonical publish queue')
+      .toContain("status: 'approved'")
+    expect(branch, 'and it must return before the terminal write')
+      .toContain("status: 'deferred_by_stop'")
+    // The terminal write must come AFTER the deferral branch returns.
+    const terminal = body.indexOf("update({ status: 'published' })")
+    expect(terminal, 'terminal write present').toBeGreaterThan(-1)
+    expect(terminal, 'a deferred run must never reach it').toBeGreaterThan(deferral)
+  })
+
+  it('autonomous persists Instagram BEFORE Facebook is authorised', () => {
+    // Otherwise a stop between the channels loses the completed publication, and
+    // the resumed run would publish Instagram a second time.
+    const body = code('app/api/media/cron/autonomous/route.ts')
+    const igPersist = body.indexOf('instagram_media_id: igResult.mediaId')
+    const fbAssert = body.indexOf("system: 'facebook', operation: 'post_reel'")
+    expect(igPersist, 'Instagram success is persisted').toBeGreaterThan(-1)
+    expect(fbAssert, 'Facebook is authorised separately').toBeGreaterThan(-1)
+    expect(igPersist, 'persist first, authorise second').toBeLessThan(fbAssert)
+  })
+
+  it('the operator route decides completion by channel ids, not by status', () => {
+    const body = code('app/api/media/publish/instagram/route.ts')
+    expect(body).toContain('igAlreadyDone')
+    expect(body).toContain('fbAlreadyDone')
+    expect(body, 'the coarse status check alone would strand a pending channel')
+      .not.toMatch(/if \(script\.status === 'published'\) \{ return new Response\('Already published'/)
+  })
+
+  it('the operator route only terminalises when every channel is done', () => {
+    const body = code('app/api/media/publish/instagram/route.ts')
+    expect(body).toContain('everyChannelDone')
+    expect(body, 'otherwise restore the status the operator started from')
+      .toContain('{ status: originalStatus }')
+  })
+
+  it('autonomous render deferral does not escape as a server fault', () => {
+    const body = code('app/api/media/cron/autonomous/route.ts')
+    const assertIdx = body.indexOf("system: 'remotion-lambda', operation: 'start_render'")
+    expect(assertIdx).toBeGreaterThan(-1)
+    const around = body.slice(Math.max(0, assertIdx - 400), assertIdx + 600)
+    expect(around, 'an uncaught stop would surface as a 500').toContain('isExecutionStopped')
+    expect(around).toContain("status: 'deferred_by_stop'")
+  })
+})

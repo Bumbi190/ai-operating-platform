@@ -21,6 +21,7 @@ import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagra
 import { postReelToFacebook } from '@/lib/media/facebook'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
+import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300  // Video processing can take up to 5 min
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   // Load script
   const { data: script, error } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, media_news_items(url, source_name)')
+    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, instagram_media_id, instagram_url, facebook_post_id, facebook_url, published_at, media_news_items(url, source_name)')
     .eq('id', scriptId)
     .single()
 
@@ -52,9 +53,23 @@ export async function POST(request: Request) {
   if (script.video_status !== 'ready' || !script.video_url) {
     return new Response('Video not rendered yet', { status: 400 })
   }
-  if (script.status === 'published') {
+  // ── Idempotency by CHANNEL ID, not by the coarse status ────────────────────
+  // `status === 'published'` is too blunt once a channel can be deferred by a
+  // stop: a script whose Instagram succeeded and whose Facebook was refused is
+  // NOT finished, and rejecting it here is exactly what turned "deferred" into
+  // "abandoned". The id columns are the stronger fact — they record what actually
+  // happened on each channel.
+  const igAlreadyDone = script.instagram_media_id != null
+  const facebookConfigured = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
+  const fbAlreadyDone = !facebookConfigured || script.facebook_post_id != null
+
+  if (igAlreadyDone && fbAlreadyDone) {
     return new Response('Already published', { status: 409 })
   }
+
+  // Preserved so a governance deferral can put the row back exactly where it was.
+  // Forcing 'approved' would guess at a state the operator may have chosen.
+  const originalStatus = script.status as string | null
 
   // Capture as local — the `!script.video_url` narrowing above doesn't survive
   // into the ReadableStream start() closure.
@@ -85,16 +100,27 @@ export async function POST(request: Request) {
           sourceName:  newsItem?.source_name ?? undefined,
         })
 
-        const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
+        const hasFacebook = facebookConfigured
 
         // ── Instagram ────────────────────────────────────────────────────────
+        // A completed publication is externally true and permanent. If a prior
+        // attempt published Instagram and was then stopped before Facebook, this
+        // resumed request must NOT publish it a second time.
+        let igResult: { mediaId: string; permalink?: string }
+        if (igAlreadyDone) {
+          emit({ step: 'uploading', label: 'Instagram redan publicerad — hoppar över', progress: 60 })
+          igResult = {
+            mediaId: script.instagram_media_id as string,
+            permalink: (script.instagram_url as string | null) ?? undefined,
+          }
+        } else {
         emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
 
         // ── GOVERNANCE BOUNDARY: Instagram publish ──
         await assertExecutionDispatchAllowed(
           execution, { system: 'instagram', operation: 'post_reel' })
 
-        const igResult = await postReelToInstagram(
+        igResult = await postReelToInstagram(
           videoUrl,
           caption,
           (step, pct) => {
@@ -107,9 +133,25 @@ export async function POST(request: Request) {
           },
         )
 
+        // Persisted IMMEDIATELY, before Facebook is even authorised. This is the
+        // idempotency fact "Instagram already happened": if the stop lands
+        // between the channels, a later resume must find it and skip.
+        await persistChannelSuccess(db, scriptId, {
+          instagram_media_id: igResult.mediaId,
+          instagram_url:      igResult.permalink ?? null,
+        }, new Date().toISOString())
+        }
+
         // ── Facebook (optional) ───────────────────────────────────────────────
         let fbResult: { postId: string; url?: string } | null = null
-        if (hasFacebook) {
+        let fbDeferredReason: string | null = null
+        if (hasFacebook && script.facebook_post_id != null) {
+          // Already published on a previous attempt — never post twice.
+          fbResult = {
+            postId: script.facebook_post_id as string,
+            url: (script.facebook_url as string | null) ?? undefined,
+          }
+        } else if (hasFacebook) {
           emit({ step: 'uploading', label: 'Publicerar på Facebook...', progress: 65 })
           try {
             // ── GOVERNANCE BOUNDARY: Facebook is a SEPARATE authorization ──
@@ -133,7 +175,8 @@ export async function POST(request: Request) {
               // Not a Facebook failure: nothing was sent. Instagram is not rolled
               // back, and the operator is told why rather than shown a fault that
               // never happened.
-              emit({ step: 'fb_deferred', progress: 95,
+              fbDeferredReason = fbErr.reason
+              emit({ step: 'fb_deferred', progress: 95, reason: fbErr.reason,
                      label: `⏸️ Facebook uppskjuten av stopp (${fbErr.reason}) — Instagram OK` })
             } else {
               // Facebook failure is non-fatal — Instagram already succeeded
@@ -143,26 +186,41 @@ export async function POST(request: Request) {
           }
         }
 
-        // ── Update DB ─────────────────────────────────────────────────────────
+        // ── Finalise ──────────────────────────────────────────────────────────
+        // Instagram is already persisted above. What remains is Facebook's result
+        // and the question of whether this script is FINISHED.
+        //
+        // A deferred channel is pending work, not completed work. Marking the
+        // script `published` here would make it unreachable — this route rejects
+        // a published script, and the cron queue only looks at `approved` — so a
+        // Facebook the operator merely paused would never be sent at all. That is
+        // abandonment wearing the word "deferred".
+        if (fbResult) {
+          await persistChannelSuccess(db, scriptId, {
+            facebook_post_id: fbResult.postId,
+            facebook_url:     fbResult.url ?? null,
+          }, new Date().toISOString())
+        }
+
+        const everyChannelDone = !!fbResult || !hasFacebook
         await db
           .from('media_scripts')
-          .update({
-            status:             'published',
-            published_at:       new Date().toISOString(),
-            instagram_media_id: igResult.mediaId,
-            instagram_url:      igResult.permalink ?? null,
-            ...(fbResult ? {
-              facebook_post_id: fbResult.postId,
-              facebook_url:     fbResult.url ?? null,
-            } : {}),
-          })
+          .update(everyChannelDone
+            // Terminal only when every configured channel actually went out.
+            ? { status: 'published' }
+            // Otherwise put the row back exactly where it was, so the operator —
+            // or the cron queue — can finish the remaining channel after resume.
+            : { status: originalStatus })
           .eq('id', scriptId)
 
         const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
 
         emit({
-          step:      'done',
-          label:     `🎉 Publicerat på ${platforms}!`,
+          step:      fbDeferredReason ? 'partial_deferred' : 'done',
+          reason:    fbDeferredReason ?? undefined,
+          label:     fbDeferredReason
+            ? `✅ Publicerat på ${platforms}. Facebook uppskjuten av stopp — återupptas efter resume.`
+            : `🎉 Publicerat på ${platforms}!`,
           progress:  100,
           mediaId:   igResult.mediaId,
           permalink: igResult.permalink,

@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkDailyRenderLimit } from '@/lib/media/safeguards'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
+import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -425,10 +426,31 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   })
 
   // ── GOVERNANCE BOUNDARY: starting a render is new external compute ──
-  await assertExecutionDispatchAllowed(
-    { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
-    { system: 'remotion-lambda', operation: 'start_render' },
-  )
+  // The refusal is caught here rather than escaping the handler. An uncaught
+  // ExecutionStoppedError would surface as a 500 — an intentional governance
+  // decision reported as a server fault, and one the cron's own alerting would
+  // treat as a broken pipeline.
+  try {
+    await assertExecutionDispatchAllowed(
+      { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+      { system: 'remotion-lambda', operation: 'start_render' },
+    )
+  } catch (stopErr) {
+    if (!isExecutionStopped(stopErr)) throw stopErr
+    // Nothing is rolled back. The script, voice, audio/timing and images are all
+    // completed work and stay. The row is left exactly as it is because it is
+    // ALREADY the state step3 resumes from — status 'approved', voice_status
+    // 'ready', video_status 'none' — so the established render pipeline picks it
+    // up after resume without a bespoke deferred state.
+    log('render', `Render uppskjuten av stopp (${stopErr.reason}) — `
+      + `scriptet ligger kvar i step3:s kö, inget rullas tillbaka`)
+    return NextResponse.json({
+      status: 'deferred_by_stop', reason: stopErr.reason, scriptId,
+      completed: ['script', 'voice', 'images'],
+      elapsedMs: Date.now() - startedAt,
+    })
+  }
+
   const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, 'SimpleNewsReel')
 
   await db.from('media_scripts').update({
@@ -511,6 +533,13 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     )
     igResult = await postReelToInstagram(videoUrl, caption)
     log('publish', `Instagram OK: ${igResult.permalink}`)
+    // Persisted BEFORE Facebook is even authorised. This is the idempotency fact
+    // "Instagram already happened", and it is what lets the canonical publish
+    // queue finish Facebook later without republishing this.
+    await persistChannelSuccess(db, scriptId, {
+      instagram_media_id: igResult.mediaId,
+      instagram_url:      igResult.permalink ?? null,
+    }, new Date().toISOString())
   } catch (igErr) {
     if (isExecutionStopped(igErr)) {
       // Nothing was published. The video stays ready and a later run picks it
@@ -531,6 +560,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   }
 
   let fbResult: { postId: string; url?: string } | null = null
+  let fbDeferredReason: string | null = null
   const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
 
   if (hasFacebook) {
@@ -549,6 +579,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         // does not go. Not a Facebook fault — no alert, no failure record.
         log('publish', `Facebook uppskjuten av stopp (${fbErr.reason}) — Instagram OK`)
         fbResult = null
+        fbDeferredReason = fbErr.reason
       } else {
       const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
       log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
@@ -563,17 +594,35 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     }
   }
 
-  // ── 15. Mark published in DB ──────────────────────────────────────────────────
-  await db.from('media_scripts').update({
-    status:             'published',
-    published_at:       new Date().toISOString(),
-    instagram_media_id: igResult.mediaId,
-    instagram_url:      igResult.permalink ?? null,
-    ...(fbResult ? {
+  // ── 15. Record the outcome ────────────────────────────────────────────────────
+  // Instagram is already persisted above. Facebook's result — or its absence —
+  // decides whether this script is FINISHED.
+  if (fbResult) {
+    await persistChannelSuccess(db, scriptId, {
       facebook_post_id: fbResult.postId,
       facebook_url:     fbResult.url ?? null,
-    } : {}),
-  }).eq('id', scriptId)
+    }, new Date().toISOString())
+  }
+
+  if (fbDeferredReason) {
+    // A deferred channel is pending work. Marking this `published` would make it
+    // unreachable — the canonical queue in cron/publish selects on
+    // `status='approved'` — so a Facebook the operator merely paused would never
+    // be sent. Hand the row back to that queue rather than inventing a second
+    // deferred-state machine: its channel-id columns already stop Instagram from
+    // being published twice.
+    await db.from('media_scripts').update({ status: 'approved' }).eq('id', scriptId)
+    log('publish', 'Facebook uppskjuten — scriptet återlämnat till publiceringskön '
+      + '(Instagram bevarad, publiceras inte om)')
+    return NextResponse.json({
+      status: 'deferred_by_stop', reason: fbDeferredReason, scriptId,
+      publishedChannels: ['Instagram'],
+      permalink: igResult.permalink,
+      elapsedMs: Date.now() - startedAt,
+    })
+  }
+
+  await db.from('media_scripts').update({ status: 'published' }).eq('id', scriptId)
 
   const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
   log('done', `Published on ${platforms} in ${Math.round((Date.now() - startedAt) / 1000)}s`)

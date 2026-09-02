@@ -845,3 +845,69 @@ describe('G3C-2B · authority is the row’s project, not the billing slug', () 
       'a stopped run must not claim the row').toBe(false)
   })
 })
+
+describe('G3C-2B · the publish queue finishes what a stopped run left behind', () => {
+  /**
+   * The cross-route proof. `cron/autonomous` (and the operator route) can publish
+   * Instagram, have Facebook refused by a stop, and hand the row back to this
+   * queue. This is where it must safely continue: Facebook goes out once,
+   * Instagram never goes out twice.
+   *
+   * The mechanism is deliberately the pre-existing one — `status='approved'`
+   * drives eligibility and the channel id columns prevent duplicates — rather
+   * than a second deferred-state machine invented for governance.
+   */
+  it('a row left with Instagram done and Facebook pending completes Facebook only', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      instagram_url:      'https://ig/from-autonomous',
+      published_at:       new Date().toISOString(),
+      status:             'approved',        // handed back to the queue
+    })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    const res  = await call()
+    const body = await res.json()
+
+    expect(createReelContainer, 'Instagram is already externally true')
+      .toHaveBeenCalledTimes(0)
+    expect(publishContainer, 'and must never be published a second time')
+      .toHaveBeenCalledTimes(0)
+    expect(postReelToFacebook, 'the deferred channel finally goes out')
+      .toHaveBeenCalledTimes(1)
+    expect(body.channels.instagram).toMatchObject({
+      ok: true, id: 'IG_FROM_AUTONOMOUS', skipped: 'already_published',
+    })
+    expect(body.channels.facebook).toMatchObject({ ok: true, id: 'FB1' })
+  })
+
+  it('and only then does the script become terminal', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      published_at:       new Date().toISOString(),
+      status:             'approved',
+    })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    await call()
+
+    expect(dbState.updates.some(u => u.status === 'published'),
+      'every configured channel has now gone out').toBe(true)
+  })
+
+  it('if the stop is still active on resume, it defers again rather than failing', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      published_at:       new Date().toISOString(),
+      status:             'approved',
+    })
+    dbState.globalPaused = true
+
+    const body = await (await call()).json()
+
+    expect(postReelToFacebook).toHaveBeenCalledTimes(0)
+    expect(body.status).toBe('deferred_by_stop')
+    expect(dbState.updates.some(u => u.status === 'pending_review'),
+      'repeated deferral is not escalation').toBe(false)
+  })
+})

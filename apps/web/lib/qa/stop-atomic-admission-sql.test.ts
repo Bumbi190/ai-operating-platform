@@ -1075,7 +1075,7 @@ maybe('the canonical lock ORDER is structural', () => {
    * pause setter queues for platform FOR UPDATE between the two SHARE holders.
    * The order is a safety property, so it is pinned rather than trusted.
    */
-  const flat = (fn: string) => one(dsn, `select regexp_replace(prosrc, '\s+', ' ', 'g')
+  const flat = (fn: string) => one(dsn, `select regexp_replace(prosrc, '\\s+', ' ', 'g')
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname='${fn}'`)
 

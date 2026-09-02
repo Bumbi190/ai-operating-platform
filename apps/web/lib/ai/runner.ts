@@ -39,29 +39,126 @@ const JUNI_REF_BASE = process.env.NEXT_PUBLIC_SUPABASE_URL
   : null
 
 /**
- * Hämtar en referensbild från Supabase Storage och returnerar den som Buffer.
- * Returnerar null om hämtningen misslyckas (t.ex. om bilden saknas).
+ * En OBLIGATORISK referensbild kunde inte hämtas eller validerades inte.
+ *
+ * Egen klass av samma skäl som `IdeogramHttpError`: felet måste gå att skilja
+ * från ett generellt genereringsfel, både i tester och vid felsökning. Det är
+ * en vanlig `Error` — samma catch i bildloopen fångar den, samma `errors[]`
+ * rapporterar den. Inget nytt felsystem införs.
  */
-async function fetchReferenceBuffer(filename: string): Promise<Buffer | null> {
-  if (!JUNI_REF_BASE) return null
-  const url = `${JUNI_REF_BASE}/${filename}`
-  try {
-    const res = await fetch(url)
-    if (!res.ok) {
-      console.warn(`[ImageGen] Referensbild saknas (${res.status}): ${url}`)
-      return null
-    }
-    return Buffer.from(await res.arrayBuffer())
-  } catch (err) {
-    console.warn(`[ImageGen] Kunde inte hämta referensbild: ${url}`, err)
-    return null
+export class MissingReferenceError extends Error {
+  readonly referenceName: string
+
+  constructor(referenceName: string, reason: string) {
+    super(`Obligatorisk referensbild "${referenceName}" kunde inte användas: ${reason}`)
+    this.name = 'MissingReferenceError'
+    this.referenceName = referenceName
   }
+}
+
+/**
+ * Referensen fanns, men den REFERENSBUNDNA genereringen gick inte att slutföra.
+ *
+ * Skild från `MissingReferenceError` därför att orsakerna kräver olika åtgärd:
+ * den ena betyder "referensen saknas i lagringen", den andra "leverantören
+ * klarade inte begäran". Utfallet är däremot detsamma och det är hela poängen —
+ * båda kastar, ingendera faller tillbaka på obunden generering.
+ */
+export class ReferenceGenerationError extends Error {
+  readonly referenceName: string
+
+  constructor(referenceName: string, reason: string) {
+    super(`Referensbunden generering med "${referenceName}" misslyckades: ${reason}`)
+    this.name = 'ReferenceGenerationError'
+    this.referenceName = referenceName
+  }
+}
+
+/**
+ * Endast ett enkelt filnamn. Ingen sökväg, ingen traversering, inget schema.
+ *
+ * Namnen byggs idag av anroparen (`saga-${i + 1}.png`), men de är en PARAMETER,
+ * och ett namn som når URL-konkatenering nedan är i praktiken en URL-del. Om ett
+ * framtida anrop skickar vidare något modell- eller användargenererat skulle
+ * `../` eller ett absolut schema annars kunna peka om hämtningen. Validering här
+ * gör regeln oberoende av vem som råkar anropa funktionen.
+ */
+const SAFE_REFERENCE_NAME = /^[A-Za-z0-9._-]+$/
+
+/**
+ * Hämtar en OBLIGATORISK referensbild från Supabase Storage.
+ *
+ * ── ÄNDRAT BETEENDE ────────────────────────────────────────────────────────
+ * Returnerade tidigare `null` vid fel, vilket lät anroparen fortsätta generera
+ * UTAN referensen. Kastar nu i stället. Se `generateWithReference`.
+ *
+ * Anledningen till att felet kastas HÄR och inte returneras som null: det är på
+ * den här nivån den faktiska orsaken är känd (saknad env, HTTP-status,
+ * nätverksfel). Ett `null` uppåt skulle tvinga anroparen att gissa varför.
+ */
+async function fetchReferenceBuffer(filename: string): Promise<Buffer> {
+  if (!SAFE_REFERENCE_NAME.test(filename)) {
+    throw new MissingReferenceError(filename, 'ogiltigt referensnamn')
+  }
+  if (!JUNI_REF_BASE) {
+    throw new MissingReferenceError(filename, 'NEXT_PUBLIC_SUPABASE_URL saknas')
+  }
+
+  const url = `${JUNI_REF_BASE}/${filename}`
+  let res: Response
+  try {
+    res = await fetch(url)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new MissingReferenceError(filename, `hämtningen misslyckades (${msg})`)
+  }
+
+  if (!res.ok) {
+    throw new MissingReferenceError(filename, `HTTP ${res.status}`)
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer())
+  if (buffer.byteLength === 0) {
+    // En tom fil är inte en referens. Utan den här kontrollen skulle en
+    // trasig/tom uppladdning ta sig förbi som en giltig referens och ge
+    // exakt den obundna generering som felet handlar om.
+    throw new MissingReferenceError(filename, 'referensbilden är tom (0 byte)')
+  }
+  return buffer
 }
 
 /**
  * Genererar en bild MED Juni-referensbild via openai.images.edit().
  * Modellen får referensbilden som visuell guide för karaktärsstil och proportioner.
- * Faller tillbaka till null om referenshämtningen misslyckas.
+ *
+ * ── LÅST KONTRAKT: EN OBLIGATORISK REFERENS FÅR ALDRIG FALLA BORT ──────────
+ * Funktionen returnerar en bild som faktiskt genererades MED referensen, eller
+ * kastar. Det finns inget tredje utfall, och returtypen är därför inte längre
+ * nullbar — `?? någotAnnat` går inte att skriva mot den.
+ *
+ * Alla dessa lägen kastar, och det är avsiktligt att de behandlas lika:
+ *
+ *   • referensen gick inte att hämta          → MissingReferenceError
+ *   • referensen validerade inte (tom, namn)  → MissingReferenceError
+ *   • leverantörsanropet misslyckades         → ReferenceGenerationError
+ *   • leverantören svarade utan bilddata      → ReferenceGenerationError
+ *   • alla försök slut                        → ReferenceGenerationError
+ *
+ * VARFÖR ÄVEN LEVERANTÖRSFEL KASTAR. Tidigare returnerades `null` här, och
+ * anroparen läste det som "prova något annat" — `?? generateWithRetry(...)`,
+ * ett NYTT betalt anrop UTAN referens, med en prompt som fortfarande beordrade
+ * strikt användning av en referensbild som inte bifogades. Kravet försvann
+ * alltså tyst i exakt det läge då det var som svårast att upptäcka. En framtida
+ * orkestrering får gärna försöka igen mot en ANNAN leverantör som också
+ * uppfyller referenskravet — men kravet självt får aldrig tas bort.
+ *
+ * Vad som INTE ändras: `isCoverMode` har aldrig haft en referens (uttryckligt
+ * "Ingen referensbild" i koden) och rör inte den här funktionen. Ideogram-vägen
+ * i saga/aktivitet är också promptbaserad utan referens och är oförändrad —
+ * den har sin egen vision-QA-grind.
+ *
+ * Kastet fångas av bildloopens befintliga try/catch, hamnar i `errors[]` och
+ * räknas mot `consecutiveFailures`. Inga nya felvägar, ingen ny policy.
  */
 async function generateWithReference(
   project: ProjectRef,
@@ -71,11 +168,14 @@ async function generateWithReference(
   label: string,
   refFilename: string,
   maxRetries = 3,
-): Promise<{ b64_json?: string | null } | null> {
+): Promise<{ b64_json?: string | null }> {
+  // Kastar MissingReferenceError. Ligger FÖRE varje provider-anrop, alltså
+  // före den styrda spend-gränsen — ingen reservation hinner göras, och det
+  // finns därmed heller ingenting att släppa.
   const refBuffer = await fetchReferenceBuffer(refFilename)
-  if (!refBuffer) return null
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+  let lastError: unknown = null
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -91,21 +191,43 @@ async function generateWithReference(
           size,
         } as any, // size-typen är mer begränsad i edit() än generate()
       )
-      return res.data?.[0] ?? null
+
+      // Ett 2xx utan användbar bild är inte en lyckad referensbunden
+      // generering. Returnerades det som `null` skulle anroparen inte kunna
+      // skilja det från "prova något annat" — och "något annat" var det
+      // obundna anropet. Kastas i stället, som varje annat fel här.
+      const image = res.data?.[0]
+      if (!image || (!image.b64_json && !image.url)) {
+        throw new ReferenceGenerationError(
+          refFilename,
+          `leverantören svarade utan bilddata (${label})`,
+        )
+      }
+      return image
     } catch (err: any) {
+      lastError = err
       const status = err?.status ?? err?.response?.status
       const isRateLimit = status === 429 || String(err?.message).includes('rate limit') || String(err?.message).includes('Rate limit')
       if (isRateLimit && attempt < maxRetries) {
         const waitMs = 15_000 * attempt
         console.warn(`[ImageGen] Rate limit på ${label} — väntar ${waitMs / 1000}s`)
         await sleep(waitMs)
-      } else {
-        console.warn(`[ImageGen] Referensgenerering misslyckades för ${label} (försök ${attempt}): ${err?.message}`)
-        return null // faller tillbaka till generate() utan referens
+        continue
       }
+      // INGEN fallback. Felet kastas vidare oförändrat när det redan är ett
+      // referensfel, annars inslaget så att orsaken syns i errors[].
+      console.warn(`[ImageGen] Referensgenerering misslyckades för ${label} (försök ${attempt}): ${err?.message}`)
+      throw err instanceof ReferenceGenerationError || err instanceof MissingReferenceError
+        ? err
+        : new ReferenceGenerationError(refFilename, String(err?.message ?? err))
     }
   }
-  return null
+
+  // Alla försök slut (endast nåbart via rate-limit-slingan ovan).
+  throw new ReferenceGenerationError(
+    refFilename,
+    `alla ${maxRetries} försök misslyckades (${label}): ${String((lastError as any)?.message ?? lastError)}`,
+  )
 }
 
 // Admin Supabase client for storage uploads (bypasses RLS).
@@ -675,8 +797,11 @@ async function runImageStep(
         console.log(`[ImageGen] Saga bild ${i + 1} — faller tillbaka till gpt-image-1`)
         const sagaGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW children's book illustration — same art style, same character designs — but showing a completely new scene. Bright flat cartoon children's book illustration, vibrant saturated colors, clean bold shapes, cheerful warm tones. ${NO_TEXT}. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const sagaRef = `saga-${i + 1}.png`
+        // Referensbunden. Ingen `?? generateWithRetry(... utan ref)`: prompten
+        // ovan beordrar strikt användning av referensbilden, och det obundna
+        // anropet bifogade ingen — det bad modellen följa en bild den inte fick.
+        // Misslyckas det här kastas det och bilden hoppas över.
         imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef)
-          ?? await generateWithRetry(sagaGptPrompt, '1024x1536', `saga bild ${i + 1} (utan ref)`)
 
       } else if (isActivityMode) {
         // ── Ideogram v3 — flat cartoon square illustration ────────────────────
@@ -722,14 +847,15 @@ async function runImageStep(
         console.log(`[ImageGen] Aktivitet bild ${i + 1} — faller tillbaka till gpt-image-1`)
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
+        // Referensbunden — se kommentaren i saga-grenen.
         imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef)
-          ?? await generateWithRetry(aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1} (utan ref)`)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
+        // Referensbunden — och till skillnad från saga/aktivitet finns här ingen
+        // Ideogram-väg alls, så detta är hela genereringen för färgläggningssidor.
         imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef)
-          ?? await generateWithRetry(coloringPrompt, '1024x1024', `färgläggning bild ${i + 1} (utan ref)`)
       }
 
       // gpt-image-1 returnerar b64_json — ladda upp till Storage för permanent URL

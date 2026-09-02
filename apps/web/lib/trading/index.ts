@@ -60,6 +60,31 @@ export {
 } from './time'
 export type { CanonicalTimezone, Timestamp } from './time'
 
+// ─── Instrument roots and concrete contract identity ──────────────────────────
+/*
+ * The canonical root vocabulary (Market Data & Contract Lifecycle Canonical
+ * v1.0 §3) and concrete contract identity (§4, §5). Identity only — the
+ * versioned calendar and the resolver live in `@/lib/trading/contract-calendar`,
+ * which is a package and, like every other package here, is not re-exported
+ * through this barrel.
+ */
+export { MARKET_INSTRUMENTS, isMarketInstrument, parseMarketInstrument } from './market-instrument'
+export type { MarketInstrument } from './market-instrument'
+export {
+  QUARTER_MONTHS,
+  compareContractCycle,
+  contractCycle,
+  contractKey,
+  isCalendarYear,
+  isQuarterMonth,
+  parseContractCycle,
+  parseResolvedContract,
+  resolvedContract,
+  sameContract,
+  sameCycle,
+} from './contract-identity'
+export type { ContractCycle, QuarterMonth, ResolvedContract } from './contract-identity'
+
 // ─── Exact numbers ────────────────────────────────────────────────────────────
 export {
   MAX_DECIMAL_SCALE,

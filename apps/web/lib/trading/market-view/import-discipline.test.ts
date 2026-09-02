@@ -60,10 +60,22 @@ interface ImportRecord {
  * inline `import { type A, b }` still counts as a value import, because `b`
  * survives — which is the conservative reading and the one that matters for
  * bundling.
+ *
+ * THE CLAUSE MAY NOT CONTAIN `=` OR `;`, AND THAT IS LOAD-BEARING.
+ *
+ * Without it, a type-alias DECLARATION such as `export type PriceText = …` is a
+ * false start: the keyword and the `type` marker both match, and the lazy
+ * middle then runs forward to the next `from '…'` anywhere below — swallowing a
+ * real value re-export and reporting it as type-only. A value re-export from
+ * `../ids` placed after any type alias would then be invisible to the very
+ * check that exists to keep `node:crypto` out of the browser bundle.
+ *
+ * An import or re-export clause never contains `=` or `;` before its `from`, so
+ * excluding both ends the false start without excluding anything real.
  */
 function imports(file: string): ImportRecord[] {
   const text = code(file)
-  const pattern = /(?:^|\n)\s*(import|export)\s+(type\s+)?([\s\S]*?)\s*from\s+['"]([^'"]+)['"]/g
+  const pattern = /(?:^|\n)\s*(import|export)\s+(type\s+)?([^=;]*?)\s*from\s+['"]([^'"]+)['"]/g
   return [...text.matchAll(pattern)].map((match) => ({
     specifier: match[4],
     typeOnly: Boolean(match[2]),
@@ -107,14 +119,21 @@ describe('market-view import discipline', () => {
     }
   })
 
-  it('takes values only from the two leaf modules that carry no Node dependency', () => {
+  it('takes values only from the leaf modules that carry no Node dependency', () => {
     const siblingValueImports = new Set<string>()
     for (const file of PACKAGE_FILES) {
       for (const specifier of valueImports(file)) {
         if (specifier.startsWith('../')) siblingValueImports.add(specifier)
       }
     }
-    expect([...siblingValueImports].sort()).toEqual(['../decimal', '../time'])
+    /*
+     * `../market-instrument` joined the list when the root vocabulary moved down
+     * out of this presentation package. It imports nothing at all, so it adds no
+     * edge to the transitive closure proven below.
+     */
+    expect([...siblingValueImports].sort()).toEqual([
+      '../decimal', '../market-instrument', '../time',
+    ])
   })
 })
 
@@ -162,6 +181,7 @@ describe('no Node builtin is reachable at runtime from the market-view package',
     expect([...seen].some((f) => f.startsWith(TRADING_ROOT) && !f.startsWith(HERE))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/time.ts'))).toBe(true)
     expect([...seen].some((f) => f.endsWith('/decimal.ts'))).toBe(true)
+    expect([...seen].some((f) => f.endsWith('/market-instrument.ts'))).toBe(true)
     // ids.ts is where node:crypto lives. Reaching it would mean the closure
     // includes the carrier, even if this particular walk found no `node:` edge.
     expect([...seen].some((f) => f.endsWith('/ids.ts'))).toBe(false)

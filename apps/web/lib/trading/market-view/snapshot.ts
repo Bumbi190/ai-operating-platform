@@ -67,6 +67,7 @@
 import { asDecimal, parseDecimal } from '../decimal'
 import type { Branded } from '../ids'
 import type { Direction, SetupGrade, SmtState, TradingSession } from '../contracts'
+import type { MarketInstrument } from '../market-instrument'
 import type { Timestamp } from '../time'
 import type { TradingEnvironment } from '../environment'
 
@@ -105,24 +106,29 @@ export function priceMagnitude(value: PriceText): number {
 
 // ─── Instruments ──────────────────────────────────────────────────────────────
 
-/**
- * Root symbols, not provider contract identifiers.
+/*
+ * RE-EXPORTED, NOT RESTATED.
  *
- * Stage 1 speaks canonical roots only. Front-month resolution, rollover and
- * provider-specific contract ids are GATE-08 and Fas 2 work, and putting a
- * resolved contract id here now would bake a provider assumption into a
- * presentation model that must stay provider-neutral.
+ * The root vocabulary moved down to `../market-instrument` when Market Data &
+ * Contract Lifecycle Canonical v1.0 made a root the input to contract
+ * resolution: resolution is domain work, and a domain module cannot depend on a
+ * presentation package without inverting the dependency direction.
+ *
+ * Canonical v1.0 §3 treats that as a placement change and nothing more —
+ * semantic root identity is canonical, physical module ownership is not — and
+ * it forbids a second vocabulary outright. So this package re-exports the one
+ * definition and `@/lib/trading/market-view` keeps exactly the API it had.
+ *
+ * `../market-instrument` imports nothing at all, so taking VALUES from it here
+ * cannot drag a Node builtin into the browser bundle. The import-discipline
+ * suite proves that transitively rather than taking this comment's word for it.
  */
-export const MARKET_INSTRUMENTS = ['NQ', 'MNQ', 'ES'] as const
-export type MarketInstrument = (typeof MARKET_INSTRUMENTS)[number]
-
-export function isMarketInstrument(raw: unknown): raw is MarketInstrument {
-  return typeof raw === 'string' && (MARKET_INSTRUMENTS as readonly string[]).includes(raw)
-}
-
-export function parseMarketInstrument(raw: unknown): MarketInstrument | null {
-  return isMarketInstrument(raw) ? raw : null
-}
+export {
+  MARKET_INSTRUMENTS,
+  isMarketInstrument,
+  parseMarketInstrument,
+} from '../market-instrument'
+export type { MarketInstrument } from '../market-instrument'
 
 export const INSTRUMENT_LABELS: Readonly<Record<MarketInstrument, string>> = {
   NQ: 'E-mini Nasdaq-100',

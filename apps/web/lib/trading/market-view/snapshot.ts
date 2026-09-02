@@ -68,6 +68,7 @@ import { asDecimal, parseDecimal } from '../decimal'
 import type { Branded } from '../ids'
 import type { Direction, SetupGrade, SmtState, TradingSession } from '../contracts'
 import type { MarketInstrument } from '../market-instrument'
+import type { MarketTimeframe } from '../market-timeframe'
 import type { Timestamp } from '../time'
 import type { TradingEnvironment } from '../environment'
 
@@ -138,17 +139,26 @@ export const INSTRUMENT_LABELS: Readonly<Record<MarketInstrument, string>> = {
 
 // ─── Timeframes ───────────────────────────────────────────────────────────────
 
-/** The timeframes the strategy reasons across (Strategy Canonical v1.0). */
-export const MARKET_TIMEFRAMES = ['1m', '5m', '15m', '4H'] as const
-export type MarketTimeframe = (typeof MARKET_TIMEFRAMES)[number]
-
-export function isMarketTimeframe(raw: unknown): raw is MarketTimeframe {
-  return typeof raw === 'string' && (MARKET_TIMEFRAMES as readonly string[]).includes(raw)
-}
-
-export function parseMarketTimeframe(raw: unknown): MarketTimeframe | null {
-  return isMarketTimeframe(raw) ? raw : null
-}
+/*
+ * RE-EXPORTED, NOT RESTATED — the same move the root vocabulary made above.
+ *
+ * The timeframe vocabulary moved down to `../market-timeframe` when Market Data
+ * & Contract Lifecycle Canonical v1.0 §12 made 5m, 15m and 4H DERIVED values:
+ * they are computed from accepted canonical 1m observations against the
+ * `SessionCalendar` and the canonical grid, which is domain work sitting well
+ * below presentation. A domain module cannot depend on this package without
+ * inverting the dependency direction.
+ *
+ * `../market-timeframe` imports nothing at all, so taking VALUES from it here
+ * cannot drag a Node builtin into the browser bundle. Exactly one definition of
+ * the vocabulary exists, and `@/lib/trading/market-view` keeps the API it had.
+ */
+export {
+  MARKET_TIMEFRAMES,
+  isMarketTimeframe,
+  parseMarketTimeframe,
+} from '../market-timeframe'
+export type { MarketTimeframe } from '../market-timeframe'
 
 // ─── Presence, freshness and provenance ───────────────────────────────────────
 

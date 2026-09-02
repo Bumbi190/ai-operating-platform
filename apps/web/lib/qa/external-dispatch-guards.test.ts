@@ -498,11 +498,20 @@ describe('G9 · partial success is never terminalised', () => {
   })
 
   it('autonomous render deferral does not escape as a server fault', () => {
+    // Pinned by SHAPE, not by proximity. An earlier version of this guard only
+    // checked that `isExecutionStopped` appeared somewhere nearby, which an
+    // unconditional `throw stopErr` placed above it satisfied happily while the
+    // stop escaped as a 500.
     const body = code('app/api/media/cron/autonomous/route.ts')
-    const assertIdx = body.indexOf("system: 'remotion-lambda', operation: 'start_render'")
-    expect(assertIdx).toBeGreaterThan(-1)
-    const around = body.slice(Math.max(0, assertIdx - 400), assertIdx + 600)
-    expect(around, 'an uncaught stop would surface as a 500').toContain('isExecutionStopped')
-    expect(around).toContain("status: 'deferred_by_stop'")
+    const catchIdx = body.indexOf('} catch (stopErr) {')
+    expect(catchIdx, 'the render authorisation must be caught').toBeGreaterThan(-1)
+    const block = body.slice(catchIdx, catchIdx + 800)
+
+    // The ONLY rethrow permitted is the guarded one, and it must come first.
+    expect(block).toMatch(/\} catch \(stopErr\) \{ if \(!isExecutionStopped\(stopErr\)\) throw stopErr/)
+    const firstThrow = block.indexOf('throw stopErr')
+    const guard = block.indexOf('if (!isExecutionStopped(stopErr))')
+    expect(guard, 'no unconditional rethrow may precede the guard').toBeLessThan(firstThrow)
+    expect(block).toContain("status: 'deferred_by_stop'")
   })
 })

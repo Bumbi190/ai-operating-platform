@@ -26,6 +26,10 @@ const dbState = {
   updates:  [] as Record<string, unknown>[],
   approvals: [] as Record<string, unknown>[],
   retryCount: 0,
+  // G3C-2B: the canonical stop authority, answered through the same `stop_state`
+  // RPC the real resolver calls. Tests flip these to pause mid-run.
+  globalPaused:  false,
+  projectPaused: false,
   maxRetries: 3,
   persistedPublishedAt: null as string | null,
 }
@@ -120,7 +124,29 @@ function makeChain(table: string) {
 }
 
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (table: string) => makeChain(table) }),
+  createAdminClient: () => ({
+    from: (table: string) => makeChain(table),
+    // The canonical authority reads through this RPC and nothing else, so a test
+    // that flips `dbState.globalPaused` is pausing the same switch an operator
+    // would. No stop policy is reimplemented here.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      if (fn !== 'stop_state') return { data: null, error: { message: `unexpected rpc ${fn}` } }
+      const wantsProject = args?.p_project_id != null
+      return {
+        data: [{
+          global_paused:        dbState.globalPaused,
+          global_paused_at:     null,
+          global_paused_reason: null,
+          project_requested:    wantsProject,
+          project_found:        wantsProject,
+          project_paused:       wantsProject ? dbState.projectPaused : null,
+          project_paused_at:    null,
+          project_paused_reason: null,
+        }],
+        error: null,
+      }
+    },
+  }),
 }))
 
 // ─── Externa moduler ──────────────────────────────────────────────────────────
@@ -164,11 +190,14 @@ import { GET } from '@/app/api/media/cron/publish/route'
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const SCRIPT_ID = '800d2efc-726f-4735-b9f0-e722fea0d96b'
+/** The script's OWN project — the execution authority, never the billing slug. */
+const PROJECT_ID = '5f1d0f27-9a1e-4a26-9a2b-2c9f0f8a1b33'
 const TOKEN     = 'EAAWabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ'
 
 function script(overrides: Record<string, unknown> = {}) {
   return {
     id:                       SCRIPT_ID,
+    project_id:               PROJECT_ID,
     hook:                     'Security researchers just turned prompt injection against AI hackers.',
     cta:                      null,
     hashtags:                 [],
@@ -215,6 +244,8 @@ beforeEach(() => {
   dbState.retryCount = 0
   dbState.maxRetries = 3
   dbState.persistedPublishedAt = null
+  dbState.globalPaused = false
+  dbState.projectPaused = false
 
   process.env.CRON_SECRET                = 'test-secret'
   process.env.FACEBOOK_PAGE_ID           = 'PAGE_1'
@@ -652,5 +683,231 @@ describe('inga tokens läcker', () => {
     expect(JSON.stringify(body)).not.toContain(TOKEN)
     expect(JSON.stringify(dbState.updates)).not.toContain(TOKEN)
     expect(JSON.stringify(sendPipelineAlert.mock.calls)).not.toContain(TOKEN)
+  })
+})
+
+// ─── G3C-2B · canonical stop at each external dispatch ────────────────────────
+
+describe('G3C-2B · a stop between channels blocks the next channel', () => {
+  /**
+   * The race this closes, in the route's own terms:
+   *
+   *   T1  route reads "not paused"
+   *   T2  Instagram publishes
+   *   T3  an operator pauses, and the pause COMMITS
+   *   T4  Facebook publishes anyway
+   *
+   * Before this slice the single `checkAutomationPaused` at route entry made T4
+   * inevitable — and it was global-only, so pausing the project alone never even
+   * reached T1.
+   */
+  it('Instagram succeeds, PROJECT pause commits, Facebook is never called', async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockImplementation(async () => {
+      // The pause commits after Instagram is authorised and dispatched — exactly
+      // the gap that cannot be closed without a durable dispatch claim, and the
+      // one this contract deliberately does not claim to close.
+      dbState.projectPaused = true
+      return { mediaId: 'IG1', permalink: 'https://ig/1' }
+    })
+
+    const res  = await call()
+    const body = await res.json()
+
+    expect(postReelToFacebook, 'Facebook must not be dispatched after the pause')
+      .toHaveBeenCalledTimes(0)
+    expect(publishContainer, 'Instagram was already authorised and is not rolled back')
+      .toHaveBeenCalledTimes(1)
+    expect(body.status).toBe('deferred_by_stop')
+    expect(body.channels.facebook).toMatchObject({ ok: false, stopped: true })
+  })
+
+  it('the Instagram success is persisted, so resume does not republish it', async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockImplementation(async () => {
+      dbState.projectPaused = true
+      return { mediaId: 'IG1', permalink: 'https://ig/1' }
+    })
+
+    await call()
+
+    const persisted = dbState.updates.find(u => 'instagram_media_id' in u)
+    expect(persisted, 'the completed channel must be written before the deferral')
+      .toMatchObject({ instagram_media_id: 'IG1' })
+  })
+
+  it('the claimed row is released to `approved`, never left stuck in `publishing`', async () => {
+    // The row is claimed approved → publishing BEFORE any channel runs. Leaving
+    // it there would strand it until the 15-minute stale sweeper, because
+    // `publishing` is not in the queue predicate.
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockImplementation(async () => {
+      dbState.projectPaused = true
+      return { mediaId: 'IG1', permalink: 'https://ig/1' }
+    })
+
+    await call()
+
+    const last = dbState.updates.filter(u => 'status' in u).pop()
+    expect(last, 'a deferred script must return to the resumable queue state')
+      .toMatchObject({ status: 'approved' })
+    expect(dbState.updates.some(u => u.status === 'pending_review'),
+      'a stop is not a reason for human review').toBe(false)
+  })
+
+  it('a stop is not counted as a channel failure and raises no alert', async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockImplementation(async () => {
+      dbState.projectPaused = true
+      return { mediaId: 'IG1', permalink: 'https://ig/1' }
+    })
+
+    await call()
+
+    // handlePublishFailure writes retry_count; a deferral must not touch it.
+    expect(dbState.updates.some(u => 'retry_count' in u),
+      'the publish failure counter must not move because of a stop').toBe(false)
+    const stopAlerts = sendPipelineAlert.mock.calls.filter(
+      ([a]) => JSON.stringify(a).toLowerCase().includes('stop'))
+    expect(sendPipelineAlert, 'no operator alert may claim Meta failed')
+      .toHaveBeenCalledTimes(0)
+    expect(stopAlerts).toHaveLength(0)
+  })
+})
+
+describe('G3C-2B · every retry re-authorises', () => {
+  it('attempt 1 fails transiently, the pause commits, attempt 2 never reaches Meta', async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    // A transient Meta error: withRetry would normally sleep and try again.
+    publishContainer.mockImplementationOnce(async () => {
+      dbState.globalPaused = true
+      throw new MetaApiError({
+        message: 'rate limited', httpStatus: 429, code: 4, endpoint: 'media_publish',
+      })
+    })
+    publishContainer.mockResolvedValue({ mediaId: 'IG2', permalink: 'https://ig/2' })
+
+    const res  = await call()
+    const body = await res.json()
+
+    // The proof: exactly ONE external attempt. Authorising once outside the
+    // retry callback would have let attempt 2 fly after the pause committed.
+    expect(publishContainer, 'the second attempt must not reach Meta')
+      .toHaveBeenCalledTimes(1)
+    expect(body.status).toBe('deferred_by_stop')
+  })
+
+  it('a stop exits the retry loop instead of being slept on as a Meta fault', async () => {
+    dbState.script = script()
+    dbState.globalPaused = true
+    createReelContainer.mockResolvedValue('C1')
+
+    const res  = await call()
+    const body = await res.json()
+
+    // Nothing external at all, and the route did not spend three attempts
+    // rediscovering the operator's own pause.
+    expect(createReelContainer).toHaveBeenCalledTimes(0)
+    expect(publishContainer).toHaveBeenCalledTimes(0)
+    expect(postReelToFacebook).toHaveBeenCalledTimes(0)
+    expect(body.status).toBe('deferred_by_stop')
+  })
+})
+
+describe('G3C-2B · authority is the row’s project, not the billing slug', () => {
+  it('pausing the script’s own project refuses the publish', async () => {
+    dbState.script = script()
+    dbState.projectPaused = true
+    createReelContainer.mockResolvedValue('C1')
+
+    const res  = await call()
+    const body = await res.json()
+
+    expect(body.status).toBe('deferred_by_stop')
+    expect(body.reason).toBe('project_execution_paused')
+    expect(createReelContainer).toHaveBeenCalledTimes(0)
+  })
+
+  it('the early preflight refuses BEFORE the row is claimed', async () => {
+    // Claiming approved → publishing while already stopped would strand the row
+    // for no reason: nothing can publish it until resume anyway.
+    dbState.script = script()
+    dbState.globalPaused = true
+
+    await call()
+
+    expect(dbState.updates.some(u => u.status === 'publishing'),
+      'a stopped run must not claim the row').toBe(false)
+  })
+})
+
+describe('G3C-2B · the publish queue finishes what a stopped run left behind', () => {
+  /**
+   * The cross-route proof. `cron/autonomous` (and the operator route) can publish
+   * Instagram, have Facebook refused by a stop, and hand the row back to this
+   * queue. This is where it must safely continue: Facebook goes out once,
+   * Instagram never goes out twice.
+   *
+   * The mechanism is deliberately the pre-existing one — `status='approved'`
+   * drives eligibility and the channel id columns prevent duplicates — rather
+   * than a second deferred-state machine invented for governance.
+   */
+  it('a row left with Instagram done and Facebook pending completes Facebook only', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      instagram_url:      'https://ig/from-autonomous',
+      published_at:       new Date().toISOString(),
+      status:             'approved',        // handed back to the queue
+    })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    const res  = await call()
+    const body = await res.json()
+
+    expect(createReelContainer, 'Instagram is already externally true')
+      .toHaveBeenCalledTimes(0)
+    expect(publishContainer, 'and must never be published a second time')
+      .toHaveBeenCalledTimes(0)
+    expect(postReelToFacebook, 'the deferred channel finally goes out')
+      .toHaveBeenCalledTimes(1)
+    expect(body.channels.instagram).toMatchObject({
+      ok: true, id: 'IG_FROM_AUTONOMOUS', skipped: 'already_published',
+    })
+    expect(body.channels.facebook).toMatchObject({ ok: true, id: 'FB1' })
+  })
+
+  it('and only then does the script become terminal', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      published_at:       new Date().toISOString(),
+      status:             'approved',
+    })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    await call()
+
+    expect(dbState.updates.some(u => u.status === 'published'),
+      'every configured channel has now gone out').toBe(true)
+  })
+
+  it('if the stop is still active on resume, it defers again rather than failing', async () => {
+    dbState.script = script({
+      instagram_media_id: 'IG_FROM_AUTONOMOUS',
+      published_at:       new Date().toISOString(),
+      status:             'approved',
+    })
+    dbState.globalPaused = true
+
+    const body = await (await call()).json()
+
+    expect(postReelToFacebook).toHaveBeenCalledTimes(0)
+    expect(body.status).toBe('deferred_by_stop')
+    expect(dbState.updates.some(u => u.status === 'pending_review'),
+      'repeated deferral is not escalation').toBe(false)
   })
 })

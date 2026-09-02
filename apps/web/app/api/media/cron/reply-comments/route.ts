@@ -13,13 +13,13 @@
 
 import { NextResponse }  from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { checkAutomationPaused } from '@/lib/media/safeguards'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { getToken } from '@/lib/media/token-store'
 import { logLlmCost } from '@/lib/cost/track'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
-import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
@@ -32,9 +32,15 @@ function log(msg: string) {
 
 // ── Generera AI-svar ──────────────────────────────────────────────────────────
 
-async function generateReply(commentText: string, postHook: string | null): Promise<string | null> {
+async function generateReply(
+  commentText: string, postHook: string | null, execution: ExecutionContract,
+): Promise<string | null> {
   const client = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Community Manager', operation: 'Reply to Comment',
+    // Billing stays on the pipeline project; authority is the caller's, which is
+    // the project the comment's own post belongs to. Same latent defect as
+    // step3: with every script in one project today the two coincide, and that
+    // coincidence is not architecture.
+    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Community Manager', operation: 'Reply to Comment',
   })
 
   const context = postHook
@@ -121,12 +127,9 @@ export async function GET(request: Request) {
 
   const db = createAdminClient()
 
-  // Global pauscheck
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    log(`PAUSAD — ${pauseCheck.reason}`)
-    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
-  }
+  // Den legacy-globala engångskontrollen stod här. Den såg inte PROJEKT-stopp och
+  // lästes en gång per körning, så ett stopp mitt i loopen hindrade inte nästa
+  // svar. Ersatt av en färsk kanonisk kontroll omedelbart före varje svar.
 
   // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
   // Samma mönster som cron/publish: platform_tokens-tabellen är källan, env är fallback.
@@ -147,7 +150,7 @@ export async function GET(request: Request) {
   // Hämta kommentarer vars fördröjning passerat
   const { data: pending } = await db
     .from('comment_replies')
-    .select('id, platform, comment_id, post_id, commenter_name, comment_text')
+    .select('id, project_id, platform, comment_id, post_id, commenter_name, comment_text')
     .eq('reply_status', 'pending')
     .lte('reply_at', new Date().toISOString())
     .order('reply_at', { ascending: true })
@@ -166,11 +169,28 @@ export async function GET(request: Request) {
       // Hitta original-postens hook för kontext
       const { data: script } = await db
         .from('media_scripts')
-        .select('hook')
+        .select('hook, project_id')
         .or(`instagram_media_id.eq.${comment.post_id},facebook_post_id.eq.${comment.post_id}`)
         .maybeSingle()
 
-      const reply = await generateReply(comment.comment_text, script?.hook ?? null)
+      // Authority comes from the comment's own project, or failing that from the
+      // post it belongs to. Never from the billing slug: a reply is that
+      // project's outward speech, and its pause must silence it.
+      const projectId = (comment.project_id as string | null)
+        ?? ((script as { project_id?: string } | null)?.project_id ?? null)
+      if (!projectId) {
+        // No establishable project means no establishable authority. Fail closed
+        // and leave the row pending — inventing a project from billing is
+        // exactly the bypass this slice exists to remove.
+        log(`Hoppar över ${comment.comment_id}: inget projekt kunde härledas — svarar inte`)
+        results.push({ id: comment.id, status: 'skipped_no_project' })
+        continue
+      }
+      const execution: ExecutionContract = {
+        context: 'AUTONOMOUS', scope: projectScope({ projectId }),
+      }
+
+      const reply = await generateReply(comment.comment_text, script?.hook ?? null, execution)
 
       if (!reply) {
         // Spam/emoji-only — hoppa över
@@ -183,6 +203,13 @@ export async function GET(request: Request) {
         results.push({ id: comment.id, status: 'skipped' })
         continue
       }
+
+      // GOVERNANCE BOUNDARY — omedelbart före svaret lämnar maskinen. Per
+      // kommentar, så ett stopp efter kommentar 1 hindrar kommentar 2.
+      await assertExecutionDispatchAllowed(execution, {
+        system: comment.platform === 'instagram' ? 'instagram' : 'facebook',
+        operation: 'reply_to_comment',
+      })
 
       // Posta svar
       if (comment.platform === 'instagram') {
@@ -201,6 +228,14 @@ export async function GET(request: Request) {
       results.push({ id: comment.id, status: 'replied', preview: reply.slice(0, 60) })
 
     } catch (err) {
+      if (isExecutionStopped(err)) {
+        // Ingenting skickades. Raden får INTE markeras 'failed' — den ligger
+        // kvar som 'pending' och tas om efter resume. Resten av kön lyder samma
+        // auktoritet, så loopen avbryts.
+        log(`Uppskjuten av stopp (${err.reason}) för ${comment.comment_id} — avbryter kön`)
+        results.push({ id: comment.id, status: 'deferred_by_stop', reason: err.reason })
+        break
+      }
       const msg = err instanceof Error ? err.message : String(err)
       log(`Error replying to ${comment.comment_id}: ${msg}`)
 

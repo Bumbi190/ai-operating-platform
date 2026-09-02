@@ -25,7 +25,10 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { checkAutomationPaused, checkDailyRenderLimit } from '@/lib/media/safeguards'
+import { checkDailyRenderLimit } from '@/lib/media/safeguards'
+import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
+import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
@@ -178,16 +181,6 @@ export async function GET(request: Request) {
 
   const startedAt = Date.now()
   const db        = createAdminClient()
-  const claude    = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
-  })
-
-  // ── 0a. Global pauscheck ──────────────────────────────────────────────────────
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    log('safeguard', `PAUSAD — ${pauseCheck.reason}`)
-    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
-  }
 
   // ── 0b. Daglig render-gräns ───────────────────────────────────────────────────
   const renderCheck = await checkDailyRenderLimit(db)
@@ -210,6 +203,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No project found' }, { status: 404 })
   }
   log('start', `Project: ${project.slug}`)
+
+  // ── 1b. Kanonisk pipeline-preflight ───────────────────────────────────────────
+  // Ligger EFTER projektuppslaget med flit: hela poängen är att se projektets
+  // eget stopp, och före detta uppslag finns inget projekt att fråga om. Den är
+  // en optimering, inte garantin — varje betald leverantör har sin egen färska
+  // kontroll (G3C-1) och varje extern skrivning sin (G3C-2B). Ersätter
+  // `checkAutomationPaused`, som bara läste den globala flaggan.
+  const eligibility = await resolveExecutionEligibility({
+    context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }),
+  })
+  if (!eligibility.allowed) {
+    log('safeguard', `STOPPAD — ${eligibility.reason}`)
+    return NextResponse.json({ status: 'paused', reason: eligibility.reason })
+  }
+
+  // Billing stays on the pipeline project; execution answers to the row's own.
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT,
+    execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+    agent: 'Autonomous Pipeline', operation: 'Autonomous Run',
+  })
 
   // ── 2. Hunt news ──────────────────────────────────────────────────────────────
   log('hunt', 'Running News Hunter...')
@@ -298,7 +312,7 @@ Angle: ${news.content_angle}`,
   // ── 6. Quality gate ───────────────────────────────────────────────────────────
   log('quality', 'Scoring script...')
   const sourceContext = `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
 
   if (shouldRegenerate(qualityScore)) {
     log('quality', `Weak hook (${qualityScore.hook_strength}/10) — regenerating...`)
@@ -362,7 +376,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   log('voice', 'Generating voiceover...')
   await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', scriptId)
 
-  const voiceResult = await generateVoiceover(script.script, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, 'victoria')
+  const voiceResult = await generateVoiceover(script.script, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, 'victoria')
 
   // ── 9. Upload audio + timing ──────────────────────────────────────────────────
   log('voice', `Voice ready (${(voiceResult.durationMs / 1000).toFixed(1)}s) — uploading...`)
@@ -383,7 +397,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   const musicMood = qualityScore.hook_strength >= 8 ? 'urgency' : 'neutral'
 
   const [rawImageUrls, backgroundMusicUrl] = await Promise.all([
-    generateNewsImages(news.title, script.script, 5, { context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }),
+    generateNewsImages(news.title, script.script, 5, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }),
     getBackgroundMusicUrl(musicMood),
   ])
 
@@ -410,6 +424,32 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     accentColor:        '#6366f1',
     backgroundMusicUrl: undefined,  // Pixabay CDN blocked by Lambda — skip for now
   })
+
+  // ── GOVERNANCE BOUNDARY: starting a render is new external compute ──
+  // The refusal is caught here rather than escaping the handler. An uncaught
+  // ExecutionStoppedError would surface as a 500 — an intentional governance
+  // decision reported as a server fault, and one the cron's own alerting would
+  // treat as a broken pipeline.
+  try {
+    await assertExecutionDispatchAllowed(
+      { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+      { system: 'remotion-lambda', operation: 'start_render' },
+    )
+  } catch (stopErr) {
+    if (!isExecutionStopped(stopErr)) throw stopErr
+    // Nothing is rolled back. The script, voice, audio/timing and images are all
+    // completed work and stay. The row is left exactly as it is because it is
+    // ALREADY the state step3 resumes from — status 'approved', voice_status
+    // 'ready', video_status 'none' — so the established render pipeline picks it
+    // up after resume without a bespoke deferred state.
+    log('render', `Render uppskjuten av stopp (${stopErr.reason}) — `
+      + `scriptet ligger kvar i step3:s kö, inget rullas tillbaka`)
+    return NextResponse.json({
+      status: 'deferred_by_stop', reason: stopErr.reason, scriptId,
+      completed: ['script', 'voice', 'images'],
+      elapsedMs: Date.now() - startedAt,
+    })
+  }
 
   const { renderId, bucketName } = await startLambdaRender(scriptId, inputProps, 'SimpleNewsReel')
 
@@ -486,9 +526,28 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
   let igResult: { mediaId: string; permalink?: string }
   try {
+    // ── GOVERNANCE BOUNDARY: Instagram publish ──
+    await assertExecutionDispatchAllowed(
+      { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+      { system: 'instagram', operation: 'post_reel' },
+    )
     igResult = await postReelToInstagram(videoUrl, caption)
     log('publish', `Instagram OK: ${igResult.permalink}`)
+    // Persisted BEFORE Facebook is even authorised. This is the idempotency fact
+    // "Instagram already happened", and it is what lets the canonical publish
+    // queue finish Facebook later without republishing this.
+    await persistChannelSuccess(db, scriptId, {
+      instagram_media_id: igResult.mediaId,
+      instagram_url:      igResult.permalink ?? null,
+    }, new Date().toISOString())
   } catch (igErr) {
+    if (isExecutionStopped(igErr)) {
+      // Nothing was published. The video stays ready and a later run picks it
+      // up; this is not an Instagram outage and must not be alerted as one.
+      log('publish', `Instagram uppskjuten av stopp (${igErr.reason})`)
+      return NextResponse.json(
+        { status: 'deferred_by_stop', reason: igErr.reason, scriptId })
+    }
     const msg = igErr instanceof Error ? igErr.message : String(igErr)
     log('publish', `Instagram failed: ${msg}`)
     await sendPipelineAlert({
@@ -501,13 +560,27 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
   }
 
   let fbResult: { postId: string; url?: string } | null = null
+  let fbDeferredReason: string | null = null
   const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
 
   if (hasFacebook) {
     try {
+      // ── GOVERNANCE BOUNDARY: Facebook is a SEPARATE authorization ──
+      // A pause committing after Instagram went out must stop this one.
+      await assertExecutionDispatchAllowed(
+        { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
+        { system: 'facebook', operation: 'post_reel' },
+      )
       fbResult = await postReelToFacebook(videoUrl, caption)
       log('publish', `Facebook OK: ${fbResult.url}`)
     } catch (fbErr) {
+      if (isExecutionStopped(fbErr)) {
+        // Instagram already went out and is not rolled back; Facebook simply
+        // does not go. Not a Facebook fault — no alert, no failure record.
+        log('publish', `Facebook uppskjuten av stopp (${fbErr.reason}) — Instagram OK`)
+        fbResult = null
+        fbDeferredReason = fbErr.reason
+      } else {
       const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr)
       log('publish', `Facebook failed (non-fatal): ${fbMsg}`)
       await sendPipelineAlert({
@@ -517,20 +590,39 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
         severity:  'warning',
         context:   { scriptId, note: 'Instagram publicerades OK — enbart Facebook failade' },
       })
+      }
     }
   }
 
-  // ── 15. Mark published in DB ──────────────────────────────────────────────────
-  await db.from('media_scripts').update({
-    status:             'published',
-    published_at:       new Date().toISOString(),
-    instagram_media_id: igResult.mediaId,
-    instagram_url:      igResult.permalink ?? null,
-    ...(fbResult ? {
+  // ── 15. Record the outcome ────────────────────────────────────────────────────
+  // Instagram is already persisted above. Facebook's result — or its absence —
+  // decides whether this script is FINISHED.
+  if (fbResult) {
+    await persistChannelSuccess(db, scriptId, {
       facebook_post_id: fbResult.postId,
       facebook_url:     fbResult.url ?? null,
-    } : {}),
-  }).eq('id', scriptId)
+    }, new Date().toISOString())
+  }
+
+  if (fbDeferredReason) {
+    // A deferred channel is pending work. Marking this `published` would make it
+    // unreachable — the canonical queue in cron/publish selects on
+    // `status='approved'` — so a Facebook the operator merely paused would never
+    // be sent. Hand the row back to that queue rather than inventing a second
+    // deferred-state machine: its channel-id columns already stop Instagram from
+    // being published twice.
+    await db.from('media_scripts').update({ status: 'approved' }).eq('id', scriptId)
+    log('publish', 'Facebook uppskjuten — scriptet återlämnat till publiceringskön '
+      + '(Instagram bevarad, publiceras inte om)')
+    return NextResponse.json({
+      status: 'deferred_by_stop', reason: fbDeferredReason, scriptId,
+      publishedChannels: ['Instagram'],
+      permalink: igResult.permalink,
+      elapsedMs: Date.now() - startedAt,
+    })
+  }
+
+  await db.from('media_scripts').update({ status: 'published' }).eq('id', scriptId)
 
   const platforms = ['Instagram', ...(fbResult ? ['Facebook'] : [])].join(' & ')
   log('done', `Published on ${platforms} in ${Math.round((Date.now() - startedAt) / 1000)}s`)

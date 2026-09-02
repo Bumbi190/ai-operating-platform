@@ -32,7 +32,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
-import { checkAutomationPaused } from '@/lib/media/safeguards'
+import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { logRun } from '@/lib/media/run-log'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 
@@ -44,6 +45,7 @@ const MAX_PER_RUN  = 3    // tak per körning för att hålla oss inom maxDurati
 
 type ScriptRow = {
   id: string
+  project_id: string
   hook: string | null
   cta: string | null
   hashtags: unknown
@@ -68,6 +70,13 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     sourceName: (newsItem as { source_name?: string } | null)?.source_name ?? null,
     sourceUrl:  (newsItem as { url?: string } | null)?.url ?? null,
   })
+
+  // GOVERNANCE BOUNDARY — immediately before the packet leaves. Per item, so a
+  // pause committing after video A still stops video B.
+  await assertExecutionDispatchAllowed(
+    { context: 'AUTONOMOUS', scope: projectScope({ projectId: script.project_id }) } satisfies ExecutionContract,
+    { system: 'youtube', operation: 'upload_short' },
+  )
 
   const { videoId, url } = await uploadShort({ videoUrl: script.video_url!, title, description, tags })
   const channelPublishedAt = new Date().toISOString()
@@ -97,16 +106,12 @@ export async function GET(request: Request) {
 
   const db = createAdminClient()
 
-  // ── Global pauscheck ──────────────────────────────────────────────────────
-  // KRITISKT efter frikopplingen från published_at: tidigare kunde YouTube bara
-  // plocka scripts som publish-cronen redan släppt igenom, och den kontrollerar
-  // pausflaggan. Nu väljer YouTube självständigt och MÅSTE därför göra sin egen
-  // pauskontroll — annars skulle killswitchen inte längre stoppa YouTube.
-  const pauseCheck = await checkAutomationPaused(db)
-  if (!pauseCheck.allowed) {
-    log(`PAUSAD — ${pauseCheck.reason}`)
-    return NextResponse.json({ status: 'paused', reason: pauseCheck.reason })
-  }
+  // ── Stoppkontroll ─────────────────────────────────────────────────────────
+  // YouTube väljer sina kandidater självständigt och måste därför göra sin egen
+  // kontroll — annars stoppar killswitchen inte YouTube alls. Den legacy-globala
+  // engångskontrollen som stod här ersätts av en färsk kanonisk kontroll per
+  // uppladdning, vilket är strikt starkare: den ser PROJEKT-stopp, den ser ett
+  // stopp som hinner committa mitt i loopen, och den kan inte bli inaktuell.
 
   const { searchParams } = new URL(request.url)
   const scriptIdParam = searchParams.get('scriptId')
@@ -114,7 +119,7 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
 
@@ -143,6 +148,9 @@ export async function GET(request: Request) {
   // ── Ladda upp var och en — fel på en stoppar inte de andra ────────────────
   const uploaded: { scriptId: string; youtubeUrl: string }[] = []
   const failed:   { scriptId: string; error: string }[] = []
+  // Uppskjutna av stopp — varken lyckade eller misslyckade. De ska tas om vid
+  // nästa körning efter resume, utan larm och utan felräkning.
+  const deferred: { scriptId: string; reason: string }[] = []
 
   for (const script of scripts as ScriptRow[]) {
     if (!script.video_url) continue
@@ -157,6 +165,14 @@ export async function GET(request: Request) {
       log(`YouTube OK: ${url}`)
       uploaded.push({ scriptId: script.id, youtubeUrl: url })
     } catch (err) {
+      if (isExecutionStopped(err)) {
+        // Inte ett YouTube-fel: ingenting skickades. Inget larm, ingen
+        // felräkning, ingen logRun-failure. Resten av kön är också stoppad, så
+        // loopen avbryts i stället för att fråga auktoriteten en gång per script.
+        log(`Uppskjuten av stopp (${err.reason}) för ${script.id} — avbryter kön`)
+        deferred.push({ scriptId: script.id, reason: err.reason })
+        break
+      }
       const msg = err instanceof Error ? err.message : String(err)
       log(`YouTube misslyckades för ${script.id}: ${msg}`)
       failed.push({ scriptId: script.id, error: msg })
@@ -174,9 +190,12 @@ export async function GET(request: Request) {
     }
   }
 
-  const status = failed.length === 0 ? 'uploaded' : (uploaded.length === 0 ? 'youtube_failed' : 'partial')
+  const status = deferred.length > 0 && uploaded.length === 0 && failed.length === 0
+    ? 'deferred_by_stop'
+    : failed.length === 0 ? 'uploaded' : (uploaded.length === 0 ? 'youtube_failed' : 'partial')
   return NextResponse.json(
-    { status, uploadedCount: uploaded.length, failedCount: failed.length, uploaded, failed, ranAt: new Date().toISOString() },
+    { status, uploadedCount: uploaded.length, failedCount: failed.length,
+      deferredCount: deferred.length, uploaded, failed, deferred, ranAt: new Date().toISOString() },
     { status: failed.length > 0 && uploaded.length === 0 ? 500 : 200 },
   )
 }

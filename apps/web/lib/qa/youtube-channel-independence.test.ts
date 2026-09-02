@@ -15,6 +15,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 type Filter = [string, unknown[]]
 
 const captured = { filters: [] as Filter[] }
+/** The row's own project — the execution authority the route now binds. */
+const TEST_PROJECT = '9c2f1f4e-6b3a-4c1d-8e5f-0a7b2c3d4e5f'
+
 const dbState = {
   rows:                    [] as Record<string, unknown>[],
   updates:                 [] as Record<string, unknown>[],
@@ -103,7 +106,24 @@ function makeChain(table: string) {
 }
 
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ from: (t: string) => makeChain(t) }),
+  createAdminClient: () => ({
+    from: (t: string) => makeChain(t),
+    // G3C-2B: the route now authorises each upload through the canonical stop
+    // authority, which reads exactly this RPC. Nothing is paused in these tests
+    // — they are about channel independence, not governance.
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      if (fn !== 'stop_state') return { data: null, error: { message: `unexpected rpc ${fn}` } }
+      const wants = args?.p_project_id != null
+      return {
+        data: [{
+          global_paused: dbState.paused, global_paused_at: null, global_paused_reason: null,
+          project_requested: wants, project_found: wants, project_paused: wants ? false : null,
+          project_paused_at: null, project_paused_reason: null,
+        }],
+        error: null,
+      }
+    },
+  }),
 }))
 
 const uploadShort = vi.fn()
@@ -170,7 +190,7 @@ describe('YouTube — oberoende av Instagram', () => {
     // Exakt läget för 800d2efc efter incidenten: godkänd, video klar,
     // published_at null eftersom Instagram aldrig gick igenom.
     dbState.rows = [{
-      id: '800d2efc', hook: 'h', cta: null, hashtags: [],
+      id: '800d2efc', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
@@ -192,7 +212,7 @@ describe('YouTube — oberoende av Instagram', () => {
   it('C2 — Meta-first bevarar Meta-tiden när YouTube publiceras senare', async () => {
     dbState.publishedAt = '2026-07-20T07:04:16.192Z'
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
@@ -212,7 +232,7 @@ describe('YouTube — oberoende av Instagram', () => {
     dbState.forceConditionalNoMatch = true
     dbState.scriptExists = false
     dbState.rows = [{
-      id: 'missing', hook: 'h', cta: null, hashtags: [],
+      id: 'missing', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
@@ -227,7 +247,7 @@ describe('YouTube — oberoende av Instagram', () => {
   it('C4 — Supabase-updatefel kastas och maskeras inte av fallback', async () => {
     dbState.conditionalUpdateError = 'write denied'
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
@@ -242,7 +262,7 @@ describe('YouTube — oberoende av Instagram', () => {
   it('C5 — noll träffar med kvarvarande null är ett oväntat tillstånd', async () => {
     dbState.forceConditionalNoMatch = true
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1' })
@@ -256,7 +276,7 @@ describe('YouTube — oberoende av Instagram', () => {
 
   it('D — script som redan har youtube_video_id laddas ALDRIG upp igen', async () => {
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: 'YT_EXISTING', media_news_items: null,
     }]
 
@@ -272,20 +292,24 @@ describe('YouTube — oberoende av Instagram', () => {
     // kontrollen själv — annars hade killswitchen tappat en kanal.
     dbState.paused = true
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
 
     const body = await (await call()).json()
 
     expect(uploadShort).not.toHaveBeenCalled()
-    expect(body.status).toBe('paused')
+    // The kill switch still stops YouTube. The status is now the canonical
+    // deferral rather than the legacy helper's 'paused': nothing was dispatched,
+    // and nothing is recorded as a YouTube failure.
+    expect(body.status).toBe('deferred_by_stop')
+    expect(body.failedCount).toBe(0)
   })
 
   it('E — ett fel på ett script stoppar inte de andra', async () => {
     dbState.rows = [
-      { id: 'a', hook: 'h', cta: null, hashtags: [], video_url: 'u1', youtube_video_id: null, media_news_items: null },
-      { id: 'b', hook: 'h', cta: null, hashtags: [], video_url: 'u2', youtube_video_id: null, media_news_items: null },
+      { id: 'a', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [], video_url: 'u1', youtube_video_id: null, media_news_items: null },
+      { id: 'b', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [], video_url: 'u2', youtube_video_id: null, media_news_items: null },
     ]
     uploadShort.mockRejectedValueOnce(new Error('quota')).mockResolvedValueOnce({ videoId: 'YT2', url: 'u' })
 
@@ -299,7 +323,7 @@ describe('YouTube — oberoende av Instagram', () => {
 
   it('F — YouTube-felalerten gör inga antaganden om Meta-kanalerna', async () => {
     dbState.rows = [{
-      id: 's1', hook: 'h', cta: null, hashtags: [],
+      id: 's1', project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [],
       video_url: 'https://cdn/x.mp4', youtube_video_id: null, media_news_items: null,
     }]
     uploadShort.mockRejectedValue(new Error('quota exceeded'))

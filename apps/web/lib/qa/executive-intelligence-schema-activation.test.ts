@@ -109,10 +109,22 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          so a transition can no longer commit on a stale pre-pause read
    *          after a pause has committed. CREATE OR REPLACE: same signature,
    *          same return type, gate and CAS untouched.)
+   * 58 → 59: `stop_atomic_execution_admission` (G3C-2A — makes execution
+   *          ADMISSION stop-atomic. claim_runs and workflow_claim_due lock their
+   *          WORK rows first, then take platform_config and each candidate
+   *          project FOR SHARE before deciding, so a claim can no longer commit
+   *          on a pre-pause read; workflow_instantiate gains the same barrier
+   *          before it creates an active instance and its opening transition,
+   *          which G3B structurally cannot see because that transition is
+   *          written directly rather than through workflow_append_transition.
+   *          workflow_rearm's pre-existing project rule becomes lock-atomic and
+   *          deliberately gains NO global rule — re-arm is control, not
+   *          execution. CREATE OR REPLACE only: same signatures, defaults,
+   *          return types, owners, ACLs and search_path.)
    */
-  it('enforces exactly the expected number of migrations — currently 58', () => {
+  it('enforces exactly the expected number of migrations — currently 59', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(58)
+    expect(enforced).toBe(59)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

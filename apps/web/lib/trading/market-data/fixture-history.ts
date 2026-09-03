@@ -34,6 +34,7 @@
  * inference here.
  */
 
+import { toEpochMs } from '../time'
 import {
   TIMEFRAME_MINUTES,
   buildCandleSeries,
@@ -181,11 +182,19 @@ export function createFixtureHistoricalSource(
       const { candles } = historyFor(request.instrument, request.timeframe)
 
       /*
-       * Strictly older. Comparing fixed-width UTC ISO instants as text is the
-       * same ordering rule the rest of the trading model uses, and it keeps a
-       * timestamp from being parsed into a number on a data path.
+       * Strictly older, compared as INSTANTS.
+       *
+       * This used to compare the ISO strings directly, on the same
+       * fixed-width reasoning `mergeOlderCandles` used — and it is wrong for
+       * the same reason: `Timestamp` permits an optional millisecond field, so
+       * `…00:00:00.500Z` sorts BEFORE `…00:00:00Z` as text while being later in
+       * time. Every fixture instant this generator produces happens to share
+       * one serialization, so the two rules agree today; the point is that the
+       * cutoff no longer depends on that happening to stay true.
        */
-      const cutoff = candles.findIndex((candle) => candle.openTime >= request.before)
+      const cutoff = candles.findIndex(
+        (candle) => toEpochMs(candle.openTime) >= toEpochMs(request.before),
+      )
       const available = cutoff === -1 ? candles.length : cutoff
 
       if (available <= 0) return { outcome: 'EXHAUSTED' }

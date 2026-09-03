@@ -28,8 +28,41 @@
  * stays exact decimal text and is compared as text; no candle price is ever
  * converted to a number here. Presentation conversion lives in the Stage 1.9A
  * chart boundary and nowhere else.
+ *
+ * INSTANTS ARE COMPARED AS INSTANTS, PRICES AS TEXT
+ * ─────────────────────────────────────────────────
+ * These are two different rules and the difference is deliberate.
+ *
+ * An earlier version ordered candles by comparing `openTime` as TEXT, on the
+ * reasoning that a fixed-width UTC ISO string sorts chronologically. That
+ * reasoning does not hold for this repository's `Timestamp` grammar, which
+ * permits an OPTIONAL millisecond field:
+ *
+ *     2026-01-01T00:00:00Z   and   2026-01-01T00:00:00.000Z
+ *
+ * are the same instant written two ways, and
+ *
+ *     2026-01-01T00:00:00.500Z
+ *
+ * is LATER than `…00:00:00Z` while sorting BEFORE it as text, because '.'
+ * (0x2E) precedes 'Z' (0x5A). Two failures followed from that: a page could be
+ * declared unordered when it was not, and — worse — two candles for the SAME
+ * instant could both survive a merge because their text keys differed.
+ *
+ * So every ORDERING and every IDENTITY question below goes through
+ * `toEpochMs`. Prices keep exact text comparison: `sameCandle` asks whether two
+ * observations are the same reading, not whether they are numerically equal,
+ * and '20150.0' against '20150.00' is a provider disagreement worth refusing
+ * rather than a rounding detail worth absorbing.
+ *
+ * TIMESTAMP TEXT IS NEVER REWRITTEN
+ * ─────────────────────────────────
+ * Comparison is semantic; serialization stays input-owned. A retained candle
+ * keeps the exact `openTime` string it arrived with, and this module normalizes
+ * nothing.
  */
 
+import { toEpochMs } from '../time'
 import type { MarketCandle } from '../market-view'
 
 export const MERGE_REFUSALS = [
@@ -63,10 +96,18 @@ function sameCandle(a: MarketCandle, b: MarketCandle): boolean {
     && a.volume === b.volume
 }
 
-/** Ascending by instant. Timestamps are fixed-width UTC ISO, so text order is time order. */
+/**
+ * Strictly ascending by INSTANT.
+ *
+ * `<=` rather than `<` is load-bearing: two candles for the same instant are not
+ * ascending, and that is what keeps a same-page duplicate from reaching the
+ * merge at all. Equivalent serializations of one instant collapse here, so a
+ * page carrying both `…00:00:00Z` and `…00:00:00.000Z` is refused as the
+ * duplicate it is rather than passing as two distinct bars.
+ */
 function isAscending(candles: readonly MarketCandle[]): boolean {
   for (let i = 1; i < candles.length; i += 1) {
-    if (candles[i].openTime <= candles[i - 1].openTime) return false
+    if (toEpochMs(candles[i].openTime) <= toEpochMs(candles[i - 1].openTime)) return false
   }
   return true
 }
@@ -107,16 +148,28 @@ export function mergeOlderCandles(
    * appended. An older page is *allowed* to repeat a bar the chart already has;
    * what it may not do is repeat it with different prices.
    */
-  const byTime = new Map<string, MarketCandle>()
-  for (const candle of current) byTime.set(candle.openTime, candle)
+  const byTime = new Map<number, MarketCandle>()
+  for (const candle of current) byTime.set(toEpochMs(candle.openTime), candle)
 
   const prepend: MarketCandle[] = []
-  const seen = new Set<string>()
+  const seen = new Set<number>()
 
   for (const candle of older) {
-    if (seen.has(candle.openTime)) {
-      // Two candles for one instant inside the SAME page.
-      const first = prepend.find((c) => c.openTime === candle.openTime)
+    const at = toEpochMs(candle.openTime)
+
+    if (seen.has(at)) {
+      /*
+       * Two candles for one instant inside the SAME page.
+       *
+       * UNREACHABLE through the public function: `isAscending(older)` above
+       * already refused any page that repeats an instant, in either
+       * serialization. It is kept, and deliberately not redesigned into a
+       * de-duplication path, because that would widen the merge contract's
+       * observable policy — a same-page duplicate is refused today and stays
+       * refused. A branch that assumed its own validator had run would be
+       * trusting a guarantee it cannot see.
+       */
+      const first = prepend.find((c) => toEpochMs(c.openTime) === at)
       if (first !== undefined && !sameCandle(first, candle)) {
         return {
           outcome: 'REFUSED',
@@ -127,7 +180,7 @@ export function mergeOlderCandles(
       continue
     }
 
-    const existing = byTime.get(candle.openTime)
+    const existing = byTime.get(at)
     if (existing !== undefined) {
       if (!sameCandle(existing, candle)) {
         return {
@@ -136,12 +189,16 @@ export function mergeOlderCandles(
           detail: `Den äldre sidan motsäger redan laddad candle för ${candle.openTime}.`,
         }
       }
-      // Identical repeat of a bar we already have: drop it, keep ours.
-      seen.add(candle.openTime)
+      /*
+       * Identical repeat of a bar we already have: drop it, keep ours — which
+       * also keeps the retained candle's original `openTime` text, whichever
+       * of the two equivalent serializations the loaded series happened to use.
+       */
+      seen.add(at)
       continue
     }
 
-    seen.add(candle.openTime)
+    seen.add(at)
     prepend.push(candle)
   }
 

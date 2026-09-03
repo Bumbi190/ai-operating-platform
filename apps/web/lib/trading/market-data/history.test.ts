@@ -210,6 +210,162 @@ describe('merging older candles', () => {
   })
 })
 
+// ─── GATE-08C-2B.1 — instants, not their serialization ───────────────────────
+
+/**
+ * `Timestamp` permits an OPTIONAL millisecond field, so one instant has several
+ * legal spellings and text order is not time order:
+ *
+ *   '2026-01-01T00:00:00.000Z' === '2026-01-01T00:00:00Z'   as instants
+ *   '2026-01-01T00:00:00.500Z'  <  '2026-01-01T00:00:00Z'   as TEXT ('.' < 'Z')
+ *                               but LATER in time
+ *
+ * Every case below is built from those two facts. They are Omnira-owned fixture
+ * instants and prices; nothing here is market data.
+ */
+describe('candle instants are compared as instants, not as text', () => {
+  const at = (openTime: string, close = '100.00'): MarketCandle =>
+    ({
+      openTime,
+      open: '100.00',
+      high: '101.00',
+      low: '99.00',
+      close,
+      volume: '10',
+    }) as unknown as MarketCandle
+
+  const BARE = '2026-01-01T00:00:00Z'
+  const MILLIS = '2026-01-01T00:00:00.000Z'
+  const HALF = '2026-01-01T00:00:00.500Z'
+
+  it('E. accepts a page whose text order disagrees with its chronological order', () => {
+    // '…00.500Z' sorts BEFORE '…00Z' as text. Chronologically it is later, and
+    // this page is therefore correctly ascending.
+    const merged = mergeOlderCandles([at(BARE), at(HALF)], [at('2026-01-01T00:01:00Z')])
+    expect(merged.outcome).toBe('MERGED')
+    if (merged.outcome !== 'MERGED') return
+    expect(merged.candles.map((c) => c.openTime)).toEqual([
+      BARE, HALF, '2026-01-01T00:01:00Z',
+    ])
+  })
+
+  it('F. refuses the same two instants in the reverse order', () => {
+    const merged = mergeOlderCandles([at(HALF), at(BARE)], [at('2026-01-01T00:01:00Z')])
+    expect(merged.outcome).toBe('REFUSED')
+    if (merged.outcome !== 'REFUSED') return
+    expect(merged.refusal).toBe('UNORDERED_INPUT')
+  })
+
+  it('orders by instant across every millisecond width', () => {
+    const widths = ['2026-01-01T00:00:00.1Z', '2026-01-01T00:00:00.01Z', '2026-01-01T00:00:00.001Z']
+    // Chronologically: .001 < .01 < .1 — the exact reverse of their text order.
+    const ascending = [BARE, widths[2], widths[1], widths[0]]
+    expect(mergeOlderCandles(ascending.map((t) => at(t)), [at('2026-01-01T00:01:00Z')]).outcome)
+      .toBe('MERGED')
+    expect(mergeOlderCandles([...ascending].reverse().map((t) => at(t)), [at('2026-01-01T00:01:00Z')]).outcome)
+      .toBe('REFUSED')
+  })
+
+  it('G. de-duplicates equivalent serializations of one instant', () => {
+    const merged = mergeOlderCandles([at(MILLIS)], [at(BARE), at('2026-01-01T00:01:00Z')])
+    expect(merged.outcome).toBe('MERGED')
+    if (merged.outcome !== 'MERGED') return
+    // One candle for that instant, not two.
+    expect(merged.candles).toHaveLength(2)
+  })
+
+  it('H. de-duplicates with the representations reversed', () => {
+    const merged = mergeOlderCandles([at(BARE)], [at(MILLIS), at('2026-01-01T00:01:00Z')])
+    expect(merged.outcome).toBe('MERGED')
+    if (merged.outcome !== 'MERGED') return
+    expect(merged.candles).toHaveLength(2)
+  })
+
+  it('I. refuses a disagreement across equivalent serializations', () => {
+    const merged = mergeOlderCandles([at(MILLIS, '99999.00')], [at(BARE)])
+    expect(merged.outcome).toBe('REFUSED')
+    if (merged.outcome !== 'REFUSED') return
+    expect(merged.refusal).toBe('DUPLICATE_DISAGREEMENT')
+  })
+
+  it('J. refuses it in the other representation direction too', () => {
+    const merged = mergeOlderCandles([at(BARE, '99999.00')], [at(MILLIS)])
+    expect(merged.outcome).toBe('REFUSED')
+    if (merged.outcome !== 'REFUSED') return
+    expect(merged.refusal).toBe('DUPLICATE_DISAGREEMENT')
+  })
+
+  it('K. retains the loaded series\' own Timestamp text, byte for byte', () => {
+    /*
+     * The merge normalizes nothing. When an older page repeats a bar the chart
+     * already holds, OURS is kept — including the exact spelling of its instant.
+     */
+    const keptBare = mergeOlderCandles([at(MILLIS)], [at(BARE)])
+    expect(keptBare.outcome === 'MERGED' && keptBare.candles[0].openTime).toBe(BARE)
+
+    const keptMillis = mergeOlderCandles([at(BARE)], [at(MILLIS)])
+    expect(keptMillis.outcome === 'MERGED' && keptMillis.candles[0].openTime).toBe(MILLIS)
+  })
+
+  it('L. no equivalent-serialization duplicate survives as two candles', () => {
+    // The whole point of the hardening, stated directly.
+    for (const [older, loaded] of [[MILLIS, BARE], [BARE, MILLIS]] as const) {
+      const merged = mergeOlderCandles([at(older)], [at(loaded)])
+      if (merged.outcome !== 'MERGED') throw new Error('expected a merge')
+      const instants = merged.candles.map((c) => Date.parse(c.openTime))
+      expect(new Set(instants).size).toBe(instants.length)
+      expect(merged.candles).toHaveLength(1)
+    }
+  })
+
+  it('M. oldestLoadedTime stays byte-preserving', () => {
+    expect(oldestLoadedTime([at(MILLIS), at('2026-01-01T00:01:00Z')])).toBe(MILLIS)
+    expect(oldestLoadedTime([at(BARE), at('2026-01-01T00:01:00Z')])).toBe(BARE)
+  })
+
+  it('O. leaves PriceText bytes untouched across the hardening', () => {
+    // '100.0' and '100.00' are numerically equal and NOT the same observation.
+    // Instant identity changed; price identity deliberately did not.
+    const merged = mergeOlderCandles(
+      [{ ...at(MILLIS), close: '100.0' } as MarketCandle],
+      [{ ...at(BARE), close: '100.00' } as MarketCandle],
+    )
+    expect(merged.outcome).toBe('REFUSED')
+    if (merged.outcome !== 'REFUSED') return
+    expect(merged.refusal).toBe('DUPLICATE_DISAGREEMENT')
+  })
+
+  it('P. a same-page duplicate is refused, in either spelling', () => {
+    /*
+     * AUDIT (GATE-08C-2B.1 §11). The strict-ascending check runs first, so a
+     * page repeating an instant never reaches the duplicate branch inside the
+     * merge loop — that branch is unreachable through the public function and
+     * was deliberately left in place rather than redesigned.
+     *
+     * Observable policy is unchanged for exact repeats (UNORDERED_INPUT before
+     * and after). What CHANGED is the equivalent-serialization case: it used to
+     * slip past the text-ordering check and survive as two candles for one
+     * instant. It is now refused like any other same-instant repeat.
+     */
+    const loaded = [at('2026-01-01T00:01:00Z')]
+    for (const page of [[at(BARE), at(BARE)], [at(BARE), at(MILLIS)], [at(MILLIS), at(BARE)]]) {
+      const merged = mergeOlderCandles(page, loaded)
+      expect(merged.outcome).toBe('REFUSED')
+      if (merged.outcome !== 'REFUSED') continue
+      expect(merged.refusal).toBe('UNORDERED_INPUT')
+    }
+  })
+
+  it('the merged-boundary check uses instants too', () => {
+    // Each page is internally ascending, but the older page ENDS after the
+    // loaded series begins — detectable only by instant.
+    const merged = mergeOlderCandles([at('2026-01-01T00:02:00.000Z')], [at('2026-01-01T00:01:00Z')])
+    expect(merged.outcome).toBe('REFUSED')
+    if (merged.outcome !== 'REFUSED') return
+    expect(merged.refusal).toBe('UNORDERED_INPUT')
+  })
+})
+
 // ─── The state machine ────────────────────────────────────────────────────────
 
 describe('the history state machine', () => {

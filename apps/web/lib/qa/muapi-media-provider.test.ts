@@ -329,10 +329,35 @@ describe('async submit and status mapping', () => {
     expect(Date.parse(ref.submittedAt)).not.toBeNaN()
   })
 
-  it('a 2xx without request_id is a typed response error', async () => {
+  /**
+   * CHANGED IN PHASE 3, deliberately, and the change is the safety fix.
+   *
+   * This used to assert `MEDIA_PROVIDER_RESPONSE_INVALID` — "the vendor sent us
+   * junk", which reads as a caller-side fault and invites a retry. It is the
+   * opposite: a 2xx means MuAPI ACCEPTED the request and a paid operation almost
+   * certainly exists; what was lost is Omnira's ability to name it. With no
+   * lookup-by-correlation and no history endpoint (`MUAPI_LIFECYCLE`), that
+   * operation is unreachable, and repeating the call would pay for it twice.
+   */
+  it('a 2xx without request_id is an AMBIGUOUS dispatch, not an invalid response', async () => {
     const p = new MuapiProvider({ env: ENABLED_TEST_ENV, fetchImpl: jsonFetch({ ok: true }) })
     await expect(p.generateImage({ model: 'flux-dev-image', prompt: 'x' }))
-      .rejects.toMatchObject({ code: 'MEDIA_PROVIDER_RESPONSE_INVALID' })
+      .rejects.toMatchObject({
+        code: 'MEDIA_DISPATCH_UNKNOWN',
+        dispatchObservation: 'confirmed_evidence_failed',
+        retryable: false,
+      })
+  })
+
+  it('a 2xx without a usable id on a READ is still an invalid response', async () => {
+    // The distinction the change turns on: a GET creates nothing, so an
+    // unreadable answer to one raises no question about money.
+    const p = new MuapiProvider({
+      env: ENABLED_TEST_ENV,
+      fetchImpl: (async () => new Response('not json', { status: 200 })) as unknown as typeof fetch,
+    })
+    await expect(p.getStatus({ provider: 'muapi', requestId: 'r', model: 'm', submittedAt: 'T', mode: 'test' }))
+      .rejects.toMatchObject({ code: 'MEDIA_PROVIDER_RESPONSE_INVALID', dispatchObservation: null })
   })
 
   it("MuAPI's six statuses map onto Omnira's four", () => {
@@ -438,13 +463,47 @@ describe('provider errors normalize to typed, redacted shapes', () => {
     })
   })
 
-  it('a network throw becomes a retryable typed error, not a raw throw', async () => {
+  /**
+   * CHANGED IN PHASE 3. The original assertion — that a network throw on a
+   * GENERATION is `retryable: true` — was the single most expensive default in
+   * this adapter: a reset can arrive after the request body was written, so
+   * "retry me" is permission to pay twice for one image.
+   *
+   * Retryability now splits by what the call DOES, not by what the network did.
+   */
+  it('a network throw on a READ is still retryable — repeating an observation is free', async () => {
     const p = new MuapiProvider({
       env: ENABLED_TEST_ENV,
       fetchImpl: (async () => { throw new Error('ECONNRESET') }) as unknown as typeof fetch,
     })
+    const err = await rejection(p.getStatus({ provider: 'muapi', requestId: 'r', model: 'm', submittedAt: 'T', mode: 'test' }))
+    expect(err).toBeInstanceOf(MediaProviderError)
+    expect(err.retryable).toBe(true)
+    expect(err.dispatchObservation).toBeNull()
+  })
+
+  it('a network throw on a CREATION is ambiguous and NEVER retryable', async () => {
+    const p = new MuapiProvider({
+      env: ENABLED_TEST_ENV,
+      fetchImpl: (async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }) }) as unknown as typeof fetch,
+    })
     const err = await rejection(p.generateImage({ model: 'm', prompt: 'x' }))
     expect(err).toBeInstanceOf(MediaProviderError)
+    expect(err.code).toBe('MEDIA_DISPATCH_UNKNOWN')
+    expect(err.dispatchObservation).toBe('response_lost')
+    expect(err.retryable).toBe(false)
+  })
+
+  it('a connect-stage failure on a CREATION is definite, and safe to retry', async () => {
+    // The one transport failure that PROVES nothing was sent, so the retry it
+    // permits cannot duplicate anything.
+    const p = new MuapiProvider({
+      env: ENABLED_TEST_ENV,
+      fetchImpl: (async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }) }) as unknown as typeof fetch,
+    })
+    const err = await rejection(p.generateImage({ model: 'm', prompt: 'x' }))
+    expect(err.code).toBe('MEDIA_PROVIDER_REQUEST_FAILED')
+    expect(err.dispatchObservation).toBe('not_dispatched')
     expect(err.retryable).toBe(true)
   })
 

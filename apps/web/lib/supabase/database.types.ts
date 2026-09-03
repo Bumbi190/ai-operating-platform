@@ -2323,6 +2323,138 @@ export type Database = {
           },
         ]
       }
+      media_job_reconciliations: {
+        Row: {
+          blocker: string | null
+          created_at: string
+          detail: Json
+          id: string
+          media_job_id: string
+          observed_at: string
+          project_id: string
+          provider: string
+          remote_operation_id: string | null
+          result: string
+        }
+        Insert: {
+          blocker?: string | null
+          created_at?: string
+          detail?: Json
+          id?: string
+          media_job_id: string
+          observed_at: string
+          project_id: string
+          provider: string
+          remote_operation_id?: string | null
+          result: string
+        }
+        Update: {
+          blocker?: string | null
+          created_at?: string
+          detail?: Json
+          id?: string
+          media_job_id?: string
+          observed_at?: string
+          project_id?: string
+          provider?: string
+          remote_operation_id?: string | null
+          result?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_job_reconciliations_media_job_id_fkey"
+            columns: ["media_job_id"]
+            isOneToOne: false
+            referencedRelation: "media_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_job_reconciliations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      media_jobs: {
+        Row: {
+          asset_id: string | null
+          brief_hash: string
+          created_at: string
+          dispatch_observation: string | null
+          dispatch_started_at: string | null
+          id: string
+          last_failure_code: string | null
+          last_failure_detail: string | null
+          model: string
+          project_id: string
+          provider: string
+          reconciliation_required: boolean
+          remote_confirmed_at: string | null
+          remote_operation_id: string | null
+          simulated: boolean
+          state: string
+          terminal_at: string | null
+          version: number
+        }
+        Insert: {
+          asset_id?: string | null
+          brief_hash: string
+          created_at?: string
+          dispatch_observation?: string | null
+          dispatch_started_at?: string | null
+          id: string
+          last_failure_code?: string | null
+          last_failure_detail?: string | null
+          model: string
+          project_id: string
+          provider: string
+          reconciliation_required?: boolean
+          remote_confirmed_at?: string | null
+          remote_operation_id?: string | null
+          simulated?: boolean
+          state?: string
+          terminal_at?: string | null
+          version?: number
+        }
+        Update: {
+          asset_id?: string | null
+          brief_hash?: string
+          created_at?: string
+          dispatch_observation?: string | null
+          dispatch_started_at?: string | null
+          id?: string
+          last_failure_code?: string | null
+          last_failure_detail?: string | null
+          model?: string
+          project_id?: string
+          provider?: string
+          reconciliation_required?: boolean
+          remote_confirmed_at?: string | null
+          remote_operation_id?: string | null
+          simulated?: boolean
+          state?: string
+          terminal_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_jobs_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media_news_items: {
         Row: {
           content_angle: string | null
@@ -4186,6 +4318,44 @@ export type Database = {
           schedule: string
         }[]
       }
+      media_job_record_reconciliation: {
+        Args: {
+          p_blocker: string
+          p_detail: Json
+          p_expected_version: number
+          p_job_id: string
+          p_observed_at: string
+          p_resolves_to: string
+          p_result: string
+        }
+        Returns: {
+          asset_id: string | null
+          brief_hash: string
+          created_at: string
+          dispatch_observation: string | null
+          dispatch_started_at: string | null
+          id: string
+          last_failure_code: string | null
+          last_failure_detail: string | null
+          model: string
+          project_id: string
+          provider: string
+          reconciliation_required: boolean
+          remote_confirmed_at: string | null
+          remote_operation_id: string | null
+          simulated: boolean
+          state: string
+          terminal_at: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "media_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      media_job_state_rank: { Args: { s: string }; Returns: number }
       omnira_applied_migrations: { Args: never; Returns: string[] }
       request_run_cancel: {
         Args: {

@@ -306,3 +306,108 @@ describe('PROBE-S2 · a mid-probe refusal never enters the failure model', () =>
       'writes keep the stricter pre-commit contract').toBe(true)
   })
 })
+
+// ══ PROBE-S2 (executor) · the real catch, not a simulated loop ══════════════
+
+/**
+ * The previous PROBE-S2 cases built their own `beforeAttempt` inline, so
+ * mutating the executor's sentinel left them green — the same abstraction gap
+ * these tests exist to close. This drives `executeWorkflowAction` itself, with
+ * the adapter mocked to emit two attempts, and asserts on the LIFECYCLE WRITES.
+ */
+const adapterAttempts = { count: 0 }
+vi.mock('@/lib/workflows/adapters/familje-stunden', async () => ({
+  // Spread the real module so only the probe is replaced — the adapter also
+  // exports the system identifier and the adapter registration, both of which
+  // other modules import.
+  ...(await vi.importActual<typeof import('@/lib/workflows/adapters/familje-stunden')>(
+    '@/lib/workflows/adapters/familje-stunden')),
+  checkAnonymousProtectedAccessDenied: async (
+    _key: string, now: string, beforeAttempt?: () => Promise<void> | void,
+  ) => {
+    // Two outbound attempts, each re-authorising — the real adapter's shape.
+    for (let i = 0; i < 2; i++) {
+      if (beforeAttempt) await beforeAttempt()
+      adapterAttempts.count += 1
+    }
+    return {
+      check_key: 'anonymous_protected_access_denied', result: 'pass',
+      expected: 'x', observed: 'y', authoritative_system: 'fs', observed_at: now, detail: {},
+    }
+  },
+}))
+
+describe('PROBE-S2 · the executor classifies a mid-probe refusal as control flow', () => {
+  it('a STOPPED refusal between attempts never enters the PR9d failure model', async () => {
+    const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
+    adapterAttempts.count = 0
+    const writes: Row[] = []
+    const spy = () => {
+      const base = db()
+      return {
+        ...base,
+        from: (t: string) => {
+          const c = base.from(t) as Record<string, unknown>
+          const origUpdate = c.update as (p: Row) => unknown
+          c.update = (p: Row) => { if (t === 'runs') writes.push(p); return origUpdate(p) }
+          return c
+        },
+      } as never
+    }
+
+    // The stop commits after the FIRST outbound attempt.
+    let attempts = 0
+    state.onRunRead = () => {
+      // beforeAttempt runs the full pre-dispatch contract, which reads runs.
+      // Once the first attempt has been counted, flip authority.
+      if (adapterAttempts.count >= 1 && attempts === 0) { attempts = 1; state.globalPaused = true }
+    }
+
+    const res = await executeWorkflowAction(
+      spy(), state.run as never, CLAIM, new Date().toISOString())
+
+    expect(adapterAttempts.count, 'attempt 1 went out, attempt 2 did not').toBe(1)
+    expect(res.executed).toBe(false)
+    // The load-bearing assertions: the refusal must not have been laundered into
+    // the failure model.
+    const phases = writes.map(w => w.action_phase)
+    expect(phases, 'no REMOTE_CONFIRMED caused by a governance refusal')
+      .not.toContain('REMOTE_CONFIRMED')
+    expect(writes.some(w => w.action_outcome === 'UNKNOWN' || w.action_outcome === 'PARTIAL'),
+      'a refused NEXT request is not evidence the PREVIOUS response was lost').toBe(false)
+    expect(writes.some(w => w.reconciliation_required === true),
+      'no reconciliation demanded merely because governance refused').toBe(false)
+    expect(writes.some(w => 'last_error' in w),
+      'a governance stop is not a provider failure').toBe(false)
+    // …and it IS reported as temporary control flow.
+    expect(res.disposition).toBe('temporary')
+  })
+
+  it('DISPATCH_STARTED is written before the handler, and survives the refusal honestly', async () => {
+    // The phase timestamp is real history: attempt 1 genuinely left. The refusal
+    // must not rewrite that into "nothing dispatched".
+    const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
+    adapterAttempts.count = 0
+    const writes: Row[] = []
+    const spy = () => {
+      const base = db()
+      return {
+        ...base,
+        from: (t: string) => {
+          const c = base.from(t) as Record<string, unknown>
+          const origUpdate = c.update as (p: Row) => unknown
+          c.update = (p: Row) => { if (t === 'runs') writes.push(p); return origUpdate(p) }
+          return c
+        },
+      } as never
+    }
+    let flipped = false
+    state.onRunRead = () => {
+      if (adapterAttempts.count >= 1 && !flipped) { flipped = true; state.globalPaused = true }
+    }
+    await executeWorkflowAction(spy(), state.run as never, CLAIM, new Date().toISOString())
+
+    expect(writes.some(w => w.action_phase === 'DISPATCH_STARTED'),
+      'the dispatch that really happened is still recorded').toBe(true)
+  })
+})

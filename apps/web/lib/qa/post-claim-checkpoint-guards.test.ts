@@ -108,6 +108,37 @@ describe('G3C-3A · the checkpoint stays wired', () => {
       .toContain('if (started.fenced) return')
   })
 
+  it('the drain re-observes cancellation before terminal success', () => {
+    const drain = code('app/api/runs/drain/route.ts')
+    const fin = drain.indexOf('await checkOwnedFinalization(db, run.id, run.claim_id)')
+    const done = drain.indexOf("status: 'done', finished_at")
+    expect(fin, 'the final owned boundary exists').toBeGreaterThan(-1)
+    expect(done).toBeGreaterThan(-1)
+    expect(fin, 'and precedes the terminal success write').toBeLessThan(done)
+  })
+
+  it('terminal writes are ownership-conditioned, not H1_FENCING-gated', () => {
+    // fencedRunUpdate falls through to an unconditional update when H1_FENCING
+    // is unset, so the terminal writes use the always-conditioned helper.
+    const drain = code('app/api/runs/drain/route.ts')
+    expect(drain).toMatch(/await terminalizeOwnedRun\(db, run\.id, run\.claim_id, \{ status: 'done'/)
+    const cp = code('lib/governance/run-execution-checkpoint.ts')
+    const i = cp.indexOf('export async function terminalizeOwnedRun')
+    expect(cp.slice(i, i + 600))
+      .toContain(".eq('id', runId).eq('status', 'running').eq('claim_id', claimId)")
+  })
+
+  it('the finalization boundary never consults governance stop', () => {
+    // Stop controls whether NEW work may begin. Consulting it here would discard
+    // finished work and risk duplicate execution after a resume.
+    const cp = code('lib/governance/run-execution-checkpoint.ts')
+    const i = cp.indexOf('export async function checkOwnedFinalization')
+    const body = cp.slice(i, cp.indexOf('export async function terminalizeOwnedRun'))
+    expect(body).not.toContain('resolveExecutionStop')
+    expect(body).not.toContain('automation_paused')
+    expect(body).not.toContain('execution_paused')
+  })
+
   it('the checkpoint owns no stop truth table of its own', () => {
     // Raw flag reads here would be a second answer to "is it paused", which is
     // how two answers start disagreeing.

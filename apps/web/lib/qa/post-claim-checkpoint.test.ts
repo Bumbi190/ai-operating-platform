@@ -260,3 +260,97 @@ describe('G3C-3A · a re-claimed cancelled run cannot begin work', () => {
     expect(v.allowed === false && v.refusal).toBe('CANCELLED')
   })
 })
+
+// ══ CF · CANCEL DURING THE FINAL IN-FLIGHT UNIT ═════════════════════════════
+
+/**
+ * The race the per-step checkpoint cannot cover.
+ *
+ *   T1  the final step's checkpoint says allowed
+ *   T2  the final execution-bearing unit begins
+ *   T3  cancel_requested commits WHILE it is in flight
+ *   T4  the unit returns successfully
+ *   T5  there is no next step, so no further checkpoint runs
+ *   T6  the worker prepares terminal `done`
+ *
+ * If T6 can write `done` without re-observing cancellation, then the cancel
+ * route's `enforced: true` is false advertising. checkOwnedFinalization is the
+ * boundary that closes it.
+ */
+describe('CF · the final owned boundary linearizes cancel against success', () => {
+  const finalize = async () => {
+    const m = await import('@/lib/governance/run-execution-checkpoint')
+    return m.checkOwnedFinalization(anyDb(), RUN, CLAIM)
+  }
+
+  it('CF1 — CANCEL WINS: cancel lands mid-flight, the run does not become done', async () => {
+    // The unit already ran and succeeded; the cancellation committed while it
+    // was on the wire.
+    state.run.cancel_requested = true
+    expect(await finalize()).toBe('CANCELLED')
+
+    const { terminalizeCancelledRun } = await import('@/lib/governance/run-execution-checkpoint')
+    const r = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
+    expect(r.cancelled).toBe(true)
+    expect(state.run.status, 'cancelled, never done').toBe('cancelled')
+    // And nothing about this is a provider failure.
+    expect(state.updates.some(u => 'error' in u.payload || 'last_error' in u.payload)).toBe(false)
+  })
+
+  it('CF2 — DONE WINS: terminal success first, a later cancel affects zero rows', async () => {
+    const { terminalizeOwnedRun, terminalizeCancelledRun } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    // Success commits first, under ownership.
+    const done = await terminalizeOwnedRun(anyDb(), RUN, CLAIM, {
+      status: 'done', finished_at: 'now', claimed_at: null, lease_until: null,
+    })
+    expect(done).toEqual({ written: true, fenced: false })
+    expect(state.run.status).toBe('done')
+
+    // The cancellation arrives afterwards. request_run_cancel is status-guarded
+    // to pending/running in SQL, and the owned terminalizer requires running.
+    const late = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
+    expect(late.cancelled, 'completed work is never retroactively rewritten').toBe(false)
+    expect(late.fenced).toBe(true)
+    expect(state.run.status).toBe('done')
+  })
+
+  it('CF3 — FENCE WINS: a rotated claim writes neither done nor cancelled', async () => {
+    const m = await import('@/lib/governance/run-execution-checkpoint')
+    state.run.claim_id = 'claim-new-owner'
+
+    expect(await finalize()).toBe('FENCED')
+
+    const done = await m.terminalizeOwnedRun(anyDb(), RUN, CLAIM, { status: 'done' })
+    const cancelled = await m.terminalizeCancelledRun(anyDb(), RUN, CLAIM)
+    expect(done).toEqual({ written: false, fenced: true })
+    expect(cancelled.cancelled).toBe(false)
+    expect(state.run.status, 'the new owner’s run is untouched').toBe('running')
+  })
+
+  it('CONTINUE_FINALIZATION when owned and uncancelled', async () => {
+    expect(await finalize()).toBe('CONTINUE_FINALIZATION')
+  })
+
+  it('the finalization boundary does NOT consult governance stop', async () => {
+    // A stop arriving AFTER the work finished must not discard the result or
+    // push the run back to pending, where a resume could execute it twice.
+    state.globalPaused = true
+    state.projectPaused = true
+    expect(await finalize(), 'a completed run still finalizes honestly')
+      .toBe('CONTINUE_FINALIZATION')
+  })
+
+  it('unreadable ownership at finalization is FENCED, never a licence to write', async () => {
+    state.runReadFails = true
+    expect(await finalize()).toBe('FENCED')
+  })
+
+  it('the terminal success write is ownership-conditioned, not a bare id match', async () => {
+    const { terminalizeOwnedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    await terminalizeOwnedRun(anyDb(), RUN, CLAIM, { status: 'done' })
+    const w = state.updates.at(-1)!
+    expect(w.predicates, 'a read then an unconditional write is not ownership')
+      .toEqual({ id: RUN, status: 'running', claim_id: CLAIM })
+  })
+})

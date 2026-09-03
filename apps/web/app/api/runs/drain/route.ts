@@ -18,7 +18,7 @@ import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import {
   checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
-  isRunCheckpointRefusal,
+  isRunCheckpointRefusal, checkOwnedFinalization, terminalizeOwnedRun,
 } from '@/lib/governance/run-execution-checkpoint'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -183,6 +183,32 @@ export async function GET(request: Request) {
         }
       }
 
+      // ── G3C-3A · FINAL OWNED CANCELLATION BOUNDARY ─────────────────────────
+      // The per-step checkpoint cannot see a cancellation that commits WHILE the
+      // last unit is in flight: the last check already said yes, the unit
+      // returned, and there is no next step. Without this the worker writes
+      // `done` over a cancellation that landed seconds ago, and the cancel
+      // route's `enforced: true` would be false advertising.
+      //
+      // Ownership and cancellation ONLY — deliberately not governance stop. The
+      // work is already finished; refusing to record it would not undo the
+      // effect. It would discard honest bookkeeping and push the run back to
+      // `pending`, where a later resume could execute it a SECOND time.
+      const fin = await checkOwnedFinalization(db, run.id, run.claim_id)
+      if (fin === 'FENCED') {
+        console.warn(`[run ${run.id}] fenced at finalization — another owner holds it`)
+        results.push({ run_id: run.id, status: 'fenced' })
+        continue
+      }
+      if (fin === 'CANCELLED') {
+        // Cancel wins: terminalize as cancelled, never as done. The execution
+        // result is not erased — it simply is not reported as success.
+        const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+        console.warn(`[run ${run.id}] cancelled at finalization — not marked done`)
+        results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
+        continue
+      }
+
       if (outcome === 'awaiting_approval') {
         // Idempotent approval (mirrors executeWorkflow's pattern): create only if none
         // exists for this run. `content`/`output_key` are NOT NULL in the schema → coerce.
@@ -226,7 +252,9 @@ export async function GET(request: Request) {
         // (rör endast 'running' med utgången lease) aldrig tar i den vilande runen.
         // H1.P5 Commit 2: fenced on claim_id. If reclaimed since we claimed it, this matches
         // 0 rows → skip (the new owner re-runs and finalizes); we never double-flip.
-        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
+        // G3C-3A: ownership-conditioned regardless of H1_FENCING, which when
+        // unset makes fencedRunUpdate fall through to an unconditional write.
+        const { fenced } = await terminalizeOwnedRun(db, run.id, run.claim_id, {
           status: 'awaiting_approval', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
         if (fenced) {
@@ -236,7 +264,9 @@ export async function GET(request: Request) {
         }
         results.push({ run_id: run.id, status: 'awaiting_approval' })
       } else {
-        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
+        // G3C-3A: ownership-conditioned regardless of H1_FENCING. A read
+        // followed by an unconditional `done` update is not ownership.
+        const { fenced } = await terminalizeOwnedRun(db, run.id, run.claim_id, {
           status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
         if (fenced) {

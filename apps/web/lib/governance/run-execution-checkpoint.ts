@@ -215,6 +215,72 @@ export async function terminalizeCancelledRun(
   return { cancelled: hit, fenced: !hit }
 }
 
+/**
+ * The FINAL owned boundary, immediately before terminal success.
+ *
+ * The per-step checkpoint cannot cover this race. A cancellation that commits
+ * WHILE the last execution-bearing unit is in flight is never seen by it: the
+ * last checkpoint already said yes, the unit returns successfully, and there is
+ * no next step to check. Without this, a worker writes `done` over a
+ * cancellation that landed seconds earlier — which would make the cancel route's
+ * `enforced: true` false advertising.
+ *
+ * ── WHY THIS DOES NOT CONSULT GOVERNANCE STOP ──────────────────────────────
+ * Deliberate, and the distinction is load-bearing. A stop controls whether NEW
+ * execution-bearing work may BEGIN. By the time we are here the work is already
+ * done — the packets left, the provider answered, the effect exists. Refusing to
+ * record that because a stop arrived afterwards would not undo anything; it
+ * would throw away honest bookkeeping and push the run back to `pending`, where
+ * a later resume could execute it a SECOND time. Stop must not destroy evidence,
+ * and it must not manufacture duplicate execution.
+ *
+ * So this boundary asks two questions only: do we still own this run, and did a
+ * human ask for it to stop?
+ */
+export type FinalizationVerdict = 'CONTINUE_FINALIZATION' | 'CANCELLED' | 'FENCED'
+
+export async function checkOwnedFinalization(
+  db: AnyDb, runId: string, claimId: string | null | undefined,
+): Promise<FinalizationVerdict> {
+  if (!claimId) return 'FENCED'
+  try {
+    const { data, error } = await db.from('runs')
+      .select('id, status, claim_id, cancel_requested')
+      .eq('id', runId).maybeSingle()
+    if (error || !data) return 'FENCED'
+    const row = data as { status: string | null; claim_id: string | null; cancel_requested: boolean | null }
+    if (row.claim_id !== claimId) return 'FENCED'
+    if (row.status !== 'running') return 'FENCED'
+    return row.cancel_requested === true ? 'CANCELLED' : 'CONTINUE_FINALIZATION'
+  } catch {
+    // Unreadable ownership at finalization is FENCED, never a licence to write.
+    return 'FENCED'
+  }
+}
+
+/**
+ * An ownership-conditioned terminal write.
+ *
+ * `fencedRunUpdate` is gated on H1_FENCING and, when that flag is unset, falls
+ * through to an unconditional `update().eq('id', …)` with no claim predicate at
+ * all. A read followed by an unconditional write is not ownership — the row can
+ * change between the two. This carries the predicate unconditionally, so the
+ * guarantee does not depend on a rollout flag.
+ */
+export async function terminalizeOwnedRun(
+  db: AnyDb, runId: string, claimId: string | null | undefined,
+  payload: Record<string, unknown>,
+): Promise<{ written: boolean; fenced: boolean }> {
+  if (!claimId) return { written: false, fenced: true }
+  const { data, error } = await db.from('runs')
+    .update(payload)
+    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
+    .select('id')
+  if (error) return { written: false, fenced: true }
+  const hit = Array.isArray(data) && data.length > 0
+  return { written: hit, fenced: !hit }
+}
+
 /** Thrown to unwind an in-progress executor. Carries the distinction with it. */
 export class RunCheckpointRefusedError extends Error {
   readonly refusal: RunCheckpointRefusal

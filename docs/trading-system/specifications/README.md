@@ -14,6 +14,7 @@ Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
 | Provider Connectivity Reason Codes | `execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-01 (Beslut H). Nio konnektivitetskoder, prospektiv verkan |
 | Market Data & Contract Lifecycle | `market-data/…Market Data & Contract Lifecycle – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-02 (Beslut I). Provider-neutralt, GATE-08 delvis stängd |
 | Contract Selection Reason Code | `market-data/…Contract Selection Reason Code – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-03 (Beslut J). En positiv kontraktsvalskod, prospektiv verkan |
+| Contract Selection Decision Materialisation | `market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-03 (Beslut K). Materialiseringssemantik för C3B.1, prospektiv verkan |
 | Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
 | Prop firm | `prop-firm/` | Tom, GATE-09 |
 | Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |

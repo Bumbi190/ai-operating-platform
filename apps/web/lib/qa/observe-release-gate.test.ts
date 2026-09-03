@@ -194,8 +194,13 @@ describe('13-18. the action is READ_ONLY and adds no dangerous capability', () =
     const a = ACTION_REGISTRY.observe_release_gate
     expect(a.action_class).toBe('READ_ONLY')
     expect(a.executor_family).toBe('read_only_observation')
+    // TWO placements since Phase 1B-2. The release placement is unchanged; the
+    // second is Omnira's dedicated release-gate proof workflow, whose instance
+    // key IS the month. Kept EXACT rather than `toContain`: a third placement is
+    // a decision, not a detail.
     expect(a.placements).toEqual([
       { def_key: FAMILJE_STUNDEN_MONTHLY_RELEASE, state: 'backend_release_gate' },
+      { def_key: 'omnira.release-gate-proof',     state: 'proof' },
     ])
   })
 

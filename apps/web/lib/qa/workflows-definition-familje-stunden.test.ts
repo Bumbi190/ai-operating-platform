@@ -66,8 +66,11 @@ describe('vendored definition — parses', () => {
     const upstream = all.filter(d => d.provenance === 'vendored_upstream')
     expect(upstream).toHaveLength(1)
     expect(upstream[0].def_key).toBe('familje-stunden.monthly-release')
-    expect(all.filter(d => d.provenance === 'authored_here').map(d => d.def_key))
-      .toEqual(['omnira.probe-validation'])
+    // Phase 1B-2 added a second Omnira-authored definition. The pinned property
+    // is unchanged and is asserted above: exactly ONE definition is copied from a
+    // product repo. Everything else is Omnira describing its own procedures.
+    expect(all.filter(d => d.provenance === 'authored_here').map(d => d.def_key).sort())
+      .toEqual(['omnira.probe-validation', 'omnira.release-gate-proof'])
   })
 
   it('declares all 19 states in canonical order', () => {

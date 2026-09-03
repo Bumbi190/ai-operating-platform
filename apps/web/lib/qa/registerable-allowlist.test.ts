@@ -40,8 +40,13 @@ const registerBranch = (() => {
 
 describe('the allowlist names exactly two definitions', () => {
   it('both, and nothing else', () => {
-    expect(REGISTERABLE.sort()).toEqual([
+    // THREE since Phase 1B-2. Still a closed literal — the MUTATION test below
+    // is the one that matters, and it is unchanged: this list may never be
+    // derived from the loader, or every future definition file would enrol
+    // itself in production the moment it merged.
+    expect([...REGISTERABLE].sort()).toEqual([
       'familje-stunden.monthly-release', 'omnira.probe-validation',
+      'omnira.release-gate-proof',
     ])
   })
 

@@ -1,0 +1,72 @@
+{
+  "ID": "omnira.release-gate-proof",
+  "version": 1,
+  "status": "active",
+  "purpose": "Prove that the deployed Omnira runtime can authenticate to Familje-Stunden and read the authoritative release gate, through the real scheduler, run, executor and evidence path. This is a verification workflow, not a release process: it observes one row and changes nothing.",
+  "source_of_truth": "This file. Authored in the Omnira repository; it describes Omnira's own verification procedure and is not derived from any product workflow.",
+  "derived_from": [],
+  "canonical": {
+    "scope": "Release-gate observation only. This definition must never gain a human gate, a write action, a spend action or an external communication.",
+    "instance_key_is_a_month": "The instance key IS the canonical YYYY-MM month key the observation is about. It is the only input: no payload, no override, no environment variable, no alternate field. A non-canonical key is refused locally by the adapter before any credential is presented.",
+    "not_a_release": "It performs no release, advances no Familje-Stunden state, uploads nothing, migrates nothing and produces no artefact. Observing a month here says nothing about whether that month may be released.",
+    "why_it_is_separate": "omnira.probe-validation cannot host this: its instance key is explicitly not a month and it has no calendar semantics. Merging the two would make one definition mean two incompatible things."
+  },
+  "hard_gates": [
+    {
+      "id": "read_only_forever",
+      "rule": "Only READ_ONLY observations may ever be declared here. A write-capable action in this definition would give a gate-free workflow the ability to change the world.",
+      "enforced_at": ["proof"]
+    },
+    {
+      "id": "never_advances_release",
+      "rule": "This workflow may never be used to advance, satisfy or substitute for any Familje-Stunden release state. The release gate it reads is answered by familje-stunden.monthly-release at backend_release_gate and nowhere else.",
+      "enforced_at": ["proof"]
+    }
+  ],
+  "retry_policies": {
+    "none": { "max_attempts": 1 },
+    "transient": { "max_attempts": 3, "backoff": "exponential", "initial_delay_s": 5 },
+    "network": { "max_attempts": 5, "backoff": "exponential", "initial_delay_s": 10 },
+    "never_auto": { "max_attempts": 1, "note": "Requires a human decision before any retry." }
+  },
+  "states": [
+    {
+      "id": "proof",
+      "description": "Read the authoritative month_releases row for this instance's month key, presenting the scoped Familje-Stunden verification credential.",
+      "prerequisites": [],
+      "inputs": [],
+      "outputs": ["release_gate_observation"],
+      "automated_actions": [
+        "Ask Familje-Stunden for the month_releases row presence and release_at for this instance's month key."
+      ],
+      "verification": [],
+      "human_gate": { "required": false },
+      "retry_policy": "network",
+      "next_state": "complete",
+      "failure_transition": "complete",
+      "notes": "No human gate by design: a READ_ONLY observation requires no authorization, and this definition may never carry anything that does. The observation is REQUIRED — a workflow that exists to obtain one piece of evidence must not complete without it."
+    },
+    {
+      "id": "complete",
+      "description": "The observation has been recorded.",
+      "prerequisites": ["proof"],
+      "inputs": [],
+      "outputs": [],
+      "automated_actions": [],
+      "verification": [],
+      "human_gate": { "required": false },
+      "retry_policy": "none",
+      "next_state": null,
+      "failure_transition": null,
+      "notes": "Terminal."
+    }
+  ],
+  "escalation": [
+    {
+      "condition": "verification_credential_refused",
+      "detail": "Familje-Stunden answered 401 or 403 to the scoped verification credential.",
+      "severity": "high",
+      "reason": "Omnira cannot observe the authoritative release gate at all, so every release-gate check it reports is UNKNOWN rather than safe."
+    }
+  ]
+}

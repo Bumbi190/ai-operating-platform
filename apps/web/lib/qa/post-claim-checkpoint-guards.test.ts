@@ -180,6 +180,12 @@ describe('G3C-3A · the checkpoint stays wired', () => {
     // to the failure path.
     expect(drain, 'the refusal branch must be reachable')
       .toMatch(/if \(isRunCheckpointRefusal\(e\)\) \{/)
+    // …and must actually SHORT-CIRCUIT. Keeping the branch but deleting its
+    // `continue` would let every refusal fall through to the failure path while
+    // a presence check still passed.
+    const branch = drain.slice(drain.indexOf('if (isRunCheckpointRefusal(e)) {'))
+    expect(branch.slice(0, 420), 'the refusal branch must not fall through')
+      .toMatch(/results\.push\([^)]*\) continue/)
     const refusal = drain.indexOf('if (isRunCheckpointRefusal(e)) {')
     const failed = drain.indexOf("status: 'failed'")
     expect(refusal).toBeGreaterThan(-1)

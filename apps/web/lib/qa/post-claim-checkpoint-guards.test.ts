@@ -185,6 +185,9 @@ describe('G3C-3A · the checkpoint stays wired', () => {
     expect(i).toBeGreaterThan(-1)
     const body = run.slice(i, run.indexOf('export function idempotencyPrefix'))
 
+    const calls = (body.match(/await checkpointClaimedRun\(/g) ?? []).length
+    expect(calls, 'TWO canonical checkpoints, not one').toBeGreaterThanOrEqual(2)
+
     const first = body.indexOf('checkpointClaimedRun')
     const readiness = body.indexOf('assertWorkflowActionReady(db, runId)')
     const final = body.indexOf('checkpointClaimedRun', readiness)

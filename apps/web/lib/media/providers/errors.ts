@@ -17,6 +17,7 @@
  * stripping, and one redactor that both subsystems extend beats two that drift.
  */
 
+import type { DispatchObservation } from '@/lib/workflows/action-outcome'
 import { redactSecrets } from '../meta-errors'
 import { resolveMuapiCredential, type EnvSource } from './config'
 import type {
@@ -95,6 +96,11 @@ export class MediaProviderError extends Error {
   readonly provider: MediaProviderId | null
   readonly httpStatus: number | null
   readonly retryable: boolean
+  /**
+   * What this failure proves about the remote side, for a CREATION. Null for
+   * reads and for refusals that never touched the network.
+   */
+  readonly dispatchObservation: DispatchObservation | null
 
   constructor(opts: {
     code: MediaProviderErrorCode
@@ -103,6 +109,8 @@ export class MediaProviderError extends Error {
     httpStatus?: number | null
     /** Override the status-derived default. Gate refusals are never retryable. */
     retryable?: boolean
+    /** Set by a CREATE path. Omitted by reads, where the question does not arise. */
+    dispatchObservation?: DispatchObservation | null
   }) {
     // Redacted here, in the constructor, so every downstream `err.message` is
     // safe without the catch site having to know that.
@@ -111,7 +119,14 @@ export class MediaProviderError extends Error {
     this.code = opts.code
     this.provider = opts.provider ?? null
     this.httpStatus = opts.httpStatus ?? null
-    this.retryable = opts.retryable ?? retryableForStatus(this.httpStatus)
+    this.dispatchObservation = opts.dispatchObservation ?? null
+    // AN AMBIGUOUS CREATION IS NEVER RETRYABLE, and the constructor enforces it
+    // rather than trusting every construction site to pass `retryable: false`.
+    // A 5xx on a create would otherwise derive `retryable: true` from its status
+    // and hand a caller permission to pay twice.
+    this.retryable = opts.code === 'MEDIA_DISPATCH_UNKNOWN'
+      ? false
+      : opts.retryable ?? retryableForStatus(this.httpStatus)
   }
 
   /** Serializable form — safe for logs, DB columns, and API responses. */
@@ -122,6 +137,7 @@ export class MediaProviderError extends Error {
       provider: this.provider,
       httpStatus: this.httpStatus,
       retryable: this.retryable,
+      dispatchObservation: this.dispatchObservation,
     }
   }
 }

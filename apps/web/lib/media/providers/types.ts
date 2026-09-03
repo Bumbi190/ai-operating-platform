@@ -30,6 +30,8 @@
  * stub orchestrator would become the thing everyone codes against.
  */
 
+import type { DispatchObservation } from '@/lib/workflows/action-outcome'
+
 /** Stable provider identity. Extended, never renamed — ids reach persistence. */
 export type MediaProviderId = 'muapi' | 'higgsfield' | 'openart'
 
@@ -163,6 +165,17 @@ export const MEDIA_PROVIDER_ERROR_CODES = [
   'MEDIA_PROVIDER_RESPONSE_INVALID',
   /** The generation itself failed vendor-side (job status `failed`). */
   'MEDIA_JOB_FAILED',
+  /**
+   * A CREATION whose outcome cannot be determined — the request may have been
+   * accepted, and a remote operation may exist and be billing.
+   *
+   * Added in Phase 3, and the one code in this list that must never be treated
+   * as retryable: `retryable` on this code answers "could the same call succeed
+   * next time", and for a creation the honest answer is "possibly, and it might
+   * also charge twice". `MediaProviderError` forces it to false in its
+   * constructor rather than deriving it from a status.
+   */
+  'MEDIA_DISPATCH_UNKNOWN',
 ] as const
 
 export type MediaProviderErrorCode = (typeof MEDIA_PROVIDER_ERROR_CODES)[number]
@@ -177,6 +190,27 @@ export interface MediaProviderErrorShape {
   httpStatus: number | null
   /** Whether retrying the same call could plausibly succeed. */
   retryable: boolean
+  /**
+   * What this failure PROVES about the remote side, for a call that creates
+   * something. Null for reads, where the question does not arise.
+   *
+   * ── WHY THIS IS ON THE ERROR AND NOT A SECOND METHOD ──────────────────────
+   * A creation can fail before the request leaves the machine or after the
+   * vendor accepted and began billing, and both surface as one thrown value.
+   * Phase 3 needs that distinction, and the smallest way to carry it is a field
+   * on the failure that already travels — rather than a parallel `dispatchX()`
+   * method beside every `generateX()`, which would be two ways to do one thing
+   * and would leave the old way silently unsafe.
+   *
+   * `retryable` deliberately does NOT answer this. It answers "might the same
+   * call work next time", which is about the network. This answers "may the same
+   * call be made again at all", which is about money.
+   *
+   * The vocabulary is `lib/workflows/action-outcome.ts`'s, reused rather than
+   * re-invented — see `lib/media/job/lifecycle.ts` for why that reuse is
+   * type-only.
+   */
+  dispatchObservation: DispatchObservation | null
 }
 
 export function isMediaProviderErrorCode(v: unknown): v is MediaProviderErrorCode {
@@ -282,9 +316,42 @@ export interface MediaModelDescriptor {
  * from. The router checks `capabilities`; it never probes for a method and
  * hopes.
  */
+/**
+ * What a provider's ASYNC lifecycle actually supports — declared, never probed.
+ *
+ * Added in Phase 3. Every field is a fact about Omnira's integration with the
+ * vendor, established from the adapter's own code, and every `false` below is a
+ * capability the orchestrator must not assume it has:
+ *
+ *   `clientIdempotency: false` means a lost dispatch response cannot be resolved
+ *   by re-sending the same key — there is no key. That single fact is why an
+ *   ambiguous creation is terminal rather than recoverable.
+ *
+ * A SYNCHRONOUS provider simply omits `lifecycle`. That is the discriminator:
+ * its absence means "this provider has no remote job", not "these fields are
+ * unknown" — so a sync provider never has to be dressed up as a job with an
+ * invented operation id, and never declares async methods it throws from.
+ */
+export interface MediaLifecycleProfile {
+  /** How a created operation is observed. Phase 3 implements `poll` only. */
+  observation: 'poll' | 'webhook' | 'poll_and_webhook'
+  /** The vendor accepts a client-supplied key on CREATE, and honours it. */
+  clientIdempotency: boolean
+  /** An accepted operation can be looked up by the vendor's own id. */
+  lookupByRemoteId: boolean
+  /** The vendor can answer "what did I create for correlation X". */
+  lookupByCorrelationId: boolean
+  /** The vendor exposes a request/operation history that can be searched. */
+  lookupByHistory: boolean
+  /** An accepted operation can be cancelled. */
+  cancellable: boolean
+}
+
 export interface MediaProvider {
   readonly id: MediaProviderId
   readonly capabilities: readonly MediaCapability[]
+  /** Present iff this provider creates remote operations. See above. */
+  readonly lifecycle?: MediaLifecycleProfile
 
   /** Never touches the network. Safe to call when disabled. */
   describe(): MediaProviderStatus

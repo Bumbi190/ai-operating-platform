@@ -44,7 +44,10 @@ import {
   assertMediaExecutionAllowed,
   decideMediaExecution,
 } from './gate'
+import { classifyTransportFailure, statusProvesNotCreated } from '@/lib/media/job/dispatch'
+import { acceptRemoteOperationId } from '@/lib/media/job/identity'
 import type {
+  MediaLifecycleProfile,
   EditImageRequest,
   GenerateImageRequest,
   GenerateVideoRequest,
@@ -179,9 +182,47 @@ export interface MuapiProviderOptions {
   fetchImpl?: typeof fetch
 }
 
+/**
+ * MuAPI's async lifecycle, as a matter of repository evidence.
+ *
+ * Every value is established from the two endpoints this adapter actually calls
+ * and from `docs/architecture/muapi-media-provider.md`. Nothing here is inferred
+ * from the vendor's name or from what a media API "usually" offers.
+ *
+ *   observation: 'poll'      `GET /api/v1/predictions/{id}/result` is the only
+ *                            way to learn a job's state. No webhook appears in
+ *                            the adapter, the config, or the documentation.
+ *   clientIdempotency: false `POST /api/v1/{model}` takes a model body and
+ *                            returns `{ request_id }`. Omnira supplies no key,
+ *                            and no key field is documented.
+ *   lookupByRemoteId: true   the status endpoint, given the vendor's own id.
+ *   lookupByCorrelationId    ─┐ neither exists. Together these two `false`s are
+ *   lookupByHistory          ─┘ the reason an ambiguous dispatch with no id read
+ *                            back is UNRECOVERABLE against the provider API —
+ *                            stated plainly in PHASE3_RESULT.md §11 rather than
+ *                            hidden behind an automatic regeneration.
+ *   cancellable: false       no cancellation endpoint is integrated. MuAPI
+ *                            reports a `cancelled` STATUS, which is a state a
+ *                            job can be found in — not an action Omnira can take.
+ *
+ * If the vendor's HTTP API does expose an operation-history endpoint, that is a
+ * fact this repository does not currently contain; establishing it needs the
+ * vendor's API documentation, and flipping a flag here without that evidence
+ * would make a control out of a guess.
+ */
+export const MUAPI_LIFECYCLE: MediaLifecycleProfile = {
+  observation: 'poll',
+  clientIdempotency: false,
+  lookupByRemoteId: true,
+  lookupByCorrelationId: false,
+  lookupByHistory: false,
+  cancellable: false,
+}
+
 export class MuapiProvider implements MediaProvider {
   readonly id = PROVIDER
   readonly capabilities = MUAPI_CAPABILITIES
+  readonly lifecycle = MUAPI_LIFECYCLE
 
   private readonly env: EnvSource
   private readonly fetchImpl: typeof fetch
@@ -217,7 +258,17 @@ export class MuapiProvider implements MediaProvider {
   private async call<T = unknown>(
     operation: string,
     path: string,
-    init: { method: 'GET' | 'POST'; body?: unknown; formData?: FormData } = { method: 'GET' },
+    init: {
+      method: 'GET' | 'POST'
+      body?: unknown
+      formData?: FormData
+      /**
+       * This call CREATES a remote operation, so every failure has to say what
+       * it proves (Phase 3). Reads leave it unset: "did this create something
+       * we now owe money for" is not a question a GET can raise.
+       */
+      creates?: boolean
+    } = { method: 'GET' },
   ): Promise<T> {
     const config = this.config()
     assertMediaExecutionAllowed(config, PROVIDER, operation)
@@ -252,6 +303,35 @@ export class MuapiProvider implements MediaProvider {
         body: payload,
       })
     } catch (err) {
+      // ── THE AMBIGUITY BOUNDARY, FOR A CREATION ──────────────────────────
+      //
+      // For a READ this is just a failed read. For a CREATE it is the single
+      // most consequential branch in the adapter: a DNS failure proves nothing
+      // was sent, while a socket reset or a fired deadline proves nothing at
+      // all — the vendor may already have accepted the job and started billing.
+      //
+      // `classifyTransportFailure` answers only when it can PROVE the safe
+      // case, and reports `'unknown'` otherwise. There is deliberately no
+      // branch here that guesses toward the convenient answer.
+      if (init.creates) {
+        const verdict = classifyTransportFailure(err)
+        if (verdict.sent === false) {
+          throw new MediaProviderError({
+            code: 'MEDIA_PROVIDER_REQUEST_FAILED',
+            message: `[${PROVIDER}] ${operation}: the request never reached the provider (${verdict.code}).`,
+            provider: PROVIDER,
+            retryable: true,
+            dispatchObservation: 'not_dispatched',
+          })
+        }
+        throw new MediaProviderError({
+          code: 'MEDIA_DISPATCH_UNKNOWN',
+          message: `[${PROVIDER}] ${operation}: ${verdict.detail}. `
+            + 'A remote operation may exist; this call must not be repeated automatically.',
+          provider: PROVIDER,
+          dispatchObservation: 'response_lost',
+        })
+      }
       throw toMediaProviderError(err, PROVIDER)
     }
 
@@ -260,11 +340,21 @@ export class MuapiProvider implements MediaProvider {
       throw new MediaProviderError({
         // `path` is a route template with no query string, so no credential can
         // ride along into the message the way a full URL would.
-        code: classifyHttpFailure(res.status, text),
+        code: init.creates && !statusProvesNotCreated(res.status)
+          ? 'MEDIA_DISPATCH_UNKNOWN'
+          : classifyHttpFailure(res.status, text),
         message: `[${PROVIDER}] ${operation} failed (${res.status}) at ${path}: `
-          + redactMediaSecrets(text).slice(0, 400),
+          + redactMediaSecrets(text).slice(0, 400)
+          + (init.creates && !statusProvesNotCreated(res.status)
+            ? ' — a 5xx may come from a gateway in front of a service that already accepted the request'
+            : ''),
         provider: PROVIDER,
         httpStatus: res.status,
+        // 4xx (429 included) is the vendor ANSWERING: it parsed the request and
+        // declined to do work. 5xx is not an answer about the work.
+        ...(init.creates
+          ? { dispatchObservation: statusProvesNotCreated(res.status) ? 'remote_rejected' as const : 'response_lost' as const }
+          : {}),
       })
     }
 
@@ -272,10 +362,15 @@ export class MuapiProvider implements MediaProvider {
       return (await res.json()) as T
     } catch (err) {
       throw new MediaProviderError({
-        code: 'MEDIA_PROVIDER_RESPONSE_INVALID',
-        message: `[${PROVIDER}] ${operation}: response was not JSON (${String(err)})`,
+        code: init.creates ? 'MEDIA_DISPATCH_UNKNOWN' : 'MEDIA_PROVIDER_RESPONSE_INVALID',
+        message: `[${PROVIDER}] ${operation}: response was not JSON (${String(err)})`
+          + (init.creates ? ' — the provider answered 2xx, so the operation probably exists under an id we could not read' : ''),
         provider: PROVIDER,
         httpStatus: res.status,
+        // 2xx means the vendor accepted it. Our own inability to read the answer
+        // is an EVIDENCE failure, not a creation failure — the strongest form of
+        // "it exists and we cannot name it".
+        ...(init.creates ? { dispatchObservation: 'confirmed_evidence_failed' as const } : {}),
       })
     }
   }
@@ -292,24 +387,37 @@ export class MuapiProvider implements MediaProvider {
     const res = await this.call<{ request_id?: unknown; id?: unknown }>(
       capability,
       `/api/v1/${encodeURIComponent(model)}`,
-      { method: 'POST', body },
+      { method: 'POST', body, creates: true },
     )
 
-    const requestId = typeof res?.request_id === 'string'
-      ? res.request_id
-      : typeof res?.id === 'string' ? res.id : null
+    // A 2xx WITH NO USABLE ID IS NOT A FAILED CREATION.
+    //
+    // The vendor answered success, so an operation almost certainly exists and
+    // is almost certainly billing. What Omnira lost is the ability to NAME it —
+    // and with no lookup-by-correlation and no history endpoint (see
+    // `MUAPI_LIFECYCLE` below), naming is the only way back to it.
+    //
+    // This used to be `MEDIA_PROVIDER_RESPONSE_INVALID`, which reads as "the
+    // vendor sent us junk" and invites a retry. It is the opposite: the vendor
+    // did its job and we cannot prove which job.
+    const accepted = acceptRemoteOperationId(
+      typeof res?.request_id === 'string' ? res.request_id : res?.id,
+    )
 
-    if (!requestId) {
+    if (!accepted.ok) {
       throw new MediaProviderError({
-        code: 'MEDIA_PROVIDER_RESPONSE_INVALID',
-        message: `[${PROVIDER}] ${capability}: response carried no request_id.`,
+        code: 'MEDIA_DISPATCH_UNKNOWN',
+        message: `[${PROVIDER}] ${capability}: the provider accepted the request but its `
+          + `operation id was unusable (${accepted.refusal}). A remote operation may exist `
+          + 'and cannot be observed; this call must not be repeated automatically.',
         provider: PROVIDER,
+        dispatchObservation: 'confirmed_evidence_failed',
       })
     }
 
     return {
       provider: PROVIDER,
-      requestId,
+      requestId: accepted.id,
       model,
       submittedAt: new Date().toISOString(),
       // Narrowed safely: the gate has already refused `disabled` by this point.

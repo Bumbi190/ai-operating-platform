@@ -43,6 +43,10 @@ import 'server-only'
 
 import { describeMediaProviders } from '@/lib/media/providers/router'
 import type { MediaProviderId } from '@/lib/media/providers/types'
+import {
+  DURABLE_MEDIA_JOB_STORE_AVAILABLE,
+  DURABLE_MEDIA_JOB_STORE_BLOCKER,
+} from '@/lib/media/job/store'
 import type {
   MediaCandidateFamily,
   MediaCandidateId,
@@ -174,17 +178,23 @@ function providerLayerCandidates(): MediaCandidate[] {
       configured: s.configured,
       gateBlockedReason: s.blockedReason,
       gateRefused: !s.executionAllowed,
-      // NOT DISPATCHABLE IN PHASE 2, stated up front rather than discovered.
+      // NOT DISPATCHABLE, stated up front rather than discovered — and, since
+      // Phase 3, for a DIFFERENT and much narrower reason.
       //
-      // `MediaProvider` is async-job-shaped — submit returns a `MediaJobRef` and
-      // the result arrives by polling `getStatus` or by webhook. That lifecycle
-      // is real work this phase does not build. Declaring it here means such a
-      // candidate is rejected BEFORE ranking, so enabling MuAPI can never
-      // produce a selection that then fails at dispatch.
-      dispatch: {
-        supported: false,
-        reason: 'the MediaProvider async job lifecycle (submit → poll getStatus) is not implemented in Phase 2',
-      },
+      // Phase 2 could not dispatch these because the async job lifecycle did not
+      // exist. It exists now (`lib/media/job/*`): dispatch classification, the
+      // state machine, bounded polling, the QC boundary and admission are built
+      // and tested. What is missing is the DURABLE STORE those depend on.
+      //
+      // That distinction matters because the two have different fixes. "Build a
+      // lifecycle" was engineering; "apply an approved migration" is a decision.
+      // Declaring it here means such a candidate is still rejected BEFORE
+      // ranking, so enabling MuAPI can never produce a selection that then fails
+      // at dispatch — and an operator reading the refusal is told which of the
+      // two is actually blocking.
+      dispatch: DURABLE_MEDIA_JOB_STORE_AVAILABLE
+        ? { supported: true, representations: ['url'] }
+        : { supported: false, reason: DURABLE_MEDIA_JOB_STORE_BLOCKER },
     }))
 }
 

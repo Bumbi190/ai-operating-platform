@@ -140,10 +140,47 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          rule: doctrine scopes migration immutability to "already-applied"
    *          migrations, and this one has never been applied anywhere
    *          (docs/memory/2.0/stage-1/MEMORY_STAGE_1_FOUNDATION_PLAN.md:223).)
+   * 60 → 61: `media_job_lifecycle` (Media Runtime Phase 4 — durable persistence
+   *          for the async provider job lifecycle. Adds public.media_jobs and the
+   *          append-only public.media_job_reconciliations. UNKNOWN becomes a
+   *          durable, terminal state that survives a serverless restart, and it
+   *          may leave that state ONLY when a recorded, non-STILL_UNKNOWN
+   *          reconciliation already exists — enforced by media_jobs_guard, not
+   *          by convention, because an UNKNOWN represents money that may already
+   *          have been spent. Deliberately NOT public.runs: that table's
+   *          ambiguity guards apply only to rows bound to a workflow instance
+   *          with a human authorization_id, and its reaper REQUEUES an expired
+   *          dispatched row — a second paid generation. RLS is SELECT-only, with
+   *          no write policy at all, so an owner cannot clear an UNKNOWN by hand.
+   *          Additive only: two new tables, no existing table altered, no
+   *          backfill. Applied to production 2026-09-03 BEFORE this file was
+   *          committed, per the check-migrations.mjs ordering — the guard checks
+   *          file→ledger only, so committing first is the outage.
+   *          Two defects the SQL suite found in the applied file are pinned in
+   *          media-job-lifecycle-sql.test.ts as F4-01/F4-02 and are fixed by a
+   *          FORWARD migration, never by editing this one.)
+   * 61 → 62: `media_job_lifecycle_repairs` (Media Runtime Phase 4, forward-only
+   *          correction. Three CREATE OR REPLACE functions and two grants; no
+   *          table altered, no row rewritten, no backfill. Fixes F4-01 (the
+   *          assets ON DELETE SET NULL cascade was blocked by media_jobs_guard)
+   *          and F4-02 (the append-only ledger blocked its own ON DELETE
+   *          CASCADE, so projects with reconciliations could not be deleted),
+   *          and adds media_job_record_reconciliation() — the atomic ledger
+   *          INSERT + CAS transition that PostgREST cannot express from two
+   *          calls.
+   *          THE CASCADE EXEMPTIONS ARE REGRESSION-SENSITIVE. They require TWO
+   *          signals — pg_trigger_depth() > 1 AND the referenced parent already
+   *          gone — because an earlier draft used only the shape of the change,
+   *          which ordinary application SQL could reproduce. That rejected draft
+   *          is preserved as a permanent regression in
+   *          media-job-lifecycle-sql.test.ts. pg_trigger_depth() is NOT a
+   *          reusable security primitive; adding or reordering triggers on
+   *          media_jobs requires re-running that suite. Applied to production
+   *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 60', () => {
+  it('enforces exactly the expected number of migrations — currently 62', () => {
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(60)
+    expect(enforced).toBe(62)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

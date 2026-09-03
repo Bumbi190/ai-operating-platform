@@ -22,7 +22,19 @@ export interface RetryOpts {
   isPermanent?: (err: unknown) => boolean
 }
 
-function isPermanent(err: unknown): boolean {
+/**
+ * The default permanence rule: a clear client error (not 429) read out of the
+ * message text.
+ *
+ * EXPORTED so a call site can COMPOSE onto it instead of replacing it. Before
+ * this, `isPermanent: someRule` silently discarded the heuristic below, because
+ * the only way to add a rule was to supply a whole new predicate — see
+ * `stopIsNotRetryable()`, which falls back to `false` for everything it does not
+ * recognise. Composing is what a caller almost always means.
+ *
+ * The rule itself is unchanged.
+ */
+export function isPermanentByStatusText(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
   // Klara klientfel (ej 429) = permanenta → ingen mening att återförsöka.
   return /\b(400|401|403|404|409|422)\b/.test(m) && !/\b429\b/.test(m)
@@ -31,7 +43,7 @@ function isPermanent(err: unknown): boolean {
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOpts = {}): Promise<T> {
   const attempts = opts.attempts ?? 2
   const base     = opts.baseMs ?? 800
-  const permanent = opts.isPermanent ?? isPermanent
+  const permanent = opts.isPermanent ?? isPermanentByStatusText
   let lastErr: unknown
   for (let i = 0; i < attempts; i++) {
     try {

@@ -163,8 +163,16 @@ vi.mock('@/lib/media/asset/store', () => ({
     `https://supabase.example/storage/v1/object/public/${location.bucket}/${location.path}`,
 }))
 
-vi.mock('@/lib/media/retry', () => ({
-  // Pass-through wrapper — exercising the retry logic is retry.ts's own test surface.
+// SPREADS THE REAL MODULE, then overrides one export. A factory that listed only
+// `withRetry` used to be enough; it silently became a trap the moment anything on
+// this path imported a second export (`isPermanentByStatusText`, via the hero
+// call site's retry authority) — the mock answers "no such export" and the error
+// surfaces far away, as a hero failure with no obvious cause. Spreading the real
+// module means a new export never breaks this file again.
+vi.mock('@/lib/media/retry', async (orig) => ({
+  ...(await orig<typeof import('@/lib/media/retry')>()),
+  // Pass-through wrapper — exercising the retry logic is retry.ts's own test
+  // surface, and media-orchestration-retry-authority.test.ts drives it for real.
   withRetry: async <T,>(fn: () => Promise<T>) => fn(),
 }))
 

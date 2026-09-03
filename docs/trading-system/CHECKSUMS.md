@@ -48,6 +48,7 @@ baa8f819be69000dfc724858afde4249f4953fccc8fc84f34a73a36eeadb222a  book/final/Omn
 2eeb5708d5fb60ac9dda29827d81f89b36d51be661597553c755cd714c0fa106  specifications/risk/Omnira Trading System – Risk Engine Specification – Canonical v1.0.md
 64168d376ba9c9dafa8a82fdb97d6a974ee49454542593583828b06f6931f2cd  specifications/market-data/Omnira Trading System – Market Data & Contract Lifecycle – Canonical v1.0.md
 95cbd2dabe8e53a6d19cd1eb17137a10ab5a2dfac3229228c0b92fc0f16cadf4  specifications/market-data/Omnira Trading System – Contract Selection Reason Code – Canonical v1.0.md
+2c110543bcd1c351f9b68d6c67596a687a91cb613f718f5dcbf2a8943d2e643f  specifications/market-data/Omnira Trading System – Contract Selection Decision Materialisation – Canonical v1.0.md
 69e8198dd4525a6c015c7c44d77a70d8d6a2e10d0c1d58f4222893f3d67e4a39  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.2.md
 8a36a8e431addc2c4c021f767bdd9ebb5e74153621a427c5f9289e1621c19ecb  specifications/execution-provider/Omnira Trading System – Provider Connectivity Reason Codes – Canonical v1.0.md
 9f8dc9bd5791f3d35434352dc6c51db61f66b447b3519928963c9edc4645bfa7  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
@@ -83,12 +84,12 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 ```
 89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
 304d21e6e367dfe9e29f8422b45e270b80153fc398d8436aef918b6d4b18e68f  research/Provider Protocol och Session Integration – Design v0.1.md
-9f64da769478318945d5338567422a839a26b1365f72f278bb2377bd8bad1d89  reviews/Canonical Amendments v1.0.md
+67b2a725e4d08eb5092aebc8f3b593a62b557182e50e2334dedf80c6504209ef  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md
 f46786b298372768791dce2e413e2a74ea227200f6a4b2e83687bfc157361a45  reviews/Open Implementation Gates v1.0.md
 054e263e876c534d57f7b5be288c4c7bfed07ad833b2ecce6c6aa3c781cb8449  README.md
-096dcc1b5e84f0886e01af4d02d52126e68600735113a1db6576dd71971e5d7f  SOURCE_OF_TRUTH.md
+380dfb21a5dbdcc47a00eb2d399a79a5cb90abc1bc1e47325a6f4aa79c587bd9  SOURCE_OF_TRUTH.md
 ```
 
 ## Historiska original (.docx, oförändrade)

@@ -947,6 +947,131 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 
 ---
 
+## Beslut K — Materialiseringssemantik för ContractSelectionDecision
+
+**Stänger för C3B.1:** GATE-08C-3B CONTRACT-EVIDENCE SHAPE GAP, GATE-08C-3B
+EVIDENCE-EMPTY SEMANTICS GAP, GATE-08C-3B POLICY-VERSION GAP, GATE-08C-3B DECISION-ID
+OWNERSHIP GAP
+**Karaktär:** Ny kanonisk materialiseringssemantik. Ingen befintlig regel upphävs, inget
+befintligt fält byter innebörd, ingen befintlig kod ändras eller byter namn.
+
+Beslut I angav i §9 tio fält på ett `ContractSelectionDecision`. En stängningsrevision
+inför C3B.1 visade att tre av dem saknade **all** definition i kanon och kod:
+`evidence`-elementets typ, `policyVersion`, och frågan om en tom bevismängd är giltig.
+`decisionId` angavs som `string` utan ägarskap.
+
+Följden upprepade Beslut J:s mönster. GATE-08C-1 lät bli att materialisera ett beslut.
+GATE-08C-3A lät bli det igen. Beslut J stängde vokabulärluckan men uttalade uttryckligen
+att runtime förblev oimplementerad. En implementation hade tvingats **uppfinna** de tre
+semantikerna i TypeScript — alltså skriva kanon i kod.
+
+Beslut K stänger exakt de materialiseringsluckor som blockerar det rena värdeobjektet
+och dess materializer, och ingenting annat.
+
+**Canonical betydelse:**
+
+```
+materialisering
+  = att göra ett redan fattat kanoniskt val till ett oföränderligt historiskt värde
+
+≠ att välja kontrakt          (resolution gjorde det)
+≠ att spela in beslutet       (journal gör det, senare)
+≠ någon auktoritet att exekvera
+```
+
+### K1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Contract Selection Decision
+Materialisation – Canonical v1.0.md` skapad. Den låser:
+
+- **Tom bevismängd är giltig och fullständig.** `evidence: []` är den kanoniska formen
+  för ett kalenderbaserat val. Ingen providerobservation krävs, ingen provideruppslagning
+  får ske enbart för att fylla arrayen, och saknat bevis får aldrig orsaka vägran. Att
+  anropa en provider för att fylla `evidence` vore att göra bevis till utlösare, en
+  direkt inversion av Beslut J §4. För C3B.1 är icke-tom `evidence` förbjuden.
+- **`ContractEvidence` är en reserverad utvidgningspunkt.** Canonical v1.0 §9:s exempel —
+  front month-etikett, volym, open interest — är **exempel, inte ett datakontrakt**, och
+  görs därför inte till arter eller postformer. Runtime-representationen är
+  `ContractEvidence = never`, vilket gör icke-tomt bevis strukturellt omöjligt tills en
+  framtida kanonisk text vidgar typen prospektivt. Historiska beslut med `evidence: []`
+  förblir giltiga för alltid.
+- **`policyVersion` är exakt `market-data-contract-lifecycle-v1.0`.** Låst stavning. Den
+  identifierar valpolicyn ägd av Market Data & Contract Lifecycle Canonical v1.0, och är
+  varken `calendarVersion`, strategiversion, providerversion, applikationsversion eller
+  Git SHA.
+- **Materializern äger `policyVersion`.** Anroparen får inte lämna in den. En
+  anroparlämnad sträng skulle skapa en oenighetsyta där posten kan påstå policy X medan
+  policy Y kördes — värre än ingen post alls, eftersom den ser sann ut. Inga rörliga
+  alias, ingen policyuppslagning, ingen miljöuppslagning.
+- **`calendarVersion` förblir ett skilt faktum** och kopieras från resolutionen.
+  Anroparen lämnar ingen andra `calendarVersion`. Ingen av de två versionerna härleds ur
+  den andra. Ingen ny valideringsregel införs för `ContractCalendar`.
+- **`decisionId` blir `ContractSelectionDecisionId`**, en brandad identitet enligt
+  `ids.ts`-konventionen, semantiskt fortsatt en `string` enligt §9. Materializern myntar
+  den inte; anroparen lämnar in den. Inget `newId()`, ingen `randomUUID()`, ingen namn-
+  eller tidsstämpelhärledd identitet inuti materializern. Vem som till slut myntar den i
+  orkestreringslagret avgörs inte här.
+- **`decidedAt` är anroparlämnad.** Materializern läser ingen väggklocka. Detta följer
+  `Approval`-konventionen och håller resolvern klockfri enligt Canonical v1.0 §26.
+- **Endast framgång materialiseras.** Materializern tar emot enbart den lyckade
+  resolutionsvarianten och grenar inte på `RESOLVED`/`REFUSED`. Vägran sker före
+  materialisering. Därmed finns ingen vägransgren, inget felbeslut, ingen fel-`ReasonCode`
+  och ingen andra vägrantaxonomi. `NO_AUTHORITATIVE_COVERAGE` förblir lokal.
+- **Härledning framför parameter.** `root`, `resolvedContract`, `effectiveFrom`,
+  `effectiveTo` och `calendarVersion` härleds ur resolutionen; `policyVersion`, `evidence`
+  och `reasons` är låsta av materializern. Endast `resolution`, `decisionId` och
+  `decidedAt` är indata. Varje ytterligare parameter vore dubbel sanning eller
+  anroparstyrd kanonisk metadata.
+- **`reasons` är exakt `[ reason('CONTRACT_SELECTED_BY_CANONICAL_CALENDAR') ]`** och
+  lämnas inte in av anroparen.
+- **`effectiveTo` är ändlig.** Resolutionens värde används oförändrat. C3B.1 får aldrig
+  uppfinna `null`; den allmänna innebörden av `effectiveTo === null` förblir reserverad.
+- **Oföränderlighet med `kopiera → frys`.** Ingen anropar-ägd array fryses på plats, och
+  inget anroparobjekt får senare mutera ett materialiserat beslut.
+- **Resolvern förblir ren.** `resolveContractAt` är fortsatt den enda
+  kontraktsvalsresolvern, och `contract-calendar/` får inte äga `decisionId`, `decidedAt`,
+  `Reason`, `ReasonCode`, journal, `newId`, klocka, provider eller policyversionskonstant.
+- **Materialisering är ett eget lager** och placeras inte i `contract-calendar/`.
+  Föredragen framtida gräns är `apps/web/lib/trading/contract-selection/`.
+
+### K2 — Vad Beslut K INTE innebär
+
+GATE-08 flyttas **inte**. Beslut K stänger materialiseringssemantik, inte gaten.
+
+C3B.1-runtime är **inte** implementerad. Beslut K ändrar ingen TypeScript-fil. Inget
+`ContractSelectionDecision`, ingen `ContractSelectionDecisionId`, ingen materializer och
+ingen beslutslagring existerar i kod.
+
+`GATE-08C-3B DECISION-JOURNAL VOCABULARY GAP` är **öppen och stängs inte här**.
+`EVENT_TYPES` är en avsiktligt sluten vokabulär utan medlem för kontraktsval, och
+`replay/events.ts` avstod uttryckligen från att vidga den på eget initiativ. Beslut K
+lägger inte till någon händelsetyp och rör varken `events.ts`, `replay/events.ts` eller
+journallagring. Luckan blockerar C3B.2, inte C3B.1, och kräver en senare separat ruling.
+
+`GATE-08C-3B NONEMPTY-EVIDENCE VOCABULARY GAP` är **öppen och uppskjuten**, och blockerar
+inte C3B.1.
+
+Replayinvarianten är oförändrad och **implementeras inte** här: inspelat beslut läses och
+räknas aldrig om; utan inspelat beslut krävs explicit pinnad historisk kalenderversion;
+utan pinning `REFUSE`. Lagringsmekanismen tillhör C3B.2 och C3B.3.
+
+Följande implementationsluckor är oberörda och kvarstår:
+`GATE-08C-3A SOURCE-RESULT-SHAPE GAP` (öppen),
+`GATE-08C-2A DST-BOUNDARY GAP` (öppen, fail-closed),
+`GATE-08C-2B UNEXPECTED-MINUTE GAP` (öppen, fail-closed) och
+`GATE-08C-2B VOLUME POLICY` (härledd, inte kanoniserad).
+
+Market Data & Contract Lifecycle Canonical v1.0 skrivs **inte** om, och Contract
+Selection Reason Code Canonical v1.0 skrivs **inte** om. Beslut K är ett fristående
+tillägg under deras låsta text, inte en retroaktiv ändring av den.
+
+GATE-01, GATE-02, GATE-03, GATE-04, GATE-06, GATE-07, GATE-09, GATE-12, GATE-13, GATE-14
+och GATE-17 berörs inte.
+
+Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -986,3 +1111,6 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 | `specifications/market-data/…Contract Selection Reason Code – Canonical v1.0.md` | J1 — ny, en positiv kontraktsvalskod |
 | `specifications/README.md` | J1 — indexrad |
 | `SOURCE_OF_TRUTH.md` | J1 — kanonisk källa, REASON-CODE GAP stängd |
+| `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | K1 — ny, materialiseringssemantik för beslut |
+| `specifications/README.md` | K1 — indexrad |
+| `SOURCE_OF_TRUTH.md` | K1 — kanonisk källa, materialiseringsluckor stängda för C3B.1 |

@@ -19,6 +19,7 @@
 | Arkitektur | `specifications/architecture/Omnira Trading System – Systemarkitektur v0.3.md` | **v0.3** | Fas 0-baseline. Canonical för auktoritetskedjan (P5), execution safety-invarianten §24.1, vald första provider §22.2 och adapterkontraktet §22.3 |
 | Execution Provider Adapter | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.2.md` | **Canonical v1.2** | Låst, **självbärande** provider-neutralt Level 1-kontrakt. Exakt 15 asynkrona metoder, noll order-metoder (Beslut G) |
 | Kontraktsvalskod | `specifications/market-data/…Contract Selection Reason Code – Canonical v1.0.md` | **Canonical v1.0** | Låst vokabulär, prospektiv verkan. En positiv kontraktsvalskod under Market Data Canonical §9–§10 (Beslut J) |
+| Beslutsmaterialisering | `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0** | Låst materialiseringssemantik för C3B.1, prospektiv verkan. Tom-endast `evidence`, låst `policyVersion` (Beslut K) |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -221,6 +222,34 @@ stänger vokabulärluckan, inte gaten: registret känner koden, men ingen runtim
 den och inget `ContractSelectionDecision` existerar. Övriga implementationsluckor —
 `GATE-08C-3A SOURCE-RESULT-SHAPE GAP`, `GATE-08C-2A DST-BOUNDARY GAP` och
 `GATE-08C-2B UNEXPECTED-MINUTE GAP` — kvarstår.
+
+**Materialiseringsluckor stängda 2026-09-03:** `GATE-08C-3B CONTRACT-EVIDENCE SHAPE GAP`,
+`GATE-08C-3B EVIDENCE-EMPTY SEMANTICS GAP`, `GATE-08C-3B POLICY-VERSION GAP` och
+`GATE-08C-3B DECISION-ID OWNERSHIP GAP` genom Beslut K.
+`specifications/market-data/Omnira Trading System – Contract Selection Decision
+Materialisation – Canonical v1.0.md` är kanonisk auktoritet för hur ett
+`ContractSelectionDecision` materialiseras: tom-endast `evidence`, `ContractEvidence`
+som reserverad utvidgningspunkt, den låsta policyversionen
+`market-data-contract-lifecycle-v1.0`, materializerns ägarskap av den, anroparlämnade
+`decisionId` och `decidedAt`, samt materialisering enbart ur en lyckad resolution.
+
+**Precedens inom kontraktsval:**
+
+- Market Data & Contract Lifecycle Canonical v1.0 äger val-, kalender-, resolutions- och
+  replaypolicy.
+- Contract Selection Reason Code Canonical v1.0 äger den positiva orsakssemantiken.
+- Contract Selection Decision Materialisation Canonical v1.0 äger C3B.1:s
+  värdeobjekts- och materialiseringssemantik.
+- Runtime i TypeScript är **mekanisk transkription** av dessa tre, aldrig en egen källa.
+
+**GATE-08 flyttas inte av Beslut K.** Gaten är fortsatt **delvis stängd**. Beslut K
+stänger materialiseringssemantik, inte gaten. **C3B-runtime är inte implementerad:**
+inget `ContractSelectionDecision`, ingen `ContractSelectionDecisionId`, ingen
+materializer och ingen beslutslagring existerar i kod.
+`GATE-08C-3B DECISION-JOURNAL VOCABULARY GAP` (blockerar C3B.2) och
+`GATE-08C-3B NONEMPTY-EVIDENCE VOCABULARY GAP` (uppskjuten) kvarstår öppna, liksom
+`GATE-08C-3A SOURCE-RESULT-SHAPE GAP`, `GATE-08C-2A DST-BOUNDARY GAP` och
+`GATE-08C-2B UNEXPECTED-MINUTE GAP`.
 
 ---
 

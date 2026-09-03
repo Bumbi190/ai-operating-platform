@@ -52,6 +52,42 @@ export type Provenance =
 /** How the adapter declares a check may be answered. */
 export type CheckKind = 'ATTESTABLE' | 'OBSERVED_ONLY' | 'READ_ONLY_EXECUTABLE'
 
+/**
+ * HOW a check could potentially be answered — never whether it HAS been.
+ *
+ * Purely descriptive. Reachability and evidence are separate axes and must stay
+ * that way: `EXECUTABLE` says an action exists, not that it ran; and
+ * `MANUAL_PRIVILEGED_VERIFICATION` says the automated route is closed on
+ * purpose, not that anyone performed the manual one. Nothing in this type can
+ * make an unanswered check pass.
+ */
+export type Reachability =
+  /** An executable READ_ONLY action is registered and answers this check. */
+  | 'EXECUTABLE'
+  /** The human attestation route is a permitted provenance for it. */
+  | 'ATTESTABLE'
+  /** Automation deliberately blocked by security policy; verified out-of-band. */
+  | 'MANUAL_PRIVILEGED_VERIFICATION'
+  /** No action, no attestation route, no recorded policy — a genuine gap. */
+  | 'UNREACHABLE'
+
+/** Compact, non-secret justification for a reachability value. */
+export type ReachabilityReason =
+  | 'EXECUTABLE_ACTION_AVAILABLE'
+  | 'ATTESTATION_ALLOWED'
+  | 'BROAD_CREDENTIAL_PROHIBITED'
+  | 'NO_VALID_EVIDENCE_PATH'
+
+export interface ReachabilitySummary {
+  executable: number
+  attestable: number
+  manual_privileged_verification: number
+  unreachable: number
+  /** Ids per category, so a reader can act without re-deriving them. */
+  manual_privileged_check_keys: string[]
+  unreachable_check_keys: string[]
+}
+
 export type HardGateStatus = 'PASS' | 'FAIL' | 'UNKNOWN' | 'NOT_EVALUATED'
 
 /** The four bundle-level approval categories the 19 state gates roll up into. */
@@ -98,6 +134,9 @@ export interface CheckProjection {
   check_key: string
   state: string
   kind: CheckKind
+  /** How it COULD be answered. Independent of `status`. */
+  reachability: Reachability
+  reachability_reason: ReachabilityReason
   status: CheckStatus
   provenance: Provenance
   required: boolean
@@ -238,6 +277,8 @@ export interface MonthReleaseBundle {
   cost: CostSection
 
   checks: CheckProjection[]
+  /** Diagnostic only. Readiness is computed without consulting this. */
+  verification_reachability: ReachabilitySummary
   hard_gates: HardGateProjection[]
 
   warnings: BundleWarning[]

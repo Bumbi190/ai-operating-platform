@@ -23,6 +23,7 @@
 
 import rawFamiljeStundenMonthlyReleaseV1 from './familje-stunden.monthly-release.v1.json'
 import rawOmniraProbeValidationV1 from './omnira.probe-validation.v1.json'
+import rawOmniraReleaseGateProofV1 from './omnira.release-gate-proof.v1.json'
 import { computeDefHash, parseWorkflowSpec } from '../spec'
 import type { WorkflowSpec } from '../types'
 
@@ -81,6 +82,18 @@ const VENDORED: VendorEntry[] = [
     source_sha256: '713ba6e3a06d432e46d6d129de2680cc48426541742f7b1a188f0e6b663dad86',
     provenance: 'authored_here',
   },
+  {
+    // Omnira's release-gate verification. Also `authored_here`, and SEPARATE
+    // from the capability test for a reason the two contracts make unavoidable:
+    // this instance key IS a canonical YYYY-MM month, while
+    // `omnira.probe-validation` states in its own adapter that its key is not a
+    // month and that it has no calendar. One definition cannot mean both.
+    raw: rawOmniraReleaseGateProofV1,
+    source_repo: 'ai-operating-platform',
+    source_path: 'apps/web/lib/workflows/definitions/omnira.release-gate-proof.v1.json',
+    source_sha256: 'e7379aba12603da1277473cc32b50e5b2b677e0e8db8e35da5e9f8e3472f75df',
+    provenance: 'authored_here',
+  },
 ]
 
 let cache: VendoredDefinition[] | null = null
@@ -125,3 +138,4 @@ export function findVendoredDefinition(defKey: string, version: number): Vendore
 }
 
 export const FAMILJE_STUNDEN_MONTHLY_RELEASE = 'familje-stunden.monthly-release'
+export const OMNIRA_RELEASE_GATE_PROOF = 'omnira.release-gate-proof'

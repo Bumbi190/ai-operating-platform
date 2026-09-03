@@ -103,10 +103,30 @@ export const ACTION_REGISTRY = {
    * `month_releases` row counts as released, and no other granted path
    * distinguishes "no row" from "row, already passed".
    */
+  /**
+   * Declared in TWO definitions, with ONE classification — the shape
+   * `probe_anonymous_protected_access` already has.
+   *
+   * Familje-Stunden asks for it at `backend_release_gate`, where it is the
+   * release safety check. `omnira.release-gate-proof` asks for the same
+   * observation at `proof`, where it exists to establish one thing nothing else
+   * can: that the deployed runtime holds a `FAMILJE_STUNDEN_VERIFY_KEY` the
+   * remote actually accepts. A local check proves only that a string is set, and
+   * the release placement is nine human gates away.
+   *
+   * The proof definition is an EXECUTOR HOST and nothing more: `authored_here`,
+   * owning no product process, and unable to advance any Familje-Stunden state.
+   * Its instance key IS the month — which is precisely why it is its own
+   * definition rather than a second placement on `omnira.probe-validation`,
+   * whose adapter states that its key is not a month.
+   */
   observe_release_gate: {
     action_class: 'READ_ONLY',
     executor_family: 'read_only_observation',
-    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'backend_release_gate' }],
+    placements: [
+      { def_key: 'familje-stunden.monthly-release', state: 'backend_release_gate' },
+      { def_key: 'omnira.release-gate-proof',       state: 'proof' },
+    ],
     description: 'Read the authoritative month_releases row presence and release_at.',
   },
 

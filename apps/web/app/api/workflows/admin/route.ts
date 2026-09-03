@@ -51,6 +51,7 @@ const ACTIONS = ['register_definition', 'create_instance', 'schedule_readonly_ev
 const REGISTERABLE = [
   'familje-stunden.monthly-release',   // vendored_upstream — the product process
   'omnira.probe-validation',           // authored_here — Omnira's capability test
+  'omnira.release-gate-proof',         // authored_here — Omnira's release-gate proof
 ] as const
 
 type RegisterableDefKey = (typeof REGISTERABLE)[number]

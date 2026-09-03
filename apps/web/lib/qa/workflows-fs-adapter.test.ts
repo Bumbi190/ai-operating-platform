@@ -331,10 +331,12 @@ describe('adapter registration', () => {
   it('is reached through the definition, not by name', () => {
     expect(findAdapter(FAMILJE_STUNDEN_MONTHLY_RELEASE)).toBe(familjeStundenAdapter)
     expect(findAdapter('some.other.workflow')).toBeNull()
-    // PR9h registered a second adapter for Omnira's validation workflow. The
-    // property is that each is reached ONLY through its own def_key.
+    // PR9h registered a second adapter; Phase 1B-2 a third, for Omnira's
+    // release-gate proof. The property is not the count — it is that each is
+    // reached ONLY through its own def_key, which the two assertions above pin.
     expect(registeredAdapters().map(a => a.defKey).sort())
-      .toEqual(['familje-stunden.monthly-release', 'omnira.probe-validation'])
+      .toEqual(['familje-stunden.monthly-release', 'omnira.probe-validation',
+                'omnira.release-gate-proof'])
   })
 
   it('exposes no execute, write or upload capability', () => {

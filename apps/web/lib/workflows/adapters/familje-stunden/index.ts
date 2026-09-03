@@ -37,7 +37,7 @@ import {
   notPass, pass, type VerificationEvidence, type WorkflowAdapter,
 } from '../types'
 import { FAMILJE_STUNDEN_MONTHLY_RELEASE } from '@/lib/workflows/definitions'
-import { InvalidMonthKeyError, computeReleaseInstant } from './instant'
+import { InvalidMonthKeyError, computeReleaseInstant, isCanonicalMonthKey } from './instant'
 import { FAMILJE_STUNDEN_CHECKS } from './checks'
 import { checkConsumersInSync, readAllConsumers, verifyDeployedSource } from './deployed-source'
 import { verifyDeploymentChain, verifyReleaseDeployment, configuredReleasePr } from './deployment'
@@ -232,6 +232,183 @@ function blockedOnCredential(check_key: string, expected: string, now: string): 
       required_grant: 'EXECUTE on the three release/access RPCs for a scoped read-only role',
       note: 'a privileged full-access key is deliberately not an option for Omnira',
     },
+  })
+}
+
+/** The one endpoint this adapter may ask about the release gate. */
+const RELEASE_GATE_PATH = '/functions/v1/observe-release-gate'
+
+/** Both mean the scoped verification credential was refused. Neither may pass. */
+const AUTH_REFUSED: ReadonlySet<number> = new Set([401, 403])
+
+const RELEASE_GATE_EXPECTED =
+  'the authoritative month_releases row for the month, as reported by Familje-Stunden'
+
+/**
+ * Observe the authoritative release-gate row.
+ *
+ * ── WHY THIS EXISTS AND WHY IT IS NOT A LOCAL COMPUTATION ───────────────────
+ * The gate is FAIL-OPEN: a month with no `month_releases` row counts as
+ * released. Absence is therefore the dangerous state, and no other reachable
+ * answer distinguishes it — `is_month_released` is service_role-only and would
+ * return TRUE both for "no row" and for "row, already passed". So Omnira asks
+ * Familje-Stunden, and Familje-Stunden answers.
+ *
+ * ── WHAT THIS FUNCTION REFUSES TO DO ────────────────────────────────────────
+ * It never decides access, never computes a gate, never converts a failure into
+ * "no row". A transport error, a refusal or an unreadable body are all reported
+ * as NOT-PASS with a kind that keeps them distinguishable, because the consumer
+ * maps an authoritative absence to NO but uncertainty to UNKNOWN, and those
+ * block release for different reasons.
+ *
+ * ── THE TARGET IS CONFIGURATION ─────────────────────────────────────────────
+ * The base URL comes from `FAMILJE_STUNDEN_SUPABASE_URL` and the path is the
+ * module constant above. `monthKey` travels in the JSON body only; it can never
+ * reach the host, the scheme or the path, so no caller can redirect this
+ * request. The credential is read from the environment at call time and appears
+ * in exactly one place: the Authorization header of this request.
+ */
+export async function observeReleaseGate(
+  monthKey: string,
+  now: string,
+  beforeAttempt?: BeforeProbeAttempt,
+): Promise<VerificationEvidence> {
+  const key = 'release_gate_exists'
+  const { baseUrl, verifyKey } = config()
+
+  // Validate locally. A malformed key must not become a production request just
+  // because the remote would also reject it.
+  if (!isCanonicalMonthKey(monthKey)) {
+    return notPass(key, 'malformed_response', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: 'the month key is not canonical YYYY-MM; no request was sent',
+      authoritative_system: null,
+      observed_at: now,
+      detail: { reason: 'INVALID_MONTH_KEY', month_key: monthKey },
+    })
+  }
+
+  // Missing configuration costs nothing: no DNS, no connection.
+  if (!baseUrl || !verifyKey) {
+    return blockedOnCredential(key, RELEASE_GATE_EXPECTED, now)
+  }
+
+  if (beforeAttempt) await beforeAttempt()
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl}${RELEASE_GATE_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${verifyKey}`,
+      },
+      body: JSON.stringify({ month_key: monthKey }),
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === 'AbortError'
+    // Never echo the error object: it can carry the request, and the request
+    // carries the credential.
+    return notPass(key, aborted ? 'network_timeout' : 'service_unavailable', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: aborted ? 'the request timed out' : 'the request did not complete',
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: aborted ? 'TRANSPORT_TIMEOUT' : 'TRANSPORT_FAILURE', month_key: monthKey },
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+
+  // Membership rather than `401 || 403`: the anonymous probe below has a guard
+  // forbidding that exact widening in its own status handling, and this refusal
+  // is a different thing entirely — there, 401 is the expected PASS; here, both
+  // codes mean our credential was refused and neither may pass.
+  if (AUTH_REFUSED.has(res.status)) {
+    return notPass(key, 'unexpected_status', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: `Familje-Stunden refused the verification credential (${res.status})`,
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: 'AUTH_REJECTED', status: res.status, month_key: monthKey },
+    })
+  }
+
+  if (res.status !== 200) {
+    return notPass(key, res.status >= 500 ? 'service_unavailable' : 'unexpected_status', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: `Familje-Stunden answered ${res.status}`,
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: 'REMOTE_SERVER_FAILURE', status: res.status, month_key: monthKey },
+    })
+  }
+
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch {
+    return notPass(key, 'malformed_response', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: 'the response body was not JSON',
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: 'MALFORMED_RESPONSE', month_key: monthKey },
+    })
+  }
+
+  const b = (body ?? {}) as Record<string, unknown>
+  const present = b.row_present
+  const releaseAt = b.release_at
+
+  // The answer must be about the month we asked about. A filter regression
+  // upstream must not be able to answer with a different month's date.
+  if (b.month_key !== monthKey || typeof present !== 'boolean') {
+    return notPass(key, 'malformed_response', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: 'the response did not carry a boolean row_present for the requested month',
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: 'MALFORMED_RESPONSE', month_key: monthKey },
+    })
+  }
+
+  if (!present) {
+    // A real authoritative negative, not an inability to check. Because the gate
+    // is fail-open, this is the finding that means "the month is unprotected".
+    return notPass(key, 'authoritative_fail', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: `no month_releases row exists for ${monthKey}; the fail-open gate offers no protection`,
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { row_present: false, release_at: null, month_key: monthKey },
+    })
+  }
+
+  if (typeof releaseAt !== 'string' || Number.isNaN(Date.parse(releaseAt))) {
+    return notPass(key, 'malformed_response', {
+      expected: RELEASE_GATE_EXPECTED,
+      observed: 'the row exists but its release_at is not a parseable instant',
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+      observed_at: now,
+      detail: { reason: 'MALFORMED_RELEASE_AT', row_present: true, month_key: monthKey },
+    })
+  }
+
+  // The row exists and carries a readable instant. Whether that instant is the
+  // RIGHT one is a separate comparison, made by the consumer against the
+  // independently computed expected instant — deliberately not decided here, so
+  // neither value can quietly overwrite the other.
+  return pass(key, {
+    expected: RELEASE_GATE_EXPECTED,
+    observed: `month_releases row exists for ${monthKey} with release_at ${releaseAt}`,
+    authoritative_system: FAMILJE_STUNDEN_SYSTEM,
+    observed_at: now,
+    detail: { row_present: true, release_at: releaseAt, month_key: monthKey },
   })
 }
 

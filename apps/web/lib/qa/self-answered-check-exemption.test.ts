@@ -413,12 +413,13 @@ describe('no other gate moved', () => {
     // Not a prohibition on ever mapping a write, but a deliberate stop: the
     // exemption would then apply to a write, and that deserves its own review
     // rather than arriving as a silent consequence of an unrelated edit.
-    for (const kind of ['compute_release_instant', PROBE_ACTION]) {
+    for (const kind of ['compute_release_instant', PROBE_ACTION, 'observe_release_gate']) {
       expect(checkAnsweredBy(kind)).not.toBeNull()
       expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class).toBe('READ_ONLY')
     }
     const mapped = Object.keys(ACTION_REGISTRY).filter(k => checkAnsweredBy(k) !== null)
-    expect(mapped.sort()).toEqual(['compute_release_instant', PROBE_ACTION].sort())
+    expect(mapped.sort()).toEqual(
+      ['compute_release_instant', PROBE_ACTION, 'observe_release_gate'].sort())
   })
 
   it('no write-capable action became executable', async () => {

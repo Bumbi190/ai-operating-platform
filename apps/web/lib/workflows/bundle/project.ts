@@ -14,12 +14,22 @@
  * ── The fail-open invariant ─────────────────────────────────────────────────
  * Familje-Stundens `month_releases` gate is fail-open: a month with no row reads
  * as RELEASED. This projection therefore refuses to guess whether that row
- * exists. No declared check answers it today, and this module deliberately does
- * not read Familje-Stundens database, so the honest projection is `UNKNOWN` —
- * which blocks release readiness exactly as `NO` does.
+ * exists.
  *
- * Inferring presence from upload or deploy evidence would be the precise mistake
- * the invariant guards against: those succeed whether or not the row is there.
+ * Phase 1B gave it a real answer: `release_gate_exists`, recorded by the
+ * `observe_release_gate` action. This module still performs no I/O — it reads
+ * that RECORDED evidence and nothing else. With no such row recorded the honest
+ * projection remains `UNKNOWN`, which blocks release readiness exactly as `NO`
+ * does.
+ *
+ * Inferring presence from upload, deploy, manifest or probe evidence would be
+ * the precise mistake the invariant guards against: every one of those succeeds
+ * whether or not the row is there.
+ *
+ * Three things must all hold before the invariant is satisfied — the row is
+ * present, its instant equals the independently computed one, and the
+ * observation is recent. Each is reported separately so an operator can see
+ * which one is holding the release.
  */
 
 import type {
@@ -28,8 +38,8 @@ import type {
 import type { AttestableCheck } from '../attestation'
 import type {
   ApprovalCategory, ApprovalProjection, BundleWarning, CheckKind,
-  CheckProjection, CheckStatus, CostSection, HardGateProjection,
-  MonthReleaseBundle, ProductReadiness, Provenance, SectionSummary,
+  CheckProjection, CheckStatus, CostSection, Freshness, HardGateProjection,
+  MonthReleaseBundle, ProductReadiness, Provenance, ReleaseAtMatch, SectionSummary,
   TechnicalSection, Tri,
 } from './types'
 
@@ -287,12 +297,12 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
     }]
   })) as Record<ApprovalCategory, ApprovalProjection>
 
-  // ── Technical section, including the fail-open invariant ───────────────────
+  // ── The fail-open invariant, from recorded observation only ────────────────
+  const gate = projectReleaseGate(input.evidence, now)
+
   const technical: TechnicalSection = {
     ...summarise(checks, [...TECHNICAL_STATES]),
-    // Never inferred. See the module header.
-    release_gate_row_present: 'UNKNOWN',
-    release_gate_evidence_source: null,
+    ...gate,
     release_instant_computed: triFor(checks, 'release_instant_computed'),
     manifest_in_sync: triFor(checks, 'shared_manifest_consumers_in_sync'),
     anonymous_access_denied: triFor(checks, 'anonymous_protected_access_denied'),
@@ -305,14 +315,47 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
     severity: BundleWarning['severity'] = 'critical',
   ): BundleWarning => ({ code, severity, message, subject, blocking: true })
 
-  if (technical.release_gate_row_present !== 'YES') {
+  // Only YES + MATCH + fresh may satisfy this invariant. Each failure mode is a
+  // separate blocker so the operator sees WHICH one is holding the release.
+  if (technical.release_gate_row_present === 'NO') {
     warnings.push(blocker(
       'RELEASE_GATE_ROW_MISSING',
-      'month_releases row presence is ' + technical.release_gate_row_present +
-      '. The Familje-Stunden release gate is fail-open, so an absent row would ' +
-      'publish the month immediately. No declared check answers this today.',
+      'Familje-Stunden reports NO month_releases row for this month. The gate is ' +
+      'fail-open, so the month is unprotected and would publish immediately.',
       'backend_release_gate',
     ))
+  } else if (technical.release_gate_row_present === 'UNKNOWN') {
+    warnings.push(blocker(
+      'RELEASE_GATE_ROW_UNKNOWN',
+      'The month_releases row could not be observed. Because the gate is fail-open, ' +
+      'not knowing is treated exactly as an absent row.',
+      'backend_release_gate',
+    ))
+  } else {
+    if (technical.release_at_match === 'MISMATCH') {
+      warnings.push(blocker(
+        'RELEASE_AT_MISMATCH',
+        `The authoritative release_at (${technical.release_gate_release_at}) differs from ` +
+        `the computed instant (${technical.expected_release_at}). The month would unlock ` +
+        'at a different moment than intended.',
+        'backend_release_gate',
+      ))
+    } else if (technical.release_at_match === 'UNKNOWN') {
+      warnings.push(blocker(
+        'RELEASE_AT_UNVERIFIED',
+        'The observed and computed release instants could not be compared.',
+        'backend_release_gate', 'high',
+      ))
+    }
+    if (technical.release_gate_freshness !== 'fresh') {
+      warnings.push(blocker(
+        'RELEASE_GATE_EVIDENCE_STALE',
+        `The release-gate observation is ${technical.release_gate_freshness}. ` +
+        'month_releases is a mutable production row, so an old look cannot satisfy ' +
+        'the invariant at release time.',
+        'backend_release_gate', 'high',
+      ))
+    }
   }
 
   for (const g of hard_gates) {
@@ -394,6 +437,103 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
       warnings: warnings.filter(w => !w.blocking && w.severity !== 'info'),
       informational: warnings.filter(w => !w.blocking && w.severity === 'info'),
     },
+  }
+}
+
+/**
+ * How old a release-gate observation may be and still satisfy the invariant.
+ *
+ * Deliberately conservative and deliberately small in scope. `month_releases` is
+ * a mutable production row: it can be edited by a migration at any time, and an
+ * observation only ever describes the moment it was made. Twenty-four hours
+ * keeps a human-paced monthly release workable while ensuring a release decision
+ * never rests on a week-old look at the one row that decides publication.
+ *
+ * This is not a global evidence lifecycle. It applies to this check alone.
+ */
+export const RELEASE_GATE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/** Parse to an epoch, or null. Never throws, never guesses. */
+function instantOf(value: unknown): number | null {
+  if (typeof value !== 'string') return null
+  const t = Date.parse(value)
+  return Number.isNaN(t) ? null : t
+}
+
+/**
+ * Project the release-gate invariant from RECORDED evidence only.
+ *
+ * Reads `release_gate_exists` (the observation) and `release_instant_computed`
+ * (the independent computation) and compares them. Neither is ever written over
+ * the other: they are two separate facts, and the bundle reports whether they
+ * agree.
+ */
+function projectReleaseGate(
+  evidence: readonly WorkflowEvidence[], now: string,
+): Pick<TechnicalSection,
+  'release_gate_row_present' | 'release_gate_evidence_source' | 'release_gate_release_at' |
+  'expected_release_at' | 'release_at_match' | 'release_gate_freshness' | 'release_gate_observed_at'> {
+
+  const gateRows = evidence
+    .filter(e => e.check_key === 'release_gate_exists')
+    .sort(newestFirst)
+  const newest = gateRows[0]
+
+  const expectedRow = evidence
+    .filter(e => e.check_key === 'release_instant_computed' && e.result === 'pass')
+    .sort(newestFirst)[0]
+  const expected = typeof expectedRow?.detail?.utc === 'string'
+    ? (expectedRow.detail.utc as string)
+    : null
+
+  if (!newest) {
+    return {
+      release_gate_row_present: 'UNKNOWN',
+      release_gate_evidence_source: null,
+      release_gate_release_at: null,
+      expected_release_at: expected,
+      release_at_match: 'UNKNOWN',
+      release_gate_freshness: 'unknown',
+      release_gate_observed_at: null,
+    }
+  }
+
+  // pass = the row exists. fail = it authoritatively does NOT. Anything else
+  // (blocked/error) means we could not establish truth, which is UNKNOWN and
+  // must never collapse into NO.
+  const present: Tri =
+    newest.result === 'pass' ? 'YES'
+    : newest.result === 'fail' ? 'NO'
+    : 'UNKNOWN'
+
+  const observedAt = newest.observed_at ?? newest.recorded_at
+  const age = instantOf(observedAt)
+  const nowMs = instantOf(now)
+  const freshness: Freshness =
+    age === null || nowMs === null ? 'unknown'
+    : (nowMs - age) <= RELEASE_GATE_MAX_AGE_MS ? 'fresh'
+    : 'stale'
+
+  const observedAtInstant = present === 'YES'
+    ? (typeof newest.detail?.release_at === 'string' ? (newest.detail.release_at as string) : null)
+    : null
+
+  // Compared BY INSTANT. Equivalent serialisations of the same moment match.
+  let match: ReleaseAtMatch = 'UNKNOWN'
+  if (present === 'YES') {
+    const a = instantOf(observedAtInstant)
+    const b = instantOf(expected)
+    if (a !== null && b !== null) match = a === b ? 'MATCH' : 'MISMATCH'
+  }
+
+  return {
+    release_gate_row_present: present,
+    release_gate_evidence_source: `${newest.state}:release_gate_exists`,
+    release_gate_release_at: observedAtInstant,
+    expected_release_at: expected,
+    release_at_match: match,
+    release_gate_freshness: freshness,
+    release_gate_observed_at: observedAt,
   }
 }
 

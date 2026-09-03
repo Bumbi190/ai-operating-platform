@@ -27,7 +27,7 @@ describe('the execution surface is closed', () => {
   it('exactly two kinds are executable today — both READ_ONLY', () => {
     // Raised one kind at a time: PR9e compute_release_instant, PR9h the probe.
     expect(executableActionKinds()).toEqual([
-      'compute_release_instant', 'probe_anonymous_protected_access',
+      'compute_release_instant', 'observe_release_gate', 'probe_anonymous_protected_access',
     ])
   })
 

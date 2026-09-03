@@ -42,6 +42,7 @@ export interface DiscoveredAction {
 const ANSWERS_CHECK: ReadonlyMap<string, string> = new Map([
   ['compute_release_instant', 'release_instant_computed'],
   ['probe_anonymous_protected_access', 'anonymous_protected_access_denied'],
+  ['observe_release_gate', 'release_gate_exists'],
 ])
 
 /**

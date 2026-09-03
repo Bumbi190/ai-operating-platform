@@ -146,17 +146,49 @@ export interface SectionSummary {
   states: string[]
 }
 
+/**
+ * Do the authoritative and the computed release instants agree?
+ *
+ * Compared BY INSTANT, never by text: `2026-09-30T22:00:00Z` and
+ * `2026-09-30T22:00:00+00:00` are the same moment and must match. Anything
+ * unparseable is UNKNOWN — a guess here would be a guess about when a month
+ * becomes public.
+ */
+export type ReleaseAtMatch = 'MATCH' | 'MISMATCH' | 'UNKNOWN'
+
+/**
+ * Time-based freshness for the release-gate observation only.
+ *
+ * The existing `EvidenceBinding` ('current' | 'stale' | 'unbound') answers a
+ * different question — whether evidence still refers to the same target — and a
+ * `month_releases` row can be edited without any target hash moving. So this one
+ * check carries an age rule as well. It is deliberately narrow: not a global
+ * evidence lifecycle, just the invariant whose staleness is dangerous.
+ */
+export type Freshness = 'fresh' | 'stale' | 'unknown'
+
 export interface TechnicalSection extends SectionSummary {
   /**
    * The fail-open invariant, tri-state and never inferred.
    *
-   * `UNKNOWN` is the honest answer today: no declared check answers it, and
-   * `month_releases` lives in Familje-Stundens database, which this projection
-   * deliberately does not read. Inferring it from upload or deploy evidence
-   * would be exactly the silent assumption the invariant exists to prevent.
+   * Now answered by the `release_gate_exists` observation when Omnira has
+   * recorded one. Absent evidence stays UNKNOWN — it is never derived from
+   * upload, deploy, manifest or probe evidence, all of which succeed whether or
+   * not the row exists.
    */
   release_gate_row_present: Tri
+  /** Which recorded check answered it, for the audit trail. */
   release_gate_evidence_source: string | null
+  /** The instant Familje-Stunden reported. Null when absent or unknown. */
+  release_gate_release_at: string | null
+  /** The instant Omnira computed independently, from `release_instant_computed`. */
+  expected_release_at: string | null
+  /** Their comparison. Neither value is ever written over the other. */
+  release_at_match: ReleaseAtMatch
+  /** Age of the release-gate observation against the rule below. */
+  release_gate_freshness: Freshness
+  release_gate_observed_at: string | null
+
   release_instant_computed: Tri
   manifest_in_sync: Tri
   anonymous_access_denied: Tri

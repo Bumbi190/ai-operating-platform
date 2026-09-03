@@ -300,7 +300,7 @@ describe('PROBE-S2 · a mid-probe refusal never enters the failure model', () =>
     // `Record<ExecutableReadOnlyActionKind, …>`, so the lane is closed by the
     // type, not by convention.
     expect(executableActionKinds().sort())
-      .toEqual(['compute_release_instant', 'probe_anonymous_protected_access'])
+      .toEqual(['compute_release_instant', 'observe_release_gate', 'probe_anonymous_protected_access'])
     expect(ACTION_CLASS_POLICY.READ_ONLY.requiresAuthorization).toBe(false)
     expect(ACTION_CLASS_POLICY.MATERIAL_WRITE.requiresPreCommitRevalidation,
       'writes keep the stricter pre-commit contract').toBe(true)

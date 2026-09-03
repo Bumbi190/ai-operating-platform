@@ -63,7 +63,13 @@ describe('the adapter observes policy and never owns it', () => {
     for (const f of ADAPTER_FILES) {
       const code = CODE(f)
       expect(code, f).not.toMatch(/\b(delete|insert|update|upsert)\b/i)
-      expect(code, f).not.toMatch(/month_releases/)
+      // Phase 1B: the adapter now REPORTS on this row, so it may name the table
+      // in an operator-facing message. What it still may not do is reach the
+      // table itself — it asks Familje-Stundens Edge Function, which owns the
+      // service_role. Direct access is what this forbids; the sibling assertions
+      // above already forbid reimplementing the gate's SQL shape.
+      expect(code, f).not.toMatch(/from\s*\(\s*['"]month_releases/)
+      expect(code, f).not.toMatch(/\bfrom\s+month_releases\b/i)
     }
   })
 

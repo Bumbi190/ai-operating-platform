@@ -123,9 +123,13 @@ describe('multi-placement registry', () => {
 // ── Executor ────────────────────────────────────────────────────────────────
 
 describe('executor widening', () => {
-  it('exactly two READ_ONLY kinds are executable — no third', () => {
+  it('exactly three READ_ONLY kinds are executable — no fourth', () => {
+    // Phase 1B raised the third: observe_release_gate. The property this pins is
+    // not the number but that every executable kind is READ_ONLY, which the
+    // HANDLERS type enforces; the count is the tripwire that a new one arrived
+    // through review rather than as a side effect.
     expect(executableActionKinds()).toEqual([
-      'compute_release_instant', 'probe_anonymous_protected_access',
+      'compute_release_instant', 'observe_release_gate', 'probe_anonymous_protected_access',
     ])
   })
 

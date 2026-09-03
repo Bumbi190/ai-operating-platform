@@ -245,6 +245,7 @@ export class MuapiProvider implements MediaProvider {
       mode: config.mode,
       configured: config.mode !== 'disabled' && config.hasCredential,
       executionAllowed: decision.allowed,
+      billable: decision.billable,
       capabilities: this.capabilities,
       blockedReason: decision.reason,
     }

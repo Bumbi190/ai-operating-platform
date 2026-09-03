@@ -39,6 +39,9 @@ import { admitAssetBytes, admitAssetFromUrl, canonicalHash } from '@/lib/media/a
 import { ADMITTED_MIME_TYPES, AssetRejectedError, bytesMatchMime } from '@/lib/media/asset/validate'
 import { getAsset } from '@/lib/media/asset/store'
 import type { AssetId } from '@/lib/media/asset/types'
+import { getMediaProvider } from '@/lib/media/providers/router'
+import { runGovernedProviderJob } from '@/lib/media/dispatch/governed-dispatch'
+import type { MediaProviderId } from '@/lib/media/providers/types'
 import { describeMediaCandidates, type MediaCandidate } from './candidates'
 import { filterEligible, rankEligible } from './eligibility'
 import type {
@@ -156,7 +159,20 @@ export async function orchestrateImageGeneration(
   }
 
   // ── 4. Execution — through the adapter that owns the spend ───────────────
-  const output = await dispatch(chosen, brief)
+  const outcome = await dispatch(chosen, brief)
+
+  // A PROVIDER-LAYER candidate has already completed the full canonical path:
+  // governed dispatch, durable job lifecycle, bounded polling, the QC boundary
+  // and Phase 1 admission. Its asset EXISTS, so there is nothing left to admit
+  // and re-admitting would create a second row for bytes Omnira already owns.
+  //
+  // The selection is still assembled here, by this layer, because it is this
+  // layer's fact — the adapter is told which candidate won and never decides it.
+  if (outcome.kind === 'admitted') {
+    return { asset: outcome.admitted.asset, provenance: outcome.admitted.provenance, selection }
+  }
+
+  const output = outcome.output
 
   // ── 5. Admission — success is not declared before this succeeds ──────────
   //
@@ -229,7 +245,25 @@ type ProviderOutput =
   | { kind: 'url'; url: string }
   | { kind: 'bytes'; bytes: Uint8Array; mimeType: string }
 
-async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief): Promise<ProviderOutput> {
+/**
+ * What `dispatch` hands back, now that two families end in different places.
+ *
+ * `output` — a BRIDGE adapter produced bytes or a URL and admission has not run
+ *   yet. The orchestrator admits it, exactly as it always has.
+ * `admitted` — a PROVIDER-LAYER candidate ran the full durable job lifecycle,
+ *   which owns polling, the QC boundary AND admission. The asset already exists.
+ *
+ * A discriminated union rather than forcing the second case to hand back a URL:
+ * `runMediaJob` has already retrieved, validated, checksummed and stored the
+ * bytes, and re-admitting from a vendor URL afterwards would be a SECOND
+ * admission of an asset Omnira already owns — a duplicate row, and a second
+ * fetch of a URL that may have expired.
+ */
+type DispatchOutcome =
+  | { kind: 'output'; output: ProviderOutput }
+  | { kind: 'admitted'; admitted: { asset: MediaGenerationResult['asset']; provenance: MediaGenerationResult['provenance'] } }
+
+async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief): Promise<DispatchOutcome> {
   const negative = brief.brief.avoid?.length ? brief.brief.avoid.join(', ') : undefined
   // Extras for THIS candidate only. Nothing governance-relevant is built from
   // them: the ctx object below is assembled from the brief's own fields.
@@ -252,7 +286,7 @@ async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief):
           rendering_speed: 'DEFAULT',
         },
       )
-      return { kind: 'url', url }
+      return { kind: 'output', output: { kind: 'url', url } }
     } catch (err) {
       throw providerFailure(candidate.id, err)
     }
@@ -277,7 +311,7 @@ async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief):
     const first = res.data?.[0]
 
     // A URL, when one is offered.
-    if (first?.url) return { kind: 'url', url: first.url }
+    if (first?.url) return { kind: 'output', output: { kind: 'url', url: first.url } }
 
     // Otherwise the normal gpt-image-1 shape: inline base64. Decoded here and
     // handed to `admitAssetBytes`, which runs the SAME validation the URL path
@@ -285,7 +319,7 @@ async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief):
     // derived from visibility. Nothing about base64 is special once decoded, and
     // the raw string never becomes canonical state.
     if (first?.b64_json) {
-      return decodeProviderImage(candidate.id, first.b64_json)
+      return { kind: 'output', output: decodeProviderImage(candidate.id, first.b64_json) }
     }
 
     throw new MediaOrchestrationError({
@@ -295,15 +329,69 @@ async function dispatch(candidate: MediaCandidate, brief: MediaGenerationBrief):
     })
   }
 
-  // Provider-layer candidates are describable and rankable but not yet
-  // dispatchable: `MediaProvider` is async-job-shaped (submit → poll
-  // `getStatus`), which needs a job lifecycle this phase does not build. They
-  // are gated off today, so this is unreachable in practice — and it refuses
-  // loudly rather than pretending, so enabling one cannot silently do nothing.
+  // ── The provider-layer family (Phase 5) ──────────────────────────────────
+  //
+  // Phase 2 threw here, because `MediaProvider` is async-job-shaped and no job
+  // lifecycle existed. Phase 3/4 built the lifecycle and Phase 5 built the seam
+  // that connects it to a governed dispatch, so the branch now runs — through
+  // ONE call, into a module that owns none of the authorities it invokes.
+  //
+  // Note what this branch does NOT do: it does not resolve a provider by
+  // capability, does not choose a model, does not read a credential, does not
+  // build a request URL, and does not reserve budget. Selection already happened
+  // (`candidate`), the model came with it (`providerResource`), and everything
+  // else belongs to the adapter and the layers beneath it.
+  if (candidate.family === 'provider-layer') {
+    // Structural, not defensive: eligibility rejects a provider-layer candidate
+    // with no resource under `execution_not_supported`, so this cannot be
+    // reached with one missing. It refuses rather than falling back, because a
+    // fallback model here would be the default spend the whole design refuses.
+    const resource = candidate.providerResource
+    if (!resource) {
+      throw new MediaOrchestrationError({
+        code: 'PROVIDER_EXECUTION_FAILED',
+        message: `Candidate "${candidate.id}" was selected without a concrete provider `
+          + 'resource; eligibility should have rejected it before ranking.',
+      })
+    }
+
+    try {
+      const run = await runGovernedProviderJob({
+        provider:  getMediaProvider(candidate.id as MediaProviderId),
+        resource,
+        project:   { projectId: brief.projectId },
+        execution: brief.execution,
+        projectId: brief.projectId,
+        operation: brief.operation,
+        prompt:    brief.brief.instruction,
+        ...(negative ? { negativePrompt: negative } : {}),
+        ...(brief.aspectRatio ? { aspectRatio: brief.aspectRatio } : {}),
+        providerOptions: extras,
+        // The BRIEF is hashed, never stored. Same rule the job store states:
+        // a brief may carry third-party editorial text, so only a hash persists.
+        briefHash:   canonicalHash(brief.sourceBrief ?? brief.brief),
+        storagePath: brief.storagePath,
+        visibility:  brief.visibility ?? 'internal',
+        referenceAssetIds: brief.referenceAssetIds ?? [],
+        provenance: {
+          brief:   brief.sourceBrief ?? brief.brief,
+          request: { instruction: brief.brief.instruction, aspectRatio: brief.aspectRatio ?? null },
+          providerMetadata: {
+            operation:       brief.operation,
+            candidateFamily: candidate.family,
+            resultRepresentation: 'url',
+          },
+        },
+      })
+      return { kind: 'admitted', admitted: run.admitted }
+    } catch (err) {
+      throw providerFailure(candidate.id, err)
+    }
+  }
+
   throw new MediaOrchestrationError({
     code: 'PROVIDER_EXECUTION_FAILED',
-    message: `Candidate "${candidate.id}" is describable but not dispatchable in Phase 2 `
-      + '(the MediaProvider job lifecycle is not implemented here).',
+    message: `Candidate "${candidate.id}" has no dispatch path in this orchestrator.`,
   })
 }
 
@@ -381,6 +469,13 @@ function providerFailure(id: string, err: unknown): unknown {
   if (name === 'SpendRefusedError' || name === 'ExecutionStoppedError' || name === 'ProviderNotDispatchedError') {
     return err
   }
+  // A `MediaJobError` (Phase 5, provider-layer family) is the most informative
+  // failure on this path and must NOT be flattened into
+  // `PROVIDER_EXECUTION_FAILED`. It carries the fields the whole durable design
+  // exists to produce — `dispatched`, `reconciliationRequired`, `resumable` —
+  // and a caller that cannot see them would have no way to tell an UNKNOWN that
+  // needs a human from a vendor failure that needs nothing.
+  if (name === 'MediaJobError') return err
   return new MediaOrchestrationError({
     code: 'PROVIDER_EXECUTION_FAILED',
     message: `Provider ${id} failed: ${err instanceof Error ? err.message : String(err)}`,

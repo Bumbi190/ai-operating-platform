@@ -270,13 +270,31 @@ export const MEDIA_ELIGIBILITY_RULES = [
   'provider_gate_refused',
   /**
    * The candidate is ALLOWED but this orchestrator cannot complete its contract
-   * — no dispatch path, or a result representation admission cannot take.
+   * — no dispatch path, no concrete model to submit to, or a result
+   * representation admission cannot take.
    *
    * Distinct from every rule above: those are refusals by an authority, this is
-   * an honest statement about what Phase 2 implements. Keeping it separate means
-   * "we are not allowed to" never gets confused with "we cannot yet".
+   * an honest statement about what the orchestrator implements. Keeping it
+   * separate means "we are not allowed to" never gets confused with "we cannot
+   * yet".
    */
   'execution_not_supported',
+  /**
+   * SPEND GOVERNANCE CANNOT PRICE THIS EXECUTION — added in Phase 5.
+   *
+   * Deliberately its own rule rather than folded into `execution_not_supported`,
+   * because the two send an operator to opposite places. `execution_not_supported`
+   * says Omnira has not built something. This says Omnira has built everything
+   * and does not know what the call COSTS — the vendor prices the model
+   * dynamically and no `cost_rates` entry carries an authoritative figure.
+   *
+   * It is a hard filter and not a warning. `withGovernedSpend` needs a
+   * conservative upper bound before it may reserve, and the only way to give it
+   * one without a proven price is to invent a number — which would make the
+   * budget ceiling enforce a fiction. Refusing before ranking means a candidate
+   * is never selected and only then found unpriceable at the moment of spending.
+   */
+  'cost_governance_unavailable',
 ] as const
 export type MediaEligibilityRule = (typeof MEDIA_ELIGIBILITY_RULES)[number]
 

@@ -44,7 +44,7 @@ import 'server-only'
 
 import { admitAssetFromUrl } from '@/lib/media/asset/admission'
 import { AssetRejectedError } from '@/lib/media/asset/validate'
-import type { AssetId, AssetVisibility } from '@/lib/media/asset/types'
+import type { AdmittedAsset, AssetId, AssetVisibility } from '@/lib/media/asset/types'
 import type { MediaAssetKind, MediaJobResult, MediaProviderId } from '@/lib/media/providers/types'
 import { observationForDispatch, type MediaDispatchResult } from './dispatch'
 import { newMediaJobId, type MediaJobId } from './identity'
@@ -173,6 +173,17 @@ export interface RunMediaJobResult {
   assetId: AssetId
   remoteOperationId: string | null
   record: MediaJobRecord
+  /**
+   * The canonical Asset and its provenance, exactly as Phase 1 admission
+   * produced them.
+   *
+   * Added in Phase 5, additively. `assetId` above is still the identity and is
+   * unchanged; this carries the two rows admission ALREADY built so that a
+   * caller assembling an orchestration result does not have to read them back
+   * out of the database. A re-read would be a second answer to a question
+   * admission has just answered, and would be able to disagree with it.
+   */
+  admitted: AdmittedAsset
 }
 
 // ── The sequence ─────────────────────────────────────────────────────────────
@@ -353,8 +364,9 @@ export async function runMediaJob(input: RunMediaJobInput): Promise<RunMediaJobR
   // supplies a URL and nothing else — not the bucket, not the path, not the id,
   // not the project.
   let assetId: AssetId
+  let admitted: AdmittedAsset
   try {
-    const { asset } = await admitAssetFromUrl({
+    admitted = await admitAssetFromUrl({
       projectId: input.projectId,
       kind: input.kind,
       visibility: input.visibility ?? 'internal',
@@ -379,7 +391,7 @@ export async function runMediaJob(input: RunMediaJobInput): Promise<RunMediaJobR
         },
       },
     })
-    assetId = asset.id
+    assetId = admitted.asset.id
   } catch (err) {
     // A paid generation HAS happened and the bytes exist. Say that precisely,
     // and do not dispatch again: the problem is ownership, not generation.
@@ -407,5 +419,6 @@ export async function runMediaJob(input: RunMediaJobInput): Promise<RunMediaJobR
     assetId,
     remoteOperationId: bound.record.remoteOperationId,
     record: bound.record,
+    admitted,
   }
 }

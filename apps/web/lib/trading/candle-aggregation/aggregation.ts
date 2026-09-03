@@ -42,15 +42,19 @@
  * WRONG as strings — '.' sorts before 'Z' — and a text comparison would place
  * the later instant first.
  *
- *     GATE-08C-2B.1 TIMESTAMP ORDERING HARDENING — REQUIRED BEFORE C3
+ *     GATE-08C-2B.1 TIMESTAMP ORDERING & INSTANT IDENTITY HARDENING
+ *     — IMPLEMENTED IN THIS SLICE, PENDING MERGE
  *
- * `market-data/merge.ts` still orders instants as text, on the reasoning that a
- * fixed-width ISO string sorts chronologically. That reasoning holds only while
- * every producer emits the same millisecond form. This module does not inherit
- * the flaw and deliberately does not fix it either — GATE-08C-2B's approved
- * scope forbids touching the merge contract, and changing ordering there
- * without also re-proving the duplicate/disagreement policy would be the wider
- * change that scope exists to prevent.
+ * `market-data/merge.ts` used to order instants as text, on the reasoning that
+ * a fixed-width ISO string sorts chronologically. That reasoning holds only
+ * while every producer emits the same millisecond form. GATE-08C-2B could not
+ * fix it — its approved scope forbade touching the merge contract — so it was
+ * recorded here instead.
+ *
+ * GATE-08C-2B.1 now routes both the ordering and the cross-page instant
+ * IDENTITY in `merge.ts` through `toEpochMs`, leaving the duplicate and
+ * disagreement policy exactly as it was. C3 stays blocked until that slice
+ * itself merges.
  *
  * THE CALENDAR OUTRANKS THE OBSERVATIONS
  * ──────────────────────────────────────

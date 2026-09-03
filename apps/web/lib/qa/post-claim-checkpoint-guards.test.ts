@@ -120,12 +120,47 @@ describe('G3C-3A · the checkpoint stays wired', () => {
   it('terminal writes are ownership-conditioned, not H1_FENCING-gated', () => {
     // fencedRunUpdate falls through to an unconditional update when H1_FENCING
     // is unset, so the terminal writes use the always-conditioned helper.
+    // The drain's terminal writes now go through the atomic CAS, which carries
+    // the ownership predicates unconditionally — the H1_FENCING fall-through to
+    // an unconditional update() cannot reach them.
     const drain = code('app/api/runs/drain/route.ts')
-    expect(drain).toMatch(/await terminalizeOwnedRun\(db, run\.id, run\.claim_id, \{ status: 'done'/)
+    expect(drain).toMatch(/await finalizeOwnedRunUnlessCancelled\(db, run\.id, run\.claim_id, \{ status: 'done'/)
+    expect(drain, 'no terminal write may go through the flag-gated helper')
+      .not.toMatch(/await fencedRunUpdate\(db, run\.id, run\.claim_id, \{ status: '(done|awaiting_approval)'/)
     const cp = code('lib/governance/run-execution-checkpoint.ts')
     const i = cp.indexOf('export async function terminalizeOwnedRun')
     expect(cp.slice(i, i + 600))
       .toContain(".eq('id', runId).eq('status', 'running').eq('claim_id', claimId)")
+  })
+
+  it('every success-like terminal write is an atomic CAS, not a read-then-write', () => {
+    // Secondary to CF4 and M14 — this only stops a future refactor silently
+    // deleting the predicate that makes the race decidable at the row.
+    const cp = code('lib/governance/run-execution-checkpoint.ts')
+    const i = cp.indexOf('export async function finalizeOwnedRunUnlessCancelled')
+    expect(i, 'the terminal CAS helper exists').toBeGreaterThan(-1)
+    const body = cp.slice(i, i + 1400)
+    expect(body, 'ownership AND uncancelled in ONE conditional write')
+      .toContain(".eq('id', runId).eq('status', 'running').eq('claim_id', claimId) .eq('cancel_requested', false)")
+  })
+
+  it('both success-like drain transitions go through the CAS', () => {
+    // done AND awaiting_approval. Fixing only one would leave the identical
+    // TOCTOU alive on the other branch.
+    const drain = code('app/api/runs/drain/route.ts')
+    const calls = (drain.match(/await finalizeOwnedRunUnlessCancelled\(/g) ?? []).length
+    expect(calls, 'done and awaiting_approval both').toBeGreaterThanOrEqual(2)
+    expect(drain, 'the old read-then-write terminal helper is gone from the drain')
+      .not.toContain('await terminalizeOwnedRun(db, run.id, run.claim_id')
+  })
+
+  it('the terminal CAS never consults governance stop', () => {
+    const cp = code('lib/governance/run-execution-checkpoint.ts')
+    const i = cp.indexOf('export async function finalizeOwnedRunUnlessCancelled')
+    const body = cp.slice(i, i + 1800)
+    expect(body).not.toContain('resolveExecutionStop')
+    expect(body).not.toContain('automation_paused')
+    expect(body).not.toContain('execution_paused')
   })
 
   it('the finalization boundary never consults governance stop', () => {

@@ -18,7 +18,7 @@ import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import {
   checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
-  isRunCheckpointRefusal, checkOwnedFinalization, terminalizeOwnedRun,
+  isRunCheckpointRefusal, checkOwnedFinalization, finalizeOwnedRunUnlessCancelled,
 } from '@/lib/governance/run-execution-checkpoint'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -252,26 +252,51 @@ export async function GET(request: Request) {
         // (rör endast 'running' med utgången lease) aldrig tar i den vilande runen.
         // H1.P5 Commit 2: fenced on claim_id. If reclaimed since we claimed it, this matches
         // 0 rows → skip (the new owner re-runs and finalizes); we never double-flip.
-        // G3C-3A: ownership-conditioned regardless of H1_FENCING, which when
-        // unset makes fencedRunUpdate fall through to an unconditional write.
-        const { fenced } = await terminalizeOwnedRun(db, run.id, run.claim_id, {
+        // G3C-3A: the SAME atomic CAS as `done`. awaiting_approval is a
+        // success-like transition out of `running`, so leaving it on the old
+        // read-then-write shape would keep the TOCTOU alive on this branch only.
+        const appr = await finalizeOwnedRunUnlessCancelled(db, run.id, run.claim_id, {
           status: 'awaiting_approval', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
-        if (fenced) {
-          console.warn(`[run ${run.id}] fenced: reclaimed before awaiting_approval flip — skipping`)
-          results.push({ run_id: run.id, status: 'fenced' })
+        if (appr.outcome === 'CANCELLED') {
+          // The approval row was inserted BEFORE this transition, so a
+          // cancellation winning here would strand a `pending` approval on a
+          // `cancelled` run — contradicting /api/runs/[id]/cancel, which returns
+          // a pending approval when it cancels an awaiting_approval run. Mirror
+          // that contract rather than leaving the inconsistency.
+          await db.from('approvals')
+            .update({ status: 'returned', reviewed_at: new Date().toISOString() })
+            .eq('run_id', run.id).eq('status', 'pending')
+          console.warn(`[run ${run.id}] cancelled at finalization — approval returned`)
+          results.push({ run_id: run.id, status: 'cancelled', detail: appr.detail })
+          continue
+        }
+        if (appr.outcome !== 'SUCCEEDED') {
+          console.warn(`[run ${run.id}] ${appr.outcome} before awaiting_approval flip: ${appr.detail}`)
+          results.push({ run_id: run.id, status: appr.outcome.toLowerCase(), detail: appr.detail })
           continue
         }
         results.push({ run_id: run.id, status: 'awaiting_approval' })
       } else {
-        // G3C-3A: ownership-conditioned regardless of H1_FENCING. A read
-        // followed by an unconditional `done` update is not ownership.
-        const { fenced } = await terminalizeOwnedRun(db, run.id, run.claim_id, {
+        // ── G3C-3A · ATOMIC TERMINAL CAS ────────────────────────────────────
+        // The cancellation condition is part of the SAME conditional write that
+        // commits success. A pre-read cannot close this: a cancellation landing
+        // between the read and the write would still lose, because the old
+        // predicates (id, status, claim_id) all still matched. Postgres decides
+        // the order at the row.
+        const done = await finalizeOwnedRunUnlessCancelled(db, run.id, run.claim_id, {
           status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
-        if (fenced) {
-          console.warn(`[run ${run.id}] fenced: reclaimed before done flip — skipping`)
-          results.push({ run_id: run.id, status: 'fenced' })
+        if (done.outcome === 'CANCELLED') {
+          console.warn(`[run ${run.id}] cancelled inside the finalization window — not marked done`)
+          results.push({ run_id: run.id, status: 'cancelled', detail: done.detail })
+          continue
+        }
+        if (done.outcome !== 'SUCCEEDED') {
+          // FENCED or ERROR — lifecycle contention, never a provider failure:
+          // no failure counter, no alert, no retry backoff.
+          console.warn(`[run ${run.id}] ${done.outcome} before done flip: ${done.detail}`)
+          results.push({ run_id: run.id, status: done.outcome.toLowerCase(), detail: done.detail })
           continue
         }
         // Atlas Memory M4 Commit 4 — episodic outcome: run completed successfully.

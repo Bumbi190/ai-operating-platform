@@ -281,6 +281,107 @@ export async function terminalizeOwnedRun(
   return { written: hit, fenced: !hit }
 }
 
+/**
+ * The terminal compare-and-set: a success-like transition commits ONLY while
+ * this worker still owns the running run AND no durable cancellation exists at
+ * the instant of the write.
+ *
+ * ── WHY A PRE-READ IS NOT ENOUGH ───────────────────────────────────────────
+ * `checkOwnedFinalization` reads, then the success write happens later. That is
+ * a read/check/write TOCTOU, and shrinking the gap does not close it:
+ *
+ *   T1  the read observes cancel_requested = false
+ *   T2  a cancellation commits — status is still running, claim still ours
+ *   T3  the success UPDATE matches on (id, status, claim_id) and writes `done`
+ *
+ * The cancellation committed BEFORE terminal success and still lost. The only
+ * fix is to make the cancellation condition part of the same conditional write,
+ * so Postgres' row-update semantics decide the order:
+ *
+ *   success takes the row first → status leaves 'running', a later
+ *                                 request_run_cancel matches zero rows → DONE wins
+ *   cancel takes the row first  → `cancel_requested = false` no longer holds,
+ *                                 the success CAS matches zero rows → CANCEL wins
+ *
+ * `runs.cancel_requested` is NOT NULL DEFAULT false in production, so the
+ * predicate is unambiguous — there is no three-valued-logic hole to fall through.
+ *
+ * ── GOVERNANCE STOP IS DELIBERATELY ABSENT ─────────────────────────────────
+ * Same reasoning as checkOwnedFinalization. The work has already happened; a
+ * stop arriving now must not prevent honest result, evidence and audit
+ * persistence, or the run would return to `pending` where a resume could execute
+ * it a second time. Ownership + explicit cancellation only.
+ */
+export type OwnedTerminalOutcome = 'SUCCEEDED' | 'CANCELLED' | 'FENCED' | 'ERROR'
+
+export interface OwnedTerminalResult {
+  outcome: OwnedTerminalOutcome
+  detail: string
+}
+
+export async function finalizeOwnedRunUnlessCancelled(
+  db: AnyDb, runId: string, claimId: string | null | undefined,
+  successPayload: Record<string, unknown>,
+): Promise<OwnedTerminalResult> {
+  if (!claimId) return { outcome: 'FENCED', detail: 'invocation holds no claim' }
+
+  // ── 1 · the success CAS ──────────────────────────────────────────────────
+  const { data, error } = await db.from('runs')
+    .update(successPayload)
+    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
+    .eq('cancel_requested', false)
+    .select('id')
+
+  if (error) {
+    // A database fault is NOT fencing and NOT cancellation. Collapsing it into
+    // either would report a specific lifecycle conclusion we have not
+    // established.
+    return { outcome: 'ERROR', detail: `terminal CAS failed: ${error.message}` }
+  }
+  if (Array.isArray(data) && data.length > 0) {
+    return { outcome: 'SUCCEEDED', detail: 'owned, uncancelled — terminal success committed' }
+  }
+
+  // ── 2 · zero rows: establish WHY ─────────────────────────────────────────
+  // Deliberately not labelled fenced on sight. The row may still be ours and
+  // running, with a cancellation that arrived inside the window.
+  const { data: row, error: readErr } = await db.from('runs')
+    .select('id, status, claim_id, cancel_requested')
+    .eq('id', runId).maybeSingle()
+  if (readErr) {
+    return { outcome: 'ERROR', detail: `state unresolvable after CAS miss: ${readErr.message}` }
+  }
+  if (!row) return { outcome: 'FENCED', detail: 'run no longer exists' }
+
+  const r = row as { status: string | null; claim_id: string | null; cancel_requested: boolean | null }
+  const stillOurs = r.claim_id === claimId && r.status === 'running'
+  if (!stillOurs) {
+    return { outcome: 'FENCED',
+      detail: `ownership or status changed (status=${r.status}) — another owner decides` }
+  }
+  if (r.cancel_requested !== true) {
+    // Ours, running, uncancelled, yet the CAS missed. Nothing here may be
+    // guessed at — report it rather than inventing a lifecycle conclusion.
+    return { outcome: 'ERROR', detail: 'terminal CAS missed with no explaining state change' }
+  }
+
+  // ── 3 · cancellation won the row ─────────────────────────────────────────
+  const { data: cancelled, error: cancelErr } = await db.from('runs')
+    .update({
+      status: 'cancelled', finished_at: new Date().toISOString(),
+      claimed_at: null, lease_until: null,
+    })
+    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
+    .eq('cancel_requested', true)
+    .select('id')
+  if (cancelErr) {
+    return { outcome: 'ERROR', detail: `cancellation write failed: ${cancelErr.message}` }
+  }
+  return Array.isArray(cancelled) && cancelled.length > 0
+    ? { outcome: 'CANCELLED', detail: 'cancellation committed before terminal success' }
+    : { outcome: 'FENCED', detail: 'lost the row while resolving cancellation' }
+}
+
 /** Thrown to unwind an in-progress executor. Carries the distinction with it. */
 export class RunCheckpointRefusedError extends Error {
   readonly refusal: RunCheckpointRefusal

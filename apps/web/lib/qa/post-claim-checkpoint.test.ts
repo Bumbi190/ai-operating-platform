@@ -21,8 +21,11 @@ const state = {
   globalPaused: false,
   projectPaused: false,
   stopReadFails: false,
-  updates: [] as { payload: Row; predicates: Row }[],
+  updates: [] as { payload: Row; predicates: Row; applied: boolean }[],
   runReadFails: false,
+  updateFails: false,
+  /** Deterministic barrier: fires just before an update is evaluated. */
+  beforeUpdate: undefined as (() => void) | undefined,
 }
 
 /** Minimal Supabase double: the run row, the stop RPC, and recorded updates. */
@@ -47,11 +50,19 @@ function db() {
     // `update(...).eq(...).eq(...).select()` resolves to the affected rows.
     ;(chain as { select: unknown }).select = () => {
       if (payload === null) return chain
+      if (state.updateFails) {
+        return Promise.resolve({ data: null, error: { message: 'simulated update failure' } })
+      }
+      // The barrier runs BEFORE the predicates are evaluated, so a test can
+      // commit a cancellation inside the window a pre-read cannot see.
+      state.beforeUpdate?.()
       const matches =
         (predicates.id === undefined || predicates.id === state.run.id) &&
         (predicates.status === undefined || predicates.status === state.run.status) &&
-        (predicates.claim_id === undefined || predicates.claim_id === state.run.claim_id)
-      state.updates.push({ payload: payload as Row, predicates: { ...predicates } })
+        (predicates.claim_id === undefined || predicates.claim_id === state.run.claim_id) &&
+        (predicates.cancel_requested === undefined
+          || predicates.cancel_requested === (state.run.cancel_requested === true))
+      state.updates.push({ payload: payload as Row, predicates: { ...predicates }, applied: matches })
       if (matches) Object.assign(state.run, payload)
       return Promise.resolve({ data: matches ? [{ id: state.run.id }] : [], error: null })
     }
@@ -95,6 +106,8 @@ beforeEach(() => {
   state.projectPaused = false
   state.stopReadFails = false
   state.runReadFails = false
+  state.updateFails = false
+  state.beforeUpdate = undefined
   state.updates = []
 })
 
@@ -352,5 +365,108 @@ describe('CF · the final owned boundary linearizes cancel against success', () 
     const w = state.updates.at(-1)!
     expect(w.predicates, 'a read then an unconditional write is not ownership')
       .toEqual({ id: RUN, status: 'running', claim_id: CLAIM })
+  })
+})
+
+// ══ CF4 · CANCEL INSIDE THE TOCTOU WINDOW ═══════════════════════════════════
+
+/**
+ * CF1 proves cancellation that ALREADY EXISTS at finalization entry is honoured.
+ * CF4 proves the harder case: cancellation arriving AFTER the finalization read
+ * and BEFORE the terminal write.
+ *
+ *   T1  the worker reaches finalization
+ *   T2  a preliminary read observes cancel_requested = false
+ *   T3  the worker is held, deterministically, before the success UPDATE
+ *   T4  the cancellation commits
+ *   T5  the worker resumes
+ *   T6  the success CAS attempts its transition
+ *
+ * With a pre-read as the only guard, T6's predicates (id, status, claim_id) all
+ * still match and `done` overwrites a cancellation that committed first. The
+ * `cancel_requested = false` predicate inside the same conditional write is what
+ * makes that impossible.
+ *
+ * The barrier is a real hook on the update path — no sleeps.
+ */
+describe('CF4 · a cancel landing inside the finalization window cannot be overwritten', () => {
+  it('CF4 — success CAS misses, cancellation is recognised, status is cancelled', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+
+    // T2: a preliminary read sees no cancellation — exactly what
+    // checkOwnedFinalization would have observed.
+    expect(state.run.cancel_requested).toBe(false)
+
+    // T3/T4: the barrier fires on the FIRST update attempt (the success CAS),
+    // committing the cancellation after the read and before the write lands.
+    let fired = false
+    state.beforeUpdate = () => {
+      if (fired) return
+      fired = true
+      state.run.cancel_requested = true   // the cancellation commits here
+    }
+
+    const r = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, {
+      status: 'done', finished_at: 'now', claimed_at: null, lease_until: null,
+    })
+    state.beforeUpdate = undefined
+
+    expect(r.outcome, 'the cancellation committed first and must win').toBe('CANCELLED')
+    expect(state.run.status, 'never done').toBe('cancelled')
+    // The success payload must not have been applied at all.
+    expect(state.updates.some(u => u.payload.status === 'done' && u.applied)).toBe(false)
+  })
+
+  it('the success CAS carries the cancellation predicate, not just ownership', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, { status: 'done' })
+    const cas = state.updates.find(u => u.payload.status === 'done')!
+    expect(cas.predicates, 'ownership AND uncancelled, in one conditional write')
+      .toEqual({ id: RUN, status: 'running', claim_id: CLAIM, cancel_requested: false })
+  })
+
+  it('SUCCESS WINS: the CAS commits and a later cancel finds no running row', async () => {
+    const m = await import('@/lib/governance/run-execution-checkpoint')
+    const r = await m.finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, {
+      status: 'done', finished_at: 'now', claimed_at: null, lease_until: null,
+    })
+    expect(r.outcome).toBe('SUCCEEDED')
+    expect(state.run.status).toBe('done')
+
+    const late = await m.terminalizeCancelledRun(anyDb(), RUN, CLAIM)
+    expect(late.cancelled, 'completed work is never retroactively rewritten').toBe(false)
+    expect(state.run.status).toBe('done')
+  })
+
+  it('FENCE WINS: a rotated claim yields FENCED, and no cancellation is claimed', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    state.run.claim_id = 'claim-new-owner'
+    state.run.cancel_requested = true      // even with a cancellation pending
+    const r = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, { status: 'done' })
+    expect(r.outcome, 'a stale worker decides nothing').toBe('FENCED')
+    expect(state.run.status).toBe('running')
+  })
+
+  it('a database fault is ERROR, never silently FENCED or CANCELLED', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    state.updateFails = true
+    const r = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, { status: 'done' })
+    state.updateFails = false
+    expect(r.outcome, 'a DB fault is not a lifecycle conclusion').toBe('ERROR')
+  })
+
+  it('the terminal CAS never consults governance stop', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    state.globalPaused = true
+    state.projectPaused = true
+    const r = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, {
+      status: 'done', finished_at: 'now',
+    })
+    expect(r.outcome, 'finished work still finalizes honestly').toBe('SUCCEEDED')
   })
 })

@@ -41,6 +41,8 @@ let mockEditorBrief: Record<string, unknown> = {
 
 // Hero Image V2 Phase 2A — brief-driven renderer capture surface.
 let articleHeroCalls: Array<{ brief: Record<string, unknown> }> = []
+// Phase 2: what the orchestrator was asked for, and with which options.
+let orchestrateCalls: Array<{ brief: any; opts: any }> = []
 let articleHeroShouldThrow: string | null = null
 const ARTICLE_HERO_URL = 'https://ideogram.example/brief-driven-hero.png'
 const ARTICLE_HERO_INPUT = {
@@ -79,10 +81,46 @@ vi.mock('@/lib/media/ideogram', () => ({
     if (ideogramShouldThrow) throw new Error(ideogramShouldThrow)
     return 'https://ideogram.example/temp-hero.jpg'
   },
-  generateArticleHeroImage: async (brief: Record<string, unknown>) => {
-    articleHeroCalls.push({ brief })
+  // Phase 2: hero-image.ts no longer calls generateArticleHeroImage — it builds
+  // the provider request with the pure derivation helper and hands the
+  // instruction to the orchestrator, which picks the provider.
+  buildArticleHeroRenderInput: (brief: Record<string, unknown>) => {
     if (articleHeroShouldThrow) throw new Error(articleHeroShouldThrow)
-    return { url: ARTICLE_HERO_URL, input: ARTICLE_HERO_INPUT }
+    return ARTICLE_HERO_INPUT
+  },
+}))
+
+// Phase 2: the orchestrated brief path. Captures the brief it was given and
+// returns an admitted asset, so the assertions below still describe the same
+// observable behaviour — only the collaborator changed.
+vi.mock('@/lib/media/orchestrator/orchestrate', () => ({
+  orchestrateImageGeneration: async (brief: any, opts: any) => {
+    articleHeroCalls.push({ brief })
+    orchestrateCalls.push({ brief, opts })
+    if (articleHeroShouldThrow) throw new Error(articleHeroShouldThrow)
+    // The orchestrator admits internally; mirror that here.
+    const articleId = brief.storagePath.split('/').pop()?.replace(/-hero-\d+$/, '') ?? ''
+    uploadCalls.push({ projectId: brief.projectId, articleId, sourceUrl: ARTICLE_HERO_URL })
+    admissionCalls.push({
+      visibility: brief.visibility,
+      provenance: {
+        source: 'generated', provider: 'ideogram', model: 'ideogram-v3',
+        brief: brief.sourceBrief, request: { instruction: brief.brief.instruction },
+      },
+    })
+    if (uploadShouldThrow) throw new Error(uploadShouldThrow)
+    return {
+      asset: {
+        id: 'asset-0000-0000-0000-000000000001',
+        projectId: brief.projectId,
+        storage: { bucket: 'media-assets', path: `${brief.storagePath}.png` },
+      },
+      provenance: {},
+      selection: {
+        candidate: 'ideogram', model: 'ideogram-v3', family: 'bridge',
+        rankedEligible: ['ideogram'], rejected: [],
+      },
+    }
   },
 }))
 
@@ -241,6 +279,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
       editorial_style: 'Wired',
     }
     articleHeroCalls = []
+    orchestrateCalls = []
     articleHeroShouldThrow = null
     syncCalls = []
     mockSyncResult = { ok: true, status: 'synced' }
@@ -706,7 +745,13 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
   })
 
   it('24. asset: provenance records the provider, model and hashed brief', async () => {
+    // Driven through the BRIEF path, which is the one this assertion describes.
+    // The writer-fallback path genuinely has no structured render input — the
+    // schema records NULL there (see the hero_image_render_input migration) —
+    // so asserting `request` against it only ever passed because the old code
+    // set the key to `undefined`.
     storedRow = row()
+    process.env.HERO_V2_BRIEF_DRIVES_IMAGE = '1'
     await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
 
     const prov = admissionCalls[0].provenance as Record<string, unknown>
@@ -717,6 +762,20 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     // input as the provider-specific request. Admission hashes both; neither
     // payload is persisted.
     expect(prov).toHaveProperty('request')
+    expect(prov).toHaveProperty('brief')
+  })
+
+  it('24b. fallback path records provider and model, and no render input', async () => {
+    // The complement, made explicit rather than implied: flag OFF → writer
+    // fallback → provenance still names the provider, and carries no request.
+    storedRow = row()
+    delete process.env.HERO_V2_BRIEF_DRIVES_IMAGE
+    await generateHeroImage('OPERATOR_EXECUTION', ARTICLE_ID)
+
+    const prov = admissionCalls[0].provenance as Record<string, unknown>
+    expect(prov.provider).toBe('ideogram')
+    expect(prov.model).toBe('ideogram-v3')
+    expect(prov.request).toBeUndefined()
   })
 
   it('25. asset: the cost event is linked to the asset without a second ledger', async () => {

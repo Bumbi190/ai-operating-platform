@@ -186,6 +186,20 @@ export const MEDIA_GENERATION_UNMET_PREREQUISITES: readonly MediaGenerationPrere
   'project_budget',
   'approval_gate',
   'output_quality_control',
+  // RESTORED after the Phase 2 hardening review. It was briefly removed on the
+  // reasoning that `lib/media/orchestrator/` now exists — which is inference
+  // from a directory name, not from what the prerequisite means.
+  //
+  // This list is "hard prerequisites for ANY license above L0", and the
+  // canonical description of this one (docs/architecture/muapi-media-provider.md)
+  // is: "Owns model selection (which of ~765 endpoints serves this intent), job
+  // lifecycle across polling or webhooks, and the retry/QC loop."
+  //
+  // Phase 2 ships none of those three. Provider-layer candidates are described
+  // and ranked-out, not dispatched: the async job lifecycle is explicitly not
+  // implemented, and there is no retry/QC loop. What Phase 2 does provide is the
+  // eligibility → selection → governed execution → canonical Asset sequence for
+  // the two already-integrated adapters. Real, and not yet this prerequisite.
   'media_orchestrator',
   'autonomy_license',
 ] as const

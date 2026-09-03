@@ -90,11 +90,19 @@ export interface ArticleHeroRenderResult {
  * Throws on Ideogram error (caller wraps with withRetry). Throws on unknown
  * editorial_style (programming bug — STYLE_REFERENCE_MAP must stay exhaustive).
  */
-export async function generateArticleHeroImage(
-  brief: EditorBrief,
-  execution: ExecutionContract,
-  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
-): Promise<ArticleHeroRenderResult> {
+/**
+ * The brief → provider-request derivation, extracted as a PURE function.
+ *
+ * Pulled out of `generateArticleHeroImage` unchanged so the Media Orchestrator
+ * can build the same request without going through the Ideogram-specific
+ * generator — the orchestrator picks the provider, so it cannot call a function
+ * that has already picked one. `generateArticleHeroImage` still calls this, so
+ * the two paths derive byte-identical inputs and cannot drift.
+ *
+ * §20.28: the Brief is canonical intent; THIS is where one provider's prompt is
+ * derived from it. Nothing above this line knows what an Ideogram prompt is.
+ */
+export function buildArticleHeroRenderInput(brief: EditorBrief): ArticleHeroRenderInput {
   const styleRef = STYLE_REFERENCE_MAP[brief.editorial_style]
   if (!styleRef) {
     throw new Error(
@@ -102,20 +110,24 @@ export async function generateArticleHeroImage(
     )
   }
 
-  const prompt = [
-    brief.shot,
-    styleRef,
-    'centered subject, 16:10 framing, magazine cover composition with type space',
-  ].join(' — ')
-
-  const negative_prompt = [...STANDING_RENDER_NEGATIVES, ...brief.avoid].join(', ')
-
-  const input: ArticleHeroRenderInput = {
-    prompt,
-    negative_prompt,
+  return {
+    prompt: [
+      brief.shot,
+      styleRef,
+      'centered subject, 16:10 framing, magazine cover composition with type space',
+    ].join(' — '),
+    negative_prompt: [...STANDING_RENDER_NEGATIVES, ...brief.avoid].join(', '),
     aspect_ratio: ARTICLE_HERO_ASPECT,
     style_type: 'REALISTIC',
   }
+}
+
+export async function generateArticleHeroImage(
+  brief: EditorBrief,
+  execution: ExecutionContract,
+  project: ProjectRef = MEDIA_PIPELINE_PROJECT,
+): Promise<ArticleHeroRenderResult> {
+  const input = buildArticleHeroRenderInput(brief)
 
   const url = await generateIdeogramV3(
     { project, execution, operation: 'Article Hero Image (brief)', agent: 'Image Director' },

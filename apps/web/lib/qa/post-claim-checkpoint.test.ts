@@ -26,6 +26,8 @@ const state = {
   updateFails: false,
   /** Deterministic barrier: fires just before an update is evaluated. */
   beforeUpdate: undefined as (() => void) | undefined,
+  /** Deterministic barrier: fires on each runs-row read. */
+  beforeRunRead: undefined as (() => void) | undefined,
 }
 
 /** Minimal Supabase double: the run row, the stop RPC, and recorded updates. */
@@ -40,8 +42,9 @@ function db() {
       is: () => chain,
       maybeSingle: async () => {
         if (table === 'runs') {
+          state.beforeRunRead?.()
           if (state.runReadFails) return { data: null, error: { message: 'read failed' } }
-          return { data: state.run, error: null }
+          return { data: { ...state.run }, error: null }
         }
         return { data: null, error: null }
       },
@@ -108,6 +111,7 @@ beforeEach(() => {
   state.runReadFails = false
   state.updateFails = false
   state.beforeUpdate = undefined
+  state.beforeRunRead = undefined
   state.updates = []
 })
 
@@ -468,5 +472,157 @@ describe('CF4 · a cancel landing inside the finalization window cannot be overw
       status: 'done', finished_at: 'now',
     })
     expect(r.outcome, 'finished work still finalizes honestly').toBe('SUCCEEDED')
+  })
+})
+
+// ══ ACTION-S3 · authority changing DURING readiness ═════════════════════════
+
+/**
+ * The window readiness itself opens.
+ *
+ *   T1  checkpoint #1 passes
+ *   T2  readiness begins its own DB reads
+ *   T3  a global stop / cancellation / claim rotation commits
+ *   T4  readiness returns ready
+ *   T5  the FINAL checkpoint runs
+ *
+ * With only checkpoint #1 the function returned `allowed` on a world that had
+ * already changed. The barrier below mutates authority between the two reads,
+ * deterministically — no sleeps.
+ */
+describe('ACTION-S3 · authority changing during readiness is caught by the final check', () => {
+  const flip = (fn: () => void) => {
+    // Fires on the SECOND runs-row read: checkpoint #1 has passed and readiness
+    // is underway.
+    let n = 0
+    state.beforeRunRead = () => { if (++n === 2) fn() }
+  }
+
+  it('GLOBAL stop committing during readiness → refused', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    flip(() => { state.globalPaused = true })
+    const first = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'first',
+    } as never)
+    expect(first.allowed, 'checkpoint #1 legitimately passed').toBe(true)
+    // …the world then changes, and the FINAL checkpoint is what must catch it.
+    const final = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'action:pre-dispatch:final',
+    } as never)
+    state.beforeRunRead = undefined
+    expect(final.allowed).toBe(false)
+    expect(final.allowed === false && final.refusal).toBe('STOPPED')
+  })
+
+  it('CANCELLATION committing during readiness → refused', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    const first = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'first',
+    } as never)
+    expect(first.allowed).toBe(true)
+    state.run.cancel_requested = true
+    const final = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'action:pre-dispatch:final',
+    } as never)
+    expect(final.allowed === false && final.refusal).toBe('CANCELLED')
+  })
+
+  it('CLAIM ROTATION during readiness → refused as FENCED', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    const first = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'first',
+    } as never)
+    expect(first.allowed).toBe(true)
+    state.run.claim_id = 'claim-new-owner'
+    const final = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, projectId: PROJ, claimId: CLAIM, boundary: 'action:pre-dispatch:final',
+    } as never)
+    expect(final.allowed === false && final.refusal).toBe('FENCED')
+  })
+})
+
+// ══ PROBE-S2 · a mid-probe refusal is control flow, not a lost response ═════
+
+describe('PROBE-S2 · governance refusing request N+1 says nothing about request N', () => {
+  it('a STOPPED refusal is a typed sentinel, not a generic handler error', async () => {
+    const { RunCheckpointRefusedError, isRunCheckpointRefusal } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    const sentinel = new RunCheckpointRefusedError('STOPPED', 'global_automation_paused', 'probe:before-request')
+
+    expect(isRunCheckpointRefusal(sentinel), 'the executor catch can recognise it').toBe(true)
+    expect(sentinel.refusal).toBe('STOPPED')
+    // The distinguishing property: a plain Error would be indistinguishable from
+    // a genuine handler fault and would be routed into the failure model.
+    expect(isRunCheckpointRefusal(new Error('probe halted before next request'))).toBe(false)
+  })
+
+  it('the adapter stops emitting once beforeAttempt throws', async () => {
+    // Request 1 is allowed and sent; the stop commits; request 2's beforeAttempt
+    // refuses and NO further request leaves.
+    let sent = 0
+    let allowed = true
+    const beforeAttempt = async () => {
+      if (!allowed) {
+        const { RunCheckpointRefusedError } =
+          await import('@/lib/governance/run-execution-checkpoint')
+        throw new RunCheckpointRefusedError('STOPPED', 'global_automation_paused', 'probe:before-request')
+      }
+    }
+    const loop = async () => {
+      for (let i = 0; i < 4; i++) {
+        await beforeAttempt()
+        sent++
+        if (sent === 1) allowed = false     // the stop commits after request 1
+      }
+    }
+    await expect(loop()).rejects.toMatchObject({ name: 'RunCheckpointRefusedError' })
+    expect(sent, 'request 1 went, request 2 did not').toBe(1)
+  })
+
+  it('NOT_READY is deliberately NOT flattened into a governance stop', async () => {
+    // Authorization, target or state genuinely drifted mid-handler. That is the
+    // action failure model's business, not a kill switch.
+    const exec = await import('node:fs').then(fs =>
+      fs.readFileSync('lib/workflows/action-executor.ts', 'utf8'))
+    expect(exec).toContain("again.refusal !== 'NOT_READY'")
+  })
+})
+
+// ══ APPROVAL-N1 · no stale approval email when cancellation wins ════════════
+
+describe('APPROVAL-N1 · the approval notification follows the CAS', () => {
+  it('cancellation winning the awaiting_approval CAS suppresses the notification', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+
+    let notified = false
+    const notifyApproval = async () => { notified = true }
+
+    // The cancellation lands inside the CAS window.
+    state.beforeUpdate = () => { state.run.cancel_requested = true }
+    const appr = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, {
+      status: 'awaiting_approval', finished_at: 'now', claimed_at: null, lease_until: null,
+    })
+    state.beforeUpdate = undefined
+
+    // The drain's ordering: notify ONLY on SUCCEEDED.
+    if (appr.outcome === 'SUCCEEDED') await notifyApproval()
+
+    expect(appr.outcome).toBe('CANCELLED')
+    expect(state.run.status).toBe('cancelled')
+    expect(notified, 'no operator is told to review a cancelled run').toBe(false)
+  })
+
+  it('a successful CAS still notifies exactly once', async () => {
+    const { finalizeOwnedRunUnlessCancelled } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    let notified = 0
+    const appr = await finalizeOwnedRunUnlessCancelled(anyDb(), RUN, CLAIM, {
+      status: 'awaiting_approval', finished_at: 'now', claimed_at: null, lease_until: null,
+    })
+    if (appr.outcome === 'SUCCEEDED') notified++
+    expect(appr.outcome).toBe('SUCCEEDED')
+    expect(state.run.status).toBe('awaiting_approval')
+    expect(notified).toBe(1)
   })
 })

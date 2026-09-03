@@ -174,6 +174,65 @@ describe('G3C-3A · the checkpoint stays wired', () => {
     expect(body).not.toContain('execution_paused')
   })
 
+  it('the pre-dispatch contract re-checks AFTER readiness, not only before it', () => {
+    // The earlier guard inspected the CALLER's ordering and treated the call as
+    // though the canonical checkpoint happened at the end of the function. It
+    // did not look inside. Within the function the checkpoint ran BEFORE another
+    // readiness read, so the "fresh pre-dispatch decision" was already stale by
+    // the time it returned — an abstraction-level false proof.
+    const run = code('lib/workflows/action-run.ts')
+    const i = run.indexOf('export async function assertWorkflowActionStillAuthorized')
+    expect(i).toBeGreaterThan(-1)
+    const body = run.slice(i, run.indexOf('export function idempotencyPrefix'))
+
+    const first = body.indexOf('checkpointClaimedRun')
+    const readiness = body.indexOf('assertWorkflowActionReady(db, runId)')
+    const final = body.indexOf('checkpointClaimedRun', readiness)
+
+    expect(first, 'ownership is established before readiness work').toBeGreaterThan(-1)
+    expect(readiness).toBeGreaterThan(first)
+    expect(final, 'a SECOND checkpoint must follow readiness').toBeGreaterThan(readiness)
+    expect(body.slice(readiness, final)).not.toContain('return { allowed: true')
+    expect(body, 'the final checkpoint is labelled as such')
+      .toContain("boundary: 'action:pre-dispatch:final'")
+  })
+
+  it('nothing reads the world between the final checkpoint and DISPATCH_STARTED', () => {
+    const exec = code('lib/workflows/action-executor.ts')
+    const check = exec.indexOf('assertWorkflowActionStillAuthorized(')
+    const phase = exec.indexOf("action_phase: 'DISPATCH_STARTED'")
+    const between = exec.slice(check, phase)
+    expect(between).not.toMatch(/await (readInstance|readDefinitionById|db\.from)\(/)
+  })
+
+  it('a mid-handler governance refusal is typed, and classified before the failure model', () => {
+    // A bare Error lands in the generic catch, which writes REMOTE_CONFIRMED
+    // with UNKNOWN/PARTIAL and reconciliation_required — claiming request N's
+    // response was lost when in truth request N+1 was refused before it left.
+    const exec = code('lib/workflows/action-executor.ts')
+    expect(exec, 'the sentinel is typed').toContain('new RunCheckpointRefusedError(')
+    const catchIdx = exec.indexOf('} catch (e) {')
+    const refusal = exec.indexOf('isRunCheckpointRefusal(e)', catchIdx)
+    const failureModel = exec.indexOf("outcomeForObservation('response_lost'", catchIdx)
+    expect(refusal, 'the refusal branch exists').toBeGreaterThan(-1)
+    expect(refusal, 'and precedes the PR9d failure model')
+      .toBeLessThan(failureModel)
+    expect(exec, 'NOT_READY keeps the failure model, never flattened into a stop')
+      .toContain("again.refusal !== 'NOT_READY'")
+  })
+
+  it('the approval-pending notification is sent only after a SUCCEEDED CAS', () => {
+    const drain = code('app/api/runs/drain/route.ts')
+    const cas = drain.indexOf('const appr = await finalizeOwnedRunUnlessCancelled')
+    const notify = drain.indexOf('if (approvalCreated && notifyApproval) void notifyApproval()')
+    expect(notify, 'the notification is deferred').toBeGreaterThan(-1)
+    expect(notify, 'and fires after the transition, not before').toBeGreaterThan(cas)
+    // The cancellation branch must exit before ever reaching it.
+    const cancelBranch = drain.slice(drain.indexOf("appr.outcome === 'CANCELLED'"), notify)
+    expect(cancelBranch, 'a cancelled run sends no approval-pending email')
+      .toContain('continue')
+  })
+
   it('the checkpoint owns no stop truth table of its own', () => {
     // Raw flag reads here would be a second answer to "is it paused", which is
     // how two answers start disagreeing.

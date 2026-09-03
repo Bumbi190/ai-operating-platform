@@ -480,6 +480,33 @@ export async function assertWorkflowActionStillAuthorized(
     return { allowed: false, refusal: 'NOT_READY', reason: readiness.detail }
   }
 
+  // ── FINAL checkpoint — the load-bearing one ───────────────────────────────
+  // Readiness above performs its own DB reads, and the world can change during
+  // them. With only the first checkpoint this function returned a decision that
+  // was already stale by the time it returned:
+  //
+  //   T1  checkpoint #1 says clear
+  //   T2  readiness begins its reads
+  //   T3  a global stop / project stop / cancellation / claim rotation commits
+  //   T4  readiness returns ready
+  //   T5  this function returns allowed  ← stale
+  //
+  // The first checkpoint still earns its place: it stops a zombie worker doing
+  // readiness work as though it owned the run. But THIS one is the pre-dispatch
+  // decision, and nothing that reads the world may follow it before
+  // DISPATCH_STARTED.
+  const final = await checkpointClaimedRun(db, {
+    runId, claimId, projectId, boundary: 'action:pre-dispatch:final',
+  })
+  if (!final.allowed) {
+    return {
+      allowed: false,
+      refusal: final.refusal,
+      reason: final.detail,
+      ...(final.refusal === 'STOPPED' ? { stopReason: final.reason } : {}),
+    }
+  }
+
   return { allowed: true, reason: 'authorization, target, evidence, stop authority and claim all still current' }
 }
 

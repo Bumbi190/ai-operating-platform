@@ -29,7 +29,10 @@ import {
   type ExecutableReadOnlyActionKind,
 } from './action-registry'
 import { assertWorkflowActionReady, assertWorkflowActionStillAuthorized } from './action-run'
-import { releaseStoppedRun, terminalizeCancelledRun } from '@/lib/governance/run-execution-checkpoint'
+import {
+  releaseStoppedRun, terminalizeCancelledRun,
+  RunCheckpointRefusedError, isRunCheckpointRefusal,
+} from '@/lib/governance/run-execution-checkpoint'
 import { computeReleaseInstantHandler } from './handlers/compute-release-instant'
 import { probeAnonymousProtectedAccessHandler } from './handlers/probe-anonymous-protected-access'
 import type { ReadOnlyHandler, ReadOnlyHandlerOutput } from './handlers/types'
@@ -311,12 +314,45 @@ export async function executeWorkflowAction(
       beforeAttempt: async () => {
         const again = await assertWorkflowActionStillAuthorized(
           db, run.id, claimId, run.project_id)
-        if (!again.allowed) {
-          throw new Error(`probe halted before next request: ${again.reason}`)
+        if (again.allowed) return
+        // A TYPED sentinel, never a bare Error. A generic Error lands in the
+        // catch below, which writes REMOTE_CONFIRMED with an UNKNOWN/PARTIAL
+        // outcome and reconciliation_required — i.e. it would claim request N's
+        // response was lost, when in fact request N+1 was simply refused before
+        // it ever left. Governance refusing the NEXT packet is not evidence
+        // about the PREVIOUS one.
+        //
+        // NOT_READY deliberately keeps the failure model: authorization, target
+        // or state genuinely drifted mid-handler, which is not a governance stop.
+        if (again.refusal && again.refusal !== 'NOT_READY') {
+          throw new RunCheckpointRefusedError(
+            again.refusal, again.reason, 'probe:before-request')
         }
+        throw new Error(`probe halted before next request: ${again.reason}`)
       },
     })
   } catch (e) {
+    // ── G3C-3A · governance control flow, BEFORE the failure model ──────────
+    // A mid-handler refusal means the NEXT request never left. It says nothing
+    // about whether an earlier request's response was lost, so it must never
+    // become REMOTE_CONFIRMED / UNKNOWN / PARTIAL / reconciliation_required.
+    if (isRunCheckpointRefusal(e)) {
+      if (e.refusal === 'STOPPED') {
+        await releaseStoppedRun(db, run.id, claimId)
+        return { executed: false, refusal: 'not_ready', detail: e.message,
+                 disposition: 'temporary' }
+      }
+      if (e.refusal === 'CANCELLED') {
+        const { fenced } = await terminalizeCancelledRun(db, run.id, claimId)
+        return fenced
+          ? { executed: false, refusal: 'fenced', detail: e.message }
+          : { executed: false, refusal: 'not_ready', detail: e.message,
+              disposition: 'cancelled' }
+      }
+      // FENCED — another owner holds this run; write nothing at all.
+      return { executed: false, refusal: 'fenced', detail: e.message }
+    }
+
     // A handler that throws produced no observation. For a pure computation this
     // is a defect, not ambiguity — but the phase says we dispatched, so the
     // honest outcome comes from the model rather than from a guess here.

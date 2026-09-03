@@ -212,8 +212,20 @@ export async function GET(request: Request) {
       if (outcome === 'awaiting_approval') {
         // Idempotent approval (mirrors executeWorkflow's pattern): create only if none
         // exists for this run. `content`/`output_key` are NOT NULL in the schema → coerce.
+        // ── G3C-3A · the notification is DEFERRED until the CAS succeeds ──────
+        // It used to be sent here, before the status transition. If cancellation
+        // then won the CAS the run became `cancelled` and the approval row was
+        // returned — but an "approval pending" email had already left, telling an
+        // operator to review work that no longer awaits review.
+        //
+        // Classification: this is a POST-SUCCESS operator notification, a
+        // control-plane signal rather than execution. Moving it after the
+        // successful transition is what makes cancellation consistent. It is
+        // deliberately NOT turned into a durable outbox here.
+        let notifyApproval: (() => Promise<void>) | null = null
         const { data: existingApproval } = await db
           .from('approvals').select('id').eq('run_id', run.id).limit(1).maybeSingle()
+        let approvalCreated = false
         if (!existingApproval) {
           const { error: approvalErr } = await db.from('approvals').insert({
             run_id:     run.id,
@@ -229,10 +241,12 @@ export async function GET(request: Request) {
           if (approvalErr) {
             throw new Error(`policy-gate: approval insert failed for run ${run.id}: ${approvalErr.message}`)
           }
+          approvalCreated = true
           // Per-run notification (decision C: no batching/throttling in PR2). Best-effort —
           // never fails the drain. Uses run.workflow_id for a correct workflow name in the
           // email, avoiding executeWorkflow's known .eq('id', runId) lookup bug.
-          try {
+          notifyApproval = async () => {
+           try {
             const { data: wf } = await db
               .from('workflows').select('name, projects(name)').eq('id', run.workflow_id).maybeSingle()
             const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
@@ -244,8 +258,9 @@ export async function GET(request: Request) {
               platformUrl:   appUrl,
             })
             void sendAdminNotification(subject, html)
-          } catch (notifyErr) {
+           } catch (notifyErr) {
             console.error(`[run ${run.id}] approval-pending notis misslyckades:`, notifyErr)
+           }
           }
         }
         // Flippa run SIST — approval finns alltid före markeringen. Nollar lease så reapern
@@ -276,6 +291,8 @@ export async function GET(request: Request) {
           results.push({ run_id: run.id, status: appr.outcome.toLowerCase(), detail: appr.detail })
           continue
         }
+        // Only now: the transition committed and this invocation owns it.
+        if (approvalCreated && notifyApproval) void notifyApproval()
         results.push({ run_id: run.id, status: 'awaiting_approval' })
       } else {
         // ── G3C-3A · ATOMIC TERMINAL CAS ────────────────────────────────────

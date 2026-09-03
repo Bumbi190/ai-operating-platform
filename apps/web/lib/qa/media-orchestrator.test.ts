@@ -475,7 +475,7 @@ describe('spend safety', () => {
 
   it('the orchestrator introduces NO spend wrapper of its own', async () => {
     const { readFileSync } = await import('node:fs')
-    for (const f of ['orchestrate.ts', 'eligibility.ts', 'candidates.ts', 'types.ts']) {
+    for (const f of ['orchestrate.ts', 'eligibility.ts', 'candidates.ts', 'types.ts', 'retry-authority.ts']) {
       const src = readFileSync(new URL(`../media/orchestrator/${f}`, import.meta.url), 'utf8')
       // Checked on IMPORTS: the doc comments name withGovernedSpend precisely to
       // say that spend lives elsewhere, and that prose must not fail this test.
@@ -788,7 +788,7 @@ describe('gpt-image-1 base64 output is admitted as bytes', () => {
 describe('there is no allowUnlicensed escape hatch', () => {
   it('the string does not appear anywhere in the orchestrator or its callers', async () => {
     const { readFileSync } = await import('node:fs')
-    for (const f of ['orchestrate.ts', 'eligibility.ts', 'candidates.ts', 'types.ts']) {
+    for (const f of ['orchestrate.ts', 'eligibility.ts', 'candidates.ts', 'types.ts', 'retry-authority.ts']) {
       const src = readFileSync(new URL(`../media/orchestrator/${f}`, import.meta.url), 'utf8')
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
       expect(code).not.toContain('allowUnlicensed')

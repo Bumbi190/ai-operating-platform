@@ -49,6 +49,7 @@ import type { MediaSelection } from '@/lib/media/orchestrator/types'
 import { admitAssetFromUrl } from '@/lib/media/asset/admission'
 import { publicDeliveryUrl } from '@/lib/media/asset/store'
 import { withRetry } from '@/lib/media/retry'
+import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/retry-authority'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logImageCost } from '@/lib/cost/track'
@@ -257,7 +258,19 @@ export async function generateHeroImage(
             sourceBrief: brief,
           },
         ),
-        { attempts: 2, label: 'orchestrated brief hero' },
+        {
+          attempts: 2,
+          label: 'orchestrated brief hero',
+          // A RETRY HERE RE-ENTERS THE ORCHESTRATOR FROM THE TOP: it mints a new
+          // media job and dispatches again, without ever consulting the job
+          // state machine. So the permanence rule has to carry the authority the
+          // loop would otherwise bypass — a failure that leaves a provider
+          // dispatch possibly or definitely done ends the loop.
+          //
+          // Composed, not replaced: the existing status-text heuristic still
+          // applies to everything this rule has no opinion about.
+          isPermanent: dispatchedGenerationIsNotRetryable(),
+        },
       )
       asset = result.asset
       selection = result.selection

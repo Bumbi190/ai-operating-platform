@@ -202,10 +202,18 @@ describe('ElevenLabs — the spend Familje-Stunden names explicitly', () => {
   })
 
   it('a provably-undispatched failure releases; anything ambiguous does not', () => {
-    // Release is no longer reachable from a bare catch: it requires the adapter
-    // to raise ProviderNotDispatchedError, which is a claim it has to make.
-    expect(el).toMatch(/catch \(e\) \{[\s\S]{0,200}ProviderNotDispatchedError/)
-    expect(el).toMatch(/response\.status < 500[\s\S]{0,200}ProviderNotDispatchedError/)
+    // Release requires the adapter to raise ProviderNotDispatchedError — a claim
+    // it has to make. STRENGTHENED BY PHASE 5B-1: the claim must now be LICENSED
+    // by a classifier, so the assertions name the classifier rather than the
+    // bare catch. Before, a `catch (e) { throw new ProviderNotDispatchedError }`
+    // satisfied this test while asserting the opposite of its own title.
+    expect(el).toMatch(/catch \(e\) \{[\s\S]{0,900}classifyTransportFailure\(e\)/)
+    expect(el).toMatch(/verdict\.sent === false[\s\S]{0,200}ProviderNotDispatchedError/)
+    // The ambiguous branch exists and does NOT claim non-dispatch.
+    expect(el).toMatch(/ProviderDispatchUnknownError/)
+    // The status split defers to the shared rule instead of a local `< 500`.
+    expect(el).toMatch(/statusProvesNotCreated\(response\.status\)[\s\S]{0,200}ProviderNotDispatchedError/)
+    expect(el).not.toMatch(/status < 500/)
     expect(el).not.toMatch(/releaseSpend/)
     expect(el).not.toMatch(/settleSpend/)
   })

@@ -322,13 +322,16 @@ describe('the article hero call site carries the authority', () => {
     const i = body.indexOf('orchestrateImageGeneration(')
     expect(i).toBeGreaterThan(-1)
     // The options object follows the orchestration call in the same withRetry.
-    expect(body.slice(i)).toMatch(/isPermanent:\s*dispatchedGenerationIsNotRetryable\(/)
+    // Matched on the AUTHORITY, not on an exact expression: Phase 5B-1 composes
+    // it inside `stopIsNotRetryable(...)`, and a guard pinned to one spelling
+    // would fail a change that strictly strengthened the call site.
+    expect(body.slice(i)).toMatch(/isPermanent:[^\n]*dispatchedGenerationIsNotRetryable\(/)
   })
 
   it('REGRESSION — the guard detects a call site that drops it', () => {
-    const stripped = src().replace(/isPermanent:\s*dispatchedGenerationIsNotRetryable\(\),?/, '')
+    const stripped = src().replace(/isPermanent:[^\n]*dispatchedGenerationIsNotRetryable[^\n]*/g, '')
     const i = stripped.indexOf('orchestrateImageGeneration(')
-    expect(stripped.slice(i)).not.toMatch(/isPermanent:\s*dispatchedGenerationIsNotRetryable\(/)
+    expect(stripped.slice(i)).not.toMatch(/isPermanent:[^\n]*dispatchedGenerationIsNotRetryable\(/)
   })
 
   it('every production withRetry around the orchestrator carries it', () => {

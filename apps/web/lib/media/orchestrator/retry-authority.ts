@@ -36,6 +36,11 @@
  *     `orchestrate.ts` has set since Phase 2 precisely to record "a paid call
  *     HAS happened".
  *
+ *   `ProviderDispatchUnknownError` → the adapter's own statement that it could
+ *     not prove the dispatch failed. Added for the SYNCHRONOUS bridge, which
+ *     produces neither of the other two: a direct caller of
+ *     `generateNewsImage` never enters the orchestrator and never mints a job.
+ *
  * ── WHY THE RULE IS "WAS IT DISPATCHED", NOT "IS IT AMBIGUOUS" ─────────────
  * Ambiguity is the loudest case, not the only one. `ASSET_ADMISSION_FAILED`
  * and `PROVIDER_RESULT_INVALID` are both UNAMBIGUOUS — the provider succeeded
@@ -52,6 +57,7 @@
  * it only ever answers "stop retrying".
  */
 
+import { ProviderDispatchUnknownError } from '@/lib/media/job/dispatch'
 import { mayAutomaticallyDispatch } from '@/lib/media/job/lifecycle'
 import { MediaJobError } from '@/lib/media/job/run'
 import { isPermanentByStatusText } from '@/lib/media/retry'
@@ -75,6 +81,13 @@ export function generationMayAlreadyHaveDispatched(err: unknown): boolean {
   if (err instanceof MediaOrchestrationError) {
     return err.providerDispatched
   }
+
+  // A governed adapter saying, in the taxonomy's own words, that it could not
+  // prove its dispatch failed. This covers the SYNCHRONOUS bridge, which never
+  // creates a media job and never reaches the orchestrator when a caller
+  // invokes it directly — `lib/article/hero-image.ts`'s writer fallback does
+  // exactly that, so neither branch above can see it.
+  if (err instanceof ProviderDispatchUnknownError) return true
 
   return false
 }

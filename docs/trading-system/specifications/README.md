@@ -13,6 +13,7 @@ Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
 | Execution Provider Adapter | `execution-provider/…Level 1 Read Only – Canonical v1.2.md` | **Canonical v1.2**. Provider-neutralt, noll order-metoder |
 | Provider Connectivity Reason Codes | `execution-provider/…Provider Connectivity Reason Codes – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-01 (Beslut H). Nio konnektivitetskoder, prospektiv verkan |
 | Market Data & Contract Lifecycle | `market-data/…Market Data & Contract Lifecycle – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-02 (Beslut I). Provider-neutralt, GATE-08 delvis stängd |
+| Contract Selection Reason Code | `market-data/…Contract Selection Reason Code – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-03 (Beslut J). En positiv kontraktsvalskod, prospektiv verkan |
 | Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
 | Prop firm | `prop-firm/` | Tom, GATE-09 |
 | Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |

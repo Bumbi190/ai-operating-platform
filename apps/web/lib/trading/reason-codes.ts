@@ -8,6 +8,9 @@
  *  - Provider Connectivity Reason Codes Canonical v1.0 §3 (the nine PROVIDER_*
  *    connectivity codes), which supersedes the closure sentence in Execution
  *    Provider Adapter Canonical v1.2 §8. See Canonical Amendments v1.0, Beslut H.
+ *  - Contract Selection Reason Code Canonical v1.0 §2 (the single positive
+ *    contract-selection code), parent authority Market Data & Contract Lifecycle
+ *    Canonical v1.0 §9-§10.
  *
  * INVARIANTS:
  *  - Decisions carry machine-readable codes, never only prose. Analytics must be
@@ -145,6 +148,31 @@ export const CORE_REASON_CODES = [
   'PROVIDER_SESSION_CANCELLED',
   'PROVIDER_RECONNECT_EXHAUSTED',
   'PROVIDER_FAILURE_UNKNOWN',
+  /*
+   * Contract selection provenance (Contract Selection Reason Code Canonical v1.0).
+   *
+   * The one positive answer to "why THIS concrete contract": Omnira resolved it
+   * deterministically from an authoritative, explicitly versioned
+   * `ContractCalendar` under the active canonical selection policy.
+   *
+   * EXPLANATORY ONLY. It records why a contract was chosen, never whether a trade
+   * may execute, and it mints no RiskClearance, PropClearance, ApprovalGrant or
+   * ExecutionIntent.
+   *
+   * PROVIDER EVIDENCE CANNOT TRIGGER IT. Canonical v1.0 §9 lets `evidence` carry a
+   * provider front-month label, observed volume or open interest, and calls them
+   * evidence, never trigger. If the only support for a selection is a provider
+   * observation, no canonical selection happened and this code does not apply.
+   *
+   * SUCCESS ONLY. Without authoritative coverage the resolver REFUSES and no
+   * decision is minted, so there is deliberately no failure counterpart here — the
+   * resolver's own `NO_AUTHORITATIVE_COVERAGE` stays local caller-contract
+   * validation and is not a journal code.
+   *
+   * PROSPECTIVE ONLY. Rows written before this vocabulary existed are never
+   * reinterpreted, and a row lacking it is not invalid.
+   */
+  'CONTRACT_SELECTED_BY_CANONICAL_CALENDAR',
   // Referential integrity
   'ACCOUNT_MISMATCH',
   'INSTRUMENT_MISMATCH',

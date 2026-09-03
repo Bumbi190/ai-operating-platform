@@ -866,6 +866,87 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 
 ---
 
+## Beslut J — Kanonisk reason code för kontraktsval
+
+**Stänger:** GATE-08C REASON-CODE GAP
+**Karaktär:** Ny kanonisk vokabulär. Ingen befintlig kod ändras, byter namn eller får ny
+innebörd. Ingen befintlig kanonisk regel upphävs.
+
+Beslut I krävde i §9 att ett `ContractSelectionDecision` bär
+`reasons: readonly Reason[]`. Registret i `reason-codes.ts` innehöll ingen sann **positiv**
+kod för varför ett konkret kontrakt valdes: varje befintlig kod beskriver en riskbedömning,
+en bruten auktoritetskedja eller en providerobservation.
+
+Följden var konkret. GATE-08C-1 lät bli att materialisera `ContractSelectionDecision`, och
+GATE-08C-3A lät bli det igen — båda gångerna med motiveringen att en beslutspost byggd på
+en orelaterad befintlig kod vore en **falsk journalrad**, och att en tom `reasons`-lista
+vore samma fel tystare. Luckan var alltså inte en förbisedd detalj utan en medvetet
+oöppnad dörr.
+
+Beslut J öppnar exakt den dörren och ingenting annat.
+
+**Canonical betydelse:**
+
+```
+CONTRACT_SELECTED_BY_CANONICAL_CALENDAR
+
+= Omnira valde detta ResolvedContract deterministiskt ur en auktoritativ,
+  explicit versionerad ContractCalendar, under aktiv kanonisk valpolicy
+
+≠ providern valde det
+≠ front month, volym eller open interest valde det
+≠ någon auktoritet att exekvera
+```
+
+### J1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Contract Selection Reason Code –
+Canonical v1.0.md` skapad. Den låser:
+
+- **En enda kod.** `CONTRACT_SELECTED_BY_CANONICAL_CALENDAR`, registrerad i
+  `CORE_REASON_CODES`. Kontraktsval är strukturell härkomst i auktoritetskedjan och
+  marknadsdata, aldrig en riskbedömning — därför inte `RISK_REASON_CODES`.
+- **Providerbevis är bevis, aldrig utlösare.** Canonical v1.0 §9 tillåter att `evidence`
+  bär en front month-etikett, observerad volym eller open interest. De får registreras
+  bredvid ett val men aldrig orsaka, ändra, åsidosätta, rangordna eller mynta koden. Är
+  providerobservationen det enda stödet har inget kanoniskt val skett.
+- **Endast framgång.** Saknas auktoritativ täckning gäller §7.2 oförändrat: `REFUSE`, och
+  inget beslut myntas. Därför införs medvetet ingen motsvarande felkod, och resolverns
+  lokala `NO_AUTHORITATIVE_COVERAGE` befordras **inte** till journalkod.
+- **`reasons` får inte vara tom.** Ett nymyntat beslut bär minst den kanoniska valorsaken.
+  Pluralformen är inget krav på fler än en. `calendarVersion` och `policyVersion` har egna
+  fält och kodas aldrig in i orsakstexten som en andra maskinsanning.
+- **Replay oförändrad.** Ett inspelat beslut läses, aldrig räknas om eller myntas om. Utan
+  pinnad historisk kalenderversion: `REFUSE`, inget beslut, ingen positiv orsak.
+- **Ingen auktoritet.** Koden svarar på *vilket kontrakt och varför*, aldrig på huruvida en
+  order får skickas. Ingen rangordning, ingen retry-policy, ingen allvarlighetsgrad.
+- **Prospektiv verkan.** Historiska rader skrivs aldrig om, och en äldre rad som saknar
+  koden är inte ogiltig.
+
+### J2 — Vad Beslut J INTE innebär
+
+GATE-08 flyttas **inte**. Beslut J stänger vokabulärluckan, inte gaten.
+
+C3B-runtime är **inte** implementerad. Registret *känner* koden; ingenting *använder* den.
+Inget `ContractSelectionDecision`, ingen `decisionId`, ingen `decidedAt`, inget
+beslutsregister och ingen replaylagring existerar.
+
+Följande implementationsluckor är oberörda och kvarstår:
+`GATE-08C-3A SOURCE-RESULT-SHAPE GAP` (öppen),
+`GATE-08C-2A DST-BOUNDARY GAP` (öppen, fail-closed),
+`GATE-08C-2B UNEXPECTED-MINUTE GAP` (öppen, fail-closed) och
+`GATE-08C-2B VOLUME POLICY` (härledd, inte kanoniserad).
+
+Market Data & Contract Lifecycle Canonical v1.0 skrivs **inte** om — Beslut J är ett
+fristående tillägg under dess §9–§10, inte en retroaktiv ändring av dess låsta text.
+
+GATE-01, GATE-02, GATE-03, GATE-04, GATE-06, GATE-07, GATE-09, GATE-12, GATE-13, GATE-14
+och GATE-17 berörs inte.
+
+Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -902,3 +983,6 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 | `reviews/Open Implementation Gates v1.0.md` | I1 — GATE-08 delvis stängd, understatus |
 | `SOURCE_OF_TRUTH.md` | I1 — kanonisk auktoritet, GATE-08 delvis stängd |
 | `specifications/architecture/…v0.3.md` | I1 — §22-kedja, rollover-pekare |
+| `specifications/market-data/…Contract Selection Reason Code – Canonical v1.0.md` | J1 — ny, en positiv kontraktsvalskod |
+| `specifications/README.md` | J1 — indexrad |
+| `SOURCE_OF_TRUTH.md` | J1 — kanonisk källa, REASON-CODE GAP stängd |

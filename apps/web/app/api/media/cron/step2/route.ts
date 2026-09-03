@@ -10,6 +10,7 @@
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
+import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/retry-authority'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
@@ -92,9 +93,14 @@ export async function GET(request: Request) {
       // activation waits for a dispatch-claim design (G3+), because a retry that
       // is refused is worse than a retry that reserves twice.
       withRetry(() => generateVoiceover(scriptText, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, 'victoria', MEDIA_PIPELINE_PROJECT),
-        { attempts: 2, label: 'ElevenLabs voice' }),
+        // A retry here re-enters `generateVoiceover`, which synthesises again.
+        // Only a failure that PROVES nothing was synthesised may repeat it.
+        { attempts: 2, label: 'ElevenLabs voice',
+          isPermanent: dispatchedGenerationIsNotRetryable() }),
       withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT),
-        { attempts: 2, label: 'Ideogram images' }),
+        // Three renders per call, so a blind retry buys three more.
+        { attempts: 2, label: 'Ideogram images',
+          isPermanent: dispatchedGenerationIsNotRetryable() }),
     ])
 
     // Upload everything in parallel

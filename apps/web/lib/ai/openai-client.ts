@@ -33,6 +33,11 @@ import {
   withGovernedSpend,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import {
+  ProviderDispatchUnknownError,
+  classifyTransportFailure,
+  statusProvesNotCreated,
+} from '@/lib/media/job/dispatch'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
@@ -215,14 +220,26 @@ export async function openAISpeech(
           signal: init?.signal,
         })
       } catch (e) {
-        throw new ProviderNotDispatchedError('openai speech request never reached the provider', e)
+        // Same boundary as `image-client.ts` and `elevenlabs.ts`. The SDK paths
+        // above are already guarded by `provablyNotBilled`; this raw `fetch` was
+        // the one OpenAI call still claiming the safe case unconditionally, and
+        // the caller passes its own `signal`, so an abort after the request was
+        // written is exactly the case that claim cannot support.
+        const verdict = classifyTransportFailure(e)
+        if (verdict.sent === false) {
+          throw new ProviderNotDispatchedError(
+            `openai speech request never reached the provider (${verdict.code})`, e)
+        }
+        throw new ProviderDispatchUnknownError({
+          provider: 'openai', observation: 'response_lost', detail: verdict.detail, cause: e,
+        })
       }
 
       if (!res.ok) {
         // Return the failed response rather than throwing: the caller maps the
         // status to its own error envelope. A 4xx was not billed, so free the
         // headroom; a 5xx may have synthesised audio and is left settled.
-        if (res.status < 500) {
+        if (statusProvesNotCreated(res.status)) {
           throw new ProviderNotDispatchedError(
             `openai speech refused with ${res.status}`,
             Object.assign(new Error('openai_speech_failed'), { response: res, status: res.status }),

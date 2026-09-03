@@ -34,6 +34,11 @@ import {
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
+import {
+  ProviderDispatchUnknownError,
+  classifyTransportFailure,
+  statusProvesNotCreated,
+} from '@/lib/media/job/dispatch'
 
 const IDEOGRAM_V3_GENERATE = 'https://api.ideogram.ai/v1/ideogram-v3/generate'
 
@@ -85,25 +90,60 @@ export async function generateIdeogramV3(
           body: JSON.stringify(body),
         })
       } catch (e) {
-        throw new ProviderNotDispatchedError('ideogram request never reached the provider', e)
+        // ── THE AMBIGUITY BOUNDARY ──────────────────────────────────────────
+        //
+        // This used to claim `ProviderNotDispatchedError` for EVERY thrown
+        // fetch, which is a positive claim ("nothing was billed") that a reset
+        // or a fired deadline cannot support. It had two costs: the reservation
+        // was RELEASED for a render that may have run, and the failure read as
+        // retryable, so the caller rendered a second paid image.
+        //
+        // `classifyTransportFailure` answers only when it can prove the safe
+        // case — the same rule `lib/ai/anthropic.ts` states as "a timeout, a 5xx
+        // or an aborted socket is NOT here on purpose". There is deliberately no
+        // branch that guesses toward the convenient answer.
+        const verdict = classifyTransportFailure(e)
+        if (verdict.sent === false) {
+          throw new ProviderNotDispatchedError(
+            `ideogram request never reached the provider (${verdict.code})`, e)
+        }
+        throw new ProviderDispatchUnknownError({
+          provider: 'ideogram', observation: 'response_lost', detail: verdict.detail, cause: e,
+        })
       }
 
       if (!res.ok) {
         const err = await res.text()
         const failure = new Error(`Ideogram API error ${res.status} (${ctx.operation}): ${err}`)
-        // 4xx: rejected before rendering, so nothing was billed. 5xx: it may
-        // have rendered and failed to return — that is ambiguous, and settles.
-        if (res.status < 500) {
+        // 4xx is the vendor ANSWERING: it parsed the request and declined to
+        // render. 5xx is not an answer about the work — a gateway in front of
+        // the renderer may have given up after it had already started.
+        if (statusProvesNotCreated(res.status)) {
           throw new ProviderNotDispatchedError(`ideogram refused with ${res.status}`, failure)
         }
-        throw failure
+        // The vendor's own text is carried into the message, not just onto the
+        // cause: every existing log line and assertion reads `err.message`, and
+        // dropping the response body would make a 5xx harder to diagnose than
+        // it was before this file learned to classify.
+        throw new ProviderDispatchUnknownError({
+          provider: 'ideogram', observation: 'response_lost',
+          detail: `${failure.message} — a ${res.status} says nothing about whether it rendered`,
+          cause: failure,
+        })
       }
 
       const data = (await res.json()) as { data?: Array<{ url?: string }> }
       const url = data.data?.[0]?.url
-      // The image was rendered and billed even if the payload surprised us, so
-      // this throw is ambiguous by design and must NOT release the reservation.
-      if (!url) throw new Error(`Ideogram returned no image URL (${ctx.operation})`)
+      // The vendor answered 2xx, so the image was rendered and billed. What was
+      // lost is our ability to NAME it. Typed rather than a plain Error, so the
+      // caller can see it is an evidence failure and not a generation failure —
+      // it already settled correctly, and now it also refuses a repeat.
+      if (!url) {
+        throw new ProviderDispatchUnknownError({
+          provider: 'ideogram', observation: 'confirmed_evidence_failed',
+          detail: `the provider returned 2xx with no image URL (${ctx.operation})`,
+        })
+      }
 
       await logImageCost(1, 'ideogram', {
         ...('projectId' in ctx.project
@@ -174,18 +214,39 @@ export async function generateIdeogramLegacy(
           body: JSON.stringify({ image_request: imageRequest }),
         })
       } catch (e) {
-        throw new ProviderNotDispatchedError('ideogram request never reached the provider', e)
+        // Same boundary as the v3 path above, and the same reason. This one
+        // matters MORE, not less: `lib/ai/runner.ts` calls it under a 90-second
+        // `AbortSignal.timeout`, so an abort AFTER the request was written is a
+        // routine event here, and it is exactly the case a not-dispatched claim
+        // cannot support.
+        const verdict = classifyTransportFailure(e)
+        if (verdict.sent === false) {
+          throw new ProviderNotDispatchedError(
+            `ideogram request never reached the provider (${verdict.code})`, e)
+        }
+        throw new ProviderDispatchUnknownError({
+          provider: 'ideogram', observation: 'response_lost', detail: verdict.detail, cause: e,
+        })
       }
 
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         const failure = new IdeogramHttpError(res.status, body)
-        // A 429 is a refusal, not a render: nothing was billed, so the headroom
-        // goes back immediately rather than ageing out and starving a retry.
-        if (res.status < 500) {
+        // A 4xx — 429 included — is a refusal, not a render: nothing was billed,
+        // so the headroom goes back immediately rather than ageing out and
+        // starving a retry. `statusProvesNotCreated` is the same 400..499 rule,
+        // named once and shared with the job lifecycle.
+        if (statusProvesNotCreated(res.status)) {
           throw new ProviderNotDispatchedError(`ideogram refused with ${res.status}`, failure)
         }
-        throw failure
+        // 5xx: ambiguous. The `IdeogramHttpError` is kept as the CAUSE so a
+        // caller inspecting `err.cause.status` — `lib/ai/runner.ts` does — still
+        // sees the status it always saw.
+        throw new ProviderDispatchUnknownError({
+          provider: 'ideogram', observation: 'response_lost',
+          detail: `${failure.message} — a ${res.status} says nothing about whether it rendered`,
+          cause: failure,
+        })
       }
 
       const json = (await res.json()) as { data?: IdeogramLegacyResult[] }

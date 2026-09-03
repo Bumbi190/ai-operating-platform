@@ -19,6 +19,11 @@ import { estimateVoiceSek } from '@/lib/cost/budget-gate'
 import {
   MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, withGovernedSpend, type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import {
+  ProviderDispatchUnknownError,
+  classifyTransportFailure,
+  statusProvesNotCreated,
+} from '@/lib/media/job/dispatch'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 export interface WordTiming {
@@ -92,17 +97,39 @@ export async function generateVoiceover(
           },
         )
       } catch (e) {
-        throw new ProviderNotDispatchedError('elevenlabs request never reached the provider', e)
+        // THE AMBIGUITY BOUNDARY. This claimed `ProviderNotDispatchedError`
+        // for EVERY thrown fetch — a positive claim ("nothing was
+        // synthesised") that a reset or a fired deadline cannot support. The
+        // 30s `AbortSignal.timeout` on this request makes exactly that case
+        // routine: a deadline usually fires because ElevenLabs already has
+        // the text and is working. It cost twice over — the reservation was
+        // RELEASED for audio that may have been billed, and the failure read
+        // as retryable, so the caller synthesised a second time.
+        const verdict = classifyTransportFailure(e)
+        if (verdict.sent === false) {
+          throw new ProviderNotDispatchedError(
+            `elevenlabs request never reached the provider (${verdict.code})`, e)
+        }
+        throw new ProviderDispatchUnknownError({
+          provider: 'elevenlabs', observation: 'response_lost',
+          detail: verdict.detail, cause: e,
+        })
       }
 
       if (!response.ok) {
         const error = await response.text()
         const failure = new Error(`ElevenLabs API error ${response.status}: ${error}`)
         // A rejected request synthesised nothing. A 5xx may have, and settles.
-        if (response.status < 500) {
+        // A 4xx is the vendor ANSWERING: it parsed the request and
+        // synthesised nothing. A 5xx is not an answer about the work.
+        if (statusProvesNotCreated(response.status)) {
           throw new ProviderNotDispatchedError(`elevenlabs refused with ${response.status}`, failure)
         }
-        throw failure
+        throw new ProviderDispatchUnknownError({
+          provider: 'elevenlabs', observation: 'response_lost',
+          detail: `${failure.message} — a ${response.status} says nothing about whether it synthesised`,
+          cause: failure,
+        })
       }
 
       const data = await response.json() as {
@@ -218,16 +245,38 @@ export async function generateSoundEffect(
           }),
         })
       } catch (e) {
-        throw new ProviderNotDispatchedError('elevenlabs sound-generation never reached the provider', e)
+        // THE AMBIGUITY BOUNDARY. This claimed `ProviderNotDispatchedError`
+        // for EVERY thrown fetch — a positive claim ("nothing was
+        // synthesised") that a reset or a fired deadline cannot support. The
+        // 30s `AbortSignal.timeout` on this request makes exactly that case
+        // routine: a deadline usually fires because ElevenLabs already has
+        // the text and is working. It cost twice over — the reservation was
+        // RELEASED for audio that may have been billed, and the failure read
+        // as retryable, so the caller synthesised a second time.
+        const verdict = classifyTransportFailure(e)
+        if (verdict.sent === false) {
+          throw new ProviderNotDispatchedError(
+            `elevenlabs sound-generation never reached the provider (${verdict.code})`, e)
+        }
+        throw new ProviderDispatchUnknownError({
+          provider: 'elevenlabs', observation: 'response_lost',
+          detail: verdict.detail, cause: e,
+        })
       }
 
       if (!res.ok) {
         const errText = await res.text().catch(() => res.statusText)
         const failure = new Error(`ElevenLabs sound-generation failed (${res.status}): ${errText}`)
-        if (res.status < 500) {
+        // A 4xx is the vendor ANSWERING: it parsed the request and
+        // synthesised nothing. A 5xx is not an answer about the work.
+        if (statusProvesNotCreated(res.status)) {
           throw new ProviderNotDispatchedError(`elevenlabs refused with ${res.status}`, failure)
         }
-        throw failure
+        throw new ProviderDispatchUnknownError({
+          provider: 'elevenlabs', observation: 'response_lost',
+          detail: `${failure.message} — a ${res.status} says nothing about whether it synthesised`,
+          cause: failure,
+        })
       }
 
       const audioBuffer = Buffer.from(await res.arrayBuffer())

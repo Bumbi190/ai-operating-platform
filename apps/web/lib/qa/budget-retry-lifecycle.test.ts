@@ -104,14 +104,24 @@ vi.mock('server-only', () => ({}))
 
 const KEYED = { projectSlug: 'p' } as const
 
+/**
+ * The SHIPPED step2 call site, reproduced.
+ *
+ * The `isPermanent` rule was added in Phase 5B-1 and is not decoration: without
+ * it this harness stopped modelling production the moment the route gained the
+ * authority, and would have kept asserting a retry policy nothing runs.
+ */
 async function runVoiceover(fetchImpl: () => any, key?: string) {
   const { generateVoiceover } = await import('@/lib/media/elevenlabs')
   const { withRetry } = await import('@/lib/media/retry')
+  const { dispatchedGenerationIsNotRetryable } =
+    await import('@/lib/media/orchestrator/retry-authority')
   vi.stubGlobal('fetch', vi.fn(fetchImpl))
   let error: any = null
   try {
     await withRetry(() => generateVoiceover('hello', TEST_AUTONOMOUS_GLOBAL, 'victoria', KEYED, key),
-      { attempts: 2, baseMs: 1, label: 'test' })
+      { attempts: 2, baseMs: 1, label: 'test',
+        isPermanent: dispatchedGenerationIsNotRetryable() })
   } catch (e) { error = e }
   return error
 }
@@ -121,7 +131,15 @@ const ok = () => Promise.resolve({
   json: async () => ({ audio_base64: Buffer.from('x').toString('base64'),
     alignment: { characters: ['x'], character_start_times_seconds: [0], character_end_times_seconds: [1] } }),
 })
+/**
+ * AMBIGUOUS transport failure. The message says ECONNRESET and there is no
+ * `code`, which is exactly the shape `classifyTransportFailure` refuses to call
+ * safe: a reset can arrive during the handshake or after the request was
+ * written, and nothing in the error distinguishes them.
+ */
 const transportFail = () => Promise.reject(new Error('ECONNRESET'))
+/** PROVEN pre-dispatch: DNS never resolved a host, so nothing can have been sent. */
+const dnsFail = () => Promise.reject(Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } }))
 const http4xx = () => Promise.resolve({ ok: false, status: 401, text: async () => 'unauthorized' })
 const http5xx = () => Promise.resolve({ ok: false, status: 503, text: async () => 'unavailable' })
 const ambiguous = () => Promise.resolve({ ok: true, status: 200, json: async () => { throw new Error('socket hang up') } })
@@ -139,10 +157,26 @@ describe('reservation lifecycle per failure class (no key — shipped behaviour)
     expect(releaseSpend).not.toHaveBeenCalled()
   })
 
-  it('A · a transport failure RELEASES — nothing was billed', async () => {
-    await runVoiceover(transportFail)
+  it('A · a PROVEN pre-dispatch failure releases — nothing was billed', async () => {
+    // DNS is the case the adapter can actually defend, so the headroom goes back.
+    await runVoiceover(dnsFail)
     expect(releaseSpend).toHaveBeenCalled()
     expect(settleSpend).not.toHaveBeenCalled()
+  })
+
+  it('A2 · an AMBIGUOUS transport failure SETTLES — it may have been billed', async () => {
+    // CHANGED BY PHASE 5B-1, and the old expectation was the defect. This used
+    // to assert RELEASE for a bare `Error('ECONNRESET')`, which is a positive
+    // claim that nothing was synthesised — a claim a reset cannot support. The
+    // adapter now classifies before claiming, so budget stays counted.
+    await runVoiceover(transportFail)
+    expect(settleSpend).toHaveBeenCalled()
+    expect(releaseSpend).not.toHaveBeenCalled()
+  })
+
+  it('A3 · and an ambiguous transport failure is NOT retried', async () => {
+    await runVoiceover(transportFail)
+    expect(reserveCalls).toHaveLength(1)
   })
 
   it('B · a provider 4xx releases, and withRetry does not retry a permanent error', async () => {
@@ -152,16 +186,16 @@ describe('reservation lifecycle per failure class (no key — shipped behaviour)
     expect(reserveCalls).toHaveLength(1)          // no second attempt
   })
 
-  it('C · a provider 5xx SETTLES (it may have been billed) and is still retried', async () => {
+  it('C · a provider 5xx SETTLES (it may have been billed) and is NOT retried', async () => {
     await runVoiceover(http5xx)
     // 5xx is >= 500, so it is NOT a provable non-dispatch: the reservation
     // settles rather than handing budget back for a call that may have run.
     expect(settleSpend).toHaveBeenCalled()
     expect(releaseSpend).not.toHaveBeenCalled()
-    // The retry then takes its OWN reservation, which is the honest accounting:
-    // two attempts that may each have cost money are two reservations.
-    expect(reserveCalls.map(c => c.reason)).toEqual(['ok', 'ok'])
-    expect(reserveCalls.every(c => c.key === undefined)).toBe(true)
+    // CHANGED BY PHASE 5B-1. This used to assert a second attempt. Settling and
+    // retrying together is the contradiction the phase removed: the reservation
+    // says "this may have been billed" while the loop says "do it again".
+    expect(reserveCalls).toHaveLength(1)
   })
 
   it('D · an ambiguous failure after dispatch SETTLES — budget is not handed back', async () => {
@@ -172,15 +206,39 @@ describe('reservation lifecycle per failure class (no key — shipped behaviour)
 })
 
 describe('THE MEASURED REASON KEYS STAY DORMANT', () => {
-  it('a stable key turns a retryable 5xx into a SPEND REFUSAL, not a reuse', async () => {
+  it('a settling 5xx now takes exactly ONE reservation — replay is unreachable here', async () => {
+    // CHANGED BY PHASE 5B-1, and the change is the point. This used to assert
+    // `['ok', 'replay_settled']`, which required a second attempt after a failure
+    // that had already SETTLED. That combination no longer exists at this call
+    // site: everything that settles is terminal, so a settled reservation can
+    // never be replayed here. The replay machine is exercised directly below.
     const { spendIdempotencyKey } = await import('@/lib/cost/spend-identity')
     const key = spendIdempotencyKey({ project: KEYED, provider: 'elevenlabs',
       operation: 'generateVoiceover', subject: 'script-1' })
     const err = await runVoiceover(http5xx, key)
 
-    // Attempt 1 settled. Attempt 2 therefore does NOT reuse the reservation.
+    expect(reserveCalls.map(c => c.reason)).toEqual(['ok'])
+    // The caller sees the real ambiguity rather than a spend refusal.
+    expect(err?.name).toBe('ProviderDispatchUnknownError')
+  })
+
+  it('the REPLAY MACHINE still refuses a settled key — probed directly', async () => {
+    // Deliberately bypasses the shipped permanence rule to reach that state:
+    // this asserts `budget_reserve`'s replay branch, not the call site's retry
+    // policy, and says so rather than pretending the two are one thing.
+    const { generateVoiceover } = await import('@/lib/media/elevenlabs')
+    const { withRetry } = await import('@/lib/media/retry')
+    const { spendIdempotencyKey } = await import('@/lib/cost/spend-identity')
+    const key = spendIdempotencyKey({ project: KEYED, provider: 'elevenlabs',
+      operation: 'generateVoiceover', subject: 'script-3' })
+    vi.stubGlobal('fetch', vi.fn(http5xx))
+    let err: any = null
+    try {
+      await withRetry(() => generateVoiceover('hello', TEST_AUTONOMOUS_GLOBAL, 'victoria', KEYED, key),
+        { attempts: 2, baseMs: 1, label: 'replay-probe' })
+    } catch (e) { err = e }
+
     expect(reserveCalls.map(c => c.reason)).toEqual(['ok', 'replay_settled'])
-    // And the caller no longer sees the real 503 it could have retried.
     expect(err?.name).toBe('SpendRefusedError')
     expect(String(err?.message)).toContain('replay_settled')
   })
@@ -189,8 +247,11 @@ describe('THE MEASURED REASON KEYS STAY DORMANT', () => {
     const { spendIdempotencyKey } = await import('@/lib/cost/spend-identity')
     const key = spendIdempotencyKey({ project: KEYED, provider: 'elevenlabs',
       operation: 'generateVoiceover', subject: 'script-2' })
-    // 4xx is permanent so it never retries; use a transport failure, which does.
-    const err = await runVoiceover(transportFail, key)
+    // Needs a failure class that still RETRIES, so the second attempt reaches the
+    // replay path. A 4xx is permanent and an ambiguous transport failure is now
+    // terminal too (Phase 5B-1), so this uses the one class that is still
+    // retried: a positively proven pre-dispatch failure.
+    const err = await runVoiceover(dnsFail, key)
     expect(reserveCalls.map(c => c.reason)).toEqual(['ok', 'replay_released'])
     expect(err?.name).toBe('SpendRefusedError')
   })

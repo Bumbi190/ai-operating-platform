@@ -28,6 +28,7 @@ import {
   openAIChatCompletion, openAIImageEdit, openAIImageGenerate,
 } from '@/lib/ai/openai-client'
 import { generateIdeogramLegacy, IdeogramHttpError } from '@/lib/media/image-client'
+import { generationMayAlreadyHaveDispatched } from '@/lib/media/orchestrator/retry-authority'
 import { PLATFORM_COMPAT_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -205,6 +206,12 @@ async function generateWithReference(
       }
       return image
     } catch (err: any) {
+      // A LOOP IS AN AUTOMATIC DISPATCH ACTOR. It may repeat a paid generation
+      // only when the failure PROVES none happened. The adapters now say which
+      // case they are in, so this reads their answer instead of retrying
+      // everything. A 429 and a provably-undispatched failure are unaffected —
+      // neither is a possible side effect, so the branches below still run.
+      if (generationMayAlreadyHaveDispatched(err)) throw err
       lastError = err
       const status = err?.status ?? err?.response?.status
       const isRateLimit = status === 429 || String(err?.message).includes('rate limit') || String(err?.message).includes('Rate limit')
@@ -329,6 +336,12 @@ async function generateWithIdeogram(
       console.log(`[Ideogram] ✅ ${label} genererad: ${imageUrl.slice(0, 80)}...`)
       return imageUrl
     } catch (err: any) {
+      // A LOOP IS AN AUTOMATIC DISPATCH ACTOR. It may repeat a paid generation
+      // only when the failure PROVES none happened. The adapters now say which
+      // case they are in, so this reads their answer instead of retrying
+      // everything. A 429 and a provably-undispatched failure are unaffected —
+      // neither is a possible side effect, so the branches below still run.
+      if (generationMayAlreadyHaveDispatched(err)) throw err
       const isLast = attempt === maxRetries
       if (!isLast) {
         console.warn(`[Ideogram] ${label} försök ${attempt} misslyckades: ${err.message} — försöker igen`)
@@ -705,6 +718,12 @@ async function runImageStep(
         )
         return res.data?.[0]
       } catch (err: any) {
+        // A LOOP IS AN AUTOMATIC DISPATCH ACTOR. It may repeat a paid generation
+        // only when the failure PROVES none happened. The adapters now say which
+        // case they are in, so this reads their answer instead of retrying
+        // everything. A 429 and a provably-undispatched failure are unaffected —
+        // neither is a possible side effect, so the branches below still run.
+        if (generationMayAlreadyHaveDispatched(err)) throw err
         const status = err?.status ?? err?.response?.status
         const isRateLimit = status === 429 || String(err?.message).includes('rate limit') || String(err?.message).includes('Rate limit')
         if (isRateLimit && attempt < maxRetries) {

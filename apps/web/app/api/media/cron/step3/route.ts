@@ -10,6 +10,7 @@
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
+import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/retry-authority'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateNewsImages } from '@/lib/media/ideogram'
@@ -126,7 +127,11 @@ export async function GET(request: Request) {
       // into an exhausted Ideogram call.
       const rawImageUrls = await withRetry(
         () => generateNewsImages(newsTitle, scriptText, 8, execution),
-        { attempts: 2, label: 'Ideogram images (step3)', isPermanent: stopIsNotRetryable() },
+        // Eight renders per call. The stop rule already ended the loop on an
+        // operator pause; this adds the other case a loop must not repeat — a
+        // render that may already have happened.
+        { attempts: 2, label: 'Ideogram images (step3)',
+          isPermanent: stopIsNotRetryable(dispatchedGenerationIsNotRetryable()) },
       )   // fler scener = bildbyte var ~6s (retention)
       storedImageUrls = await Promise.all(
         rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),

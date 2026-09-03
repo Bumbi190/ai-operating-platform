@@ -50,6 +50,7 @@ import { admitAssetFromUrl } from '@/lib/media/asset/admission'
 import { publicDeliveryUrl } from '@/lib/media/asset/store'
 import { withRetry } from '@/lib/media/retry'
 import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/retry-authority'
+import { stopIsNotRetryable } from '@/lib/governance/execution-dispatch'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logImageCost } from '@/lib/cost/track'
@@ -269,7 +270,13 @@ export async function generateHeroImage(
           //
           // Composed, not replaced: the existing status-text heuristic still
           // applies to everything this rule has no opinion about.
-          isPermanent: dispatchedGenerationIsNotRetryable(),
+          //
+          // `stopIsNotRetryable` wraps it because an operator's pause is not a
+          // failure at all — retrying one sleeps, asks again, and eventually
+          // reports the pause as an exhausted external call. No dispatch
+          // occurred, so this is about noise rather than duplicate spend, but
+          // the composition is the repository's existing answer and costs a word.
+          isPermanent: stopIsNotRetryable(dispatchedGenerationIsNotRetryable()),
         },
       )
       asset = result.asset
@@ -282,7 +289,23 @@ export async function generateHeroImage(
       source = 'fallback_writer'
       const ideogramUrl = await withRetry(
         () => generateNewsImage(headlineInput, bodyInput, execution),
-        { attempts: 2, label: 'Ideogram hero' },
+        {
+          attempts: 2,
+          label: 'Ideogram hero',
+          // THE SAME AUTHORITY AS THE ORCHESTRATED PATH ABOVE.
+          //
+          // `generateNewsImage` writes a prompt with Claude and then renders with
+          // Ideogram. Both are billable, and the render is the expensive one — so
+          // a retry after a render that MAY have happened buys a second image.
+          // Until the adapter gained a structured ambiguity contract there was
+          // nothing here to read: every failure looked alike, and an aborted
+          // socket was indistinguishable from a refused request.
+          //
+          // A Claude failure, a missing credential and a vendor 4xx all remain
+          // retryable — they are pre-dispatch, and this rule has no opinion on
+          // them. Only a possible side effect ends the loop.
+          isPermanent: stopIsNotRetryable(dispatchedGenerationIsNotRetryable()),
+        },
       )
       const admitted = await admitAssetFromUrl({
         projectId:  article.project_id,

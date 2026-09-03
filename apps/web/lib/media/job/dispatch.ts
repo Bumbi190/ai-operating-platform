@@ -76,6 +76,60 @@ export function observationForDispatch(result: MediaDispatchResult): DispatchObs
   }
 }
 
+// ── The ambiguous-dispatch error ─────────────────────────────────────────────
+
+/**
+ * A CREATION whose outcome cannot be determined — thrown by a governed adapter.
+ *
+ * ── WHY THIS TYPE HAS TO EXIST ─────────────────────────────────────────────
+ * `lib/cost/governed-spend.ts` publishes exactly one structured claim an adapter
+ * can make about a failed dispatch: `ProviderNotDispatchedError`, meaning "I can
+ * prove nothing was billed". It has no counterpart, so an adapter that could
+ * NOT prove it had only a plain `Error` — and a plain `Error` says nothing a
+ * caller can act on.
+ *
+ * That asymmetry is what let `image-client.ts` throw the wrong one. The safe
+ * claim was the only claim available, so every thrown `fetch` got it, including
+ * the resets and fired deadlines that are the whole reason the distinction
+ * matters. This is the missing half of the pair.
+ *
+ * ── WHAT IT MEANS TO EACH LAYER ────────────────────────────────────────────
+ *   `withGovernedSpend` — not a `ProviderNotDispatchedError`, so it SETTLES.
+ *     Correct, and unchanged: ambiguity is not a refund.
+ *   a retry loop        — `retry-authority.ts` reads it as "a side effect may
+ *     exist", which forbids repeating the whole operation.
+ *
+ * ── WHY IT LIVES HERE ──────────────────────────────────────────────────────
+ * This module already owns the question ("deciding what a failed dispatch
+ * PROVES") and the vocabulary (`DispatchObservation`). Putting the error beside
+ * `classifyTransportFailure` keeps the judgement and the way of reporting it in
+ * one place, and keeps it out of `lib/cost`, which the retry layer must not
+ * import.
+ *
+ * It is deliberately NOT provider-specific: no vendor is named, and any governed
+ * adapter that cannot prove its dispatch failed can throw it.
+ */
+export class ProviderDispatchUnknownError extends Error {
+  /** What the failure actually proved. Never `not_dispatched` — that is the sibling. */
+  readonly observation: Extract<DispatchObservation, 'response_lost' | 'confirmed_evidence_failed' | 'partially_applied'>
+  readonly provider: string
+  readonly cause: unknown
+
+  constructor(args: {
+    provider: string
+    observation: Extract<DispatchObservation, 'response_lost' | 'confirmed_evidence_failed' | 'partially_applied'>
+    detail: string
+    cause?: unknown
+  }) {
+    super(`[${args.provider}] dispatch outcome unknown (${args.observation}): ${args.detail}`
+      + ' — a paid operation may exist; this call must not be repeated automatically.')
+    this.name = 'ProviderDispatchUnknownError'
+    this.observation = args.observation
+    this.provider = args.provider
+    this.cause = args.cause
+  }
+}
+
 // ── Transport classification ─────────────────────────────────────────────────
 
 /**

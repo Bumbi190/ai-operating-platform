@@ -33,6 +33,10 @@
  *     • reference support as a HARD constraint (the PR #164 contract, lifted
  *       from "one call site fails closed" to "an unsuitable provider is never
  *       selected in the first place")
+ *     • PRICEABILITY (Phase 5) — whether spend governance has a proven price for
+ *       this candidate's model at all. Not a budget check: budgets are live
+ *       headroom and belong at dispatch. This asks the earlier question, the one
+ *       that cannot be asked later without paying to find out.
  *
  * Spend and stop are deliberately NOT re-checked here. They are enforced at the
  * moment of dispatch by the adapter that owns them, and a pre-check would be a
@@ -157,6 +161,26 @@ export function filterEligible(
     if (!c.dispatch.supported) {
       rejected.push({ candidate: c.id, rule: 'execution_not_supported',
         detail: c.dispatch.reason })
+      continue
+    }
+
+    // SPEND GOVERNANCE MUST BE ABLE TO PRICE IT — the Phase 5 addition.
+    //
+    // Last, and after dispatchability, because "we cannot submit this at all" is
+    // the nearer problem: reporting an unpriceable model for a candidate that
+    // also has no dispatch path would send an operator to fix the second thing.
+    //
+    // This is the one eligibility rule about MONEY, and it is deliberately not a
+    // budget check. Budgets are `withGovernedSpend`'s, resolved at dispatch
+    // against live headroom — re-asking here would be a second answer to a
+    // question that already has one, and a stale one. What this asks is
+    // narrower and cannot be answered later without a cost: is there a proven
+    // PRICE at all? A candidate with no price has no conservative upper bound to
+    // reserve, and reserving against an invented figure would make the budget
+    // ceiling enforce a fiction.
+    if (c.costGovernance && !c.costGovernance.admissible) {
+      rejected.push({ candidate: c.id, rule: 'cost_governance_unavailable',
+        detail: c.costGovernance.reason })
       continue
     }
 

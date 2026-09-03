@@ -231,6 +231,20 @@ export interface MediaProviderStatus {
   configured: boolean
   /** True only when the gate would currently permit an outbound call. */
   executionAllowed: boolean
+  /**
+   * Whether a call in this state would COST MONEY.
+   *
+   * Surfaced in Phase 5 because `decideMediaExecution` has always computed it
+   * and `describe()` used to throw it away — leaving every caller that needed
+   * "is this billable" to resolve the configuration a SECOND time. Two reads of
+   * one environment are two answers that can disagree, and the one that decides
+   * a spend estimate must not be the copy.
+   *
+   * Distinct from `executionAllowed` on purpose: "may run" and "costs money" are
+   * different questions, and a sandbox provider answers yes to the first and no
+   * to the second.
+   */
+  billable: boolean
   capabilities: readonly MediaCapability[]
   /** Why execution is refused, when it is. Never contains a credential. */
   blockedReason: string | null

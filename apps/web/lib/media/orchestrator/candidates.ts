@@ -42,6 +42,11 @@
 import 'server-only'
 
 import { describeMediaProviders } from '@/lib/media/providers/router'
+import {
+  admitMuapiSpend,
+  resolveMuapiImageResource,
+  type MuapiResourceDescriptor,
+} from '@/lib/media/providers/resources'
 import type { MediaProviderId } from '@/lib/media/providers/types'
 import {
   DURABLE_MEDIA_JOB_STORE_AVAILABLE,
@@ -81,11 +86,32 @@ export interface MediaCandidate {
   /**
    * Whether THIS orchestrator can complete the candidate's contract end to end.
    *
-   * A fact about what Phase 2 implements, not a permission. Eligibility rejects
-   * `supported: false` before ranking, so a candidate can never be selected and
-   * then discovered to be undispatchable at the moment of spending.
+   * A fact about what the orchestrator implements, not a permission. Eligibility
+   * rejects `supported: false` before ranking, so a candidate can never be
+   * selected and then discovered to be undispatchable at the moment of spending.
    */
   dispatch: MediaDispatchSupport
+  /**
+   * Whether spend governance could price this execution — added in Phase 5.
+   *
+   * Null for bridge candidates, whose prices are proven and already wired into
+   * `estimateImageSek`. Non-null for the provider-layer family, where the
+   * question is live: the vendor prices its models dynamically and Omnira holds
+   * no authoritative figure, so a billable provider-layer execution has no
+   * conservative upper bound to reserve against.
+   *
+   * A FACT read by eligibility, exactly like `gateRefused`. Nothing here decides
+   * whether money may move; `withGovernedSpend` does that, later and for real.
+   */
+  costGovernance: { admissible: true } | { admissible: false; reason: string } | null
+  /**
+   * The provider resource actually selected, for the provider-layer family.
+   *
+   * Carried so the governed dispatch adapter is HANDED the model rather than
+   * re-resolving it — a second resolution is a second chance to disagree with
+   * the one eligibility filtered on.
+   */
+  providerResource?: MuapiResourceDescriptor
 }
 
 // ── The bridge: shipped adapters, described as candidates ────────────────────
@@ -121,6 +147,8 @@ function ideogramCandidate(env: NodeJS.ProcessEnv): MediaCandidate {
     // generateIdeogramV3 resolves to a retrievable URL, which Phase 1 admission
     // fetches and validates. Complete, end to end.
     dispatch: { supported: true, representations: ['url'] },
+    // Priced by `estimateImageSek` from a proven `cost_rates` figure.
+    costGovernance: null,
   }
 }
 
@@ -145,6 +173,8 @@ function openaiCandidate(env: NodeJS.ProcessEnv): MediaCandidate {
     // admissible: bytes decode straight into `admitAssetBytes`, URLs go through
     // `admitAssetFromUrl`. Neither is a special case at the asset layer.
     dispatch: { supported: true, representations: ['url', 'bytes'] },
+    // Priced by `estimateImageSek` from a proven `cost_rates` figure.
+    costGovernance: null,
   }
 }
 
@@ -162,48 +192,83 @@ function openaiCandidate(env: NodeJS.ProcessEnv): MediaCandidate {
  * registered but disabled appears here and is filtered by eligibility, so an
  * operator can see it exists rather than wondering why it vanished.
  */
-function providerLayerCandidates(): MediaCandidate[] {
+function providerLayerCandidates(env: NodeJS.ProcessEnv): MediaCandidate[] {
+  // Resolved ONCE, outside the map: a pure read of the environment.
+  const resolution = resolveMuapiImageResource(env)
+
   return describeMediaProviders()
     // Only providers that can generate an image are candidates for image work.
     .filter(s => s.capabilities.includes('generateImage'))
-    .map(s => ({
-      id: s.provider as MediaCandidateId,
-      family: 'provider-layer' as const,
-      // The provider layer takes an explicit `model` per request and publishes no
-      // default — deliberately, since a default model is a spend decision. Until
-      // the orchestrator carries a model choice for this family, its reference
-      // capability is not something this layer may assert.
-      model: { name: modelHintFor(s.provider), supportsReferenceImages: false },
-      mediaTypes: ['image'] as const,
-      configured: s.configured,
-      gateBlockedReason: s.blockedReason,
-      gateRefused: !s.executionAllowed,
-      // NOT DISPATCHABLE, stated up front rather than discovered — and, since
-      // Phase 3, for a DIFFERENT and much narrower reason.
+    .map(s => {
+      // ── THE MODEL, CONCRETE OR NOT AT ALL ─────────────────────────────────
       //
-      // Phase 2 could not dispatch these because the async job lifecycle did not
-      // exist. It exists now (`lib/media/job/*`): dispatch classification, the
-      // state machine, bounded polling, the QC boundary and admission are built
-      // and tested. What is missing is the DURABLE STORE those depend on.
+      // Phase 2 put `muapi:unspecified` here and could afford to, because such a
+      // candidate was undispatchable by construction. Phase 5 builds the
+      // dispatch path, so that label would become a billable execution identity
+      // and `/api/v1/muapi:unspecified` is not an endpoint.
       //
-      // That distinction matters because the two have different fixes. "Build a
-      // lifecycle" was engineering; "apply an approved migration" is a decision.
-      // Declaring it here means such a candidate is still rejected BEFORE
-      // ranking, so enabling MuAPI can never produce a selection that then fails
-      // at dispatch — and an operator reading the refusal is told which of the
-      // two is actually blocking.
-      dispatch: DURABLE_MEDIA_JOB_STORE_AVAILABLE
-        ? { supported: true, representations: ['url'] }
-        : { supported: false, reason: DURABLE_MEDIA_JOB_STORE_BLOCKER },
-    }))
+      // The name below is therefore either a real vendor model an operator
+      // selected, or the candidate is not dispatchable. There is no third state
+      // and, in particular, no default — a default model is a default spend.
+      const resource = resolution.ok ? resolution.resource : null
+
+      // BILLABILITY COMES FROM THE PROVIDER, not from a second config read.
+      // `describe()` already applied `decideMediaExecution` to the same
+      // environment that produced `configured` and `executionAllowed`, so every
+      // fact on this candidate comes from one evaluation and they cannot
+      // disagree with each other.
+      const cost = resource
+        ? admitMuapiSpend(resource, { allowed: s.executionAllowed, reason: s.blockedReason, code: null, billable: s.billable })
+        : null
+      const costGovernance = cost === null
+        // No resource, so there is nothing to price yet. The dispatch rule below
+        // rejects this candidate first, and reporting a cost problem for a
+        // candidate that has no model would send an operator to the wrong fix.
+        ? null
+        : cost.admitted
+          ? { admissible: true as const }
+          : { admissible: false as const, reason: cost.reason }
+
+      // ── DISPATCHABILITY, IN THE ORDER AN OPERATOR SHOULD READ IT ──────────
+      //
+      // Two independent facts, and the nearer problem is reported first.
+      const dispatch: MediaDispatchSupport =
+        !DURABLE_MEDIA_JOB_STORE_AVAILABLE
+          ? { supported: false, reason: DURABLE_MEDIA_JOB_STORE_BLOCKER }
+          : resource === null
+            ? { supported: false, reason: resolution.ok ? 'no resource' : resolution.detail }
+            : { supported: true, representations: ['url'] }
+
+      return {
+        id: s.provider as MediaCandidateId,
+        family: 'provider-layer' as const,
+        model: {
+          name: resource?.name ?? modelHintFor(s.provider),
+          // Sourced from the descriptor, never asserted by this file. Every
+          // descriptor says `false` and says why — PR #164 makes an unsourced
+          // `true` the one error that silently drops a required reference.
+          supportsReferenceImages: resource?.supportsReferenceImages ?? false,
+        },
+        mediaTypes: ['image'] as const,
+        configured: s.configured,
+        gateBlockedReason: s.blockedReason,
+        gateRefused: !s.executionAllowed,
+        dispatch,
+        costGovernance,
+        ...(resource ? { providerResource: resource } : {}),
+      }
+    })
 }
 
 /**
- * A provisional model label for a provider-layer candidate.
+ * The label a provider-layer candidate carries when NO concrete resource is
+ * selected.
  *
- * NOT a Model Registry, and deliberately not a default that could be spent
- * against: it is only what provenance records if such a candidate ever wins.
- * Choosing real models per provider is Phase 3 work.
+ * Retained from Phase 2 and now unreachable by any dispatchable candidate: it
+ * appears only on a candidate the `dispatch` rule above has already marked
+ * unsupported, so it can never become a value posted to a vendor. It survives
+ * because an operator reading a rejection needs to see WHICH provider was
+ * rejected, and a blank model name would read as a bug.
  */
 function modelHintFor(provider: MediaProviderId): string {
   return `${provider}:unspecified`
@@ -225,6 +290,6 @@ export function describeMediaCandidates(env: NodeJS.ProcessEnv = process.env): M
   return [
     ideogramCandidate(env),
     openaiCandidate(env),
-    ...providerLayerCandidates(),
+    ...providerLayerCandidates(env),
   ]
 }

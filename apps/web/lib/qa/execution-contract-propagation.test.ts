@@ -34,9 +34,26 @@ function runtimeFiles(dir = ROOT, acc: string[] = []): string[] {
 // ── A. Every billable dispatch declares itself ──────────────────────────────
 
 describe('every governed spend supplies an explicit execution contract', () => {
+  /**
+   * Every module permitted to call the spend boundary. A CLOSED list of exact
+   * paths, asserted with `toEqual` — a sixth caller fails here, which is the
+   * only reason the list is worth having.
+   *
+   * The fifth entry arrived with Media Runtime Phase 5. The first four are
+   * vendor adapters that own a hostname and an SDK; `governed-dispatch.ts` owns
+   * neither — it wraps a `MediaProvider`, whose hostname lives in
+   * `lib/media/providers/config.ts`. It is on this list for the same reason the
+   * others are: it is a place where a provider call is made, and every such
+   * place must be one a reviewer has looked at.
+   *
+   * Note what did NOT happen: `lib/media/job/*` is still absent. The durable job
+   * lifecycle remains spend-free, guarded separately and exactly, and this
+   * adapter sits outside that directory precisely so that stays true.
+   */
   const SANCTIONED = [
     'lib/ai/anthropic.ts', 'lib/ai/openai-client.ts',
     'lib/media/image-client.ts', 'lib/media/elevenlabs.ts',
+    'lib/media/dispatch/governed-dispatch.ts',
   ]
 
   it('all runtime withGovernedSpend calls pass `execution`', () => {

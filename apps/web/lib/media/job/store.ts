@@ -213,33 +213,54 @@ export interface RecordReconciliationInput {
  * make the answer depend on whichever environment happens to be running, and
  * "the table exists" is not the same fact as "the lifecycle may spend money".
  *
- * ── WHAT CHANGED IN PHASE 4, AND WHAT DID NOT ─────────────────────────────
- * The DURABLE STORE now exists: `media_job_lifecycle` and
+ * ── WHAT CHANGED IN PHASE 4 ───────────────────────────────────────────────
+ * The DURABLE STORE exists: `media_job_lifecycle` and
  * `media_job_lifecycle_repairs` are applied to production, and
  * `store-supabase.ts` implements the port against them with database-side CAS
- * and an atomic reconciliation RPC. The original blocker is CLOSED.
+ * and an atomic reconciliation RPC. That blocker is CLOSED.
  *
- * The flag stays `false` because a second, different thing is still missing:
- * nothing wires a `MediaProvider` into `runMediaJob` behind
- * `withGovernedSpend`. `orchestrate.ts` still refuses provider-layer candidates
- * at dispatch, so flipping this alone would let eligibility select a candidate
- * that then fails at the moment of spending — precisely the ordering Phase 2
- * built `dispatch.supported` to prevent.
+ * ── WHAT CHANGED IN PHASE 5 ───────────────────────────────────────────────
+ * The GOVERNED DISPATCH ADAPTER exists too:
+ * `lib/media/dispatch/governed-dispatch.ts` wires a `MediaProvider` into
+ * `runMediaJob` with `withGovernedSpend` around the dispatch alone, and
+ * `orchestrate.ts` no longer refuses provider-layer candidates. That blocker is
+ * CLOSED as well.
  *
- * Flipping it is the LAST step, after that adapter exists AND can be exercised.
- * It cannot be exercised in an environment with no MuAPI credential at all.
+ * ── WHY THE FLAG IS STILL `false` ─────────────────────────────────────────
+ * Because of what this flag MEANS, which is stated in its first line and is not
+ * "the code exists": whether an async provider may be dispatched IN THIS
+ * DEPLOYMENT. Phase 4 wrote the condition for flipping it — after the adapter
+ * exists AND CAN BE EXERCISED — and the second half is unsatisfied:
+ *
+ *   NO MuAPI CREDENTIAL IS CONFIGURED IN ANY OMNIRA ENVIRONMENT. No
+ *   `MUAPI_ENABLED`, no `MUAPI_TEST_API_KEY`. The provider gate therefore
+ *   resolves `disabled` and refuses every outbound call, including a health
+ *   check. Nothing has ever been exercised end to end against the vendor.
+ *
+ * A second, independent reason to keep it false: no MuAPI model has a proven
+ * price, so a BILLABLE provider-layer execution is refused by
+ * `cost_governance_unavailable` regardless of this flag. Flipping this one would
+ * therefore not enable paid generation — it would only move where the refusal
+ * comes from, which is the kind of change that makes a control harder to read.
+ *
+ * This flag is DEPLOYMENT AVAILABILITY, not build-time capability. The two were
+ * deliberately not collapsed: "the adapter is written" and "this deployment may
+ * dispatch" are different facts, and a single boolean asserting both would be
+ * true for the wrong reason the moment the code merged.
  */
 export const DURABLE_MEDIA_JOB_STORE_AVAILABLE = false
 
 /**
- * Why, in the words an operator reading an eligibility refusal needs — and
- * deliberately updated in Phase 4, because a stale reason is worse than none:
- * it would send someone to fix a database that is already correct.
+ * Why, in the words an operator reading an eligibility refusal needs.
+ *
+ * Rewritten in Phase 5 for the reason Phase 4 gave for rewriting it: a stale
+ * reason is worse than none, because it sends someone to fix something that is
+ * already correct. It no longer says "no adapter exists" — one does.
  */
 export const DURABLE_MEDIA_JOB_STORE_BLOCKER =
-  'the durable media job store is applied and working, but no governed dispatch adapter '
-  + 'connects a MediaProvider to the job lifecycle yet — so a provider-layer candidate '
-  + 'would be selected and then fail at the moment of spending'
+  'the durable media job store and the governed dispatch adapter both exist, but no MuAPI '
+  + 'credential is configured in this deployment, so the provider gate refuses every '
+  + 'outbound call and the path has never been exercised end to end'
 
 // ── In-memory adapter ────────────────────────────────────────────────────────
 

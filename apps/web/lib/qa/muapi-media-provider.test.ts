@@ -747,10 +747,49 @@ describe('no credential and no live default reaches the repository', () => {
 // ── 10. No automatic generation ──────────────────────────────────────────────
 
 describe('nothing generates media on its own', () => {
-  it('no cron, route, or workflow calls a generation method', () => {
+  /**
+   * WHO MAY ASK A PROVIDER TO GENERATE.
+   *
+   * Until Phase 5 the answer was "nobody" — the methods existed and had no call
+   * sites at all, which is what made the bootstrap safe. That is no longer the
+   * claim, because a governed dispatch adapter now exists and calling the
+   * provider is its entire purpose.
+   *
+   * So the assertion changed SHAPE rather than being relaxed. It was an
+   * exclusion filter ("nothing outside the provider layer"); it is now an exact
+   * set. One governed caller, named. A second one fails this test, and so does
+   * a call site appearing in a route or a cron — which is the property the
+   * original guard was really protecting, and it is now stated directly instead
+   * of following from an emptiness that could not survive the feature.
+   */
+  it('exactly ONE governed module calls a generation method', () => {
     const hits = productionMatches('\\.(generateImage|generateVideo|imageToVideo|lipSync|editImage)\\(')
-    // The only definitions live in the provider layer itself; no CALL SITES exist.
-    expect(hits.filter(f => !f.includes('/lib/media/providers/'))).toEqual([])
+    const callers = hits
+      // The provider layer DEFINES these methods; a definition is not a call.
+      .filter(f => !f.includes('/lib/media/providers/'))
+      .map(f => f.slice(f.indexOf('/lib/') + 1))
+      .sort()
+    expect(callers).toEqual(['lib/media/dispatch/governed-dispatch.ts'])
+  })
+
+  it('no route, cron or workflow calls a generation method', () => {
+    const hits = productionMatches('\\.(generateImage|generateVideo|imageToVideo|lipSync|editImage)\\(')
+    expect(hits.filter(f => f.includes('/app/'))).toEqual([])
+  })
+
+  it('the one governed caller reaches the provider ONLY inside the spend boundary', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync(`${WEB_ROOT}/lib/media/dispatch/governed-dispatch.ts`, 'utf8')
+    const body = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+    // There is exactly one create call, and `withGovernedSpend(` opens before it.
+    const calls = [...body.matchAll(/\.generateImage\(/g)]
+    expect(calls.length).toBe(1)
+    expect(body.indexOf('withGovernedSpend(')).toBeGreaterThan(-1)
+    expect(body.indexOf('withGovernedSpend(')).toBeLessThan(calls[0].index!)
+    // …and the ungoverned reads are outside it: `getStatus` is never reached
+    // from inside the wrapper.
+    const wrapperEnd = body.indexOf('const observe')
+    expect(body.slice(0, wrapperEnd)).not.toContain('getStatus(')
   })
 
   it('the provider layer is not imported by any route or cron', () => {

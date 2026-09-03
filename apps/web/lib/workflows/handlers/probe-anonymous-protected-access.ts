@@ -58,7 +58,8 @@ export const probeAnonymousProtectedAccessHandler: ReadOnlyHandler = async input
   // The adapter owns the classification: all-401 is the only pass, a 2xx
   // outranks everything as a leak, and 403 is `unexpected_status` rather than a
   // second kind of success. None of that is re-decided here.
-  const evidence = await checkAnonymousProtectedAccessDenied(input.instanceKey, input.now)
+  const evidence = await checkAnonymousProtectedAccessDenied(
+    input.instanceKey, input.now, input.beforeAttempt)
 
   const out: ReadOnlyHandlerOutput = {
     result: evidence.result as ReadOnlyResult,

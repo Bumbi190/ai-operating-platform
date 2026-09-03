@@ -16,6 +16,10 @@ import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
+import {
+  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
+  isRunCheckpointRefusal, checkOwnedFinalization, finalizeOwnedRunUnlessCancelled,
+} from '@/lib/governance/run-execution-checkpoint'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { sendAdminNotification } from '@/lib/email/brevo'
@@ -84,6 +88,41 @@ export async function GET(request: Request) {
         continue
       }
 
+      // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
+      // G3C-2A guarantees nothing NEW is claimed after a pause commits. This run
+      // was claimed BEFORE it, possibly seconds before. Deliberately placed here:
+      // after the claim, before ANY family dispatches, so one boundary covers
+      // workflow actions, marketing and agent steps rather than three separate
+      // ones drifting apart.
+      const entry = await checkpointClaimedRun(db, {
+        runId: run.id, projectId: run.project_id, claimId: run.claim_id,
+        boundary: 'drain:entry',
+      })
+      if (!entry.allowed) {
+        if (entry.refusal === 'FENCED') {
+          // Another owner holds this run. Touch nothing — not even to record a
+          // failure against it.
+          results.push({ run_id: run.id, status: 'fenced', detail: entry.detail })
+          continue
+        }
+        if (entry.refusal === 'CANCELLED') {
+          const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+          results.push({
+            run_id: run.id, status: fenced ? 'fenced' : 'cancelled', detail: entry.detail,
+          })
+          continue
+        }
+        // STOPPED — not a failure. Back to the queue with no error, no alert and
+        // no backoff. claim_runs refuses to re-claim it while the stop stands,
+        // which is exactly what bounds this to one cycle per stop event.
+        const { fenced } = await releaseStoppedRun(db, run.id, run.claim_id)
+        results.push({
+          run_id: run.id, status: fenced ? 'fenced' : 'deferred_by_stop',
+          reason: entry.reason, detail: entry.detail,
+        })
+        continue
+      }
+
       // ── PR9e: bound workflow actions take a separate, closed path ─────────
       // Deliberately BEFORE any agent-step or marketing handling: a workflow
       // action must never reach an LLM step, and legacy runs must never reach
@@ -140,15 +179,53 @@ export async function GET(request: Request) {
           if (POLICY_GATE) outcome = decideGate(run.policy_class)
         } else {
           // Legacy lightweight path (flag off) — unchanged behavior for rollback. Ungated.
-          await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>)
+          await runSteps(db, run.id, run.project_id, steps, (run.input ?? {}) as Record<string, string>, run.claim_id)
         }
+      }
+
+      // ── G3C-3A · FINAL OWNED CANCELLATION BOUNDARY ─────────────────────────
+      // The per-step checkpoint cannot see a cancellation that commits WHILE the
+      // last unit is in flight: the last check already said yes, the unit
+      // returned, and there is no next step. Without this the worker writes
+      // `done` over a cancellation that landed seconds ago, and the cancel
+      // route's `enforced: true` would be false advertising.
+      //
+      // Ownership and cancellation ONLY — deliberately not governance stop. The
+      // work is already finished; refusing to record it would not undo the
+      // effect. It would discard honest bookkeeping and push the run back to
+      // `pending`, where a later resume could execute it a SECOND time.
+      const fin = await checkOwnedFinalization(db, run.id, run.claim_id)
+      if (fin === 'FENCED') {
+        console.warn(`[run ${run.id}] fenced at finalization — another owner holds it`)
+        results.push({ run_id: run.id, status: 'fenced' })
+        continue
+      }
+      if (fin === 'CANCELLED') {
+        // Cancel wins: terminalize as cancelled, never as done. The execution
+        // result is not erased — it simply is not reported as success.
+        const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+        console.warn(`[run ${run.id}] cancelled at finalization — not marked done`)
+        results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
+        continue
       }
 
       if (outcome === 'awaiting_approval') {
         // Idempotent approval (mirrors executeWorkflow's pattern): create only if none
         // exists for this run. `content`/`output_key` are NOT NULL in the schema → coerce.
+        // ── G3C-3A · the notification is DEFERRED until the CAS succeeds ──────
+        // It used to be sent here, before the status transition. If cancellation
+        // then won the CAS the run became `cancelled` and the approval row was
+        // returned — but an "approval pending" email had already left, telling an
+        // operator to review work that no longer awaits review.
+        //
+        // Classification: this is a POST-SUCCESS operator notification, a
+        // control-plane signal rather than execution. Moving it after the
+        // successful transition is what makes cancellation consistent. It is
+        // deliberately NOT turned into a durable outbox here.
+        let notifyApproval: (() => Promise<void>) | null = null
         const { data: existingApproval } = await db
           .from('approvals').select('id').eq('run_id', run.id).limit(1).maybeSingle()
+        let approvalCreated = false
         if (!existingApproval) {
           const { error: approvalErr } = await db.from('approvals').insert({
             run_id:     run.id,
@@ -164,10 +241,12 @@ export async function GET(request: Request) {
           if (approvalErr) {
             throw new Error(`policy-gate: approval insert failed for run ${run.id}: ${approvalErr.message}`)
           }
+          approvalCreated = true
           // Per-run notification (decision C: no batching/throttling in PR2). Best-effort —
           // never fails the drain. Uses run.workflow_id for a correct workflow name in the
           // email, avoiding executeWorkflow's known .eq('id', runId) lookup bug.
-          try {
+          notifyApproval = async () => {
+           try {
             const { data: wf } = await db
               .from('workflows').select('name, projects(name)').eq('id', run.workflow_id).maybeSingle()
             const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
@@ -179,30 +258,62 @@ export async function GET(request: Request) {
               platformUrl:   appUrl,
             })
             void sendAdminNotification(subject, html)
-          } catch (notifyErr) {
+           } catch (notifyErr) {
             console.error(`[run ${run.id}] approval-pending notis misslyckades:`, notifyErr)
+           }
           }
         }
         // Flippa run SIST — approval finns alltid före markeringen. Nollar lease så reapern
         // (rör endast 'running' med utgången lease) aldrig tar i den vilande runen.
         // H1.P5 Commit 2: fenced on claim_id. If reclaimed since we claimed it, this matches
         // 0 rows → skip (the new owner re-runs and finalizes); we never double-flip.
-        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
+        // G3C-3A: the SAME atomic CAS as `done`. awaiting_approval is a
+        // success-like transition out of `running`, so leaving it on the old
+        // read-then-write shape would keep the TOCTOU alive on this branch only.
+        const appr = await finalizeOwnedRunUnlessCancelled(db, run.id, run.claim_id, {
           status: 'awaiting_approval', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
-        if (fenced) {
-          console.warn(`[run ${run.id}] fenced: reclaimed before awaiting_approval flip — skipping`)
-          results.push({ run_id: run.id, status: 'fenced' })
+        if (appr.outcome === 'CANCELLED') {
+          // The approval row was inserted BEFORE this transition, so a
+          // cancellation winning here would strand a `pending` approval on a
+          // `cancelled` run — contradicting /api/runs/[id]/cancel, which returns
+          // a pending approval when it cancels an awaiting_approval run. Mirror
+          // that contract rather than leaving the inconsistency.
+          await db.from('approvals')
+            .update({ status: 'returned', reviewed_at: new Date().toISOString() })
+            .eq('run_id', run.id).eq('status', 'pending')
+          console.warn(`[run ${run.id}] cancelled at finalization — approval returned`)
+          results.push({ run_id: run.id, status: 'cancelled', detail: appr.detail })
           continue
         }
+        if (appr.outcome !== 'SUCCEEDED') {
+          console.warn(`[run ${run.id}] ${appr.outcome} before awaiting_approval flip: ${appr.detail}`)
+          results.push({ run_id: run.id, status: appr.outcome.toLowerCase(), detail: appr.detail })
+          continue
+        }
+        // Only now: the transition committed and this invocation owns it.
+        if (approvalCreated && notifyApproval) void notifyApproval()
         results.push({ run_id: run.id, status: 'awaiting_approval' })
       } else {
-        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
+        // ── G3C-3A · ATOMIC TERMINAL CAS ────────────────────────────────────
+        // The cancellation condition is part of the SAME conditional write that
+        // commits success. A pre-read cannot close this: a cancellation landing
+        // between the read and the write would still lose, because the old
+        // predicates (id, status, claim_id) all still matched. Postgres decides
+        // the order at the row.
+        const done = await finalizeOwnedRunUnlessCancelled(db, run.id, run.claim_id, {
           status: 'done', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
         })
-        if (fenced) {
-          console.warn(`[run ${run.id}] fenced: reclaimed before done flip — skipping`)
-          results.push({ run_id: run.id, status: 'fenced' })
+        if (done.outcome === 'CANCELLED') {
+          console.warn(`[run ${run.id}] cancelled inside the finalization window — not marked done`)
+          results.push({ run_id: run.id, status: 'cancelled', detail: done.detail })
+          continue
+        }
+        if (done.outcome !== 'SUCCEEDED') {
+          // FENCED or ERROR — lifecycle contention, never a provider failure:
+          // no failure counter, no alert, no retry backoff.
+          console.warn(`[run ${run.id}] ${done.outcome} before done flip: ${done.detail}`)
+          results.push({ run_id: run.id, status: done.outcome.toLowerCase(), detail: done.detail })
           continue
         }
         // Atlas Memory M4 Commit 4 — episodic outcome: run completed successfully.
@@ -218,6 +329,21 @@ export async function GET(request: Request) {
         results.push({ run_id: run.id, status: 'done' })
       }
     } catch (e) {
+      // ── G3C-3A · control flow, NOT failure ──────────────────────────────────
+      // Placed FIRST, ahead of every failure path below. A governance stop, a
+      // cancellation and a lost claim are three different non-failures, and none
+      // may increment a failure counter, write an error, schedule a retry backoff
+      // or raise a provider alert. The executors already performed the owned
+      // lifecycle write (release / terminalize / nothing at all) before throwing,
+      // so there is deliberately nothing to write here.
+      if (isRunCheckpointRefusal(e)) {
+        const status = e.refusal === 'STOPPED' ? 'deferred_by_stop'
+          : e.refusal === 'CANCELLED' ? 'cancelled' : 'fenced'
+        console.warn(`[run ${run.id}] ${e.boundary}: ${e.refusal} — not a failure`)
+        results.push({ run_id: run.id, status, detail: e.message })
+        continue
+      }
+
       // H1.P5 Commit 3: a cooperative cancel is NOT a failure. The executor already wrote
       // status='cancelled' (fenced) before throwing — do not touch the run or mark failed;
       // just skip its terminal write (which would otherwise overwrite 'cancelled').

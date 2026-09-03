@@ -260,13 +260,22 @@ describe('revalidation', () => {
   it('pre-commit checks fencing FIRST', () => {
     // A rotated claim means another owner has this run; nothing this invocation
     // believes about it can be trusted, including its own earlier checks.
-    const pre = runSrc.slice(runSrc.indexOf('export async function assertWorkflowActionStillAuthorized'))
+    // G3C-3A moved these guards INTO the canonical checkpoint, which
+    // assertWorkflowActionStillAuthorized now composes. The invariant is
+    // unchanged and still enforced — it simply lives one file across.
+    const cp = readFileSync(
+      join(process.cwd(), 'lib/governance/run-execution-checkpoint.ts'), 'utf8')
     // Compare the GUARDS, not the select list — which necessarily names
     // cancel_requested before any of them.
-    const fenceGuard = pre.indexOf('run.claim_id !== claimId')
-    const cancelGuard = pre.indexOf('run.cancel_requested === true')
+    const fenceGuard = cp.indexOf('row.claim_id !== claimId')
+    const cancelGuard = cp.indexOf('row.cancel_requested === true')
     expect(fenceGuard).toBeGreaterThan(-1)
-    expect(fenceGuard).toBeLessThan(cancelGuard)
+    expect(cancelGuard).toBeGreaterThan(-1)
+    expect(fenceGuard, 'ownership is established before anything else is trusted')
+      .toBeLessThan(cancelGuard)
+    // …and the pre-commit contract really does delegate to it.
+    const pre = runSrc.slice(runSrc.indexOf('export async function assertWorkflowActionStillAuthorized'))
+    expect(pre).toContain('checkpointClaimedRun')
   })
 
   it('pre-commit performs no side effect of its own', () => {

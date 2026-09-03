@@ -24,6 +24,8 @@
  */
 
 import 'server-only'
+import { checkpointClaimedRun } from '@/lib/governance/run-execution-checkpoint'
+import type { StopRefusalReason } from '@/lib/governance/execution-stop'
 
 import { readInstance, listEvidence, readDefinitionById } from './store'
 import { assertWorkflowAuthorizationValid } from './authorization'
@@ -412,9 +414,21 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
 
 // ── Pre-commit contract ─────────────────────────────────────────────────────
 
+/**
+ * Why a dispatch was refused. Kept distinct because the caller must act
+ * differently on each: a STOPPED action is TEMPORARY control flow and the run
+ * goes back to the queue; a NOT_READY action is a genuine refusal the failure
+ * model owns; FENCED means another owner and we touch nothing.
+ */
+export type PreCommitRefusal = 'FENCED' | 'CANCELLED' | 'STOPPED' | 'NOT_READY'
+
 export interface PreCommitVerdict {
   allowed: boolean
   reason: string
+  /** Set exactly when `allowed` is false. */
+  refusal?: PreCommitRefusal
+  /** Set only for STOPPED, so the caller can report a stable governance code. */
+  stopReason?: StopRefusalReason
 }
 
 /**
@@ -431,23 +445,69 @@ export interface PreCommitVerdict {
  * mark the run, does not transition anything and does not spend.
  */
 export async function assertWorkflowActionStillAuthorized(
-  db: AnyDb, runId: string, claimId: string | null,
+  db: AnyDb, runId: string, claimId: string | null | undefined,
+  projectId?: string | null,
 ): Promise<PreCommitVerdict> {
-  const { data: run } = await db.from('runs')
-    .select('id, status, claim_id, cancel_requested, action_class')
-    .eq('id', runId).maybeSingle()
-  if (!run) return { allowed: false, reason: 'run_not_found' }
+  // ── G3C-3A ────────────────────────────────────────────────────────────────
+  // This function existed with ZERO runtime callers: the executor called
+  // readiness only, so the documented "third checkpoint" was a comment rather
+  // than a behaviour. It is now genuinely called immediately before
+  // DISPATCH_STARTED, and it composes the canonical post-claim checkpoint
+  // rather than re-deriving ownership and pause itself.
+  //
+  // That composition is the point. Readiness reads `projects.execution_paused`
+  // directly and has never consulted the GLOBAL authority at all, so an action
+  // claimed before a platform-wide stop would sail straight through it. The
+  // canonical resolver supplies global + project together, fails closed when
+  // the authority is unreadable, and keeps one truth table for the whole system.
+  const gate = await checkpointClaimedRun(db, {
+    runId, claimId, projectId, boundary: 'action:pre-dispatch',
+  })
+  if (!gate.allowed) {
+    return {
+      allowed: false,
+      refusal: gate.refusal,
+      reason: gate.detail,
+      ...(gate.refusal === 'STOPPED' ? { stopReason: gate.reason } : {}),
+    }
+  }
 
-  // Fencing first: a rotated claim means another owner has this run, and nothing
-  // this invocation believes about it can be trusted.
-  if (!claimId || run.claim_id !== claimId) return { allowed: false, reason: 'fenced_stale_claim' }
-  if (run.status !== 'running') return { allowed: false, reason: `run is ${run.status}` }
-  if (run.cancel_requested === true) return { allowed: false, reason: 'cancel_requested' }
-
+  // Readiness second: authorization, target hash, evidence and state drift.
+  // Deliberately after ownership — nothing readiness computes is trustworthy if
+  // another worker owns this run.
   const readiness = await assertWorkflowActionReady(db, runId)
-  if (!readiness.ready) return { allowed: false, reason: readiness.detail }
+  if (!readiness.ready) {
+    return { allowed: false, refusal: 'NOT_READY', reason: readiness.detail }
+  }
 
-  return { allowed: true, reason: 'authorization, target, evidence, pause and claim all still current' }
+  // ── FINAL checkpoint — the load-bearing one ───────────────────────────────
+  // Readiness above performs its own DB reads, and the world can change during
+  // them. With only the first checkpoint this function returned a decision that
+  // was already stale by the time it returned:
+  //
+  //   T1  checkpoint #1 says clear
+  //   T2  readiness begins its reads
+  //   T3  a global stop / project stop / cancellation / claim rotation commits
+  //   T4  readiness returns ready
+  //   T5  this function returns allowed  ← stale
+  //
+  // The first checkpoint still earns its place: it stops a zombie worker doing
+  // readiness work as though it owned the run. But THIS one is the pre-dispatch
+  // decision, and nothing that reads the world may follow it before
+  // DISPATCH_STARTED.
+  const final = await checkpointClaimedRun(db, {
+    runId, claimId, projectId, boundary: 'action:pre-dispatch:final',
+  })
+  if (!final.allowed) {
+    return {
+      allowed: false,
+      refusal: final.refusal,
+      reason: final.detail,
+      ...(final.refusal === 'STOPPED' ? { stopReason: final.reason } : {}),
+    }
+  }
+
+  return { allowed: true, reason: 'authorization, target, evidence, stop authority and claim all still current' }
 }
 
 /** Short, safe display form of an identity hash. Never the whole value. */

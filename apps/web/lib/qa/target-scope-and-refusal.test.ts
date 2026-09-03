@@ -149,14 +149,37 @@ describe('a refusal never leaves a claimed run running', () => {
     // The bug was `return {executed:false}` with no DB write.
     const preDispatch = execCode.slice(0, execCode.indexOf("action_phase: 'DISPATCH_STARTED'"))
     const returns = [...preDispatch.matchAll(/return \{ executed: false, refusal: '(\w+)'/g)].map(m => m[1])
-    expect(returns.length).toBe(8)
+    // 8 original refusals + the 3 G3C-3A pre-dispatch checkpoint outcomes.
+    expect(returns.length).toBe(11)
     for (const r of returns) {
       expect(REFUSAL_DISPOSITION[r as keyof typeof REFUSAL_DISPOSITION], r).toBeDefined()
     }
-    // Each has a finalizer. `await finalizeRefusal(` matches invocations only —
-    // the declaration is `async function finalizeRefusal(` — and tolerates the
-    // line-wrapped call.
-    expect([...preDispatch.matchAll(/await finalizeRefusal\(/g)].length).toBe(returns.length)
+    // The original 8 still finalize through finalizeRefusal, plus the new
+    // pre-dispatch NOT_READY branch, which deliberately keeps that existing
+    // accounting rather than inventing a parallel one. `await finalizeRefusal(`
+    // matches invocations only — the declaration is `async function
+    // finalizeRefusal(` — and tolerates the line-wrapped call.
+    expect([...preDispatch.matchAll(/await finalizeRefusal\(/g)].length).toBe(9)
+
+    // G3C-3A adds three refusals that finalize through OWNED helpers instead,
+    // because a governance stop and a lost claim are not refusals the action
+    // failure model owns:
+    //   STOPPED    → released back to the queue, never rejected;
+    //   CANCELLED  → terminalized under the same claim;
+    //   FENCED     → deliberately writes NOTHING. Another owner holds this run,
+    //                and a stale worker recording anything about it is exactly
+    //                the bug fencing exists to prevent.
+    expect(preDispatch, 'a stop releases rather than rejects')
+      .toContain('await releaseStoppedRun(db, run.id, claimId)')
+    expect(preDispatch, 'a cancel terminalizes under the claim')
+      .toContain('await terminalizeCancelledRun(db, run.id, claimId)')
+    // Bounded to the FENCED branch itself — a wider window spills into the
+    // NOT_READY branch below it, which legitimately does finalize.
+    const fencedStart = preDispatch.indexOf("preDispatch.refusal === 'FENCED'")
+    const fencedBranch = preDispatch.slice(
+      fencedStart, preDispatch.indexOf('return', fencedStart + 1) + 90)
+    expect(fencedBranch, 'a fenced worker writes nothing at all')
+      .not.toMatch(/await (finalizeRefusal|releaseStoppedRun|terminalizeCancelledRun|db\.from)/)
   })
 
   it('target drift is PERMANENT, never transient', () => {

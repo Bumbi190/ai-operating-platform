@@ -14,6 +14,10 @@ import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
 import { isCancelEnabled, isCancelRequested, cancelledError } from '@/lib/ai/cancel'
+import {
+  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
+  RunCheckpointRefusedError,
+} from '@/lib/governance/run-execution-checkpoint'
 import type { WorkflowStep } from '@/lib/supabase/types'
 import { projectScope } from '@/lib/governance/execution-stop'
 
@@ -125,6 +129,38 @@ export async function executeRunSteps(
         })
         if (fenced) throw fencedError(runId)
         throw cancelledError(runId)
+      }
+
+      // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
+      // Fresh truth before EVERY step, not once at claim. The block above is the
+      // older cooperative check and is left exactly as it was; it is gated on
+      // H1_CANCEL and therefore inert in production, which is precisely why this
+      // one is gated on nothing.
+      //
+      // Complementary to G3C-1, never a replacement. That boundary answers "may
+      // this exact paid packet leave now?"; this one answers "may this owned run
+      // begin another step at all?". A step also does unpaid work — agent loads,
+      // interpolation, log writes, storage — and none of it should start after a
+      // stop has committed.
+      const gate = await checkpointClaimedRun(anyDb, {
+        runId, projectId, claimId, boundary: `unified:step:${step.order}`,
+      })
+      if (!gate.allowed) {
+        if (gate.refusal === 'CANCELLED') {
+          const { fenced } = await terminalizeCancelledRun(anyDb, runId, claimId)
+          // Zero rows means another owner has it — fencing, never a successful
+          // cancellation.
+          if (fenced) throw fencedError(runId)
+          throw cancelledError(runId)
+        }
+        if (gate.refusal === 'STOPPED') {
+          // Back to the queue, owned. NOT failed: a stop is not a defect and the
+          // caller must not record one.
+          await releaseStoppedRun(anyDb, runId, claimId)
+        }
+        // FENCED falls through here too: touch nothing, just stop.
+        throw new RunCheckpointRefusedError(
+          gate.refusal, gate.detail, `unified:step:${step.order}`)
       }
 
       // Ladda agenten

@@ -28,7 +28,11 @@ import {
   ACTION_REGISTRY, isExecutableReadOnly, lookupAction,
   type ExecutableReadOnlyActionKind,
 } from './action-registry'
-import { assertWorkflowActionReady } from './action-run'
+import { assertWorkflowActionReady, assertWorkflowActionStillAuthorized } from './action-run'
+import {
+  releaseStoppedRun, terminalizeCancelledRun,
+  RunCheckpointRefusedError, isRunCheckpointRefusal,
+} from '@/lib/governance/run-execution-checkpoint'
 import { computeReleaseInstantHandler } from './handlers/compute-release-instant'
 import { probeAnonymousProtectedAccessHandler } from './handlers/probe-anonymous-protected-access'
 import type { ReadOnlyHandler, ReadOnlyHandlerOutput } from './handlers/types'
@@ -248,6 +252,46 @@ export async function executeWorkflowAction(
   }
   const def = await readDefinitionById(db, instance.def_id)
 
+  // ── G3C-3A · PRE-DISPATCH CHECKPOINT ────────────────────────────────────
+  // The last thing before the packet-emitting phase write. Readiness ran above,
+  // but two DB round-trips have happened since — and readiness never consulted
+  // the GLOBAL authority at all, so an action claimed before a platform-wide
+  // stop sailed straight through it. This re-establishes ownership,
+  // cancellation, readiness AND canonical global+project stop as they are now.
+  //
+  // A governance stop here is TEMPORARY: the action is not rejected and the
+  // failure model does not own it. The run returns to the queue and is
+  // re-admitted when authority clears — which G3C-2A guarantees is not before.
+  const preDispatch = await assertWorkflowActionStillAuthorized(
+    db, run.id, claimId, run.project_id)
+  if (!preDispatch.allowed) {
+    if (preDispatch.refusal === 'STOPPED') {
+      // 'temporary' is the existing vocabulary for exactly this: not rejected,
+      // not failed, eligible again once authority clears. No new disposition is
+      // invented for governance.
+      await releaseStoppedRun(db, run.id, claimId)
+      return { executed: false, refusal: 'not_ready', detail: preDispatch.reason,
+               disposition: 'temporary' }
+    }
+    if (preDispatch.refusal === 'CANCELLED') {
+      const { fenced } = await terminalizeCancelledRun(db, run.id, claimId)
+      // A fenced write means another owner terminalized first; report no
+      // disposition rather than claiming this invocation cancelled anything.
+      return fenced
+        ? { executed: false, refusal: 'fenced', detail: preDispatch.reason }
+        : { executed: false, refusal: 'not_ready', detail: preDispatch.reason,
+            disposition: 'cancelled' }
+    }
+    if (preDispatch.refusal === 'FENCED') {
+      // Another owner holds this run. No lifecycle write of any kind.
+      return { executed: false, refusal: 'fenced', detail: preDispatch.reason }
+    }
+    // NOT_READY keeps its existing refusal accounting untouched.
+    const disposition = await finalizeRefusal(
+      db, run.id, claimId, now, 'not_ready', preDispatch.reason)
+    return { executed: false, refusal: 'not_ready', detail: preDispatch.reason, disposition }
+  }
+
   // ── Phase: a READ_ONLY observation still records that it started, so the
   //    reaper and the failure model can reason about it exactly as they would
   //    about a write. Nothing about the phase model is special-cased here.
@@ -265,8 +309,50 @@ export async function executeWorkflowAction(
       defKey: def.def_key,
       defVersion: def.version,
       now,
+      // G3C-3A: this handler emits several requests, so each one re-authorises.
+      // Governance stays HERE, above the adapter — the adapter only asks.
+      beforeAttempt: async () => {
+        const again = await assertWorkflowActionStillAuthorized(
+          db, run.id, claimId, run.project_id)
+        if (again.allowed) return
+        // A TYPED sentinel, never a bare Error. A generic Error lands in the
+        // catch below, which writes REMOTE_CONFIRMED with an UNKNOWN/PARTIAL
+        // outcome and reconciliation_required — i.e. it would claim request N's
+        // response was lost, when in fact request N+1 was simply refused before
+        // it ever left. Governance refusing the NEXT packet is not evidence
+        // about the PREVIOUS one.
+        //
+        // NOT_READY deliberately keeps the failure model: authorization, target
+        // or state genuinely drifted mid-handler, which is not a governance stop.
+        if (again.refusal && again.refusal !== 'NOT_READY') {
+          throw new RunCheckpointRefusedError(
+            again.refusal, again.reason, 'probe:before-request')
+        }
+        throw new Error(`probe halted before next request: ${again.reason}`)
+      },
     })
   } catch (e) {
+    // ── G3C-3A · governance control flow, BEFORE the failure model ──────────
+    // A mid-handler refusal means the NEXT request never left. It says nothing
+    // about whether an earlier request's response was lost, so it must never
+    // become REMOTE_CONFIRMED / UNKNOWN / PARTIAL / reconciliation_required.
+    if (isRunCheckpointRefusal(e)) {
+      if (e.refusal === 'STOPPED') {
+        await releaseStoppedRun(db, run.id, claimId)
+        return { executed: false, refusal: 'not_ready', detail: e.message,
+                 disposition: 'temporary' }
+      }
+      if (e.refusal === 'CANCELLED') {
+        const { fenced } = await terminalizeCancelledRun(db, run.id, claimId)
+        return fenced
+          ? { executed: false, refusal: 'fenced', detail: e.message }
+          : { executed: false, refusal: 'not_ready', detail: e.message,
+              disposition: 'cancelled' }
+      }
+      // FENCED — another owner holds this run; write nothing at all.
+      return { executed: false, refusal: 'fenced', detail: e.message }
+    }
+
     // A handler that throws produced no observation. For a pure computation this
     // is a defect, not ambiguity — but the phase says we dispatched, so the
     // honest outcome comes from the model rather than from a guess here.

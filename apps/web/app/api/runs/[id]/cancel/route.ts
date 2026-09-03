@@ -34,7 +34,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
-import { isCancelEnabled } from '@/lib/ai/cancel'
 
 export async function POST(
   req: NextRequest,
@@ -97,17 +96,24 @@ export async function POST(
         p_reason: reason,
       })
       const persisted = Number(updated) > 0
-      const enforced = isCancelEnabled()
+      // G3C-3A: enforcement no longer depends on H1_CANCEL. The canonical
+      // post-claim checkpoint reads `cancel_requested` unconditionally — at the
+      // drain entry, before every unified and legacy step, and before every
+      // workflow action dispatch — so a persisted request WILL be acted on.
+      //
+      // `enforced` stays honest about what it means: the run stops at its next
+      // canonical safe boundary. It does NOT mean an in-flight provider request
+      // was remotely cancelled. Nothing here can promise that, and G3C-1's
+      // in-flight contract is unchanged.
       return NextResponse.json({
         // `ok` reports whether the intent was recorded; `enforced` reports whether
         // anything will act on it. Never conflate the two.
         ok: persisted,
-        status: enforced ? 'cancel_requested' : 'cancel_requested_not_enforced',
-        enforced,
-        ...(enforced ? {} : {
-          warning: 'Cancellation is not enabled in this environment — the request is '
-            + 'recorded and will be honoured once it is, but this run will NOT stop now.',
-        }),
+        status: 'cancel_requested',
+        enforced: true,
+        note: 'Stops at the next safe boundary — before its next step, before a '
+          + 'workflow action dispatches, or at drain pick-up. A provider request '
+          + 'already in flight is allowed to finish; it is not remotely cancelled.',
       })
     }
     default:

@@ -194,8 +194,13 @@ describe('run cancellation', () => {
     // action — and the refusal to overclaim a remote cancellation.
     expect(route).toMatch(/enforced: true/)
     expect(route).toMatch(/request_run_cancel/)
-    expect(route, 'ok reports persistence, separately from enforcement')
-      .toMatch(/ok: persisted/)
+    // G3C-3B: `persisted` is gone because the pre-read branch that needed it is
+    // gone. The RPC's ROW COUNT is now the mutation truth, and the route must
+    // never report success without it — that was the lost-cancellation defect.
+    expect(route, 'the row count is the mutation truth')
+      .toMatch(/const mutated = Number\(affected\) > 0/)
+    expect(route, 'and a zero-row non-cancelled outcome is a conflict, not success')
+      .toMatch(/status: 'already_terminal'/)
     expect(route, 'the latency contract stays explicit')
       .toMatch(/next safe boundary/)
     expect(route, 'and it must not claim a remote cancellation')
@@ -205,9 +210,24 @@ describe('run cancellation', () => {
   it('honours cancel at claim time and between steps', async () => {
     const drain = readFileSync(join(process.cwd(), 'app/api/runs/drain/route.ts'), 'utf8')
     const exec = readFileSync(join(process.cwd(), 'lib/ai/workflow-executor.ts'), 'utf8')
-    expect(drain).toMatch(/isCancelEnabled\(\)\s*&&\s*run\.cancel_requested/)  // before any work
-    expect(exec).toMatch(/isCancelRequested/)                                   // between steps
-    // and the terminal write is fenced like every other executing-run write
+    // G3C-3B removed the H1_CANCEL-gated duplicate from the drain. Cancellation
+    // at drain entry now has exactly ONE decision — the canonical checkpoint —
+    // and it is unconditional, so pinning the old flag-gated branch would pin the
+    // very duplication that was removed.
+    expect(drain, 'no second, flag-gated cancel truth may return to the drain')
+      .not.toMatch(/isCancelEnabled\(\)\s*&&\s*run\.cancel_requested/)
+    expect(drain, 'the canonical checkpoint decides it').toMatch(/checkpointClaimedRun\(/)
+    // G3C-3B removed the H1_CANCEL-gated cooperative check from the executor
+    // too. It was inert only because the flag is unset — enabling it would have
+    // let it PREEMPT the canonical checkpoint and collapse a failed lifecycle
+    // write back into FENCED. Pinning it now would pin the duplication that was
+    // removed, so pin what replaced it: one unconditional boundary per step,
+    // settled through the canonical mapping.
+    expect(exec, 'no second, flag-gated cancel truth may return to the executor')
+      .not.toMatch(/isCancelEnabled\(\)\s*&&\s*await isCancelRequested/)
+    expect(exec, 'the canonical checkpoint decides every step').toMatch(/checkpointClaimedRun\(/)
+    expect(exec, 'and its refusals settle through the one mapping').toMatch(/settleRefusal\(/)
+    // and the terminal write is still fenced like every other executing-run write
     expect(drain).toMatch(/fencedRunUpdate\(db, run\.id, run\.claim_id/)
   })
 })

@@ -4357,6 +4357,10 @@ export type Database = {
       }
       media_job_state_rank: { Args: { s: string }; Returns: number }
       omnira_applied_migrations: { Args: never; Returns: string[] }
+      release_stopped_run: {
+        Args: { p_claim_id: string; p_run_id: string }
+        Returns: string
+      }
       request_run_cancel: {
         Args: {
           p_actor?: string
@@ -4365,6 +4369,16 @@ export type Database = {
           p_run_id: string
         }
         Returns: number
+      }
+      resolve_approval: {
+        Args: {
+          p_action: string
+          p_approval_id: string
+          p_notes?: string
+          p_project_id: string
+          p_run_id: string
+        }
+        Returns: string
       }
       stop_set_platform_automation: {
         Args: { p_actor: string; p_paused: boolean; p_reason?: string }

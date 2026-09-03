@@ -149,8 +149,14 @@ describe('a refusal never leaves a claimed run running', () => {
     // The bug was `return {executed:false}` with no DB write.
     const preDispatch = execCode.slice(0, execCode.indexOf("action_phase: 'DISPATCH_STARTED'"))
     const returns = [...preDispatch.matchAll(/return \{ executed: false, refusal: '(\w+)'/g)].map(m => m[1])
-    // 8 original refusals + the 3 G3C-3A pre-dispatch checkpoint outcomes.
-    expect(returns.length).toBe(11)
+    // 8 original refusals + the 3 G3C-3A pre-dispatch checkpoint outcomes + 2
+    // from G3C-3B. Both additions are explicit `fenced` returns where control
+    // flow previously collapsed: one where the pre-dispatch STOPPED/CANCELLED
+    // branches now settle their lifecycle write before reporting, and one where
+    // INITIAL READINESS re-establishes governance before ordinary refusal
+    // accounting. The invariant this guard exists for is unchanged — every path
+    // still finalizes — and the assertions carrying it are unmoved.
+    expect(returns.length).toBe(13)
     for (const r of returns) {
       expect(REFUSAL_DISPOSITION[r as keyof typeof REFUSAL_DISPOSITION], r).toBeDefined()
     }
@@ -169,10 +175,15 @@ describe('a refusal never leaves a claimed run running', () => {
     //   FENCED     → deliberately writes NOTHING. Another owner holds this run,
     //                and a stale worker recording anything about it is exactly
     //                the bug fencing exists to prevent.
-    expect(preDispatch, 'a stop releases rather than rejects')
-      .toContain('await releaseStoppedRun(db, run.id, claimId)')
-    expect(preDispatch, 'a cancel terminalizes under the claim')
-      .toContain('await terminalizeCancelledRun(db, run.id, claimId)')
+    // G3C-3B routes both through ONE settlement point. Pinning the two helper
+    // names here would now be pinning the wrong thing: the defect this guard
+    // protects against is a refusal that writes nothing, and what prevents that
+    // is `settleRefusal` — which performs the write AND reports what it
+    // achieved, so no caller can discard the result the way they all used to.
+    expect(preDispatch, 'stop and cancel both settle their lifecycle write')
+      .toContain('await settleRefusal(db, preDispatch.refusal, run.id, claimId)')
+    expect(preDispatch, 'and a failed lifecycle write is not laundered into a fence')
+      .toContain('RunLifecycleWriteError')
     // Bounded to the FENCED branch itself — a wider window spills into the
     // NOT_READY branch below it, which legitimately does finalize.
     const fencedStart = preDispatch.indexOf("preDispatch.refusal === 'FENCED'")

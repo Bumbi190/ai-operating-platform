@@ -9,12 +9,19 @@
  * then the run is transitioned to 'cancelled' via a claim_id-fenced write (Commit 2)
  * so a reclaimed zombie can't cancel a run the new owner is running.
  *
- * pending / awaiting_approval are cancelled DIRECTLY by the route (status-guarded),
- * not through this cooperative path — those runs are at rest, no executor owns them.
+ * pending / awaiting_approval are terminalized by public.request_run_cancel under
+ * the run row lock, not through this cooperative path — no executor owns them.
  *
- * Flag-gated: H1_CANCEL (default OFF). When off, the cooperative checks are inert —
- * the route may still set cancel_requested, but the drain/executor ignore it, so a
- * running run completes normally. Instant rollback by flipping the flag.
+ * ── H1_CANCEL NO LONGER GATES ENFORCEMENT ──────────────────────────────────
+ * This block used to say that with the flag off "the drain/executor ignore it, so
+ * a running run completes normally". That stopped being true in G3C-3A, which
+ * made the canonical post-claim checkpoint read `cancel_requested`
+ * UNCONDITIONALLY — at drain entry, before every unified and legacy step, and
+ * before every workflow action dispatch. G3C-3B then removed the last
+ * flag-gated duplicate of that decision from the drain.
+ *
+ * `isCancelEnabled` survives for the remaining H1.P5 surfaces below; it is NOT a
+ * kill switch for cancellation enforcement, and nothing should reintroduce one.
  */
 
 // any: the Supabase client in this project has no generated DB types.

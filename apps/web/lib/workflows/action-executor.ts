@@ -30,7 +30,7 @@ import {
 } from './action-registry'
 import { assertWorkflowActionReady, assertWorkflowActionStillAuthorized } from './action-run'
 import {
-  releaseStoppedRun, terminalizeCancelledRun,
+  checkpointClaimedRun, settleRefusal, RunLifecycleWriteError, isRunLifecycleWriteError,
   RunCheckpointRefusedError, isRunCheckpointRefusal,
 } from '@/lib/governance/run-execution-checkpoint'
 import { computeReleaseInstantHandler } from './handlers/compute-release-instant'
@@ -241,6 +241,46 @@ export async function executeWorkflowAction(
   // ── Binding, pause, cancel, target and evidence are all re-derived here.
   const readiness = await assertWorkflowActionReady(db, run.id)
   if (!readiness.ready) {
+    // ── G3C-3B · GOVERNANCE WINS BEFORE ORDINARY REFUSAL ACCOUNTING ────────
+    // Readiness lists `cancel_requested` and `project_paused` among its
+    // blockers, and used to hand both straight to `finalizeRefusal` — which
+    // writes through `fencedActionUpdate` WITHOUT distinguishing success from a
+    // fence from a database fault, and which requeues a stopped run WITHOUT
+    // calling release_stopped_run. Two regressions followed from that:
+    //
+    //   • the ERROR / FENCED / CANCELLED distinction this slice just
+    //     established was reintroduced on exactly this path;
+    //   • a project pause committing after the claim consumed an execution
+    //     attempt with no compensation, so a future max_attempts=1 write-capable
+    //     action would strand on its first pause crossing — a direct R7
+    //     violation.
+    //
+    // So a fresh canonical checkpoint runs FIRST. Its refusals settle through
+    // the one canonical mapping; only if it still says ALLOWED do the ordinary,
+    // non-governance blockers (target drift, authorization drift, instance
+    // drift) reach the failure model.
+    //
+    // The precedence this buys matters: `project_paused + target_drifted` while
+    // the pause still stands is a STOP, not a permanent rejection. The run goes
+    // back to the queue and readiness re-evaluates the drift honestly once
+    // authority clears — rather than rejecting a run forever on the strength of
+    // a check taken while everything was supposed to be halted.
+    const gate = await checkpointClaimedRun(db, {
+      runId: run.id, claimId, projectId: run.project_id, boundary: 'action:readiness',
+    })
+    if (!gate.allowed) {
+      const settled = await settleRefusal(db, gate.refusal, run.id, claimId)
+      if (settled === 'ERROR') {
+        throw new RunLifecycleWriteError(run.id, 'action:readiness', gate.detail)
+      }
+      if (settled === 'FENCED') {
+        return { executed: false, refusal: 'fenced', detail: gate.detail }
+      }
+      return {
+        executed: false, refusal: 'not_ready', detail: gate.detail,
+        disposition: settled === 'CANCELLED' ? 'cancelled' : 'temporary',
+      }
+    }
     const disposition = await finalizeRefusal(
       db, run.id, claimId, now, 'not_ready', readiness.detail, readiness.blockers)
     return { executed: false, refusal: 'not_ready', detail: readiness.detail, disposition }
@@ -267,22 +307,24 @@ export async function executeWorkflowAction(
   const preDispatch = await assertWorkflowActionStillAuthorized(
     db, run.id, claimId, run.project_id)
   if (!preDispatch.allowed) {
-    if (preDispatch.refusal === 'STOPPED') {
-      // 'temporary' is the existing vocabulary for exactly this: not rejected,
-      // not failed, eligible again once authority clears. No new disposition is
-      // invented for governance.
-      await releaseStoppedRun(db, run.id, claimId)
+    if (preDispatch.refusal === 'STOPPED' || preDispatch.refusal === 'CANCELLED') {
+      // G3C-3B: settle the lifecycle write and report what it ACHIEVED. The
+      // STOPPED path used to ignore the release result entirely, so an R9
+      // cancellation winner was returned as `temporary` while the run was
+      // already terminally cancelled.
+      const settled = await settleRefusal(db, preDispatch.refusal, run.id, claimId)
+      if (settled === 'ERROR') {
+        // Not fenced, and above all not a provider outcome: nothing was
+        // dispatched, so this must never reach the PR9d ambiguity model.
+        throw new RunLifecycleWriteError(run.id, 'action:pre-dispatch', preDispatch.reason)
+      }
+      if (settled === 'FENCED') {
+        return { executed: false, refusal: 'fenced', detail: preDispatch.reason }
+      }
+      // 'temporary' is the existing vocabulary for a stop: not rejected, not
+      // failed, eligible again once authority clears.
       return { executed: false, refusal: 'not_ready', detail: preDispatch.reason,
-               disposition: 'temporary' }
-    }
-    if (preDispatch.refusal === 'CANCELLED') {
-      const { fenced } = await terminalizeCancelledRun(db, run.id, claimId)
-      // A fenced write means another owner terminalized first; report no
-      // disposition rather than claiming this invocation cancelled anything.
-      return fenced
-        ? { executed: false, refusal: 'fenced', detail: preDispatch.reason }
-        : { executed: false, refusal: 'not_ready', detail: preDispatch.reason,
-            disposition: 'cancelled' }
+               disposition: settled === 'CANCELLED' ? 'cancelled' : 'temporary' }
     }
     if (preDispatch.refusal === 'FENCED') {
       // Another owner holds this run. No lifecycle write of any kind.
@@ -339,21 +381,25 @@ export async function executeWorkflowAction(
     // about whether an earlier request's response was lost, so it must never
     // become REMOTE_CONFIRMED / UNKNOWN / PARTIAL / reconciliation_required.
     if (isRunCheckpointRefusal(e)) {
-      if (e.refusal === 'STOPPED') {
-        await releaseStoppedRun(db, run.id, claimId)
+      if (e.refusal === 'STOPPED' || e.refusal === 'CANCELLED') {
+        const settled = await settleRefusal(db, e.refusal, run.id, claimId)
+        if (settled === 'ERROR') {
+          throw new RunLifecycleWriteError(run.id, 'action:mid-probe', e.message)
+        }
+        if (settled === 'FENCED') {
+          return { executed: false, refusal: 'fenced', detail: e.message }
+        }
         return { executed: false, refusal: 'not_ready', detail: e.message,
-                 disposition: 'temporary' }
-      }
-      if (e.refusal === 'CANCELLED') {
-        const { fenced } = await terminalizeCancelledRun(db, run.id, claimId)
-        return fenced
-          ? { executed: false, refusal: 'fenced', detail: e.message }
-          : { executed: false, refusal: 'not_ready', detail: e.message,
-              disposition: 'cancelled' }
+                 disposition: settled === 'CANCELLED' ? 'cancelled' : 'temporary' }
       }
       // FENCED — another owner holds this run; write nothing at all.
       return { executed: false, refusal: 'fenced', detail: e.message }
     }
+    // A lifecycle write failed inside the handler boundary. It is NOT a provider
+    // observation: rethrow so the drain reports lifecycle_error rather than
+    // letting PR9d record REMOTE_CONFIRMED / UNKNOWN / reconciliation for a call
+    // that never happened.
+    if (isRunLifecycleWriteError(e)) throw e
 
     // A handler that throws produced no observation. For a pure computation this
     // is a defect, not ambiguity — but the phase says we dispatched, so the

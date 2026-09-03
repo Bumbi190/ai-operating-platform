@@ -13,9 +13,9 @@ import { validateStepOutput } from '@/lib/ai/validators/output-validator'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
 import { fencedRunUpdate, fencedError } from '@/lib/ai/fencing'
-import { isCancelEnabled, isCancelRequested, cancelledError } from '@/lib/ai/cancel'
+import { cancelledError } from '@/lib/ai/cancel'
 import {
-  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
+  checkpointClaimedRun, settleRefusal, RunLifecycleWriteError,
   RunCheckpointRefusedError,
 } from '@/lib/governance/run-execution-checkpoint'
 import type { WorkflowStep } from '@/lib/supabase/types'
@@ -116,26 +116,16 @@ export async function executeRunSteps(
   // NOTE: no try/catch here — failures propagate to the caller, which owns status.
   {
     for (const step of pendingSteps) {
-      // H1.P5 Commit 3: cooperative cancel check at the step boundary. Gated by H1_CANCEL,
-      // and only on the drain path (claimId present) — the legacy executeWorkflow wrapper
-      // passes no claimId so cooperative cancel is inert there. If cancel was requested,
-      // transition to 'cancelled' via a claim_id-fenced write and STOP (no more steps):
-      //   • fenced (0 rows) → run was reclaimed → throw fenced so the new owner handles it;
-      //   • not fenced      → we set 'cancelled' → throw cancelled so the drain skips its
-      //                       terminal write (it must not overwrite 'cancelled' with 'done').
-      if (claimId && isCancelEnabled() && await isCancelRequested(anyDb, runId)) {
-        const { fenced } = await fencedRunUpdate(anyDb, runId, claimId, {
-          status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
-        })
-        if (fenced) throw fencedError(runId)
-        throw cancelledError(runId)
-      }
-
       // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
-      // Fresh truth before EVERY step, not once at claim. The block above is the
-      // older cooperative check and is left exactly as it was; it is gated on
-      // H1_CANCEL and therefore inert in production, which is precisely why this
-      // one is gated on nothing.
+      // Fresh truth before EVERY step, not once at claim.
+      //
+      // G3C-3B removed the H1.P5 cooperative branch that used to sit here. It
+      // was inert only because H1_CANCEL is unset: enabling that flag would have
+      // let it PREEMPT this checkpoint and, through fencedRunUpdate, collapse a
+      // failed lifecycle write back into FENCED — reviving exactly the taxonomy
+      // this slice replaced. Its behaviour is wholly subsumed below, which reads
+      // ownership, cancellation AND stop authority and settles through
+      // settleRefusal.
       //
       // Complementary to G3C-1, never a replacement. That boundary answers "may
       // this exact paid packet leave now?"; this one answers "may this owned run
@@ -146,21 +136,18 @@ export async function executeRunSteps(
         runId, projectId, claimId, boundary: `unified:step:${step.order}`,
       })
       if (!gate.allowed) {
-        if (gate.refusal === 'CANCELLED') {
-          const { fenced } = await terminalizeCancelledRun(anyDb, runId, claimId)
-          // Zero rows means another owner has it — fencing, never a successful
-          // cancellation.
-          if (fenced) throw fencedError(runId)
-          throw cancelledError(runId)
-        }
-        if (gate.refusal === 'STOPPED') {
-          // Back to the queue, owned. NOT failed: a stop is not a defect and the
-          // caller must not record one.
-          await releaseStoppedRun(anyDb, runId, claimId)
-        }
-        // FENCED falls through here too: touch nothing, just stop.
-        throw new RunCheckpointRefusedError(
-          gate.refusal, gate.detail, `unified:step:${step.order}`)
+        // G3C-3B: the checkpoint's verdict is a DECISION; what the lifecycle
+        // write actually achieved may differ. A cancel committing between the
+        // two turns a STOPPED refusal into a real cancellation (R9), and a
+        // database fault is neither. Settle first, then report the truth.
+        const boundary = `unified:step:${step.order}`
+        const settled = await settleRefusal(anyDb, gate.refusal, runId, claimId)
+        if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, boundary, gate.detail)
+        if (settled === 'CANCELLED') throw cancelledError(runId)
+        if (settled === 'FENCED') throw fencedError(runId)
+        // STOPPED — back to the queue, owned. NOT failed: a stop is not a defect
+        // and the caller must not record one.
+        throw new RunCheckpointRefusedError('STOPPED', gate.detail, boundary)
       }
 
       // Ladda agenten

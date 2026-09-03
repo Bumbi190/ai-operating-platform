@@ -12,7 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
 import {
-  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
+  checkpointClaimedRun, settleRefusal, RunLifecycleWriteError,
   RunCheckpointRefusedError,
 } from '@/lib/governance/run-execution-checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
@@ -56,14 +56,13 @@ export async function runSteps(
       runId, projectId, claimId, boundary: `legacy:step:${step.order}`,
     })
     if (!gate.allowed) {
-      if (gate.refusal === 'CANCELLED') {
-        await terminalizeCancelledRun(db, runId, claimId)
-      } else if (gate.refusal === 'STOPPED') {
-        await releaseStoppedRun(db, runId, claimId)
-      }
-      // FENCED writes nothing at all.
-      throw new RunCheckpointRefusedError(
-        gate.refusal, gate.detail, `legacy:step:${step.order}`)
+      // G3C-3B: this used to discard the lifecycle result and rethrow the
+      // ORIGINAL refusal, so a fenced or failed cancellation write was reported
+      // as successful cancellation control flow. Report what actually happened.
+      const boundary = `legacy:step:${step.order}`
+      const settled = await settleRefusal(db, gate.refusal, runId, claimId)
+      if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, boundary, gate.detail)
+      throw new RunCheckpointRefusedError(settled, gate.detail, boundary)
     }
 
     const { data: agent } = await db

@@ -28,6 +28,8 @@ const state = {
   beforeUpdate: undefined as (() => void) | undefined,
   /** Deterministic barrier: fires on each runs-row read. */
   beforeRunRead: undefined as (() => void) | undefined,
+  /** G3C-3B: makes the lifecycle RPC fault, so ERROR can be told from FENCED. */
+  rpcFails: false,
 }
 
 /** Minimal Supabase double: the run row, the stop RPC, and recorded updates. */
@@ -88,6 +90,22 @@ function db() {
           error: null,
         }
       }
+      if (fn === 'release_stopped_run') {
+        // Mirrors public.release_stopped_run: ownership-conditioned, and it reads
+        // cancel_requested INSIDE the write rather than before it.
+        if (state.rpcFails) return { data: null, error: { message: 'connection lost' } }
+        const owned = state.run.status === 'running' && state.run.claim_id === CLAIM
+        if (!owned) return { data: 'FENCED', error: null }
+        if (state.run.cancel_requested === true) {
+          Object.assign(state.run, { status: 'cancelled', claimed_at: null, lease_until: null })
+          return { data: 'CANCELLED', error: null }
+        }
+        Object.assign(state.run, {
+          status: 'pending', claimed_at: null, lease_until: null, claim_id: null,
+          attempts: Math.max((state.run.attempts as number ?? 1) - 1, 0),
+        })
+        return { data: 'RELEASED', error: null }
+      }
       return { data: null, error: null }
     },
   }
@@ -110,6 +128,7 @@ beforeEach(() => {
   state.stopReadFails = false
   state.runReadFails = false
   state.updateFails = false
+  state.rpcFails = false
   state.beforeUpdate = undefined
   state.beforeRunRead = undefined
   state.updates = []
@@ -202,29 +221,70 @@ describe('G3C-3A · the checkpoint establishes fresh truth', () => {
 describe('G3C-3A · ownership-conditioned lifecycle writes', () => {
   it('release hands a stopped run back to pending — no error, no failure', async () => {
     const { releaseStoppedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    state.run.attempts = 1
     const r = await releaseStoppedRun(anyDb(), RUN, CLAIM)
-    expect(r).toEqual({ released: true, fenced: false })
-    const w = state.updates.at(-1)!
-    expect(w.payload.status).toBe('pending')
-    expect(w.payload.claim_id).toBeNull()
-    expect(w.payload, 'a stop is not a failure — no error text').not.toHaveProperty('error')
-    expect(w.payload, 'and no attempt bookkeeping').not.toHaveProperty('attempts')
-    expect(w.predicates, 'conditioned on still owning it')
-      .toEqual({ id: RUN, status: 'running', claim_id: CLAIM })
+    expect(r).toBe('RELEASED')
+    expect(state.run.status).toBe('pending')
+    expect(state.run.claim_id, 'a requeued row must lose its claim').toBeNull()
+    expect(state.run, 'a stop is not a failure — no error text').not.toHaveProperty('error')
+    // G3C-3B: the admission IS compensated now. claim_runs counts admissions and a
+    // stop is not an execution attempt — without this a max_attempts=1 material
+    // run would strand on its first stop crossing.
+    expect(state.run.attempts, 'the released admission is given back').toBe(0)
   })
 
   it('release under a rotated claim is FENCED, not a silent success', async () => {
     const { releaseStoppedRun } = await import('@/lib/governance/run-execution-checkpoint')
     state.run.claim_id = 'other'
     const r = await releaseStoppedRun(anyDb(), RUN, CLAIM)
-    expect(r).toEqual({ released: false, fenced: true })
+    expect(r).toBe('FENCED')
     expect(state.run.status, 'the new owner’s run is untouched').toBe('running')
+  })
+
+  it('G3C-3B · a cancel committing before the release terminalizes, never requeues', async () => {
+    // THE R9 SHAPE, at unit level. The checkpoint decided STOP; the cancellation
+    // becomes durable before the release lands. A blind requeue here would write
+    // `pending + cancel_requested = true` — which claim_runs now refuses and the
+    // reaper never sees, because it matches status='running' only. Ownerless.
+    const { releaseStoppedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    state.run.cancel_requested = true
+    const r = await releaseStoppedRun(anyDb(), RUN, CLAIM)
+    expect(r, 'the release resolves the cancellation instead of requeueing').toBe('CANCELLED')
+    expect(state.run.status).toBe('cancelled')
+    expect(
+      state.run.status === 'pending' && state.run.cancel_requested === true,
+      'the forbidden ownerless state must never be produced',
+    ).toBe(false)
+  })
+
+  it('G3C-3B · a terminating cancel does NOT hand back an attempt', async () => {
+    // Compensation exists to keep a STOPPED run claimable. A cancelled run
+    // terminates and is never admitted again, so returning the attempt would be
+    // a false ledger entry.
+    const { releaseStoppedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    state.run.cancel_requested = true
+    state.run.attempts = 1
+    expect(await releaseStoppedRun(anyDb(), RUN, CLAIM)).toBe('CANCELLED')
+    expect(state.run.attempts).toBe(1)
+  })
+
+  it('G3C-3B · a database fault reports ERROR — it is not lost ownership', async () => {
+    // G3C-3A collapsed this into fenced:true. Safe, but a lie: FENCED is a claim
+    // about OWNERSHIP, and it would send an operator hunting a second worker that
+    // never existed. The SAFETY behaviour is identical — nothing is written.
+    const { releaseStoppedRun, terminalizeCancelledRun } =
+      await import('@/lib/governance/run-execution-checkpoint')
+    state.rpcFails = true
+    state.updateFails = true
+    expect(await releaseStoppedRun(anyDb(), RUN, CLAIM)).toBe('ERROR')
+    expect(await terminalizeCancelledRun(anyDb(), RUN, CLAIM)).toBe('ERROR')
+    expect(state.run.status, 'and still nothing was written').toBe('running')
   })
 
   it('cancel terminalizes only under the same claim', async () => {
     const { terminalizeCancelledRun } = await import('@/lib/governance/run-execution-checkpoint')
     const r = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
-    expect(r).toEqual({ cancelled: true, fenced: false })
+    expect(r).toBe('CANCELLED')
     expect(state.run.status).toBe('cancelled')
   })
 
@@ -232,15 +292,14 @@ describe('G3C-3A · ownership-conditioned lifecycle writes', () => {
     const { terminalizeCancelledRun } = await import('@/lib/governance/run-execution-checkpoint')
     state.run.claim_id = 'other'
     const r = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
-    expect(r.cancelled).toBe(false)
-    expect(r.fenced).toBe(true)
+    expect(r, 'a rotated claim is FENCED — never a successful cancellation').toBe('FENCED')
     expect(state.run.status).toBe('running')
   })
 
   it('neither write is attempted without a claim', async () => {
     const m = await import('@/lib/governance/run-execution-checkpoint')
-    expect(await m.releaseStoppedRun(anyDb(), RUN, null)).toEqual({ released: false, fenced: true })
-    expect(await m.terminalizeCancelledRun(anyDb(), RUN, null)).toEqual({ cancelled: false, fenced: true })
+    expect(await m.releaseStoppedRun(anyDb(), RUN, null)).toBe('FENCED')
+    expect(await m.terminalizeCancelledRun(anyDb(), RUN, null)).toBe('FENCED')
     expect(state.updates, 'no claim, no write').toEqual([])
   })
 })
@@ -308,7 +367,7 @@ describe('CF · the final owned boundary linearizes cancel against success', () 
 
     const { terminalizeCancelledRun } = await import('@/lib/governance/run-execution-checkpoint')
     const r = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
-    expect(r.cancelled).toBe(true)
+    expect(r).toBe('CANCELLED')
     expect(state.run.status, 'cancelled, never done').toBe('cancelled')
     // And nothing about this is a provider failure.
     expect(state.updates.some(u => 'error' in u.payload || 'last_error' in u.payload)).toBe(false)
@@ -327,8 +386,7 @@ describe('CF · the final owned boundary linearizes cancel against success', () 
     // The cancellation arrives afterwards. request_run_cancel is status-guarded
     // to pending/running in SQL, and the owned terminalizer requires running.
     const late = await terminalizeCancelledRun(anyDb(), RUN, CLAIM)
-    expect(late.cancelled, 'completed work is never retroactively rewritten').toBe(false)
-    expect(late.fenced).toBe(true)
+    expect(late, 'completed work is never retroactively rewritten').toBe('FENCED')
     expect(state.run.status).toBe('done')
   })
 
@@ -341,7 +399,7 @@ describe('CF · the final owned boundary linearizes cancel against success', () 
     const done = await m.terminalizeOwnedRun(anyDb(), RUN, CLAIM, { status: 'done' })
     const cancelled = await m.terminalizeCancelledRun(anyDb(), RUN, CLAIM)
     expect(done).toEqual({ written: false, fenced: true })
-    expect(cancelled.cancelled).toBe(false)
+    expect(cancelled).toBe('FENCED')
     expect(state.run.status, 'the new owner’s run is untouched').toBe('running')
   })
 
@@ -440,7 +498,7 @@ describe('CF4 · a cancel landing inside the finalization window cannot be overw
     expect(state.run.status).toBe('done')
 
     const late = await m.terminalizeCancelledRun(anyDb(), RUN, CLAIM)
-    expect(late.cancelled, 'completed work is never retroactively rewritten').toBe(false)
+    expect(late, 'completed work is never retroactively rewritten').toBe('FENCED')
     expect(state.run.status).toBe('done')
   })
 

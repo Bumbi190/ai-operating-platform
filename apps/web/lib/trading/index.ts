@@ -40,7 +40,8 @@ export {
   parseId,
 } from './ids'
 export type {
-  AccountId, AiAnalysisId, ApprovalId, Branded, BrokerId, CorrelationId,
+  AccountId, AiAnalysisId, ApprovalId, Branded, BrokerId,
+  ContractSelectionDecisionId, CorrelationId,
   EventId, ExecutionId, FillId, IncidentId, InstrumentId, KillSwitchId,
   OrderId, PositionId, PropDecisionId, PropFirmProfileId, ProposalId,
   RiskDecisionId, RiskProfileId, RunId, RunnerId, SetupId, SignalId,

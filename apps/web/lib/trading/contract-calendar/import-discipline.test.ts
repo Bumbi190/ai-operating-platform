@@ -257,9 +257,16 @@ describe('a resolved contract mints no authority', () => {
   })
 })
 
-// ─── The slice does not start GATE-08C-2 or C3 ────────────────────────────────
+// ─── Those concerns belong to other packages ─────────────────────────────────
 
-describe('later slices stay unstarted', () => {
+/*
+ * These slices are no longer "unstarted" — SessionCalendar, aggregation,
+ * ContractCandleSegment and the decision materializer all exist, each in its own
+ * package. What the assertions below protect is therefore a BOUNDARY, not a
+ * schedule: contract-calendar resolves, and must not absorb the concerns that
+ * were deliberately built elsewhere.
+ */
+describe('other packages own the layers above this one', () => {
   it('implements no session calendar, aggregation or candle segment', () => {
     for (const [name, code] of ALL) {
       for (const later of [
@@ -272,12 +279,17 @@ describe('later slices stay unstarted', () => {
     }
   })
 
-  it('mints no ContractSelectionDecision while the reason vocabulary has no code for it', () => {
+  it('mints no ContractSelectionDecision and reaches no reason registry', () => {
     /*
-     * Canonical v1.0 §9 requires `reasons: readonly Reason[]` on a decision, and
-     * the reason-code registry has no positive market-data selection code. A
-     * decision built from an unrelated existing code would be a false record, so
-     * none is built here. See the GATE-08C REASON-CODE GAP in the review.
+     * The code and the materializer BOTH exist now — `reason-codes.ts` carries
+     * CONTRACT_SELECTED_BY_CANONICAL_CALENDAR (Beslut J) and
+     * `contract-selection/` materializes decisions (Beslut K). This assertion
+     * therefore no longer guards a missing vocabulary; it guards a LAYER.
+     *
+     * Materialization belongs to the separate contract-selection package.
+     * contract-calendar resolves and must not own a decision, because the moment
+     * it does, the resolver stops being a pure function of (calendar, root, at)
+     * and starts carrying an identity, a clock and a reason registry with it.
      */
     for (const [name, code] of ALL) {
       expect(code, `${name} mints a decision`).not.toContain('ContractSelectionDecision')

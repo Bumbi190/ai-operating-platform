@@ -42,10 +42,22 @@
  * NO FLOAT TOUCHES A PRICE OR A VOLUME. High and low are chosen by exact
  * decimal comparison; volume is summed as a scaled bigint.
  *
- * NOT YET HERE — GATE-08C-3
- * ─────────────────────────
- * `ContractCandleSegment`, contract-scoped sources, `ContractSelectionDecision`
- * and any contract provenance on a candle are later work. GATE-08 stays
+ * CANDLE DERIVATION ONLY
+ * ──────────────────────
+ * This package owns canonical candle derivation and nothing beyond it.
+ * `ContractCandleSegment` and contract-scoped requests live in
+ * `@/lib/trading/market-data`; the materialisation of
+ * `ContractSelectionDecision` lives in `@/lib/trading/contract-selection`.
+ * Neither belongs to candle aggregation, and neither may be reached from here.
+ *
+ * A candle still carries NO contract fact of its own. A segment envelope names
+ * one `ResolvedContract` and a decision explains why that contract was
+ * selected; neither turns provenance into a per-candle field.
+ *
+ * NOT YET HERE — GATE-08C-3 AND LATER
+ * ───────────────────────────────────
+ * Contract-scoped data sources and the live-source contract are later work —
+ * GATE-08C-3A SOURCE-RESULT-SHAPE GAP is still open. GATE-08 stays
  * DELVIS STÄNGD.
  */
 

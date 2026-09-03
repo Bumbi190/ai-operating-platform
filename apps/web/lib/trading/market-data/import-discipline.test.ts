@@ -324,10 +324,15 @@ describe('the contract boundary is identity, never a provider symbol', () => {
 
   it('mints no ContractSelectionDecision and reaches no reason registry', () => {
     /*
-     * GATE-08C REASON-CODE GAP stays OPEN. §9 requires a decision to carry
-     * `reasons: readonly Reason[]`, and the registry has no canonical
-     * contract-selection code — so C3A builds no decision at all. The local
-     * refusal unions here are caller-contract validation, not journal codes.
+     * Not because the vocabulary is missing — Beslut J added the code and
+     * Beslut K added the materializer. Because materialization belongs to the
+     * separate contract-selection package, and market-data must not own it.
+     *
+     * These modules describe WINDOWS AND SEGMENTS of candles. A decision
+     * explains why a segment's envelope contract was selected; letting the
+     * segment layer mint one would make the explanation a by-product of reading
+     * data, which is exactly backwards. The local refusal unions here stay
+     * caller-contract validation, not journal codes.
      */
     for (const [name, src] of C3A) {
       for (const later of ['ContractSelectionDecision', 'ContractEvidence', 'decisionId', 'decidedAt', 'policyVersion']) {

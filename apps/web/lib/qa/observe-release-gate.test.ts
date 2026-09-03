@@ -412,9 +412,18 @@ describe('30. the bundle stays passive', () => {
   it('the projection module still imports nothing executable', () => {
     const src = readFileSync(join(process.cwd(), 'lib/workflows/bundle/project.ts'), 'utf8')
     const imports = [...src.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map(m => m[1])
-    expect(imports.sort()).toEqual(['../attestation', '../types', './types'])
+    expect(imports.sort()).toEqual(
+      ['../attestation', '../types', './reachability-policy', './types'])
     expect(src).not.toMatch(/\bfetch\s*\(/)
     expect(src).not.toMatch(/observeReleaseGate/)
+    // The fourth import is the reachability POLICY TABLE: a const list of
+    // check keys and reasons. Widening this enumeration would weaken the guard
+    // unless the newcomer is itself proven inert, so it is checked here too.
+    const policy = readFileSync(join(process.cwd(), 'lib/workflows/bundle/reachability-policy.ts'), 'utf8')
+    for (const forbidden of ['fetch(', 'process.env', 'import(', 'require(', 'supabase']) {
+      expect(policy, forbidden).not.toContain(forbidden)
+    }
+
   })
 
   it('the bundle route still calls no action and no writer', () => {

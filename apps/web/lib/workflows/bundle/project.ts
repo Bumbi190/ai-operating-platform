@@ -39,9 +39,10 @@ import type { AttestableCheck } from '../attestation'
 import type {
   ApprovalCategory, ApprovalProjection, BundleWarning, CheckKind,
   CheckProjection, CheckStatus, CostSection, Freshness, HardGateProjection,
-  MonthReleaseBundle, ProductReadiness, Provenance, ReleaseAtMatch, SectionSummary,
-  TechnicalSection, Tri,
+  MonthReleaseBundle, ProductReadiness, Provenance, Reachability, ReachabilityReason,
+  ReachabilitySummary, ReleaseAtMatch, SectionSummary, TechnicalSection, Tri,
 } from './types'
+import { manualPrivilegedPolicy } from './reachability-policy'
 
 /** Canonical month identity: YYYY-MM, and nothing else. */
 const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -126,6 +127,39 @@ function kindOf(check: AttestableCheck, readOnlyKeys: ReadonlySet<string>): Chec
   return check.allowed_provenance.includes('automated') ? 'OBSERVED_ONLY' : 'ATTESTABLE'
 }
 
+/**
+ * How COULD this check be answered? Never whether it has been.
+ *
+ * Order matters and is deliberate. An executable action is the strongest route,
+ * so it wins outright. Attestation comes next, because a check that permits it
+ * has a working human path today. Only then does the explicit policy list get
+ * consulted — and if nothing applies, the honest answer is UNREACHABLE, which is
+ * exactly the signal a genuine gap should produce.
+ *
+ * This function reads no evidence and returns no status. It cannot make a check
+ * pass.
+ */
+function reachabilityOf(
+  check: AttestableCheck, hasExecutableAction: boolean,
+): { reachability: Reachability; reason: ReachabilityReason } {
+  if (hasExecutableAction) {
+    return { reachability: 'EXECUTABLE', reason: 'EXECUTABLE_ACTION_AVAILABLE' }
+  }
+  if (check.allowed_provenance.includes('attested')) {
+    return { reachability: 'ATTESTABLE', reason: 'ATTESTATION_ALLOWED' }
+  }
+  const policy = manualPrivilegedPolicy(check.check_key)
+  if (policy) {
+    // Descriptive only: the manual procedure is NOT an evidence route, so the
+    // check stays unsatisfied until a legitimate mechanism exists.
+    return {
+      reachability: 'MANUAL_PRIVILEGED_VERIFICATION',
+      reason: 'BROAD_CREDENTIAL_PROHIBITED',
+    }
+  }
+  return { reachability: 'UNREACHABLE', reason: 'NO_VALID_EVIDENCE_PATH' }
+}
+
 function provenanceOf(
   newest: WorkflowEvidence | undefined, kind: CheckKind,
 ): Provenance {
@@ -197,6 +231,10 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
     const rows = byKey.get(`${dc.state}:${dc.check_key}`) ?? []
     const newest = rows[0]
     const kind = kindOf(dc, readOnlyKeys)
+    // Reachability is derived from the registry and the policy table ONLY —
+    // never from `newest`, so evidence cannot influence it and it cannot
+    // influence evidence.
+    const reach = reachabilityOf(dc, readOnlyKeys.has(dc.check_key))
     const status: CheckStatus = newest
       ? (EVIDENCE_TO_CHECK[newest.result] ?? 'ERROR')
       : 'NOT_EXERCISED'
@@ -205,6 +243,8 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
       check_key: dc.check_key,
       state: dc.state,
       kind,
+      reachability: reach.reachability,
+      reachability_reason: reach.reason,
       status,
       provenance: provenanceOf(newest, kind),
       required: dc.required,
@@ -427,6 +467,7 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
     approvals,
     cost: projectCost(),
     checks,
+    verification_reachability: summariseReachability(checks),
     hard_gates,
     warnings,
     readiness: {
@@ -534,6 +575,20 @@ function projectReleaseGate(
     release_at_match: match,
     release_gate_freshness: freshness,
     release_gate_observed_at: observedAt,
+  }
+}
+
+/** Counts per category, plus the ids a reader would otherwise re-derive. */
+function summariseReachability(checks: readonly CheckProjection[]): ReachabilitySummary {
+  const of = (r: Reachability) => checks.filter(c => c.reachability === r)
+  const keys = (r: Reachability) => [...new Set(of(r).map(c => c.check_key))].sort()
+  return {
+    executable: of('EXECUTABLE').length,
+    attestable: of('ATTESTABLE').length,
+    manual_privileged_verification: of('MANUAL_PRIVILEGED_VERIFICATION').length,
+    unreachable: of('UNREACHABLE').length,
+    manual_privileged_check_keys: keys('MANUAL_PRIVILEGED_VERIFICATION'),
+    unreachable_check_keys: keys('UNREACHABLE'),
   }
 }
 

@@ -278,10 +278,19 @@ describe('11-13. side-effect freedom and boundary', () => {
     // Non-greedy: a greedy body would span every import and report only the last.
     const imports = [...src.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map(m => m[1])
     // Type-only imports of the domain plus the bundle's own schema. Nothing else.
-    expect(imports.sort()).toEqual(['../attestation', '../types', './types'])
+    expect(imports.sort()).toEqual(
+      ['../attestation', '../types', './reachability-policy', './types'])
     expect(src).not.toMatch(/\bfetch\s*\(/)
     expect(src).not.toMatch(/createAdminClient|createClient|supabase/i)
     expect(src).not.toMatch(/executeWorkflowAction|appendTransition|recordEvidence/)
+    // The fourth import is the reachability POLICY TABLE: a const list of
+    // check keys and reasons. Widening this enumeration would weaken the guard
+    // unless the newcomer is itself proven inert, so it is checked here too.
+    const policy = readFileSync(join(process.cwd(), 'lib/workflows/bundle/reachability-policy.ts'), 'utf8')
+    for (const forbidden of ['fetch(', 'process.env', 'import(', 'require(', 'supabase']) {
+      expect(policy, forbidden).not.toContain(forbidden)
+    }
+
   })
 
   it('cannot reach a write, comms or spend action class', () => {

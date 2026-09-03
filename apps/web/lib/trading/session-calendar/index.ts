@@ -40,12 +40,21 @@
  * It mints no authority. An ELIGIBLE bucket grants exactly no permission to
  * trade, and nothing here can reach `lib/trading/internal/`.
  *
- * NOT YET HERE — GATE-08C-2B AND C3
- * ─────────────────────────────────
- * MarketCandle aggregation from accepted 1m observations, higher-timeframe
- * volume policy, `ContractCandleSegment`, contract-scoped data sources and the
- * materialisation of `ContractSelectionDecision` are later slices. GATE-08
- * stays DELVIS STÄNGD.
+ * SESSION AND TIME-GRID FACTS ONLY
+ * ────────────────────────────────
+ * This package owns canonical session and time-grid facts, and nothing built on
+ * top of them. Candle derivation is `@/lib/trading/candle-aggregation`;
+ * contract-scoped windows and `ContractCandleSegment` are
+ * `@/lib/trading/market-data`; and the materialisation of
+ * `ContractSelectionDecision` is `@/lib/trading/contract-selection`. All three
+ * are OUTSIDE this package, and the import-discipline suite fails the build if
+ * one appears inside it.
+ *
+ * NOT YET HERE — GATE-08C-3 AND LATER
+ * ───────────────────────────────────
+ * Contract-scoped data SOURCES and the live-source contract remain later
+ * slices — GATE-08C-3A SOURCE-RESULT-SHAPE GAP is still open. GATE-08 stays
+ * DELVIS STÄNGD.
  */
 
 // ─── Canonical grid ───────────────────────────────────────────────────────────

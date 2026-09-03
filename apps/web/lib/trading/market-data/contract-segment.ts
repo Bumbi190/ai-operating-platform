@@ -80,7 +80,15 @@ export interface ContractCandleSegment {
  *
  * CALLER-CONTRACT validation. These are NOT canonical `ReasonCode`s — they
  * never reach a journal or a decision, and `reason-codes.ts` is deliberately
- * not imported anywhere in this package. GATE-08C's REASON-CODE GAP stays open.
+ * not imported anywhere in this package.
+ *
+ * That exclusion is a boundary, not a missing vocabulary: Beslut J added the
+ * canonical selection code and Beslut K added the materializer. A
+ * `ContractCandleSegment` CARRIES an already-selected `ResolvedContract` as its
+ * envelope; it does not explain why that contract was selected. The explanation
+ * is a `ContractSelectionDecision` in `@/lib/trading/contract-selection`, and
+ * keeping the two apart is what stops provenance from becoming a by-product of
+ * reading candles.
  */
 export const SEGMENT_PROBLEMS = [
   'UNRESOLVED_CONTRACT',

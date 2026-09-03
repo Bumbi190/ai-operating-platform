@@ -52,6 +52,16 @@ export type BrokerId = Branded<string, 'BrokerId'>
 export type AccountId = Branded<string, 'AccountId'>
 export type InstrumentId = Branded<string, 'InstrumentId'>
 
+/**
+ * A recorded contract selection.
+ *
+ * It sits with the identities rather than with the risk verdicts on purpose: a
+ * contract selection is structural provenance in the authority chain and market
+ * data, never a risk assessment (Beslut J). The decision it names answers WHICH
+ * CONTRACT and WHY, and grants nothing.
+ */
+export type ContractSelectionDecisionId = Branded<string, 'ContractSelectionDecisionId'>
+
 export type StrategyId = Branded<string, 'StrategyId'>
 export type StrategyVersionId = Branded<string, 'StrategyVersionId'>
 
@@ -84,6 +94,7 @@ export type CorrelationId = Branded<string, 'CorrelationId'>
 export type TradingId =
   | TradingProjectId | BrokerId | AccountId | InstrumentId
   | StrategyId | StrategyVersionId
+  | ContractSelectionDecisionId
   | RiskProfileId | PropFirmProfileId
   | ThesisId | SetupId | SignalId | AiAnalysisId
   | RiskDecisionId | PropDecisionId | ProposalId | ApprovalId | ExecutionId

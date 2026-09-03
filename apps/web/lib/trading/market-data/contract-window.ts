@@ -89,9 +89,16 @@ export interface HistoricalContractRequest {
  *
  * CALLER-CONTRACT validation, and nothing else. These are NOT canonical
  * `ReasonCode`s: they never reach a journal, never appear in a decision, and
- * carry no market meaning. The canonical reason registry is deliberately not
- * imported here — GATE-08C's REASON-CODE GAP stays open, and inventing a
- * selection code to fill it is C3B's question, not this module's.
+ * carry no market meaning.
+ *
+ * The canonical reason registry is still deliberately not imported here, but no
+ * longer because the vocabulary is missing — Beslut J added
+ * CONTRACT_SELECTED_BY_CANONICAL_CALENDAR and Beslut K added the materializer.
+ * The reason is now a boundary: that code explains WHY A CONTRACT WAS
+ * CANONICALLY SELECTED, and this module builds a validated REQUEST, not a
+ * `ContractSelectionDecision`. Selection provenance belongs to
+ * `@/lib/trading/contract-selection`; importing the registry here would let a
+ * request builder speak in journal terms it has no authority to use.
  */
 export const CONTRACT_WINDOW_PROBLEMS = [
   'UNRESOLVED_CONTRACT',

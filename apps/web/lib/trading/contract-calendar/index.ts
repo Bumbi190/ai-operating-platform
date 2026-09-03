@@ -29,11 +29,23 @@
  * It mints no authority. A resolved contract is data identity and grants
  * exactly no permission to trade.
  *
- * NOT YET HERE — GATE-08C-2 AND C3
- * ────────────────────────────────
- * SessionCalendar, the canonical 1m grid, aggregation, BarCompleteness,
- * contract-scoped data sources, ContractCandleSegment and the materialization
- * of ContractSelectionDecision are later slices. GATE-08 stays DELVIS STÄNGD.
+ * RESOLUTION ONLY — MATERIALIZATION LIVES ELSEWHERE
+ * ─────────────────────────────────────────────────
+ * This package answers WHICH contract. It does not build the record of that
+ * answer: `ContractSelectionDecision` is materialized in
+ * `@/lib/trading/contract-selection`, which consumes a resolution produced here
+ * and adds the identity, instant and canonical reason that a historical record
+ * needs. Keeping the two apart is what lets the resolver above stay a pure
+ * function of (calendar, root, at) with no clock and no reason registry.
+ *
+ * NOT YET HERE — GATE-08C-3 AND LATER
+ * ───────────────────────────────────
+ * SessionCalendar, the canonical 1m grid, aggregation, BarCompleteness and
+ * ContractCandleSegment all EXIST now, in their own packages — they are simply
+ * not this package's concern. What genuinely remains is the contract-scoped
+ * data SOURCE contract (GATE-08C-3A SOURCE-RESULT-SHAPE GAP is open) and the
+ * recording and orchestration of decisions (C3B.2, C3B.3). GATE-08 stays
+ * DELVIS STÄNGD.
  */
 
 // ─── Lifecycle facts ──────────────────────────────────────────────────────────

@@ -417,12 +417,31 @@ describe('no provider, network, authority, order or C3 surface exists', () => {
     }
   })
 
-  it('the reason-code gap is preserved untouched', () => {
-    // GATE-08C REASON-CODE GAP stays OPEN: no code was added for a market-data
-    // selection or aggregation outcome.
+  it('candle aggregation adds no decision or aggregation reason vocabulary', () => {
+    /*
+     * This test used to claim GATE-08C REASON-CODE GAP was OPEN. Beslut J closed
+     * it and Beslut K added the materializer, so that rationale is false — and
+     * the old assertion only still passed by a near-miss of spelling: it looked
+     * for CONTRACT_SELECTED_BY_CALENDAR while the canonical code is
+     * CONTRACT_SELECTED_BY_CANONICAL_CALENDAR. Asserting the canonical code is
+     * absent would now be asserting something untrue.
+     *
+     * The invariant that survives both rulings is narrower and is the one worth
+     * keeping: aggregation DERIVES CANDLES, so it may not own selection
+     * provenance or invent a journal vocabulary of its own.
+     */
     const registry = raw(join(TRADING_ROOT, 'reason-codes.ts'))
-    expect(registry).not.toContain('CONTRACT_SELECTED_BY_CALENDAR')
+
+    // POSITIVE CONTROL: the canonical selection code legitimately exists now.
+    expect(registry).toContain('CONTRACT_SELECTED_BY_CANONICAL_CALENDAR')
+    // No aggregation outcome was ever canonised, and none may be invented here.
     expect(registry).not.toContain('CANDLE_AGGREGATED')
+
+    for (const [name, code] of ALL) {
+      expect(code, `${name} reaches the reason registry`).not.toMatch(/reason-codes/)
+      expect(code, `${name} emits a contract-selection reason`).not.toContain('CONTRACT_SELECTED')
+      expect(code, `${name} invents an aggregation reason`).not.toContain('CANDLE_AGGREGATED')
+    }
   })
 })
 

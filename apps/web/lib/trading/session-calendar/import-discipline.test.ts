@@ -382,10 +382,27 @@ describe('AH. the market-data history behaviour is untouched', () => {
     expect(history).not.toContain('session-calendar')
   })
 
-  it('nothing in market-data imports this package', () => {
+  it('the dependency runs one way, and market-data takes only the grid predicate', () => {
+    /*
+     * This assertion used to read "nothing in market-data imports this
+     * package". GATE-08C-3A made that false, deliberately: a contract segment
+     * validates candle-open alignment with `isBucketOpen`, the ONE canonical
+     * grid, rather than growing a second alignment rule of its own.
+     *
+     * What actually needed protecting is the DIRECTION — this package must not
+     * depend on market-data — plus the narrowness of what market-data may take.
+     * Both are asserted here; the original wording protected neither.
+     */
+    for (const [name, code] of ALL) {
+      expect(code, `${name} reaches market-data`).not.toContain('market-data')
+    }
     const dir = join(TRADING_ROOT, 'market-data')
-    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
-      expect(executable(join(dir, file)), file).not.toContain('session-calendar')
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))) {
+      const code = executable(join(dir, file))
+      if (!code.includes('session-calendar')) continue
+      // Exactly one import, and exactly one symbol from it.
+      expect(code, file).toContain("import { isBucketOpen } from '../session-calendar'")
+      expect([...code.matchAll(/from '\.\.\/session-calendar'/g)], file).toHaveLength(1)
     }
   })
 

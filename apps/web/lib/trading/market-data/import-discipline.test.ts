@@ -94,8 +94,18 @@ describe('authority and order boundaries', () => {
   it('imports only the market-view sibling and the time primitives', () => {
     /*
      * `../time` joined the list in GATE-08C-2B.1, and only for `toEpochMs`.
-     * It is a leaf module carrying no provider, network or authority reach, and
-     * nothing else may be taken from it.
+     *
+     * GATE-08C-3A added four more, each a lower domain leaf and each for one
+     * reason: `../contract-identity` for `ResolvedContract`, `../market-candle`
+     * and `../market-timeframe` for the shapes a segment envelopes, and
+     * `../session-calendar` for exactly one function — `isBucketOpen`, the
+     * canonical grid predicate. That last one is a REUSE, not a new dependency
+     * on session policy: a second alignment rule living here would be a second
+     * definition of where a 4H bar opens.
+     *
+     * `../market-view` remains only because the pre-existing Stage 1.9B modules
+     * still take `MarketCandle` through it. The C3A files take it from the
+     * domain leaf directly, which is the direction the tree is moving.
      */
     const siblings = new Set<string>()
     for (const file of PACKAGE_FILES) {
@@ -103,7 +113,14 @@ describe('authority and order boundaries', () => {
         if (specifier.startsWith('../')) siblings.add(specifier)
       }
     }
-    expect([...siblings].sort()).toEqual(['../market-view', '../time'])
+    expect([...siblings].sort()).toEqual([
+      '../contract-identity',
+      '../market-candle',
+      '../market-timeframe',
+      '../market-view',
+      '../session-calendar',
+      '../time',
+    ])
   })
 })
 
@@ -233,5 +250,125 @@ describe('the package is server and test side only', () => {
   it('is absent from the public @/lib/trading barrel', () => {
     const barrel = readFileSync(join(TRADING_ROOT, 'index.ts'), 'utf8')
     expect(barrel).not.toMatch(/market-data/)
+  })
+})
+
+
+// ─── GATE-08C-3A. The contract-scoped boundary ───────────────────────────────
+
+describe('the contract boundary is identity, never a provider symbol', () => {
+  const C3A = ['contract-window.ts', 'contract-segment.ts'].map((f) => [f, code(join(HERE, f))] as const)
+
+  it('POSITIVE CONTROL: the scan reads real source', () => {
+    expect(code(join(HERE, 'contract-segment.ts'))).toContain('buildContractCandleSegment')
+    expect(code(join(HERE, 'contract-window.ts')).length).toBeGreaterThan(1_000)
+  })
+
+  it('names no provider identifier, month code or front month', () => {
+    for (const [name, src] of C3A) {
+      for (const forbidden of [
+        'providerContractId', 'ContractId', 'providerSymbol', 'symbol',
+        'frontMonth', 'monthCode', 'expiryCode', 'continuousContract', 'backAdjust',
+      ]) {
+        expect(src, `${name} names ${forbidden}`).not.toContain(forbidden)
+      }
+    }
+  })
+
+  it('creates no root-only request type', () => {
+    /*
+     * Canonical v1.0 §13: a strategy-authoritative provider-facing request
+     * receives an already-resolved contract, never a bare root. Enforced by
+     * construction — neither type has a root field to fill in.
+     */
+    for (const [name, src] of C3A) {
+      expect(src, `${name} carries a bare instrument`).not.toMatch(/readonly\s+(instrument|root)\s*:/)
+      expect(src, `${name} imports the root vocabulary`).not.toContain('market-instrument')
+    }
+    expect(code(join(HERE, 'contract-window.ts'))).toContain('readonly contract: ResolvedContract')
+    expect(code(join(HERE, 'contract-segment.ts'))).toContain('readonly contract: ResolvedContract')
+  })
+
+  it('keeps the provider-facing request at the canonical base observation', () => {
+    const window = code(join(HERE, 'contract-window.ts'))
+    expect(window).toContain("CANONICAL_OBSERVATION_TIMEFRAME = '1m' as const")
+    expect(window).toContain('readonly timeframe: CanonicalObservationTimeframe')
+    // …while the ENVELOPE stays open to any canonical timeframe.
+    expect(code(join(HERE, 'contract-segment.ts'))).toContain('readonly timeframe: MarketTimeframe')
+  })
+
+  it('exposes no flatten, stitch or continuous-series helper', () => {
+    /*
+     * §21: a detector must never receive a silently stitched cross-contract
+     * sequence. The defence is that no function returning a bare candle array
+     * from multiple segments exists at all.
+     */
+    for (const [name, src] of C3A) {
+      for (const forbidden of ['flattenSegments', 'stitchSegments', 'continuousSeries', 'combineContracts', 'concatSegments']) {
+        expect(src, `${name} defines ${forbidden}`).not.toContain(forbidden)
+      }
+    }
+    const segment = code(join(HERE, 'contract-segment.ts'))
+    // The sequence check returns SEGMENTS, never candles.
+    expect(segment).toContain('readonly segments: readonly ContractCandleSegment[]')
+    expect(segment).not.toMatch(/\)\s*:\s*readonly MarketCandle\[\]/)
+  })
+
+  it('adds no contract field to the candle, and does not redefine it', () => {
+    const candle = readFileSync(join(TRADING_ROOT, 'market-candle.ts'), 'utf8')
+    expect(candle).toContain('export interface MarketCandle')
+    for (const forbidden of ['contract', 'root', 'symbol', 'timeframe', 'segment']) {
+      expect(candle, `MarketCandle grew a ${forbidden} field`).not.toContain(`readonly ${forbidden}`)
+    }
+  })
+
+  it('mints no ContractSelectionDecision and reaches no reason registry', () => {
+    /*
+     * GATE-08C REASON-CODE GAP stays OPEN. §9 requires a decision to carry
+     * `reasons: readonly Reason[]`, and the registry has no canonical
+     * contract-selection code — so C3A builds no decision at all. The local
+     * refusal unions here are caller-contract validation, not journal codes.
+     */
+    for (const [name, src] of C3A) {
+      for (const later of ['ContractSelectionDecision', 'ContractEvidence', 'decisionId', 'decidedAt', 'policyVersion']) {
+        expect(src, `${name} starts C3B with ${later}`).not.toContain(later)
+      }
+      expect(src, `${name} reaches the reason registry`).not.toMatch(/reason-codes|\bReasonCode\b/)
+    }
+  })
+
+  it('implements no live source', () => {
+    for (const [name, src] of C3A) {
+      for (const forbidden of ['subscribe', 'unsubscribe', 'AsyncIterable', 'backpressure', 'heartbeat', 'reconnect']) {
+        expect(src, `${name} names ${forbidden}`).not.toContain(forbidden)
+      }
+    }
+  })
+
+  it('reuses the one canonical grid rather than defining another', () => {
+    const segment = code(join(HERE, 'contract-segment.ts'))
+    expect(segment).toContain("import { isBucketOpen } from '../session-calendar'")
+    for (const [name, src] of C3A) {
+      expect(src, `${name} rebuilds the grid`).not.toMatch(/FOUR_HOUR_OPEN_HOURS\s*=\s*\[|MARKET_TIMEFRAMES\s*=\s*\[|Intl\.DateTimeFormat/)
+    }
+  })
+
+  it('the domain definitions each still exist exactly once', () => {
+    const walk = (dir: string, pattern: RegExp): string[] => {
+      const out: string[] = []
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) { out.push(...walk(full, pattern)); continue }
+        if (!entry.name.endsWith('.ts') || entry.name.endsWith('.test.ts')) continue
+        if (pattern.test(readFileSync(full, 'utf8'))) out.push(full.slice(TRADING_ROOT.length + 1))
+      }
+      return out
+    }
+    expect(walk(TRADING_ROOT, /export interface MarketCandle\b/)).toEqual(['market-candle.ts'])
+    expect(walk(TRADING_ROOT, /export interface ResolvedContract\b/)).toEqual(['contract-identity.ts'])
+    expect(walk(TRADING_ROOT, /MARKET_TIMEFRAMES\s*=\s*\[/)).toEqual(['market-timeframe.ts'])
+    expect(walk(TRADING_ROOT, /export interface ContractCandleSegment\b/)).toEqual([
+      'market-data/contract-segment.ts',
+    ])
   })
 })

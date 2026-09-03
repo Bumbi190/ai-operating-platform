@@ -228,10 +228,27 @@ export interface TechnicalSection extends SectionSummary {
   release_gate_freshness: Freshness
   release_gate_observed_at: string | null
 
+  /**
+   * The GitHub release identity for THIS instance.
+   *
+   * Read from instance evidence only — never from a deployment-global env var,
+   * because a stale global pin would let one month satisfy another's check.
+   */
+  github: GithubBindingSection
+
   release_instant_computed: Tri
   manifest_in_sync: Tri
   anonymous_access_denied: Tri
   deployment_sha_verified: Tri
+}
+
+/** Which GitHub release this month refers to. Descriptive; proves nothing. */
+export interface GithubBindingSection {
+  repository: string | null
+  pr_number: number | null
+  expected_merge_sha: string | null
+  binding_status: 'BOUND' | 'PARTIAL' | 'MISSING' | 'INVALID'
+  invalid_fields: string[]
 }
 
 export interface CostSection {

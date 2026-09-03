@@ -102,6 +102,9 @@ export async function GET(request: Request) {
     evidence,
     declaredChecks: FAMILJE_STUNDEN_CHECKS,
     readOnlyAnsweredCheckKeys: readOnlyAnsweredCheckKeys(),
+    // Trusted configuration, never request input — so no caller can retarget
+    // the repository this bundle reports on.
+    githubRepository: process.env.FAMILJE_STUNDEN_GITHUB_REPO || null,
   })
 
   return NextResponse.json(bundle, {

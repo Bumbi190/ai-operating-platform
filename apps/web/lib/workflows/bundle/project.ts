@@ -39,10 +39,12 @@ import type { AttestableCheck } from '../attestation'
 import type {
   ApprovalCategory, ApprovalProjection, BundleWarning, CheckKind,
   CheckProjection, CheckStatus, CostSection, Freshness, HardGateProjection,
-  MonthReleaseBundle, ProductReadiness, Provenance, Reachability, ReachabilityReason,
+  GithubBindingSection, MonthReleaseBundle, ProductReadiness, Provenance,
+  Reachability, ReachabilityReason,
   ReachabilitySummary, ReleaseAtMatch, SectionSummary, TechnicalSection, Tri,
 } from './types'
 import { manualPrivilegedPolicy } from './reachability-policy'
+import { projectGithubBinding } from './github-binding'
 
 /** Canonical month identity: YYYY-MM, and nothing else. */
 const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -114,6 +116,14 @@ export interface ProjectionInput {
    * the caller owns the registry lookup.
    */
   readOnlyAnsweredCheckKeys?: readonly string[]
+  /**
+   * Canonical GitHub target, from trusted configuration.
+   *
+   * Passed in rather than read here: the projection stays pure, and the value
+   * can never arrive from workflow evidence or a caller's request — which is
+   * what keeps the repository target non-overridable.
+   */
+  githubRepository?: string | null
   /** Injected so the output is deterministic under test. */
   now?: string
 }
@@ -343,6 +353,9 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
   const technical: TechnicalSection = {
     ...summarise(checks, [...TECHNICAL_STATES]),
     ...gate,
+    // Descriptive. Binding says WHICH release to look at; it never says the PR
+    // merged, the checks were green, or the SHAs agreed.
+    github: projectGithubBinding(input.evidence, input.githubRepository ?? null) as GithubBindingSection,
     release_instant_computed: triFor(checks, 'release_instant_computed'),
     manifest_in_sync: triFor(checks, 'shared_manifest_consumers_in_sync'),
     anonymous_access_denied: triFor(checks, 'anonymous_protected_access_denied'),

@@ -25,6 +25,7 @@
  */
 
 import type { AttestableCheck } from '@/lib/workflows/attestation'
+import { GITHUB_BINDING_CHECKS, GITHUB_BINDING_STATE } from '@/lib/workflows/bundle/github-binding'
 
 /** Claims about built files. Rebuilding must invalidate them, so they bind the manifest. */
 const artifactCheck = (
@@ -55,6 +56,23 @@ const observedCheck = (
   allowed_provenance: ['automated'],
   binds_artifacts: false,
   required,
+})
+
+/**
+ * A recorded FACT about which release this month refers to — not a verification.
+ *
+ * `required: false` on purpose: a binding is a prerequisite for the GitHub
+ * checks, not a gate of its own. Making it required would add a new blocker to
+ * every month for something that only matters once GitHub observation exists.
+ * Attested-only, because a human is the authority on which PR is the release.
+ */
+const bindingCheck = (
+  check_key: string, state: string, description: string,
+): AttestableCheck => ({
+  check_key, state, description,
+  allowed_provenance: ['attested'],
+  binds_artifacts: false,
+  required: false,
 })
 
 export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
@@ -134,6 +152,17 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
     'Production still runs exactly the approved merge SHA'),
   observedCheck('vercel_deploy_sha_matches_merge_sha', 'post_release_qa',
     'Production still runs exactly the approved merge SHA after release'),
+
+  // ── GitHub release identity, bound to THIS instance ──────────────────────
+  // The three GitHub checks compare production against an expectation. That
+  // expectation must belong to one month: a deployment-global env value would
+  // let October's pin silently satisfy November's comparison.
+  bindingCheck(GITHUB_BINDING_CHECKS.prNumber, GITHUB_BINDING_STATE,
+    'The exact pull request number for this month\'s release'),
+  // "An independent pin, so the merge SHA is not self-attesting" — the same
+  // meaning the deployment verifier already gives it, now per instance.
+  bindingCheck(GITHUB_BINDING_CHECKS.expectedMergeSha, GITHUB_BINDING_STATE,
+    'The merge SHA this release was independently expected to produce'),
 
   // ── The fail-open invariant (Phase 1B) ───────────────────────────────────
   // Automated-only, and necessarily so. The release gate is FAIL-OPEN: a month

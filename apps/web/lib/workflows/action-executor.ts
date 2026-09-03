@@ -38,6 +38,7 @@ import { probeAnonymousProtectedAccessHandler } from './handlers/probe-anonymous
 import type { ReadOnlyHandler, ReadOnlyHandlerOutput } from './handlers/types'
 import { outcomeForObservation, type ActionOutcome, type ActionPhase } from './action-outcome'
 import { readInstance, readDefinitionById, recordEvidence } from './store'
+import { observeReleaseGateHandler } from './handlers/observe-release-gate'
 import { rearmForAuthorization } from './rearm'
 
 // any: the Supabase client in this project has no generated DB types.
@@ -50,6 +51,7 @@ type AnyDb = any
 const HANDLERS: Record<ExecutableReadOnlyActionKind, ReadOnlyHandler> = {
   compute_release_instant: computeReleaseInstantHandler,
   probe_anonymous_protected_access: probeAnonymousProtectedAccessHandler,
+  observe_release_gate: observeReleaseGateHandler,
 }
 
 export type ExecutorRefusal =

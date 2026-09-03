@@ -90,6 +90,26 @@ export const ACTION_REGISTRY = {
     description: 'Compute release_at_utc from the month key (DST-correct, no I/O).',
   },
 
+  /**
+   * Ask Familje-Stunden whether the authoritative release-gate row exists.
+   *
+   * READ_ONLY despite presenting a credential: it sends one POST whose only
+   * effect is to read one row, it writes nothing anywhere, and repeating it
+   * changes nothing. The credential is a scoped verification key that cannot
+   * write in Familje-Stunden either — the privileged service_role stays inside
+   * that system's own Edge Function.
+   *
+   * This is the only reachable answer to a FAIL-OPEN invariant: a month with no
+   * `month_releases` row counts as released, and no other granted path
+   * distinguishes "no row" from "row, already passed".
+   */
+  observe_release_gate: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'backend_release_gate' }],
+    description: 'Read the authoritative month_releases row presence and release_at.',
+  },
+
   // ── Declared for future use. Metadata only: NOT executable. ───────────────
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the

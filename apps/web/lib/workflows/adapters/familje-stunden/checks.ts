@@ -135,6 +135,20 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   observedCheck('vercel_deploy_sha_matches_merge_sha', 'post_release_qa',
     'Production still runs exactly the approved merge SHA after release'),
 
+  // ── The fail-open invariant (Phase 1B) ───────────────────────────────────
+  // Automated-only, and necessarily so. The release gate is FAIL-OPEN: a month
+  // with no month_releases row counts as released. An attestation here would be
+  // a person's recollection standing in for the one fact that decides whether
+  // material is public — and the row can change after the claim is made. Omnira
+  // asks the authority directly or reports that it could not.
+  observedCheck('release_gate_exists', 'backend_release_gate',
+    'The authoritative month_releases row exists for this month'),
+  // Re-checked at approval: a row deleted between configuring the gate and
+  // approving the release would otherwise never be noticed, and its absence is
+  // exactly the state that publishes a month early.
+  observedCheck('release_gate_exists', 'approval_release',
+    'The authoritative month_releases row still exists at release approval'),
+
   // ── Observed by Omnira, never attested ───────────────────────────────────
   observedCheck('anonymous_protected_access_denied', 'approval_release',
     'Unauthenticated callers are refused by every protected endpoint'),

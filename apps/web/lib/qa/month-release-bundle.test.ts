@@ -164,8 +164,11 @@ describe('6-7. the fail-open release gate', () => {
   })
 
   it('UNKNOWN raises a CRITICAL blocker and prevents release readiness', () => {
+    // Phase 1B distinguishes "observed absent" (RELEASE_GATE_ROW_MISSING) from
+    // "could not observe" (RELEASE_GATE_ROW_UNKNOWN). Both block; an operator
+    // needs to know which, because only one of them is fixed by looking again.
     const b = projectMonthReleaseBundle(base)
-    const w = b.readiness.blockers.find(x => x.code === 'RELEASE_GATE_ROW_MISSING')
+    const w = b.readiness.blockers.find(x => x.code === 'RELEASE_GATE_ROW_UNKNOWN')
     expect(w).toBeDefined()
     expect(w!.severity).toBe('critical')
     expect(w!.blocking).toBe(true)

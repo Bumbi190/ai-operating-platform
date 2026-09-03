@@ -32,8 +32,10 @@ describe('discovery reads canonical data only', () => {
   })
 
   it('finds nothing for a state with no executable action', () => {
+    // backend_release_gate was here until Phase 1B gave it observe_release_gate.
+    // The remaining states still prove the negative for write/comms/spend states.
     for (const state of ['protected_upload', 'newsletter', 'audio_generation',
-                         'backend_release_gate', 'complete']) {
+                         'edge_deploy', 'complete']) {
       expect(discoverReadOnlyActions(FS, state), state).toEqual([])
     }
   })

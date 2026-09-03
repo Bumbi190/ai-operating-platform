@@ -24,6 +24,17 @@ import { ATLAS_HOME_TIMEZONE } from '@/lib/atlas/utilities/time'
 /** `YYYY-MM`, the workflow's instance key. */
 const MONTH_KEY = /^(\d{4})-(0[1-9]|1[0-2])$/
 
+/**
+ * Is this the canonical month identity?
+ *
+ * Exported so a caller that only needs to REJECT a malformed key does not carry
+ * a second copy of the pattern. One regex, one place — a divergent copy is how a
+ * key that one layer accepts and another refuses reaches production.
+ */
+export function isCanonicalMonthKey(value: string): boolean {
+  return MONTH_KEY.test(value)
+}
+
 /** The zone offset in minutes at a given instant, read from the platform. */
 function offsetMinutesAt(instant: Date, timeZone: string): number {
   // `en-US` with an explicit zone gives parseable parts in a stable order.

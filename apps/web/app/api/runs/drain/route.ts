@@ -28,6 +28,7 @@ import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
 import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
+import { ExecutionStoppedError } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -390,6 +391,23 @@ export async function GET(request: Request) {
                        reason: 'lifecycle_write_failed', detail: e.message })
         continue
       }
+      // ── G3C-3C-A · F1 · THE CANONICAL PRE-DISPATCH STOP ──────────────────
+      // `withGovernedSpend` runs the G3C-1 final stop check immediately before
+      // dispatch — AFTER this step's claimed-run checkpoint already said
+      // ALLOWED. A stop that commits in that window arrives here, and until now
+      // the catch did not recognise it: it fell through to generic accounting
+      // and charged a failure and a retry for a provider that was never called.
+      //
+      // Typed, not message-parsed. The reason is `e.reason` verbatim — the
+      // canonical StopRefusalReason, which for this path can also be
+      // `stop_state_unavailable`, and an operator needs to see which it was.
+      if (e instanceof ExecutionStoppedError) {
+        const settled = await settleRefusal(db, 'STOPPED', run.id, run.claim_id)
+        console.warn(`[run ${run.id}] pre-dispatch stop (${e.reason}) → ${settled} — not a failure`)
+        results.push(reportSettled(run, settled, e.message, e.reason))
+        continue
+      }
+
       // ── G3C-3C-A · E1 · GOVERNANCE ABORTED A REQUEST ALREADY IN FLIGHT ───
       // Not the admission case below. There, nothing was dispatched and the
       // reservation came back. Here the request was on the wire when we hung

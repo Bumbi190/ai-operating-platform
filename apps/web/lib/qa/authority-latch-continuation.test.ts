@@ -62,6 +62,8 @@ const state = {
   releaseIdeogram: null as null | (() => void),
   /** Which governance class the next image call raises, if any. */
   imageThrows: null as null | 'admission' | 'inflight' | 'stopped',
+  /** Ideogram: headers arrive, then the BODY read fails. */
+  ideogramBodyFails: false,
   /** Same, for the REFERENCE (edit) helper — a different retry loop. */
   editThrows: null as null | 'admission' | 'stopped',
   /** Vision QA: the governance context the Anthropic call was given. */
@@ -116,8 +118,7 @@ vi.mock('openai', () => ({
             throw new sig.GovernanceDispatchUnknownError('openai', 'RUN_CANCELLED',
               new Error('APIUserAbortError'))
           }
-          const stop = Object.assign(new Error('execution stopped'), { name: 'ExecutionStoppedError' })
-          throw stop
+          throw await realExecutionStopped()
         }
         if (state.holdFirstImage) {
           state.holdFirstImage = false
@@ -134,7 +135,7 @@ vi.mock('openai', () => ({
           if (kind === 'admission') {
             throw new sig.PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
           }
-          throw Object.assign(new Error('execution stopped'), { name: 'ExecutionStoppedError' })
+          throw await realExecutionStopped()
         }
         return { data: [{ b64_json: 'aGk=' }] }
       },
@@ -160,18 +161,28 @@ vi.mock('@anthropic-ai/sdk', () => ({
         await heldCall('anthropic.create')
         return { content: [{ type: 'text', text: state.reply }], usage: { input_tokens: 1, output_tokens: 1 } }
       },
-      stream: () => {
+      stream: (_p: unknown, o?: { signal?: AbortSignal }) => {
         // Synchronous handle, exactly like the real SDK. The physical request
         // continues after it is returned — which is the point.
         const held = heldCall('anthropic.stream')
         const reply = state.reply
+        // A real client rejects the iteration when the request signal aborts,
+        // wrapped in ITS OWN error type. Modelling that is the whole point:
+        // the governance class must not be assumed to survive the wrapper.
+        const aborted = new Promise<never>((_, rej) => {
+          o?.signal?.addEventListener('abort', () => rej(
+            Object.assign(new Error('Request was aborted.'), { name: 'APIUserAbortError' })),
+            { once: true })
+        })
+        void aborted.catch(() => {})
         return {
           async *[Symbol.asyncIterator]() {
-            await held
+            await Promise.race([held, aborted])
             yield { type: 'content_block_delta', delta: { type: 'text_delta', text: reply } }
           },
-          done: () => held,
-          finalMessage: () => held.then(() => ({ usage: { input_tokens: 1, output_tokens: 1 } })),
+          done: () => Promise.race([held, aborted]),
+          finalMessage: () => Promise.race([held, aborted])
+            .then(() => ({ usage: { input_tokens: 1, output_tokens: 1 } })),
         }
       },
     }
@@ -192,6 +203,29 @@ vi.mock('@/lib/ai/output-idempotency', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   isDuplicateOutputError: () => false,
 }))
+
+/**
+ * The REAL canonical stop error, not one wearing its name.
+ *
+ * These fakes used to build `Object.assign(new Error(), { name: '...' })`, and
+ * the tests passed — because the control-flow predicate matched on `name`. That
+ * made both the guard and the proof depend on a string any error could carry.
+ * The predicate is typed now, so the fake has to be the genuine article.
+ */
+async function realExecutionStopped() {
+  const { ExecutionStoppedError } = await import('@/lib/governance/execution-stop')
+  return new ExecutionStoppedError({
+    reason: 'global_automation_paused',
+    context: 'AUTONOMOUS',
+    scopeKind: 'PROJECT',
+    decision: {
+      allowed: false, context: 'AUTONOMOUS', scopesEvaluated: ['PLATFORM_AUTOMATION'],
+      resolution: 'RESOLVED', globalPaused: true, projectPaused: null,
+      reason: 'global_automation_paused', observed: null,
+    } as never,
+    provider: 'openai', operation: 'Generate Image',
+  })
+}
 
 const AGENT = { id: 'a1', name: 'A', system_prompt: 's', model: 'gpt-4o', config: {} }
 
@@ -279,6 +313,7 @@ beforeEach(() => {
   state.releaseIdeogram = null
   state.imageThrows = null
   state.editThrows = null
+  state.ideogramBodyFails = false
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co'
   state.qaAuthoritySeen = []
   state.qaBehaviour = 'pass'
@@ -879,5 +914,170 @@ describe('E13b · the REFERENCE helper is a second retry loop, and needs the sam
       (v: unknown) => ({ value: v, error: undefined as unknown }),
       (e: unknown) => ({ value: undefined as unknown, error: e }))
     expect((r.error as Error)?.name).toBe('ExecutionStoppedError')
+  }, 20_000)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F6/F9 · the Anthropic stream consumer receives the classified outcome', () => {
+  it('F6 — a governance abort mid-stream reaches the `for await` caller typed', async () => {
+    const { getAnthropic } = await import('@/lib/ai/anthropic')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    vi.useFakeTimers()
+    const inFlight = new Promise<void>(res => { state.started = res })
+    const stream = await getAnthropic({
+      project: { projectId: PROJ },
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+    } as never).messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+
+    const consumed = (async () => {
+      for await (const _ of stream as unknown as AsyncIterable<unknown>) { /* … */ }
+    })().then(() => null, (e: unknown) => e)
+    await inFlight
+    state.run.cancel_requested = true
+    await vi.advanceTimersByTimeAsync(2_500)
+    const err = await consumed
+    expect(isGovernanceDispatchUnknown(err),
+      'not an APIUserAbortError the caller cannot interpret').toBe(true)
+    expect((err as { abortReason?: string }).abortReason).toBe('RUN_CANCELLED')
+  }, 20_000)
+
+  it('F7b — the classified TERMINATION promise carries the governance outcome', async () => {
+    // The iterator surface is proven by F6. This proves the other one: an owner
+    // that awaits `onStreamSettled` must see the governance outcome too, and it
+    // could not while `done()` was pre-caught with `.catch(() => {})` — that
+    // swallowed the rejection before anything was able to classify it.
+    const { getAnthropic } = await import('@/lib/ai/anthropic')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    vi.useFakeTimers()
+    let settled: Promise<unknown> | undefined
+    const inFlight = new Promise<void>(res => { state.started = res })
+    await getAnthropic({
+      project: { projectId: PROJ },
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+      onStreamSettled: (s: Promise<unknown>) => { settled = s },
+    } as never).messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+    await inFlight
+
+    expect(settled, 'the owner was handed a termination promise').toBeDefined()
+    const outcome = settled!.then(() => null, (e: unknown) => e)
+    state.run.cancel_requested = true
+    await vi.advanceTimersByTimeAsync(2_500)
+    const err = await outcome
+    expect(isGovernanceDispatchUnknown(err),
+      'a swallowed rejection cannot be classified afterwards').toBe(true)
+  }, 20_000)
+
+  it('F9 — the runner no longer carries a settled contract it discards', async () => {
+    // F2 removed `StepDispatch.settled`: `runStep` extracted only `.result`, so
+    // it was authority metadata production threw away. What replaced it is not
+    // a smaller promise — it is the iterator itself carrying the classified
+    // error to the code that runs.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(path.join(process.cwd(), 'lib/ai/runner.ts'), 'utf8')
+    expect(src, 'no discarded settled hand-back remains').not.toMatch(/streamSettled/)
+    expect(src, 'and no StepDispatch wrapper').not.toMatch(/StepDispatch/)
+    expect(src, 'termination is observed by iterating and awaiting finalMessage')
+      .toMatch(/await stream\.finalMessage\(\)/)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F12–F14 · Ideogram body phase and signal ownership', () => {
+  let realFetch: typeof globalThis.fetch
+  beforeEach(() => { realFetch = globalThis.fetch })
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  const sagaStep = async (runStep: (i: never) => Promise<unknown>, signal?: AbortSignal) =>
+    runStep({
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      systemPrompt: 'SAGA_ILLUSTRATIONS', userMessage: '["scene one"]', model: 'gpt-image-1',
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+      cost: { projectId: PROJ }, runId: RUN, signal,
+    } as never)
+
+  function ideogramFetch() {
+    globalThis.fetch = ((url: unknown, init?: { signal?: AbortSignal }) => {
+      const u = String(url)
+      if (u.includes('ideogram')) {
+        state.providerCalls.push('ideogram')
+        state.ideogramSignals.push(init?.signal)
+        if (state.ideogramBodyFails) {
+          // Headers arrive, then the body read fails WHEN THE SIGNAL ABORTS —
+          // which is how a real transfer dies mid-flight, and the only way the
+          // watcher gets a chance to observe the cancellation first.
+          const sig = init?.signal
+          const bodyFails = new Promise<never>((_, rej) => {
+            sig?.addEventListener('abort', () => rej(
+              Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+              { once: true })
+          })
+          void bodyFails.catch(() => {})
+          state.started?.()
+          return Promise.resolve({
+            ok: true, status: 200, statusText: 'OK',
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: () => bodyFails,
+            text: () => bodyFails,
+          } as unknown as Response)
+        }
+        return Promise.resolve(new Response(
+          JSON.stringify({ data: [{ url: 'https://img/1.png' }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } }))
+      }
+      return Promise.resolve(new Response(new Uint8Array([1, 2, 3]),
+        { status: 200, headers: { 'content-type': 'image/png' } }))
+    }) as never
+  }
+
+  it('F12/F13 — a governance abort during res.json() is typed, and is NOT retried', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    ideogramFetch()
+    state.ideogramBodyFails = true
+    vi.useFakeTimers()
+    const inFlight = new Promise<void>(res => { state.started = res })
+    const p = sagaStep(runStep as never).then(
+      (v: unknown) => ({ value: v, error: undefined as unknown }),
+      (e: unknown) => ({ value: undefined as unknown, error: e }))
+    await inFlight
+
+    // Headers have arrived; the body is still transferring. NOW cancel.
+    state.run.cancel_requested = true
+    let done = false
+    void p.then(() => { done = true }, () => { done = true })
+    for (let i = 0; i < 40 && !done; i++) await vi.advanceTimersByTimeAsync(1_000)
+    const r = await p
+
+    expect(isGovernanceDispatchUnknown(r.error),
+      'headers arriving does not make a body abort a provider defect').toBe(true)
+    expect(state.providerCalls.filter(c => c === 'ideogram').length,
+      'and the retry loop must not re-dispatch it').toBe(1)
+  }, 30_000)
+
+  it('F14 — both composition layers clean up their own listeners', async () => {
+    // The runner composes timeout+caller and hands the result down; the adapter
+    // composes that with governance. The outer disposer used to be discarded
+    // inline, so every attempt left listeners attached to the caller's signal.
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    const caller = new AbortController()
+    let added = 0
+    let removed = 0
+    const origAdd = caller.signal.addEventListener.bind(caller.signal)
+    const origRemove = caller.signal.removeEventListener.bind(caller.signal)
+    caller.signal.addEventListener = ((...a: Parameters<typeof origAdd>) => {
+      added += 1; return origAdd(...a)
+    }) as never
+    caller.signal.removeEventListener = ((...a: Parameters<typeof origRemove>) => {
+      removed += 1; return origRemove(...a)
+    }) as never
+
+    await sagaStep(runStep as never, caller.signal)
+    expect(added, 'both layers really did subscribe').toBeGreaterThan(0)
+    expect(removed, 'and both layers unsubscribed after the physical call ended')
+      .toBe(added)
   }, 20_000)
 })

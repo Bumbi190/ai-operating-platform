@@ -326,6 +326,12 @@ async function generateWithIdeogram(
       console.log(`[Ideogram] ${label} — försök ${attempt}/${maxRetries}, aspect=${aspectRatio}`)
 
       let first
+      // ── G3C-3C-A · F4 · THE OUTER COMPOSITION OWNS ITS OWN LISTENERS ─────
+      // This used to be built inline and its disposer thrown away, so every
+      // attempt left a listener attached to the caller's signal and to the
+      // timeout. The adapter disposes ITS composition; it cannot dispose one
+      // it was never handed. Each layer cleans up after itself.
+      const outerSignal = composeAbortSignals([AbortSignal.timeout(90_000), callerSignal])
       try {
         first = await generateIdeogramLegacy(
           { project, execution, operation: 'Generate Image', agent: 'Image Director',
@@ -341,11 +347,9 @@ async function generateWithIdeogram(
             magic_prompt_option: 'OFF',
             num_images: 1,
           },
-          // The 90s bound is kept; governance and any caller signal COMPOSE
-          // with it inside the adapter rather than replacing it.
-          { signal: callerSignal
-            ? composeAbortSignals([AbortSignal.timeout(90_000), callerSignal]).signal
-            : AbortSignal.timeout(90_000) },
+          // The 90s bound is kept; governance composes with it inside the
+          // adapter rather than replacing it.
+          { signal: outerSignal.signal },
         )
       } catch (httpErr: any) {
         // E3: same rule for the Ideogram attempt loop — a governance stop must
@@ -361,6 +365,11 @@ async function generateWithIdeogram(
           continue
         }
         throw httpErr
+      } finally {
+        // Disposed once this physical attempt has ended, whatever ended it:
+        // success, refusal, governance abort, timeout or caller abort. A retry
+        // builds a fresh composition, because a retry is a fresh request.
+        outerSignal.dispose()
       }
 
       const imageUrl = first?.url
@@ -607,16 +616,10 @@ export async function runStep(
   // each opens a watch around exactly one raw SDK call. Absence of a descriptor
   // is not "unwatched": the adapter derives CONTRACT_ONLY from the execution
   // contract, so stop observation reaches every sanctioned call.
-  if (isAnthropicModel(model)) return (await runAnthropicStep(input, onChunk, start)).result
+  if (isAnthropicModel(model)) return runAnthropicStep(input, onChunk, start)
   if (isImageModel(model))     return runImageStep(input, start)
   if (isOpenAIModel(model))    return runOpenAIStep(input, onChunk, start)
   throw new Error(`Model "${model}" not yet supported. Add routing in lib/ai/runner.ts`)
-}
-
-/** A dispatch result plus, for streams, the promise that marks REAL termination. */
-interface StepDispatch {
-  result: RunStepResult
-  settled?: Promise<unknown>
 }
 
 // ─── Anthropic ───────────────────────────────────────────────────────────────
@@ -625,22 +628,23 @@ async function runAnthropicStep(
   input: RunStepInput,
   onChunk: OnChunk | undefined,
   start: number,
-): Promise<StepDispatch> {
+): Promise<RunStepResult> {
   const { systemPrompt, userMessage, model, maxTokens = 4000, temperature = 0.7 } = input
 
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
 
-  // G3C-3C-A: `onStreamSettled` hands back a promise that completes when the
-  // STREAM terminates — completion, error or abort. Returning the handle is not
-  // the end of the physical request, so an in-flight watcher must be anchored to
-  // this, never to the awaited call below. Declared out here so the return can
-  // hand it to `runStep`.
-  let streamSettled: Promise<unknown> | undefined
-  // D2: the flight is COLLECTED, not merely received. `streamFlight` used to be
-  // assigned and never read — adapter truth with no owner, which is the same
-  // shape as a signal nothing passes.
+  // ── G3C-3C-A · F2 · TERMINATION IS OBSERVED BY ITERATING, NOT BY A HANDLE ──
+  // This function used to also return a `settled` promise from
+  // `onStreamSettled`, and `runStep` discarded it — authority metadata that
+  // production threw away, the same shape as the `streamFlight` variable that
+  // was assigned and never read.
+  //
+  // It is unnecessary now, not merely unused: the governed adapter classifies
+  // the failure inside the stream's own iterator, so the `for await` below
+  // receives the governance outcome directly, and `finalMessage()` after it
+  // observes real termination before this step is declared complete.
   const flights = flightCollector(input.authority)
 
   if (onChunk) {
@@ -650,7 +654,6 @@ async function runAnthropicStep(
       // G3C-3C-A: RUN_BOUND when a claim owns this; undefined ⇒ the adapter
       // derives CONTRACT_ONLY. The caller signal composes, never replaces.
       authority: input.authority, signal: input.signal,
-      onStreamSettled: settled => { streamSettled = settled },
       onFlight: flights.onFlight,
     }).messages.stream({
       model,
@@ -696,14 +699,11 @@ async function runAnthropicStep(
   // cost_events is written inside the governed Anthropic boundary from the real
   // usage on the response; logging again here would double-count the call.
 
-  // `streamSettled` is undefined on the non-streaming branch, which is correct:
-  // that request really is finished when this returns.
+  // Read HERE: the stream has been iterated to completion and its final message
+  // awaited above, so a latch that appeared mid-stream is visible.
   return {
-    // Read HERE: the stream has been iterated to completion and its final
-    // message awaited above, so a latch that appeared mid-stream is visible.
-    result: { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
-              durationMs: Date.now() - start, authorityRefreshRequired: flights.required() },
-    settled: streamSettled,
+    content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+    durationMs: Date.now() - start, authorityRefreshRequired: flights.required(),
   }
 }
 

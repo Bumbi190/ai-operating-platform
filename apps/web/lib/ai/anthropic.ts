@@ -399,21 +399,48 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             // iteration (real streams are async-iterable) and, failing even
             // that, never: keeping a watcher alive costs an unref'd timer, while
             // releasing early costs the abort authority this phase exists for.
-            const settled: Promise<unknown> =
+            const mapError = (e: unknown) => governanceInFlight(flight, e)
+
+            // ── F2 · THE DIRECT CONSUMER GETS THE CLASSIFIED OUTCOME ─────────
+            // `runAnthropicStep` and the routes iterate this handle. Wrapping
+            // the iterator is what puts the governance outcome in front of the
+            // code that actually decides what happened; a classified side
+            // promise only informs whoever thought to await it.
+            const iterated = followAsyncIterable(stream, mapError)
+            // Its rejection is delivered to the consumer by the iterator. This
+            // keeps the promise itself from surfacing as an unhandled one when
+            // termination is anchored to `done()` instead.
+            void iterated?.catch(() => {})
+
+            // `done()` is the installed SDK's completion primitive and the one
+            // to prefer; `finalMessage()` also settles at termination and covers
+            // event-driven consumers that never iterate. Both are reached
+            // defensively: a stream object lacking them must not make the
+            // governed call throw. Failure to OBSERVE termination must never
+            // become failure to MAKE the request.
+            //
+            // ── C18 · WHY THE LAST TIER NEVER SETTLES ────────────────────────
+            // An immediate `Promise.resolve()` would tear down the watcher at
+            // handle return for exactly the streams whose end we cannot see —
+            // reporting "finished" about something still on the wire.
+            //
+            // ── F2 · UNCAUGHT FIRST, CLASSIFIED SECOND ───────────────────────
+            // These are NOT pre-caught. An earlier revision did
+            // `done().catch(() => {})` here, which swallowed the rejection
+            // before anything could classify it and left `classified` unable to
+            // ever see a governance abort.
+            const rawTermination: Promise<unknown> =
               typeof (stream as { done?: unknown }).done === 'function'
-                ? (stream as { done: () => Promise<unknown> }).done().catch(() => {})
+                ? (stream as { done: () => Promise<unknown> }).done()
                 : typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
-                  ? (stream as { finalMessage: () => Promise<unknown> }).finalMessage().catch(() => {})
-                  : followAsyncIterable(stream) ?? new Promise<void>(() => {})
-            // `.finally` — an errored or aborted stream releases the watcher
-            // exactly as a completed one does. `.then` would leak on failure.
-            // E1: a stream that dies mid-generation because governance fired is
-            // an in-flight abort. Classified from the SAME watcher evidence, and
-            // handed to the caller through `onStreamSettled` so an owner
-            // awaiting termination sees the governance outcome, not an
-            // `APIUserAbortError` it cannot interpret.
-            const classified = settled.catch(e => { throw governanceInFlight(flight, e) })
-            void classified.catch(() => {}).finally(() => { optionSignal?.dispose(); flight?.dispose() })
+                  ? (stream as { finalMessage: () => Promise<unknown> }).finalMessage()
+                  : iterated ?? new Promise<void>(() => {})
+            const classified = rawTermination.catch(e => { throw mapError(e) })
+            // Detached, for unhandled-rejection hygiene only — after
+            // classification, never instead of it.
+            void classified.catch(() => {}).finally(() => {
+              optionSignal?.dispose(); flight?.dispose()
+            })
             ctx.onStreamSettled?.(classified)
             ctx.onFlight?.(flight)
             return stream

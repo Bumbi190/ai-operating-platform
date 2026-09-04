@@ -138,7 +138,20 @@ function raw(): OpenAI {
  * status, statusText and headers are carried over verbatim, so `res.ok`,
  * `res.status` and `res.arrayBuffer()` behave exactly as before.
  */
-function responseBodyLifetime(res: Response): { response: Response; settled: Promise<void> } {
+function responseBodyLifetime(
+  res: Response,
+  /**
+   * F3. Classifies a failure that happens AFTER headers arrived.
+   *
+   * A fetch resolving means the response STARTED, not that it finished. The
+   * watcher is still live while the body transfers, and a governance abort
+   * during that window surfaces as an ordinary `AbortError` from
+   * `reader.read()`. Passing that through would lose the provenance entirely —
+   * to the caller it would look like a network hiccup rather than the
+   * MAY_HAVE_DISPATCHED outcome it is.
+   */
+  mapError?: (e: unknown) => unknown,
+): { response: Response; settled: Promise<void> } {
   const body = res.body
   // No body to follow (error envelopes, and the fetch fakes in the suites):
   // headers ARE the end of the transfer, so the flight is already over.
@@ -165,7 +178,9 @@ function responseBodyLifetime(res: Response): { response: Response; settled: Pro
         }
         controller.close()
       } catch (e) {
-        controller.error(e)
+        // The consumer surface is what matters: this is the error
+        // `res.arrayBuffer()` rejects with.
+        controller.error(mapError ? mapError(e) : e)
       } finally {
         finish()
       }
@@ -215,8 +230,14 @@ async function governedPhysicalRequest<T>(
   ctx: OpenAIGovernanceContext,
   callerSignal: AbortSignal | undefined,
   run: (signal: AbortSignal) => Promise<T>,
-  /** For a stream: the promise that settles at REAL termination. */
-  settledOf?: (value: T) => Promise<unknown> | undefined,
+  /**
+   * For a stream: the promise that settles at REAL termination.
+   *
+   * Receives the classifier so the ITERATOR CONSUMER — not merely a detached
+   * lifecycle promise — gets the governance outcome. The watcher lives here, so
+   * the mapper has to be handed down rather than reconstructed at the call site.
+   */
+  settledOf?: (value: T, mapError: (e: unknown) => unknown) => Promise<unknown> | undefined,
 ): Promise<T> {
   const authority = physicalAuthority(ctx)
   await admitPhysicalRequest(() => createAdminClient(), authority, 'openai')
@@ -226,18 +247,15 @@ async function governedPhysicalRequest<T>(
   const release = () => { composed.dispose(); watch.dispose() }
   try {
     const value = await run(composed.signal)
-    const settled = settledOf?.(value)
+    const settled = settledOf?.(value, e => governanceInFlight(watch, e))
     // A stream's handle is not its end. Hold the watch until the iterator
     // actually terminates — completion, error, abort or an early consumer break.
-    // The same rule applies to its FAILURE: a stream that dies mid-iteration
-    // because governance fired is an in-flight abort, so it is classified with
-    // the same watcher evidence rather than escaping as a provider error.
-    if (settled) {
-      void settled
-        .catch(e => { throw governanceInFlight(watch, e) })
-        .catch(() => {})
-        .finally(release)
-    } else release()
+    //
+    // The failure is classified INSIDE the wrapper now, so this `.catch` exists
+    // only to keep an already-classified rejection from surfacing as an
+    // unhandled one. It runs after classification, never instead of it.
+    if (settled) void settled.catch(() => {}).finally(release)
+    else release()
     ctx.onFlight?.({
       get authorityUnavailable() { return watch.authorityUnavailable },
       get abortReason() { return watch.abortReason },
@@ -333,7 +351,9 @@ export async function openAIChatCompletion(
         // A generic Proxy would be more surface for no behaviour anyone uses.
         return await governedPhysicalRequest(ctx, init?.signal,
           signal => raw().chat.completions.create(params as any, { signal }),
-          value => (params as { stream?: boolean }).stream ? followAsyncIterable(value) : undefined)
+          (value, mapError) => (params as { stream?: boolean }).stream
+            ? followAsyncIterable(value, mapError)
+            : undefined)
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the chat request', e)
@@ -480,7 +500,7 @@ export async function openAISpeech(
 
       // Success: the audio is still on the wire. Hold the watch until the body
       // ends, and hand the caller the followed Response.
-      const followed = responseBodyLifetime(res)
+      const followed = responseBodyLifetime(res, e => governanceInFlight(watch, e))
       void followed.settled.finally(release)
 
       await logLlmCost(

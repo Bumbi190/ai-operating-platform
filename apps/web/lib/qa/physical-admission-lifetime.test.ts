@@ -918,3 +918,197 @@ describe('E20 · the RUN_BOUND provider inventory has no uncovered seam', () => 
       .toEqual([])
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F5–F8 · the STREAM CONSUMER receives the classified outcome', () => {
+  /**
+   * Phase 1E classified a side promise. The code that actually decides what
+   * happened is the `for await` loop, and it was still receiving the raw SDK
+   * wrapper — `APIUserAbortError`, which says a request was aborted and nothing
+   * about who aborted it or whether the provider is still working.
+   *
+   * Worse, `followAsyncIterable` RESOLVED its lifecycle promise on an iterator
+   * error and then threw the original, so nothing could classify it at all.
+   */
+  it('F5 — an OpenAI stream consumer receives GovernanceDispatchUnknownError', async () => {
+    vi.useFakeTimers()
+    const { openAIChatCompletion } = await import('@/lib/ai/openai-client')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    const stream = await openAIChatCompletion(
+      { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
+      { model: 'gpt', messages: [], stream: true } as never,
+    )
+    const consumed = (async () => {
+      for await (const _ of stream as AsyncIterable<unknown>) { /* … */ }
+    })().then(() => null, (e: unknown) => e)
+
+    state.run.cancel_requested = true
+    await tick()
+    const err = await consumed
+    expect(isGovernanceDispatchUnknown(err),
+      'the consumer, not a side promise, must know this').toBe(true)
+    expect((err as { abortReason?: string }).abortReason).toBe('RUN_CANCELLED')
+    expect((err as { mayHaveDispatched?: boolean }).mayHaveDispatched).toBe(true)
+  })
+
+  it('F7 — the classified termination is not swallowed before classification', async () => {
+    // The lifecycle promise and the consumer must carry the SAME object; two
+    // different truths about one failure is how a caller ends up disagreeing
+    // with the drain.
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    const boom = new Error('raw SDK wrapper')
+    const mapped = new Error('classified')
+    const target = {
+      [Symbol.asyncIterator]() {
+        return { async next() { throw boom } } as unknown as AsyncIterator<unknown>
+      },
+    }
+    const settled = followAsyncIterable(target, () => mapped)!
+    const fromSettled = settled.then(() => null, (e: unknown) => e)
+    const fromConsumer = (async () => {
+      for await (const _ of target as AsyncIterable<unknown>) { /* … */ }
+    })().then(() => null, (e: unknown) => e)
+    expect(await fromConsumer, 'the consumer receives the mapped error').toBe(mapped)
+    expect(await fromSettled, 'and so does the lifecycle promise').toBe(mapped)
+  })
+
+  it('F7b — normal exhaustion RESOLVES the lifecycle promise', async () => {
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    const target = { async *[Symbol.asyncIterator]() { yield 1 } }
+    const settled = followAsyncIterable(target, () => new Error('never'))!
+    for await (const _ of target as AsyncIterable<unknown>) { /* … */ }
+    await expect(settled).resolves.toBeUndefined()
+  })
+
+  it('F8 — a NON-governance stream error is left exactly as it was', async () => {
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    const boom = new Error('provider exploded')
+    const target = {
+      [Symbol.asyncIterator]() {
+        return { async next() { throw boom } } as unknown as AsyncIterator<unknown>
+      },
+    }
+    // No mapper ⇒ nothing is re-typed.
+    const settled = followAsyncIterable(target)!
+    const fromConsumer = (async () => {
+      for await (const _ of target as AsyncIterable<unknown>) { /* … */ }
+    })().then(() => null, (e: unknown) => e)
+    expect(await fromConsumer).toBe(boom)
+    await expect(settled).rejects.toBe(boom)
+  })
+
+  it('F8b — a failing underlying return() is awaited, mapped, and released after', async () => {
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    const mapped = new Error('classified')
+    let release!: () => void
+    const pending = new Promise<void>(r => { release = r })
+    const target = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() { return { done: false, value: 1 } },
+          async return() { await pending; throw new Error('close failed') },
+        } as unknown as AsyncIterator<unknown>
+      },
+    }
+    const settled = followAsyncIterable(target, () => mapped)!
+    const outcome = settled.then(() => 'resolved', (e: unknown) => e)
+    const consumer = (async () => {
+      for await (const _ of target as AsyncIterable<unknown>) break
+    })().then(() => null, (e: unknown) => e)
+
+    let done = false
+    void outcome.then(() => { done = true })
+    await new Promise(r => setTimeout(r, 0))
+    expect(done, 'still closing — the watcher stays').toBe(false)
+
+    release()
+    expect(await consumer, 'the caller receives the mapped error').toBe(mapped)
+    expect(await outcome, 'and so does the lifecycle promise').toBe(mapped)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F10–F11 · a governance abort DURING the TTS body reaches the consumer', () => {
+  let realFetch: typeof globalThis.fetch
+  beforeEach(() => { realFetch = globalThis.fetch; process.env.OPENAI_API_KEY = 'test-key' })
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  /** A body whose read fails on demand — headers already arrived. */
+  function failingBody(err: unknown) {
+    let fail!: () => void
+    const failed = new Promise<never>((_, rej) => { fail = () => rej(err) })
+    const body = {
+      getReader: () => ({
+        read: () => failed,
+        cancel: async () => {},
+        releaseLock: () => {},
+      }),
+      cancel: async () => {},
+    }
+    return { body, fail }
+  }
+
+  it('F10 — the body failure reaches arrayBuffer() as a typed MAY_HAVE_DISPATCHED', async () => {
+    vi.useFakeTimers()
+    const { body, fail } = failingBody(
+      Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }))
+    globalThis.fetch = (() => Promise.resolve({
+      ok: true, status: 200, statusText: 'OK', headers: new Headers(), body,
+    } as unknown as Response)) as never
+    const { openAISpeech } = await import('@/lib/ai/openai-client')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    const res = await openAISpeech(
+      { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
+      { model: 'tts', input: 'hej' })
+
+    const reading = res.arrayBuffer().then(() => null, (e: unknown) => e)
+    state.run.cancel_requested = true
+    await tick()
+    fail()
+    const err = await reading
+    expect(isGovernanceDispatchUnknown(err),
+      'headers arriving does not end the physical request').toBe(true)
+    expect((err as { abortReason?: string }).abortReason).toBe('RUN_CANCELLED')
+  })
+
+  it('F11 — an ORDINARY body error is left as itself', async () => {
+    const boom = new Error('socket reset')
+    const { body, fail } = failingBody(boom)
+    globalThis.fetch = (() => Promise.resolve({
+      ok: true, status: 200, statusText: 'OK', headers: new Headers(), body,
+    } as unknown as Response)) as never
+    const { openAISpeech } = await import('@/lib/ai/openai-client')
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    const res = await openAISpeech(
+      { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
+      { model: 'tts', input: 'hej' })
+    const reading = res.arrayBuffer().then(() => null, (e: unknown) => e)
+    fail()
+    const err = await reading
+    expect(isGovernanceDispatchUnknown(err),
+      'no watcher abort ⇒ transport semantics unchanged').toBe(false)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F15–F16 · governance control flow is TYPED, not name-matched', () => {
+  it('F15 — an error merely NAMED ExecutionStoppedError is not governance control flow', async () => {
+    // The predicate used to match on `error.name`. Any error carrying that
+    // string — a server-supplied name, a deserialized error, a caller's own
+    // object — would have been granted control-flow status, and a retry loop
+    // would have stopped retrying something it should have retried.
+    const { isExecutionGovernanceControlFlow } = await import('@/lib/governance/execution-signal')
+    const impostor = Object.assign(new Error('not really'), { name: 'ExecutionStoppedError' })
+    expect(isExecutionGovernanceControlFlow(impostor)).toBe(false)
+  })
+
+  it('F16 — the real ExecutionStoppedError IS governance control flow', async () => {
+    const { isExecutionGovernanceControlFlow } = await import('@/lib/governance/execution-signal')
+    const { ExecutionStoppedError } = await import('@/lib/governance/execution-stop')
+    const real = new ExecutionStoppedError({
+      reason: 'global_automation_paused', context: 'AUTONOMOUS', scopeKind: 'GLOBAL_ONLY',
+      decision: { allowed: false, reason: 'global_automation_paused' } as never,
+    })
+    expect(isExecutionGovernanceControlFlow(real)).toBe(true)
+  })
+})

@@ -57,6 +57,8 @@ const state = {
   admissionStopReason: undefined as undefined | string,
   /** Rotates the claim while the request is on the wire. */
   rotateMidFlight: false,
+  /** The canonical pre-dispatch stop `withGovernedSpend` raises, if any. */
+  preDispatchStop: null as null | 'global_automation_paused' | 'project_execution_paused' | 'stop_state_unavailable',
   /** An ordinary provider failure, to prove the generic path still works. */
   throwGeneric: false,
   /** Error lines written to run_logs — failure accounting's visible trace. */
@@ -80,6 +82,16 @@ vi.mock('@/lib/ai/checkpoint', async () => ({
 vi.mock('@/lib/ai/runner', () => ({
   runStep: async () => {
     state.providerCalls += 1
+    if (state.preDispatchStop) {
+      // The G3C-1 final check inside `withGovernedSpend` — AFTER this step's
+      // claimed-run checkpoint said ALLOWED, BEFORE the provider is called.
+      const { ExecutionStoppedError } = await import('@/lib/governance/execution-stop')
+      throw new ExecutionStoppedError({
+        reason: state.preDispatchStop, context: 'AUTONOMOUS', scopeKind: 'PROJECT',
+        decision: { allowed: false, reason: state.preDispatchStop } as never,
+        provider: 'openai', operation: 'chat.completions',
+      })
+    }
     if (state.inFlightAbort) {
       // The cancel commits HERE — after the boundary checkpoint said yes and
       // while the request is on the wire. A run that already carried
@@ -206,6 +218,7 @@ beforeEach(() => {
   state.inFlightAbort = null
   state.admissionStopReason = undefined
   state.rotateMidFlight = false
+  state.preDispatchStop = null
   state.throwGeneric = false
   state.errorLogs = []
   notifications.length = 0
@@ -411,5 +424,66 @@ describe('E17–E19 · the drain reports the REAL stop reason', () => {
     const r = await drainOnce()
     expect(r.reason).toBe('project_execution_paused')
     expect(r.reason).not.toBe('global_automation_paused')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('F1–F4 · the canonical pre-dispatch stop has a drain owner', () => {
+  /**
+   * `withGovernedSpend` runs the G3C-1 final stop check immediately before
+   * dispatch — after this step's claimed-run checkpoint already said ALLOWED.
+   * A stop committed in that window arrives at the drain, and until now the
+   * catch did not recognise it: it fell into generic accounting and charged a
+   * failure and a retry for a provider that was never called.
+   */
+  it('F1 — a GLOBAL stop settles canonically and reports its real reason', async () => {
+    state.preDispatchStop = 'global_automation_paused'
+    const r = await drainOnce()
+    expect(r.status).toBe('deferred_by_stop')
+    expect(r.reason, 'e.reason verbatim, never parsed from the message')
+      .toBe('global_automation_paused')
+    assertNoFailureAccounting()
+  })
+
+  it('F2 — a PROJECT stop reports project_execution_paused', async () => {
+    state.preDispatchStop = 'project_execution_paused'
+    const r = await drainOnce()
+    expect(r.status).toBe('deferred_by_stop')
+    expect(r.reason).toBe('project_execution_paused')
+    assertNoFailureAccounting()
+  })
+
+  it('F3 — an UNREADABLE stop state is reported as itself, not as a pause', async () => {
+    state.preDispatchStop = 'stop_state_unavailable'
+    const r = await drainOnce()
+    expect(r.status).toBe('deferred_by_stop')
+    expect(r.reason, 'an operator must see that we could not read, not that it is paused')
+      .toBe('stop_state_unavailable')
+    assertNoFailureAccounting()
+  })
+
+  it('F4 — a cancellation that WINS the stop settlement reports cancelled', async () => {
+    state.preDispatchStop = 'global_automation_paused'
+    state.releaseAnswer = 'CANCELLED'
+    const r = await drainOnce()
+    expect(r.status, 'the settlement decides, not the refusal').toBe('cancelled')
+    assertNoFailureAccounting()
+  })
+
+  it('F4b — a failed stop settlement reports lifecycle_error, not deferred', async () => {
+    state.preDispatchStop = 'global_automation_paused'
+    state.rpcFails = true
+    const r = await drainOnce()
+    expect(r.status).toBe('lifecycle_error')
+    expect(state.run.status, 'the lease and the reaper own it').toBe('running')
+    assertNoFailureAccounting()
+  })
+
+  it('F4c — the provider was never dispatched, and no retry is consumed', async () => {
+    state.preDispatchStop = 'global_automation_paused'
+    await drainOnce()
+    const statuses = state.writes.map(w => w.payload.status)
+    expect(statuses).not.toContain('pending')
+    expect(statuses).not.toContain('failed')
   })
 })

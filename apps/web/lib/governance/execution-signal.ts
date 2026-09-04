@@ -36,7 +36,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyRunAuthority, readRunAuthority } from './run-authority'
-import { resolveExecutionStop, resolveExecutionStopForContract } from './execution-stop'
+import { resolveExecutionStop, resolveExecutionStopForContract, ExecutionStoppedError } from './execution-stop'
 import type { ExecutionContract, ExecutionContext, StopRefusalReason } from './execution-stop'
 // TYPE-ONLY, and deliberately so: `import type` is erased at compile time, so
 // this adds no runtime edge from governance to the spend layer. `execution-stop.ts`
@@ -195,16 +195,22 @@ export function isGovernanceDispatchUnknown(e: unknown): e is GovernanceDispatch
  * before admission ever runs), the in-flight dispatch-unknown outcome, and a
  * raw `GovernanceAbortError` where one can still surface unwrapped.
  *
- * `ExecutionStoppedError` is matched by NAME rather than by import: this module
- * is imported by `execution-stop`'s consumers and importing it back would close
- * a cycle. The name is part of that class's public contract and is asserted by
- * the stop suites.
+ * `ExecutionStoppedError` is matched by TYPE. An earlier revision matched it by
+ * `error.name`, on the belief that importing the class would close a cycle —
+ * it would not: this module already imports `resolveExecutionStop` from
+ * `execution-stop` at runtime, so the dependency direction is unchanged.
+ *
+ * The name check was not merely redundant, it was wrong in a way that matters:
+ * any error whose `name` happens to be that string — a provider error carrying
+ * a server-supplied name, a deserialized error, a caller's own object — would
+ * have been granted governance control-flow status, and a retry loop would have
+ * stopped retrying something it should have retried.
  */
 export function isExecutionGovernanceControlFlow(e: unknown): boolean {
   return isPhysicalAdmissionRefusal(e)
     || isGovernanceDispatchUnknown(e)
     || isGovernanceAbort(e)
-    || (e instanceof Error && e.name === 'ExecutionStoppedError')
+    || e instanceof ExecutionStoppedError
 }
 
 export function isPhysicalAdmissionRefusal(e: unknown): e is PhysicalAdmissionRefusedError {
@@ -298,15 +304,42 @@ export interface ComposedSignal {
  * what an unobservable stream means, because "I cannot see the end" is not the
  * same as "it ended".
  */
-export function followAsyncIterable(value: unknown): Promise<void> | undefined {
+export function followAsyncIterable(
+  value: unknown,
+  /**
+   * F2. Classifies the failure ONCE, for BOTH surfaces.
+   *
+   * Without it, the two disagreed: the lifecycle promise was classified and the
+   * `for await` consumer — the code that actually has to decide what happened —
+   * received the raw SDK wrapper. Worse, the previous version RESOLVED the
+   * lifecycle promise on an iterator error and then threw, so nothing could
+   * classify it at all.
+   */
+  mapError?: (error: unknown) => unknown,
+): Promise<void> | undefined {
   const target = value as { [Symbol.asyncIterator]?: () => AsyncIterator<unknown> }
   if (typeof target?.[Symbol.asyncIterator] !== 'function') return undefined
   const original = target[Symbol.asyncIterator]!.bind(target)
 
-  let done!: () => void
-  const settled = new Promise<void>(res => { done = res })
+  let resolveSettled!: () => void
+  let rejectSettled!: (e: unknown) => void
+  const settled = new Promise<void>((res, rej) => { resolveSettled = res; rejectSettled = rej })
   let finished = false
-  const finish = () => { if (!finished) { finished = true; done() } }
+
+  // Mapped exactly once: the consumer and the lifecycle promise must receive
+  // the SAME object, or a caller comparing them would see two different truths
+  // about one failure.
+  let mapped: { value: unknown } | null = null
+  const classify = (e: unknown): unknown => {
+    if (!mapped) mapped = { value: mapError ? mapError(e) : e }
+    return mapped.value
+  }
+  const failWith = (e: unknown): unknown => {
+    const m = classify(e)
+    if (!finished) { finished = true; rejectSettled(m) }
+    return m
+  }
+  const finishOk = () => { if (!finished) { finished = true; resolveSettled() } }
 
   target[Symbol.asyncIterator] = function (): AsyncIterator<unknown> {
     const it = original()
@@ -314,16 +347,21 @@ export function followAsyncIterable(value: unknown): Promise<void> | undefined {
       async next(...args: [] | [undefined]) {
         try {
           const r = await it.next(...args)
-          if (r.done) finish()
+          if (r.done) finishOk()
           return r
-        } catch (e) { finish(); throw e }
+        } catch (e) {
+          // Classified BEFORE it leaves: this is the error the `for await`
+          // consumer sees, and it is the same object the lifecycle promise
+          // rejects with.
+          throw failWith(e)
+        }
       },
       // `return` is what a consumer `break` invokes. Without it an early exit
       // would hold the watcher for the life of the process.
       //
       // ── D3 · TERMINATION MEANS THE UNDERLYING STREAM TERMINATED ────────────
-      // `finish()` runs in `finally`, AFTER the SDK's own return/throw settles.
-      // Finishing first would release the watcher while the client is still
+      // Termination is concluded AFTER the SDK's own return/throw settles.
+      // Concluding first would release the watcher while the client is still
       // asynchronously aborting the socket — the exact window a break is meant
       // to cover, reported as already closed. When the underlying iterator has
       // no return/throw there is nothing to await, and the wrapper can honestly
@@ -331,13 +369,17 @@ export function followAsyncIterable(value: unknown): Promise<void> | undefined {
       async return(v?: unknown) {
         try {
           return it.return ? await it.return(v) : { done: true, value: v }
-        } finally { finish() }
+        } catch (e) {
+          throw failWith(e)
+        } finally { finishOk() }
       },
       async throw(e?: unknown) {
         try {
           if (it.throw) return await it.throw(e)
           throw e
-        } finally { finish() }
+        } catch (inner) {
+          throw failWith(inner)
+        } finally { finishOk() }
       },
       [Symbol.asyncIterator]() { return this },
     } as AsyncIterator<unknown>

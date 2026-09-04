@@ -306,6 +306,21 @@ export async function generateIdeogramLegacy(
         })
       }
       return first
+      } catch (e) {
+        // ── F3 · A GOVERNANCE ABORT DURING THE BODY IS STILL GOVERNANCE ──────
+        // Headers arriving does not end the physical request: `res.json()` and
+        // `res.text()` above are still reading from a live socket, and the
+        // watcher is still live with them. An abort here surfaces as an
+        // ordinary body-read failure, and passing it through would lose the
+        // provenance — the runner would see a provider defect and its retry
+        // loop would re-dispatch work governance just stopped.
+        //
+        // Only governance-triggered failures are re-typed. Everything else
+        // keeps today's transport/certainty semantics exactly.
+        if (watch.abortReason) {
+          throw new GovernanceDispatchUnknownError('ideogram', watch.abortReason, e)
+        }
+        throw e
       } finally {
         // The body is read above, so the physical request ends HERE — not at
         // headers. One `finally` covers every exit: ok, refusal, ambiguity.

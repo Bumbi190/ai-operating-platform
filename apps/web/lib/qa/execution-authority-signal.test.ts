@@ -433,7 +433,9 @@ describe('A13–A16 · stream lifetime', () => {
     expect(src, 'termination hook present').toMatch(/onStreamSettled\?\.\(/)
     expect(src, 'done() is preferred').toMatch(/done\?: unknown \}\)\.done === 'function'/)
     expect(src, 'and iteration is the fallback, never an immediate resolve')
-      .toMatch(/followAsyncIterable\(stream\)/)
+      .toMatch(/followAsyncIterable\(stream, mapError\)/)
+    expect(src, 'and termination is classified BEFORE any hygiene catch')
+      .toMatch(/const classified = rawTermination\.catch/)
   })
 
   it('a throwing request still releases the watcher', async () => {
@@ -516,9 +518,16 @@ describe('PROPAGATION · a claimed run reaches the provider boundary as RUN_BOUN
   })
 
   it('the stream path anchors the watcher to termination, not the handle', () => {
+    // F2 removed the `StepDispatch.settled` hand-back this used to pin:
+    // `runStep` discarded it, so it was authority metadata production threw
+    // away. Termination is now observed by the code that actually runs — the
+    // adapter classifies inside the stream's own iterator, the runner iterates
+    // it to exhaustion and then awaits `finalMessage()`. That is what this
+    // asserts; F2.2 and F6 prove the behaviour end to end.
     const src = code('lib/ai/runner.ts')
-    expect(src).toMatch(/onStreamSettled:\s*settled\s*=>\s*\{\s*streamSettled\s*=\s*settled/)
-    expect(src, 'and returns it so runStep can hold the watcher open')
-      .toMatch(/settled:\s*streamSettled/)
+    expect(src, 'the stream is iterated to exhaustion').toMatch(/for await \(const event of stream\)/)
+    expect(src, 'and real termination is awaited before the step completes')
+      .toMatch(/await stream\.finalMessage\(\)/)
+    expect(src, 'and no discarded settled contract remains').not.toMatch(/streamSettled/)
   })
 })

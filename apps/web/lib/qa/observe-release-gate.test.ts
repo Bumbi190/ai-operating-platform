@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import { projectMonthReleaseBundle, RELEASE_GATE_MAX_AGE_MS } from '../workflows/bundle/project'
 import { loadVendoredDefinitions, FAMILJE_STUNDEN_MONTHLY_RELEASE } from '../workflows/definitions'
 import { FAMILJE_STUNDEN_CHECKS } from '../workflows/adapters/familje-stunden/checks'
-import { ACTION_REGISTRY } from '../workflows/action-registry'
+import { ACTION_REGISTRY, isGovernedEffectEnabled } from '../workflows/action-registry'
 import { checkAnsweredBy } from '../workflows/action-discovery'
 import type { WorkflowDef, WorkflowEvidence, WorkflowInstance, WorkflowTransition } from '../workflows/types'
 
@@ -219,13 +219,30 @@ describe('13-18. the action is READ_ONLY and adds no dangerous capability', () =
   })
 
   it('no write, comms or spend action became executable', () => {
+    // Phase 2B-1 added a `governed_effect` family. The invariant this test exists
+    // for is unchanged and is now stated directly: an effectful kind may only
+    // leave `not_executable` by appearing on the governed-effect ALLOWLIST, which
+    // holds one deterministic proof action that reaches no product system.
     for (const [kind, meta] of Object.entries(ACTION_REGISTRY)) {
       if (meta.executor_family === 'read_only_observation') {
         expect(meta.action_class, `${kind} is executable`).toBe('READ_ONLY')
       }
-      if (meta.action_class !== 'READ_ONLY') {
-        expect(meta.executor_family, `${kind} must stay inert`).toBe('not_executable')
+      if (meta.action_class !== 'READ_ONLY' && meta.executor_family !== 'not_executable') {
+        expect(isGovernedEffectEnabled(kind), `${kind} left inert without an allowlist entry`)
+          .toBe(true)
+        // and it may not belong to a product workflow
+        for (const p of meta.placements) {
+          expect(p.def_key, `${kind} is placed on a product definition`)
+            .toBe('omnira.execution-proof')
+        }
       }
+    }
+  })
+
+  it('every Familje-Stunden write, comms or spend action is still inert', () => {
+    for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
+                        'send_release_newsletter', 'upload_protected_artifacts'] as const) {
+      expect(ACTION_REGISTRY[kind].executor_family, kind).toBe('not_executable')
     }
   })
 

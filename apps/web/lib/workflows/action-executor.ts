@@ -25,7 +25,7 @@
 import 'server-only'
 
 import {
-  ACTION_REGISTRY, isExecutableReadOnly, lookupAction,
+  ACTION_REGISTRY, isExecutableReadOnly, isGovernedEffectEnabled, lookupAction,
   type ExecutableReadOnlyActionKind,
 } from './action-registry'
 import { assertWorkflowActionReady, assertWorkflowActionStillAuthorized } from './action-run'
@@ -522,9 +522,25 @@ export function executableActionKinds(): string[] {
   return Object.keys(HANDLERS).sort()
 }
 
-/** Registry entries that exist but deliberately have no executor. */
+/**
+ * Registry entries that exist but deliberately have no executor.
+ *
+ * The predicate used to be `!== 'read_only_observation'`, which meant the same
+ * thing only while read-only was the only executable family. Phase 2B-1 added
+ * `governed_effect`, and under the old predicate a governed-effect kind would
+ * have been reported as having "no executor" — the single most misleading answer
+ * this function could give, since such a kind is precisely the one that CAN act.
+ * It now means what its name and this comment always said.
+ */
 export function nonExecutableActionKinds(): string[] {
   return Object.entries(ACTION_REGISTRY)
-    .filter(([, m]) => m.executor_family !== 'read_only_observation')
+    .filter(([, m]) => m.executor_family === 'not_executable')
+    .map(([k]) => k).sort()
+}
+
+/** Kinds the governed-effect executor may run. Separate from the family type. */
+export function governedEffectActionKinds(): string[] {
+  return Object.entries(ACTION_REGISTRY)
+    .filter(([k, m]) => m.executor_family === 'governed_effect' && isGovernedEffectEnabled(k))
     .map(([k]) => k).sort()
 }

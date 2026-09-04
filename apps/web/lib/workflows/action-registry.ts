@@ -44,7 +44,40 @@ import { loadVendoredDefinitions } from './definitions'
  * for this kind yet, and the PR9e read-only executor cannot accept it — enforced
  * at compile time by `ExecutableReadOnlyActionKind` below.
  */
-export type ExecutorFamily = 'read_only_observation' | 'not_executable'
+export type ExecutorFamily =
+  | 'read_only_observation'
+  /**
+   * May change the world, under governance. Phase 2B-1.
+   *
+   * Naming a family is NOT permission to act: a kind reaches the governed path
+   * only by ALSO appearing in `GOVERNED_EFFECT_ENABLED_KINDS` below. The two are
+   * separate on purpose — the four Familje-Stunden write actions already carry
+   * effectful CLASSES, so a family gate that keyed on class would have made an
+   * upload and a newsletter live the moment this type gained a value.
+   */
+  | 'governed_effect'
+  | 'not_executable'
+
+/**
+ * The kinds the governed-effect executor may actually run.
+ *
+ * A closed allowlist, deliberately separate from `executor_family`. Adding a kind
+ * here is the decision that makes an irreversible act possible, and it should be
+ * reviewed as such rather than inherited from a type widening.
+ *
+ * Today it holds exactly one entry, and that entry touches nothing: it is a
+ * deterministic test action used to prove the governance path without a provider,
+ * a credential or a product side effect.
+ */
+export const GOVERNED_EFFECT_ENABLED_KINDS = [
+  'proof_governed_effect',
+] as const
+
+export type GovernedEffectEnabledKind = (typeof GOVERNED_EFFECT_ENABLED_KINDS)[number]
+
+export function isGovernedEffectEnabled(kind: string): kind is GovernedEffectEnabledKind {
+  return (GOVERNED_EFFECT_ENABLED_KINDS as readonly string[]).includes(kind)
+}
 
 /** One place a kind is declared: a definition and the state within it. */
 export interface ActionPlacement {
@@ -150,6 +183,26 @@ export const ACTION_REGISTRY = {
     executor_family: 'read_only_observation',
     placements: [{ def_key: 'familje-stunden.monthly-release', state: 'planning' }],
     description: 'Derive the canonical Monthly Brief v1 from the pinned contract (no I/O).',
+  },
+
+  /**
+   * The governed-effect proof action. Phase 2B-1.
+   *
+   * FINANCIAL so that it exercises the strictest policy the class table has —
+   * authorization, spend enforcement, pre-commit revalidation, idempotency and a
+   * single attempt. Its handler spends nothing and calls nothing: the cost is a
+   * deterministic constant and the "remote" is a switch over an instruction
+   * carried by the proof instance's own key.
+   *
+   * It is placed on `omnira.execution-proof` and nowhere else. Omnira proving its
+   * own governance must not require a Familje-Stunden state to become live, for
+   * the same reason `omnira.release-gate-proof` exists as its own definition.
+   */
+  proof_governed_effect: {
+    action_class: 'FINANCIAL',
+    executor_family: 'governed_effect',
+    placements: [{ def_key: 'omnira.execution-proof', state: 'effect' }],
+    description: 'Deterministic governed-effect proof. No provider, no network, no real spend.',
   },
 
   // ── Declared for future use. Metadata only: NOT executable. ───────────────

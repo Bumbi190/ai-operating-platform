@@ -1,0 +1,94 @@
+{
+  "ID": "omnira.execution-proof",
+  "version": 1,
+  "status": "active",
+  "purpose": "Omnira's own governed-effect proof. Exercises the effectful execution path end to end without a provider, a credential or a product side effect.",
+  "source_of_truth": "apps/web/lib/workflows/definitions/omnira.execution-proof.v1.json",
+  "derived_from": [],
+  "canonical": {
+    "what_this_is": "A capability test for the execution machinery, not a product process.",
+    "not_a_release": "This definition owns no release, no month and no artefact. It can advance nothing in any product workflow.",
+    "why_it_is_separate": "Proving that Omnira can govern an irreversible act must not require a Familje-Stunden state to become live. Same reasoning as omnira.release-gate-proof.",
+    "instance_key_is_free_text": "The key names a proof scenario, never a month. This definition has no calendar.",
+    "spends_nothing": "The only enabled handler computes a deterministic fake cost and performs no network call."
+  },
+  "hard_gates": [
+    {
+      "id": "no_real_effect",
+      "rule": "The proof action must never reach a provider, a credential or a product system.",
+      "enforced_at": [
+        "effect"
+      ],
+      "consumers": []
+    },
+    {
+      "id": "never_advances_a_product_workflow",
+      "rule": "This definition may not be used to advance any Familje-Stunden state.",
+      "enforced_at": [
+        "effect",
+        "complete"
+      ],
+      "consumers": []
+    }
+  ],
+  "retry_policies": {
+    "none": {
+      "max_attempts": 1
+    },
+    "transient": {
+      "max_attempts": 3,
+      "backoff": "exponential",
+      "initial_delay_s": 5
+    },
+    "network": {
+      "max_attempts": 5,
+      "backoff": "exponential",
+      "initial_delay_s": 10
+    },
+    "never_auto": {
+      "max_attempts": 1,
+      "note": "Requires a human decision before any retry. The effect state uses this."
+    }
+  },
+  "states": [
+    {
+      "id": "effect",
+      "description": "Perform one governed effectful action under full policy: authorization, spend reservation, pre-dispatch revalidation, dispatch certainty and reconciliation.",
+      "prerequisites": [],
+      "inputs": [],
+      "outputs": [
+        "governed_effect_observation"
+      ],
+      "automated_actions": [
+        "Perform one deterministic governed effect and record what actually happened."
+      ],
+      "verification": [],
+      "human_gate": {
+        "required": false
+      },
+      "retry_policy": "never_auto",
+      "next_state": "complete",
+      "failure_transition": "complete",
+      "notes": "No human gate: the action is deterministic and touches nothing. The governance it exercises is real; the effect is not."
+    },
+    {
+      "id": "complete",
+      "description": "The proof has been recorded.",
+      "prerequisites": [
+        "effect"
+      ],
+      "inputs": [],
+      "outputs": [],
+      "automated_actions": [],
+      "verification": [],
+      "human_gate": {
+        "required": false
+      },
+      "retry_policy": "none",
+      "next_state": null,
+      "failure_transition": null,
+      "notes": "Terminal."
+    }
+  ],
+  "escalation": []
+}

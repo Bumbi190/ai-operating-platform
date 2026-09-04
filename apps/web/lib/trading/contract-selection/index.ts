@@ -26,17 +26,24 @@
  * supplied, so the same inputs give the same decision forever (§26).
  *
  * It records nothing. There is no journal, no store, no repository and no
- * replay persistence — GATE-08C-3B DECISION-JOURNAL VOCABULARY GAP is OPEN and
- * blocks C3B.2, which is where recording belongs.
+ * replay persistence in this package — recording and replay belong to
+ * `@/lib/trading/contract-selection-store`, which nothing here imports or calls.
  *
  * It mints no authority. A decision answers which contract and why, never
  * whether an order may be sent.
  *
- * NOT YET HERE — C3B.2 AND C3B.3
- * ──────────────────────────────
+ * WHERE THE REST OF THE CHAIN LIVES
+ * ─────────────────────────────────
  * Recording and reading decisions, and the orchestration that reads a recorded
  * decision first and only otherwise resolves against a pinned calendar, are
- * later slices. GATE-08 stays DELVIS STÄNGD.
+ * both implemented now:
+ *
+ *     recording/replay  `@/lib/trading/contract-selection-store`
+ *     recorded-first    `@/lib/trading/contract-selection-orchestration`
+ *
+ * The recorded selection chain (GATE-08C-3B) is complete. The dependency runs
+ * one way only: the orchestrator composes this materializer, and this package
+ * imports and calls neither of them. GATE-08 stays DELVIS STÄNGD.
  */
 
 export { CONTRACT_SELECTION_POLICY_VERSION, materializeContractSelectionDecision } from './decision'

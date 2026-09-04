@@ -136,8 +136,11 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // from outside, which is why the SHA comparison is its own check.
   observedCheck('github_pr_merged', 'frontend_deploy',
     'The release pull request is merged'),
+  // The required set is trusted policy, and CI belongs to the PR HEAD commit —
+  // the merge commit never receives one of the three signals at all.
   observedCheck('github_pr_checks_green', 'frontend_deploy',
-    'All commit checks on the merged ref report success'),
+    'Every required CI check passes on the pull request head commit, read from ' +
+    'both the Commit Status and Check Runs APIs'),
   observedCheck('github_merge_sha_matches_expected', 'frontend_deploy',
     'The merge SHA equals the independently pinned expected SHA'),
   observedCheck('vercel_production_ready', 'frontend_deploy',

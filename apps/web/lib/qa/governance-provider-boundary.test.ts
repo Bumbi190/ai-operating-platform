@@ -328,6 +328,40 @@ describe('withGovernedSpend lifecycle', () => {
     expect(settleSpend).not.toHaveBeenCalled()
   })
 
+  it('a PHYSICAL ADMISSION refusal releases, and rethrows the refusal itself', async () => {
+    // G3C-3C-A · C8. Admission runs INSIDE the governed callback, after the
+    // reservation is held. Nothing left the machine, so the headroom must come
+    // back — settling it would bill for a call that was never made, and the
+    // pass-through spend fakes used by the adapter suites cannot prove this
+    // because they never run this code.
+    const { withGovernedSpend } = await boundary()
+    const { PhysicalAdmissionRefusedError } = await import('@/lib/governance/execution-signal')
+    const refusal = new PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
+    await expect(withGovernedSpend(
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+      async () => { throw refusal },
+    )).rejects.toBe(refusal)
+    expect(releaseSpend, 'the reservation was freed').toHaveBeenCalledWith('res-1')
+    expect(settleSpend, 'and never counted as spend').not.toHaveBeenCalled()
+  })
+
+  it('D5 — a FAILED release does not replace the admission refusal', async () => {
+    // G3C-3C-A · D4. The release is bookkeeping ABOUT the refusal, never a
+    // revision of it. If the release error escaped, the drain would see an
+    // unrecognised error instead of a refusal — and charge a retry and a
+    // failure for a request that governance stopped before it was made.
+    const { withGovernedSpend } = await boundary()
+    const { PhysicalAdmissionRefusedError } = await import('@/lib/governance/execution-signal')
+    const refusal = new PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
+    releaseSpend.mockRejectedValueOnce(new Error('reservation ledger unreachable'))
+    await expect(withGovernedSpend(
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+      async () => { throw refusal },
+    )).rejects.toBe(refusal)
+    expect(releaseSpend, 'the release was attempted').toHaveBeenCalledWith('res-1')
+    expect(settleSpend, 'and the estimate was never counted').not.toHaveBeenCalled()
+  })
+
   // ── Project attribution ────────────────────────────────────────────────────
 
   it('two project contexts reserve against DIFFERENT projects', async () => {

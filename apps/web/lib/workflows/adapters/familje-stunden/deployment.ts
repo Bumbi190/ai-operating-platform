@@ -33,25 +33,10 @@ import 'server-only'
 import { notPass, pass, type VerificationEvidence, type VerificationFailureKind } from '../types'
 import { FAMILJE_STUNDEN_SYSTEM } from './index'
 import {
-  FAMILJE_STUNDEN_REQUIRED_CHECKS, evaluateRequiredChecks,
-  type CheckRunsPayload, type CiOutcome, type CommitStatusPayload,
-} from './ci-checks'
+  observeGithubMergeShaMatch, observeGithubPrChecksGreen, observeGithubPrMerged,
+  readPullRequest,
+} from './github-observation'
 
-/**
- * Evaluator outcomes expressed in the vocabulary the evidence layer already
- * speaks. No second failure taxonomy is introduced — CI latency stays
- * retryable, and everything else is a finding GitHub is authoritative about.
- */
-const CI_OUTCOME_FAILURE: Readonly<Record<CiOutcome, VerificationFailureKind>> = {
-  ALL_REQUIRED_CHECKS_GREEN: 'authoritative_fail', // unreachable: green never fails
-  CHECKS_PENDING: 'service_unavailable',
-  SOURCE_UNAVAILABLE: 'service_unavailable',
-  MALFORMED_RESPONSE: 'malformed_response',
-  CHECKS_FAILED: 'authoritative_fail',
-  EXPECTED_CHECK_MISSING: 'authoritative_fail',
-  SHA_MISMATCH: 'authoritative_fail',
-  NO_REQUIRED_POLICY: 'authoritative_fail',
-}
 
 const GITHUB_API = 'https://api.github.com'
 const VERCEL_API = 'https://api.vercel.com'
@@ -78,15 +63,12 @@ const VERCEL_SYSTEM = 'vercel'
  */
 function config() {
   return {
-    githubToken: process.env.FAMILJE_STUNDEN_GITHUB_TOKEN || null,
     repo: process.env.FAMILJE_STUNDEN_GITHUB_REPO || null,     // "owner/name"
     vercelToken: process.env.FAMILJE_STUNDEN_VERCEL_TOKEN || null,
     vercelProjectId: process.env.FAMILJE_STUNDEN_VERCEL_PROJECT_ID || null,
     vercelTeamId: process.env.FAMILJE_STUNDEN_VERCEL_TEAM_ID || null,
     /** The release PR under verification. */
     releasePr: process.env.FAMILJE_STUNDEN_RELEASE_PR || null,
-    /** Optional independent pin, so the merge SHA is not self-attesting. */
-    expectedMergeSha: process.env.FAMILJE_STUNDEN_EXPECTED_MERGE_SHA || null,
   }
 }
 
@@ -147,102 +129,14 @@ async function getJson<T>(
 
 // ── GitHub ───────────────────────────────────────────────────────────────────
 
-export interface PullRequestFacts {
-  number: number
-  state: string
-  merged: boolean
-  /** The commit that landed on the base branch. Null until merged. */
-  mergeCommitSha: string | null
-  headSha: string
-  baseSha: string
-  observedAt: string
-}
-
-/**
- * The RAW combined-status response, not a rollup verdict.
- *
- * The rollup (`state`) is deliberately not surfaced as a verdict any more: it
- * reports on Commit Statuses only, and two of Familje-Stundens three required
- * signals are Check Runs, which it cannot see. Evaluation belongs to
- * `evaluateRequiredChecks`, which consumes both sources.
- */
-export interface CombinedStatusFacts {
-  payload: CommitStatusPayload
-  observedAt: string
-}
-
-export async function readPullRequest(
-  prNumber: number, now: string, deps: { fetchImpl?: typeof fetch } = {},
-): Promise<Read<PullRequestFacts>> {
-  const { githubToken, repo } = config()
-  if (!githubToken || !repo) {
-    return { ok: false, failure: 'credential_missing',
-      detail: 'FAMILJE_STUNDEN_GITHUB_TOKEN / FAMILJE_STUNDEN_GITHUB_REPO are not configured' }
-  }
-  const r = await getJson<{
-    number: number; state: string; merged: boolean; merge_commit_sha: string | null
-    head: { sha: string }; base: { sha: string }
-  }>(`${GITHUB_API}/repos/${repo}/pulls/${prNumber}`, {
-    Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json',
-  }, deps.fetchImpl ?? fetch)
-  if (!r.ok) return r
-
-  const v = r.value
-  if (typeof v?.number !== 'number' || !v?.head?.sha) {
-    return { ok: false, failure: 'malformed_response', detail: 'pull request payload was not usable' }
-  }
-  return {
-    ok: true,
-    value: {
-      number: v.number, state: v.state, merged: v.merged === true,
-      // Only a MERGED pull request has a merge commit worth trusting; GitHub
-      // populates this field speculatively on open PRs.
-      mergeCommitSha: v.merged === true ? (v.merge_commit_sha ?? null) : null,
-      headSha: v.head.sha, baseSha: v.base?.sha ?? '', observedAt: now,
-    },
-  }
-}
-
-export async function readCombinedStatus(
-  ref: string, now: string, deps: { fetchImpl?: typeof fetch } = {},
-): Promise<Read<CombinedStatusFacts>> {
-  const { githubToken, repo } = config()
-  if (!githubToken || !repo) {
-    return { ok: false, failure: 'credential_missing', detail: 'GitHub credential is not configured' }
-  }
-  const r = await getJson<CommitStatusPayload>(
-    `${GITHUB_API}/repos/${repo}/commits/${ref}/status`,
-    { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' },
-    deps.fetchImpl ?? fetch)
-  if (!r.ok) return r
-  if (typeof r.value?.state !== 'string') {
-    return { ok: false, failure: 'malformed_response', detail: 'status payload was not usable' }
-  }
-  return { ok: true, value: { payload: r.value, observedAt: now } }
-}
-
-/**
- * THE MISSING HALF — GET /repos/{repo}/commits/{ref}/check-runs?filter=latest.
- *
- * Declared, unimplemented, and deliberately so. `Supabase Preview` and
- * `Vercel Preview Comments` live here and nowhere else, so without this reader
- * the required set can never be complete — which is exactly why
- * `evaluateRequiredChecks` treats an unread source as SOURCE_UNAVAILABLE rather
- * than as an empty one. The alternative, letting the Commit Status half answer
- * alone, is the false PASS this slice exists to remove.
- *
- * Implementing it needs a fine-grained repository-scoped token with `Checks:
- * Read`, which is the NEXT slice's audit. Until then this issues no request and
- * returns nothing an evaluator could mistake for an answer.
- */
-export async function readCheckRuns(
-  _ref: string, _now: string, _deps: { fetchImpl?: typeof fetch } = {},
-): Promise<Read<CheckRunsPayload>> {
-  return {
-    ok: false, failure: 'credential_missing',
-    detail: 'the check-runs reader is not implemented; no credential contract exists yet',
-  }
-}
+// ── GitHub ───────────────────────────────────────────────────────────────────
+//
+// This module no longer talks to GitHub. Authentication, pagination, producer
+// binding and the three release observations live in ./github-observation,
+// which reads as the GitHub App — the only credential type GitHub grants the
+// `Checks` permission to. A personal access token is deliberately absent: the
+// fine-grained kind cannot hold `Checks` at all, and the classic kind is
+// account-wide with write access to every repository.
 
 // ── Vercel ───────────────────────────────────────────────────────────────────
 
@@ -313,6 +207,14 @@ function blocked(
 
 export interface DeploymentChainInput {
   prNumber: number
+  /**
+   * The independently attested pin, from the INSTANCE binding.
+   *
+   * Deliberately a parameter and not an environment read: a deployment-global
+   * value would let one month's pin answer another month's question, which is
+   * exactly what the instance binding exists to prevent.
+   */
+  expectedMergeSha?: string | null
   /** Attempts already spent, so a not-yet-indexed deploy escalates eventually. */
   attempt?: number
   maxAttempts?: number
@@ -327,109 +229,20 @@ export interface DeploymentChainInput {
 export async function verifyDeploymentChain(
   input: DeploymentChainInput, now: string, deps: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerificationEvidence[]> {
-  const { expectedMergeSha } = config()
   const attempt = input.attempt ?? 1
   const maxAttempts = input.maxAttempts ?? 5
   const out: VerificationEvidence[] = []
 
-  const pr = await readPullRequest(input.prNumber, now, deps)
+  // ── The three GitHub checks ──
+  // Delegated whole. The observations are the SAME functions the three
+  // registered actions call, so a passive verification and an executed action
+  // can never disagree about what GitHub said.
+  const identity = { prNumber: input.prNumber, expectedMergeSha: input.expectedMergeSha ?? null }
+  out.push(await observeGithubPrMerged(identity, now, deps))
+  out.push(await observeGithubPrChecksGreen(identity, now, deps))
+  out.push(await observeGithubMergeShaMatch(identity, now, deps))
 
-  // ── github_pr_merged ──
-  const mergedExpected = `pull request #${input.prNumber} is merged`
-  if (!pr.ok) {
-    out.push(blocked('github_pr_merged', pr.failure, mergedExpected, pr.detail, GITHUB_SYSTEM, now))
-  } else if (!pr.value.merged) {
-    // An open PR is a normal stage of the process, not a defect.
-    out.push(notPass('github_pr_merged', 'authoritative_fail', {
-      expected: mergedExpected, observed: `pull request is ${pr.value.state} and not merged`,
-      authoritative_system: GITHUB_SYSTEM, observed_at: now,
-      detail: { pr: input.prNumber, state: pr.value.state, head_sha: pr.value.headSha },
-    }))
-  } else {
-    out.push(pass('github_pr_merged', {
-      expected: mergedExpected, observed: `merged as ${pr.value.mergeCommitSha}`,
-      authoritative_system: GITHUB_SYSTEM, observed_at: now,
-      detail: { pr: input.prNumber, merge_commit_sha: pr.value.mergeCommitSha, head_sha: pr.value.headSha },
-    }))
-  }
-
-  // ── github_pr_checks_green ──
-  // CI belongs to the PULL REQUEST HEAD commit, not the merge commit. Audited
-  // across five merged Familje-Stunden PRs: the merge commit never receives the
-  // `Vercel Preview Comments` check run at all, so a policy pinned to it could
-  // not be satisfied and would report a permanent, misleading absence.
-  const checksExpected =
-    `all required CI checks (${FAMILJE_STUNDEN_REQUIRED_CHECKS.map(c => c.identity).join(', ')}) ` +
-    'pass on the pull request head commit'
-  const ref = pr.ok ? pr.value.headSha : null
-  if (!pr.ok) {
-    out.push(blocked('github_pr_checks_green', pr.failure, checksExpected, pr.detail, GITHUB_SYSTEM, now))
-  } else {
-    // BOTH sources, always. Reading one and evaluating anyway is the defect
-    // this replaced: a green rollup said nothing about the two Check Runs.
-    const status = await readCombinedStatus(ref!, now, deps)
-    const runs = await readCheckRuns(ref!, now, deps)
-    const verdict = evaluateRequiredChecks({
-      sha: ref!,
-      commitStatus: status.ok ? status.value.payload : null,
-      checkRuns: runs.ok ? runs.value : null,
-    })
-    const detail = {
-      ref, outcome: verdict.outcome,
-      checks: verdict.checks.map(c => `${c.identity}=${c.state}`),
-      sources: { commit_status: status.ok, check_runs: runs.ok },
-    }
-    if (verdict.green) {
-      out.push(pass('github_pr_checks_green', {
-        expected: checksExpected, observed: 'every required check is green on the head commit',
-        authoritative_system: GITHUB_SYSTEM, observed_at: now, detail,
-      }))
-    } else {
-      // A half-read authority is not a finding about the release, so it keeps
-      // the transport's own failure kind and stays retryable. Everything else
-      // is GitHub answering, and answers are not retried away.
-      const unread = verdict.outcome === 'SOURCE_UNAVAILABLE'
-      const kind = unread && !status.ok
-        ? FAILURE_KIND[status.failure]
-        : CI_OUTCOME_FAILURE[verdict.outcome]
-      out.push(notPass('github_pr_checks_green', kind, {
-        expected: checksExpected,
-        observed: unread
-          ? 'both the commit-status and check-runs sources must be read before ' +
-            'this check can be answered'
-          : `required checks are ${verdict.outcome}`,
-        authoritative_system: GITHUB_SYSTEM, observed_at: now,
-        detail: { ...detail, retryable: unread || verdict.outcome === 'CHECKS_PENDING' },
-      }))
-    }
-  }
-
-  // ── github_merge_sha_matches_expected ──
-  const pinExpected = 'the merge SHA equals the independently pinned expected SHA'
-  if (!expectedMergeSha) {
-    out.push(notPass('github_merge_sha_matches_expected', 'credential_missing', {
-      expected: pinExpected, observed: 'no expected merge SHA is pinned for this release',
-      authoritative_system: GITHUB_SYSTEM, observed_at: now,
-      detail: { missing_config: 'FAMILJE_STUNDEN_EXPECTED_MERGE_SHA' },
-    }))
-  } else if (!pr.ok || !pr.value.mergeCommitSha) {
-    out.push(notPass('github_merge_sha_matches_expected', 'authoritative_fail', {
-      expected: pinExpected, observed: 'no merge SHA is available to compare',
-      authoritative_system: GITHUB_SYSTEM, observed_at: now, detail: { expected_sha: expectedMergeSha },
-    }))
-  } else if (pr.value.mergeCommitSha !== expectedMergeSha) {
-    out.push(notPass('github_merge_sha_matches_expected', 'authoritative_fail', {
-      expected: pinExpected,
-      observed: `merged ${pr.value.mergeCommitSha}, expected ${expectedMergeSha}`,
-      authoritative_system: GITHUB_SYSTEM, observed_at: now,
-      detail: { merge_commit_sha: pr.value.mergeCommitSha, expected_sha: expectedMergeSha },
-    }))
-  } else {
-    out.push(pass('github_merge_sha_matches_expected', {
-      expected: pinExpected, observed: `merge SHA is ${expectedMergeSha}`,
-      authoritative_system: GITHUB_SYSTEM, observed_at: now, detail: { merge_commit_sha: expectedMergeSha },
-    }))
-  }
+  const pr = await readPullRequest(input.prNumber, deps)
 
   // ── Vercel side. Verified against the MERGE SHA, never a requested one. ──
   const mergeSha = pr.ok ? pr.value.mergeCommitSha : null

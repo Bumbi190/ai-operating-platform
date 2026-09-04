@@ -152,6 +152,40 @@ export const ACTION_REGISTRY = {
     description: 'Derive the canonical Monthly Brief v1 from the pinned contract (no I/O).',
   },
 
+  /**
+   * The three GitHub release observations, at `frontend_deploy`.
+   *
+   * READ_ONLY despite holding a credential and despite the one POST in their
+   * call graph. That POST mints an installation token — authentication, not
+   * repository mutation — and every repository request is a GET. Merge, close,
+   * comment, review, dispatch, status-create and check-create are absent from
+   * the module, and the App's installation grants only Metadata, Pull requests,
+   * Commit statuses and Checks at READ level, so no write exists to reach.
+   *
+   * Three kinds rather than one, because `ANSWERS_CHECK` is 1:1 and each
+   * answers a different question about a different authority: did it merge,
+   * did CI pass on the head commit, and did it merge as the pinned commit.
+   * Collapsing them would make one observation vouch for three checks.
+   */
+  observe_github_pr_merged: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Read whether the instance-bound release pull request is merged.',
+  },
+  observe_github_pr_checks_green: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Read the required CI checks on the pull request head commit, from both GitHub check systems.',
+  },
+  observe_github_merge_sha_match: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Compare the actual merge SHA against the instance-bound attested pin.',
+  },
+
   // ── Declared for future use. Metadata only: NOT executable. ───────────────
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the

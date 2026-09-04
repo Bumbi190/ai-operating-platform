@@ -118,7 +118,7 @@ describe('the read-only executor cannot be handed a write', () => {
     const executable = (Object.entries(ACTION_REGISTRY) as [string, { executor_family: string }][])
       .filter(([, m]) => m.executor_family === 'read_only_observation').map(([k]) => k).sort()
     expect(executable).toEqual([
-      'compose_monthly_brief', 'compute_release_instant', 'observe_release_gate',
+      'compose_monthly_brief', 'compute_release_instant', 'observe_github_merge_sha_match', 'observe_github_pr_checks_green', 'observe_github_pr_merged', 'observe_release_gate',
       'probe_anonymous_protected_access',
     ])
   })

@@ -7,9 +7,16 @@
  * true the first time someone adds a convenience helper.
  */
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { generateKeyPairSync } from 'node:crypto'
 import { join } from 'node:path'
+
+import { __resetInstallationTokenCache }
+  from '../workflows/adapters/familje-stunden/github-app-auth'
+
+// A cached installation token would let one test's mint answer another's.
+beforeEach(() => { __resetInstallationTokenCache() })
 
 const SRC = join(process.cwd(), 'lib/workflows/adapters/familje-stunden/deployment.ts')
 const source = readFileSync(SRC, 'utf8')
@@ -33,7 +40,8 @@ const NOW = '2026-08-29T12:00:00.000Z'
 async function withConfig<T>(
   cfg: Record<string, string | undefined>, fn: () => Promise<T>,
 ): Promise<T> {
-  const keys = ['FAMILJE_STUNDEN_GITHUB_TOKEN', 'FAMILJE_STUNDEN_GITHUB_REPO',
+  const keys = ['FAMILJE_STUNDEN_GITHUB_APP_ID', 'FAMILJE_STUNDEN_GITHUB_INSTALLATION_ID',
+    'FAMILJE_STUNDEN_GITHUB_APP_PRIVATE_KEY', 'FAMILJE_STUNDEN_GITHUB_REPO',
     'FAMILJE_STUNDEN_VERCEL_TOKEN', 'FAMILJE_STUNDEN_VERCEL_PROJECT_ID',
     'FAMILJE_STUNDEN_VERCEL_TEAM_ID', 'FAMILJE_STUNDEN_RELEASE_PR',
     'FAMILJE_STUNDEN_EXPECTED_MERGE_SHA']
@@ -47,8 +55,20 @@ async function withConfig<T>(
   }
 }
 
+/**
+ * A SYNTHETIC key pair, generated per run. The production PEM is never read by
+ * a test: a test that needs the real private key is a test that can leak it.
+ */
+const { privateKey: TEST_PRIVATE_KEY } = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+})
+
 const CONFIGURED: Record<string, string | undefined> = {
-  FAMILJE_STUNDEN_GITHUB_TOKEN: 'test-token',
+  FAMILJE_STUNDEN_GITHUB_APP_ID: '123456',
+  FAMILJE_STUNDEN_GITHUB_INSTALLATION_ID: '7890123',
+  FAMILJE_STUNDEN_GITHUB_APP_PRIVATE_KEY: TEST_PRIVATE_KEY,
   FAMILJE_STUNDEN_GITHUB_REPO: 'owner/repo',
   FAMILJE_STUNDEN_VERCEL_TOKEN: 'test-token',
   FAMILJE_STUNDEN_VERCEL_PROJECT_ID: 'prj_test',
@@ -61,20 +81,36 @@ function fakeFetch(routes: Record<string, { status?: number; body?: unknown }>) 
   const impl = (async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     calls.push({ url: u, method: init?.method ?? 'GET' })
+    // Authentication, answered for every route table: minting an installation
+    // token is the one POST in the whole call graph.
+    if (u.includes('/access_tokens')) {
+      return {
+        ok: true, status: 201,
+        headers: { get: () => null },
+        json: async () => ({
+          token: 'ghs_test_installation_token',
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      } as unknown as Response
+    }
     const key = Object.keys(routes).find(k => u.includes(k))
     const r = key ? routes[key] : { status: 404, body: {} }
     const status = r.status ?? 200
     return {
       ok: status >= 200 && status < 300, status,
+      headers: { get: (h: string) => (h.toLowerCase() === 'link' ? null : null) },
       json: async () => r.body ?? {},
-    } as Response
+    } as unknown as Response
   }) as unknown as typeof fetch
   return { impl, calls }
 }
 
 function prBody(over: Record<string, unknown> = {}) {
+  // `base.repo.full_name` is load-bearing: the reader refuses a pull request
+  // that does not belong to the canonical repository rather than interpreting it.
   return { number: 40, state: 'closed', merged: true, merge_commit_sha: MERGE_SHA,
-    head: { sha: 'dfaa8852' }, base: { sha: 'cdce2129' }, ...over }
+    head: { sha: HEAD_SHA }, base: { sha: 'cdce2129', repo: { full_name: 'owner/repo' } },
+    ...over }
 }
 const HEAD_SHA = 'dfaa8852'
 
@@ -84,11 +120,26 @@ const HEAD_SHA = 'dfaa8852'
  * total_count}` because the old evaluator read only those two fields — which is
  * precisely how two of three required signals stayed invisible.
  */
-function statusBody(state = 'success', sha: string = HEAD_SHA) {
-  return { sha, state, total_count: 1,
-    statuses: [{ context: 'Vercel', state, created_at: '2026-08-29T11:00:00Z',
-                 updated_at: '2026-08-29T11:00:00Z' }] }
+function statusBody(state = 'success', _sha: string = HEAD_SHA) {
+  // The RAW /statuses list. The combined /status rollup is no longer read: it
+  // strips `creator`, so it cannot support producer binding.
+  return [{ context: 'Vercel', state,
+            created_at: '2026-08-29T11:00:00Z', updated_at: '2026-08-29T11:00:00Z',
+            creator: { id: 35613825, login: 'vercel[bot]', type: 'Bot' } }]
 }
+/** Check runs from the trusted producers, on the HEAD commit. */
+function checkRunsBody(over: { supabase?: string | null; comments?: string | null } = {}) {
+  const run = (name: string, appId: number, conclusion: string | null) => ({
+    name, app: { id: appId }, status: conclusion === null ? 'in_progress' : 'completed',
+    conclusion, head_sha: HEAD_SHA,
+    started_at: '2026-08-29T11:00:00Z', completed_at: '2026-08-29T11:00:30Z',
+  })
+  return { total_count: 2, check_runs: [
+    run('Supabase Preview', 330661, over.supabase === undefined ? 'success' : over.supabase),
+    run('Vercel Preview Comments', 8329, over.comments === undefined ? 'success' : over.comments),
+  ] }
+}
+
 function deployBody(over: Record<string, unknown> = {}) {
   return { deployments: [{ uid: 'dpl_test', readyState: 'READY', target: 'production',
     meta: { githubCommitSha: MERGE_SHA }, alias: ['familje-stunden.se'], ...over }] }
@@ -96,11 +147,13 @@ function deployBody(over: Record<string, unknown> = {}) {
 
 async function runChain(
   routes: Parameters<typeof fakeFetch>[0], cfg = CONFIGURED,
-  input: { prNumber: number; attempt?: number; maxAttempts?: number } = { prNumber: 40 },
+  input: { prNumber: number; expectedMergeSha?: string | null; attempt?: number; maxAttempts?: number } =
+    { prNumber: 40, expectedMergeSha: MERGE_SHA },
 ) {
   const { verifyDeploymentChain } = await import('../workflows/adapters/familje-stunden/deployment')
   const f = fakeFetch(routes)
-  const out = await withConfig(cfg, () => verifyDeploymentChain(input, NOW, { fetchImpl: f.impl }))
+  const out = await withConfig(cfg, () => verifyDeploymentChain(
+    { expectedMergeSha: MERGE_SHA, ...input }, NOW, { fetchImpl: f.impl }))
   return { out, calls: f.calls }
 }
 
@@ -149,17 +202,26 @@ describe('deployment verification cannot mutate anything', () => {
   it('proves it at runtime: a full verification run issues only GETs', async () => {
     const { calls } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
     expect(calls.length).toBeGreaterThan(0)
-    expect(calls.every(c => c.method === 'GET')).toBe(true)
+    // Every REPOSITORY request is a GET. The single POST in the whole call
+    // graph mints an installation token — authentication, which changes nothing
+    // in the repository — and it is named here so a second POST cannot slip in
+    // behind a relaxed assertion.
+    const posts = calls.filter(c => c.method !== 'GET')
+    expect(posts).toHaveLength(1)
+    expect(posts[0].url).toContain('/access_tokens')
+    expect(calls.filter(c => c.url.includes('/repos/')).every(c => c.method === 'GET')).toBe(true)
   })
 
   it('never logs or embeds a token value', async () => {
     const { calls } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
     // A token in a URL is a token in a log, a proxy and a browser history.
@@ -174,24 +236,23 @@ describe('a complete, correct chain', () => {
   it('passes every link when merge SHA and deployed SHA agree', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
     expect(out).toHaveLength(6)
-    // Five links pass. The sixth CANNOT: `github_pr_checks_green` needs both the
-    // Commit Status and Check Runs APIs, and no check-runs reader exists yet.
-    // A green commit status alone is exactly the false PASS this replaced.
-    expect(out.filter(e => e.result === 'pass')).toHaveLength(5)
-    const ci = byKey(out, 'github_pr_checks_green')
-    expect(ci.result).toBe('blocked')
-    expect(ci.result).not.toBe('pass')
+    // All six now pass: the GitHub App can read BOTH check systems, so the
+    // sixth link is answerable for the first time. It became green by being
+    // read, not by being relaxed — the producer-bound policy is unchanged.
+    expect(out.every(e => e.result === 'pass')).toBe(true)
     expect(byKey(out, 'vercel_deploy_sha_matches_merge_sha').observed).toContain(MERGE_SHA)
   })
 
   it('compares the DEPLOYMENT to the merge SHA, but reads CI on the PR HEAD', async () => {
     const { calls, out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
     // Two different commits, deliberately. What SHIPPED is the merge commit, so
@@ -212,7 +273,8 @@ describe('READY on the wrong commit', () => {
   it('fails the SHA comparison even though the deployment is READY', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       // The listing has a READY production deployment — but for another commit.
       '/v6/deployments': { body: { deployments: [{ uid: 'dpl_old', readyState: 'READY',
         target: 'production', meta: { githubCommitSha: OTHER_SHA }, alias: ['x'] }] } },
@@ -230,7 +292,8 @@ describe('READY on the wrong commit', () => {
     // comparison must still be made independently rather than assumed.
     const f = fakeFetch({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody({ meta: { githubCommitSha: MERGE_SHA } }) },
     })
     const out = await withConfig(CONFIGURED,
@@ -253,7 +316,8 @@ describe('no link is inferred from another', () => {
       // GitHub populates merge_commit_sha speculatively on OPEN pull requests.
       // Trusting it would verify a deployment of a commit that never landed.
       '/pulls/40': { body: prBody({ state: 'open', merged: false, merge_commit_sha: OTHER_SHA }) },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
     expect(byKey(out, 'github_pr_merged').result).toBe('fail')
@@ -265,19 +329,21 @@ describe('no link is inferred from another', () => {
   it('green checks do not imply a merge', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody({ state: 'open', merged: false, merge_commit_sha: null }) },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
     })
-    // And a green commit status no longer implies green CI either: it is one
-    // of two sources, and the other was never read.
-    expect(byKey(out, 'github_pr_checks_green').result).not.toBe('pass')
+    // Every required CI signal is green on the head commit — and the pull
+    // request is still open. One says nothing about the other.
+    expect(byKey(out, 'github_pr_checks_green').result).toBe('pass')
     expect(byKey(out, 'github_pr_merged').result).toBe('fail')
   })
 
   it('a merge does not imply a deployment', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: { deployments: [] } },
     })
     expect(byKey(out, 'github_pr_merged').result).toBe('pass')
@@ -287,7 +353,8 @@ describe('no link is inferred from another', () => {
   it('a preview deployment never satisfies a production check', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody({ target: 'preview' }) },
     })
     expect(byKey(out, 'vercel_production_ready').result).toBe('fail')
@@ -301,7 +368,8 @@ describe('the expected merge SHA is an independent pin', () => {
   it('fails when the merged commit is not the approved one', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody({ merge_commit_sha: OTHER_SHA }) },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: { deployments: [] } },
     }, { ...CONFIGURED, FAMILJE_STUNDEN_EXPECTED_MERGE_SHA: MERGE_SHA })
     const pin = byKey(out, 'github_merge_sha_matches_expected')
@@ -313,9 +381,12 @@ describe('the expected merge SHA is an independent pin', () => {
   it('is blocked, not passed, when nothing is pinned', async () => {
     const { out } = await runChain({
       '/pulls/40': { body: prBody() },
-      '/status': { body: statusBody() },
+      '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
-    }, { ...CONFIGURED, FAMILJE_STUNDEN_EXPECTED_MERGE_SHA: undefined })
+    }, CONFIGURED, { prNumber: 40, expectedMergeSha: null })
+    // Nothing to compare against. Never PASS: a comparison with no right-hand
+    // side proves nothing, and the pin is the instance's, not the deployment's.
     expect(byKey(out, 'github_merge_sha_matches_expected').result).toBe('blocked')
   })
 })
@@ -356,7 +427,8 @@ describe('no credential means blocked, never pass', () => {
 describe('eventual consistency is bounded, and mismatch is not retried', () => {
   const routes = {
     '/pulls/40': { body: prBody() },
-    '/status': { body: statusBody() },
+    '/statuses': { body: statusBody() },
+      '/check-runs': { body: checkRunsBody() },
     '/v6/deployments': { body: { deployments: [] } },
   }
 
@@ -379,11 +451,14 @@ describe('eventual consistency is bounded, and mismatch is not retried', () => {
     // the required Check Runs were never consulted, so there is no verdict to
     // give — and crucially `success` does not become one.
     for (const state of ['pending', 'failure', 'success']) {
-      const r = await runChain({ ...routes, '/status': { body: statusBody(state) } })
+      // The check-runs source is deliberately absent from this route table, so
+      // it 404s: a half-read authority, which is what the assertion is about.
+      const r = await runChain({ ...routes, '/statuses': { body: statusBody(state) },
+        '/check-runs': { status: 503, body: {} } })
       const c = byKey(r.out, 'github_pr_checks_green')
       expect(c.result, state).not.toBe('pass')
       expect(c.result, state).toBe('blocked')
-      expect((c.detail as { sources: { check_runs: boolean } }).sources.check_runs).toBe(false)
+      expect(String((c.detail as { sources: string }).sources)).toContain('check_runs=false')
     }
   })
 

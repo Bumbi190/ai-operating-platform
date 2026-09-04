@@ -53,13 +53,20 @@
 // audit; everything else (URLs, apps, outputs, identities) is deliberately not
 // modelled, so no incidental repository data can travel with a fixture.
 
-/** GET /repos/{repo}/commits/{ref}/status — the COMBINED rollup. */
+/**
+ * GET /repos/{repo}/commits/{ref}/statuses — the RAW list.
+ *
+ * Deliberately not the combined `/status` rollup: that endpoint omits `creator`
+ * entirely, so it cannot say who wrote a status. It also collapses history,
+ * which this evaluator re-derives itself anyway.
+ */
 export interface CommitStatusPayload {
   /** The commit these statuses belong to. Individual entries carry no SHA. */
   sha?: unknown
   /** GitHub's rollup. Present, and deliberately never consulted as a verdict. */
   state?: unknown
   total_count?: unknown
+  /** Entries carry `context`, `state`, timestamps and `creator.id`. */
   statuses?: unknown
 }
 
@@ -87,6 +94,22 @@ export interface RequiredCheck {
    * that never ran satisfy a gate that exists because it must run.
    */
   accepted: readonly string[]
+  /**
+   * WHO is allowed to have produced this signal, by GitHub's numeric id.
+   *
+   * A check name is free text. Any GitHub App installed on the repository can
+   * create a check run called "Supabase Preview", and anything holding
+   * `statuses: write` can post a commit status with the context "Vercel". Name
+   * alone is therefore a label, not an identity, and a green result from the
+   * wrong producer is exactly the shape a spoof takes.
+   *
+   * Numeric ids are the authority: an App's id and a bot account's id are
+   * assigned by GitHub and cannot be claimed by anyone else. Slugs and login
+   * names CAN be renamed, so they are carried only as diagnostics.
+   */
+  producer_id: number
+  /** Human-readable corroboration. Never used to decide anything. */
+  producer_label: string
   /** Why this signal is required. Non-secret, one line. */
   reason: string
 }
@@ -114,14 +137,20 @@ export interface RequiredCheck {
 export const FAMILJE_STUNDEN_REQUIRED_CHECKS: readonly RequiredCheck[] = [
   {
     source: 'COMMIT_STATUS', identity: 'Vercel', accepted: ['success'],
+    // The `creator` of a commit status. Present on /statuses and STRIPPED by
+    // the combined /status endpoint — which is why the transport reads the
+    // former: the rollup cannot say who wrote anything.
+    producer_id: 35613825, producer_label: 'vercel[bot]',
     reason: 'The production build must have succeeded for this commit',
   },
   {
     source: 'CHECK_RUN', identity: 'Supabase Preview', accepted: ['success'],
+    producer_id: 330661, producer_label: 'supabase (GitHub App)',
     reason: 'Database and edge-function changes must have been validated',
   },
   {
     source: 'CHECK_RUN', identity: 'Vercel Preview Comments', accepted: ['success'],
+    producer_id: 8329, producer_label: 'vercel (GitHub App)',
     reason: 'The preview deployment must have completed for this commit',
   },
 ]
@@ -134,6 +163,7 @@ export type CiOutcome =
   | 'CHECKS_PENDING'
   | 'EXPECTED_CHECK_MISSING'
   | 'SHA_MISMATCH'
+  | 'UNTRUSTED_PRODUCER'
   | 'SOURCE_UNAVAILABLE'
   | 'MALFORMED_RESPONSE'
   | 'NO_REQUIRED_POLICY'
@@ -149,6 +179,7 @@ const SEVERITY: readonly CiOutcome[] = [
   'MALFORMED_RESPONSE',
   'NO_REQUIRED_POLICY',
   'SOURCE_UNAVAILABLE',
+  'UNTRUSTED_PRODUCER',
   'CHECKS_FAILED',
   'SHA_MISMATCH',
   'EXPECTED_CHECK_MISSING',
@@ -157,7 +188,8 @@ const SEVERITY: readonly CiOutcome[] = [
 ]
 
 export type CheckState =
-  | 'GREEN' | 'FAILED' | 'PENDING' | 'MISSING' | 'WRONG_SHA' | 'AMBIGUOUS'
+  | 'GREEN' | 'FAILED' | 'PENDING' | 'MISSING' | 'WRONG_SHA'
+  | 'WRONG_PRODUCER' | 'AMBIGUOUS'
 
 export interface RequiredCheckResult {
   source: CheckSource
@@ -190,6 +222,8 @@ interface Candidate {
   /** True while a check run has not completed. */
   running: boolean
   sha: string | null
+  /** GitHub's numeric id for whoever produced this result. */
+  producerId: number | null
   /** For newest-wins selection. Null when GitHub gave us nothing to order by. */
   at: number | null
 }
@@ -217,8 +251,12 @@ function parseStatuses(payload: CommitStatusPayload | null | undefined): Parsed 
     if (identity === null || word === null) return { ok: false }
     const when = str(row.updated_at) ?? str(row.created_at)
     const at = when === null ? null : Date.parse(when)
+    // `creator.id` — only /statuses carries it. A payload without it yields
+    // null, which no required producer id can ever equal.
+    const creator = isObj(row.creator) ? row.creator : null
+    const producerId = typeof creator?.id === 'number' ? creator.id : null
     items.push({
-      identity, word, running: false, sha,
+      identity, word, running: false, sha, producerId,
       at: at !== null && Number.isNaN(at) ? null : at,
     })
   }
@@ -241,8 +279,10 @@ function parseCheckRuns(payload: CheckRunsPayload | null | undefined): Parsed {
     const word = completed ? str(row.conclusion) : null
     const when = str(row.completed_at) ?? str(row.started_at)
     const at = when === null ? null : Date.parse(when)
+    const app = isObj(row.app) ? row.app : null
+    const producerId = typeof app?.id === 'number' ? app.id : null
     items.push({
-      identity, word, running: !completed, sha: str(row.head_sha),
+      identity, word, running: !completed, sha: str(row.head_sha), producerId,
       at: at !== null && Number.isNaN(at) ? null : at,
     })
   }
@@ -264,7 +304,7 @@ function selectAuthoritative(candidates: Candidate[]): Candidate | 'AMBIGUOUS' {
   const contenders = newest === null
     ? candidates
     : candidates.filter(c => c.at === newest)
-  const distinct = new Set(contenders.map(c => `${c.word}|${c.running}|${c.sha}`))
+  const distinct = new Set(contenders.map(c => `${c.word}|${c.running}|${c.sha}|${c.producerId}`))
   if (distinct.size > 1) return 'AMBIGUOUS'
   return contenders[0]
 }
@@ -336,8 +376,16 @@ export function evaluateRequiredChecks(input: EvaluateInput): CiChecksResult {
     } else if (mine.length === 0) {
       state = 'MISSING'
       found.push('EXPECTED_CHECK_MISSING')
+    } else if (mine.every(c => c.producerId !== required.producer_id)) {
+      // The name matched and the producer did not. A green result under a
+      // borrowed name is the shape a spoof takes, so it satisfies nothing —
+      // and it is reported as its own state rather than as "missing", because
+      // something DID answer and it was not who we trust.
+      state = 'WRONG_PRODUCER'
+      observed = 'produced by an untrusted identity'
+      found.push('UNTRUSTED_PRODUCER')
     } else {
-      const picked = selectAuthoritative(mine)
+      const picked = selectAuthoritative(mine.filter(c => c.producerId === required.producer_id))
       if (picked === 'AMBIGUOUS') {
         state = 'AMBIGUOUS'
         found.push('MALFORMED_RESPONSE')

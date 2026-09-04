@@ -37,7 +37,12 @@ import { computeReleaseInstantHandler } from './handlers/compute-release-instant
 import { probeAnonymousProtectedAccessHandler } from './handlers/probe-anonymous-protected-access'
 import type { ReadOnlyHandler, ReadOnlyHandlerOutput } from './handlers/types'
 import { outcomeForObservation, type ActionOutcome, type ActionPhase } from './action-outcome'
-import { readInstance, readDefinitionById, recordEvidence } from './store'
+import { readInstance, readDefinitionById, recordEvidence, listEvidence } from './store'
+import { projectGithubBinding } from './bundle/github-binding'
+import {
+  observeGithubMergeShaMatchHandler, observeGithubPrChecksGreenHandler,
+  observeGithubPrMergedHandler,
+} from './handlers/observe-github-release'
 import { observeReleaseGateHandler } from './handlers/observe-release-gate'
 import { composeMonthlyBriefHandler } from './handlers/compose-monthly-brief'
 import { rearmForAuthorization } from './rearm'
@@ -54,6 +59,9 @@ const HANDLERS: Record<ExecutableReadOnlyActionKind, ReadOnlyHandler> = {
   probe_anonymous_protected_access: probeAnonymousProtectedAccessHandler,
   observe_release_gate: observeReleaseGateHandler,
   compose_monthly_brief: composeMonthlyBriefHandler,
+  observe_github_pr_merged: observeGithubPrMergedHandler,
+  observe_github_pr_checks_green: observeGithubPrChecksGreenHandler,
+  observe_github_merge_sha_match: observeGithubMergeShaMatchHandler,
 }
 
 export type ExecutorRefusal =
@@ -355,6 +363,12 @@ export async function executeWorkflowAction(
       defKey: def.def_key,
       defVersion: def.version,
       now,
+      // The release identity comes from THIS instance's evidence and nowhere
+      // else. Read lazily: only the GitHub observations ask for it, and the
+      // handler still never touches the database itself.
+      readReleaseBinding: async () => projectGithubBinding(
+        await listEvidence(db, instance.id),
+        process.env.FAMILJE_STUNDEN_GITHUB_REPO || null),
       // G3C-3A: this handler emits several requests, so each one re-authorises.
       // Governance stays HERE, above the adapter — the adapter only asks.
       beforeAttempt: async () => {

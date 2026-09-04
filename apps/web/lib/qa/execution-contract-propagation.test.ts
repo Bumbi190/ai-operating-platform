@@ -54,6 +54,14 @@ describe('every governed spend supplies an explicit execution contract', () => {
     'lib/ai/anthropic.ts', 'lib/ai/openai-client.ts',
     'lib/media/image-client.ts', 'lib/media/elevenlabs.ts',
     'lib/media/dispatch/governed-dispatch.ts',
+    // Phase 2B-2.5. The workflow engine's governed-effect branch: the first
+    // non-media place a spend boundary is crossed, and the reason it is here is
+    // the reason every other entry is — a reviewer has looked at it. It reserves
+    // against the run's own idempotency key so a retry of one intent cannot take
+    // a second reservation, and it releases ONLY on a positive non-dispatch
+    // claim. Note what did NOT happen: no workflow module outside this branch
+    // calls the boundary, and the read-only executor path still cannot.
+    'lib/workflows/effect/effect-execution.ts',
   ]
 
   it('all runtime withGovernedSpend calls pass `execution`', () => {

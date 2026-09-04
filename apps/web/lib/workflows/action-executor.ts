@@ -45,7 +45,9 @@ import {
 } from './handlers/observe-github-release'
 import { observeReleaseGateHandler } from './handlers/observe-release-gate'
 import { composeMonthlyBriefHandler } from './handlers/compose-monthly-brief'
+import { projectScope } from '@/lib/governance/execution-stop'
 import { rearmForAuthorization } from './rearm'
+import { executeGovernedEffect } from './effect/effect-execution'
 
 // any: the Supabase client in this project has no generated DB types.
 type AnyDb = any
@@ -73,6 +75,8 @@ export type ExecutorRefusal =
   | 'no_handler'
   | 'not_ready'
   | 'fenced'
+  /** A governed effect was refused by budget BEFORE any dispatch (Phase 2B-2.5). */
+  | 'spend_refused'
 
 /**
  * What a refusal MEANS for the run. Not every refusal is the same kind of dead
@@ -98,6 +102,8 @@ export const REFUSAL_DISPOSITION: Record<ExecutorRefusal, RefusalDisposition> = 
   not_executable_family: 'permanent',
   class_mismatch:        'permanent',
   not_read_only:         'permanent',
+  // Nothing happened and nothing is owed, but the budget answer may change.
+  spend_refused:         'temporary',
   no_handler:            'permanent',
   not_ready:             'permanent',   // refined per-blocker below
   fenced:                'temporary',   // another owner has it; write nothing
@@ -214,9 +220,17 @@ export async function executeWorkflowAction(
   }
   }
   // ── Gate 2: declared executable by an executor that exists.
-  if (canonical.executor_family !== 'read_only_observation') {
+  //
+  // Phase 2B-2.5 added a second family. The refusal is unchanged for everything
+  // that is not one of the two: `not_executable` still means no executor exists,
+  // and a governed-effect kind that is NOT on the per-kind allowlist is refused
+  // here as well — declaring a family has never been permission to act.
+  const isGovernedEffect = canonical.executor_family === 'governed_effect'
+    && isGovernedEffectEnabled(run.action_kind)
+  if (canonical.executor_family !== 'read_only_observation' && !isGovernedEffect) {
     {
     const d = `"${run.action_kind}" is declared ${canonical.executor_family}`
+      + (canonical.executor_family === 'governed_effect' ? ' and is not enabled' : '')
     const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_executable_family', d)
     return { executed: false, refusal: 'not_executable_family', detail: d, disposition }
   }
@@ -231,9 +245,14 @@ export async function executeWorkflowAction(
     return { executed: false, refusal: 'class_mismatch', detail: d, disposition }
   }
   }
-  // ── Gate 4: and that agreed class must be READ_ONLY. Belt and braces: gates 2
-  //    and 3 already imply it, and this still refuses if either ever loosens.
-  if (canonical.action_class !== 'READ_ONLY' || !isExecutableReadOnly(run.action_kind)) {
+  // ── Gate 4: the OBSERVATION path is READ_ONLY and nothing else.
+  //
+  // Unchanged for observations. A governed effect is routed away further down
+  // rather than being let through this gate: the read-only surface is not
+  // widened so that effects can share it, and `HANDLERS` stays keyed by
+  // `ExecutableReadOnlyActionKind` so an effect kind there is a TYPE ERROR.
+  if (!isGovernedEffect
+      && (canonical.action_class !== 'READ_ONLY' || !isExecutableReadOnly(run.action_kind))) {
     {
     const d = `"${run.action_kind}" is not a READ_ONLY observation`
     const disposition = await finalizeRefusal(db, run.id, claimId, now, 'not_read_only', d)
@@ -242,7 +261,7 @@ export async function executeWorkflowAction(
   }
 
   const handler = HANDLERS[run.action_kind as ExecutableReadOnlyActionKind]
-  if (!handler) {
+  if (!isGovernedEffect && !handler) {
     const d = 'no handler registered'
     const disposition = await finalizeRefusal(db, run.id, claimId, now, 'no_handler', d)
     return { executed: false, refusal: 'no_handler', detail: d, disposition }
@@ -344,6 +363,55 @@ export async function executeWorkflowAction(
     const disposition = await finalizeRefusal(
       db, run.id, claimId, now, 'not_ready', preDispatch.reason)
     return { executed: false, refusal: 'not_ready', detail: preDispatch.reason, disposition }
+  }
+
+  // ── The governed-effect branch ────────────────────────────────────────────
+  // Placed HERE, not at the gates, so an effect inherits everything above it:
+  // readiness, the G3C-3B governance ordering, and the G3C-3A checkpoint that
+  // just ran. Task 8's rule — no side effect before that gate passes — is
+  // satisfied by construction rather than by the branch remembering it.
+  if (isGovernedEffect) {
+    const effect = await executeGovernedEffect({
+      db, run, claimId, now, canonical, instance, def,
+      // Constructed HERE because this is the layer that knows WHY the work is
+      // running: a claimed run reached this executor through the scheduler and
+      // the drain, with no person at a keyboard. AUTONOMOUS is therefore the
+      // reading under which the global automation pause binds — which is the
+      // conservative one, and the honest one.
+      execution: {
+        context: 'AUTONOMOUS',
+        scope: projectScope({ projectId: run.project_id }),
+      },
+    })
+    // The branch decided WHAT is true; this file remains the only writer of
+    // automated evidence, which a guard asserts by naming the exact files
+    // permitted to call `recordEvidence`.
+    if (effect.evidence) {
+      try {
+        await recordEvidence(db, {
+          instanceId: instance.id,
+          state: run.workflow_from_state,
+          checkKey: effect.evidence.checkKey,
+          result: effect.evidence.result,
+          source: 'automated',          // hardcoded: a handler cannot claim attestation
+          observation: { runId: run.id },
+          detail: {
+            ...effect.evidence.detail,
+            action_kind: run.action_kind,
+            expected: effect.evidence.expected,
+            observed: effect.evidence.observed,
+            run_id: run.id,
+          },
+        })
+      } catch {
+        // The effect happened and our own audit did not. That is
+        // `confirmed_evidence_failed` territory, and the branch already set the
+        // phase and outcome — this must not be laundered into a clean result.
+        await fencedActionUpdate(db, run.id, claimId, { reconciliation_required: true })
+        return { ...effect, detail: `${effect.detail} — evidence write failed` }
+      }
+    }
+    return effect
   }
 
   // ── Phase: a READ_ONLY observation still records that it started, so the
@@ -513,7 +581,7 @@ export async function executeWorkflowAction(
  * fencing contract the drain uses, applied here so a reclaimed run cannot be
  * written by the invocation that lost it.
  */
-async function fencedActionUpdate(
+export async function fencedActionUpdate(
   db: AnyDb, runId: string, claimId: string | null, payload: Record<string, unknown>,
 ): Promise<{ fenced: boolean }> {
   if (!claimId) {

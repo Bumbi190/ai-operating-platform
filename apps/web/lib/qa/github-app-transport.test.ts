@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { generateKeyPairSync } from 'node:crypto'
+import { createVerify, generateKeyPairSync } from 'node:crypto'
 import { join } from 'node:path'
 
 import {
@@ -34,7 +34,7 @@ import type { WorkflowDef, WorkflowEvidence, WorkflowInstance, WorkflowTransitio
 
 // ── Synthetic credential ─────────────────────────────────────────────────────
 
-const { privateKey: KEY } = generateKeyPairSync('rsa', {
+const { privateKey: KEY, publicKey: PUBLIC_KEY } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -146,6 +146,34 @@ describe('1-11. GitHub App authentication', () => {
     expect(authHeader.startsWith('Bearer ')).toBe(true)
     expect(authHeader.split('.')).toHaveLength(3)
     expect(authHeader).not.toContain('PRIVATE KEY')
+  })
+
+  it('1b. the JWT signature actually VERIFIES, and carries the right claims', async () => {
+    // Counting three segments proves only that a string has two dots in it. A
+    // signature can be structurally present and cryptographically meaningless —
+    // GitHub answers "a JSON web token could not be decoded" and the shape test
+    // still passes. So the signature is verified here against the matching
+    // public key, which is the only assertion that can fail for the real reason.
+    configure()
+    const f = fakeFetch({})
+    await getInstallationToken({ fetchImpl: f.impl })
+    const jwt = (f.calls[0].headers as Record<string, string>).Authorization.slice('Bearer '.length)
+    const [h, p, sig] = jwt.split('.')
+
+    const verifier = createVerify('RSA-SHA256')
+    verifier.update(`${h}.${p}`)
+    verifier.end()
+    expect(verifier.verify(PUBLIC_KEY, Buffer.from(sig, 'base64url'))).toBe(true)
+
+    const header = JSON.parse(Buffer.from(h, 'base64url').toString())
+    const claims = JSON.parse(Buffer.from(p, 'base64url').toString())
+    expect(header).toEqual({ alg: 'RS256', typ: 'JWT' })
+    expect(String(claims.iss)).toBe(APP_ID)
+    // Backdated against clock skew, and well inside GitHub's 10-minute ceiling.
+    const now = Math.floor(Date.now() / 1000)
+    expect(claims.iat).toBeLessThanOrEqual(now)
+    expect(claims.exp - claims.iat).toBeLessThanOrEqual(600)
+    expect(claims.exp).toBeGreaterThan(now)
   })
 
   it('2/3/4. malformed app id, installation id or key fails closed', async () => {

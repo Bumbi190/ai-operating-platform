@@ -73,8 +73,12 @@ describe('vendored definition — parses', () => {
     // Phase 1B-2 added a second Omnira-authored definition. The pinned property
     // is unchanged and is asserted above: exactly ONE definition is copied from a
     // product repo. Everything else is Omnira describing its own procedures.
+    // Phase 2B-1 added the governed-effect proof. The pinned property is the
+    // provenance split, and it is unchanged: everything Omnira authored describes
+    // Omnira's own procedures, and nothing else is copied from a product repo.
     expect(all.filter(d => d.provenance === 'authored_here').map(d => d.def_key).sort())
-      .toEqual(['omnira.probe-validation', 'omnira.release-gate-proof'])
+      .toEqual(['omnira.execution-proof', 'omnira.probe-validation',
+                'omnira.release-gate-proof'])
   })
 
   it('declares all 19 states in canonical order', () => {

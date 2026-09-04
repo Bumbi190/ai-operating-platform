@@ -1189,6 +1189,140 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 
 ---
 
+## Beslut M — Recorded-first orkestrering av ContractSelectionDecision
+
+**Stänger:** GATE-08C-3B.3 DECISION-ID MINTING GAP, GATE-08C-3B.3 DECIDED-AT OWNERSHIP
+GAP, GATE-08C-3B.3 HISTORICAL-CALENDAR-PIN INPUT GAP, GATE-08C-3B.3 POST-RECORD RETURN
+GAP, GATE-08C-3B.3 RECORD-DETERMINISM WINDOW GAP
+**Karaktär:** Ny kanonisk orkestreringssemantik. Ingen befintlig regel upphävs, inget
+befintligt fält byter innebörd, ingen befintlig kod ändras. Beslut K:s tiofältsform och
+Beslut L:s lagersemantik är oförändrade.
+
+Beslut K §10 sköt uttryckligen upp identitetsfrågan: *"Vem som till slut myntar
+identiteten i orkestreringslagret avgörs inte här."* Beslut L §9 sköt uttryckligen upp
+återfallet: *"C3B.2 utför inte återfallet självt. Det tillhör orkestreringen."*
+
+Båda uppskjutningarna landar i samma lager. En stängningsrevision inför C3B.3 fann att
+**tre av orkestrerarens indata saknade kanonisk ägare** — den pinnade kalendern,
+`decisionId` och `decidedAt` — att returvärdet efter inspelning var odefinierat, och att
+ett fönster ingen tidigare text beskrev stod öppet: vad som gäller om processen dör
+**mellan** materialisering och inspelning.
+
+Revisionen fann också två fakta som gjorde besluten enklare än de såg ut. `newId()`
+anropas **noll gånger** i hela `apps/web/lib/trading/` — husmönstret är anroparlämnad
+eller kanoniskt härledd identitet, aldrig myntning inuti ett lager. Och `replay/clock.ts`
+äger redan klockgränsen med uttalat skäl: väggklockan får inte driva in i en
+deterministisk beräkning, för *"en replay som inte kan reproducera sitt eget resultat är
+ingen replay."*
+
+**Canonical betydelse:**
+
+```
+orkestrering
+  = recorded-first komposition av upplösning, materialisering och inspelning
+
+≠ ny identitet          (anroparen äger decisionId)
+≠ ny tid                (anroparen äger decidedAt)
+≠ ny kalender           (anroparen pinnar explicit)
+≠ live-kontraktsval     (separat gräns under §24)
+```
+
+### M1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Recorded-First Contract Selection
+Orchestration – Canonical v1.0.md` skapad. Den låser:
+
+- **M1 · `decisionId` ägs av anroparen.** C3B.3 myntar aldrig ett
+  `ContractSelectionDecisionId` — inget `newId()`, ingen `randomUUID()`, ingen hash-,
+  namn-, tidsstämpel- eller kontraktshärledd identitet. Identiteten är anroparägd
+  återfallsmetadata och behövs **enbart** vid ett NOT_FOUND-återfall; en lyckad inspelad
+  uppslagning kräver **inget nytt `decisionId`** och förbrukar noll slumpmässighet.
+  Ingen deterministisk ID-formel införs, eftersom Beslut K medvetet lämnade identiteten
+  ogenomskinlig.
+- **M2 · `decidedAt` är beslutsattributionsinstansen.** Den betecknar den scenario- eller
+  replayinstans då anroparen tillskriver valet att ha fattats — inte lagringstid, inte
+  `recordedAt`, inte väggklocka, inte processtid, inte providerns mottagningstid.
+  **C3B.3 är klockfri** i enlighet med `replay/clock.ts`. `decidedAt = at` kanoniseras
+  **inte** som automatisk regel: en anropare får avsiktligt lämna dem lika, men C3B.3
+  antar eller härleder aldrig likheten själv. För samma historiska avsikt ska `decidedAt`
+  vara stabil över omförsök, och stavningen normaliseras aldrig.
+- **M3 · Den explicita kalendern är pinningen.** En explicit lämnad, oföränderlig
+  `ContractCalendar` **är** Canonical v1.0 §10:s historiska kalenderpinning i v1. Ingen
+  `HistoricalCalendarPin`, `CalendarPin`, `CalendarRepository` eller versionsladdare
+  införs — kalendern är oföränderlig, bär `calendarVersion`, och det finns ingen ambient,
+  aktuell eller standardkalender i runtime att falla tillbaka på. `calendarVersion` flödar
+  enbart genom resolutionen; anroparen lämnar aldrig en andra versionsparameter.
+- **M4 · Determinismens omfång.** Canonical v1.0 §26:s determinism omfattar **valets
+  innehåll** — root, kontrakt, intervall, versioner, evidence och reasons — för samma
+  kanoniska indata. Den kräver **inte** att en ogenomskinlig, ännu inte inspelad
+  `decisionId` överlever en krasch när inget beslut någonsin lyckats spelas in. Före
+  lyckad inspelning finns ingen kanonisk post; efter lyckad inspelning är den lagrade
+  posten den oföränderliga replaysanningskällan. Ett återfallsförsök efter krasch får
+  därför lämna ett nytt `decisionId` — men **omstarten måste först anropa
+  `store.find(root, at)`**, vilket också stänger fönstret för förlorad kvittens: lyckades
+  skrivningen i själva verket ger uppslagningen FOUND och all ny metadata ignoreras.
+- **M5 · Återläsning efter inspelning.** Efter RECORDED läser C3B.3 om via
+  `store.find(root, at)` och returnerar det **lagrade** beslutet, aldrig det pre-lagrade
+  materialiserade objektet. Det håller båda framgångsvägarna enhetliga och gör Beslut L:s
+  sanningskälla till den enda auktoriteten. Ger uppslagningen då NOT_FOUND eller
+  INVARIANT_VIOLATION failar C3B.3 closed.
+
+**Härledd återfallsregel.** Återfallet är ett **valfritt, inert värdeobjekt** —
+`{ calendar, decisionId, decidedAt }` — och **ingen callback, thunk eller factory**. En
+lat callback avvisas uttryckligen: den kan dölja `Date.now()`, `randomUUID()`,
+provideranrop eller kalenderuppslagning **utanför** det bevakade paketet, så källvakterna
+skulle bevisa att C3B.3 är klockfri medan orenheten satt ett anrop bort. Latheten uppnås
+i stället operativt: anropa utan återfall, och vid `HISTORICAL_FALLBACK_REQUIRED`
+förbered explicita värden och anropa igen. **Varje anrop börjar om med
+`store.find(root, at)`**, så ett återfall kringgår aldrig recorded-first och en
+kapplöpning avgörs alltid till den inspelade postens fördel.
+
+### M2 — Vad Beslut M INTE innebär
+
+GATE-08 flyttas **inte**. Beslut M stänger orkestreringssemantik, inte gaten.
+
+C3B.3-runtime är **inte** implementerad. Beslut M ändrar ingen TypeScript-fil. Ingen
+orkestrerare existerar i kod.
+
+**Live-kontraktsval definieras inte.** Canonical v1.0 §24 gäller oförändrat: historik och
+live är skilda kontrakt och ett symmetriskt gemensamt gränssnitt är förbjudet. §10:s krav
+på pinnad kalenderversion utvidgas inte till live-handel.
+`LIVE CONTRACT SELECTION ORCHESTRATION` förblir en **separat framtida gräns**.
+
+Beslut M öppnar **inte** journalfrågan igen: ingen `EVENT_TYPES`- eller
+`EVENT_ENTITY_TYPES`-medlem, ingen `TradingEvent`, ingen `ReplayEvent`-projektion och
+ingen revisionshändelse tillkommer. Beslut L förblir auktoritativ och lagret förblir
+replayens sanningskälla.
+
+Beslut M föreskriver **ingen** databas, inget schema och ingen lagringsteknik; C3B.3 talar
+enbart med `ContractSelectionDecisionStore`. Ingen transaktion, lås, CAS eller
+distribuerad mutex kanoniseras — lagrets fail-closed-semantik räcker för v1, och
+beständiga adaptrar kan behöva starkare atomicitet senare. Ingen teknisk felvokabulär
+införs: semantiska domänutfall förblir resultatvarianter, ett avvisat löfte förblir ett
+undantag.
+
+Följande förblir uttryckligen öppna eller uppskjutna:
+`GATE-08C-3B DECISION-RECORDED-AT GAP` (uppskjuten, icke-blockerande),
+`GATE-08C-3B DECISION-STORE ORDERING GAP` (uppskjuten, icke-blockerande),
+`GATE-08C-3B NONEMPTY-EVIDENCE VOCABULARY GAP` (öppen, uppskjuten),
+`GATE-08C-3A SOURCE-RESULT-SHAPE GAP` (öppen — ingen candle-källa, paginering, uttömning,
+prenumeration eller backpressure definieras här, och C3C berörs inte),
+`EFFECTIVE-TO NULL GENERAL SEMANTICS` (reserverad),
+`GATE-08C-2A DST-BOUNDARY GAP` och `GATE-08C-2B UNEXPECTED-MINUTE GAP` (öppna,
+fail-closed) samt `GATE-08C-2B VOLUME POLICY` (härledd).
+
+Market Data & Contract Lifecycle Canonical v1.0, Contract Selection Reason Code Canonical
+v1.0, Contract Selection Decision Materialisation Canonical v1.0 och Contract Selection
+Decision Recording & Replay Canonical v1.0 skrivs **inte** om. Beslut M är ett fristående
+tillägg under deras låsta text.
+
+GATE-01, GATE-02, GATE-03, GATE-04, GATE-06, GATE-07, GATE-09, GATE-12, GATE-13, GATE-14
+och GATE-17 berörs inte.
+
+Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -1234,3 +1368,6 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 | `specifications/market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | L1 — ny, inspelnings- och replaysemantik |
 | `specifications/README.md` | L1 — indexrad |
 | `SOURCE_OF_TRUTH.md` | L1 — kanonisk källa, inspelningsluckor stängda för C3B.2 |
+| `specifications/market-data/…Recorded-First Contract Selection Orchestration – Canonical v1.0.md` | M1 — ny, recorded-first orkestreringssemantik |
+| `specifications/README.md` | M1 — indexrad |
+| `SOURCE_OF_TRUTH.md` | M1 — kanonisk källa, orkestreringsluckor stängda för C3B.3 |

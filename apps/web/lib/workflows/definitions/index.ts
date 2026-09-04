@@ -25,6 +25,7 @@ import rawFamiljeStundenMonthlyReleaseV1 from './familje-stunden.monthly-release
 import rawFamiljeStundenMonthlyReleaseV2 from './familje-stunden.monthly-release.v2.json'
 import rawOmniraProbeValidationV1 from './omnira.probe-validation.v1.json'
 import rawOmniraReleaseGateProofV1 from './omnira.release-gate-proof.v1.json'
+import rawOmniraExecutionProofV1 from './omnira.execution-proof.v1.json'
 import { computeDefHash, parseWorkflowSpec } from '../spec'
 import type { WorkflowSpec } from '../types'
 
@@ -92,6 +93,16 @@ const VENDORED: VendorEntry[] = [
     provenance: 'vendored_upstream',
   },
   {
+    // Omnira's governed-effect proof. Phase 2B-1. Authored here for the same
+    // reason the release-gate proof is: proving that Omnira can govern an
+    // irreversible act must not require a product state to become live.
+    raw: rawOmniraExecutionProofV1,
+    source_repo: 'ai-operating-platform',
+    source_path: 'apps/web/lib/workflows/definitions/omnira.execution-proof.v1.json',
+    source_sha256: '81aecb5b986dca76c443d09f8b331d6c8e4384d2be3da101e011721c1706137d',
+    provenance: 'authored_here',
+  },
+  {
     // Omnira's own capability test. Deliberately NOT attributed to
     // Familje-Stunden: it describes no release and owns no product process.
     raw: rawOmniraProbeValidationV1,
@@ -157,3 +168,4 @@ export function findVendoredDefinition(defKey: string, version: number): Vendore
 
 export const FAMILJE_STUNDEN_MONTHLY_RELEASE = 'familje-stunden.monthly-release'
 export const OMNIRA_RELEASE_GATE_PROOF = 'omnira.release-gate-proof'
+export const OMNIRA_EXECUTION_PROOF = 'omnira.execution-proof'

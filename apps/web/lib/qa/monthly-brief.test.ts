@@ -101,8 +101,9 @@ describe('the brief is derived from the canonical contract', () => {
       expect(Object.keys(b)).not.toContain(forbidden)
     }
     expect(Object.keys(b).sort()).toEqual([
-      'def_key', 'def_version', 'ebook_pages', 'month_key', 'page_audio_clips',
-      'page_structure', 'release_at_utc', 'schema', 'theme', 'version', 'voice',
+      'audience', 'def_key', 'def_version', 'ebook_pages', 'language', 'month_key',
+      'page_audio_clips', 'page_structure', 'release_at_utc', 'schema', 'theme',
+      'version', 'voice',
     ])
   })
 })

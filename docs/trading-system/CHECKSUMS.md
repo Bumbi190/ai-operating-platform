@@ -50,6 +50,7 @@ baa8f819be69000dfc724858afde4249f4953fccc8fc84f34a73a36eeadb222a  book/final/Omn
 95cbd2dabe8e53a6d19cd1eb17137a10ab5a2dfac3229228c0b92fc0f16cadf4  specifications/market-data/Omnira Trading System – Contract Selection Reason Code – Canonical v1.0.md
 2c110543bcd1c351f9b68d6c67596a687a91cb613f718f5dcbf2a8943d2e643f  specifications/market-data/Omnira Trading System – Contract Selection Decision Materialisation – Canonical v1.0.md
 16f2f706c3bdcdf7e5881380ab216b3434caca440f1f29ca7513c84ed9aa1d2a  specifications/market-data/Omnira Trading System – Contract Selection Decision Recording & Replay – Canonical v1.0.md
+181e39ecd1a1bff6d443b72c3666e9844b27e7d422d8178b18ddeaa85c20a845  specifications/market-data/Omnira Trading System – Recorded-First Contract Selection Orchestration – Canonical v1.0.md
 69e8198dd4525a6c015c7c44d77a70d8d6a2e10d0c1d58f4222893f3d67e4a39  specifications/execution-provider/Omnira Trading System – Execution Provider Adapter – Level 1 Read Only – Canonical v1.2.md
 8a36a8e431addc2c4c021f767bdd9ebb5e74153621a427c5f9289e1621c19ecb  specifications/execution-provider/Omnira Trading System – Provider Connectivity Reason Codes – Canonical v1.0.md
 9f8dc9bd5791f3d35434352dc6c51db61f66b447b3519928963c9edc4645bfa7  specifications/data-model/Omnira Trading System – Datamodell v0.1.md
@@ -85,12 +86,12 @@ d6807ac15c5e0d2acae3b5ca6059306d82b964d9cf9119ba11e9e358fce472a0  book/chapters/
 ```
 89dbc3a0e4d8f9f72a0a921990e55bb7f3fe7f3a6fae3aa5746d1ae0fe23dd24  research/Provider Evaluation – Futures Execution – 2026-08-28.md
 304d21e6e367dfe9e29f8422b45e270b80153fc398d8436aef918b6d4b18e68f  research/Provider Protocol och Session Integration – Design v0.1.md
-081f761fc57ea75a09447c923855f706f3345133cc9f32620f12e2208135f7f2  reviews/Canonical Amendments v1.0.md
+b39e185ffac7f27a898bb3017c57ebcd9e781c8a97068823a0fb2083124b6b1c  reviews/Canonical Amendments v1.0.md
 d9b30469e8b1776d121377cd19b739e9eeb3907774f73d8601ae2f0e38c840c7  reviews/Canonical Review v1.0.md
 e768cd6f008845493ba224b828ae6dfbfcb5817c00fb27ad36d39d6fb069b877  reviews/Contradiction Register v1.0.md
 f46786b298372768791dce2e413e2a74ea227200f6a4b2e83687bfc157361a45  reviews/Open Implementation Gates v1.0.md
 054e263e876c534d57f7b5be288c4c7bfed07ad833b2ecce6c6aa3c781cb8449  README.md
-2c6678321dd430327eb4c5cc10a13fc7f7b479f4a7f04427bda4df00c13776ea  SOURCE_OF_TRUTH.md
+49f35703053a141fcb776420efde16ff695f50ed184cd3ea2da81c835f7b14aa  SOURCE_OF_TRUTH.md
 ```
 
 ## Historiska original (.docx, oförändrade)

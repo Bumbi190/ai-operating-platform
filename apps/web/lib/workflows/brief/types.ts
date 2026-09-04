@@ -33,6 +33,18 @@ export const MONTHLY_BRIEF_SCHEMA = 'omnira.familje-stunden.monthly-brief' as co
 export const MONTHLY_BRIEF_VERSION = 1 as const
 
 /**
+ * Who the month is for.
+ *
+ * A product audience, not a per-sentence optimisation target — the canonical
+ * story contract is explicit that it does not require every sentence to work
+ * equally for a three-year-old and an eight-year-old.
+ */
+export interface MonthlyBriefAudience {
+  readonly min_age: number
+  readonly max_age: number
+}
+
+/**
  * How a month's 18 pages are actually composed.
  *
  * THE FIELD THIS REPLACED WAS A DEFECT. v1 of this type carried a single
@@ -78,6 +90,14 @@ export interface MonthlyBriefV1 {
   readonly month_key: string
   /** From `canonical.year_order_2026`. A month absent from it has no theme and is refused. */
   readonly theme: string
+  /**
+   * From `canonical.language`. Stated rather than implied: the surrounding
+   * material is Swedish throughout, but a generator must be told, not left to
+   * infer it from the theme string it was handed.
+   */
+  readonly language: string
+  /** From `canonical.audience`. */
+  readonly audience: MonthlyBriefAudience
   /** From `computeReleaseInstant` — the same function `compute_release_instant` runs. */
   readonly release_at_utc: string
   /**
@@ -108,19 +128,31 @@ export interface MonthlyBriefV1 {
  *                         rule says how it is derived from the theme.
  *   locale              — the document is Swedish throughout and the voice is a
  *                         Swedish voice, but no canonical field states it.
- *   language, audience  — canonical in workflow definition v2, but deliberately
- *                         not yet surfaced here: this phase corrects page
- *                         semantics only. Exposing them is a further change to
- *                         this payload and therefore to `brief_hash`.
+ *   theme_slug          — the `planning` state outputs a `slug`, but no canonical
+ *                         rule says how it is derived from the theme.
  *
  * Adding any of these to v2 means adding the authority to the canonical
  * contract FIRST, which changes `def_hash` and correctly invalidates every
  * brief composed under v1.
  */
 export const MONTHLY_BRIEF_V1_OMISSIONS = [
-  'activity_count', 'coloring_page_count', 'checklist', 'diploma',
-  'theme_slug', 'locale',
+  'activity_count', 'coloring_page_count', 'checklist', 'diploma', 'theme_slug',
 ] as const
+
+/**
+ * ── THE GENERATOR-FACING PAYLOAD IS NOW COMPLETE AND FROZEN ─────────────────
+ *
+ * With `language`, `audience` and `page_structure` in place, every product
+ * requirement a story generator needs is carried and hashed. Treat this payload
+ * as FROZEN for StoryV1 work.
+ *
+ * Changing it changes `brief_hash`, and once a story has been generated against
+ * a brief that hash is what binds the two together. Correcting it in place was
+ * defensible only while production held zero brief identities — a fact that was
+ * PROVEN, not assumed, and which stops being true the moment the first brief is
+ * composed. After that, a change here is a schema-version change, not an edit.
+ */
+export const MONTHLY_BRIEF_V1_FROZEN_AFTER = 'Phase 2B-0.6' as const
 
 /** A canonical contract that cannot answer the question asked of it. */
 export class MonthlyBriefContractError extends Error {

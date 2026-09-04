@@ -20,7 +20,8 @@ import { canonicalJson } from '@/lib/atlas/mission/binding'
 import { computeReleaseInstant, isCanonicalMonthKey } from '../adapters/familje-stunden/instant'
 import {
   MONTHLY_BRIEF_SCHEMA, MONTHLY_BRIEF_VERSION, MonthlyBriefContractError,
-  type MonthlyBriefV1, type MonthlyBriefPageStructure, type MonthlyBriefVoice,
+  type MonthlyBriefAudience, type MonthlyBriefV1, type MonthlyBriefPageStructure,
+  type MonthlyBriefVoice,
 } from './types'
 
 /** The canonical keys this composer reads. Named once so a typo is not a silent omission. */
@@ -29,6 +30,8 @@ const CANONICAL_KEYS = {
   ebookPages: 'ebook_pages',
   audioClips: 'page_audio_clips',
   pageStructure: 'page_structure',
+  language: 'language',
+  audience: 'audience',
   voice: 'voice',
 } as const
 
@@ -99,6 +102,38 @@ function readPageStructure(
     )
   }
   return structure
+}
+
+/**
+ * The audience band.
+ *
+ * Both ends are required and ordered. A contract that declares only one end, or
+ * an inverted band, cannot describe an audience and is refused rather than
+ * repaired — a silently widened band would change what "age-appropriate" means
+ * for every page generated against it.
+ */
+function readAudience(
+  canonical: Record<string, unknown>, monthKey: string,
+): MonthlyBriefAudience {
+  const raw = canonical[CANONICAL_KEYS.audience]
+  if (!isPlainObject(raw)) {
+    throw new MonthlyBriefContractError(
+      'canonical_audience_missing', monthKey,
+      `canonical.${CANONICAL_KEYS.audience} must be an object`,
+    )
+  }
+  const min = requirePositiveInt(raw.min_age, monthKey, `${CANONICAL_KEYS.audience}.min_age`)
+  const max = requirePositiveInt(raw.max_age, monthKey, `${CANONICAL_KEYS.audience}.max_age`)
+  if (min > max) {
+    throw new MonthlyBriefContractError(
+      'canonical_audience_inverted', monthKey,
+      `canonical.${CANONICAL_KEYS.audience}: min_age (${min}) exceeds max_age (${max})`,
+    )
+  }
+  // The canonical block also carries a Swedish prose `description`. It is a label
+  // for a human and is deliberately NOT carried into the hashed payload: rewording
+  // it must not change the identity of a product requirement that has not moved.
+  return { min_age: min, max_age: max }
 }
 
 /**
@@ -209,6 +244,8 @@ export function composeMonthlyBrief(
     month_key: monthKey,
     theme,
     release_at_utc: releaseAtUtc,
+    language: requireText(canonical[CANONICAL_KEYS.language], monthKey, CANONICAL_KEYS.language),
+    audience: readAudience(canonical, monthKey),
     page_structure: pageStructure,
     ebook_pages: ebookPages,
     page_audio_clips: audioClips,

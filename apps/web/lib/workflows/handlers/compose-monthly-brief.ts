@@ -86,6 +86,9 @@ export const composeMonthlyBriefHandler: ReadOnlyHandler = async (
         // The queryable summary. Scalars only, per the handler contract.
         month_key: brief.month_key,
         theme: brief.theme,
+        language: brief.language,
+        audience_min_age: brief.audience.min_age,
+        audience_max_age: brief.audience.max_age,
         release_at_utc: brief.release_at_utc,
         // Both numbers, named. A consumer must never have to infer which is which:
         // total includes the cover and the closing page; content is what a story

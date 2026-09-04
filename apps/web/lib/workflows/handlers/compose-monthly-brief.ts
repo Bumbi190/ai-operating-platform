@@ -75,7 +75,8 @@ export const composeMonthlyBriefHandler: ReadOnlyHandler = async (
       expected: EXPECTED,
       observed:
         `Monthly Brief v${brief.version} for ${brief.month_key} ` +
-        `("${brief.theme}", ${brief.page_count} pages) — ${briefHash}`,
+        `("${brief.theme}", ${brief.page_structure.content_pages} content pages ` +
+        `of ${brief.page_structure.total_pages} total) — ${briefHash}`,
       authoritativeSystem: null,          // nothing external was consulted
       detail: {
         // The identity a later generation action binds to.
@@ -86,7 +87,13 @@ export const composeMonthlyBriefHandler: ReadOnlyHandler = async (
         month_key: brief.month_key,
         theme: brief.theme,
         release_at_utc: brief.release_at_utc,
-        page_count: brief.page_count,
+        // Both numbers, named. A consumer must never have to infer which is which:
+        // total includes the cover and the closing page; content is what a story
+        // generator writes.
+        total_pages: brief.page_structure.total_pages,
+        content_pages: brief.page_structure.content_pages,
+        cover_pages: brief.page_structure.cover_pages,
+        closing_pages: brief.page_structure.closing_pages,
         ebook_pages: brief.ebook_pages,
         page_audio_clips: brief.page_audio_clips,
         voice_id: brief.voice.id,

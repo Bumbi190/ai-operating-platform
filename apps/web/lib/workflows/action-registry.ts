@@ -130,6 +130,28 @@ export const ACTION_REGISTRY = {
     description: 'Read the authoritative month_releases row presence and release_at.',
   },
 
+  /**
+   * Compose the canonical Monthly Brief for the instance's month.
+   *
+   * READ_ONLY on the repository's own terms rather than by analogy: it consults
+   * no external system, holds no credential, spends nothing, writes nothing but
+   * the evidence every observation writes, and running it twice produces the
+   * same bytes. That is `compute_release_instant`'s profile exactly, and the
+   * class table — not this comment — decides what it may do.
+   *
+   * It shares the `planning` state with `compute_release_instant` and does NOT
+   * compete with it: both derive the release instant from the one
+   * `computeReleaseInstant` function, so the two observations cannot disagree.
+   * The brief answers a different question — what the month REQUIRES — and is
+   * the input contract later production states will be measured against.
+   */
+  compose_monthly_brief: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'planning' }],
+    description: 'Derive the canonical Monthly Brief v1 from the pinned contract (no I/O).',
+  },
+
   // ── Declared for future use. Metadata only: NOT executable. ───────────────
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the

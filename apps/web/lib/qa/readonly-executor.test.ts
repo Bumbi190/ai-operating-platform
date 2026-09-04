@@ -24,10 +24,12 @@ const base = { state: 'planning', defKey: 'familje-stunden.monthly-release', def
 // ── Closed surface ──────────────────────────────────────────────────────────
 
 describe('the execution surface is closed', () => {
-  it('exactly two kinds are executable today — both READ_ONLY', () => {
-    // Raised one kind at a time: PR9e compute_release_instant, PR9h the probe.
+  it('exactly four kinds are executable today — all READ_ONLY', () => {
+    // Raised one kind at a time: PR9e compute_release_instant, PR9h the probe,
+    // Phase 1B observe_release_gate, Phase 2A compose_monthly_brief.
     expect(executableActionKinds()).toEqual([
-      'compute_release_instant', 'observe_release_gate', 'probe_anonymous_protected_access',
+      'compose_monthly_brief', 'compute_release_instant', 'observe_release_gate',
+      'probe_anonymous_protected_access',
     ])
   })
 

@@ -22,6 +22,7 @@
  */
 
 import rawFamiljeStundenMonthlyReleaseV1 from './familje-stunden.monthly-release.v1.json'
+import rawFamiljeStundenMonthlyReleaseV2 from './familje-stunden.monthly-release.v2.json'
 import rawOmniraProbeValidationV1 from './omnira.probe-validation.v1.json'
 import rawOmniraReleaseGateProofV1 from './omnira.release-gate-proof.v1.json'
 import { computeDefHash, parseWorkflowSpec } from '../spec'
@@ -71,6 +72,23 @@ const VENDORED: VendorEntry[] = [
     source_repo: 'familje-stunden-v2',
     source_path: 'docs/MONTHLY_RELEASE_WORKFLOW_V1.yaml',
     source_sha256: '88d9cc31fe57181e974d1e37c8968eee40bc8cc11e1745fe0a85205e98fa1bed',
+    provenance: 'vendored_upstream',
+  },
+  {
+    // v2 adds canonical STORY authority — language, audience, page structure and
+    // content-page text density — plus pointers to the story and character
+    // contracts. Upstream merge 3aaffc1 (familje-stunden-v2 PR #63).
+    //
+    // A NEW VERSION, never an edit: v1 is registered in production and the entry
+    // above is untouched. v2's state graph is deliberately IDENTICAL to v1 —
+    // same 19 states, same ids, same automated_actions — because
+    // `assertRegistryMatchesDefinition` resolves a placement by `def_key` alone.
+    // Two versions whose states diverged would make that lookup's answer depend
+    // on array order.
+    raw: rawFamiljeStundenMonthlyReleaseV2,
+    source_repo: 'familje-stunden-v2',
+    source_path: 'docs/MONTHLY_RELEASE_WORKFLOW_V2.yaml',
+    source_sha256: '0cfd18242b8bdc3a285ccca164b6a89d1a508dd54c57a63f9202d566b7ea1e76',
     provenance: 'vendored_upstream',
   },
   {

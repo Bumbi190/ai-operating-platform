@@ -58,14 +58,18 @@ describe('vendored definition — provenance', () => {
 })
 
 describe('vendored definition — parses', () => {
-  it('loads without throwing; Familje-Stunden is the only VENDORED_UPSTREAM one', () => {
+  it('loads without throwing; Familje-Stunden is the only VENDORED_UPSTREAM source', () => {
     const all = loadVendoredDefinitions()
     // PR9h added an Omnira-authored validation definition alongside it. The
     // property worth pinning is not the count but the provenance split: exactly
-    // one definition is copied from a product repo, and it is this one.
+    // one PRODUCT REPO supplies definitions, and it is this one.
     const upstream = all.filter(d => d.provenance === 'vendored_upstream')
-    expect(upstream).toHaveLength(1)
-    expect(upstream[0].def_key).toBe('familje-stunden.monthly-release')
+    // Phase 2B-0 vendored v2 alongside v1. The split is unchanged — one repo,
+    // one def_key — so the assertion pins the SOURCE rather than a version count,
+    // which is what the paragraph above always meant.
+    expect([...new Set(upstream.map(d => d.source_repo))]).toEqual(['familje-stunden-v2'])
+    expect([...new Set(upstream.map(d => d.def_key))]).toEqual(['familje-stunden.monthly-release'])
+    expect(upstream.map(d => d.version).sort()).toEqual([1, 2])
     // Phase 1B-2 added a second Omnira-authored definition. The pinned property
     // is unchanged and is asserted above: exactly ONE definition is copied from a
     // product repo. Everything else is Omnira describing its own procedures.

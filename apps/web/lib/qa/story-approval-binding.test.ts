@@ -24,7 +24,7 @@ import {
   STORY_APPROVAL_PREREQUISITES, type StoryApprovalSubject,
 } from '@/lib/workflows/approval/story-identity'
 import { FAMILJE_STUNDEN_CHECKS } from '@/lib/workflows/adapters/familje-stunden/checks'
-import { ACTION_REGISTRY } from '@/lib/workflows/action-registry'
+import { ACTION_REGISTRY, GOVERNED_EFFECT_ENABLED_KINDS } from '@/lib/workflows/action-registry'
 
 const DEF_KEY = 'familje-stunden.monthly-release'
 const v1 = () => findVendoredDefinition(DEF_KEY, 1)!
@@ -223,11 +223,15 @@ describe('the story approval contract is declared, not yet wired', () => {
 // ── C. Nothing else moved ───────────────────────────────────────────────────
 
 describe('Phase 2B-0.5 changed no execution surface', () => {
-  it('ExecutorFamily is unchanged — still two values', () => {
-    const src = require('fs').readFileSync(
-      require('path').join(process.cwd(), 'lib/workflows/action-registry.ts'), 'utf8')
-    expect(src).toMatch(
-      /export type ExecutorFamily = 'read_only_observation' \| 'not_executable'/)
+  it('ExecutorFamily gained governed_effect in Phase 2B-1, and nothing else', () => {
+    // This pin was written when two values were the whole story. The third
+    // arrived deliberately; what still must hold is that naming a family is not
+    // permission to act, which the allowlist below carries.
+    expect([...GOVERNED_EFFECT_ENABLED_KINDS]).toEqual(['proof_governed_effect'])
+    for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
+                        'send_release_newsletter', 'upload_protected_artifacts'] as const) {
+      expect(ACTION_REGISTRY[kind].executor_family, kind).toBe('not_executable')
+    }
   })
 
   it('no FINANCIAL or write action became executable', () => {

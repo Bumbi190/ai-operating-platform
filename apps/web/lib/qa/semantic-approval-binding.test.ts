@@ -31,6 +31,7 @@ import {
   STORY_APPROVAL_CHECKS, STORY_EVIDENCE_PAYLOAD_FIELDS, STORY_EVIDENCE_COMMON_FIELD,
 } from '@/lib/workflows/approval/story-identity'
 import { FAMILJE_STUNDEN_CHECKS } from '@/lib/workflows/adapters/familje-stunden/checks'
+import { ACTION_REGISTRY } from '@/lib/workflows/action-registry'
 
 const DEF_KEY = 'familje-stunden.monthly-release'
 const v2 = () => findVendoredDefinition(DEF_KEY, 2)!
@@ -341,11 +342,14 @@ describe('the provenance split is unchanged, and nothing was wired live', () => 
     expect(FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'approval_content')).toHaveLength(0)
   })
 
-  it('MUTATION — ExecutorFamily is unchanged', () => {
-    const src = readFileSync(
-      join(process.cwd(), 'lib/workflows/action-registry.ts'), 'utf8')
-    expect(src).toMatch(
-      /export type ExecutorFamily = 'read_only_observation' \| 'not_executable'/)
+  it('MUTATION — no Familje-Stunden effectful action is executable', () => {
+    // Phase 2B-1 widened ExecutorFamily deliberately. The property this pin was
+    // really protecting — that no product write became runnable — is asserted
+    // directly rather than through the shape of a type.
+    for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
+                        'send_release_newsletter', 'upload_protected_artifacts'] as const) {
+      expect(ACTION_REGISTRY[kind].executor_family, kind).toBe('not_executable')
+    }
   })
 
   it('the approval primitive is wired to nothing', () => {

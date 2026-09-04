@@ -228,12 +228,14 @@ describe('13-18. the action is READ_ONLY and adds no dangerous capability', () =
         expect(meta.action_class, `${kind} is executable`).toBe('READ_ONLY')
       }
       if (meta.action_class !== 'READ_ONLY' && meta.executor_family !== 'not_executable') {
-        expect(isGovernedEffectEnabled(kind), `${kind} left inert without an allowlist entry`)
-          .toBe(true)
-        // and it may not belong to a product workflow
-        for (const p of meta.placements) {
-          expect(p.def_key, `${kind} is placed on a product definition`)
-            .toBe('omnira.execution-proof')
+        // Declared in the governed family is NOT permission to run. Only an
+        // allowlist entry is, and anything enabled must be a proof action that
+        // reaches no product system.
+        if (isGovernedEffectEnabled(kind)) {
+          for (const p of meta.placements) {
+            expect(p.def_key, `${kind} is enabled on a product definition`)
+              .toBe('omnira.execution-proof')
+          }
         }
       }
     }

@@ -248,9 +248,11 @@ describe('the Familje-Stunden check catalogue', () => {
   })
 
   it('covers the states local QA actually happens in', () => {
+    // Phase 2B-2 added the Editor's story decision, which is attested by
+    // definition — no machine can make it — so approval_content joins the list.
     expect(attestableStates()).toEqual([
-      'content_generation', 'ebook_build', 'frontend_deploy', 'local_qa',
-      'pdf_build', 'protected_upload', 'visual_generation',
+      'approval_content', 'content_generation', 'ebook_build', 'frontend_deploy',
+      'local_qa', 'pdf_build', 'protected_upload', 'visual_generation',
     ])
   })
 

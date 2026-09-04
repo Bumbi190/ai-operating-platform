@@ -141,8 +141,14 @@ describe('approval_content binds no story identity today — the gap Phase 2B mu
       evidence: evidence as never, declaredCheckKeys: declared,
     }))).digest('hex')
 
-  it('approval_content declares zero checks', () => {
-    expect(FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'approval_content')).toHaveLength(0)
+  it('approval_content now declares exactly the Editor decision', () => {
+    // This suite recorded a DEFECT: with zero declared checks the gate target
+    // carried an empty evidence array, so an Editor's grant named no story.
+    // Phase 2B-2 closed it. The tests below still compute targets with an empty
+    // declared list, because they are demonstrating the mechanism rather than
+    // the current catalogue.
+    expect(FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'approval_content')
+      .map(c => c.check_key)).toEqual(['story_content_approved'])
   })
 
   it('MUTATION — DEFECT: two different stories produce the SAME gate target', () => {
@@ -209,12 +215,15 @@ describe('the story approval contract is declared, not yet wired', () => {
     expect(c.state).toBe('approval_content')
   })
 
-  it('MUTATION — none of them is declared live yet, because none can be satisfied', () => {
-    // A REQUIRED check nothing can satisfy is a deadlock, not a safeguard. They
-    // become real when StoryV1 does.
+  it('MUTATION — all three are now declared, with the provenance they were designed with', () => {
+    // They were deferred while nothing could satisfy them. StoryV1 exists, so
+    // they are live — and each kept the provenance this contract specified.
     for (const c of STORY_APPROVAL_CHECKS) {
-      expect(FAMILJE_STUNDEN_CHECKS.some(d => d.check_key === c.check_key), c.check_key)
-        .toBe(false)
+      const declared = FAMILJE_STUNDEN_CHECKS.find(
+        d => d.check_key === c.check_key && d.state === c.state)
+      expect(declared, c.check_key).toBeDefined()
+      expect(declared!.allowed_provenance, c.check_key).toEqual([...c.allowed_provenance])
+      expect(declared!.required, c.check_key).toBe(true)
     }
     expect(STORY_APPROVAL_PREREQUISITES.length).toBeGreaterThan(0)
   })

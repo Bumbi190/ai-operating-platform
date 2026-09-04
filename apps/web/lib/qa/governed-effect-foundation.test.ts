@@ -68,11 +68,16 @@ describe('widening the family enabled exactly one thing', () => {
     }
   })
 
-  it('the proof action is the only governed_effect family member', () => {
+  it('the proof action is the only ENABLED governed-effect kind', () => {
+    // Phase 2B-2 declared `generate_monthly_story` in the same family without
+    // enabling it. That is the distinction this suite exists to protect: family
+    // membership describes what a kind WOULD need; the allowlist decides whether
+    // it may run. A kind can sit in the family indefinitely and never act.
     const fam = Object.entries(ACTION_REGISTRY)
       .filter(([, m]) => (m as { executor_family: string }).executor_family === 'governed_effect')
-      .map(([k]) => k)
-    expect(fam).toEqual(['proof_governed_effect'])
+      .map(([k]) => k).sort()
+    expect(fam).toEqual(['generate_monthly_story', 'proof_governed_effect'])
+    expect(fam.filter(isGovernedEffectEnabled)).toEqual(['proof_governed_effect'])
   })
 
   it('it is placed only on the Omnira proof definition', () => {

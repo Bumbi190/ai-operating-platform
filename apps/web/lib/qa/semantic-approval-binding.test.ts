@@ -331,15 +331,20 @@ describe('the provenance split is unchanged, and nothing was wired live', () => 
     expect(c.allowed_provenance).toEqual(['attested'])
   })
 
-  it('MUTATION — no story check is declared live', () => {
+  it('MUTATION — every story check is declared with its designed provenance', () => {
+    // Wired in Phase 2B-2, once StoryV1 gave them something to be about.
     for (const c of STORY_APPROVAL_CHECKS) {
-      expect(FAMILJE_STUNDEN_CHECKS.some(d => d.check_key === c.check_key), c.check_key)
-        .toBe(false)
+      const d = FAMILJE_STUNDEN_CHECKS.find(
+        x => x.check_key === c.check_key && x.state === c.state)
+      expect(d, c.check_key).toBeDefined()
+      expect(d!.allowed_provenance, c.check_key).toEqual([...c.allowed_provenance])
     }
   })
 
-  it('approval_content still declares zero checks — activation is StoryV1 work', () => {
-    expect(FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'approval_content')).toHaveLength(0)
+  it('approval_content declares the Editor decision, and only that', () => {
+    const c = FAMILJE_STUNDEN_CHECKS.filter(x => x.state === 'approval_content')
+    expect(c.map(x => x.check_key)).toEqual(['story_content_approved'])
+    expect(c[0].allowed_provenance).toEqual(['attested'])
   })
 
   it('MUTATION — no Familje-Stunden effectful action is executable', () => {

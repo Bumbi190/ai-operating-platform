@@ -47,6 +47,22 @@ const repoCheck = (
   required: true,
 })
 
+/**
+ * A human DECISION. Attested only, and binding no artefacts.
+ *
+ * Distinct from `repoCheck`: that records a claim about a commit. This records a
+ * judgement no machine can make, which is why automation must never be able to
+ * produce it.
+ */
+const attestedDecisionCheck = (
+  check_key: string, state: string, description: string,
+): AttestableCheck => ({
+  check_key, state, description,
+  allowed_provenance: ['attested'],
+  binds_artifacts: false,
+  required: true,
+})
+
 /** Something Omnira observes itself. An attestation is not accepted. */
 const observedCheck = (
   check_key: string, state: string, description: string,
@@ -196,6 +212,22 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // it would replace something Omnira computes with something it is told.
   observedCheck('monthly_brief_composed', 'planning',
     'The canonical Monthly Brief v1 for this month, derived from the pinned contract'),
+
+  // ── Story generation (Phase 2B-2) ────────────────────────────────────────
+  // Three facts, three parties, one story. Each names the exact content hash, so
+  // a story regenerated between them cannot be approved through: the workflow
+  // compares hashes, never timestamps and never "the latest one".
+  //
+  // The provenance split is the point. A human may not attest that generation
+  // happened or that the structure is valid — both are things Omnira computes,
+  // and accepting a claim for either would let an approval precede the thing it
+  // approves. Equally, automation may not produce the approval.
+  observedCheck('story_generated', 'content_generation',
+    'An exact, immutable story exists for this month, bound to its brief'),
+  observedCheck('story_structurally_valid', 'content_generation',
+    'That exact story satisfies the canonical structural rules'),
+  attestedDecisionCheck('story_content_approved', 'approval_content',
+    'A named Editor approved that exact story'),
 ]
 
 const BY_KEY = new Map(FAMILJE_STUNDEN_CHECKS.map(c => [`${c.state}:${c.check_key}`, c]))

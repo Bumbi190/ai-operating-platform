@@ -188,6 +188,14 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // audit; it holds nothing up if it has not been recorded yet.
   observedCheck('release_instant_computed', 'planning',
     'The requested release instant, computed from the calendar and the zone', false),
+  // REQUIRED, unlike its neighbour above. The brief is the input contract every
+  // later production state is measured against, so planning must not be
+  // advanceable without one: a month that never derived its requirements would
+  // hand generation nothing to be correct about. Automated-only — the payload is
+  // a pure derivation of the pinned contract, and accepting a human's word for
+  // it would replace something Omnira computes with something it is told.
+  observedCheck('monthly_brief_composed', 'planning',
+    'The canonical Monthly Brief v1 for this month, derived from the pinned contract'),
 ]
 
 const BY_KEY = new Map(FAMILJE_STUNDEN_CHECKS.map(c => [`${c.state}:${c.check_key}`, c]))

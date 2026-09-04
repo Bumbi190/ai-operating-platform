@@ -114,11 +114,12 @@ describe('the read-only executor cannot be handed a write', () => {
     const ok: import('../workflows/action-registry').ExecutableReadOnlyActionKind = 'compute_release_instant'
     expect(ok).toBe('compute_release_instant')
 
-    // Widened deliberately in PR9h — one kind per PR, both READ_ONLY.
+    // Widened deliberately, one kind per PR, every one of them READ_ONLY.
     const executable = (Object.entries(ACTION_REGISTRY) as [string, { executor_family: string }][])
       .filter(([, m]) => m.executor_family === 'read_only_observation').map(([k]) => k).sort()
     expect(executable).toEqual([
-      'compute_release_instant', 'observe_release_gate', 'probe_anonymous_protected_access',
+      'compose_monthly_brief', 'compute_release_instant', 'observe_release_gate',
+      'probe_anonymous_protected_access',
     ])
   })
 

@@ -80,11 +80,16 @@ describe('required evidence still blocks', () => {
     expect(c!.required).toBe(false)
   })
 
-  it('planning declares no other check, so nothing else can block it', async () => {
+  it('planning declares exactly two checks, and only the brief blocks', async () => {
     const { FAMILJE_STUNDEN_CHECKS } = await import('../workflows/adapters/familje-stunden/checks')
     const planning = FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'planning')
-    expect(planning.map(c => c.check_key)).toEqual(['release_instant_computed'])
-    expect(planning.filter(c => c.required)).toHaveLength(0)
+    expect(planning.map(c => c.check_key).sort())
+      .toEqual(['monthly_brief_composed', 'release_instant_computed'])
+    // Phase 2A made planning genuinely blockable for the first time. The brief is
+    // the input contract every later state is measured against, so a month that
+    // never derived one must not advance — while the instant stays informational.
+    expect(planning.filter(c => c.required).map(c => c.check_key))
+      .toEqual(['monthly_brief_composed'])
   })
 })
 

@@ -172,9 +172,15 @@ describe('D — content_generation, the state 2099-01 is sitting in', () => {
     expect(pinFor(other)).not.toBe(pinFor(r))
   })
 
-  it('planning, with zero required checks, is unaffected', () => {
+  it('planning now has exactly one required check — the brief, added in Phase 2A', () => {
+    // HISTORY, unchanged: when PR9g advanced planning, the state declared no
+    // required check at all, which is why that advance succeeded despite the
+    // bug this file is about. Phase 2A made planning blockable for the first
+    // time, so the assertion records the new shape rather than the old count.
+    // The live 2099-01 instance is unaffected: it left planning long before,
+    // and required checks gate only the state a workflow is advancing OUT of.
     const req = declared().filter(c => c.state === 'planning' && c.required)
-    expect(req).toHaveLength(0)   // why the PR9g advance succeeded despite the bug
+    expect(req.map(c => c.check_key)).toEqual(['monthly_brief_composed'])
   })
 })
 

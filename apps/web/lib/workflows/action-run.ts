@@ -29,6 +29,7 @@ import type { StopRefusalReason } from '@/lib/governance/execution-stop'
 
 import { readInstance, listEvidence, readDefinitionById } from './store'
 import { assertWorkflowAuthorizationValid } from './authorization'
+import { assertExecutionAuthorized } from './effect/execution-authorization-runtime'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
 import { checkAnsweredBy } from './action-discovery'
@@ -375,6 +376,31 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
     // A write-capable action with no authorization id is not merely unverified;
     // it should not exist, and the DB refuses it. Treat it as ineffective.
     if (!run.authorization_id) blockers.push('authorization_not_effective')
+    else if (lookupAction(run.action_kind)?.executor_family === 'governed_effect') {
+      // ── The split (Phase 2B-2.5) ───────────────────────────────────────────
+      // An EFFECT needs permission to ACT, which is a different decision from
+      // permission to ADVANCE. Validating an effect against the gate resolver
+      // below would mean an approval to leave `audio_generation` also permitted
+      // spending money inside it.
+      //
+      // READ_ONLY never reaches this block at all — its policy sets
+      // requiresAuthorization false — so every action that had a gate check
+      // before this branch existed still gets exactly that check.
+      const verdict = await assertExecutionAuthorized({
+        authorizationId: run.authorization_id,
+        projectId: instance.project_id,
+        instanceId: instance.id,
+        defKey: instance.def_key,
+        defVersion: instance.def_version,
+        defHash: instance.def_hash,
+        state: run.workflow_from_state,
+        actionKind: run.action_kind,
+        actionClass: run.action_class as ActionClass,
+        targetVersionHash: run.target_version_hash,
+        attemptGroup: run.attempt_group ?? '',
+      })
+      if (!verdict.valid) blockers.push('authorization_not_effective')
+    }
     else {
       const assertion = await assertWorkflowAuthorizationValid(db, instance.id, run.authorization_id)
       if (!assertion.valid) blockers.push('authorization_not_effective')

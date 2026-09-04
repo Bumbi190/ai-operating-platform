@@ -379,11 +379,24 @@ describe('MUTATION — the evidence pin and the action pin stay distinct', () =>
   it('a future compute_release_instant would bind the same way', () => {
     // PR9E regression: the historical release_instant_computed row stays
     // unbound, but nothing about the write path is action-kind specific.
+    //
+    // Phase 2B-2.5 added a SECOND automated write in this file — the
+    // governed-effect branch hands its evidence back rather than writing it, so
+    // that this file stays the single writer. Both sites are checked, because
+    // scanning only the first would silently stop covering whichever one moved.
     const exec = readFileSync(join(process.cwd(), 'lib/workflows/action-executor.ts'), 'utf8')
-    const start = exec.indexOf('await recordEvidence(')
-    const write = exec.slice(start, exec.indexOf('} catch', start))
-    expect(write).toMatch(/checkKey: output\.checkKey/)
-    expect(write).toMatch(/observation: \{ runId: run\.id \}/)
-    expect(write).not.toMatch(/compute_release_instant|probe_anonymous/)
+    const writes: string[] = []
+    for (let i = exec.indexOf('await recordEvidence('); i !== -1;
+         i = exec.indexOf('await recordEvidence(', i + 1)) {
+      writes.push(exec.slice(i, exec.indexOf('} catch', i)))
+    }
+    expect(writes.length, 'both automated write sites').toBe(2)
+    for (const write of writes) {
+      // The pin is the RUN, never a hand-built hash and never an action kind.
+      expect(write).toMatch(/observation: \{ runId: run\.id \}/)
+      expect(write).toMatch(/source: 'automated'/)
+      expect(write).toMatch(/checkKey: (output|effect\.evidence)\.checkKey/)
+      expect(write).not.toMatch(/compute_release_instant|probe_anonymous|proof_governed_effect/)
+    }
   })
 })

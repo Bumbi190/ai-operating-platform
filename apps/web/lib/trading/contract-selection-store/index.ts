@@ -20,13 +20,19 @@
  * ──────────────
  * It does not resolve, materialize or orchestrate. `resolveContractAt` and the
  * materializer are imported nowhere here, and a `NOT_FOUND` is where this
- * package stops — the recorded-first fallback belongs to C3B.3.
+ * package deliberately stops. The recorded-first fallback is implemented in
+ * `@/lib/trading/contract-selection-orchestration`, and keeping it outside the
+ * store is the point: a store that fell back would have to resolve, and §10's
+ * "read the recorded decision, never recompute it" would then mean nothing.
  *
  * It records nothing to a journal. No `EVENT_TYPES` member exists for a
  * selection and none is added; `TradingEvent` is not the storage envelope.
  *
  * It persists nothing beyond memory. No database, no schema, no migration — a
- * persistent adapter is later work behind this same interface.
+ * persistent adapter is still later work behind this same interface.
+ *
+ * The recorded selection chain (GATE-08C-3B) is complete: materialisation, this
+ * store, and recorded-first orchestration above it all exist.
  *
  * It mints no authority. Recording a selection grants exactly no permission to
  * trade.

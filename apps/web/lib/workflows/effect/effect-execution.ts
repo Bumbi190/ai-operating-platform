@@ -27,6 +27,9 @@ import { assertWorkflowActionStillAuthorized } from '../action-run'
 import { outcomeForObservation, decideRetry, type ActionOutcome } from '../action-outcome'
 import type { ActionClass } from '../action-target'
 import { governedEffectRequirements, mayRecordSuccessEvidence } from './governed-effect'
+import {
+  executorReservationIsMeaningful, spendBoundaryOwnerFor, type SpendBoundaryRefusal,
+} from './spend-boundary'
 import { effectHandlerFor } from './effect-handlers'
 import type { EffectHandlerOutput } from './effect-handler'
 
@@ -53,6 +56,15 @@ export interface GovernedEffectInput {
   execution: ExecutionContract
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * What an executor-owned reservation is worth today: nothing.
+ *
+ * Named rather than inlined so the guard above reads as a decision. The executor
+ * cannot price work it has not performed, so any class that enforces spend must
+ * use a trusted-adapter boundary until an estimate phase exists.
+ */
+const EXECUTOR_ESTIMATE_SEK = 0
 
 /** A spend refusal, carried out of the governed-spend callback. */
 class SpendDeniedError extends Error {
@@ -81,6 +93,34 @@ export interface GovernedEffectOutcome extends ExecuteResult {
   readonly evidence?: GovernedEffectEvidence
 }
 
+/** Refused before anything was attempted: nothing happened, nothing is owed. */
+async function refuseBeforeDispatch(
+  db: AnyDb, run: { id: string }, claimId: string | null,
+  refusal: SpendBoundaryRefusal, detail: string,
+): Promise<ExecuteResult> {
+  await fencedActionUpdate(db, run.id, claimId, {
+    action_phase: 'PREPARED', action_outcome: 'FAILED', reconciliation_required: false,
+  })
+  return { executed: false, refusal: 'spend_refused', detail: `${refusal}: ${detail}`,
+           outcome: 'FAILED', disposition: 'temporary' }
+}
+
+/**
+ * The effect may already have happened and its spend accounting is not provable.
+ * That is an incident, not a clean failure, so it is marked for reconciliation.
+ */
+async function refuseAfterDispatch(
+  db: AnyDb, run: { id: string }, claimId: string | null, now: string,
+  refusal: SpendBoundaryRefusal, detail: string,
+): Promise<ExecuteResult> {
+  await fencedActionUpdate(db, run.id, claimId, {
+    action_phase: 'REMOTE_CONFIRMED', remote_confirmed_at: now,
+    action_outcome: 'UNKNOWN', reconciliation_required: true,
+  })
+  return { executed: false, refusal: 'spend_refused', detail: `${refusal}: ${detail}`,
+           outcome: 'UNKNOWN' }
+}
+
 export async function executeGovernedEffect(
   input: GovernedEffectInput,
 ): Promise<GovernedEffectOutcome> {
@@ -105,6 +145,7 @@ export async function executeGovernedEffect(
     targetVersionHash: run.target_version_hash,
     attemptGroup: run.attempt_group ?? '',
     idempotencyKey: run.idempotency_key ?? '',
+    execution: input.execution,
     now,
     db,
     /**
@@ -145,8 +186,28 @@ export async function executeGovernedEffect(
     return result
   }
 
+  // ── Who reserves, and may they ───────────────────────────────────────────
+  // Declared per kind in a closed table. Ownership is not permission to skip
+  // spend: a FINANCIAL action still cannot dispatch without a reservation, and a
+  // trusted-adapter boundary must PROVE it took one under this run's identity.
+  const owner = requirements.requiresSpendReservation
+    ? spendBoundaryOwnerFor(run.action_kind) : 'executor'
+  if (requirements.requiresSpendReservation && owner === null) {
+    return refuseBeforeDispatch(db, run, claimId, 'no_spend_owner_declared',
+      `"${run.action_kind}" enforces spend but declares no boundary owner`)
+  }
+  // The executor has no way to price a provider call it has not made, so an
+  // executor-owned FINANCIAL boundary would reserve zero — which is the absence
+  // of spend governance, not a cheap version of it.
+  if (requirements.requiresSpendReservation && owner === 'executor'
+      && !executorReservationIsMeaningful(canonical.action_class, EXECUTOR_ESTIMATE_SEK)) {
+    return refuseBeforeDispatch(db, run, claimId, 'executor_estimate_missing',
+      `${canonical.action_class} cannot proceed on an executor reservation of `
+      + `${EXECUTOR_ESTIMATE_SEK} SEK`)
+  }
+
   try {
-    if (requirements.requiresSpendReservation) {
+    if (requirements.requiresSpendReservation && owner === 'executor') {
       // Hoisted rather than inlined: the propagation guard scans the boundary's
       // first object literal for `execution`, and a nested `project: { … }`
       // would end its scan before reaching it. Naming the ref keeps the call
@@ -160,7 +221,7 @@ export async function executeGovernedEffect(
           execution: input.execution,
           provider: 'workflow',
           operation: run.action_kind,
-          estimatedSek: 0,
+          estimatedSek: EXECUTOR_ESTIMATE_SEK,
           idempotencyKey: run.idempotency_key ?? undefined,
         },
         runEffect,
@@ -200,6 +261,25 @@ export async function executeGovernedEffect(
   }
 
   const observed = output as EffectHandlerOutput
+
+  // ── The ownership claim must be a fact ──────────────────────────────────
+  // Checked only where the effect actually reached a provider. A provable
+  // non-dispatch never reserved anything, and demanding proof of a reservation
+  // that correctly does not exist would turn a clean refusal into a failure.
+  if (requirements.requiresSpendReservation && owner === 'trusted_adapter'
+      && !observed.provablyNotApplied) {
+    const key = run.idempotency_key ?? ''
+    if (!observed.spendReservedUnderKey) {
+      return refuseAfterDispatch(db, run, claimId, now, 'adapter_did_not_reserve',
+        'the adapter owns the spend boundary but reported no reservation')
+    }
+    if (observed.spendReservedUnderKey !== key) {
+      return refuseAfterDispatch(db, run, claimId, now,
+        'adapter_reserved_under_wrong_identity',
+        'the adapter reserved under an identity that is not this run')
+    }
+  }
+
   const outcome = outcomeForObservation(observed.observation, 'DISPATCH_STARTED')
   const reconciliationRequired = outcome === 'UNKNOWN' || outcome === 'PARTIAL'
 

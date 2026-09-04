@@ -209,10 +209,13 @@ describe('FINANCIAL spend is enforced at runtime, not merely declared', () => {
   })
 
   it('MUTATION — the reservation is keyed on the action identity', async () => {
+    // Phase 2B-2.6 moved the boundary to the adapter, so `operation` is now the
+    // adapter's own label. The load-bearing half is unchanged and is the point:
+    // the KEY is the run's execution identity, wherever the reservation is taken.
     await exec('success')
     const [input] = reserved.mock.calls[0] as [Record<string, unknown>]
     expect(input.idempotencyKey).toBe('idem-1')
-    expect(input.operation).toBe('proof_governed_effect')
+    expect(input.estimatedSek).toBeGreaterThan(0)
   })
 
   it('MUTATION — a same-intent retry cannot take a second reservation key', async () => {

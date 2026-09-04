@@ -261,6 +261,40 @@ export const ACTION_REGISTRY = {
     description: "Generate the month's saga from the canonical brief and story contract.",
   },
 
+  /**
+   * The three Vercel release observations, at `frontend_deploy`.
+   *
+   * READ_ONLY, and the code is what makes that true rather than the credential.
+   * Vercel offers project scope but no read-only tier, so the token can read
+   * AND write inside familje-stunden-v2 — it simply is never asked to. The
+   * transport exposes one function, `vercelGet`, which hard-codes the method
+   * and takes no method parameter, so there is no argument any call site could
+   * pass to make it write. Two GET endpoints exist in the whole call graph.
+   *
+   * Three kinds rather than one, because `ANSWERS_CHECK` is 1:1 and each asks a
+   * different question: is the bound deployment live, is it the right commit,
+   * and does the real domain point at it. A deployment can satisfy any two and
+   * fail the third, which is exactly why they are not collapsed.
+   */
+  observe_vercel_production_ready: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Read whether the deployment of the merge SHA is READY and PROMOTED on production.',
+  },
+  observe_vercel_deploy_sha_match: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Compare the deployed git SHA against the bound pull request\'s actual merge SHA.',
+  },
+  observe_vercel_production_alias: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'frontend_deploy' }],
+    description: 'Read whether the canonical production domain is attached to that exact deployment.',
+  },
+
   // ── Declared for future use. Metadata only: NOT executable. ───────────────
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the

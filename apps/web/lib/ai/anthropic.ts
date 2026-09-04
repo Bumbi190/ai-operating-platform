@@ -42,6 +42,7 @@ import { getRates } from '@/lib/cost/rates'
 import {
   watchExecutionAuthority, composeAbortSignals, authorityForRequest, followAsyncIterable,
   admitPhysicalRequest, isPhysicalAdmissionRefusal,
+  GovernanceDispatchUnknownError, isGovernanceDispatchUnknown,
   type RunBoundAuthority, type AbortReason,
 } from '@/lib/governance/execution-signal'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -206,6 +207,25 @@ async function beginPhysicalFlight(ctx: AnthropicGovernanceContext): Promise<Phy
   }
 }
 
+/**
+ * E1. Classifies a physical failure that happened while a watcher was live.
+ *
+ * The watcher's `abortReason` is the authoritative evidence that governance
+ * fired: the Anthropic client wraps an aborted signal as `APIUserAbortError`
+ * or `APIConnectionError`, so the original `GovernanceAbortError` class does
+ * not reliably survive to the caller. What survives is our own record of why
+ * we aborted.
+ *
+ * The result is MAY_HAVE_DISPATCHED, never an admission refusal: the request
+ * was already on the wire.
+ */
+function governanceInFlight(flight: PhysicalFlight | undefined, e: unknown): unknown {
+  const reason = flight?.abortReason
+  if (!reason) return e
+  if (isGovernanceDispatchUnknown(e)) return e
+  return new GovernanceDispatchUnknownError('anthropic', reason, e)
+}
+
 /** Runs ONE raw non-streaming request under in-flight authority. */
 async function governedPhysical<T>(
   ctx: AnthropicGovernanceContext,
@@ -216,6 +236,8 @@ async function governedPhysical<T>(
     const value = await run(flight.signal)
     ctx.onFlight?.(flight)
     return value
+  } catch (e) {
+    throw governanceInFlight(flight, e)
   } finally {
     flight.dispose()
   }
@@ -385,8 +407,14 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
                   : followAsyncIterable(stream) ?? new Promise<void>(() => {})
             // `.finally` — an errored or aborted stream releases the watcher
             // exactly as a completed one does. `.then` would leak on failure.
-            void settled.finally(() => { optionSignal?.dispose(); flight?.dispose() })
-            ctx.onStreamSettled?.(settled)
+            // E1: a stream that dies mid-generation because governance fired is
+            // an in-flight abort. Classified from the SAME watcher evidence, and
+            // handed to the caller through `onStreamSettled` so an owner
+            // awaiting termination sees the governance outcome, not an
+            // `APIUserAbortError` it cannot interpret.
+            const classified = settled.catch(e => { throw governanceInFlight(flight, e) })
+            void classified.catch(() => {}).finally(() => { optionSignal?.dispose(); flight?.dispose() })
+            ctx.onStreamSettled?.(classified)
             ctx.onFlight?.(flight)
             return stream
           },

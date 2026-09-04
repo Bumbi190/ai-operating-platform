@@ -25,8 +25,9 @@ import { buildVisionQaPrompt } from './golden-checklist'
 import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import {
-  isPhysicalAdmissionRefusal, isGovernanceAbort,
-  type RunBoundAuthority,
+  isExecutionGovernanceControlFlow,
+  composeAbortSignals,
+  type RunBoundAuthority, type AbortReason,
 } from '@/lib/governance/execution-signal'
 import {
   openAIChatCompletion, openAIImageEdit, openAIImageGenerate,
@@ -226,6 +227,13 @@ async function generateWithReference(
       // case they are in, so this reads their answer instead of retrying
       // everything. A 429 and a provably-undispatched failure are unaffected —
       // neither is a possible side effect, so the branches below still run.
+      // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
       if (generationMayAlreadyHaveDispatched(err)) throw err
       lastError = err
       const status = err?.status ?? err?.response?.status
@@ -297,6 +305,14 @@ async function generateWithIdeogram(
   aspectRatio: 'ASPECT_1_1' | 'ASPECT_2_3',
   label: string,
   maxRetries = 3,
+  /**
+   * G3C-3C-A · E2. Ideogram is a physical provider call inside a RUN_BOUND
+   * image step, and each retry attempt is its own physical request. Threaded so
+   * every attempt is admitted, watched and aggregated like the OpenAI ones.
+   */
+  authority?: RunBoundAuthority,
+  callerSignal?: AbortSignal,
+  onFlight?: (f: { readonly authorityUnavailable: boolean; readonly abortReason: AbortReason | null }) => void,
 ): Promise<string | null> {
   if (!process.env.IDEOGRAM_API_KEY) {
     console.warn('[Ideogram] IDEOGRAM_API_KEY saknas — faller tillbaka till gpt-image-1')
@@ -312,7 +328,8 @@ async function generateWithIdeogram(
       let first
       try {
         first = await generateIdeogramLegacy(
-          { project, execution, operation: 'Generate Image', agent: 'Image Director' },
+          { project, execution, operation: 'Generate Image', agent: 'Image Director',
+            authority, onFlight },
           {
             prompt,
             model: 'V_3',
@@ -324,9 +341,16 @@ async function generateWithIdeogram(
             magic_prompt_option: 'OFF',
             num_images: 1,
           },
-          { signal: AbortSignal.timeout(90_000) }, // 90s — hänger annars för evigt
+          // The 90s bound is kept; governance and any caller signal COMPOSE
+          // with it inside the adapter rather than replacing it.
+          { signal: callerSignal
+            ? composeAbortSignals([AbortSignal.timeout(90_000), callerSignal]).signal
+            : AbortSignal.timeout(90_000) },
         )
       } catch (httpErr: any) {
+        // E3: same rule for the Ideogram attempt loop — a governance stop must
+        // not be slept on and retried as if it were a rate limit.
+        if (isExecutionGovernanceControlFlow(httpErr)) throw httpErr
         // Same 429 backoff as before; the boundary released the reservation, so
         // waiting here does not hold headroom that the retry will need.
         const status = httpErr?.status ?? httpErr?.cause?.status
@@ -356,6 +380,13 @@ async function generateWithIdeogram(
       // case they are in, so this reads their answer instead of retrying
       // everything. A 429 and a provably-undispatched failure are unaffected —
       // neither is a possible side effect, so the branches below still run.
+      // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
       if (generationMayAlreadyHaveDispatched(err)) throw err
       const isLast = attempt === maxRetries
       if (!isLast) {
@@ -412,6 +443,15 @@ async function runVisionQa(
   mode: QaMode,
   project: ProjectRef,
   execution: ExecutionContract,
+  /**
+   * G3C-3C-A · E2. Vision QA is an Anthropic physical call inside a RUN_BOUND
+   * image step. It ran with the contract stop gate and nothing else, so a
+   * cancellation during QA was invisible and the loop continued to the next
+   * image. Same seam as every other claimed physical call.
+   */
+  authority?: RunBoundAuthority,
+  callerSignal?: AbortSignal,
+  onFlight?: (f: PhysicalFlightView | undefined) => void,
 ): Promise<QaResult> {
   try {
     const prompt = buildVisionQaPrompt(mode)
@@ -424,6 +464,7 @@ async function runVisionQa(
 
     const response = await getAnthropic({
       project, execution, agent: 'Vision QA', operation: 'Vision QA',
+      authority, signal: callerSignal, onFlight,
     }).messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 80,
@@ -448,6 +489,12 @@ async function runVisionQa(
 
     return { pass, score, reason, raw }
   } catch (err) {
+    // ── G3C-3C-A · E3 · GOVERNANCE IS NOT A QA DEFECT ────────────────────────
+    // The auto-pass below is right for what it was written for: a flaky vision
+    // call must not block an image that is probably fine. It is exactly wrong
+    // for governance — a cancellation would be swallowed into `pass: true`, the
+    // image accepted, and the loop would continue to the next one.
+    if (isExecutionGovernanceControlFlow(err)) throw err
     // QA-fel ska aldrig blockera bildgenerering — logga och godkänn
     console.warn('[QA] Vision QA misslyckades, godkänner bild automatiskt:', err)
     return { pass: true, score: -1, reason: 'QA unavailable', raw: '' }
@@ -513,6 +560,8 @@ export interface RunStepResult {
 
 /** One in-flight physical request's live authority state, as the runner sees it. */
 type FlightHandle = { readonly authorityUnavailable: boolean }
+/** What an adapter hands back through `onFlight`. */
+type PhysicalFlightView = { readonly authorityUnavailable: boolean; readonly abortReason: AbortReason | null }
 
 /**
  * Collects the flights of every physical request in one step.
@@ -839,7 +888,14 @@ async function runImageStep(
         // case they are in, so this reads their answer instead of retrying
         // everything. A 429 and a provably-undispatched failure are unaffected —
         // neither is a possible side effect, so the branches below still run.
-        if (generationMayAlreadyHaveDispatched(err)) throw err
+        // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
+      if (generationMayAlreadyHaveDispatched(err)) throw err
         const status = err?.status ?? err?.response?.status
         const isRateLimit = status === 429 || String(err?.message).includes('rate limit') || String(err?.message).includes('Rate limit')
         if (isRateLimit && attempt < maxRetries) {
@@ -893,7 +949,7 @@ async function runImageStep(
         const sagaPrompt = `${buildStylePrefix('saga')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`, 3, input.authority, input.signal, flights.onFlight)
           : null
 
         if (ideogramUrl && runId) {
@@ -901,7 +957,7 @@ async function runImageStep(
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'saga')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost), input.execution)
+            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
             if (qa.pass) {
               console.log(`[QA PASS] saga-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -910,10 +966,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] saga-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`, 3, input.authority, input.signal, flights.onFlight)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'saga') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost), input.execution)
+              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
               if (qa2.pass) {
                 console.log(`[QA PASS] saga-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -944,14 +1000,14 @@ async function runImageStep(
         const activityPrompt = `${buildStylePrefix('activity')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`, 3, input.authority, input.signal, flights.onFlight)
           : null
 
         if (ideogramUrl && runId) {
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'aktivitet')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost), input.execution)
+            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
             if (qa.pass) {
               console.log(`[QA PASS] activity-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -960,10 +1016,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] activity-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`, 3, input.authority, input.signal, flights.onFlight)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'aktivitet') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost), input.execution)
+              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
               if (qa2.pass) {
                 console.log(`[QA PASS] activity-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -1019,7 +1075,7 @@ async function runImageStep(
       // The in-flight abort is the same class and gets the same answer: a
       // cancellation that killed image 3's socket must not let image 4 start.
       // Both leave the step immediately, for their owner to settle.
-      if (isPhysicalAdmissionRefusal(err) || isGovernanceAbort(err)) throw err
+      if (isExecutionGovernanceControlFlow(err)) throw err
       consecutiveFailures++
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[ImageGen] ❌ Bild ${i + 1} misslyckades slutgiltigt:`, err)

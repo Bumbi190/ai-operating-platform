@@ -17,7 +17,7 @@ import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import {
-  checkpointClaimedRun, settleRefusal, terminalizeCancelledRun,
+  checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
   finalizeOwnedRunUnlessCancelled,
 } from '@/lib/governance/run-execution-checkpoint'
@@ -27,7 +27,7 @@ import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
-import { isPhysicalAdmissionRefusal } from '@/lib/governance/execution-signal'
+import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -390,6 +390,47 @@ export async function GET(request: Request) {
                        reason: 'lifecycle_write_failed', detail: e.message })
         continue
       }
+      // ── G3C-3C-A · E1 · GOVERNANCE ABORTED A REQUEST ALREADY IN FLIGHT ───
+      // Not the admission case below. There, nothing was dispatched and the
+      // reservation came back. Here the request was on the wire when we hung
+      // up: the provider may have accepted it, may be running it, may already
+      // have charged for it. We know what WE did, and nothing about what THEY
+      // did.
+      //
+      // So the one thing this must never do is requeue. If the first request
+      // landed, a retry duplicates real, billable, possibly externally-visible
+      // work. Failure accounting is equally wrong — governance decided this,
+      // not the provider — and `cancelled` would claim a remote effect was
+      // stopped when all we stopped was a socket.
+      if (isGovernanceDispatchUnknown(e)) {
+        if (e.abortReason === 'RUN_FENCED') {
+          // Positive proof another owner holds the row. Writing UNKNOWN here
+          // would stamp our ambiguity over their run. They decide.
+          console.warn(`[run ${run.id}] in-flight governance abort while FENCED (${e.provider}) — new owner will finalize`)
+          results.push({ run_id: run.id, status: 'fenced', detail: e.message })
+          continue
+        }
+        const wrote = await recordDispatchUnknown(db, run.id, run.claim_id,
+          `governance aborted an in-flight ${e.provider} request (${e.abortReason}); `
+          + 'no durable dispatch marker exists for this family, so whether the '
+          + 'provider began work cannot be determined')
+        if (wrote === 'ERROR') {
+          // The owned write failed. Touch nothing, start nothing — the lease
+          // and the reaper own the durable state, exactly as elsewhere.
+          results.push({ run_id: run.id, status: 'lifecycle_error',
+                         reason: 'lifecycle_write_failed', detail: e.message })
+          continue
+        }
+        if (wrote === 'FENCED') {
+          results.push({ run_id: run.id, status: 'fenced', detail: e.message })
+          continue
+        }
+        console.warn(`[run ${run.id}] in-flight governance abort (${e.abortReason}) → unknown + reconciliation`)
+        results.push({ run_id: run.id, status: 'unknown',
+                       reason: 'dispatch_unknown', detail: e.message })
+        continue
+      }
+
       // ── G3C-3C-A · D1 · PHYSICAL ADMISSION REFUSED ───────────────────────
       // Governance stopped the request BEFORE it was made. Nothing was
       // dispatched, no provider was reached, and the reservation was already
@@ -427,8 +468,10 @@ export async function GET(request: Request) {
         }
         const settled = await settleRefusal(db, e.refusal, run.id, run.claim_id)
         console.warn(`[run ${run.id}] physical admission: ${e.refusal} → ${settled} — not a failure`)
-        results.push(reportSettled(run, settled, e.message,
-          e.refusal === 'STOPPED' ? 'physical_admission_stop' : undefined))
+        // E4: the CANONICAL reason the admission carried, so a deferred run
+        // says whether the platform or only this project is paused. A synthetic
+        // `physical_admission_stop` answered neither.
+        results.push(reportSettled(run, settled, e.message, e.stopReason))
         continue
       }
       if (isRunCheckpointRefusal(e)) {

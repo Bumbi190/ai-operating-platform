@@ -419,14 +419,21 @@ describe('A13–A16 · stream lifetime', () => {
 
   it('A14 — the Anthropic wrapper anchors to stream termination, preferring done()', () => {
     // The installed SDK's completion primitive is `done()`, and it is tried
-    // FIRST. The fallbacks exist so a stream object without it cannot make the
-    // governed call throw — failure to observe termination must never become
-    // failure to make the request. B2/B13 prove the behaviour end to end.
+    // FIRST; `finalMessage()` covers event-driven consumers and iteration
+    // covers the rest. Failure to OBSERVE termination must never become failure
+    // to MAKE the request.
+    //
+    // This asserts the SEAM and the PREFERENCE ORDER only. It used to also pin
+    // the exact `.finally(...)` expression, and that pin broke on three
+    // successive legitimate changes without once catching a defect — it was
+    // proving the shape of a line, not that an errored stream releases its
+    // watcher. That behaviour is proven where it can actually fail: C2 and
+    // C18b (release at termination, not before or never) and B2/B13 end to end.
     const src = code('lib/ai/anthropic.ts')
     expect(src, 'termination hook present').toMatch(/onStreamSettled\?\.\(/)
     expect(src, 'done() is preferred').toMatch(/done\?: unknown \}\)\.done === 'function'/)
-    expect(src, 'released with .finally, so an errored stream releases too')
-      .toMatch(/settled\.finally\(\(\) => \{[^}]*flight\?\.dispose\(\)/)
+    expect(src, 'and iteration is the fallback, never an immediate resolve')
+      .toMatch(/followAsyncIterable\(stream\)/)
   })
 
   it('a throwing request still releases the watcher', async () => {

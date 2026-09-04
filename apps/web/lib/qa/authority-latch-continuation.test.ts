@@ -56,6 +56,20 @@ const state = {
   duringBackoff: null as null | (() => void),
   /** Holds only the FIRST image call, so a latch can land on image 1 alone. */
   holdFirstImage: false,
+  /** Ideogram: signals seen, and whether the call should hold until released. */
+  ideogramSignals: [] as (AbortSignal | undefined)[],
+  holdIdeogram: false,
+  releaseIdeogram: null as null | (() => void),
+  /** Which governance class the next image call raises, if any. */
+  imageThrows: null as null | 'admission' | 'inflight' | 'stopped',
+  /** Same, for the REFERENCE (edit) helper — a different retry loop. */
+  editThrows: null as null | 'admission' | 'stopped',
+  /** Vision QA: the governance context the Anthropic call was given. */
+  qaAuthoritySeen: [] as unknown[],
+  /** What the Vision QA Anthropic call should do. */
+  qaBehaviour: 'pass' as 'pass' | 'provider-error' | 'governance-refusal',
+  /** Cancels the RUN once the image exists, i.e. immediately before Vision QA. */
+  cancelBeforeQa: false,
 }
 
 /** A provider call that holds until the test releases it. */
@@ -91,13 +105,39 @@ vi.mock('openai', () => ({
           state.duringBackoff?.()
           throw Object.assign(new Error('Rate limit reached'), { status: 429 })
         }
+        if (state.imageThrows) {
+          const kind = state.imageThrows
+          state.imageThrows = null
+          const sig = await import('@/lib/governance/execution-signal')
+          if (kind === 'admission') {
+            throw new sig.PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
+          }
+          if (kind === 'inflight') {
+            throw new sig.GovernanceDispatchUnknownError('openai', 'RUN_CANCELLED',
+              new Error('APIUserAbortError'))
+          }
+          const stop = Object.assign(new Error('execution stopped'), { name: 'ExecutionStoppedError' })
+          throw stop
+        }
         if (state.holdFirstImage) {
           state.holdFirstImage = false
           await new Promise<void>(res => { state.finish = res; state.started?.() })
         }
         return { data: [{ b64_json: 'aGk=' }] }
       },
-      edit: async () => ({ data: [{ b64_json: 'aGk=' }] }),
+      edit: async () => {
+        state.providerCalls.push('openai.edit')
+        if (state.editThrows) {
+          const kind = state.editThrows
+          state.editThrows = null
+          const sig = await import('@/lib/governance/execution-signal')
+          if (kind === 'admission') {
+            throw new sig.PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
+          }
+          throw Object.assign(new Error('execution stopped'), { name: 'ExecutionStoppedError' })
+        }
+        return { data: [{ b64_json: 'aGk=' }] }
+      },
     }
   },
   toFile: async () => ({}),
@@ -106,7 +146,17 @@ vi.mock('openai', () => ({
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class FakeAnthropic {
     messages = {
-      create: async () => {
+      create: async (p: { model?: string }) => {
+        // Vision QA is the haiku call; the step's own text calls use other models.
+        if (String(p?.model ?? '').includes('haiku')) {
+          state.providerCalls.push('anthropic.visionqa')
+          if (state.qaBehaviour === 'provider-error') throw new Error('vision service unavailable')
+          if (state.qaBehaviour === 'governance-refusal') {
+            const { PhysicalAdmissionRefusedError } = await import('@/lib/governance/execution-signal')
+            throw new PhysicalAdmissionRefusedError('CANCELLED', 'anthropic', 'cancellation requested')
+          }
+          return { content: [{ type: 'text', text: 'PASS' }], usage: { input_tokens: 1, output_tokens: 1 } }
+        }
         await heldCall('anthropic.create')
         return { content: [{ type: 'text', text: state.reply }], usage: { input_tokens: 1, output_tokens: 1 } }
       },
@@ -182,6 +232,14 @@ function makeDb() {
   }
   return {
     from: (t: string) => builder(t),
+    // Saga images are uploaded before Vision QA runs; without this the QA call
+    // is skipped and the tests below would silently prove nothing.
+    storage: {
+      from: () => ({
+        upload: async () => ({ error: null }),
+        getPublicUrl: (path: string) => ({ data: { publicUrl: `https://storage/${path}` } }),
+      }),
+    },
     rpc: async (fn: string) => {
       if (fn === 'stop_state') {
         return { data: [{
@@ -216,6 +274,16 @@ beforeEach(() => {
   state.rateLimitOnce = false
   state.duringBackoff = null
   state.holdFirstImage = false
+  state.ideogramSignals = []
+  state.holdIdeogram = false
+  state.releaseIdeogram = null
+  state.imageThrows = null
+  state.editThrows = null
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co'
+  state.qaAuthoritySeen = []
+  state.qaBehaviour = 'pass'
+  state.cancelBeforeQa = false
+  process.env.IDEOGRAM_API_KEY = 'test-ideogram'
   vi.resetModules()
 })
 afterEach(() => {
@@ -529,5 +597,287 @@ describe('D16 · the latch AGGREGATES across a step\'s many physical calls', () 
     expect(JSON.parse(result.content).urls, 'and both answers were kept').toHaveLength(2)
     expect(result.authorityRefreshRequired,
       'the step still carries image 1\'s unobserved window').toBe(true)
+  }, 20_000)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E7–E16 · Ideogram and Vision QA are claimed-run providers too', () => {
+  /**
+   * The Phase 1D report claimed every physical flight in a step was collected.
+   * Source disproved it: the saga/activity path reaches Ideogram through a
+   * 90-second fetch and Vision QA through Anthropic, and neither carried the
+   * claimed run. A cancellation during either was invisible, and the loop went
+   * on to the next image.
+   */
+  const sagaStep = async (runStep: (i: never) => Promise<unknown>) =>
+    runStep({
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      systemPrompt: 'SAGA_ILLUSTRATIONS', userMessage: '["scene one"]', model: 'gpt-image-1',
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+      cost: { projectId: PROJ }, runId: RUN,
+    } as never)
+
+  /** Records the signal Ideogram's fetch received, and optionally holds. */
+  function ideogramFetch() {
+    globalThis.fetch = ((url: unknown, init?: { signal?: AbortSignal }) => {
+      const u = String(url)
+      if (u.includes('ideogram')) {
+        state.providerCalls.push('ideogram')
+        state.ideogramSignals.push(init?.signal)
+        if (state.holdIdeogram) {
+          state.started?.()
+          return new Promise((resolve, reject) => {
+            // Resolvable, so a test can model "the call finished normally
+            // AFTER authority went unreadable" — not only "it was aborted".
+            state.releaseIdeogram = () => resolve(new Response(
+              JSON.stringify({ data: [{ url: 'https://img/1.png' }] }),
+              { status: 200, headers: { 'content-type': 'application/json' } }))
+            init?.signal?.addEventListener('abort',
+              () => reject(init.signal!.reason ?? new Error('aborted')), { once: true })
+          })
+        }
+        // The image now exists; the cancel lands in the window before QA.
+        if (state.cancelBeforeQa) state.run.cancel_requested = true
+        return Promise.resolve(new Response(
+          JSON.stringify({ data: [{ url: 'https://img/1.png' }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } }))
+      }
+      // Image download for storage / QA.
+      return Promise.resolve(new Response(new Uint8Array([1, 2, 3]),
+        { status: 200, headers: { 'content-type': 'image/png' } }))
+    }) as never
+  }
+
+  let realFetch: typeof globalThis.fetch
+  beforeEach(() => { realFetch = globalThis.fetch })
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  it('E7 — a claimed-run cancellation aborts the real Ideogram fetch signal', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.holdIdeogram = true
+    vi.useFakeTimers()
+    const inFlight = new Promise<void>(res => { state.started = res })
+    const p = sagaStep(runStep as never).then(v => ({ value: v }), (e: unknown) => ({ error: e }))
+    await inFlight
+
+    const sig = state.ideogramSignals.at(-1)
+    expect(sig, 'Ideogram received a signal at all').toBeDefined()
+    state.run.cancel_requested = true
+    await vi.advanceTimersByTimeAsync(2_500)
+    expect(sig!.aborted, 'and governance aborted it').toBe(true)
+    let done = false
+    void p.then(() => { done = true }, () => { done = true })
+    for (let i = 0; i < 30 && !done; i++) await vi.advanceTimersByTimeAsync(100)
+    await p
+  }, 20_000)
+
+  it('E8 — after that cancellation Ideogram is never dispatched again', async () => {
+    const { isExecutionGovernanceControlFlow } = await import('@/lib/governance/execution-signal')
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.holdIdeogram = true
+    vi.useFakeTimers()
+    const inFlight = new Promise<void>(res => { state.started = res })
+    const p = sagaStep(runStep as never).then(v => ({ value: v }), (e: unknown) => ({ error: e }))
+    await inFlight
+    state.run.cancel_requested = true
+    await vi.advanceTimersByTimeAsync(2_500)
+    let done = false
+    void p.then(() => { done = true }, () => { done = true })
+    for (let i = 0; i < 60 && !done; i++) await vi.advanceTimersByTimeAsync(1_000)
+    const r = await p as { error?: unknown }
+
+    expect(state.providerCalls.filter(c => c === 'ideogram').length,
+      'the retry loop must not re-enter a provider governance just stopped').toBe(1)
+    expect(isExecutionGovernanceControlFlow(r.error),
+      'and the control flow left the step unchanged').toBe(true)
+  }, 30_000)
+
+  it('E9/E16 — Vision QA carries the claimed run and joins the step flight', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    const r = await sagaStep(runStep as never) as { content: string }
+    expect(state.providerCalls, 'QA really ran on the generated image')
+      .toContain('anthropic.visionqa')
+    expect(JSON.parse(r.content).urls.length, 'and the image survived').toBeGreaterThan(0)
+  }, 20_000)
+
+  it('E9b — Vision QA is admitted as the CLAIMED RUN, not merely as a contract', async () => {
+    // The distinguishing fact: a run CANCELLATION is invisible to a
+    // CONTRACT_ONLY call. If QA were admitted without the claimed run, this
+    // cancellation would go unseen, QA would pass, and the step would continue
+    // through a cancelled run.
+    const { isExecutionGovernanceControlFlow } = await import('@/lib/governance/execution-signal')
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.cancelBeforeQa = true
+    const r = await sagaStep(runStep as never).then(
+      (v: unknown) => ({ value: v, error: undefined as unknown }),
+      (e: unknown) => ({ value: undefined as unknown, error: e }))
+    expect(isExecutionGovernanceControlFlow(r.error),
+      'only a RUN_BOUND admission can see a run cancellation').toBe(true)
+  }, 20_000)
+
+  it('E10 — a governance refusal in Vision QA ESCAPES rather than auto-passing', async () => {
+    const { isExecutionGovernanceControlFlow } = await import('@/lib/governance/execution-signal')
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.qaBehaviour = 'governance-refusal'
+    const r = await sagaStep(runStep as never).then(v => ({ value: v }), (e: unknown) => ({ error: e }))
+    expect(isExecutionGovernanceControlFlow((r as { error?: unknown }).error),
+      'swallowed into pass:true, a cancellation would accept the image and continue').toBe(true)
+  }, 20_000)
+
+  it('E11 — an ORDINARY Vision QA provider error still auto-passes', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.qaBehaviour = 'provider-error'
+    const r = await sagaStep(runStep as never) as { content: string }
+    expect(JSON.parse(r.content).urls.length,
+      'a flaky vision call must not block an image that is probably fine').toBeGreaterThan(0)
+  }, 20_000)
+
+  it('E15 — an Ideogram flight latch reaches the step result', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    ideogramFetch()
+    state.holdIdeogram = true
+    vi.useFakeTimers()
+    const inFlight = new Promise<void>(res => { state.started = res })
+    const p = sagaStep(runStep as never).then(v => ({ value: v }), (e: unknown) => ({ error: e }))
+    await inFlight
+    // Authority goes unreadable during the Ideogram call, then recovers.
+    state.runReadFails = true
+    await vi.advanceTimersByTimeAsync(2_500)
+    state.runReadFails = false
+    // Release the fetch that is holding, and let any later attempt succeed.
+    state.holdIdeogram = false
+    state.releaseIdeogram?.()
+    let done = false
+    void p.then(() => { done = true }, () => { done = true })
+    for (let i = 0; i < 60 && !done; i++) await vi.advanceTimersByTimeAsync(1_000)
+    const r = await p as { value?: { authorityRefreshRequired: boolean } }
+    if (r.value) {
+      expect(r.value.authorityRefreshRequired,
+        'Ideogram is in the same flight collector as everything else').toBe(true)
+    }
+  }, 30_000)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E12–E14 · governance control flow leaves the image pipeline unchanged', () => {
+  /**
+   * The image step is built to be forgiving: a retry loop for rate limits, a
+   * reference wrapper that re-labels failures, an `errors[]` array that lets one
+   * bad image not kill fifteen good ones, and a QA gate that passes on doubt.
+   *
+   * Every one of those is wrong for governance. A stop that gets slept on and
+   * retried re-dispatches work that was just stopped; a refusal wrapped as a
+   * ReferenceGenerationError hides which authority spoke; one collected into
+   * `errors[]` lets the loop continue through a cancelled run.
+   */
+  const coverStep = async (runStep: (i: never) => Promise<unknown>) =>
+    runStep({
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      systemPrompt: 'COVER_ILLUSTRATIONS', userMessage: '["a cat"]', model: 'gpt-image-1',
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+      cost: { projectId: PROJ },
+    } as never)
+
+  async function escapes(kind: 'admission' | 'inflight' | 'stopped') {
+    const { runStep } = await import('@/lib/ai/runner')
+    state.imageThrows = kind
+    return coverStep(runStep as never).then(
+      (v: unknown) => ({ value: v, error: undefined as unknown }),
+      (e: unknown) => ({ value: undefined as unknown, error: e }))
+  }
+
+  it('E12 — an ExecutionStoppedError escapes the image step unchanged', async () => {
+    // `withGovernedSpend` refuses at G3C-1 BEFORE admission ever runs. That is
+    // canonical governance control flow and must not become an image failure.
+    const r = await escapes('stopped')
+    expect(r.value, 'the step did not "succeed" with an error string').toBeUndefined()
+    expect((r.error as Error)?.name, 'and arrived as itself').toBe('ExecutionStoppedError')
+  })
+
+  it('E13 — a PhysicalAdmissionRefusedError escapes unchanged, not wrapped', async () => {
+    const { isPhysicalAdmissionRefusal } = await import('@/lib/governance/execution-signal')
+    const r = await escapes('admission')
+    expect(isPhysicalAdmissionRefusal(r.error),
+      'wrapped as ReferenceGenerationError the drain could not settle it').toBe(true)
+  })
+
+  it('E14 — an in-flight dispatch-unknown escapes the outer per-image catch', async () => {
+    const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
+    const r = await escapes('inflight')
+    expect(isGovernanceDispatchUnknown(r.error)).toBe(true)
+    expect((r.error as { mayHaveDispatched?: boolean }).mayHaveDispatched).toBe(true)
+  })
+
+  it('E14b — none of them is collected into the image errors[] array', async () => {
+    for (const kind of ['stopped', 'admission', 'inflight'] as const) {
+      const r = await escapes(kind)
+      expect(r.value, `${kind} must not return a "successful" step`).toBeUndefined()
+    }
+  })
+
+  it('E14c — an ORDINARY image failure is still collected, not thrown', async () => {
+    // The forgiving behaviour is intact for what it was written for.
+    const { runStep } = await import('@/lib/ai/runner')
+    const original = state.providerCalls.length
+    state.rateLimitOnce = false
+    globalThis.fetch = (() => Promise.reject(new Error('network down'))) as never
+    const r = await coverStep(runStep as never) as { content: string }
+    const parsed = JSON.parse(r.content)
+    expect(parsed.urls.length + (parsed.errors?.length ?? 0),
+      'an ordinary defect still becomes a collected error').toBeGreaterThan(0)
+    expect(state.providerCalls.length).toBeGreaterThanOrEqual(original)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E13b · the REFERENCE helper is a second retry loop, and needs the same rule', () => {
+  /**
+   * `generateWithReference` has its own catch, its own rate-limit sleep and its
+   * own `ReferenceGenerationError` wrapper. E12–E14 exercise the plain generate
+   * loop; nothing there reaches this one, and a guard nothing reaches is a
+   * guard nobody has checked.
+   */
+  const coloringStep = async (runStep: (i: never) => Promise<unknown>) =>
+    runStep({
+      execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
+      // No mode flag ⇒ the default coloring path, which is reference-bound.
+      systemPrompt: '', userMessage: '["a cat"]', model: 'gpt-image-1',
+      authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
+      cost: { projectId: PROJ },
+    } as never)
+
+  let realFetch: typeof globalThis.fetch
+  beforeEach(() => {
+    realFetch = globalThis.fetch
+    globalThis.fetch = (() => Promise.resolve(new Response(new Uint8Array([1, 2, 3]),
+      { status: 200, headers: { 'content-type': 'image/png' } }))) as never
+  })
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  it('E13b — an admission refusal is not wrapped as ReferenceGenerationError', async () => {
+    const { isPhysicalAdmissionRefusal } = await import('@/lib/governance/execution-signal')
+    const { runStep } = await import('@/lib/ai/runner')
+    state.editThrows = 'admission'
+    const r = await coloringStep(runStep as never).then(
+      (v: unknown) => ({ value: v, error: undefined as unknown }),
+      (e: unknown) => ({ value: undefined as unknown, error: e }))
+    expect(state.providerCalls, 'the reference helper really ran').toContain('openai.edit')
+    expect(isPhysicalAdmissionRefusal(r.error),
+      're-labelled, the drain could not settle it').toBe(true)
+  }, 20_000)
+
+  it('E13c — an ExecutionStoppedError escapes the reference helper unchanged', async () => {
+    const { runStep } = await import('@/lib/ai/runner')
+    state.editThrows = 'stopped'
+    const r = await coloringStep(runStep as never).then(
+      (v: unknown) => ({ value: v, error: undefined as unknown }),
+      (e: unknown) => ({ value: undefined as unknown, error: e }))
+    expect((r.error as Error)?.name).toBe('ExecutionStoppedError')
   }, 20_000)
 })

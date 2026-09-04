@@ -37,7 +37,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { classifyRunAuthority, readRunAuthority } from './run-authority'
 import { resolveExecutionStop, resolveExecutionStopForContract } from './execution-stop'
-import type { ExecutionContract, ExecutionContext } from './execution-stop'
+import type { ExecutionContract, ExecutionContext, StopRefusalReason } from './execution-stop'
 // TYPE-ONLY, and deliberately so: `import type` is erased at compile time, so
 // this adds no runtime edge from governance to the spend layer. `execution-stop.ts`
 // — the neighbouring governance module — already imports ProjectRef exactly this
@@ -124,12 +124,87 @@ export function isGovernanceAbort(e: unknown): e is GovernanceAbortError {
 export class PhysicalAdmissionRefusedError extends Error {
   readonly refusal: Exclude<AuthorityTick, 'ALLOWED'>
   readonly provider: string
-  constructor(refusal: Exclude<AuthorityTick, 'ALLOWED'>, provider: string, detail: string) {
+  /**
+   * E4. The CANONICAL stop reason, present exactly when `refusal === 'STOPPED'`.
+   *
+   * It comes from the StopDecision, not from parsing `detail`: an operator
+   * looking at a deferred run needs to know whether the whole platform is
+   * paused or only their project, and a synthetic label like
+   * `physical_admission_stop` answers neither question. Prose is for humans;
+   * this is the stable value the drain reports.
+   */
+  readonly stopReason?: StopRefusalReason
+  constructor(
+    refusal: Exclude<AuthorityTick, 'ALLOWED'>,
+    provider: string,
+    detail: string,
+    stopReason?: StopRefusalReason,
+  ) {
     super(`physical admission refused (${refusal}) for ${provider}: ${detail}`)
     this.name = 'PhysicalAdmissionRefusedError'
     this.refusal = refusal
     this.provider = provider
+    if (refusal === 'STOPPED' && stopReason) this.stopReason = stopReason
   }
+}
+
+/**
+ * Governance aborted a request that was ALREADY IN FLIGHT.
+ *
+ * ── WHY THIS IS NOT AN ADMISSION REFUSAL ───────────────────────────────────
+ * `PhysicalAdmissionRefusedError` means one thing: nothing was dispatched. This
+ * means the opposite is possible. The request was written to a socket, the
+ * provider may have accepted it, work may be running and billable right now —
+ * and all we did was hang up locally. A local abort is not a remote
+ * cancellation, and no amount of certainty about OUR intent creates certainty
+ * about THEIR state.
+ *
+ * So it is deliberately not called cancelled, not_dispatched, or a provider
+ * failure. It is MAY_HAVE_DISPATCHED, and the only honest lifecycle for it is
+ * the durable ambiguity vocabulary the G3C-3B reaper already uses.
+ */
+export class GovernanceDispatchUnknownError extends Error {
+  /** Always true. Named so a reader at a call site cannot mistake the class. */
+  readonly mayHaveDispatched = true as const
+  readonly provider: string
+  /** Which governance switch fired, from the watcher — the authoritative source. */
+  readonly abortReason: AbortReason
+  /** The transport/SDK rejection that surfaced the abort, kept for provenance. */
+  readonly cause?: unknown
+  constructor(provider: string, abortReason: AbortReason, cause?: unknown) {
+    super(`governance aborted an IN-FLIGHT ${provider} request (${abortReason}); `
+      + 'the request may already have been dispatched and cannot be assumed cancelled')
+    this.name = 'GovernanceDispatchUnknownError'
+    this.provider = provider
+    this.abortReason = abortReason
+    this.cause = cause
+  }
+}
+
+export function isGovernanceDispatchUnknown(e: unknown): e is GovernanceDispatchUnknownError {
+  return e instanceof GovernanceDispatchUnknownError
+}
+
+/**
+ * E3. The ONE predicate for "this is governance control flow, not a provider
+ * failure" — the question every retry loop, error aggregator and fallback in
+ * the image pipeline needs to ask before it does anything clever.
+ *
+ * It recognises, and does not re-decide: the pre-dispatch refusal, the canonical
+ * pre-spend stop refusal (`ExecutionStoppedError`, thrown by `withGovernedSpend`
+ * before admission ever runs), the in-flight dispatch-unknown outcome, and a
+ * raw `GovernanceAbortError` where one can still surface unwrapped.
+ *
+ * `ExecutionStoppedError` is matched by NAME rather than by import: this module
+ * is imported by `execution-stop`'s consumers and importing it back would close
+ * a cycle. The name is part of that class's public contract and is asserted by
+ * the stop suites.
+ */
+export function isExecutionGovernanceControlFlow(e: unknown): boolean {
+  return isPhysicalAdmissionRefusal(e)
+    || isGovernanceDispatchUnknown(e)
+    || isGovernanceAbort(e)
+    || (e instanceof Error && e.name === 'ExecutionStoppedError')
 }
 
 export function isPhysicalAdmissionRefusal(e: unknown): e is PhysicalAdmissionRefusedError {
@@ -173,17 +248,19 @@ export async function admitPhysicalRequest(
 
   let outcome: AuthorityTick
   let detail: string
+  let stopReason: StopRefusalReason | undefined
   try {
     const client = typeof db === 'function' ? (db as () => AnyDb)() : db
     const r = await evaluateAuthority(client, authority)
     outcome = r.tick
     detail = r.detail
+    stopReason = r.stopReason
   } catch {
     outcome = 'AUTHORITY_UNAVAILABLE'
     detail = 'authority evaluation threw before dispatch'
   }
   if (outcome === 'ALLOWED') return
-  throw new PhysicalAdmissionRefusedError(outcome, provider, detail)
+  throw new PhysicalAdmissionRefusedError(outcome, provider, detail, stopReason)
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -433,7 +510,12 @@ export function watchExecutionAuthority(
  */
 export async function evaluateAuthority(
   db: AnyDb, authority: ExecutionAuthority,
-): Promise<{ tick: AuthorityTick; detail: string; abortReason?: AbortReason }> {
+): Promise<{
+  tick: AuthorityTick; detail: string
+  abortReason?: AbortReason
+  /** Present exactly when tick === 'STOPPED'. Canonical, never derived from prose. */
+  stopReason?: StopRefusalReason
+}> {
   if (authority.kind === 'CONTRACT_ONLY') {
     // No claimed run: stop authority is the ONLY thing it can observe. It
     // cannot produce RUN_CANCELLED or RUN_FENCED, because it owns no run to be
@@ -476,16 +558,22 @@ export async function evaluateAuthority(
  */
 function fromStopDecision(decision: {
   allowed: boolean; reason?: string | null
-}): { tick: AuthorityTick; detail: string; abortReason?: AbortReason } {
+}): {
+  tick: AuthorityTick; detail: string
+  abortReason?: AbortReason; stopReason?: StopRefusalReason
+} {
   if (decision.allowed) return { tick: 'ALLOWED', detail: 'authority clear' }
-  const reason = decision.reason ?? 'stop_state_unavailable'
+  const reason = (decision.reason ?? 'stop_state_unavailable') as StopRefusalReason
   if (reason === 'stop_state_unavailable') {
+    // Locked: unreadable authority is NOT a stop. It carries no stopReason
+    // because no stop was decided — there is nothing canonical to report.
     return { tick: 'AUTHORITY_UNAVAILABLE', detail: reason }
   }
   return {
     tick: 'STOPPED',
     detail: reason,
     abortReason: reason === 'global_automation_paused' ? 'GLOBAL_STOPPED' : 'PROJECT_STOPPED',
+    stopReason: reason,
   }
 }
 

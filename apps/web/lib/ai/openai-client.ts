@@ -37,7 +37,8 @@ import {
 import {
   admitPhysicalRequest,
   followAsyncIterable, watchExecutionAuthority, composeAbortSignals,
-  authorityForRequest, type RunBoundAuthority,
+  authorityForRequest, GovernanceDispatchUnknownError, isGovernanceDispatchUnknown,
+  type RunBoundAuthority, type AbortReason,
 } from '@/lib/governance/execution-signal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -228,8 +229,15 @@ async function governedPhysicalRequest<T>(
     const settled = settledOf?.(value)
     // A stream's handle is not its end. Hold the watch until the iterator
     // actually terminates — completion, error, abort or an early consumer break.
-    if (settled) void settled.catch(() => {}).finally(release)
-    else release()
+    // The same rule applies to its FAILURE: a stream that dies mid-iteration
+    // because governance fired is an in-flight abort, so it is classified with
+    // the same watcher evidence rather than escaping as a provider error.
+    if (settled) {
+      void settled
+        .catch(e => { throw governanceInFlight(watch, e) })
+        .catch(() => {})
+        .finally(release)
+    } else release()
     ctx.onFlight?.({
       get authorityUnavailable() { return watch.authorityUnavailable },
       get abortReason() { return watch.abortReason },
@@ -237,8 +245,33 @@ async function governedPhysicalRequest<T>(
     return value
   } catch (e) {
     release()
-    throw e
+    throw governanceInFlight(watch, e)
   }
+}
+
+/**
+ * E1. Classifies a physical failure that happened while a watcher was live.
+ *
+ * ── THE WATCHER IS THE EVIDENCE, NOT THE ERROR TYPE ────────────────────────
+ * The abort reason we attach to the signal does not survive the trip through a
+ * provider client. OpenAI wraps it as `APIUserAbortError`, Anthropic and
+ * `fetch` produce their own `AbortError`/`APIConnectionError`, and any of them
+ * may re-wrap again on the way out. Testing `e instanceof GovernanceAbortError`
+ * therefore answers "did the wrapper happen to preserve our class", which is a
+ * fact about the SDK, not about governance.
+ *
+ * `watch.abortReason` is set by OUR watcher at the moment it aborted. If it is
+ * non-null, governance fired — whatever shape the rejection arrived in.
+ *
+ * What comes out is deliberately NOT an admission refusal: the request was
+ * already on the wire, so remote work may exist and only the owner can decide
+ * what to record. A rejection with no abort reason is left exactly as it was.
+ */
+function governanceInFlight(watch: { abortReason: AbortReason | null }, e: unknown): unknown {
+  const reason = watch.abortReason
+  if (!reason) return e
+  if (isGovernanceDispatchUnknown(e)) return e
+  return new GovernanceDispatchUnknownError('openai', reason, e)
 }
 
 /** Rejected before any work happened, so releasing the reservation is defensible. */
@@ -410,6 +443,12 @@ export async function openAISpeech(
         })
       } catch (e) {
         release()
+        // E1: governance first. If OUR watcher aborted, this is an in-flight
+        // governance abort, not a transport verdict — and the transport
+        // classifier below cannot tell the difference, because to it a
+        // governance abort and a network reset look identical.
+        const inFlight = governanceInFlight(watch, e)
+        if (isGovernanceDispatchUnknown(inFlight)) throw inFlight
         // Same boundary as `image-client.ts` and `elevenlabs.ts`. The SDK paths
         // above are already guarded by `provablyNotBilled`; this raw `fetch` was
         // the one OpenAI call still claiming the safe case unconditionally, and

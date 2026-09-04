@@ -220,6 +220,65 @@ export async function terminalizeCancelledRun(
   return Array.isArray(data) && data.length > 0 ? 'CANCELLED' : 'FENCED'
 }
 
+/** What an ownership-conditioned dispatch-unknown write actually did. */
+export type DispatchUnknownResult = 'UNKNOWN_WRITTEN' | 'FENCED' | 'ERROR'
+
+/**
+ * Records an owned run as DURABLY AMBIGUOUS after governance aborted a request
+ * that was already in flight.
+ *
+ * ── WHY UNKNOWN AND NOT CANCELLED ──────────────────────────────────────────
+ * We hung up a socket. That is the entire extent of what we did. The provider
+ * may have accepted the request, may be running it, may already have charged
+ * for it. Every other status would be a claim we cannot support:
+ *
+ *   cancelled  claims the remote effect did not happen.
+ *   failed     records a governance decision as an execution failure, and feeds
+ *              retry backoff and failure counters.
+ *   pending    re-dispatches. If the first request DID land, the second one
+ *              duplicates real, billable, possibly externally-visible work —
+ *              the single worst outcome available here.
+ *
+ * `unknown` + `reconciliation_required` is the vocabulary the G3C-3B reaper
+ * already uses for exactly this class: a run whose dispatch cannot be
+ * determined. Reusing it means one ambiguity model and one operator surface
+ * (`runs_reconciliation_required_idx`), not a second dialect.
+ *
+ * ── WHAT IS DELIBERATELY NOT SET ───────────────────────────────────────────
+ * `action_outcome` stays untouched. The constraint is one-directional —
+ * UNKNOWN/PARTIAL *requires* reconciliation, not the reverse — so a non-action
+ * agent run does not need one, and inventing an action outcome for a run that
+ * has no action identity would be fabricating a fact.
+ *
+ * `cancel_requested` is preserved: the operator's instruction is still true and
+ * still the reason a human is being asked to look.
+ *
+ * ── WHY OWNERSHIP-CONDITIONED ──────────────────────────────────────────────
+ * The same predicate every other terminal write in this module uses. A worker
+ * that lost its claim mid-abort must not stamp UNKNOWN over the new owner's
+ * row; 0 rows matched means FENCED, and the new owner decides.
+ */
+export async function recordDispatchUnknown(
+  db: AnyDb,
+  runId: string,
+  claimId: string | null | undefined,
+  reconciliationReason: string,
+): Promise<DispatchUnknownResult> {
+  if (!claimId) return 'FENCED'
+  const { data, error } = await db.from('runs')
+    .update({
+      status: 'unknown',
+      reconciliation_required: true,
+      reconciliation_reason: reconciliationReason,
+      finished_at: new Date().toISOString(),
+      claimed_at: null, lease_until: null,
+    })
+    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
+    .select('id')
+  if (error) return 'ERROR'
+  return Array.isArray(data) && data.length > 0 ? 'UNKNOWN_WRITTEN' : 'FENCED'
+}
+
 /**
  * The FINAL owned boundary, immediately before terminal success.
  *

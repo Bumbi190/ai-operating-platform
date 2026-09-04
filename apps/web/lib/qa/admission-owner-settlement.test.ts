@@ -51,6 +51,12 @@ const state = {
   providerCalls: 0,
   /** Which admission refusal the provider seam raises, if any. */
   refuseAdmission: null as null | 'CANCELLED' | 'STOPPED' | 'FENCED' | 'AUTHORITY_UNAVAILABLE',
+  /** Which IN-FLIGHT governance abort the provider seam raises, if any. */
+  inFlightAbort: null as null | 'RUN_CANCELLED' | 'RUN_FENCED' | 'GLOBAL_STOPPED' | 'PROJECT_STOPPED',
+  /** The canonical stop reason an admission STOPPED carries. */
+  admissionStopReason: undefined as undefined | string,
+  /** Rotates the claim while the request is on the wire. */
+  rotateMidFlight: false,
   /** An ordinary provider failure, to prove the generic path still works. */
   throwGeneric: false,
   /** Error lines written to run_logs — failure accounting's visible trace. */
@@ -74,9 +80,25 @@ vi.mock('@/lib/ai/checkpoint', async () => ({
 vi.mock('@/lib/ai/runner', () => ({
   runStep: async () => {
     state.providerCalls += 1
+    if (state.inFlightAbort) {
+      // The cancel commits HERE — after the boundary checkpoint said yes and
+      // while the request is on the wire. A run that already carried
+      // `cancel_requested` would have been caught at the checkpoint and never
+      // reached a provider at all, which is a different (already-proven) case.
+      if (state.inFlightAbort === 'RUN_CANCELLED') state.run.cancel_requested = true
+      // A rotation that happens MID-FLIGHT, for the same reason: a run whose
+      // claim had already rotated would be fenced at the boundary checkpoint
+      // and never reach a provider. Only a mid-flight rotation exercises the
+      // ownership predicate on the UNKNOWN write itself.
+      if (state.rotateMidFlight) state.run.claim_id = 'someone-else'
+      const { GovernanceDispatchUnknownError } = await import('@/lib/governance/execution-signal')
+      throw new GovernanceDispatchUnknownError('openai', state.inFlightAbort,
+        new Error('APIUserAbortError: Request was aborted'))
+    }
     if (state.refuseAdmission) {
       const { PhysicalAdmissionRefusedError } = await import('@/lib/governance/execution-signal')
-      throw new PhysicalAdmissionRefusedError(state.refuseAdmission, 'openai', 'admission refused')
+      throw new PhysicalAdmissionRefusedError(state.refuseAdmission, 'openai', 'admission refused',
+        state.admissionStopReason as never)
     }
     if (state.throwGeneric) throw new Error('provider exploded')
     return { content: 'x', tokensIn: 1, tokensOut: 1, durationMs: 1, authorityRefreshRequired: false }
@@ -181,6 +203,9 @@ beforeEach(() => {
   state.writes = []
   state.providerCalls = 0
   state.refuseAdmission = null
+  state.inFlightAbort = null
+  state.admissionStopReason = undefined
+  state.rotateMidFlight = false
   state.throwGeneric = false
   state.errorLogs = []
   notifications.length = 0
@@ -287,5 +312,104 @@ describe('D1–D4 · the drain owns the physical admission refusal', () => {
     await drainOnce()
     const failureWrites = state.writes.filter(w => 'last_error' in w.payload)
     expect(failureWrites.length, 'a real failure is still a failure').toBeGreaterThan(0)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E1–E6 · an IN-FLIGHT governance abort is durable ambiguity, never a retry', () => {
+  /**
+   * A pre-dispatch refusal and an in-flight abort look similar and mean opposite
+   * things. The first proves nothing left the machine. The second means the
+   * request was on the wire when we hung up: the provider may have accepted it,
+   * may be running it, may already have charged for it.
+   *
+   * So the one thing the drain must never do here is requeue. If the first
+   * request landed, a retry duplicates real, billable, possibly
+   * externally-visible work.
+   */
+  it('E1/E2/E3 — an owned in-flight cancel becomes unknown + reconciliation', async () => {
+    state.inFlightAbort = 'RUN_CANCELLED'
+    const r = await drainOnce()
+    expect(r.status, 'not cancelled — we stopped a socket, not the provider').toBe('unknown')
+    expect(r.reason).toBe('dispatch_unknown')
+    expect(state.run.status).toBe('unknown')
+    expect(state.run.reconciliation_required, 'a human is asked to look').toBe(true)
+    expect(String(state.run.reconciliation_reason)).toMatch(/cannot be determined/)
+    expect(state.run.cancel_requested, 'the operator instruction is preserved').toBe(true)
+    assertNoFailureAccounting()
+  })
+
+  it('E2b — it is never requeued: no pending flip, no retry', async () => {
+    state.inFlightAbort = 'RUN_CANCELLED'
+    await drainOnce()
+    const statuses = state.writes.map(w => w.payload.status)
+    expect(statuses, 'a retry could duplicate billable remote work').not.toContain('pending')
+    expect(statuses).not.toContain('failed')
+    expect(state.providerCalls, 'and nothing dispatched again this cycle').toBe(1)
+  })
+
+  it('E4 — a GLOBAL STOP mid-flight is the same durable ambiguity', async () => {
+    state.inFlightAbort = 'GLOBAL_STOPPED'
+    const r = await drainOnce()
+    expect(r.status).toBe('unknown')
+    expect(state.run.reconciliation_required).toBe(true)
+    assertNoFailureAccounting()
+  })
+
+  it('E4b — a PROJECT STOP mid-flight likewise', async () => {
+    state.inFlightAbort = 'PROJECT_STOPPED'
+    const r = await drainOnce()
+    expect(r.status).toBe('unknown')
+    assertNoFailureAccounting()
+  })
+
+  it('E5 — RUN_FENCED mid-flight writes NOTHING: the new owner decides', async () => {
+    state.inFlightAbort = 'RUN_FENCED'
+    const r = await drainOnce()
+    expect(r.status).toBe('fenced')
+    expect(state.writes, 'stamping our ambiguity over their row would be a lie').toEqual([])
+    expect(state.run.status).toBe('running')
+    assertNoFailureAccounting()
+  })
+
+  it('E5b — an unknown write that FAILS reports lifecycle_error, not unknown', async () => {
+    state.inFlightAbort = 'RUN_CANCELLED'
+    state.updateFails = true
+    const r = await drainOnce()
+    expect(r.status).toBe('lifecycle_error')
+    expect(r.reason).toBe('lifecycle_write_failed')
+    expect(state.run.status, 'the lease and the reaper own it now').toBe('running')
+    assertNoFailureAccounting()
+  })
+
+  it('E5c — a claim that rotates MID-FLIGHT cannot write unknown over the new owner', async () => {
+    // The ownership predicate on the write is what decides here. Rotating
+    // BEFORE the run starts proves nothing about it — the boundary checkpoint
+    // would fence the run long before any provider was reached.
+    state.inFlightAbort = 'RUN_CANCELLED'
+    state.rotateMidFlight = true
+    const r = await drainOnce()
+    expect(r.status, 'the write matched 0 rows, so this worker owns nothing').toBe('fenced')
+    expect(state.run.status, 'and the new owner decides').toBe('running')
+    assertNoFailureAccounting()
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E17–E19 · the drain reports the REAL stop reason', () => {
+  it('E17 — a global pause reports global_automation_paused', async () => {
+    state.refuseAdmission = 'STOPPED'
+    state.admissionStopReason = 'global_automation_paused'
+    const r = await drainOnce()
+    expect(r.status).toBe('deferred_by_stop')
+    expect(r.reason, 'not a synthetic physical_admission_stop').toBe('global_automation_paused')
+  })
+
+  it('E18 — a project pause reports project_execution_paused', async () => {
+    state.refuseAdmission = 'STOPPED'
+    state.admissionStopReason = 'project_execution_paused'
+    const r = await drainOnce()
+    expect(r.reason).toBe('project_execution_paused')
+    expect(r.reason).not.toBe('global_automation_paused')
   })
 })

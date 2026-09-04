@@ -31,9 +31,16 @@ import { estimateImageSek } from '@/lib/cost/budget-gate'
 import {
   ProviderNotDispatchedError,
   withGovernedSpend,
+  resolveGovernedProjectId,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  admitPhysicalRequest, watchExecutionAuthority, composeAbortSignals,
+  authorityForRequest, GovernanceDispatchUnknownError,
+  type RunBoundAuthority, type AbortReason,
+} from '@/lib/governance/execution-signal'
 import {
   ProviderDispatchUnknownError,
   classifyTransportFailure,
@@ -55,6 +62,13 @@ export interface ImageGovernanceContext {
   /** Recorded on cost_events.operation, e.g. 'Scene Image'. */
   operation: string
   agent?: string
+  /**
+   * G3C-3C-A · E2. Present when a CLAIMED run owns this call. Absent means the
+   * adapter derives CONTRACT_ONLY — never that the call is unwatched.
+   */
+  authority?: RunBoundAuthority
+  /** Live in-flight state, for a step that aggregates every physical flight. */
+  onFlight?: (f: { readonly authorityUnavailable: boolean; readonly abortReason: AbortReason | null }) => void
   runId?: string | null
   scriptId?: string | null
   /** Stable identity for THIS image. Omit unless the subject is truly unique. */
@@ -205,15 +219,44 @@ export async function generateIdeogramLegacy(
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek },
     async () => {
+      // ── G3C-3C-A · E2 · A CLAIMED RUN REACHES THIS PROVIDER TOO ──────────
+      // This is the saga/activity image path of a RUN_BOUND workflow run, and
+      // until now it had the contract stop gate above and nothing else: no
+      // pre-dispatch re-check, no in-flight watcher. A cancellation committed
+      // during a 90-second Ideogram call was invisible here, and the retry loop
+      // above would happily start the next attempt.
+      const authority = authorityForRequest(
+        ctx.execution,
+        async ref => { const r = await resolveGovernedProjectId(ref); return r.ok ? r.projectId : null },
+        ctx.authority,
+      )
+      await admitPhysicalRequest(() => createAdminClient(), authority, 'ideogram')
+      const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+      // The 90s timeout is KEPT and composed, not replaced: it bounds a hung
+      // socket, which is a different failure from a governance stop.
+      const composed = composeAbortSignals([watch.signal, init?.signal])
+      const release = () => { composed.dispose(); watch.dispose() }
+      ctx.onFlight?.({
+        get authorityUnavailable() { return watch.authorityUnavailable },
+        get abortReason() { return watch.abortReason },
+      })
+
       let res: Response
       try {
         res = await fetch(IDEOGRAM_LEGACY_GENERATE, {
           method: 'POST',
-          signal: init?.signal,
+          signal: composed.signal,
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_request: imageRequest }),
         })
       } catch (e) {
+        release()
+        // Governance first: the transport classifier below cannot tell a
+        // governance abort from a network reset, and only one of them means
+        // the request may already be running remotely.
+        if (watch.abortReason) {
+          throw new GovernanceDispatchUnknownError('ideogram', watch.abortReason, e)
+        }
         // Same boundary as the v3 path above, and the same reason. This one
         // matters MORE, not less: `lib/ai/runner.ts` calls it under a 90-second
         // `AbortSignal.timeout`, so an abort AFTER the request was written is a
@@ -229,6 +272,7 @@ export async function generateIdeogramLegacy(
         })
       }
 
+      try {
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         const failure = new IdeogramHttpError(res.status, body)
@@ -262,6 +306,11 @@ export async function generateIdeogramLegacy(
         })
       }
       return first
+      } finally {
+        // The body is read above, so the physical request ends HERE — not at
+        // headers. One `finally` covers every exit: ok, refusal, ambiguity.
+        release()
+      }
     },
   )
 }

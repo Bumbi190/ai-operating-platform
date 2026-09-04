@@ -836,3 +836,85 @@ describe('D10–D12 · termination means the UNDERLYING transport terminated', (
     })
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E19 · stop reason is canonical, and unreadable is never a stop', () => {
+  it('E19a — a GLOBAL pause refuses admission carrying global_automation_paused', async () => {
+    const { admitPhysicalRequest, isPhysicalAdmissionRefusal } =
+      await import('@/lib/governance/execution-signal')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    state.globalPaused = true
+    const err = await admitPhysicalRequest(createAdminClient() as never,
+      { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM }, 'openai').then(() => null, e => e)
+    expect(isPhysicalAdmissionRefusal(err)).toBe(true)
+    expect((err as { refusal: string }).refusal).toBe('STOPPED')
+    expect((err as { stopReason?: string }).stopReason,
+      'the canonical reason, not prose').toBe('global_automation_paused')
+  })
+
+  it('E19b — a PROJECT pause carries project_execution_paused', async () => {
+    const { admitPhysicalRequest } = await import('@/lib/governance/execution-signal')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    state.projectPaused = true
+    const err = await admitPhysicalRequest(createAdminClient() as never,
+      { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM }, 'openai').then(() => null, e => e)
+    expect((err as { stopReason?: string }).stopReason).toBe('project_execution_paused')
+  })
+
+  it('E19c — an UNREADABLE stop state stays AUTHORITY_UNAVAILABLE and carries no stopReason', async () => {
+    // Locked rule. Reporting it as STOPPED would tell an operator the platform
+    // is paused when in fact we could not read whether it is.
+    const { admitPhysicalRequest } = await import('@/lib/governance/execution-signal')
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    state.stopReadFails = true
+    const err = await admitPhysicalRequest(createAdminClient() as never,
+      { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM }, 'openai').then(() => null, e => e)
+    expect((err as { refusal: string }).refusal).toBe('AUTHORITY_UNAVAILABLE')
+    expect((err as { stopReason?: string }).stopReason).toBeUndefined()
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('E20 · the RUN_BOUND provider inventory has no uncovered seam', () => {
+  /**
+   * A structural sweep, deliberately. The behavioural proofs above cover each
+   * provider one at a time; this one answers a question none of them can — has
+   * a NEW physical call appeared that nobody wired. That is exactly how
+   * Ideogram and Vision QA stayed unwatched through three phases of green
+   * suites: every existing test passed, and neither call was in any of them.
+   */
+  it('E20 — every physical provider call reachable from runStep is admitted and watched', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const read = (f: string) => fs.readFileSync(path.join(process.cwd(), f), 'utf8')
+    const runner = read('lib/ai/runner.ts')
+
+    // The claimed-run providers, and the seam each must carry.
+    const seams: [string, RegExp][] = [
+      ['openai chat (stream)',   /openAIChatCompletion\([\s\S]{0,400}?onFlight: flights\.onFlight/],
+      ['openai image generate',  /openAIImageGenerate\([\s\S]{0,400}?onFlight: flights\.onFlight/],
+      ['openai image edit',      /generateWithReference\([\s\S]{0,300}?flights\.onFlight\)/],
+      ['anthropic create',       /onFlight: flights\.onFlight[\s\S]{0,200}?messages\.create/],
+      ['anthropic stream',       /onFlight: flights\.onFlight[\s\S]{0,200}?messages\.stream/],
+      ['ideogram legacy',        /generateWithIdeogram\([\s\S]{0,300}?flights\.onFlight\)/],
+      ['vision QA',              /runVisionQa\([\s\S]{0,300}?flights\.onFlight\)/],
+    ]
+    for (const [name, re] of seams) {
+      expect(runner, `${name} joins the step flight collector`).toMatch(re)
+    }
+
+    // Each adapter admits before dispatch.
+    expect(read('lib/ai/openai-client.ts'), 'openai admits')
+      .toMatch(/admitPhysicalRequest\(/)
+    expect(read('lib/ai/anthropic.ts'), 'anthropic admits')
+      .toMatch(/admitPhysicalRequest\(/)
+    expect(read('lib/media/image-client.ts'), 'ideogram admits')
+      .toMatch(/admitPhysicalRequest\(\(\) => createAdminClient\(\), authority, 'ideogram'\)/)
+
+    // And no physical call in the runner bypasses the adapters. `fetch` here is
+    // only ever image download / storage, never a provider request.
+    const providerFetches = runner.match(/fetch\(\s*['"`]https?:\/\/api\./g) ?? []
+    expect(providerFetches, 'no raw provider endpoint is called from the runner')
+      .toEqual([])
+  })
+})

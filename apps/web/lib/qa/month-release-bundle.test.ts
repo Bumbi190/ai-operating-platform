@@ -279,7 +279,7 @@ describe('11-13. side-effect freedom and boundary', () => {
     const imports = [...src.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map(m => m[1])
     // Type-only imports of the domain plus the bundle's own schema. Nothing else.
     expect(imports.sort()).toEqual(
-      ['../attestation', '../types', './reachability-policy', './types'])
+      ['../attestation', '../types', './github-binding', './reachability-policy', './types'])
     expect(src).not.toMatch(/\bfetch\s*\(/)
     expect(src).not.toMatch(/createAdminClient|createClient|supabase/i)
     expect(src).not.toMatch(/executeWorkflowAction|appendTransition|recordEvidence/)
@@ -289,6 +289,18 @@ describe('11-13. side-effect freedom and boundary', () => {
     const policy = readFileSync(join(process.cwd(), 'lib/workflows/bundle/reachability-policy.ts'), 'utf8')
     for (const forbidden of ['fetch(', 'process.env', 'import(', 'require(', 'supabase']) {
       expect(policy, forbidden).not.toContain(forbidden)
+    }
+    // The fifth import is the GitHub release BINDING: a pure reader over
+    // instance evidence. Widening the enumeration would weaken the guard unless
+    // the newcomer is itself proven inert, so it is checked here too.
+    // Comments stripped: the module documents the env vars it refuses to fall
+    // back to, and that documentation is worth more than a naive substring match.
+    const bindingSrc = readFileSync(join(process.cwd(), 'lib/workflows/bundle/github-binding.ts'), 'utf8')
+    const binding = bindingSrc.split('\n')
+      .filter(l => { const t = l.trim(); return !t.startsWith('*') && !t.startsWith('//') && !t.startsWith('/*') })
+      .join('\n')
+    for (const forbidden of ['fetch(', 'process.env', 'import(', 'require(', 'supabase', 'api.github.com']) {
+      expect(binding, forbidden).not.toContain(forbidden)
     }
 
   })

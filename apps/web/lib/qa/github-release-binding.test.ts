@@ -296,22 +296,28 @@ describe('23-30. inert, and nothing else moved', () => {
       .toEqual(without.readiness.blockers.map(b => b.code).sort())
   })
 
-  it('30. TRIPWIRE — no GitHub check may become executable here', () => {
-    // The status-only false PASS this originally pinned is fixed: the evaluator
-    // now requires BOTH the Commit Status and Check Runs sources. What must
-    // still hold is that a correct evaluator did not become an executable
-    // action — that needs a credential and a transport, neither of which exists.
+  it('30. the three GitHub checks are executable — and still 1:1', () => {
+    // This tripwire previously pinned them as UNEXECUTABLE, because the reader
+    // could produce a false PASS from commit statuses alone. That defect is
+    // fixed and the credential exists, so the property worth protecting has
+    // changed: each kind answers exactly ONE check, and all three are READ_ONLY.
     const reg = readFileSync(join(process.cwd(), 'lib/workflows/action-registry.ts'), 'utf8')
-    for (const kind of ['github_pr_merged', 'github_pr_checks_green', 'github_merge_sha_matches_expected']) {
-      expect(reg).not.toContain(`${kind}: {`)
-    }
     const disc = readFileSync(join(process.cwd(), 'lib/workflows/action-discovery.ts'), 'utf8')
-    expect(disc).not.toContain('github_pr_checks_green')
-    // Both sources are now named, and the check-runs half issues no request.
-    const dep = readFileSync(join(process.cwd(), 'lib/workflows/adapters/familje-stunden/deployment.ts'), 'utf8')
-    expect(dep).toContain('/status')
-    expect(dep).toContain('check-runs')
-    expect(dep).toContain('evaluateRequiredChecks')
+    const pairs: [string, string][] = [
+      ['observe_github_pr_merged', 'github_pr_merged'],
+      ['observe_github_pr_checks_green', 'github_pr_checks_green'],
+      ['observe_github_merge_sha_match', 'github_merge_sha_matches_expected'],
+    ]
+    for (const [kind, check] of pairs) {
+      expect(reg, kind).toContain(`${kind}: {`)
+      expect(disc, kind).toContain(`['${kind}', '${check}']`)
+    }
+    // No kind answers two checks, and no check has two answering kinds.
+    expect(new Set(pairs.map(p => p[1])).size).toBe(3)
+    // And the credential is a GitHub App, never a personal access token.
+    const auth = readFileSync(
+      join(process.cwd(), 'lib/workflows/adapters/familje-stunden/github-app-auth.ts'), 'utf8')
+    expect(auth).not.toContain('FAMILJE_STUNDEN_GITHUB_TOKEN')
   })
 })
 

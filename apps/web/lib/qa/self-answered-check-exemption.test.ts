@@ -413,13 +413,22 @@ describe('no other gate moved', () => {
     // Not a prohibition on ever mapping a write, but a deliberate stop: the
     // exemption would then apply to a write, and that deserves its own review
     // rather than arriving as a silent consequence of an unrelated edit.
-    for (const kind of ['compute_release_instant', PROBE_ACTION, 'observe_release_gate']) {
-      expect(checkAnsweredBy(kind)).not.toBeNull()
-      expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class).toBe('READ_ONLY')
+    const GITHUB = ['observe_github_pr_merged', 'observe_github_pr_checks_green',
+                    'observe_github_merge_sha_match']
+    for (const kind of ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB]) {
+      expect(checkAnsweredBy(kind), kind).not.toBeNull()
+      expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class, kind).toBe('READ_ONLY')
     }
     const mapped = Object.keys(ACTION_REGISTRY).filter(k => checkAnsweredBy(k) !== null)
     expect(mapped.sort()).toEqual(
-      ['compute_release_instant', PROBE_ACTION, 'observe_release_gate'].sort())
+      ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB].sort())
+    // The protected property, not the count: an exemption may never reach a
+    // write. Every mapped kind is READ_ONLY, whatever the list grows to.
+    expect(mapped.every(k =>
+      ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY].action_class === 'READ_ONLY')).toBe(true)
+    // And each mapping is 1:1 — no check is answered by two actions.
+    const answered = mapped.map(k => checkAnsweredBy(k))
+    expect(new Set(answered).size).toBe(answered.length)
   })
 
   it('no write-capable action became executable', async () => {

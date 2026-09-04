@@ -43,6 +43,9 @@ const ANSWERS_CHECK: ReadonlyMap<string, string> = new Map([
   ['compute_release_instant', 'release_instant_computed'],
   ['probe_anonymous_protected_access', 'anonymous_protected_access_denied'],
   ['observe_release_gate', 'release_gate_exists'],
+  ['observe_github_pr_merged', 'github_pr_merged'],
+  ['observe_github_pr_checks_green', 'github_pr_checks_green'],
+  ['observe_github_merge_sha_match', 'github_merge_sha_matches_expected'],
 ])
 
 /**

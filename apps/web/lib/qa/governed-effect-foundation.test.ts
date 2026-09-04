@@ -89,11 +89,26 @@ describe('widening the family enabled exactly one thing', () => {
 // ── B. READ_ONLY is untouched ───────────────────────────────────────────────
 
 describe('the READ_ONLY path did not move', () => {
-  it('MUTATION — the same four kinds are read-only executable', () => {
-    expect(executableActionKinds()).toEqual([
-      'compose_monthly_brief', 'compute_release_instant', 'observe_release_gate',
+  it('MUTATION — the read-only lane gained nothing effectful', () => {
+    // The list grows as read-only observations are added — three GitHub
+    // release observations landed alongside this foundation. What must never
+    // change is the PROPERTY: every kind on this lane is READ_ONLY and belongs
+    // to the read-only family. A count alone would go stale and, worse, would
+    // be "fixed" by whoever next widened it without checking the class.
+    const kinds = executableActionKinds()
+    expect(kinds).toEqual([
+      'compose_monthly_brief', 'compute_release_instant',
+      'observe_github_merge_sha_match', 'observe_github_pr_checks_green',
+      'observe_github_pr_merged', 'observe_release_gate',
       'probe_anonymous_protected_access',
     ])
+    for (const k of kinds) {
+      const meta = ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY]
+      expect(meta.action_class, k).toBe('READ_ONLY')
+      expect(meta.executor_family, k).toBe('read_only_observation')
+    }
+    // And no governed-effect kind ever appears here.
+    expect(kinds.filter(k => isGovernedEffectEnabled(k))).toEqual([])
   })
 
   it('MUTATION — the proof action is NOT read-only executable', () => {

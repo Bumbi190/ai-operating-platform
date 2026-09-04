@@ -10,6 +10,8 @@
  * forbid for this family.
  */
 
+import type { GithubBinding } from '../bundle/github-binding'
+
 /** The PR4 vocabulary, unchanged: "could not verify" never becomes PASS. */
 export type ReadOnlyResult = 'pass' | 'fail' | 'blocked' | 'error'
 
@@ -32,6 +34,16 @@ export interface ReadOnlyHandlerInput {
    * request is already covered by the pre-dispatch checkpoint.
    */
   beforeAttempt?: () => Promise<void> | void
+  /**
+   * The instance's GitHub release identity, read on demand.
+   *
+   * A closure rather than a value, for the same reason `beforeAttempt` is one:
+   * the handler still holds no database handle, and an action that does not
+   * need the binding never pays for the query. The executor owns the read, so
+   * the identity always comes from THIS instance's own evidence — never from a
+   * deployment-global environment variable, and never from a caller.
+   */
+  readReleaseBinding?: () => Promise<GithubBinding>
 }
 
 export interface ReadOnlyHandlerOutput {

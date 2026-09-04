@@ -32,6 +32,26 @@ import 'server-only'
 
 import { notPass, pass, type VerificationEvidence, type VerificationFailureKind } from '../types'
 import { FAMILJE_STUNDEN_SYSTEM } from './index'
+import {
+  FAMILJE_STUNDEN_REQUIRED_CHECKS, evaluateRequiredChecks,
+  type CheckRunsPayload, type CiOutcome, type CommitStatusPayload,
+} from './ci-checks'
+
+/**
+ * Evaluator outcomes expressed in the vocabulary the evidence layer already
+ * speaks. No second failure taxonomy is introduced — CI latency stays
+ * retryable, and everything else is a finding GitHub is authoritative about.
+ */
+const CI_OUTCOME_FAILURE: Readonly<Record<CiOutcome, VerificationFailureKind>> = {
+  ALL_REQUIRED_CHECKS_GREEN: 'authoritative_fail', // unreachable: green never fails
+  CHECKS_PENDING: 'service_unavailable',
+  SOURCE_UNAVAILABLE: 'service_unavailable',
+  MALFORMED_RESPONSE: 'malformed_response',
+  CHECKS_FAILED: 'authoritative_fail',
+  EXPECTED_CHECK_MISSING: 'authoritative_fail',
+  SHA_MISMATCH: 'authoritative_fail',
+  NO_REQUIRED_POLICY: 'authoritative_fail',
+}
 
 const GITHUB_API = 'https://api.github.com'
 const VERCEL_API = 'https://api.vercel.com'
@@ -138,10 +158,16 @@ export interface PullRequestFacts {
   observedAt: string
 }
 
+/**
+ * The RAW combined-status response, not a rollup verdict.
+ *
+ * The rollup (`state`) is deliberately not surfaced as a verdict any more: it
+ * reports on Commit Statuses only, and two of Familje-Stundens three required
+ * signals are Check Runs, which it cannot see. Evaluation belongs to
+ * `evaluateRequiredChecks`, which consumes both sources.
+ */
 export interface CombinedStatusFacts {
-  /** GitHub's own rollup: success | pending | failure. */
-  state: string
-  total: number
+  payload: CommitStatusPayload
   observedAt: string
 }
 
@@ -184,7 +210,7 @@ export async function readCombinedStatus(
   if (!githubToken || !repo) {
     return { ok: false, failure: 'credential_missing', detail: 'GitHub credential is not configured' }
   }
-  const r = await getJson<{ state: string; total_count: number }>(
+  const r = await getJson<CommitStatusPayload>(
     `${GITHUB_API}/repos/${repo}/commits/${ref}/status`,
     { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' },
     deps.fetchImpl ?? fetch)
@@ -192,7 +218,30 @@ export async function readCombinedStatus(
   if (typeof r.value?.state !== 'string') {
     return { ok: false, failure: 'malformed_response', detail: 'status payload was not usable' }
   }
-  return { ok: true, value: { state: r.value.state, total: r.value.total_count ?? 0, observedAt: now } }
+  return { ok: true, value: { payload: r.value, observedAt: now } }
+}
+
+/**
+ * THE MISSING HALF — GET /repos/{repo}/commits/{ref}/check-runs?filter=latest.
+ *
+ * Declared, unimplemented, and deliberately so. `Supabase Preview` and
+ * `Vercel Preview Comments` live here and nowhere else, so without this reader
+ * the required set can never be complete — which is exactly why
+ * `evaluateRequiredChecks` treats an unread source as SOURCE_UNAVAILABLE rather
+ * than as an empty one. The alternative, letting the Commit Status half answer
+ * alone, is the false PASS this slice exists to remove.
+ *
+ * Implementing it needs a fine-grained repository-scoped token with `Checks:
+ * Read`, which is the NEXT slice's audit. Until then this issues no request and
+ * returns nothing an evaluator could mistake for an answer.
+ */
+export async function readCheckRuns(
+  _ref: string, _now: string, _deps: { fetchImpl?: typeof fetch } = {},
+): Promise<Read<CheckRunsPayload>> {
+  return {
+    ok: false, failure: 'credential_missing',
+    detail: 'the check-runs reader is not implemented; no credential contract exists yet',
+  }
 }
 
 // ── Vercel ───────────────────────────────────────────────────────────────────
@@ -305,30 +354,52 @@ export async function verifyDeploymentChain(
   }
 
   // ── github_pr_checks_green ──
-  const checksExpected = 'all commit checks report success'
-  const ref = pr.ok ? (pr.value.mergeCommitSha ?? pr.value.headSha) : null
+  // CI belongs to the PULL REQUEST HEAD commit, not the merge commit. Audited
+  // across five merged Familje-Stunden PRs: the merge commit never receives the
+  // `Vercel Preview Comments` check run at all, so a policy pinned to it could
+  // not be satisfied and would report a permanent, misleading absence.
+  const checksExpected =
+    `all required CI checks (${FAMILJE_STUNDEN_REQUIRED_CHECKS.map(c => c.identity).join(', ')}) ` +
+    'pass on the pull request head commit'
+  const ref = pr.ok ? pr.value.headSha : null
   if (!pr.ok) {
     out.push(blocked('github_pr_checks_green', pr.failure, checksExpected, pr.detail, GITHUB_SYSTEM, now))
   } else {
+    // BOTH sources, always. Reading one and evaluating anyway is the defect
+    // this replaced: a green rollup said nothing about the two Check Runs.
     const status = await readCombinedStatus(ref!, now, deps)
-    if (!status.ok) {
-      out.push(blocked('github_pr_checks_green', status.failure, checksExpected, status.detail, GITHUB_SYSTEM, now))
-    } else if (status.value.state === 'pending') {
-      // Ordinary CI latency. Blocked and retryable, never an escalation.
-      out.push(notPass('github_pr_checks_green', 'service_unavailable', {
-        expected: checksExpected, observed: `checks are still pending (${status.value.total})`,
-        authoritative_system: GITHUB_SYSTEM, observed_at: now,
-        detail: { ref, state: 'pending', retryable: true },
-      }))
-    } else if (status.value.state !== 'success') {
-      out.push(notPass('github_pr_checks_green', 'authoritative_fail', {
-        expected: checksExpected, observed: `checks reported ${status.value.state}`,
-        authoritative_system: GITHUB_SYSTEM, observed_at: now, detail: { ref, state: status.value.state },
+    const runs = await readCheckRuns(ref!, now, deps)
+    const verdict = evaluateRequiredChecks({
+      sha: ref!,
+      commitStatus: status.ok ? status.value.payload : null,
+      checkRuns: runs.ok ? runs.value : null,
+    })
+    const detail = {
+      ref, outcome: verdict.outcome,
+      checks: verdict.checks.map(c => `${c.identity}=${c.state}`),
+      sources: { commit_status: status.ok, check_runs: runs.ok },
+    }
+    if (verdict.green) {
+      out.push(pass('github_pr_checks_green', {
+        expected: checksExpected, observed: 'every required check is green on the head commit',
+        authoritative_system: GITHUB_SYSTEM, observed_at: now, detail,
       }))
     } else {
-      out.push(pass('github_pr_checks_green', {
-        expected: checksExpected, observed: `${status.value.total} check(s) success`,
-        authoritative_system: GITHUB_SYSTEM, observed_at: now, detail: { ref, total: status.value.total },
+      // A half-read authority is not a finding about the release, so it keeps
+      // the transport's own failure kind and stays retryable. Everything else
+      // is GitHub answering, and answers are not retried away.
+      const unread = verdict.outcome === 'SOURCE_UNAVAILABLE'
+      const kind = unread && !status.ok
+        ? FAILURE_KIND[status.failure]
+        : CI_OUTCOME_FAILURE[verdict.outcome]
+      out.push(notPass('github_pr_checks_green', kind, {
+        expected: checksExpected,
+        observed: unread
+          ? 'both the commit-status and check-runs sources must be read before ' +
+            'this check can be answered'
+          : `required checks are ${verdict.outcome}`,
+        authoritative_system: GITHUB_SYSTEM, observed_at: now,
+        detail: { ...detail, retryable: unread || verdict.outcome === 'CHECKS_PENDING' },
       }))
     }
   }

@@ -296,21 +296,22 @@ describe('23-30. inert, and nothing else moved', () => {
       .toEqual(without.readiness.blockers.map(b => b.code).sort())
   })
 
-  it('30. TRIPWIRE — the stale status-only reader must not become executable', () => {
-    // verifyDeploymentChain reads ONLY /commits/{ref}/status, which sees the
-    // "Vercel" commit status and is blind to the "Supabase Preview" and "Vercel
-    // Preview Comments" CHECK RUNS. Wiring it would produce a false PASS. It
-    // stays unexecutable until the mixed reader lands.
+  it('30. TRIPWIRE — no GitHub check may become executable here', () => {
+    // The status-only false PASS this originally pinned is fixed: the evaluator
+    // now requires BOTH the Commit Status and Check Runs sources. What must
+    // still hold is that a correct evaluator did not become an executable
+    // action — that needs a credential and a transport, neither of which exists.
     const reg = readFileSync(join(process.cwd(), 'lib/workflows/action-registry.ts'), 'utf8')
     for (const kind of ['github_pr_merged', 'github_pr_checks_green', 'github_merge_sha_matches_expected']) {
       expect(reg).not.toContain(`${kind}: {`)
     }
     const disc = readFileSync(join(process.cwd(), 'lib/workflows/action-discovery.ts'), 'utf8')
     expect(disc).not.toContain('github_pr_checks_green')
-    // And the stale reader still queries only the legacy status API.
+    // Both sources are now named, and the check-runs half issues no request.
     const dep = readFileSync(join(process.cwd(), 'lib/workflows/adapters/familje-stunden/deployment.ts'), 'utf8')
     expect(dep).toContain('/status')
-    expect(dep).not.toContain('check-runs')
+    expect(dep).toContain('check-runs')
+    expect(dep).toContain('evaluateRequiredChecks')
   })
 })
 

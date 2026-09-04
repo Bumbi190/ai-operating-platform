@@ -20,7 +20,7 @@ import { canonicalJson } from '@/lib/atlas/mission/binding'
 import { computeReleaseInstant, isCanonicalMonthKey } from '../adapters/familje-stunden/instant'
 import {
   MONTHLY_BRIEF_SCHEMA, MONTHLY_BRIEF_VERSION, MonthlyBriefContractError,
-  type MonthlyBriefV1, type MonthlyBriefVoice,
+  type MonthlyBriefV1, type MonthlyBriefPageStructure, type MonthlyBriefVoice,
 } from './types'
 
 /** The canonical keys this composer reads. Named once so a typo is not a silent omission. */
@@ -28,6 +28,7 @@ const CANONICAL_KEYS = {
   themes: 'year_order_2026',
   ebookPages: 'ebook_pages',
   audioClips: 'page_audio_clips',
+  pageStructure: 'page_structure',
   voice: 'voice',
 } as const
 
@@ -55,6 +56,49 @@ function requireText(value: unknown, monthKey: string, field: string): string {
     )
   }
   return value
+}
+
+/**
+ * How the month's pages are composed.
+ *
+ * A contract that does not declare `page_structure` cannot answer how many pages
+ * a generator should write, and this refuses rather than deriving it. Deriving it
+ * is exactly the mistake: `ebook_pages` is the TOTAL, and treating it as the
+ * content-page count produces 18 story pages where 16 belong.
+ */
+function readPageStructure(
+  canonical: Record<string, unknown>, monthKey: string,
+): MonthlyBriefPageStructure {
+  const raw = canonical[CANONICAL_KEYS.pageStructure]
+  if (!isPlainObject(raw)) {
+    throw new MonthlyBriefContractError(
+      'canonical_page_structure_missing', monthKey,
+      `canonical.${CANONICAL_KEYS.pageStructure} must be an object — this contract ` +
+      'declares no page structure and cannot brief a generator',
+    )
+  }
+  const f = (k: keyof MonthlyBriefPageStructure) =>
+    requirePositiveInt(raw[k], monthKey, `${CANONICAL_KEYS.pageStructure}.${k}`)
+
+  const structure: MonthlyBriefPageStructure = {
+    total_pages: f('total_pages'),
+    cover_pages: f('cover_pages'),
+    content_pages: f('content_pages'),
+    closing_pages: f('closing_pages'),
+  }
+  // The arithmetic is the invariant. A contract whose parts do not sum to its
+  // total is broken in a way that would silently mis-size every downstream
+  // artefact, so it is refused rather than reconciled.
+  const parts = structure.cover_pages + structure.content_pages + structure.closing_pages
+  if (parts !== structure.total_pages) {
+    throw new MonthlyBriefContractError(
+      'canonical_page_structure_inconsistent', monthKey,
+      `canonical.${CANONICAL_KEYS.pageStructure}: ` +
+      `${structure.cover_pages}+${structure.content_pages}+${structure.closing_pages} ` +
+      `!= ${structure.total_pages}`,
+    )
+  }
+  return structure
 }
 
 /**
@@ -139,6 +183,19 @@ export function composeMonthlyBrief(
     )
   }
 
+  const pageStructure = readPageStructure(canonical, monthKey)
+
+  // The artefact counts describe per-PAGE artefacts, so they count every page —
+  // cover and closing included. If they ever disagreed with the total, one of the
+  // two would be sizing a different thing than the other.
+  if (ebookPages !== pageStructure.total_pages) {
+    throw new MonthlyBriefContractError(
+      'canonical_page_counts_disagree', monthKey,
+      `canonical.${CANONICAL_KEYS.ebookPages} (${ebookPages}) must equal ` +
+      `${CANONICAL_KEYS.pageStructure}.total_pages (${pageStructure.total_pages})`,
+    )
+  }
+
   // ONE release-time rule. Not a second implementation, not a copy of the
   // reasoning — the same function `compute_release_instant` executes, so the two
   // actions in `planning` cannot produce different instants.
@@ -152,7 +209,7 @@ export function composeMonthlyBrief(
     month_key: monthKey,
     theme,
     release_at_utc: releaseAtUtc,
-    page_count: ebookPages,
+    page_structure: pageStructure,
     ebook_pages: ebookPages,
     page_audio_clips: audioClips,
     voice: readVoice(canonical, monthKey),

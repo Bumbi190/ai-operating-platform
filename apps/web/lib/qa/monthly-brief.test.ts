@@ -24,10 +24,13 @@ import { executableActionKinds } from '../workflows/action-executor'
 import { FAMILJE_STUNDEN_CHECKS } from '../workflows/adapters/familje-stunden/checks'
 
 const DEF_KEY = 'familje-stunden.monthly-release'
-const IDENTITY = { defKey: DEF_KEY, defVersion: 1 }
+// v2 is the first version carrying story authority. v1 declares no page structure
+// at all, which is why composition against it is refused — see the suite below.
+const DEF_VERSION = 2
+const IDENTITY = { defKey: DEF_KEY, defVersion: DEF_VERSION }
 const NOW = '2026-09-04T12:00:00.000Z'
 
-const vendored = findVendoredDefinition(DEF_KEY, 1)!
+const vendored = findVendoredDefinition(DEF_KEY, DEF_VERSION)!
 const CANON = vendored.spec.canonical
 /** A month the canonical contract actually declares. */
 const MONTH = '2026-10'
@@ -57,7 +60,7 @@ describe('the brief is derived from the canonical contract', () => {
     expect(b.version).toBe(MONTHLY_BRIEF_VERSION)
     expect(b.month_key).toBe(MONTH)
     expect(b.def_key).toBe(DEF_KEY)
-    expect(b.def_version).toBe(1)
+    expect(b.def_version).toBe(DEF_VERSION)
   })
 
   it('reads the theme from the canonical table, not from anywhere else', () => {
@@ -71,7 +74,7 @@ describe('the brief is derived from the canonical contract', () => {
     const b = composeMonthlyBrief(CANON, MONTH, IDENTITY)
     expect(b.ebook_pages).toBe(CANON.ebook_pages)
     expect(b.page_audio_clips).toBe(CANON.page_audio_clips)
-    expect(b.page_count).toBe(CANON.ebook_pages)
+    expect(b.page_structure).toEqual(CANON.page_structure)
     // The number 18 must not be typed into the brief modules at all.
     for (const src of [composeCode, typesCode, handlerCode]) {
       expect(src).not.toMatch(/\b18\b/)
@@ -99,7 +102,7 @@ describe('the brief is derived from the canonical contract', () => {
     }
     expect(Object.keys(b).sort()).toEqual([
       'def_key', 'def_version', 'ebook_pages', 'month_key', 'page_audio_clips',
-      'page_count', 'release_at_utc', 'schema', 'theme', 'version', 'voice',
+      'page_structure', 'release_at_utc', 'schema', 'theme', 'version', 'voice',
     ])
   })
 })
@@ -128,12 +131,37 @@ describe('a contract that cannot answer is refused, never guessed', () => {
     expect(() => composeMonthlyBrief(broken, MONTH, IDENTITY)).toThrow(/must agree/)
   })
 
+  it('MUTATION — refuses a contract that declares no page structure', () => {
+    // Workflow definition v1 is exactly this contract. It has no story authority,
+    // so it cannot say how many pages a generator writes, and the composer must
+    // refuse rather than reach for `ebook_pages` — which is the TOTAL.
+    const v1 = findVendoredDefinition(DEF_KEY, 1)!
+    expect(v1.spec.canonical.page_structure).toBeUndefined()
+    expect(() => composeMonthlyBrief(v1.spec.canonical, MONTH, { defKey: DEF_KEY, defVersion: 1 }))
+      .toThrow(/declares no page structure/)
+  })
+
+  it('MUTATION — refuses a page structure whose parts do not sum to the total', () => {
+    const broken = {
+      ...CANON,
+      page_structure: { total_pages: 18, cover_pages: 1, content_pages: 18, closing_pages: 1 },
+    }
+    expect(() => composeMonthlyBrief(broken, MONTH, IDENTITY)).toThrow(/!= 18/)
+  })
+
+  it('MUTATION — refuses when the artefact counts disagree with the total', () => {
+    const broken = { ...CANON, ebook_pages: 20, page_audio_clips: 20 }
+    expect(() => composeMonthlyBrief(broken, MONTH, IDENTITY)).toThrow(/must equal/)
+  })
+
   it('refuses a missing or malformed canonical field', () => {
     const cases: Record<string, unknown>[] = [
       { ...CANON, year_order_2026: undefined },
       { ...CANON, ebook_pages: '18' },
       { ...CANON, ebook_pages: 0 },
       { ...CANON, ebook_pages: 18.5 },
+      { ...CANON, page_structure: undefined },
+      { ...CANON, page_structure: { total_pages: 18, cover_pages: 1, content_pages: 16 } },
       { ...CANON, voice: undefined },
       { ...CANON, voice: { ...(CANON.voice as object), settings: undefined } },
       { ...CANON, voice: { ...(CANON.voice as object), id: '' } },
@@ -168,8 +196,22 @@ describe('the brief has a deterministic content identity', () => {
 
   it('a changed product requirement changes the identity', () => {
     const base = computeMonthlyBriefHash(composeMonthlyBrief(CANON, MONTH, IDENTITY))
-    const bumped = { ...CANON, ebook_pages: 20, page_audio_clips: 20 }
+    const bumped = {
+      ...CANON, ebook_pages: 20, page_audio_clips: 20,
+      page_structure: { total_pages: 20, cover_pages: 1, content_pages: 18, closing_pages: 1 },
+    }
     expect(computeMonthlyBriefHash(composeMonthlyBrief(bumped, MONTH, IDENTITY))).not.toBe(base)
+  })
+
+  it('the page structure is part of the identity', () => {
+    // Two contracts agreeing on every total but splitting the pages differently
+    // are different product requirements and must not share a hash.
+    const base = computeMonthlyBriefHash(composeMonthlyBrief(CANON, MONTH, IDENTITY))
+    const resplit = {
+      ...CANON,
+      page_structure: { total_pages: 18, cover_pages: 2, content_pages: 15, closing_pages: 1 },
+    }
+    expect(computeMonthlyBriefHash(composeMonthlyBrief(resplit, MONTH, IDENTITY))).not.toBe(base)
   })
 
   it('the hash binds schema and version, so a future v2 cannot collide', () => {
@@ -330,7 +372,7 @@ describe('monthly_brief_composed is required, automated-only evidence', () => {
 describe('the handler emits a bound, queryable observation', () => {
   it('passes for a canonical month and binds the brief hash', async () => {
     const out = await composeMonthlyBriefHandler({
-      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: 1, now: NOW,
+      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: DEF_VERSION, now: NOW,
     })
     const expected = computeMonthlyBriefHash(composeMonthlyBrief(CANON, MONTH, IDENTITY))
     expect(out.result).toBe('pass')
@@ -344,7 +386,7 @@ describe('the handler emits a bound, queryable observation', () => {
 
   it('the detail is scalars only, as the handler contract requires', async () => {
     const out = await composeMonthlyBriefHandler({
-      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: 1, now: NOW,
+      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: DEF_VERSION, now: NOW,
     })
     for (const [k, v] of Object.entries(out.detail)) {
       expect(['string', 'number', 'boolean'], k).toContain(v === null ? 'string' : typeof v)
@@ -353,7 +395,7 @@ describe('the handler emits a bound, queryable observation', () => {
 
   it('a month outside the contract fails without inventing a theme', async () => {
     const out = await composeMonthlyBriefHandler({
-      instanceKey: '2027-03', state: 'planning', defKey: DEF_KEY, defVersion: 1, now: NOW,
+      instanceKey: '2027-03', state: 'planning', defKey: DEF_KEY, defVersion: DEF_VERSION, now: NOW,
     })
     expect(out.result).toBe('fail')
     expect(out.detail.error_kind).toBe('month_not_in_contract')
@@ -362,7 +404,7 @@ describe('the handler emits a bound, queryable observation', () => {
 
   it('a malformed month key never becomes a pass', async () => {
     const out = await composeMonthlyBriefHandler({
-      instanceKey: 'not-a-month', state: 'planning', defKey: DEF_KEY, defVersion: 1, now: NOW,
+      instanceKey: 'not-a-month', state: 'planning', defKey: DEF_KEY, defVersion: DEF_VERSION, now: NOW,
     })
     expect(out.result).toBe('fail')
     expect(out.detail.error_kind).toBe('invalid_month_key')
@@ -370,7 +412,7 @@ describe('the handler emits a bound, queryable observation', () => {
 
   it('the same instance key yields the same hash on every call', async () => {
     const call = () => composeMonthlyBriefHandler({
-      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: 1, now: NOW,
+      instanceKey: MONTH, state: 'planning', defKey: DEF_KEY, defVersion: DEF_VERSION, now: NOW,
     })
     expect((await call()).detail.brief_hash).toBe((await call()).detail.brief_hash)
   })

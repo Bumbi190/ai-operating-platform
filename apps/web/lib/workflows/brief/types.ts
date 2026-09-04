@@ -33,6 +33,27 @@ export const MONTHLY_BRIEF_SCHEMA = 'omnira.familje-stunden.monthly-brief' as co
 export const MONTHLY_BRIEF_VERSION = 1 as const
 
 /**
+ * How a month's 18 pages are actually composed.
+ *
+ * THE FIELD THIS REPLACED WAS A DEFECT. v1 of this type carried a single
+ * `page_count: 18`, which is the TOTAL — cover + 16 content pages + closing. A
+ * generator handed that number reads it as "write 18 pages" and produces 18
+ * content pages, which breaks `storyLabels(16)` and returns 500 from
+ * `get-protected-ebook` (runbook §2 FAILURE MODE). The name did not say which
+ * number it was, so there was no safe way to consume it.
+ *
+ * All four numbers are stated, and the composer refuses a contract whose parts
+ * do not sum to the total. A consumer never has to infer which one it holds.
+ */
+export interface MonthlyBriefPageStructure {
+  readonly total_pages: number
+  readonly cover_pages: number
+  /** What a story generator writes. NOT `total_pages`. */
+  readonly content_pages: number
+  readonly closing_pages: number
+}
+
+/**
  * The voice contract, carried verbatim from `canonical.voice`.
  *
  * `settings` is an opaque record on purpose: those values belong to the TTS
@@ -60,12 +81,13 @@ export interface MonthlyBriefV1 {
   /** From `computeReleaseInstant` — the same function `compute_release_instant` runs. */
   readonly release_at_utc: string
   /**
-   * Pages in the month. Derived from `canonical.ebook_pages` and REFUSED unless
-   * `canonical.page_audio_clips` agrees, because the product invariant is one
-   * page ⇒ one ebook page ⇒ one audio clip. Two canonical numbers that disagree
-   * is a contract defect, not something to pick a winner from.
+   * From `canonical.page_structure`. A contract that does not declare it cannot
+   * brief a generator, and composition is refused rather than guessed — v1 of the
+   * workflow definition has no story authority at all, which is precisely why v2
+   * exists.
    */
-  readonly page_count: number
+  readonly page_structure: MonthlyBriefPageStructure
+  /** Artefact counts. Both equal `page_structure.total_pages`, and asserted so. */
   readonly ebook_pages: number
   readonly page_audio_clips: number
   readonly voice: MonthlyBriefVoice
@@ -86,8 +108,10 @@ export interface MonthlyBriefV1 {
  *                         rule says how it is derived from the theme.
  *   locale              — the document is Swedish throughout and the voice is a
  *                         Swedish voice, but no canonical field states it.
- *   story_page_count    — carried as `page_count`, derived from the two canonical
- *                         page numbers rather than from prose.
+ *   language, audience  — canonical in workflow definition v2, but deliberately
+ *                         not yet surfaced here: this phase corrects page
+ *                         semantics only. Exposing them is a further change to
+ *                         this payload and therefore to `brief_hash`.
  *
  * Adding any of these to v2 means adding the authority to the canonical
  * contract FIRST, which changes `def_hash` and correctly invalidates every

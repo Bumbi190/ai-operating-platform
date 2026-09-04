@@ -25,6 +25,7 @@ import type { WorkflowDef, WorkflowInstance, WorkflowTransition } from '../workf
 
 /** The real PR-head commit from the audit. */
 const SHA = '3e6ca794b009bc371ae2980f54f285a103bd638c'
+const VERCEL_BOT_ID = 35613825
 const OTHER = '92776b23b599aa2b4a2b8ff1c3f1d0e2a5c6d7e8'
 const T = '2026-09-03T12:14:05Z'
 const LATER = '2026-09-03T12:20:00Z'
@@ -37,13 +38,19 @@ function status(
     statuses: [{
       context: over.context ?? 'Vercel', state,
       created_at: T, updated_at: over.updated_at ?? T,
+      creator: { id: VERCEL_BOT_ID, login: 'vercel[bot]', type: 'Bot' },
     }],
   }
 }
 
-interface RunOver { name?: string; status?: string; conclusion?: string | null; head_sha?: string; completed_at?: string }
+interface RunOver { name?: string; status?: string; conclusion?: string | null; head_sha?: string; completed_at?: string; app_id?: number }
+/** The App that legitimately produces each required run, from the live audit. */
+const APP_ID: Record<string, number> = {
+  'Supabase Preview': 330661, 'Vercel Preview Comments': 8329,
+}
 const run = (o: RunOver = {}) => ({
   name: o.name ?? 'Supabase Preview',
+  app: { id: o.app_id ?? APP_ID[o.name ?? 'Supabase Preview'] ?? 999999 },
   status: o.status ?? 'completed',
   conclusion: o.conclusion === undefined ? 'success' : o.conclusion,
   head_sha: o.head_sha ?? SHA,
@@ -179,7 +186,8 @@ describe('14-16. extra checks are inert, and names are exact', () => {
     const r = evaluate(status(), runs({ name: 'Supabase Preview' },
       { name: 'Vercel Preview Comments' }, { name: 'CodeQL', conclusion: 'failure' }),
       [...FAMILJE_STUNDEN_REQUIRED_CHECKS,
-       { source: 'CHECK_RUN', identity: 'CodeQL', accepted: ['success'], reason: 'test' }])
+       { source: 'CHECK_RUN', identity: 'CodeQL', accepted: ['success'],
+         producer_id: 999999, producer_label: 'test', reason: 'test' }])
     expect(r.outcome).toBe('CHECKS_FAILED')
   })
 
@@ -189,7 +197,8 @@ describe('14-16. extra checks are inert, and names are exact', () => {
     const r = evaluate(
       { sha: SHA, state: 'success', total_count: 1,
         statuses: [{ context: 'Vercel Preview Comments', state: 'success',
-                     created_at: T, updated_at: T }] },
+                     created_at: T, updated_at: T,
+                     creator: { id: VERCEL_BOT_ID } }] },
       runs({ name: 'Vercel' }))
     expect(stateOf(r, 'Vercel')).toBe('MISSING')
     expect(stateOf(r, 'Vercel Preview Comments')).toBe('MISSING')
@@ -350,12 +359,15 @@ describe('31-33. payload integrity', () => {
       sha: SHA,
       commitStatus: { sha: SHA, state: 'success', total_count: 1, statuses: [
         { context: 'Vercel', state: 'success',
-          created_at: '2026-09-03T12:14:05Z', updated_at: '2026-09-03T12:14:05Z' }] },
+          created_at: '2026-09-03T12:14:05Z', updated_at: '2026-09-03T12:14:05Z',
+          creator: { id: 35613825, login: 'vercel[bot]', type: 'Bot' } }] },
       checkRuns: { total_count: 2, check_runs: [
         { name: 'Supabase Preview', status: 'completed', conclusion: 'success',
-          head_sha: SHA, started_at: '2026-09-03T12:13:27Z', completed_at: '2026-09-03T12:14:33Z' },
+          head_sha: SHA, app: { id: 330661, slug: 'supabase' },
+          started_at: '2026-09-03T12:13:27Z', completed_at: '2026-09-03T12:14:33Z' },
         { name: 'Vercel Preview Comments', status: 'completed', conclusion: 'success',
-          head_sha: SHA, started_at: '2026-09-03T12:14:06Z', completed_at: '2026-09-03T12:14:06Z' }] },
+          head_sha: SHA, app: { id: 8329, slug: 'vercel' },
+          started_at: '2026-09-03T12:14:06Z', completed_at: '2026-09-03T12:14:06Z' }] },
     })
     expect(r.outcome).toBe('ALL_REQUIRED_CHECKS_GREEN')
     expect(r.green).toBe(true)
@@ -411,14 +423,25 @@ describe('34-38. no status-only pass, no network, no credential', () => {
   })
 
   it('the stale status-only reader is gone, not merely bypassed', () => {
-    const dep = readFileSync(
-      join(process.cwd(), 'lib/workflows/adapters/familje-stunden/deployment.ts'), 'utf8')
-    const depCode = dep.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-    // No surviving code path turns a rollup state into a verdict.
-    expect(depCode).not.toMatch(/state\s*===\s*'success'/)
-    expect(depCode).not.toMatch(/state\s*!==\s*'success'/)
-    // And CI is read on the head commit, not the merge commit.
-    expect(depCode).toContain('pr.value.headSha')
+    const read = (f: string) => {
+      const raw = readFileSync(join(process.cwd(), f), 'utf8')
+      return raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    }
+    const dep = read('lib/workflows/adapters/familje-stunden/deployment.ts')
+    const obs = read('lib/workflows/adapters/familje-stunden/github-observation.ts')
+    // No surviving code path anywhere turns a rollup state into a verdict.
+    for (const src of [dep, obs]) {
+      expect(src).not.toMatch(/state\s*===\s*'success'/)
+      expect(src).not.toMatch(/state\s*!==\s*'success'/)
+    }
+    // The combined endpoint is gone entirely: it strips `creator`, so it cannot
+    // support producer binding.
+    expect(dep).not.toContain('/status')
+    expect(obs).not.toMatch(/commits\/\$\{sha\}\/status[^e]/)
+    expect(obs).toContain('/statuses?')
+    expect(obs).toContain('/check-runs?filter=latest')
+    // CI is read on the head commit, and the merge commit is never its source.
+    expect(obs).toContain('pr.value.headSha')
   })
 })
 

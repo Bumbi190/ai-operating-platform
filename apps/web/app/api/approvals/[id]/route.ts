@@ -75,49 +75,53 @@ export async function PATCH(
   // Ownership gate BEFORE any mutation or publish side effect.
   if (!projectId || !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
-  const { data, error } = await db
-    .from('approvals')
-    .update({
-      status: action,
-      reviewer_notes: reviewer_notes ?? null,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', params.id)
-    .select()
-    .single()
+  // ── G3C-3B · RUN FIRST, THEN APPROVAL — ONE ATOMIC TRANSITION ────────────
+  // This route used to write the APPROVAL first, unconditionally (no status
+  // predicate at all), and only afterwards attempt the run flip — whose row
+  // count it never checked. Two failures followed from that ordering:
+  //
+  //   • cancel-first: the cancel route set the run `cancelled` and the approval
+  //     `returned`; this PATCH then overwrote `returned` back to `approved`, the
+  //     run flip matched zero rows, and the publish hook — gated only on
+  //     `action === 'approved'` — PUBLISHED AN ARTICLE FOR A CANCELLED RUN.
+  //   • approve-first: the cancel route's own unchecked UPDATE matched zero rows
+  //     and still answered `{ok:true, status:'cancelled'}`.
+  //
+  // `resolve_approval` locks the RUN row before the approval row — the same
+  // order `request_run_cancel` uses — so the two serialise on one row instead of
+  // interleaving. `revised` takes the run lock too: it leaves the run
+  // awaiting_approval, but without the lock a cancel could win the run while the
+  // revision independently overwrote the `returned` approval it had just written.
+  if (!existing.run_id) {
+    return NextResponse.json(
+      { error: 'Godkännandet saknar körning och kan inte avgöras här' }, { status: 409 })
+  }
 
+  const { data: verdict, error } = await db.rpc('resolve_approval', {
+    p_approval_id: params.id,
+    p_run_id:      existing.run_id,
+    p_project_id:  projectId,
+    p_action:      action,
+    p_notes:       reviewer_notes ?? null,
+  })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // H1.P4 PR2 — run lifecycle transition. The approval status is now persisted; reflect the
-  // human decision on the originating run. Conditional on status='awaiting_approval' makes
-  // it idempotent and race-free: a second PATCH, or an approval whose run is not awaiting,
-  // updates zero rows. Non-blocking — a run-update miss never fails the saved approval.
-  // 'revised' deliberately leaves run status untouched in PR2.
-  //
-  // H1.P5 Commit 2 — fencing rule (locked): this flip is EXEMPT from claim_id fencing.
-  //   • claim_id fencing  → writes from an EXECUTING run (drain terminal flips + the
-  //     executor's per-step write). See lib/ai/fencing.ts.
-  //   • status-guard      → approval lifecycle AFTER the run has LEFT running-state.
-  // An awaiting_approval run is at rest: the drain set it only after executeRunSteps fully
-  // returned, and the reaper touches status='running' ONLY — so no zombie executor can
-  // still write to it (and with fencing on, any stale invocation is already fenced before
-  // the awaiting_approval flip). The correct invariant here is therefore the status
-  // transition itself, not claim ownership.
-  if (existing.run_id && (action === 'approved' || action === 'rejected')) {
-    try {
-      if (action === 'approved') {
-        await db.from('runs')
-          .update({ status: 'done' })
-          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
-      } else {
-        await db.from('runs')
-          .update({ status: 'rejected', error: `approval_rejected: ${reviewer_notes ?? ''}`.slice(0, 500) })
-          .eq('id', existing.run_id).eq('status', 'awaiting_approval')
-      }
-    } catch (runErr) {
-      console.error('[approvals] run-transition failed:', runErr)
-    }
+  const WON = verdict === 'APPROVED' || verdict === 'REJECTED' || verdict === 'REVISED'
+  if (!WON) {
+    // A loser is CONTROL FLOW, not success. It must not publish, must not record
+    // "approved" feedback, and must not write a procedural memory claiming a
+    // decision it did not make.
+    return NextResponse.json({
+      ok: false, outcome: verdict,
+      error: verdict === 'LOST'
+        ? 'Körningen väntar inte längre på godkännande (avbruten eller redan avgjord)'
+        : verdict === 'ALREADY_RESOLVED'
+          ? 'Godkännandet är redan avgjort'
+          : 'Godkännandet hittades inte för denna körning',
+    }, { status: 409 })
   }
+
+  const { data } = await db.from('approvals').select().eq('id', params.id).single()
 
   // Save feedback for memory learning (non-blocking — don't fail the request if this errors)
   if (projectId) {
@@ -173,7 +177,9 @@ export async function PATCH(
   // on external_id), non-blocking — the approval already saved; report publish outcome.
   let published: unknown = undefined
   let publishError: string | undefined
-  if (action === 'approved' && existing?.kind === ARTICLE_APPROVAL_KIND && typeof existing.content === 'string') {
+  // `verdict === 'APPROVED'`, never `action === 'approved'`: only the operation
+  // that actually WON the run transition may cause an external effect.
+  if (verdict === 'APPROVED' && existing?.kind === ARTICLE_APPROVAL_KIND && typeof existing.content === 'string') {
     try {
       published = await publishApprovedArticle(existing.content)
     } catch (pubErr) {

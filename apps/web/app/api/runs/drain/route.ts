@@ -14,11 +14,12 @@ import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
 import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
-import { isCancelEnabled, isCancelledError } from '@/lib/ai/cancel'
+import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import {
-  checkpointClaimedRun, releaseStoppedRun, terminalizeCancelledRun,
-  isRunCheckpointRefusal, checkOwnedFinalization, finalizeOwnedRunUnlessCancelled,
+  checkpointClaimedRun, settleRefusal, terminalizeCancelledRun,
+  isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
+  finalizeOwnedRunUnlessCancelled,
 } from '@/lib/governance/run-execution-checkpoint'
 import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
@@ -65,30 +66,13 @@ export async function GET(request: Request) {
 
   for (const run of runs) {
     try {
-      // H1.P5 Commit 3: if cancel was requested before/at claim, cancel directly and run
-      // no steps. Gated by H1_CANCEL; fenced on claim_id like every terminal write.
-      if (isCancelEnabled() && run.cancel_requested) {
-        const { fenced } = await fencedRunUpdate(db, run.id, run.claim_id, {
-          status: 'cancelled', finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
-        })
-        // Atlas Memory M4 Commit 4 — episodic outcome: cancelled before steps ran.
-        // Emit only after fenced=false confirms this executor owns the terminal write.
-        // run.kind used directly — `kind` const is declared after this block.
-        if (!fenced) {
-          void recordMemoryEvent({
-            scope: 'project', eventType: 'outcome', projectId: run.project_id,
-            entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
-            subject: 'Run outcome: cancelled',
-            content: `Run ${run.id.slice(0, 8)} cancelled (kind: ${run.kind ?? 'unknown'})`,
-            confidence: 0.40,
-            structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled', attempts: run.attempts ?? 1, error: null },
-          }, db)
-        }
-        results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
-        continue
-      }
-
       // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
+      // G3C-3B removed the H1.P5 branch that used to sit here and re-decide
+      // cancellation from the CLAIM SNAPSHOT behind `isCancelEnabled()`. Two
+      // truth tables for one question is how they drift apart, and that one was
+      // strictly weaker: flag-gated, and reading a row already seconds stale.
+      // Cancellation at drain entry is now decided in exactly one place, below,
+      // unconditionally and from a fresh read.
       // G3C-2A guarantees nothing NEW is claimed after a pause commits. This run
       // was claimed BEFORE it, possibly seconds before. Deliberately placed here:
       // after the claim, before ANY family dispatches, so one boundary covers
@@ -105,20 +89,50 @@ export async function GET(request: Request) {
           results.push({ run_id: run.id, status: 'fenced', detail: entry.detail })
           continue
         }
-        if (entry.refusal === 'CANCELLED') {
-          const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+        const stopReason = entry.refusal === 'STOPPED' ? entry.reason : undefined
+        // G3C-3B: settle the lifecycle write, then report what it ACHIEVED —
+        // which is not always what the checkpoint decided. A cancel committing
+        // between the two turns STOPPED into a real cancellation (R9), and a
+        // database fault is neither a stop, a cancellation, nor lost ownership.
+        const settled = await settleRefusal(db, entry.refusal, run.id, run.claim_id)
+        if (settled === 'ERROR') {
+          // The owned lifecycle write failed. Touch nothing and start nothing:
+          // the run keeps its lease, and expiry plus the reaper decide its
+          // durable state. Never `fenced` — that would claim lost ownership —
+          // and never a retry mutation, which would invent a failure.
           results.push({
-            run_id: run.id, status: fenced ? 'fenced' : 'cancelled', detail: entry.detail,
+            run_id: run.id, status: 'lifecycle_error',
+            reason: 'lifecycle_write_failed', detail: entry.detail,
           })
+          continue
+        }
+        if (settled === 'FENCED') {
+          results.push({ run_id: run.id, status: 'fenced', detail: entry.detail })
+          continue
+        }
+        if (settled === 'CANCELLED') {
+          {
+            // Atlas Memory M4 — episodic outcome, emitted only once this worker
+            // has confirmed it owns the terminal write.
+            void recordMemoryEvent({
+              scope: 'project', eventType: 'outcome', projectId: run.project_id,
+              entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+              subject: 'Run outcome: cancelled',
+              content: `Run ${run.id.slice(0, 8)} cancelled (kind: ${run.kind ?? 'unknown'})`,
+              confidence: 0.40,
+              structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled',
+                            attempts: run.attempts ?? 1, error: null },
+            }, db)
+          }
+          results.push({ run_id: run.id, status: 'cancelled', detail: entry.detail })
           continue
         }
         // STOPPED — not a failure. Back to the queue with no error, no alert and
         // no backoff. claim_runs refuses to re-claim it while the stop stands,
         // which is exactly what bounds this to one cycle per stop event.
-        const { fenced } = await releaseStoppedRun(db, run.id, run.claim_id)
         results.push({
-          run_id: run.id, status: fenced ? 'fenced' : 'deferred_by_stop',
-          reason: entry.reason, detail: entry.detail,
+          run_id: run.id, status: 'deferred_by_stop',
+          reason: stopReason, detail: entry.detail,
         })
         continue
       }
@@ -203,9 +217,18 @@ export async function GET(request: Request) {
       if (fin === 'CANCELLED') {
         // Cancel wins: terminalize as cancelled, never as done. The execution
         // result is not erased — it simply is not reported as success.
-        const { fenced } = await terminalizeCancelledRun(db, run.id, run.claim_id)
+        // `term`, not `outcome`: the GateOutcome of the same name is still live
+        // below, and shadowing it here would be a silent bug waiting to happen.
+        const term = await terminalizeCancelledRun(db, run.id, run.claim_id)
         console.warn(`[run ${run.id}] cancelled at finalization — not marked done`)
-        results.push({ run_id: run.id, status: fenced ? 'fenced' : 'cancelled' })
+        results.push({
+          run_id: run.id,
+          // Same taxonomy as the entry boundary: a failed lifecycle write is
+          // never reported as lost ownership.
+          status: term === 'CANCELLED' ? 'cancelled'
+                : term === 'ERROR' ? 'lifecycle_error' : 'fenced',
+          reason: term === 'ERROR' ? 'lifecycle_write_failed' : undefined,
+        })
         continue
       }
 
@@ -287,8 +310,17 @@ export async function GET(request: Request) {
           continue
         }
         if (appr.outcome !== 'SUCCEEDED') {
+          // Lifecycle contention, never a provider failure: no failure counter,
+          // no alert, no retry backoff, no run mutation from here. G3C-3B uses
+          // ONE externally-visible vocabulary — `.toLowerCase()` would emit
+          // `error`, which is not a lifecycle status anywhere else in the API.
           console.warn(`[run ${run.id}] ${appr.outcome} before awaiting_approval flip: ${appr.detail}`)
-          results.push({ run_id: run.id, status: appr.outcome.toLowerCase(), detail: appr.detail })
+          results.push({
+            run_id: run.id,
+            status: appr.outcome === 'ERROR' ? 'lifecycle_error' : 'fenced',
+            ...(appr.outcome === 'ERROR' ? { reason: 'lifecycle_write_failed' } : {}),
+            detail: appr.detail,
+          })
           continue
         }
         // Only now: the transition committed and this invocation owns it.
@@ -311,9 +343,15 @@ export async function GET(request: Request) {
         }
         if (done.outcome !== 'SUCCEEDED') {
           // FENCED or ERROR — lifecycle contention, never a provider failure:
-          // no failure counter, no alert, no retry backoff.
+          // no failure counter, no alert, no retry backoff. Same vocabulary as
+          // every other boundary; the final CAS itself is unchanged.
           console.warn(`[run ${run.id}] ${done.outcome} before done flip: ${done.detail}`)
-          results.push({ run_id: run.id, status: done.outcome.toLowerCase(), detail: done.detail })
+          results.push({
+            run_id: run.id,
+            status: done.outcome === 'ERROR' ? 'lifecycle_error' : 'fenced',
+            ...(done.outcome === 'ERROR' ? { reason: 'lifecycle_write_failed' } : {}),
+            detail: done.detail,
+          })
           continue
         }
         // Atlas Memory M4 Commit 4 — episodic outcome: run completed successfully.
@@ -336,6 +374,17 @@ export async function GET(request: Request) {
       // or raise a provider alert. The executors already performed the owned
       // lifecycle write (release / terminalize / nothing at all) before throwing,
       // so there is deliberately nothing to write here.
+      // G3C-3B: a failed owned lifecycle write is control flow, not a defect.
+      // Placed BEFORE the refusal branch and far before generic failure
+      // accounting: turning it into failed/retry would invent an execution
+      // failure that never happened, and the catch must not mutate the run at
+      // all — the lease and the reaper own its durable state now.
+      if (isRunLifecycleWriteError(e)) {
+        console.warn(`[run ${run.id}] ${e.message}`)
+        results.push({ run_id: run.id, status: 'lifecycle_error',
+                       reason: 'lifecycle_write_failed', detail: e.message })
+        continue
+      }
       if (isRunCheckpointRefusal(e)) {
         const status = e.refusal === 'STOPPED' ? 'deferred_by_stop'
           : e.refusal === 'CANCELLED' ? 'cancelled' : 'fenced'

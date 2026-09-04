@@ -59,6 +59,21 @@ export async function resumeRun(admin: SupabaseClient, runId: string): Promise<R
     .update({
       status: 'pending',
       attempts: 0,            // resume = fresh retry budget (max_attempts unchanged)
+      // ── G3C-3B · EXPLICIT HUMAN OVERRIDE OF OLD CANCELLATION INTENT ────────
+      // `cancel_requested` is durable and nothing else ever clears it. A run can
+      // legitimately carry it while sitting in `failed` — the reaper records an
+      // attempt-exhausted cancelled run that way. Requeueing without clearing it
+      // would hand the drain a run the canonical checkpoint cancels again on
+      // sight, so the operator could never resume it: cancelled forever, with no
+      // way back.
+      //
+      // Cleared HERE and only here, in the same UPDATE, because a deliberate
+      // human resume IS an override of that earlier intent. The automatic paths
+      // — the reaper and the stop release — must never clear it; there is no
+      // human in those, and erasing intent is precisely what this slice forbids.
+      cancel_requested: false,
+      cancel_reason: null,
+      cancelled_by: null,
       error: null,
       last_error: null,
       finished_at: null,

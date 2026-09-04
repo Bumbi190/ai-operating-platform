@@ -1,34 +1,39 @@
 /**
- * POST /api/runs/[id]/cancel — cancel a run (H1.P5 Commit 3).
+ * POST /api/runs/[id]/cancel — cancel a run.
  *
  * Ownership-gated (resolveProjectAccess / assertProjectAllowed — same posture as
- * /api/approvals/[id]). State machine:
- *   pending            → cancelled (direct, idempotent on status='pending')
- *   awaiting_approval  → cancelled (direct) + the still-pending approval → 'returned' (D1)
- *   running            → cancel_requested = true (cooperative; the executor stops at the
- *                        next step boundary when H1_CANCEL is on)
- *   terminal (done/failed/rejected/cancelled) → no-op
+ * /api/approvals/[id]).
  *
- * The route itself is NOT behind H1_CANCEL: pending/awaiting cancel are always safe
- * immediate transitions; only the cooperative running-cancel reaction (drain/executor)
- * is flag-gated. All writes are status-guarded (the correct invariant for at-rest /
- * externally-initiated lifecycle changes — claim_id fencing is for executing runs).
+ * ── G3C-3B: ONE CANONICAL WRITER ────────────────────────────────────────────
+ * Every cancellable state now goes through public.request_run_cancel, which locks
+ * the RUN ROW and branches on the state that exists AT THE WRITE:
  *
- * ── PR9a: HONEST REPORTING ──────────────────────────────────────────────────
- * Cancelling a RUNNING run used to answer `{ok:true, status:'cancel_requested'}`
- * whether or not anything would ever act on it. With H1_CANCEL unset — which is
- * how production actually stood — the flag was written and no code path read it,
- * so the API reported success for an operation that could not happen. An operator
- * cancelling a runaway action would have believed they had stopped it.
+ *   pending            → cancelled (releases the action identity)
+ *   awaiting_approval  → cancelled + any unresolved approval → 'returned',
+ *                        in the SAME transaction
+ *   running            → cancel_requested = true; the owning executor, the
+ *                        canonical checkpoint or the reaper resolves it
+ *   anything else      → 0 rows
  *
- * The request is still persisted (durable intent survives until cancellation is
- * enabled), but the response now states whether it will be ENFORCED. A caller can
- * distinguish "it will stop" from "your intent is recorded and nothing is
- * listening", which is the difference between a working kill switch and a
- * comforting one.
+ * This route previously branched on a status it had READ, then issued a
+ * conditional UPDATE whose row count it never checked. `claim_runs` landing in
+ * between made that UPDATE match zero rows while the operator was told the run
+ * was cancelled — the cancellation was lost and the run ran to completion. The
+ * pre-read is now used ONLY for existence and tenancy; it is never the lifecycle
+ * decision.
  *
- * The running-case write goes through public.request_run_cancel so the tenancy
- * guard lives at the DB boundary, and so reason/actor are recorded for audit.
+ * ── HONEST REPORTING ────────────────────────────────────────────────────────
+ * The RPC's row count is the mutation truth. A read-only status fetch afterwards
+ * shapes the RESPONSE, never the verdict:
+ *
+ *   n > 0, now cancelled   → 200 ok, status 'cancelled'
+ *   n > 0, still running   → 200 ok, status 'cancel_requested'
+ *   n = 0, already cancelled → 200 ok, noop: true, mutated: false
+ *   n = 0, otherwise         → 409, ok: false, status 'already_terminal'
+ *
+ * `enforced` stays honest about what it means: the run stops at its next
+ * canonical safe boundary. It does NOT mean an in-flight provider request was
+ * remotely cancelled. Nothing here can promise that.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -51,73 +56,71 @@ export async function POST(
   // mönster som övriga admin-rutter), undviker types-regen-koppling i denna commit.
   const db = createAdminClient() as any
 
+  // Pre-read for EXISTENCE and TENANCY only. Its `status` is deliberately not
+  // read: by the time we write, it may be a different state, and acting on it
+  // is exactly the defect this route used to have.
   const { data: run } = await db
     .from('runs')
-    .select('id, status, project_id')
+    .select('id, project_id')
     .eq('id', params.id)
     .single()
 
-  if (!run) return NextResponse.json({ error: 'Körning hittades inte' }, { status: 404 })
-  // Ownership gate BEFORE any mutation.
+  if (!run) return NextResponse.json({ error: 'Körningen hittades inte' }, { status: 404 })
   if (!assertProjectAllowed(run.project_id, access.allowedProjectIds)) return projectForbidden()
 
-  const now = new Date().toISOString()
+  const reason = typeof body?.reason === 'string' ? body.reason.slice(0, 500) : null
 
-  switch (run.status) {
-    case 'pending': {
-      // Direct cancel — the run never ran. Conditional on status='pending' → idempotent.
-      await db.from('runs')
-        .update({ status: 'cancelled', finished_at: now })
-        .eq('id', run.id).eq('status', 'pending')
-      return NextResponse.json({ ok: true, status: 'cancelled' })
-    }
-    case 'awaiting_approval': {
-      await db.from('runs')
-        .update({ status: 'cancelled', finished_at: now })
-        .eq('id', run.id).eq('status', 'awaiting_approval')
-      // D1: resolve the still-pending approval to 'returned' so it doesn't orphan in
-      // the queue (CHECK already allows 'returned'). Conditional → idempotent.
-      await db.from('approvals')
-        .update({ status: 'returned', reviewed_at: now })
-        .eq('run_id', run.id).eq('status', 'pending')
-      return NextResponse.json({ ok: true, status: 'cancelled' })
-    }
-    case 'running': {
-      // Can't cancel directly — an executor owns it, and only that executor may
-      // write its terminal row (fenced on claim_id). Record durable intent; the
-      // cooperative check in the drain/executor stops it at the next step boundary.
-      // request_run_cancel is tenancy-guarded and status-guarded in SQL, so a run
-      // that just left 'running' is untouched.
-      const reason = typeof body?.reason === 'string' ? body.reason.slice(0, 500) : null
-      const { data: updated } = await db.rpc('request_run_cancel', {
-        p_run_id: run.id,
-        p_project_id: run.project_id,
-        p_actor: access.userId,
-        p_reason: reason,
-      })
-      const persisted = Number(updated) > 0
-      // G3C-3A: enforcement no longer depends on H1_CANCEL. The canonical
-      // post-claim checkpoint reads `cancel_requested` unconditionally — at the
-      // drain entry, before every unified and legacy step, and before every
-      // workflow action dispatch — so a persisted request WILL be acted on.
-      //
-      // `enforced` stays honest about what it means: the run stops at its next
-      // canonical safe boundary. It does NOT mean an in-flight provider request
-      // was remotely cancelled. Nothing here can promise that, and G3C-1's
-      // in-flight contract is unchanged.
-      return NextResponse.json({
-        // `ok` reports whether the intent was recorded; `enforced` reports whether
-        // anything will act on it. Never conflate the two.
-        ok: persisted,
-        status: 'cancel_requested',
-        enforced: true,
-        note: 'Stops at the next safe boundary — before its next step, before a '
-          + 'workflow action dispatches, or at drain pick-up. A provider request '
-          + 'already in flight is allowed to finish; it is not remotely cancelled.',
-      })
-    }
-    default:
-      // terminal — no-op.
-      return NextResponse.json({ ok: true, status: run.status, noop: true })
+  // The one canonical writer. The RUN row lock inside decides which state
+  // actually exists; the row count is the only evidence of a mutation.
+  const { data: affected, error } = await db.rpc('request_run_cancel', {
+    p_run_id: run.id,
+    p_project_id: run.project_id,
+    p_actor: access.userId,
+    p_reason: reason,
+  })
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
+  const mutated = Number(affected) > 0
+
+  // Presentation only — this read cannot change the verdict above.
+  const { data: after } = await db
+    .from('runs').select('status, cancel_requested').eq('id', run.id).single()
+  const status = after?.status as string | undefined
+
+  const STOP_NOTE =
+    'Stops at the next safe boundary — before its next step, before a workflow '
+    + 'action dispatches, or at drain pick-up. A provider request already in '
+    + 'flight is allowed to finish; it is not remotely cancelled.'
+
+  if (mutated) {
+    // Terminalized outright (was pending or awaiting_approval).
+    if (status === 'cancelled') {
+      return NextResponse.json({ ok: true, status: 'cancelled', enforced: true, mutated: true })
+    }
+    // Durable intent recorded against a running run. G3C-3A's checkpoint reads
+    // `cancel_requested` unconditionally — at drain entry, before every unified
+    // and legacy step, and before every workflow action dispatch — so a
+    // persisted request WILL be acted on.
+    return NextResponse.json({
+      ok: true, status: 'cancel_requested', enforced: true, mutated: true, note: STOP_NOTE,
+    })
+  }
+
+  // Zero rows. Nothing was mutated, and this route no longer pretends otherwise.
+  if (status === 'cancelled') {
+    // Idempotent re-cancel: the caller's desired end state already holds. Report
+    // success, but never claim a mutation that did not happen.
+    return NextResponse.json({
+      ok: true, status: 'cancelled', noop: true, mutated: false, enforced: true,
+    })
+  }
+  // Terminal in some OTHER way — done, failed, rejected, unknown, partial. The
+  // requested cancellation did not win, and that is materially different from
+  // "already cancelled".
+  return NextResponse.json({
+    ok: false, status: 'already_terminal', mutated: false, enforced: false,
+    current_status: status ?? null,
+    error: 'Körningen är inte längre möjlig att avbryta',
+  }, { status: 409 })
 }

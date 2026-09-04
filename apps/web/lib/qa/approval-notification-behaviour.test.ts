@@ -116,6 +116,20 @@ function makeDb() {
     from: (t: string) => builder(t),
     rpc: async (fn: string) => {
       if (fn === 'claim_runs') return { data: [{ ...state.run }], error: null }
+      if (fn === 'release_stopped_run') {
+        // Mirrors public.release_stopped_run, including its cancel-awareness.
+        const owned = state.run.status === 'running' && state.run.claim_id === CLAIM
+        if (!owned) return { data: 'FENCED', error: null }
+        if (state.run.cancel_requested === true) {
+          Object.assign(state.run, { status: 'cancelled', claimed_at: null, lease_until: null })
+          return { data: 'CANCELLED', error: null }
+        }
+        Object.assign(state.run, {
+          status: 'pending', claimed_at: null, lease_until: null, claim_id: null,
+          attempts: Math.max((state.run.attempts as number ?? 1) - 1, 0),
+        })
+        return { data: 'RELEASED', error: null }
+      }
       if (fn === 'stop_state') {
         return {
           data: [{

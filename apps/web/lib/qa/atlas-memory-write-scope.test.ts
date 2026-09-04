@@ -87,7 +87,14 @@ class QueryBuilder implements PromiseLike<{ data: unknown; error: unknown }> {
     if (this.table === 'website_content') {
       return this.mode === 'update' ? { data: null, error: null } : { data: contentRow, error: null }
     }
-    if (this.table === 'runs') return { data: null, error: null }
+    if (this.table === 'runs') {
+      // G3C-3B: the canonical post-claim checkpoint re-reads the run row. Serving
+      // null here would fail closed — correct behaviour, but it would mean this
+      // boundary suite proved nothing about the project scope it exists to check.
+      return this.mode === 'update'
+        ? { data: [{ id: (claimedRuns[0] as { id?: string } | undefined)?.id }], error: null }
+        : { data: claimedRuns[0] ?? null, error: null }
+    }
     throw new Error(`unexpected table: ${this.table}`)
   }
 
@@ -107,6 +114,18 @@ vi.mock('@/lib/supabase/admin', () => ({
     rpc: async (name: string) => {
       rpcCalls.push(name)
       if (name === 'claim_runs') return { data: claimedRuns, error: null }
+      // G3C-3B surfaces. `stop_state` must answer CLEAR or every checkpoint fails
+      // closed; `resolve_approval` must answer a winning verdict or the approval
+      // route correctly refuses to emit anything at all.
+      if (name === 'stop_state') {
+        return { data: [{
+          global_paused: false, global_paused_at: null, global_paused_reason: null,
+          project_requested: true, project_found: true,
+          project_paused: false, project_paused_at: null, project_paused_reason: null,
+        }], error: null }
+      }
+      if (name === 'resolve_approval') return { data: 'APPROVED', error: null }
+      if (name === 'release_stopped_run') return { data: 'RELEASED', error: null }
       return { data: null, error: null }
     },
   }),
@@ -183,7 +202,10 @@ const approvalIn = (projectId: string | null, runProjectId?: string | null) => (
   project_id: projectId,
   output_key: 'article',
   content: 'body',
-  run_id: null,
+  // G3C-3B: resolution goes through resolve_approval, which locks the RUN row
+  // first. An approval under review always has one — `null` here modelled a row
+  // that cannot exist, and the route now correctly refuses to decide it.
+  run_id: RUN_ID,
   kind: 'generic',
   runs: runProjectId === undefined ? null : { project_id: runProjectId },
 })
@@ -359,6 +381,11 @@ function drainRequest(url: string, headers: Record<string, string> = {}): Reques
 const cancelledRun = (projectId: string) => ({
   id: RUN_ID,
   project_id: projectId,
+  // claim_runs sets 'running' in the same statement that mints the claim, so a
+  // claimed row always carries it. The canonical checkpoint re-reads the row and
+  // requires it; without this the fixture was FENCED before reaching the
+  // cancellation branch this boundary is about.
+  status: 'running',
   claim_id: 'claim-1',
   cancel_requested: true,
   kind: 'generic',

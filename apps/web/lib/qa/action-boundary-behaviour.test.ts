@@ -39,6 +39,14 @@ const state = {
   /** Fires on every `runs` read; the interleaving lever. */
   onRunRead: undefined as ((n: number) => void) | undefined,
   runReads: 0,
+  /** G3C-3B: fail the release RPC — the STOPPED-side lifecycle write. */
+  rpcFails: false,
+  /** G3C-3B: fail the runs UPDATE — the CANCELLED-side lifecycle write. */
+  updateFails: false,
+  /** What release_stopped_run answers when it does not fail. */
+  releaseAnswer: 'RELEASED' as string,
+  /** Records every release_stopped_run invocation — the attempt-compensating writer. */
+  releaseCalls: 0,
 }
 
 /** Serves exactly the tables readiness and the checkpoint consult. */
@@ -57,6 +65,10 @@ function db() {
     }
     ;(chain as { select: unknown }).select = () => {
       if (payload === null) return chain
+      // G3C-3B: a genuine transport fault on the owned lifecycle write.
+      if (table === 'runs' && state.updateFails) {
+        return Promise.resolve({ data: null, error: { message: 'connection lost' } })
+      }
       const hit =
         (preds.id === undefined || preds.id === state.run.id) &&
         (preds.status === undefined || preds.status === state.run.status) &&
@@ -87,7 +99,11 @@ function db() {
   }
   return {
     from: (t: string) => builder(t),
-    rpc: async (fn: string) => fn === 'stop_state'
+    rpc: async (fn: string) => fn === 'release_stopped_run'
+      ? (state.releaseCalls++, state.rpcFails
+          ? { data: null, error: { message: 'connection lost' } }
+          : { data: state.releaseAnswer, error: null })
+      : fn === 'stop_state'
       ? {
           data: [{
             global_paused: state.globalPaused, global_paused_at: null, global_paused_reason: null,
@@ -140,6 +156,10 @@ beforeEach(async () => {
   state.projectPaused = false
   state.onRunRead = undefined
   state.runReads = 0
+  state.rpcFails = false
+  state.updateFails = false
+  state.releaseAnswer = 'RELEASED'
+  state.releaseCalls = 0
   await seed()
 })
 
@@ -409,5 +429,228 @@ describe('PROBE-S2 · the executor classifies a mid-probe refusal as control flo
 
     expect(writes.some(w => w.action_phase === 'DISPATCH_STARTED'),
       'the dispatch that really happened is still recorded').toBe(true)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  G3C-3B — the action boundary must not launder a failed LIFECYCLE WRITE into
+//  ownership loss or, far worse, into the PR9d ambiguity model. Nothing was
+//  dispatched, so recording UNKNOWN/reconciliation would invent a remote effect.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('G3C-3B · action pre-dispatch lifecycle taxonomy', () => {
+  const call = async () => {
+    const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
+    const g = await import('@/lib/governance/run-execution-checkpoint')
+    try {
+      const res = await executeWorkflowAction(
+        db() as never, state.run as never, CLAIM, new Date().toISOString())
+      return { kind: 'RETURNED', res: res as unknown as Record<string, unknown> }
+    } catch (e) {
+      return { kind: g.isRunLifecycleWriteError(e) ? 'LIFECYCLE_ERROR' : `OTHER:${String(e)}` }
+    }
+  }
+
+  it('a cancellation already visible during readiness is settled canonically before refusal accounting', async () => {
+    // This description used to say the opposite, and was true when written:
+    // `assertWorkflowActionReady` lists `cancel_requested` among its blockers,
+    // and a run arriving already cancelled was refused there and settled by
+    // `finalizeRefusal` — which never distinguished a successful write from a
+    // fence from a fault. G3C-3B closed that bypass, so the truthful sequence is
+    // now:
+    //
+    //   1. readiness detects `cancel_requested` and reports not-ready;
+    //   2. because readiness is blocked, the executor immediately runs a fresh
+    //      canonical `checkpointClaimedRun`;
+    //   3. that checkpoint observes the cancellation;
+    //   4. `settleRefusal` owns the terminal lifecycle write;
+    //   5. CANCELLED / FENCED / ERROR are preserved distinctly — the two cases
+    //      below prove the FENCED and ERROR halves.
+    //
+    // `finalizeRefusal` still owns ordinary NON-governance refusals (target,
+    // authorization and structural drift); governance simply no longer reaches
+    // it while its condition is current.
+    state.run.cancel_requested = true
+    const { res } = await call()
+    expect(res?.refusal).toBe('not_ready')
+    expect(res?.disposition).toBe('cancelled')
+  })
+
+  it('MID-PROBE cancellation + failed write → lifecycle error, never a provider outcome', async () => {
+    // This is where a checkpoint-originated cancellation genuinely lands: the
+    // adapter re-authorises before each outbound attempt, so a cancel committing
+    // between attempts is caught by the checkpoint rather than by readiness. The
+    // terminalizing write then fails.
+    //
+    // The load-bearing part is what must NOT happen: a refused NEXT request says
+    // nothing about the PREVIOUS response, so this may never become
+    // REMOTE_CONFIRMED, UNKNOWN, PARTIAL or reconciliation_required — and a
+    // failed lifecycle write is not lost ownership either.
+    const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
+    const g = await import('@/lib/governance/run-execution-checkpoint')
+    adapterAttempts.count = 0
+    const writes: Row[] = []
+    const spy = () => {
+      const base = db()
+      return {
+        ...base,
+        from: (t: string) => {
+          const c = base.from(t) as Record<string, unknown>
+          const origUpdate = c.update as (p: Row) => unknown
+          c.update = (p: Row) => { if (t === 'runs') writes.push(p); return origUpdate(p) }
+          return c
+        },
+      } as never
+    }
+    let flipped = false
+    state.onRunRead = () => {
+      if (adapterAttempts.count >= 1 && !flipped) {
+        flipped = true
+        state.run.cancel_requested = true
+        state.updateFails = true      // the terminalizing write fails
+      }
+    }
+
+    let kind = 'RETURNED'
+    try {
+      await executeWorkflowAction(spy(), state.run as never, CLAIM, new Date().toISOString())
+    } catch (e) {
+      kind = g.isRunLifecycleWriteError(e) ? 'LIFECYCLE_ERROR' : `OTHER:${String(e)}`
+    }
+
+    expect(adapterAttempts.count, 'attempt 1 went out, attempt 2 did not').toBe(1)
+    expect(kind, 'not fenced, not cancelled, not a provider failure').toBe('LIFECYCLE_ERROR')
+    expect(writes.map(w => w.action_phase)).not.toContain('REMOTE_CONFIRMED')
+    expect(writes.some(w => w.action_outcome === 'UNKNOWN' || w.action_outcome === 'PARTIAL'),
+      'a failed lifecycle write is not evidence a response was lost').toBe(false)
+    expect(writes.some(w => w.reconciliation_required === true),
+      'and demands no reconciliation').toBe(false)
+  })
+
+  it('STOPPED + failed release → lifecycle error, not `temporary`', async () => {
+    state.globalPaused = true
+    state.rpcFails = true
+    expect((await call()).kind).toBe('LIFECYCLE_ERROR')
+  })
+
+  it('R9 — a STOP whose release CANCELS is reported cancelled, not temporary', async () => {
+    // The release result used to be discarded here, so an R9 cancellation winner
+    // came back `temporary` — eligible again — while the run was already
+    // terminally cancelled.
+    state.globalPaused = true
+    state.releaseAnswer = 'CANCELLED'
+    const { res } = await call()
+    expect(res?.disposition).toBe('cancelled')
+    expect(res?.disposition).not.toBe('temporary')
+  })
+
+  it('an ordinary STOP is still temporary, and a fence still fenced', async () => {
+    // Non-vacuity for both neighbours of the ERROR case.
+    state.globalPaused = true
+    const stopped = await call()
+    expect(stopped.res?.disposition).toBe('temporary')
+
+    state.globalPaused = false
+    state.run.claim_id = 'someone-else'
+    const fenced = await call()
+    expect(fenced.res?.refusal).toBe('fenced')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  G3C-3B · GOVERNANCE WINS BEFORE ORDINARY REFUSAL ACCOUNTING
+//
+//  `assertWorkflowActionReady` lists `cancel_requested` and `project_paused`
+//  among its blockers and used to hand both straight to `finalizeRefusal` —
+//  which writes through `fencedActionUpdate` without telling success from a
+//  fence from a fault, and requeues a stopped run WITHOUT calling
+//  release_stopped_run, so the claim admission was never compensated.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('G3C-3B · initial readiness settles governance canonically', () => {
+  // adapterAttempts is module-scoped and shared with the PROBE suites above.
+  beforeEach(() => { adapterAttempts.count = 0 })
+
+  const call = async () => {
+    const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
+    const g = await import('@/lib/governance/run-execution-checkpoint')
+    try {
+      const res = await executeWorkflowAction(
+        db() as never, state.run as never, CLAIM, new Date().toISOString())
+      return { kind: 'RETURNED', res: res as unknown as Record<string, unknown> }
+    } catch (e) {
+      return { kind: g.isRunLifecycleWriteError(e) ? 'LIFECYCLE_ERROR' : `OTHER:${String(e)}` }
+    }
+  }
+
+  it('PROJECT STOP at readiness → release_stopped_run compensates the admission', async () => {
+    // R7 on the action path. claim_runs already incremented attempts; the pause
+    // commits after the claim. Before this fix, finalizeRefusal wrote
+    // running → pending directly and the attempt was gone — one crossing would
+    // strand a future max_attempts=1 write-capable action forever.
+    state.projectPaused = true
+    const { res } = await call()
+    expect(state.releaseCalls, 'the compensating lifecycle writer ran').toBe(1)
+    expect(res?.refusal).toBe('not_ready')
+    expect(res?.disposition, 'a stop is temporary, never a rejection').toBe('temporary')
+    expect(adapterAttempts.count, 'and no handler was called').toBe(0)
+  })
+
+  it('PROJECT STOP whose release CANCELS is reported cancelled, not temporary', async () => {
+    state.projectPaused = true
+    state.releaseAnswer = 'CANCELLED'
+    const { res } = await call()
+    expect(res?.disposition).toBe('cancelled')
+  })
+
+  it('PROJECT STOP whose release FAILS is a lifecycle error, not temporary', async () => {
+    state.projectPaused = true
+    state.rpcFails = true
+    const { kind } = await call()
+    expect(kind).toBe('LIFECYCLE_ERROR')
+    expect(adapterAttempts.count).toBe(0)
+  })
+
+  it('CANCEL at readiness terminalizes canonically', async () => {
+    state.run.cancel_requested = true
+    const { res } = await call()
+    expect(res?.refusal).toBe('not_ready')
+    expect(res?.disposition).toBe('cancelled')
+    expect(adapterAttempts.count).toBe(0)
+  })
+
+  it('CANCEL at readiness whose write FAILS is a lifecycle error, never fenced', async () => {
+    state.run.cancel_requested = true
+    state.updateFails = true
+    const { kind } = await call()
+    expect(kind, 'not fenced, not cancelled, not a provider failure').toBe('LIFECYCLE_ERROR')
+    expect(adapterAttempts.count).toBe(0)
+  })
+
+  it('CANCEL at readiness under a rotated claim is FENCED', async () => {
+    state.run.cancel_requested = true
+    state.run.claim_id = 'someone-else'
+    const { res } = await call()
+    expect(res?.refusal).toBe('fenced')
+  })
+
+  it('PRECEDENCE — a live stop wins over a co-occurring permanent blocker', async () => {
+    // readiness reports project_paused AND target_drifted. Rejecting the run
+    // permanently here would condemn it on a check taken while everything was
+    // supposed to be halted. The stop owns the boundary; drift is re-evaluated
+    // honestly once authority clears.
+    state.projectPaused = true
+    state.run.target_version_hash = 'f'.repeat(64)   // drifted
+    const { res } = await call()
+    expect(res?.disposition, 'temporary, not permanent').toBe('temporary')
+    expect(state.releaseCalls).toBe(1)
+  })
+
+  it('a NON-governance blocker still reaches the ordinary failure model', async () => {
+    // Non-vacuity: the checkpoint must not swallow everything. With governance
+    // clear, drift is still a permanent rejection.
+    state.run.target_version_hash = 'f'.repeat(64)
+    const { res } = await call()
+    expect(res?.refusal).toBe('not_ready')
+    expect(res?.disposition, 'drift is permanent when nothing is stopped').toBe('permanent')
+    expect(state.releaseCalls, 'and no release happened').toBe(0)
   })
 })

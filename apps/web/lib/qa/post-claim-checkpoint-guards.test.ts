@@ -262,12 +262,30 @@ describe('G3C-3A · the checkpoint stays wired', () => {
       .toBeGreaterThanOrEqual(2)
   })
 
-  it('a stop release records no failure', () => {
+  it('a stop release records no failure, and goes through the cancel-aware RPC', () => {
     const cp = code('lib/governance/run-execution-checkpoint.ts')
     const i = cp.indexOf('export async function releaseStoppedRun')
     const body = cp.slice(i, i + 700)
-    expect(body).toContain("status: 'pending'")
+    // G3C-3B moved the write into SQL. A TypeScript `status: 'pending'` here is
+    // now exactly the defect: it would requeue blindly, ignoring a cancellation
+    // that committed after the STOP decision. The rot signal inverted.
+    expect(body, 'the release must not requeue from TypeScript')
+      .not.toContain("status: 'pending'")
+    expect(body, 'it goes through the cancel-aware, attempt-compensating RPC')
+      .toContain('release_stopped_run')
     expect(body, 'a stop is not a provider failure').not.toContain('last_error')
+  })
+
+  it('the release RPC is cancel-aware and compensates exactly one admission', () => {
+    // Behavioural proofs cover the semantics; this is the rot detector for the
+    // two properties that make the claim filter safe to exist at all.
+    const sql = code('supabase/migrations/20260903120000_durable_cancellation_reaper.sql')
+    const i = sql.indexOf('function public.release_stopped_run')
+    const body = sql.slice(i, sql.indexOf('$fn$;', i))
+    expect(body, 'cancellation is read INSIDE the write').toMatch(/when r\.cancel_requested then 'cancelled'/)
+    expect(body, 'and the admission is compensated atomically')
+      .toMatch(/greatest\(r\.attempts - 1, 0\)/)
+    expect(body, 'ownership-conditioned').toMatch(/r\.claim_id = p_claim_id/)
   })
 
   it('the drain handles checkpoint refusals before generic failure accounting', () => {

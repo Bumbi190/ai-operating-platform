@@ -166,43 +166,67 @@ export async function checkpointClaimedRun(
 }
 
 /**
- * Hands a stopped run back to the queue, conditioned on still owning it.
+ * What a lifecycle write actually did.
+ *
+ * G3C-3A collapsed a database fault into `fenced: true`. That was safe — both
+ * mean "write nothing, start nothing" — but it was diagnostically false:
+ * FENCED is a claim about OWNERSHIP, and reporting a dropped connection as lost
+ * ownership sends an operator looking for a second worker that never existed.
+ *
+ * ERROR and FENCED remain behaviourally identical at every call site. They
+ * differ only in what they say happened.
+ */
+export type ReleaseResult = 'RELEASED' | 'CANCELLED' | 'FENCED' | 'ERROR'
+export type TerminalResult = 'CANCELLED' | 'FENCED' | 'ERROR'
+
+/**
+ * Hands a stopped run back to the queue — unless a cancellation got there first.
  *
  * A governance stop is not a failure: no error text, no failure alert, no retry
- * backoff. The run returns to `pending` exactly as it was and becomes eligible
- * again when authority clears — and NOT before, because claim_runs (G3C-2A)
- * refuses to claim it while the stop stands. That is what bounds this: one
- * claim/release cycle per stop event, not one per drain tick.
+ * backoff. The run returns to `pending` and becomes eligible again when
+ * authority clears — and NOT before, because claim_runs (G3C-2A) refuses to
+ * claim it while the stop stands. That bounds this to one claim/release cycle
+ * per stop event, not one per drain tick.
  *
- * `attempts` is deliberately NOT decremented. claim_runs increments it at claim
- * time, and reversing that here would be a read-modify-write race against the
- * very concurrency G3C-2A just made atomic. The cost is one consumed attempt
- * per stop crossing; correcting it belongs in G3C-3B, where it can be done in
- * SQL under the same locks.
+ * G3C-3B moved the write into SQL (`release_stopped_run`) for two reasons that
+ * TypeScript cannot satisfy:
+ *
+ *   1. CANCELLATION IS READ INSIDE THE WRITE. A cancel committing between the
+ *      STOP decision and this call would otherwise be overwritten by a blind
+ *      requeue, leaving `pending + cancel_requested = true` — a row claim_runs
+ *      now refuses and the reaper never sees, because it matches `running` only.
+ *      Ownerless, forever. The RPC terminalizes `cancelled` in that case.
+ *
+ *   2. THE ADMISSION IS COMPENSATED ATOMICALLY. claim_runs counts admissions,
+ *      and a stop is not an execution attempt. Reversing it here would be a
+ *      read-modify-write race; in SQL it is one conditional write under the row
+ *      lock. This matters far beyond tidiness: a CHECK constraint forces
+ *      `max_attempts = 1` on every non-READ_ONLY/REVERSIBLE_WRITE action, so
+ *      without compensation a SINGLE stop crossing would strand a material run
+ *      permanently — pending, unclaimable, unreapable.
  */
 export async function releaseStoppedRun(
   db: AnyDb, runId: string, claimId: string | null | undefined,
-): Promise<{ released: boolean; fenced: boolean }> {
-  if (!claimId) return { released: false, fenced: true }
-  const { data, error } = await db.from('runs')
-    .update({ status: 'pending', claimed_at: null, lease_until: null, claim_id: null })
-    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
-    .select('id')
-  if (error) return { released: false, fenced: true }
-  const hit = Array.isArray(data) && data.length > 0
-  return { released: hit, fenced: !hit }
+): Promise<ReleaseResult> {
+  if (!claimId) return 'FENCED'
+  const { data, error } = await db.rpc('release_stopped_run', {
+    p_run_id: runId, p_claim_id: claimId,
+  })
+  if (error) return 'ERROR'
+  return data === 'RELEASED' || data === 'CANCELLED' ? data : 'FENCED'
 }
 
 /**
  * Terminalizes an owned run as cancelled.
  *
  * Conditioned on id + status running + claim_id. Zero rows means another owner
- * got there first, and that is FENCING — never a successful cancellation.
+ * got there first, and that is FENCING — never a successful cancellation. A
+ * database fault is neither: it reports ERROR.
  */
 export async function terminalizeCancelledRun(
   db: AnyDb, runId: string, claimId: string | null | undefined,
-): Promise<{ cancelled: boolean; fenced: boolean }> {
-  if (!claimId) return { cancelled: false, fenced: true }
+): Promise<TerminalResult> {
+  if (!claimId) return 'FENCED'
   const { data, error } = await db.from('runs')
     .update({
       status: 'cancelled', finished_at: new Date().toISOString(),
@@ -210,9 +234,8 @@ export async function terminalizeCancelledRun(
     })
     .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
     .select('id')
-  if (error) return { cancelled: false, fenced: true }
-  const hit = Array.isArray(data) && data.length > 0
-  return { cancelled: hit, fenced: !hit }
+  if (error) return 'ERROR'
+  return Array.isArray(data) && data.length > 0 ? 'CANCELLED' : 'FENCED'
 }
 
 /**
@@ -397,4 +420,65 @@ export class RunCheckpointRefusedError extends Error {
 /** True for any G3C-3A control-flow refusal. Never a provider failure. */
 export function isRunCheckpointRefusal(e: unknown): e is RunCheckpointRefusedError {
   return e instanceof RunCheckpointRefusedError
+}
+
+/**
+ * The owned lifecycle WRITE failed — not ownership loss, not a provider failure.
+ *
+ * Its own type because every other classification would be a lie with
+ * consequences: `FENCED` sends an operator hunting a second worker that never
+ * existed; a provider failure feeds retry backoff, failure counters and — for a
+ * workflow action — the PR9d ambiguity model, which would record
+ * UNKNOWN/reconciliation for a remote call that was never made.
+ *
+ * The only safe response is to touch nothing and start nothing. The run keeps
+ * its lease; expiry and the reaper decide its durable state.
+ */
+export class RunLifecycleWriteError extends Error {
+  readonly runId: string
+  readonly boundary: string
+  constructor(runId: string, boundary: string, detail: string) {
+    super(`run lifecycle write failed at ${boundary}: ${detail}`)
+    this.name = 'RunLifecycleWriteError'
+    this.runId = runId
+    this.boundary = boundary
+  }
+}
+
+export function isRunLifecycleWriteError(e: unknown): e is RunLifecycleWriteError {
+  return e instanceof RunLifecycleWriteError
+}
+
+/** What a refusal ACTUALLY resolved to once its lifecycle write was attempted. */
+export type SettledRefusal = 'STOPPED' | 'CANCELLED' | 'FENCED' | 'ERROR'
+
+/**
+ * Performs the lifecycle write a refusal calls for, and reports what really
+ * happened — which is not always what the checkpoint decided.
+ *
+ * Every caller previously did this inline and then discarded the result, so a
+ * STOPPED refusal was reported as `deferred_by_stop` even when the release had
+ * actually terminalized the run as CANCELLED (the R9 winner), and a database
+ * fault was reported as lost ownership. Centralising it means there is one place
+ * where the mapping can be read, and no call site that can quietly ignore it.
+ *
+ *   STOPPED  → release: RELEASED → 'STOPPED' · CANCELLED → 'CANCELLED'
+ *                       FENCED   → 'FENCED'  · ERROR     → 'ERROR'
+ *   CANCELLED→ terminalize: CANCELLED → 'CANCELLED' · FENCED → 'FENCED'
+ *                           ERROR     → 'ERROR'
+ *   FENCED   → writes nothing at all, by definition.
+ */
+export async function settleRefusal(
+  db: AnyDb,
+  refusal: RunCheckpointRefusal,
+  runId: string,
+  claimId: string | null | undefined,
+): Promise<SettledRefusal> {
+  if (refusal === 'FENCED') return 'FENCED'
+  if (refusal === 'CANCELLED') {
+    const r = await terminalizeCancelledRun(db, runId, claimId)
+    return r === 'CANCELLED' ? 'CANCELLED' : r
+  }
+  const r = await releaseStoppedRun(db, runId, claimId)
+  return r === 'RELEASED' ? 'STOPPED' : r
 }

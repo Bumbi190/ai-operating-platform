@@ -20,6 +20,7 @@
 | Execution Provider Adapter | `specifications/execution-provider/…Level 1 Read Only – Canonical v1.2.md` | **Canonical v1.2** | Låst, **självbärande** provider-neutralt Level 1-kontrakt. Exakt 15 asynkrona metoder, noll order-metoder (Beslut G) |
 | Kontraktsvalskod | `specifications/market-data/…Contract Selection Reason Code – Canonical v1.0.md` | **Canonical v1.0** | Låst vokabulär, prospektiv verkan. En positiv kontraktsvalskod under Market Data Canonical §9–§10 (Beslut J) |
 | Beslutsmaterialisering | `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0** | Låst materialiseringssemantik för C3B.1, prospektiv verkan. Tom-endast `evidence`, låst `policyVersion` (Beslut K) |
+| Beslutsinspelning | `specifications/market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | **Canonical v1.0** | Låst inspelnings- och replaysemantik för C3B.2 v1. Lagrat beslut är sanningskälla, uppslagning på `root` + `at` (Beslut L) |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -233,14 +234,14 @@ som reserverad utvidgningspunkt, den låsta policyversionen
 `market-data-contract-lifecycle-v1.0`, materializerns ägarskap av den, anroparlämnade
 `decisionId` och `decidedAt`, samt materialisering enbart ur en lyckad resolution.
 
-**Precedens inom kontraktsval:**
+**Precedens inom kontraktsval** (utvidgad av Beslut L, se nedan)**:**
 
 - Market Data & Contract Lifecycle Canonical v1.0 äger val-, kalender-, resolutions- och
   replaypolicy.
 - Contract Selection Reason Code Canonical v1.0 äger den positiva orsakssemantiken.
 - Contract Selection Decision Materialisation Canonical v1.0 äger C3B.1:s
   värdeobjekts- och materialiseringssemantik.
-- Runtime i TypeScript är **mekanisk transkription** av dessa tre, aldrig en egen källa.
+- Runtime i TypeScript är **mekanisk transkription**, aldrig en egen källa.
 
 **GATE-08 flyttas inte av Beslut K.** Gaten är fortsatt **delvis stängd**. Beslut K
 stänger materialiseringssemantik, inte gaten. **C3B-runtime är inte implementerad:**
@@ -250,6 +251,39 @@ materializer och ingen beslutslagring existerar i kod.
 `GATE-08C-3B NONEMPTY-EVIDENCE VOCABULARY GAP` (uppskjuten) kvarstår öppna, liksom
 `GATE-08C-3A SOURCE-RESULT-SHAPE GAP`, `GATE-08C-2A DST-BOUNDARY GAP` och
 `GATE-08C-2B UNEXPECTED-MINUTE GAP`.
+
+**Inspelningsluckor stängda 2026-09-04:** `GATE-08C-3B DECISION-JOURNAL VOCABULARY GAP`
+(**nekande**), `GATE-08C-3B DECISION-LOOKUP KEY GAP`, `GATE-08C-3B DECISION-UNIQUENESS
+SCOPE GAP` och `GATE-08C-3B RUN-ASSOCIATION GAP` (för C3B.2 v1) genom Beslut L.
+`specifications/market-data/Omnira Trading System – Contract Selection Decision
+Recording & Replay – Canonical v1.0.md` är kanonisk auktoritet för hur ett inspelat
+beslut lagras och återfinns: det lagrade beslutet självt är replayens sanningskälla,
+uppslagningen tar `root` + `at` inom en inspelningskontext, intervallmatchning är
+halvöppen, unikhet gäller per kontext och root, och inspelning är append-only med
+idempotent identisk ominspelning.
+
+**`TradingEvent` är inte lagringskuvertet.** `EVENT_TYPES` och `EVENT_ENTITY_TYPES` är
+oförändrade. En framtida händelse som refererar ett `decisionId` vore endast
+revisionsprojektion, aldrig sanningskälla.
+
+**Fullständig precedens inom kontraktsval efter Beslut L:**
+
+- Market Data & Contract Lifecycle Canonical v1.0 äger kontrakts-, kalender-,
+  resolutions- och replaykravet.
+- Contract Selection Reason Code Canonical v1.0 äger den positiva provenienskoden.
+- Contract Selection Decision Materialisation Canonical v1.0 äger den oföränderliga
+  beslutsmaterialiseringen.
+- Contract Selection Decision Recording & Replay Canonical v1.0 äger
+  inspelningskontext, uppslagning, unikhet och append-semantik.
+- Runtime i TypeScript är **mekanisk transkription** av dessa fyra. **Ingen runtime-fil
+  rangordnas över kanon.**
+
+**GATE-08 flyttas inte av Beslut L.** Gaten är fortsatt **delvis stängd**. **C3B.2-runtime
+är inte implementerad:** inget beslutslager, ingen uppslagning och ingen inspelning
+existerar i kod. `GATE-08C-3B DECISION-RECORDED-AT GAP` och `GATE-08C-3B DECISION-STORE
+ORDERING GAP` är uppskjutna och icke-blockerande; `GATE-08C-3B NONEMPTY-EVIDENCE
+VOCABULARY GAP`, `GATE-08C-3A SOURCE-RESULT-SHAPE GAP`, `GATE-08C-2A DST-BOUNDARY GAP`
+och `GATE-08C-2B UNEXPECTED-MINUTE GAP` kvarstår öppna.
 
 ---
 

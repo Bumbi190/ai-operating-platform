@@ -1072,6 +1072,123 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 
 ---
 
+## Beslut L — Inspelning och replay av ContractSelectionDecision
+
+**Stänger:** GATE-08C-3B DECISION-JOURNAL VOCABULARY GAP (nekande), GATE-08C-3B
+DECISION-LOOKUP KEY GAP, GATE-08C-3B DECISION-UNIQUENESS SCOPE GAP, GATE-08C-3B
+RUN-ASSOCIATION GAP (för C3B.2 v1)
+**Karaktär:** Ny kanonisk inspelnings- och replaysemantik. Ingen befintlig regel
+upphävs, inget befintligt fält byter innebörd, ingen befintlig kod ändras. Beslut K:s
+tiofältsform är oförändrad.
+
+Canonical v1.0 §10 kräver att ett inspelat beslut **läses, aldrig räknas om**. Beslut K
+gjorde beslutet till ett oföränderligt runtime-värde, men §10 säger aldrig **hur** en
+anropare hittar det inspelade beslutet — och `decisionId` är enligt Beslut K §10
+anroparmyntad och ogenomskinlig.
+
+En stängningsrevision inför C3B.2 visade konsekvensen. Ett lager som bara kan slå upp på
+`decisionId` uppfyller inte §10, eftersom anroparen aldrig får tag i identiteten. Utan
+kanonisk uppslagning skulle C3B.2 tvingas uppfinna den i TypeScript — exakt det fel
+Beslut K fanns till för att förhindra, upprepat en skiva senare.
+
+Revisionen prövade också journalvägen och fann den semantiskt fel, inte bara dyr:
+`TradingEvent` kräver icke-nullbara `environment` och `correlationId`, medan
+kontraktsval enligt §26 är **miljöoberoende** och föregår varje enskild affärsmöjlighet.
+
+**Canonical betydelse:**
+
+```
+det lagrade ContractSelectionDecision självt
+  = replayens sanningskälla
+
+≠ TradingEvent.payload
+≠ ReplayEvent
+≠ dagens kalender eller policyuppslagning
+```
+
+### L1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Contract Selection Decision
+Recording & Replay – Canonical v1.0.md` skapad. Den låser:
+
+- **L1 · Sanningskälla.** Det lagrade beslutet självt är replayens auktoritet. Inget
+  hölje blir mer auktoritativt än beslutet. §10 säger *läs det*, inte *läs något som
+  innehåller det*.
+- **L2 · Journalfrågan besvarad nekande.** Inspelning tillför **noll** `EVENT_TYPES` och
+  **noll** `EVENT_ENTITY_TYPES`; `TradingEvent` är inte lagringskuvertet. Skälet är
+  semantiskt: `TradingEvent` kräver icke-nullbara `environment` och `correlationId`, och
+  ett kanoniskt kontraktsval äger ingendera — §26 gör upplösning miljöoberoende, och ett
+  val överlever varje enskild livscykel. En framtida informationshändelse som refererar
+  ett `decisionId` vore **endast revisionsprojektion**, aldrig sanningskälla; den namnges
+  inte här.
+- **L3 · Inspelningskontext.** En lagerinstans representerar **en** inspelnings- och
+  replaykontext. Kontexten är extern till beslutet: inget `runId`, `scenarioId`,
+  `correlationId` eller `environment` läggs till. Global unikhet på `root` + instans är
+  **förbjuden**, eftersom §10 uttryckligen tillåter olika pinnade kalenderversioner per
+  körning. `RunId` får ingen ny innebörd.
+- **L4 · Uppslagning.** Replayuppslagningen tar exakt `{ root, at }` och ingenting mer.
+  Kandidaten `(root, effectiveFrom, calendarVersion, policyVersion)` **avvisas**:
+  `effectiveFrom` är cirkulär — att känna den kräver normalt att man löser upp kalendern
+  först, alltså räknar om det §10 förbjuder — och `calendarVersion`/`policyVersion` är
+  fakta som posten *berättar*, inte förkunskaper anroparen måste ha för att läsa den.
+  `decisionId` förblir postens identitet men är **inte** upptäcktsnyckeln.
+  Uppslagningen utför noll upplösning, noll kalenderuppslagning och noll provideranrop.
+- **L5 · Unikhetsomfång.** Inom en inspelningskontext finns **högst ett** beslut för ett
+  givet `root` + `at`; ekvivalent får två olika beslut för samma root inte ha
+  överlappande effektiva intervall. Matchning sker halvöppet `[effectiveFrom,
+  effectiveTo)` med Tradings instanssemantik för `Timestamp`, aldrig lexikografiskt, och
+  lagrad stavning normaliseras aldrig. Roots är oberoende (§22 oförändrad, exakt
+  rootmatchning), och **olika inspelningskontexter är oberoende**.
+- **L6 · Append-only.** Posten lagras direkt, utan hölje. Aldrig överskrivning, mutation,
+  omskrivning eller radering. Identisk ominspelning är **idempotent**; samma `decisionId`
+  med avvikande innehåll **vägras**. Likhet avgörs med typad fältjämförelse i linje med
+  `sameCandle` — JSON-text är inte identitetsregeln och ingen hash införs. Överlappande
+  intervall vägras, eftersom `find(root, at)` annars blir tvetydig. Föredragna lokala
+  koder: `DECISION_ID_DISAGREEMENT`, `OVERLAPPING_SELECTION_INTERVAL`,
+  `INVALID_SELECTION_INTERVAL`, `OPEN_ENDED_DECISION_UNSUPPORTED` — lagrets eget kontrakt,
+  aldrig `ReasonCode` och aldrig `EventType`.
+- **Ändliga intervall endast i v1.** `effectiveTo === null` får **ingen** uppfunnen
+  innebörd — inte oändlighet, inte öppet slut, inte "till nästa beslut". V1-lagret vägrar
+  en sådan post. Den allmänna innebörden av `null` förblir RESERVERAD.
+
+### L2 — Vad Beslut L INTE innebär
+
+GATE-08 flyttas **inte**. Beslut L stänger inspelningssemantik, inte gaten.
+
+C3B.2-runtime är **inte** implementerad. Beslut L ändrar ingen TypeScript-fil. Inget
+beslutslager, ingen uppslagning och ingen inspelning existerar i kod. `EVENT_TYPES` och
+`EVENT_ENTITY_TYPES` är oförändrade, och varken `events.ts` eller `replay/events.ts`
+berörs.
+
+Beslut L föreskriver **ingen** databas, inget schema och ingen lagringsteknik. Den första
+implementationen bör vara ett provider-neutralt gränssnitt med deterministisk
+in-memory-implementation; en beständig adapter är senare arbete bakom samma gräns.
+
+Följande förblir uttryckligen öppna eller uppskjutna:
+`GATE-08C-3B DECISION-RECORDED-AT GAP` (uppskjuten, icke-blockerande — stängs inte genom
+att uppfinna en tidsstämpel),
+`GATE-08C-3B DECISION-STORE ORDERING GAP` (uppskjuten, icke-blockerande),
+`GATE-08C-3B NONEMPTY-EVIDENCE VOCABULARY GAP` (öppen, uppskjuten),
+`GATE-08C-3A SOURCE-RESULT-SHAPE GAP` (öppen),
+`EFFECTIVE-TO NULL GENERAL SEMANTICS` (reserverad),
+`GATE-08C-2A DST-BOUNDARY GAP` och `GATE-08C-2B UNEXPECTED-MINUTE GAP` (öppna,
+fail-closed) samt `GATE-08C-2B VOLUME POLICY` (härledd).
+
+Orkestreringen — inspelat beslut först, annars §10:s krav på pinnad historisk
+kalenderversion, upplösning, materialisering och inspelning — tillhör C3B.3 och
+implementeras inte av C3B.2.
+
+Market Data & Contract Lifecycle Canonical v1.0, Contract Selection Reason Code Canonical
+v1.0 och Contract Selection Decision Materialisation Canonical v1.0 skrivs **inte** om.
+Beslut L är ett fristående tillägg under deras låsta text.
+
+GATE-01, GATE-02, GATE-03, GATE-04, GATE-06, GATE-07, GATE-09, GATE-12, GATE-13, GATE-14
+och GATE-17 berörs inte.
+
+Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -1114,3 +1231,6 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 | `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | K1 — ny, materialiseringssemantik för beslut |
 | `specifications/README.md` | K1 — indexrad |
 | `SOURCE_OF_TRUTH.md` | K1 — kanonisk källa, materialiseringsluckor stängda för C3B.1 |
+| `specifications/market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | L1 — ny, inspelnings- och replaysemantik |
+| `specifications/README.md` | L1 — indexrad |
+| `SOURCE_OF_TRUTH.md` | L1 — kanonisk källa, inspelningsluckor stängda för C3B.2 |

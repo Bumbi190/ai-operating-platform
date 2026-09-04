@@ -40,7 +40,7 @@ import { FAMILJE_STUNDEN_MONTHLY_RELEASE } from '@/lib/workflows/definitions'
 import { InvalidMonthKeyError, computeReleaseInstant, isCanonicalMonthKey } from './instant'
 import { FAMILJE_STUNDEN_CHECKS } from './checks'
 import { checkConsumersInSync, readAllConsumers, verifyDeployedSource } from './deployed-source'
-import { verifyDeploymentChain, verifyReleaseDeployment, configuredReleasePr } from './deployment'
+import { verifyReleaseDeployment } from './deployment'
 
 export const FAMILJE_STUNDEN_SYSTEM = 'familje-stunden'
 
@@ -463,9 +463,9 @@ const VERIFIABLE: Record<string, (monthKey: string, now: string) => Promise<Veri
     checkNonAdminAccess(monthKey, now),
     // Re-read: a redeploy between edge_deploy and approval would otherwise slip past.
     checkConsumersInSync(await readAllConsumers(now), now),
-    ...(configuredReleasePr() === null ? [] :
-      (await verifyDeploymentChain({ prNumber: configuredReleasePr()! }, now))
-        .filter(e => e.check_key === 'vercel_deploy_sha_matches_merge_sha')),
+    // The re-read of the deployment SHA used to come from a deployment-global
+    // release PR. That authority is gone: the identity is instance-bound, and
+    // the registered READ_ONLY action carries it.
   ],
   scheduled_release: async (monthKey, now) => [
     checkReleaseInstant(monthKey, now),
@@ -476,9 +476,9 @@ const VERIFIABLE: Record<string, (monthKey: string, now: string) => Promise<Veri
     checkNonAdminAccess(monthKey, now),
     checkVisibleMonths(now),
     checkConsumersInSync(await readAllConsumers(now), now),
-    ...(configuredReleasePr() === null ? [] :
-      (await verifyDeploymentChain({ prNumber: configuredReleasePr()! }, now))
-        .filter(e => e.check_key === 'vercel_deploy_sha_matches_merge_sha')),
+    // The re-read of the deployment SHA used to come from a deployment-global
+    // release PR. That authority is gone: the identity is instance-bound, and
+    // the registered READ_ONLY action carries it.
   ],
 }
 

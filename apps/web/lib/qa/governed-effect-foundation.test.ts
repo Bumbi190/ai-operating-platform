@@ -105,6 +105,8 @@ describe('the READ_ONLY path did not move', () => {
       'compose_monthly_brief', 'compute_release_instant',
       'observe_github_merge_sha_match', 'observe_github_pr_checks_green',
       'observe_github_pr_merged', 'observe_release_gate',
+      'observe_vercel_deploy_sha_match', 'observe_vercel_production_alias',
+      'observe_vercel_production_ready',
       'probe_anonymous_protected_access',
     ])
     for (const k of kinds) {

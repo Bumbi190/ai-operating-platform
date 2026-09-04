@@ -109,6 +109,83 @@ export function isGovernanceAbort(e: unknown): e is GovernanceAbortError {
   return e instanceof GovernanceAbortError
 }
 
+/**
+ * Authority refused BEFORE the raw request left the machine.
+ *
+ * Distinct from every other failure, and deliberately so: nothing was
+ * dispatched, so this is neither a provider rejection nor an ambiguous outcome.
+ * The spend boundary releases the reservation on it (see `withGovernedSpend`),
+ * and the transport layer never sees it, so it can never be mistaken for
+ * `response_lost`.
+ *
+ * Adapters THROW this. They never write run lifecycle state — the owning
+ * boundary classifies and settles, exactly as G3C-3B established.
+ */
+export class PhysicalAdmissionRefusedError extends Error {
+  readonly refusal: Exclude<AuthorityTick, 'ALLOWED'>
+  readonly provider: string
+  constructor(refusal: Exclude<AuthorityTick, 'ALLOWED'>, provider: string, detail: string) {
+    super(`physical admission refused (${refusal}) for ${provider}: ${detail}`)
+    this.name = 'PhysicalAdmissionRefusedError'
+    this.refusal = refusal
+    this.provider = provider
+  }
+}
+
+export function isPhysicalAdmissionRefusal(e: unknown): e is PhysicalAdmissionRefusedError {
+  return e instanceof PhysicalAdmissionRefusedError
+}
+
+/**
+ * Re-establishes authority IMMEDIATELY BEFORE one raw request.
+ *
+ * The watcher's first tick is a poll interval away, and the comment that used to
+ * justify that delay — "a canonical boundary check ran just before this" — is
+ * false for any attempt after the first. An image retry waits fifteen seconds
+ * for a 429 backoff; a cancellation landing in that gap must stop attempt two
+ * before it leaves, not two seconds after it has.
+ *
+ * PRE-DISPATCH and IN-FLIGHT read failures are deliberately opposite:
+ *   • here, unreadable authority REFUSES — nothing has been sent, so failing
+ *     closed costs nothing;
+ *   • in flight, unreadable authority only LATCHES — the request was already
+ *     permitted, and tearing it down would manufacture remote ambiguity.
+ */
+export async function admitPhysicalRequest(
+  db: AnyDb | (() => AnyDb),
+  authority: ExecutionAuthority,
+  provider: string,
+): Promise<void> {
+  // ── WHY CONTRACT_ONLY IS NOT RE-GATED HERE ─────────────────────────────────
+  // Because it is already gated, by canonical authority, before this point.
+  // `withGovernedSpend` calls `resolveExecutionStopForContract` pre-dispatch,
+  // fails closed on an unreadable stop state, and releases the reservation on
+  // refusal. A second contract gate here would decide the SAME question from a
+  // SECOND place — the exact shape this programme has already deleted twice
+  // (the drain and the unified executor each grew a rival cancel branch), and
+  // it would silently own availability policy for every interactive feature.
+  //
+  // Admission exists to add what the contract gate CANNOT see: whether this
+  // worker still owns the run, and whether a cancellation became durable after
+  // the boundary check. That is a RUN_BOUND question, so this is a RUN_BOUND
+  // gate. In-flight watching still covers CONTRACT_ONLY — see the watcher.
+  if (authority.kind !== 'RUN_BOUND') return
+
+  let outcome: AuthorityTick
+  let detail: string
+  try {
+    const client = typeof db === 'function' ? (db as () => AnyDb)() : db
+    const r = await evaluateAuthority(client, authority)
+    outcome = r.tick
+    detail = r.detail
+  } catch {
+    outcome = 'AUTHORITY_UNAVAILABLE'
+    detail = 'authority evaluation threw before dispatch'
+  }
+  if (outcome === 'ALLOWED') return
+  throw new PhysicalAdmissionRefusedError(outcome, provider, detail)
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 //  Signal composition
 // ───────────────────────────────────────────────────────────────────────────
@@ -130,6 +207,48 @@ export interface ComposedSignal {
   dispose(): void
   /** Listener count — exposed so a test can prove cleanup, not for callers. */
   readonly listenerCount: number
+}
+
+/**
+ * Follows an async-iterable to termination, returning a promise that settles
+ * when ITERATION ends — exhaustion, error, `throw`, or a consumer `break`.
+ *
+ * Installed by shadowing `[Symbol.asyncIterator]` on the instance rather than
+ * by a Proxy: a Proxy would intercept the provider object's entire surface for
+ * one behaviour, and every property a caller touches becomes ours to get right.
+ *
+ * Returns `undefined` when the value is not async-iterable — the CALLER decides
+ * what an unobservable stream means, because "I cannot see the end" is not the
+ * same as "it ended".
+ */
+export function followAsyncIterable(value: unknown): Promise<void> | undefined {
+  const target = value as { [Symbol.asyncIterator]?: () => AsyncIterator<unknown> }
+  if (typeof target?.[Symbol.asyncIterator] !== 'function') return undefined
+  const original = target[Symbol.asyncIterator]!.bind(target)
+
+  let done!: () => void
+  const settled = new Promise<void>(res => { done = res })
+  let finished = false
+  const finish = () => { if (!finished) { finished = true; done() } }
+
+  target[Symbol.asyncIterator] = function (): AsyncIterator<unknown> {
+    const it = original()
+    return {
+      async next(...args: [] | [undefined]) {
+        try {
+          const r = await it.next(...args)
+          if (r.done) finish()
+          return r
+        } catch (e) { finish(); throw e }
+      },
+      // `return` is what a consumer `break` invokes. Without it an early exit
+      // would hold the watcher for the life of the process.
+      async return(v?: unknown) { finish(); return it.return ? it.return(v) : { done: true, value: v } },
+      async throw(e?: unknown) { finish(); if (it.throw) return it.throw(e); throw e },
+      [Symbol.asyncIterator]() { return this },
+    } as AsyncIterator<unknown>
+  }
+  return settled
 }
 
 export function composeAbortSignals(

@@ -56,6 +56,10 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
+// Value import, but no runtime cycle: `execution-signal` imports only
+// `run-authority` and `execution-stop`, and the latter's reference back here is
+// `import type` — erased at compile time.
+import { isPhysicalAdmissionRefusal } from '@/lib/governance/execution-signal'
 import {
   ExecutionStoppedError, resolveExecutionStopForContract,
   type ExecutionContract,
@@ -350,6 +354,15 @@ export async function withGovernedSpend<T>(
     await settleSpend(verdict.reservationId, input.estimatedSek)
     return result
   } catch (e) {
+    if (isPhysicalAdmissionRefusal(e)) {
+      // ── G3C-3C-A · GOVERNANCE REFUSED BEFORE DISPATCH ──────────────────────
+      // Nothing left the machine, so this is not the ambiguous case below —
+      // settling would count budget for a call that was never made. Its own
+      // error type, deliberately: reporting it as a provider rejection would be
+      // a lie about who refused and why.
+      await releaseSpend(verdict.reservationId)
+      throw e
+    }
     if (e instanceof ProviderNotDispatchedError) {
       // The adapter can prove nothing was billed. Free the headroom now rather
       // than making a burst of auth failures starve the budget for 30 minutes.

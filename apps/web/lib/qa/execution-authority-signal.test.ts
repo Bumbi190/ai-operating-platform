@@ -426,7 +426,7 @@ describe('A13–A16 · stream lifetime', () => {
     expect(src, 'termination hook present').toMatch(/onStreamSettled\?\.\(/)
     expect(src, 'done() is preferred').toMatch(/done\?: unknown \}\)\.done === 'function'/)
     expect(src, 'released with .finally, so an errored stream releases too')
-      .toMatch(/settled\.finally\(\(\) => flight\?\.dispose\(\)\)/)
+      .toMatch(/settled\.finally\(\(\) => \{[^}]*flight\?\.dispose\(\)/)
   })
 
   it('a throwing request still releases the watcher', async () => {

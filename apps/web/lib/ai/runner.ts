@@ -176,6 +176,8 @@ async function generateWithReference(
    * wrong lifetime.
    */
   authority?: RunBoundAuthority,
+  /** Caller abort, composed with authority inside the adapter. */
+  callerSignal?: AbortSignal,
 ): Promise<{ b64_json?: string | null }> {
   // Kastar MissingReferenceError. Ligger FÖRE varje provider-anrop, alltså
   // före den styrda spend-gränsen — ingen reservation hinner göras, och det
@@ -198,6 +200,7 @@ async function generateWithReference(
           n: 1,
           size,
         } as any, // size-typen är mer begränsad i edit() än generate()
+        { signal: callerSignal },
       )
 
       // Ett 2xx utan användbar bild är inte en lyckad referensbunden
@@ -632,6 +635,9 @@ async function runOpenAIStep(
           { role: 'user', content: userMessage },
         ],
       },
+      // The caller's signal is COMPOSED with in-flight authority inside
+      // the adapter; passing only one of the two would discard the other.
+      { signal: input.signal },
     )
 
     for await (const chunk of stream) {
@@ -654,6 +660,7 @@ async function runOpenAIStep(
           { role: 'user', content: userMessage },
         ],
       },
+      { signal: input.signal },
     )
     fullContent = response.choices[0]?.message?.content ?? ''
     inputTokens = response.usage?.prompt_tokens ?? 0
@@ -761,6 +768,7 @@ async function runImageStep(
           { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'Generate Image',
             agent: input.cost?.agent ?? 'Image Director', runId: input.runId, authority: input.authority },
           { model: 'gpt-image-1', prompt: finalPrompt, n: 1, size },
+          { signal: input.signal },
         )
         return res.data?.[0]
       } catch (err: any) {
@@ -866,7 +874,7 @@ async function runImageStep(
         // ovan beordrar strikt användning av referensbilden, och det obundna
         // anropet bifogade ingen — det bad modellen följa en bild den inte fick.
         // Misslyckas det här kastas det och bilden hoppas över.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority, input.signal)
 
       } else if (isActivityMode) {
         // ── Ideogram v3 — flat cartoon square illustration ────────────────────
@@ -913,14 +921,14 @@ async function runImageStep(
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
         // Referensbunden — se kommentaren i saga-grenen.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority, input.signal)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
         // Referensbunden — och till skillnad från saga/aktivitet finns här ingen
         // Ideogram-väg alls, så detta är hela genereringen för färgläggningssidor.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority, input.signal)
       }
 
       // gpt-image-1 returnerar b64_json — ladda upp till Storage för permanent URL

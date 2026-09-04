@@ -30,6 +30,8 @@ const state = {
   beforeRunRead: undefined as (() => void) | undefined,
   /** G3C-3B: makes the lifecycle RPC fault, so ERROR can be told from FENCED. */
   rpcFails: false,
+  /** G3C-3C-A: a SUCCESSFUL read that returns no row — distinct from a failure. */
+  runMissing: false,
 }
 
 /** Minimal Supabase double: the run row, the stop RPC, and recorded updates. */
@@ -46,6 +48,7 @@ function db() {
         if (table === 'runs') {
           state.beforeRunRead?.()
           if (state.runReadFails) return { data: null, error: { message: 'read failed' } }
+          if (state.runMissing) return { data: null, error: null }
           return { data: { ...state.run }, error: null }
         }
         return { data: null, error: null }
@@ -129,6 +132,7 @@ beforeEach(() => {
   state.runReadFails = false
   state.updateFails = false
   state.rpcFails = false
+  state.runMissing = false
   state.beforeUpdate = undefined
   state.beforeRunRead = undefined
   state.updates = []
@@ -215,6 +219,78 @@ describe('G3C-3A · the checkpoint establishes fresh truth', () => {
     state.globalPaused = true
     await checkpoint()
     expect(state.updates, 'decision-only by design').toEqual([])
+  })
+})
+
+describe('G3C-3C-A · the classifier extraction did not redefine G3C-3A', () => {
+  // `classifyRunAuthority` now distinguishes AUTHORITY_UNAVAILABLE from FENCED,
+  // because the in-flight watcher needs that distinction. `checkpointClaimedRun`
+  // must NOT gain it: an admission boundary that cannot read ownership has
+  // always refused as FENCED, with this exact detail string, and G3C-3B's
+  // callers branch on that. These pin every public outcome across the collapse.
+
+  it('an unreadable ownership read is still FENCED, with the original detail', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    state.runReadFails = true
+    const v = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, claimId: CLAIM, projectId: PROJ, boundary: 'compat',
+    })
+    expect(v.allowed).toBe(false)
+    expect(v.allowed === false && v.refusal).toBe('FENCED')
+    expect(v.detail, 'the wording is part of the contract')
+      .toBe('compat: ownership unreadable — refusing to execute')
+  })
+
+  it('a MISSING run is FENCED with its own distinct detail', async () => {
+    // Both collapse to FENCED here, but they are different facts and the detail
+    // must keep saying which — that is what the watcher branches on.
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    state.runMissing = true
+    const v = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, claimId: CLAIM, projectId: PROJ, boundary: 'compat',
+    })
+    expect(v.allowed === false && v.refusal).toBe('FENCED')
+    expect(v.detail).toBe('compat: run no longer exists')
+  })
+
+  it('every other public outcome is unchanged', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    const at = (b: string) => checkpointClaimedRun(anyDb(), {
+      runId: RUN, claimId: CLAIM, projectId: PROJ, boundary: b,
+    })
+
+    expect((await at('b')).allowed, 'clear authority still allows').toBe(true)
+
+    state.run.claim_id = 'other'
+    let v = await at('b')
+    expect(v.allowed === false && v.refusal).toBe('FENCED')
+    expect(v.detail).toBe('b: claim rotated — another owner holds this run')
+
+    state.run.claim_id = CLAIM
+    state.run.status = 'done'
+    v = await at('b')
+    expect(v.allowed === false && v.refusal).toBe('FENCED')
+    expect(v.detail).toBe('b: run is done, not running')
+
+    state.run.status = 'running'
+    state.run.cancel_requested = true
+    v = await at('b')
+    expect(v.allowed === false && v.refusal).toBe('CANCELLED')
+    expect(v.detail).toBe('b: cancellation requested')
+
+    state.run.cancel_requested = false
+    state.globalPaused = true
+    v = await at('b')
+    expect(v.allowed === false && v.refusal).toBe('STOPPED')
+  })
+
+  it('a no-claim invocation is still FENCED', async () => {
+    const { checkpointClaimedRun } = await import('@/lib/governance/run-execution-checkpoint')
+    const v = await checkpointClaimedRun(anyDb(), {
+      runId: RUN, claimId: null, projectId: PROJ, boundary: 'b',
+    })
+    expect(v.allowed === false && v.refusal).toBe('FENCED')
+    expect(v.detail).toBe('b: invocation holds no claim')
   })
 })
 

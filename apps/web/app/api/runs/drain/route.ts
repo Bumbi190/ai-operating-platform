@@ -17,7 +17,7 @@ import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import {
-  checkpointClaimedRun, settleRefusal, terminalizeCancelledRun,
+  checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
   finalizeOwnedRunUnlessCancelled,
 } from '@/lib/governance/run-execution-checkpoint'
@@ -27,6 +27,8 @@ import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
+import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
+import { ExecutionStoppedError } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -64,6 +66,48 @@ export async function GET(request: Request) {
   const runs = (claimed ?? []) as any[]
   const results: Record<string, unknown>[] = []
 
+  /**
+   * Maps a canonical settlement outcome onto a drain result.
+   *
+   * G3C-3C-A · D1. Two callers now settle refusals — the pre-execution
+   * checkpoint and physical admission — and they must not grow two mappings of
+   * the same four outcomes. `settleRefusal` already owns the truth; this owns
+   * the single translation of that truth into what the drain reports.
+   */
+  const reportSettled = (
+    run: Run & { claim_id?: string | null },
+    settled: 'CANCELLED' | 'STOPPED' | 'FENCED' | 'ERROR',
+    detail: string,
+    stopReason?: string,
+  ): Record<string, unknown> => {
+    if (settled === 'ERROR') {
+      // The owned lifecycle write failed. Touch nothing and start nothing: the
+      // run keeps its lease, and expiry plus the reaper decide its durable
+      // state. Never `fenced` — that would claim lost ownership — and never a
+      // retry mutation, which would invent a failure.
+      return { run_id: run.id, status: 'lifecycle_error', reason: 'lifecycle_write_failed', detail }
+    }
+    if (settled === 'FENCED') return { run_id: run.id, status: 'fenced', detail }
+    if (settled === 'CANCELLED') {
+      // Atlas Memory M4 — episodic outcome, emitted only once this worker has
+      // confirmed it owns the terminal write.
+      void recordMemoryEvent({
+        scope: 'project', eventType: 'outcome', projectId: run.project_id,
+        entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+        subject: 'Run outcome: cancelled',
+        content: `Run ${run.id.slice(0, 8)} cancelled (kind: ${run.kind ?? 'unknown'})`,
+        confidence: 0.40,
+        structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled',
+                      attempts: run.attempts ?? 1, error: null },
+      }, db)
+      return { run_id: run.id, status: 'cancelled', detail }
+    }
+    // STOPPED — not a failure. Back to the queue with no error, no alert and no
+    // backoff. claim_runs refuses to re-claim it while the stop stands, which is
+    // exactly what bounds this to one cycle per stop event.
+    return { run_id: run.id, status: 'deferred_by_stop', reason: stopReason, detail }
+  }
+
   for (const run of runs) {
     try {
       // ── G3C-3A · CANONICAL POST-CLAIM CHECKPOINT ───────────────────────────
@@ -95,45 +139,7 @@ export async function GET(request: Request) {
         // between the two turns STOPPED into a real cancellation (R9), and a
         // database fault is neither a stop, a cancellation, nor lost ownership.
         const settled = await settleRefusal(db, entry.refusal, run.id, run.claim_id)
-        if (settled === 'ERROR') {
-          // The owned lifecycle write failed. Touch nothing and start nothing:
-          // the run keeps its lease, and expiry plus the reaper decide its
-          // durable state. Never `fenced` — that would claim lost ownership —
-          // and never a retry mutation, which would invent a failure.
-          results.push({
-            run_id: run.id, status: 'lifecycle_error',
-            reason: 'lifecycle_write_failed', detail: entry.detail,
-          })
-          continue
-        }
-        if (settled === 'FENCED') {
-          results.push({ run_id: run.id, status: 'fenced', detail: entry.detail })
-          continue
-        }
-        if (settled === 'CANCELLED') {
-          {
-            // Atlas Memory M4 — episodic outcome, emitted only once this worker
-            // has confirmed it owns the terminal write.
-            void recordMemoryEvent({
-              scope: 'project', eventType: 'outcome', projectId: run.project_id,
-              entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
-              subject: 'Run outcome: cancelled',
-              content: `Run ${run.id.slice(0, 8)} cancelled (kind: ${run.kind ?? 'unknown'})`,
-              confidence: 0.40,
-              structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled',
-                            attempts: run.attempts ?? 1, error: null },
-            }, db)
-          }
-          results.push({ run_id: run.id, status: 'cancelled', detail: entry.detail })
-          continue
-        }
-        // STOPPED — not a failure. Back to the queue with no error, no alert and
-        // no backoff. claim_runs refuses to re-claim it while the stop stands,
-        // which is exactly what bounds this to one cycle per stop event.
-        results.push({
-          run_id: run.id, status: 'deferred_by_stop',
-          reason: stopReason, detail: entry.detail,
-        })
+        results.push(reportSettled(run, settled, entry.detail, stopReason))
         continue
       }
 
@@ -383,6 +389,107 @@ export async function GET(request: Request) {
         console.warn(`[run ${run.id}] ${e.message}`)
         results.push({ run_id: run.id, status: 'lifecycle_error',
                        reason: 'lifecycle_write_failed', detail: e.message })
+        continue
+      }
+      // ── G3C-3C-A · F1 · THE CANONICAL PRE-DISPATCH STOP ──────────────────
+      // `withGovernedSpend` runs the G3C-1 final stop check immediately before
+      // dispatch — AFTER this step's claimed-run checkpoint already said
+      // ALLOWED. A stop that commits in that window arrives here, and until now
+      // the catch did not recognise it: it fell through to generic accounting
+      // and charged a failure and a retry for a provider that was never called.
+      //
+      // Typed, not message-parsed. The reason is `e.reason` verbatim — the
+      // canonical StopRefusalReason, which for this path can also be
+      // `stop_state_unavailable`, and an operator needs to see which it was.
+      if (e instanceof ExecutionStoppedError) {
+        const settled = await settleRefusal(db, 'STOPPED', run.id, run.claim_id)
+        console.warn(`[run ${run.id}] pre-dispatch stop (${e.reason}) → ${settled} — not a failure`)
+        results.push(reportSettled(run, settled, e.message, e.reason))
+        continue
+      }
+
+      // ── G3C-3C-A · E1 · GOVERNANCE ABORTED A REQUEST ALREADY IN FLIGHT ───
+      // Not the admission case below. There, nothing was dispatched and the
+      // reservation came back. Here the request was on the wire when we hung
+      // up: the provider may have accepted it, may be running it, may already
+      // have charged for it. We know what WE did, and nothing about what THEY
+      // did.
+      //
+      // So the one thing this must never do is requeue. If the first request
+      // landed, a retry duplicates real, billable, possibly externally-visible
+      // work. Failure accounting is equally wrong — governance decided this,
+      // not the provider — and `cancelled` would claim a remote effect was
+      // stopped when all we stopped was a socket.
+      if (isGovernanceDispatchUnknown(e)) {
+        if (e.abortReason === 'RUN_FENCED') {
+          // Positive proof another owner holds the row. Writing UNKNOWN here
+          // would stamp our ambiguity over their run. They decide.
+          console.warn(`[run ${run.id}] in-flight governance abort while FENCED (${e.provider}) — new owner will finalize`)
+          results.push({ run_id: run.id, status: 'fenced', detail: e.message })
+          continue
+        }
+        const wrote = await recordDispatchUnknown(db, run.id, run.claim_id,
+          `governance aborted an in-flight ${e.provider} request (${e.abortReason}); `
+          + 'no durable dispatch marker exists for this family, so whether the '
+          + 'provider began work cannot be determined')
+        if (wrote === 'ERROR') {
+          // The owned write failed. Touch nothing, start nothing — the lease
+          // and the reaper own the durable state, exactly as elsewhere.
+          results.push({ run_id: run.id, status: 'lifecycle_error',
+                         reason: 'lifecycle_write_failed', detail: e.message })
+          continue
+        }
+        if (wrote === 'FENCED') {
+          results.push({ run_id: run.id, status: 'fenced', detail: e.message })
+          continue
+        }
+        console.warn(`[run ${run.id}] in-flight governance abort (${e.abortReason}) → unknown + reconciliation`)
+        results.push({ run_id: run.id, status: 'unknown',
+                       reason: 'dispatch_unknown', detail: e.message })
+        continue
+      }
+
+      // ── G3C-3C-A · D1 · PHYSICAL ADMISSION REFUSED ───────────────────────
+      // Governance stopped the request BEFORE it was made. Nothing was
+      // dispatched, no provider was reached, and the reservation was already
+      // released at the spend boundary. Falling through to generic accounting
+      // would charge a failure, burn a retry and write `last_error` for work
+      // that deliberately never happened.
+      //
+      // The adapter stays write-free; the lifecycle owner settles. Which
+      // settlement applies is not re-derived here — `settleRefusal` owns that,
+      // and `reportSettled` owns the one mapping of its outcome.
+      if (isPhysicalAdmissionRefusal(e)) {
+        if (e.refusal === 'AUTHORITY_UNAVAILABLE') {
+          // NOT cancelled, stopped, fenced or failed. The attempt never
+          // dispatched because fresh authority could not be ESTABLISHED, and
+          // "I could not read the truth" is not permission to assert any of the
+          // four. Writing FENCED here would claim ownership was lost; writing
+          // failed would invent an execution failure; incrementing attempts
+          // would spend a retry on a request that never left.
+          //
+          // So: no lifecycle write at all. The lease still stands and expiry
+          // plus the reaper own durable recovery — the same model already used
+          // for `lifecycle_error`, and reported with an existing non-persistent
+          // control status rather than a new `runs.status` value.
+          console.warn(`[run ${run.id}] physical admission: authority unavailable (${e.provider}) — no accounting`)
+          results.push({ run_id: run.id, status: 'authority_unavailable',
+                         reason: 'authority_unreadable', detail: e.message })
+          continue
+        }
+        if (e.refusal === 'FENCED') {
+          // Positive proof another owner holds the run. It writes nothing —
+          // the new owner decides this run's outcome.
+          console.warn(`[run ${run.id}] physical admission: fenced (${e.provider}) — new owner will finalize`)
+          results.push({ run_id: run.id, status: 'fenced', detail: e.message })
+          continue
+        }
+        const settled = await settleRefusal(db, e.refusal, run.id, run.claim_id)
+        console.warn(`[run ${run.id}] physical admission: ${e.refusal} → ${settled} — not a failure`)
+        // E4: the CANONICAL reason the admission carried, so a deferred run
+        // says whether the platform or only this project is paused. A synthetic
+        // `physical_admission_stop` answered neither.
+        results.push(reportSettled(run, settled, e.message, e.stopReason))
         continue
       }
       if (isRunCheckpointRefusal(e)) {

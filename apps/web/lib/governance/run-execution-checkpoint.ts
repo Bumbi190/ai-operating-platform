@@ -45,6 +45,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { classifyRunAuthority, readRunAuthority } from './run-authority'
 import {
   resolveExecutionStop,
   type ExecutionContext,
@@ -103,55 +104,36 @@ export async function checkpointClaimedRun(
   const { runId, claimId, boundary } = input
   const context: ExecutionContext = input.context ?? 'AUTONOMOUS'
 
-  // ── 1 · OWNERSHIP ────────────────────────────────────────────────────────
-  // First, because a rotated claim invalidates everything else this worker
-  // believes — including which project it thought it was executing for.
-  let row: OwnershipRow | null = null
-  try {
-    const { data, error } = await db.from('runs')
-      .select('id, status, claim_id, cancel_requested, project_id')
-      .eq('id', runId).maybeSingle()
-    if (error) {
-      return { allowed: false, refusal: 'FENCED',
-        detail: `${boundary}: ownership unreadable — refusing to execute` }
-    }
-    row = (data ?? null) as OwnershipRow | null
-  } catch {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: ownership unreadable — refusing to execute` }
+  // ── 1 · OWNERSHIP AND CANCELLATION ───────────────────────────────────────
+  // Ownership first, because a rotated claim invalidates everything else this
+  // worker believes — including which project it thought it was executing for.
+  //
+  // G3C-3C-A moved this truth table into `classifyRunAuthority` so the in-flight
+  // authority watcher can reuse it verbatim instead of growing a rival copy —
+  // the failure mode that produced two competing cancel branches before G3C-3B
+  // deleted them. The behaviour here is UNCHANGED; the mapping below is the
+  // only place that can change it, and a compatibility test pins every outcome.
+  const read = await readRunAuthority(db, runId)
+  const verdict = classifyRunAuthority(read, claimId)
+
+  if (verdict.klass !== 'CONTINUE_TO_STOP_CHECK') {
+    // ── THE COMPATIBILITY COLLAPSE ─────────────────────────────────────────
+    // `AUTHORITY_UNAVAILABLE` is a distinction the WATCHER needs and this
+    // boundary deliberately does not make: an admission checkpoint that cannot
+    // read ownership must refuse, and G3C-3A has always called that refusal
+    // FENCED with this exact detail string. Collapsing here — and only here —
+    // keeps that public contract byte-identical while letting the watcher tell
+    // "I could not read" from "I read, and you have lost the run".
+    const refusal = verdict.klass === 'CANCELLED' ? 'CANCELLED' : 'FENCED'
+    return { allowed: false, refusal, detail: `${boundary}: ${verdict.detail}` }
   }
 
-  if (!row) {
-    return { allowed: false, refusal: 'FENCED', detail: `${boundary}: run no longer exists` }
-  }
-  if (!claimId) {
-    // No claim means no ownership. The legacy no-claim caller is a real path;
-    // it must not gain permission by virtue of never having had any.
-    return { allowed: false, refusal: 'FENCED', detail: `${boundary}: invocation holds no claim` }
-  }
-  if (row.claim_id !== claimId) {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: claim rotated — another owner holds this run` }
-  }
-  if (row.status !== 'running') {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: run is ${row.status ?? 'gone'}, not running` }
-  }
-
-  // ── 2 · EXPLICIT CANCELLATION ────────────────────────────────────────────
-  // Deliberately NOT gated on H1_CANCEL. That flag governs the older
-  // cooperative helper's rollout; a canonical governance checkpoint whose
-  // guarantee evaporates when an unrelated rollout flag is unset is not a
-  // guarantee. The route's honesty about latency is preserved separately.
-  if (row.cancel_requested === true) {
-    return { allowed: false, refusal: 'CANCELLED',
-      detail: `${boundary}: cancellation requested` }
-  }
-
-  // ── 3 · CANONICAL STOP AUTHORITY ─────────────────────────────────────────
-  // The run's own project, read from the row we just fenced against — not from
-  // the caller's possibly-stale idea of it.
-  const projectId = row.project_id ?? input.projectId ?? null
+  // ── 2 · CANONICAL STOP AUTHORITY ─────────────────────────────────────────
+  // Deliberately NOT gated on H1_CANCEL — see `classifyRunAuthority`. The run's
+  // own project comes from the row we just fenced against, not from the
+  // caller's possibly-stale idea of it.
+  const row = read.kind === 'ROW' ? read.row : null
+  const projectId = row?.project_id ?? input.projectId ?? null
   const decision = await resolveExecutionStop(db as SupabaseClient, { context, projectId })
   if (!decision.allowed) {
     return {
@@ -236,6 +218,65 @@ export async function terminalizeCancelledRun(
     .select('id')
   if (error) return 'ERROR'
   return Array.isArray(data) && data.length > 0 ? 'CANCELLED' : 'FENCED'
+}
+
+/** What an ownership-conditioned dispatch-unknown write actually did. */
+export type DispatchUnknownResult = 'UNKNOWN_WRITTEN' | 'FENCED' | 'ERROR'
+
+/**
+ * Records an owned run as DURABLY AMBIGUOUS after governance aborted a request
+ * that was already in flight.
+ *
+ * ── WHY UNKNOWN AND NOT CANCELLED ──────────────────────────────────────────
+ * We hung up a socket. That is the entire extent of what we did. The provider
+ * may have accepted the request, may be running it, may already have charged
+ * for it. Every other status would be a claim we cannot support:
+ *
+ *   cancelled  claims the remote effect did not happen.
+ *   failed     records a governance decision as an execution failure, and feeds
+ *              retry backoff and failure counters.
+ *   pending    re-dispatches. If the first request DID land, the second one
+ *              duplicates real, billable, possibly externally-visible work —
+ *              the single worst outcome available here.
+ *
+ * `unknown` + `reconciliation_required` is the vocabulary the G3C-3B reaper
+ * already uses for exactly this class: a run whose dispatch cannot be
+ * determined. Reusing it means one ambiguity model and one operator surface
+ * (`runs_reconciliation_required_idx`), not a second dialect.
+ *
+ * ── WHAT IS DELIBERATELY NOT SET ───────────────────────────────────────────
+ * `action_outcome` stays untouched. The constraint is one-directional —
+ * UNKNOWN/PARTIAL *requires* reconciliation, not the reverse — so a non-action
+ * agent run does not need one, and inventing an action outcome for a run that
+ * has no action identity would be fabricating a fact.
+ *
+ * `cancel_requested` is preserved: the operator's instruction is still true and
+ * still the reason a human is being asked to look.
+ *
+ * ── WHY OWNERSHIP-CONDITIONED ──────────────────────────────────────────────
+ * The same predicate every other terminal write in this module uses. A worker
+ * that lost its claim mid-abort must not stamp UNKNOWN over the new owner's
+ * row; 0 rows matched means FENCED, and the new owner decides.
+ */
+export async function recordDispatchUnknown(
+  db: AnyDb,
+  runId: string,
+  claimId: string | null | undefined,
+  reconciliationReason: string,
+): Promise<DispatchUnknownResult> {
+  if (!claimId) return 'FENCED'
+  const { data, error } = await db.from('runs')
+    .update({
+      status: 'unknown',
+      reconciliation_required: true,
+      reconciliation_reason: reconciliationReason,
+      finished_at: new Date().toISOString(),
+      claimed_at: null, lease_until: null,
+    })
+    .eq('id', runId).eq('status', 'running').eq('claim_id', claimId)
+    .select('id')
+  if (error) return 'ERROR'
+  return Array.isArray(data) && data.length > 0 ? 'UNKNOWN_WRITTEN' : 'FENCED'
 }
 
 /**

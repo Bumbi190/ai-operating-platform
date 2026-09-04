@@ -31,8 +31,16 @@ import { estimateImageSek } from '@/lib/cost/budget-gate'
 import {
   ProviderNotDispatchedError,
   withGovernedSpend,
+  resolveGovernedProjectId,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import {
+  admitPhysicalRequest,
+  followAsyncIterable, watchExecutionAuthority, composeAbortSignals,
+  authorityForRequest, GovernanceDispatchUnknownError, isGovernanceDispatchUnknown,
+  type RunBoundAuthority, type AbortReason,
+} from '@/lib/governance/execution-signal'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   ProviderDispatchUnknownError,
   classifyTransportFailure,
@@ -60,6 +68,19 @@ export interface OpenAIGovernanceContext {
    * at this layer would be a guess made far from the only place that knows.
    */
   execution: ExecutionContract
+  /**
+   * G3C-3C-A. Present only when a CLAIMED RUN owns this call.
+   *
+   * Absence does NOT mean unwatched — it means CONTRACT_ONLY, derived from
+   * `execution` below. A route or cron caller keeps in-flight STOP observation
+   * without anyone fabricating a run or a claim for it.
+   */
+  authority?: RunBoundAuthority
+  /**
+   * Live flight state for this physical request. Read it AFTER the work is
+   * done: a stream's latch can be raised long after the handle returned.
+   */
+  onFlight?: (flight: { authorityUnavailable: boolean; abortReason: string | null }) => void
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   operation: string
@@ -83,8 +104,192 @@ function costContext(ctx: OpenAIGovernanceContext): CostContext {
 /** One place the credential is read. */
 let _openai: OpenAI | null = null
 function raw(): OpenAI {
-  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  // ── G3C-3C-A · maxRetries: 0 ──────────────────────────────────────────────
+  // The SDK default is 2, and its retry is INTERNAL RECURSION
+  // (`retryRequest → makeRequest(retriesRemaining - 1)`): control never returns
+  // here between physical attempts. So a fresh governance check before this call
+  // protected attempt 1 and nothing else — a stop or cancel committing after it
+  // could not prevent attempts 2 and 3, and no watcher could see them.
+  //
+  // One invocation, at most one physical attempt. Existing application-level
+  // retries are untouched: those re-enter the governed boundary and get a fresh
+  // check each time, which is exactly the property the SDK's did not have.
+  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0 })
   return _openai
+}
+
+/**
+ * Runs ONE raw OpenAI request under in-flight authority.
+ *
+ * RUN_BOUND when a claimed run owns the call; CONTRACT_ONLY otherwise — never
+ * unwatched. The project resolver is injected here, at the adapter, because this
+ * module already imports the spend layer and the governance module must not.
+ */
+/**
+ * Anchors a raw-`fetch` flight to BODY completion instead of to headers.
+ *
+ * ── WHY BODY AND NOT HEADERS ───────────────────────────────────────────────
+ * This is not a guess. `app/api/chat/tts/route.ts` does `await res.arrayBuffer()`
+ * AFTER `openAISpeech` returns, so at the moment the adapter hands the Response
+ * back, the audio is still being transferred. Releasing at headers would stop
+ * watching precisely during the part that takes the longest.
+ *
+ * The Response is rebuilt around a pass-through stream rather than proxied:
+ * status, statusText and headers are carried over verbatim, so `res.ok`,
+ * `res.status` and `res.arrayBuffer()` behave exactly as before.
+ */
+function responseBodyLifetime(
+  res: Response,
+  /**
+   * F3. Classifies a failure that happens AFTER headers arrived.
+   *
+   * A fetch resolving means the response STARTED, not that it finished. The
+   * watcher is still live while the body transfers, and a governance abort
+   * during that window surfaces as an ordinary `AbortError` from
+   * `reader.read()`. Passing that through would lose the provenance entirely —
+   * to the caller it would look like a network hiccup rather than the
+   * MAY_HAVE_DISPATCHED outcome it is.
+   */
+  mapError?: (e: unknown) => unknown,
+): { response: Response; settled: Promise<void> } {
+  const body = res.body
+  // No body to follow (error envelopes, and the fetch fakes in the suites):
+  // headers ARE the end of the transfer, so the flight is already over.
+  if (!body) return { response: res, settled: Promise.resolve() }
+
+  let done!: () => void
+  const settled = new Promise<void>(r => { done = r })
+  let finished = false
+  const finish = () => { if (!finished) { finished = true; done() } }
+
+  // ── D3 · THE READER OWNS THE LOCK, SO THE READER OWNS CANCELLATION ────────
+  // `getReader()` locks the body. A later `body.cancel()` on the locked stream
+  // throws `TypeError: ReadableStream is locked`, so the abandon path has to go
+  // through the reader it was taken with. Hoisted here so `cancel` can reach it.
+  const reader = body.getReader()
+
+  const watched = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (;;) {
+          const chunk = await reader.read()
+          if (chunk.done) break
+          controller.enqueue(chunk.value)
+        }
+        controller.close()
+      } catch (e) {
+        // The consumer surface is what matters: this is the error
+        // `res.arrayBuffer()` rejects with.
+        controller.error(mapError ? mapError(e) : e)
+      } finally {
+        finish()
+      }
+    },
+    // A consumer that abandons the body must not strand the watcher — and must
+    // not release it early either. `finish()` runs in `finally`, AFTER the
+    // underlying cancellation settles: reporting the transfer finished while
+    // the socket is still tearing down would end the watch during the very
+    // window it exists to cover.
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason)
+      } finally {
+        reader.releaseLock()
+        finish()
+      }
+    },
+  })
+
+  return {
+    response: new Response(watched, { status: res.status, statusText: res.statusText, headers: res.headers }),
+    settled,
+  }
+}
+
+function physicalAuthority(ctx: OpenAIGovernanceContext) {
+  return authorityForRequest(
+    ctx.execution,
+    async ref => { const r = await resolveGovernedProjectId(ref); return r.ok ? r.projectId : null },
+    ctx.authority,
+  )
+}
+
+/**
+ * ADMIT, then watch, around ONE raw OpenAI request.
+ *
+ * Admission is not the watcher's first tick: that is a poll interval away, and
+ * for any attempt after the first there is no recent boundary check to lean on —
+ * an image retry sits through a fifteen-second backoff, and a cancellation
+ * landing in that gap must stop attempt two BEFORE it leaves.
+ *
+ * Refusal throws `PhysicalAdmissionRefusedError`, which the spend boundary
+ * releases rather than settles: nothing was dispatched. The adapter writes no
+ * lifecycle state — the owning boundary classifies it.
+ */
+async function governedPhysicalRequest<T>(
+  ctx: OpenAIGovernanceContext,
+  callerSignal: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+  /**
+   * For a stream: the promise that settles at REAL termination.
+   *
+   * Receives the classifier so the ITERATOR CONSUMER — not merely a detached
+   * lifecycle promise — gets the governance outcome. The watcher lives here, so
+   * the mapper has to be handed down rather than reconstructed at the call site.
+   */
+  settledOf?: (value: T, mapError: (e: unknown) => unknown) => Promise<unknown> | undefined,
+): Promise<T> {
+  const authority = physicalAuthority(ctx)
+  await admitPhysicalRequest(() => createAdminClient(), authority, 'openai')
+
+  const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+  const composed = composeAbortSignals([watch.signal, callerSignal])
+  const release = () => { composed.dispose(); watch.dispose() }
+  try {
+    const value = await run(composed.signal)
+    const settled = settledOf?.(value, e => governanceInFlight(watch, e))
+    // A stream's handle is not its end. Hold the watch until the iterator
+    // actually terminates — completion, error, abort or an early consumer break.
+    //
+    // The failure is classified INSIDE the wrapper now, so this `.catch` exists
+    // only to keep an already-classified rejection from surfacing as an
+    // unhandled one. It runs after classification, never instead of it.
+    if (settled) void settled.catch(() => {}).finally(release)
+    else release()
+    ctx.onFlight?.({
+      get authorityUnavailable() { return watch.authorityUnavailable },
+      get abortReason() { return watch.abortReason },
+    })
+    return value
+  } catch (e) {
+    release()
+    throw governanceInFlight(watch, e)
+  }
+}
+
+/**
+ * E1. Classifies a physical failure that happened while a watcher was live.
+ *
+ * ── THE WATCHER IS THE EVIDENCE, NOT THE ERROR TYPE ────────────────────────
+ * The abort reason we attach to the signal does not survive the trip through a
+ * provider client. OpenAI wraps it as `APIUserAbortError`, Anthropic and
+ * `fetch` produce their own `AbortError`/`APIConnectionError`, and any of them
+ * may re-wrap again on the way out. Testing `e instanceof GovernanceAbortError`
+ * therefore answers "did the wrapper happen to preserve our class", which is a
+ * fact about the SDK, not about governance.
+ *
+ * `watch.abortReason` is set by OUR watcher at the moment it aborted. If it is
+ * non-null, governance fired — whatever shape the rejection arrived in.
+ *
+ * What comes out is deliberately NOT an admission refusal: the request was
+ * already on the wire, so remote work may exist and only the owner can decide
+ * what to record. A rejection with no abort reason is left exactly as it was.
+ */
+function governanceInFlight(watch: { abortReason: AbortReason | null }, e: unknown): unknown {
+  const reason = watch.abortReason
+  if (!reason) return e
+  if (isGovernanceDispatchUnknown(e)) return e
+  return new GovernanceDispatchUnknownError('openai', reason, e)
 }
 
 /** Rejected before any work happened, so releasing the reservation is defensible. */
@@ -123,13 +328,32 @@ export async function estimateOpenAISpeechSek(charCount: number): Promise<number
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Chat.ChatCompletionCreateParams,
+  /** Narrow by design — never an arbitrary SDK RequestOptions passthrough. */
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const estimatedSek = await estimateOpenAIChatSek(params as any)
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       try {
-        return await raw().chat.completions.create(params as any)
+        // ── G3C-3C-A · ONE PHYSICAL REQUEST ─────────────────────────────────
+        // The watcher's scope is exactly this call — not the step, not the image
+        // batch. It sits inside withGovernedSpend's callback, so the fresh G3C-1
+        // stop has already run and the reservation is held.
+        // ── C1 · A STREAM HANDLE IS NOT THE END OF THE REQUEST ─────────────
+        // `create()` resolving only means the handle exists; the socket stays
+        // open for the whole generation. `settledOf` hands back a promise that
+        // completes when ITERATION terminates, so the watch outlives the handle.
+        //
+        // Omnira's only consumer is `for await (const chunk of stream)`, so the
+        // smallest faithful wrapper is an async-iterable that disposes in its
+        // `finally` — covering exhaustion, error, abort and an early `break`.
+        // A generic Proxy would be more surface for no behaviour anyone uses.
+        return await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().chat.completions.create(params as any, { signal }),
+          (value, mapError) => (params as { stream?: boolean }).stream
+            ? followAsyncIterable(value, mapError)
+            : undefined)
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the chat request', e)
@@ -144,6 +368,7 @@ export async function openAIChatCompletion(
 export async function openAIImageGenerate(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Images.ImageGenerateParams,
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
@@ -152,7 +377,8 @@ export async function openAIImageGenerate(
     async () => {
       let res: any
       try {
-        res = await raw().images.generate(params)
+        res = await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().images.generate(params, { signal }))
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the image request', e)
@@ -169,6 +395,7 @@ export async function openAIImageGenerate(
 export async function openAIImageEdit(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Images.ImageEditParams,
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
@@ -177,7 +404,8 @@ export async function openAIImageEdit(
     async () => {
       let res: any
       try {
-        res = await raw().images.edit(params as any)
+        res = await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().images.edit(params as any, { signal }))
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the image edit', e)
@@ -211,15 +439,36 @@ export async function openAISpeech(
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
+      // ── C4 · SPEECH IS A PHYSICAL REQUEST LIKE ANY OTHER ────────────────
+      // It bypasses the SDK, so it also bypassed everything the SDK paths got.
+      // Admission first, then a watcher whose signal is COMPOSED with the
+      // caller's timeout — supplying only one of them would discard the other.
+      const authority = physicalAuthority(ctx)
+      await admitPhysicalRequest(() => createAdminClient(), authority, 'openai')
+      const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+      const composed = composeAbortSignals([watch.signal, init?.signal])
+      const release = () => { composed.dispose(); watch.dispose() }
+      ctx.onFlight?.({
+        get authorityUnavailable() { return watch.authorityUnavailable },
+        get abortReason() { return watch.abortReason },
+      })
+
       let res: Response
       try {
         res = await fetch(OPENAI_SPEECH_URL, {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: init?.signal,
+          signal: composed.signal,
         })
       } catch (e) {
+        release()
+        // E1: governance first. If OUR watcher aborted, this is an in-flight
+        // governance abort, not a transport verdict — and the transport
+        // classifier below cannot tell the difference, because to it a
+        // governance abort and a network reset look identical.
+        const inFlight = governanceInFlight(watch, e)
+        if (isGovernanceDispatchUnknown(inFlight)) throw inFlight
         // Same boundary as `image-client.ts` and `elevenlabs.ts`. The SDK paths
         // above are already guarded by `provablyNotBilled`; this raw `fetch` was
         // the one OpenAI call still claiming the safe case unconditionally, and
@@ -239,6 +488,7 @@ export async function openAISpeech(
         // Return the failed response rather than throwing: the caller maps the
         // status to its own error envelope. A 4xx was not billed, so free the
         // headroom; a 5xx may have synthesised audio and is left settled.
+        release()
         if (statusProvesNotCreated(res.status)) {
           throw new ProviderNotDispatchedError(
             `openai speech refused with ${res.status}`,
@@ -248,12 +498,17 @@ export async function openAISpeech(
         return res
       }
 
+      // Success: the audio is still on the wire. Hold the watch until the body
+      // ends, and hand the caller the followed Response.
+      const followed = responseBodyLifetime(res, e => governanceInFlight(watch, e))
+      void followed.settled.finally(release)
+
       await logLlmCost(
         String(payload.model ?? 'gpt-4o-mini-tts'),
         { tokensIn: 0, tokensOut: 0 },
         { ...costContext(ctx), metadata: { unit: 'characters', characters: charCount } },
       )
-      return res
+      return followed.response
     },
   )
 }

@@ -1,0 +1,757 @@
+{
+  "ID": "familje-stunden.monthly-release",
+  "version": 2,
+  "status": "draft",
+  "purpose": "Underlag för Omnira/Atlas-orkestrering av Familje-Stundens månadsrelease. Detta är INTE körbar produktion. Det beskriver tillstånd, gates och övergångar så att en orkestrator kan driva processen utan att duplicera Familje-Stundens access- eller releaselogik.",
+  "source_of_truth": "docs/MONTHLY_RELEASE_RUNBOOK.md",
+  "derived_from": [
+    "September 2026 — Skördemånaden",
+    "Oktober 2026 — Rymdmånaden"
+  ],
+  "canonical": {
+    "year_order_2026": {
+      "2026-09": "Skördemånaden",
+      "2026-10": "Rymdmånaden",
+      "2026-11": "Löv- & Skuggmånaden",
+      "2026-12": "Julmånaden"
+    },
+    "release_instant_rule": "Första dagen i månaden 00:00 Europe/Stockholm, lagrad i UTC. Räkna om sommartid per månad. Exempel: 2026-10-01 00:00 Sthlm = 2026-09-30T22:00:00Z.",
+    "ebook_pages": 18,
+    "page_audio_clips": 18,
+    "language": "sv",
+    "audience": {
+      "min_age": 3,
+      "max_age": 8,
+      "description": "barn cirka 3–8 år"
+    },
+    "page_structure": {
+      "total_pages": 18,
+      "cover_pages": 1,
+      "content_pages": 16,
+      "closing_pages": 1
+    },
+    "content_page_text": {
+      "target_sentences_min": 1,
+      "target_sentences_max": 2,
+      "hard_max_sentences": 3
+    },
+    "story_contract": {
+      "path": "docs/creative/STORY_CONTRACT.md",
+      "version": "1.0"
+    },
+    "character_contracts": [
+      {
+        "character": "nova",
+        "path": "docs/creative/NOVA_CHARACTER_CONTRACT.md",
+        "version": "0.1-draft"
+      },
+      {
+        "character": "pling",
+        "path": "docs/creative/PLING_CHARACTER_CONTRACT.md",
+        "version": "0.1-draft"
+      }
+    ],
+    "voice": {
+      "id": "ZSHzpa6aUvhjzShiBmYw",
+      "name": "Sanna Hartfield - Sassy Swedish",
+      "model": "eleven_v3",
+      "settings": {
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+        "use_speaker_boost": true,
+        "speed": 1
+      },
+      "format": "MP3 44100 Hz mono 128 kbps"
+    }
+  },
+  "hard_gates": [
+    {
+      "id": "no_spend_without_approval",
+      "rule": "Inga TTS-/API-credits förbrukas utan rapporterad kostnadsuppskattning och mänskligt godkännande.",
+      "enforced_at": [
+        "audio_generation"
+      ]
+    },
+    {
+      "id": "no_production_db_write_without_approval",
+      "rule": "Ingen skrivning mot produktionsdatabasen utan explicit mänskligt godkännande.",
+      "enforced_at": [
+        "backend_release_gate",
+        "protected_upload"
+      ]
+    },
+    {
+      "id": "no_upload_before_local_qa",
+      "rule": "Ingen uppladdning till protected storage före lokal QA PASS.",
+      "enforced_at": [
+        "protected_upload"
+      ]
+    },
+    {
+      "id": "release_gate_before_upload",
+      "rule": "month_releases-raden MÅSTE finnas innan material laddas upp. Grinden är fail-open: en månad utan rad räknas som släppt.",
+      "enforced_at": [
+        "protected_upload"
+      ]
+    },
+    {
+      "id": "deploy_all_manifest_consumers",
+      "rule": "Alla konsumenter av _utils/protectedManifest.ts deployas i samma operation, från aktuell kod, och verifieras mot DEPLOYAD källa.",
+      "consumers": [
+        "sign-protected-asset",
+        "get-protected-ebook"
+      ],
+      "enforced_at": [
+        "edge_deploy"
+      ]
+    },
+    {
+      "id": "no_comms_before_release_verified",
+      "rule": "Ingen releasekommunikation innan admin-QA OCH non-admin-gate-QA är PASS.",
+      "enforced_at": [
+        "newsletter",
+        "social"
+      ]
+    },
+    {
+      "id": "never_bypass_can_access_month",
+      "rule": "Atlas får aldrig kringgå, återimplementera eller cacha can_access_month(). Den är single source of truth för åtkomst och tillämpar release-grinden.",
+      "enforced_at": [
+        "all"
+      ]
+    },
+    {
+      "id": "orchestrate_not_duplicate",
+      "rule": "Omnira orkestrerar. Access-, grind- och manifestlogik ägs av Familje-Stunden-repot och får inte speglas i Omnira.",
+      "enforced_at": [
+        "all"
+      ]
+    }
+  ],
+  "retry_policies": {
+    "none": {
+      "max_attempts": 1
+    },
+    "transient": {
+      "max_attempts": 3,
+      "backoff": "exponential",
+      "initial_delay_s": 5
+    },
+    "network": {
+      "max_attempts": 5,
+      "backoff": "exponential",
+      "initial_delay_s": 10
+    },
+    "never_auto": {
+      "max_attempts": 1,
+      "note": "Kräver mänskligt beslut före omförsök."
+    }
+  },
+  "states": [
+    {
+      "id": "planning",
+      "description": "Fastställ månadsnyckel, tema, slug och releaseinstant.",
+      "prerequisites": [],
+      "inputs": [
+        "årsplan",
+        "canonical.year_order_2026"
+      ],
+      "outputs": [
+        "month_key",
+        "theme",
+        "slug",
+        "release_at_utc"
+      ],
+      "automated_actions": [
+        "Beräkna release_at_utc ur canonical.release_instant_rule."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Tema och datum bekräftade"
+      },
+      "verification": [
+        "Temat matchar canonical.year_order_2026.",
+        "release_at_utc motsvarar 00:00 Europe/Stockholm."
+      ],
+      "failure_transition": "planning",
+      "retry_policy": "none",
+      "next_state": "content_generation"
+    },
+    {
+      "id": "content_generation",
+      "description": "Saga/storyboard: 18 sidor totalt = omslag + 16 innehållssidor + avslutning. Krav enligt canonical.story_contract; karaktärsidentitet enligt canonical.character_contracts.",
+      "prerequisites": [
+        "planning"
+      ],
+      "inputs": [
+        "theme",
+        "karaktärskanon"
+      ],
+      "outputs": [
+        "storyboard_docx",
+        "page_texts_18"
+      ],
+      "automated_actions": [
+        "Extrahera kolumnen \"Text på sidan\".",
+        "Validera exakt 18 sidor, inga dubbletter, ingen tom text."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Sagatexten godkänd"
+      },
+      "verification": [
+        "len(page_texts_18) == 18",
+        "16 innehållssidor mellan omslag och avslutning",
+        "Varje innehållssida 1–2 meningar, aldrig fler än 3"
+      ],
+      "failure_transition": "content_generation",
+      "retry_policy": "none",
+      "next_state": "visual_generation"
+    },
+    {
+      "id": "visual_generation",
+      "description": "Sagobilder, aktivitetsbilder, hero-media och månadskort.",
+      "prerequisites": [
+        "content_generation"
+      ],
+      "inputs": [
+        "storyboard_docx"
+      ],
+      "outputs": [
+        "source_images",
+        "hero_video",
+        "hero_poster",
+        "month_card"
+      ],
+      "automated_actions": [
+        "Encoda hero-video (H.264 1280x720, 24 fps, ~10 s, 0 ljudspår, faststart).",
+        "Skala månadskort till 1024x1024 i flat legacy-stil."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Bilder och inbränd text godkända"
+      },
+      "verification": [
+        "ffprobe visar 0 audio streams i hero-video.",
+        "Inbränd text stickprovas mot page_texts_18."
+      ],
+      "failure_transition": "visual_generation",
+      "retry_policy": "none",
+      "notes": "Agent får inte blockera på egen OCR-tolkning av stiliserade fonter. Editors granskning är avgörande.",
+      "next_state": "pdf_build"
+    },
+    {
+      "id": "pdf_build",
+      "description": "Månads-PDF, aktiviteter, färgläggningar, krysslista, diplom.",
+      "prerequisites": [
+        "visual_generation"
+      ],
+      "inputs": [
+        "source_images"
+      ],
+      "outputs": [
+        "pdfs"
+      ],
+      "automated_actions": [
+        "Bygg A4-PDF, 1240x1754 @150 dpi JPEG, /DCTDecode.",
+        "Mät om diplomets overlay-koordinater mot canonical-filen."
+      ],
+      "human_gate": {
+        "required": false
+      },
+      "verification": [
+        "MediaBox 595.275591 x 841.889764 pt per PDF.",
+        "Webbens checklista == tryckta krysslistans tio punkter."
+      ],
+      "failure_transition": "pdf_build",
+      "retry_policy": "transient",
+      "next_state": "ebook_build"
+    },
+    {
+      "id": "ebook_build",
+      "description": "18 e-bokssidor 1000x1413 utan letterboxing.",
+      "prerequisites": [
+        "pdf_build"
+      ],
+      "inputs": [
+        "source_images"
+      ],
+      "outputs": [
+        "ebook_pages_18"
+      ],
+      "automated_actions": [
+        "Rendera och beskär sidorna."
+      ],
+      "human_gate": {
+        "required": false
+      },
+      "verification": [
+        "len(ebook_pages_18) == canonical.ebook_pages",
+        "Inga svarta kanter."
+      ],
+      "failure_transition": "ebook_build",
+      "retry_policy": "transient",
+      "next_state": "audio_generation"
+    },
+    {
+      "id": "audio_generation",
+      "description": "18 sidljud plus en full MP3 ur exakt sidtexterna.",
+      "prerequisites": [
+        "ebook_build"
+      ],
+      "inputs": [
+        "page_texts_18",
+        "canonical.voice"
+      ],
+      "outputs": [
+        "page_audio_18",
+        "full_mp3"
+      ],
+      "automated_actions": [
+        "Normalisera text för uppläsning (\"&\" -> \"och\", ta bort emoji).",
+        "Uppskatta teckenkostnad och rapportera FÖRE anrop.",
+        "Generera sidklipp och full MP3, trimma kanttystnad."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Godkänd kostnad och godkänd röst/ton",
+        "gate_ref": "no_spend_without_approval"
+      },
+      "verification": [
+        "Full MP3 = sidtexterna 1-18, ingen extra prosa.",
+        "Ingen emoji i någon uppläsningstext."
+      ],
+      "failure_transition": "audio_generation",
+      "retry_policy": "never_auto",
+      "notes": "Full MP3 byggs av sidtexterna sammanfogade med styckebrytning. Ingen bindande prosa, ingen improvisation.",
+      "next_state": "local_qa"
+    },
+    {
+      "id": "local_qa",
+      "description": "Lokal kvalitetskontroll av alla artefakter före uppladdning.",
+      "prerequisites": [
+        "audio_generation"
+      ],
+      "inputs": [
+        "pdfs",
+        "ebook_pages_18",
+        "page_audio_18",
+        "full_mp3"
+      ],
+      "outputs": [
+        "qa_report"
+      ],
+      "automated_actions": [
+        "Kontrollera antal, namn, ordning och avkodbarhet.",
+        "Mät TALTAKT (speltid minus tystnad), inte speltid.",
+        "Jämför full MP3:s taltid mot summan av sidklippens taltid."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Lyssnat och godkänt"
+      },
+      "verification": [
+        "19/19 ljudfiler, rätt namn och ordning.",
+        "Taltakt inom band kalibrerat på föregående månads levererade klipp.",
+        "abs(full_speech - sum(page_speech)) <= 8 s."
+      ],
+      "failure_transition": "audio_generation",
+      "retry_policy": "none",
+      "notes": "Taktbandet måste vara kalibrerat så att golden reference passerar sitt eget test. Speltidstakt är konfunderad av antalet meningar per klipp.",
+      "next_state": "approval_content"
+    },
+    {
+      "id": "approval_content",
+      "description": "Editors samlade innehållsgodkännande före produktionsskrivningar.",
+      "prerequisites": [
+        "local_qa"
+      ],
+      "inputs": [
+        "qa_report"
+      ],
+      "outputs": [
+        "content_approved"
+      ],
+      "automated_actions": [],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Innehållet är klart för produktion"
+      },
+      "verification": [
+        "Explicit GO registrerat."
+      ],
+      "failure_transition": "local_qa",
+      "retry_policy": "none",
+      "next_state": "backend_release_gate"
+    },
+    {
+      "id": "backend_release_gate",
+      "description": "Applicera month_releases-migrationen. MÅSTE ske före uppladdning.",
+      "prerequisites": [
+        "approval_content"
+      ],
+      "inputs": [
+        "month_key",
+        "release_at_utc"
+      ],
+      "outputs": [
+        "release_row"
+      ],
+      "automated_actions": [
+        "Applicera idempotent migration med DO-block som asserterar exakt instant."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "GO för produktionsskrivning",
+        "gate_ref": "no_production_db_write_without_approval"
+      },
+      "verification": [
+        "is_month_released(month_key) == false",
+        "release_at motsvarar 00:00 Europe/Stockholm."
+      ],
+      "failure_transition": "backend_release_gate",
+      "retry_policy": "never_auto",
+      "notes": "Grinden är fail-open. En månad utan rad räknas som släppt, vilket gör materialet publikt i samma sekund det laddas upp.",
+      "next_state": "protected_upload"
+    },
+    {
+      "id": "protected_upload",
+      "description": "Ladda upp artefakter till den privata bucketen protected.",
+      "prerequisites": [
+        "backend_release_gate"
+      ],
+      "inputs": [
+        "pdfs",
+        "ebook_pages_18",
+        "page_audio_18",
+        "full_mp3"
+      ],
+      "outputs": [
+        "storage_objects"
+      ],
+      "automated_actions": [
+        "Offline preflight mot manifestet före nätverksanrop.",
+        "Ladda upp med upsert=false."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Kör uppladdningen (service-role-nyckeln ägs av Editor)",
+        "gate_ref": "no_upload_before_local_qa"
+      },
+      "verification": [
+        "Path-set == manifestets path-set i BÅDA riktningar.",
+        "Byte-storlek per objekt == lokal fil."
+      ],
+      "failure_transition": "protected_upload",
+      "retry_policy": "never_auto",
+      "notes": "Service-role-nyckeln delas aldrig med orkestratorn eller i chatt.",
+      "next_state": "edge_deploy"
+    },
+    {
+      "id": "edge_deploy",
+      "description": "Deploya alla konsumenter av det delade manifestet.",
+      "prerequisites": [
+        "protected_upload"
+      ],
+      "inputs": [
+        "protectedManifest.ts"
+      ],
+      "outputs": [
+        "edge_versions"
+      ],
+      "automated_actions": [
+        "Verifiera arbetskatalog mot origin/main före deploy.",
+        "Deploya sign-protected-asset och get-protected-ebook."
+      ],
+      "human_gate": {
+        "required": false,
+        "gate_ref": "deploy_all_manifest_consumers"
+      },
+      "verification": [
+        "Läs DEPLOYAD källa via Management API.",
+        "PROTECTED_ASSETS[month_key].mp3 finns.",
+        "len(EBOOK_META[month_key].audio) == canonical.page_audio_clips",
+        "len(EBOOK_PAGES[month_key]) == canonical.ebook_pages",
+        "verify_jwt == true för båda."
+      ],
+      "failure_transition": "edge_deploy",
+      "retry_policy": "transient",
+      "notes": "Manifestet bundlas in vid deploy. Vercel deployar bara frontend. Deploy från stale checkout ger \"No change found\" och ser ut som en no-op.",
+      "next_state": "frontend_deploy"
+    },
+    {
+      "id": "frontend_deploy",
+      "description": "Månadskonfiguration, tester, PR, merge och produktionsbygge.",
+      "prerequisites": [
+        "edge_deploy"
+      ],
+      "inputs": [
+        "month_config",
+        "static_tests"
+      ],
+      "outputs": [
+        "merge_sha",
+        "production_deployment"
+      ],
+      "automated_actions": [
+        "Kör static tests, tsc, eslint-baseline och production build lokalt.",
+        "Öppna PR, merga efter godkännande."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Merge till main"
+      },
+      "verification": [
+        "Alla static tests PASS, tsc rent, noll NYA lintproblem, build OK.",
+        "Vercel production READY.",
+        "deployment.githubCommitSha == merge_sha"
+      ],
+      "failure_transition": "frontend_deploy",
+      "retry_policy": "transient",
+      "notes": "Det finns ingen CI. Vercel hoppar över typecheck och lint.",
+      "next_state": "admin_qa"
+    },
+    {
+      "id": "admin_qa",
+      "description": "Mänskligt klicktest i produktion som admin.",
+      "prerequisites": [
+        "frontend_deploy"
+      ],
+      "inputs": [
+        "production_url"
+      ],
+      "outputs": [
+        "admin_qa_result"
+      ],
+      "automated_actions": [],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Allt material öppnas korrekt"
+      },
+      "verification": [
+        "Varje PDF öppnas.",
+        "E-boken öppnas med 18 sidor.",
+        "Full MP3 spelar.",
+        "Sidljud spelar rätt klipp; sidbyte stoppar föregående."
+      ],
+      "failure_transition": "edge_deploy",
+      "retry_policy": "none",
+      "notes": "RPC- och SQL-tester ersätter inte detta. Under Oktober passerade alla backend-kontroller medan inget skyddat material gick att öppna.",
+      "next_state": "approval_release"
+    },
+    {
+      "id": "approval_release",
+      "description": "Grindverifiering för icke-admin plus Editors releasegodkännande.",
+      "prerequisites": [
+        "admin_qa"
+      ],
+      "inputs": [
+        "month_key"
+      ],
+      "outputs": [
+        "gate_verified",
+        "release_approved"
+      ],
+      "automated_actions": [
+        "Simulera non-admin med aktiv prenumeration OCH giltig entitlement i en transaktion som rullas tillbaka.",
+        "Testa oautentiserad åtkomst mot båda edge-funktionerna."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Godkänd för release"
+      },
+      "verification": [
+        "can_access_month(month_key) == false för non-admin före release.",
+        "Alla oautentiserade varianter ger HTTP 401."
+      ],
+      "failure_transition": "backend_release_gate",
+      "retry_policy": "none",
+      "next_state": "scheduled_release"
+    },
+    {
+      "id": "scheduled_release",
+      "description": "Vänta till releaseinstant. Ingen åtgärd krävs — grinden öppnar själv.",
+      "prerequisites": [
+        "approval_release"
+      ],
+      "inputs": [
+        "release_at_utc"
+      ],
+      "outputs": [
+        "released"
+      ],
+      "automated_actions": [
+        "Vänta till release_at_utc."
+      ],
+      "human_gate": {
+        "required": false
+      },
+      "verification": [
+        "is_month_released(month_key) == true efter instanten."
+      ],
+      "failure_transition": "post_release_qa",
+      "retry_policy": "none",
+      "next_state": "post_release_qa"
+    },
+    {
+      "id": "post_release_qa",
+      "description": "Bekräfta publik åtkomst efter att grinden öppnat.",
+      "prerequisites": [
+        "scheduled_release"
+      ],
+      "inputs": [
+        "production_url"
+      ],
+      "outputs": [
+        "release_smoke_result"
+      ],
+      "automated_actions": [
+        "Verifiera att non-admin prenumerant kommer åt månaden."
+      ],
+      "human_gate": {
+        "required": false
+      },
+      "verification": [
+        "can_access_month(month_key) == true för prenumerant.",
+        "Publika ytor visar rätt tema."
+      ],
+      "failure_transition": "backend_release_gate",
+      "retry_policy": "transient",
+      "notes": "Detta är gaten som släpper fram kommunikation.",
+      "next_state": "newsletter"
+    },
+    {
+      "id": "newsletter",
+      "description": "Månadens nyhetsbrev.",
+      "prerequisites": [
+        "post_release_qa"
+      ],
+      "inputs": [
+        "release_smoke_result"
+      ],
+      "outputs": [
+        "newsletter_sent"
+      ],
+      "automated_actions": [
+        "Generera utkast."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Godkänn och skicka",
+        "gate_ref": "no_comms_before_release_verified"
+      },
+      "verification": [
+        "Länkarna öppnas som mottagare, inte som admin."
+      ],
+      "failure_transition": "post_release_qa",
+      "retry_policy": "never_auto",
+      "notes": "Utskick går inte att ta tillbaka. Gaten är hård.",
+      "next_state": "social"
+    },
+    {
+      "id": "social",
+      "description": "Sociala inlägg.",
+      "prerequisites": [
+        "newsletter"
+      ],
+      "inputs": [
+        "social_assets"
+      ],
+      "outputs": [
+        "posts_published"
+      ],
+      "automated_actions": [
+        "Förbered inlägg."
+      ],
+      "human_gate": {
+        "required": true,
+        "approver": "editor",
+        "decision": "Godkänn och publicera",
+        "gate_ref": "no_comms_before_release_verified"
+      },
+      "verification": [
+        "Inlägget pekar på en publikt åtkomlig sida."
+      ],
+      "failure_transition": "post_release_qa",
+      "retry_policy": "never_auto",
+      "next_state": "complete"
+    },
+    {
+      "id": "complete",
+      "description": "Månaden är släppt och verifierad.",
+      "prerequisites": [
+        "social"
+      ],
+      "inputs": [],
+      "outputs": [
+        "release_record"
+      ],
+      "automated_actions": [
+        "Arkivera artefakter och verifieringsbevis."
+      ],
+      "human_gate": {
+        "required": false
+      },
+      "verification": [
+        "Alla föregående states PASS."
+      ],
+      "failure_transition": null,
+      "retry_policy": "none",
+      "next_state": null
+    }
+  ],
+  "escalation": [
+    {
+      "condition": "release_gate_missing",
+      "detail": "month_releases saknar rad för månaden medan material finns i storage.",
+      "severity": "critical",
+      "reason": "Fail-open — materialet är publikt före releasedatum."
+    },
+    {
+      "condition": "manifest_deploy_drift",
+      "detail": "Deployad edge-funktion saknar månadsnycklar som finns i repot.",
+      "severity": "critical",
+      "reason": "Grinden säger JA men allowlisten säger NEJ. Symptom 400/404."
+    },
+    {
+      "condition": "audio_layer_silently_disabled",
+      "detail": "len(EBOOK_META.audio) != len(EBOOK_PAGES) eller objekt saknas i storage.",
+      "severity": "high",
+      "reason": "E-boken renderas utan ljud utan att något fel visas."
+    },
+    {
+      "condition": "upload_conflict",
+      "detail": "upsert=false avvisade en skrivning.",
+      "severity": "high",
+      "reason": "Objektet finns redan. Kan vara oavsiktlig överskrivning."
+    },
+    {
+      "condition": "deploy_sha_mismatch",
+      "detail": "production deployment SHA != merge SHA.",
+      "severity": "high"
+    },
+    {
+      "condition": "stale_working_copy",
+      "detail": "Deploy eller felsökning kördes från en checkout som ligger efter origin/main.",
+      "severity": "high",
+      "reason": "Ger falska no-ops och falska felslut."
+    },
+    {
+      "condition": "spend_without_approval",
+      "detail": "Ett steg försökte förbruka credits utan registrerat godkännande.",
+      "severity": "critical"
+    }
+  ]
+}

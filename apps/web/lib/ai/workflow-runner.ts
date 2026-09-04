@@ -86,6 +86,8 @@ export async function runSteps(
       systemPrompt: agent.system_prompt,
       userMessage,
       model: agent.model,
+      // G3C-3C-A: in-flight authority when this invocation actually owns the run.
+      ...(claimId ? { authority: { kind: 'RUN_BOUND' as const, runId, claimId } } : {}),
       maxTokens: (agent.config as { max_tokens?: number })?.max_tokens ?? 4000,
       temperature: (agent.config as { temperature?: number })?.temperature ?? 0.7,
     })

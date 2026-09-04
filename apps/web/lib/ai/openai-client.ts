@@ -31,8 +31,13 @@ import { estimateImageSek } from '@/lib/cost/budget-gate'
 import {
   ProviderNotDispatchedError,
   withGovernedSpend,
+  resolveGovernedProjectId,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
+import {
+  withExecutionAuthority, authorityForRequest, type RunBoundAuthority,
+} from '@/lib/governance/execution-signal'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   ProviderDispatchUnknownError,
   classifyTransportFailure,
@@ -60,6 +65,14 @@ export interface OpenAIGovernanceContext {
    * at this layer would be a guess made far from the only place that knows.
    */
   execution: ExecutionContract
+  /**
+   * G3C-3C-A. Present only when a CLAIMED RUN owns this call.
+   *
+   * Absence does NOT mean unwatched — it means CONTRACT_ONLY, derived from
+   * `execution` below. A route or cron caller keeps in-flight STOP observation
+   * without anyone fabricating a run or a claim for it.
+   */
+  authority?: RunBoundAuthority
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   operation: string
@@ -83,8 +96,42 @@ function costContext(ctx: OpenAIGovernanceContext): CostContext {
 /** One place the credential is read. */
 let _openai: OpenAI | null = null
 function raw(): OpenAI {
-  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  // ── G3C-3C-A · maxRetries: 0 ──────────────────────────────────────────────
+  // The SDK default is 2, and its retry is INTERNAL RECURSION
+  // (`retryRequest → makeRequest(retriesRemaining - 1)`): control never returns
+  // here between physical attempts. So a fresh governance check before this call
+  // protected attempt 1 and nothing else — a stop or cancel committing after it
+  // could not prevent attempts 2 and 3, and no watcher could see them.
+  //
+  // One invocation, at most one physical attempt. Existing application-level
+  // retries are untouched: those re-enter the governed boundary and get a fresh
+  // check each time, which is exactly the property the SDK's did not have.
+  _openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0 })
   return _openai
+}
+
+/**
+ * Runs ONE raw OpenAI request under in-flight authority.
+ *
+ * RUN_BOUND when a claimed run owns the call; CONTRACT_ONLY otherwise — never
+ * unwatched. The project resolver is injected here, at the adapter, because this
+ * module already imports the spend layer and the governance module must not.
+ */
+async function governedPhysicalRequest<T>(
+  ctx: OpenAIGovernanceContext,
+  callerSignal: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const authority = authorityForRequest(
+    ctx.execution,
+    async ref => { const r = await resolveGovernedProjectId(ref); return r.ok ? r.projectId : null },
+    ctx.authority,
+  )
+  const { value } = await withExecutionAuthority<T>({
+    db: () => createAdminClient(), authority, extraSignals: [callerSignal],
+    run: async signal => ({ value: await run(signal) }),
+  })
+  return value
 }
 
 /** Rejected before any work happened, so releasing the reservation is defensible. */
@@ -123,13 +170,20 @@ export async function estimateOpenAISpeechSek(charCount: number): Promise<number
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Chat.ChatCompletionCreateParams,
+  /** Narrow by design — never an arbitrary SDK RequestOptions passthrough. */
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const estimatedSek = await estimateOpenAIChatSek(params as any)
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
       try {
-        return await raw().chat.completions.create(params as any)
+        // ── G3C-3C-A · ONE PHYSICAL REQUEST ─────────────────────────────────
+        // The watcher's scope is exactly this call — not the step, not the image
+        // batch. It sits inside withGovernedSpend's callback, so the fresh G3C-1
+        // stop has already run and the reservation is held.
+        return await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().chat.completions.create(params as any, { signal }))
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the chat request', e)
@@ -144,6 +198,7 @@ export async function openAIChatCompletion(
 export async function openAIImageGenerate(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Images.ImageGenerateParams,
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
@@ -152,7 +207,8 @@ export async function openAIImageGenerate(
     async () => {
       let res: any
       try {
-        res = await raw().images.generate(params)
+        res = await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().images.generate(params, { signal }))
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the image request', e)
@@ -169,6 +225,7 @@ export async function openAIImageGenerate(
 export async function openAIImageEdit(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Images.ImageEditParams,
+  init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const estimatedSek = await estimateImageSek(count, 'gpt_image')
@@ -177,7 +234,8 @@ export async function openAIImageEdit(
     async () => {
       let res: any
       try {
-        res = await raw().images.edit(params as any)
+        res = await governedPhysicalRequest(ctx, init?.signal,
+          signal => raw().images.edit(params as any, { signal }))
       } catch (e) {
         if (provablyNotBilled(e)) {
           throw new ProviderNotDispatchedError('openai rejected the image edit', e)

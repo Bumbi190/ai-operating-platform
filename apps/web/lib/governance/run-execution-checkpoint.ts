@@ -45,6 +45,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { classifyRunAuthority, readRunAuthority } from './run-authority'
 import {
   resolveExecutionStop,
   type ExecutionContext,
@@ -103,55 +104,36 @@ export async function checkpointClaimedRun(
   const { runId, claimId, boundary } = input
   const context: ExecutionContext = input.context ?? 'AUTONOMOUS'
 
-  // ── 1 · OWNERSHIP ────────────────────────────────────────────────────────
-  // First, because a rotated claim invalidates everything else this worker
-  // believes — including which project it thought it was executing for.
-  let row: OwnershipRow | null = null
-  try {
-    const { data, error } = await db.from('runs')
-      .select('id, status, claim_id, cancel_requested, project_id')
-      .eq('id', runId).maybeSingle()
-    if (error) {
-      return { allowed: false, refusal: 'FENCED',
-        detail: `${boundary}: ownership unreadable — refusing to execute` }
-    }
-    row = (data ?? null) as OwnershipRow | null
-  } catch {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: ownership unreadable — refusing to execute` }
+  // ── 1 · OWNERSHIP AND CANCELLATION ───────────────────────────────────────
+  // Ownership first, because a rotated claim invalidates everything else this
+  // worker believes — including which project it thought it was executing for.
+  //
+  // G3C-3C-A moved this truth table into `classifyRunAuthority` so the in-flight
+  // authority watcher can reuse it verbatim instead of growing a rival copy —
+  // the failure mode that produced two competing cancel branches before G3C-3B
+  // deleted them. The behaviour here is UNCHANGED; the mapping below is the
+  // only place that can change it, and a compatibility test pins every outcome.
+  const read = await readRunAuthority(db, runId)
+  const verdict = classifyRunAuthority(read, claimId)
+
+  if (verdict.klass !== 'CONTINUE_TO_STOP_CHECK') {
+    // ── THE COMPATIBILITY COLLAPSE ─────────────────────────────────────────
+    // `AUTHORITY_UNAVAILABLE` is a distinction the WATCHER needs and this
+    // boundary deliberately does not make: an admission checkpoint that cannot
+    // read ownership must refuse, and G3C-3A has always called that refusal
+    // FENCED with this exact detail string. Collapsing here — and only here —
+    // keeps that public contract byte-identical while letting the watcher tell
+    // "I could not read" from "I read, and you have lost the run".
+    const refusal = verdict.klass === 'CANCELLED' ? 'CANCELLED' : 'FENCED'
+    return { allowed: false, refusal, detail: `${boundary}: ${verdict.detail}` }
   }
 
-  if (!row) {
-    return { allowed: false, refusal: 'FENCED', detail: `${boundary}: run no longer exists` }
-  }
-  if (!claimId) {
-    // No claim means no ownership. The legacy no-claim caller is a real path;
-    // it must not gain permission by virtue of never having had any.
-    return { allowed: false, refusal: 'FENCED', detail: `${boundary}: invocation holds no claim` }
-  }
-  if (row.claim_id !== claimId) {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: claim rotated — another owner holds this run` }
-  }
-  if (row.status !== 'running') {
-    return { allowed: false, refusal: 'FENCED',
-      detail: `${boundary}: run is ${row.status ?? 'gone'}, not running` }
-  }
-
-  // ── 2 · EXPLICIT CANCELLATION ────────────────────────────────────────────
-  // Deliberately NOT gated on H1_CANCEL. That flag governs the older
-  // cooperative helper's rollout; a canonical governance checkpoint whose
-  // guarantee evaporates when an unrelated rollout flag is unset is not a
-  // guarantee. The route's honesty about latency is preserved separately.
-  if (row.cancel_requested === true) {
-    return { allowed: false, refusal: 'CANCELLED',
-      detail: `${boundary}: cancellation requested` }
-  }
-
-  // ── 3 · CANONICAL STOP AUTHORITY ─────────────────────────────────────────
-  // The run's own project, read from the row we just fenced against — not from
-  // the caller's possibly-stale idea of it.
-  const projectId = row.project_id ?? input.projectId ?? null
+  // ── 2 · CANONICAL STOP AUTHORITY ─────────────────────────────────────────
+  // Deliberately NOT gated on H1_CANCEL — see `classifyRunAuthority`. The run's
+  // own project comes from the row we just fenced against, not from the
+  // caller's possibly-stale idea of it.
+  const row = read.kind === 'ROW' ? read.row : null
+  const projectId = row?.project_id ?? input.projectId ?? null
   const decision = await resolveExecutionStop(db as SupabaseClient, { context, projectId })
   if (!decision.allowed) {
     return {

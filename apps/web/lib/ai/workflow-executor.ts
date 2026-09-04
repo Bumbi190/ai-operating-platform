@@ -192,6 +192,11 @@ export async function executeRunSteps(
         temperature: stepConfig?.temperature ?? 0.7,
         maxImages: stepConfig?.max_images,
         runId,
+        // G3C-3C-A: the executor is one of the few places that holds BOTH the
+        // run and its claim, so it can hand the provider boundary real
+        // ownership. Without a claimId this stays absent and the call runs
+        // exactly as before — a runId alone is cost attribution, not authority.
+        ...(claimId ? { authority: { kind: 'RUN_BOUND' as const, runId, claimId } } : {}),
         cost: { projectId, agent: agent.name, operation: step.name },
       })
 
@@ -213,6 +218,24 @@ export async function executeRunSteps(
           ? `${userMessage}\n\n---\n${validation.correctionHint}`
           : userMessage
 
+        // ── G3C-3C-A · CONTINUATION REQUIRES FRESH AUTHORITY ────────────────
+        // The first attempt may have flown while authority became unreadable.
+        // Its result is kept — but a SECOND physical request is a new
+        // execution-bearing unit, so canonical authority must be re-established
+        // first. The checkpoint refuses if it still cannot read, and that
+        // refusal settles through the one canonical mapping.
+        const retryGate = await checkpointClaimedRun(anyDb, {
+          runId, projectId, claimId, boundary: `unified:step:${step.order}:validation-retry`,
+        })
+        if (!retryGate.allowed) {
+          const rb = `unified:step:${step.order}:validation-retry`
+          const settled = await settleRefusal(anyDb, retryGate.refusal, runId, claimId)
+          if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, rb, retryGate.detail)
+          if (settled === 'CANCELLED') throw cancelledError(runId)
+          if (settled === 'FENCED') throw fencedError(runId)
+          throw new RunCheckpointRefusedError('STOPPED', retryGate.detail, rb)
+        }
+
         result = await runStep({
           execution: {
             context: 'AUTONOMOUS',
@@ -228,6 +251,11 @@ export async function executeRunSteps(
           // max_images=1 preview run can silently explode cost/runtime on a retry.
           maxImages: stepConfig?.max_images,
           runId,
+          // ── G3C-3C-A · THE RETRY IS ALSO EXECUTION-BEARING ──────────────────
+          // It was dropping the authority descriptor, so the second physical
+          // request ran with no in-flight watcher at all — a cancel landing
+          // between the two attempts could not stop the one that mattered.
+          ...(claimId ? { authority: { kind: 'RUN_BOUND' as const, runId, claimId } } : {}),
           cost: { projectId, agent: agent.name, operation: step.name },
         })
 

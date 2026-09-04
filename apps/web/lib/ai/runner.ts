@@ -24,6 +24,7 @@ import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
 import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
+import type { RunBoundAuthority } from '@/lib/governance/execution-signal'
 import {
   openAIChatCompletion, openAIImageEdit, openAIImageGenerate,
 } from '@/lib/ai/openai-client'
@@ -169,6 +170,12 @@ async function generateWithReference(
   label: string,
   refFilename: string,
   maxRetries = 3,
+  /**
+   * G3C-3C-A. Threaded through the RETRY LOOP so every attempt enters its own
+   * physical-request watch — one watcher around the batch would be exactly the
+   * wrong lifetime.
+   */
+  authority?: RunBoundAuthority,
 ): Promise<{ b64_json?: string | null }> {
   // Kastar MissingReferenceError. Ligger FÖRE varje provider-anrop, alltså
   // före den styrda spend-gränsen — ingen reservation hinner göras, och det
@@ -183,7 +190,7 @@ async function generateWithReference(
       console.log(`[ImageGen] ${label} — referens: ${refFilename}, försök ${attempt}`)
       const refFile = await toFile(refBuffer, 'reference.png', { type: 'image/png' })
       const res = await openAIImageEdit(
-        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director' },
+        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director', authority },
         {
           model: 'gpt-image-1',
           image: refFile,
@@ -450,6 +457,18 @@ export interface RunStepInput {
   /** Used by image steps to name files in Storage */
   runId?: string
   /**
+   * G3C-3C-A. Who owns this physical request, so an in-flight cancel, stop or
+   * claim rotation can abort the socket.
+   *
+   * Deliberately NOT derived from `runId`: that field exists for cost
+   * attribution and has been carried for years by callers holding no claim at
+   * all. A runId without a claimId is not ownership, so RUN_BOUND must be
+   * passed explicitly by whoever actually holds the claim.
+   */
+  authority?: RunBoundAuthority
+  /** Caller/request-disconnect signal. Composed with governance, never replaced. */
+  signal?: AbortSignal
+  /**
    * Override number of images to generate. Defaults to 16 for saga mode, 5 otherwise.
    * Set to 1 in preview/test workflows to reduce cost.
    */
@@ -482,19 +501,27 @@ export async function runStep(
   const start = Date.now()
   const { model } = input
 
-  if (isAnthropicModel(model)) {
-    return runAnthropicStep(input, onChunk, start)
-  }
-
-  if (isImageModel(model)) {
-    return runImageStep(input, start)
-  }
-
-  if (isOpenAIModel(model)) {
-    return runOpenAIStep(input, onChunk, start)
-  }
-
+  // ── G3C-3C-A · NO WATCHER HERE, DELIBERATELY ───────────────────────────────
+  // `runStep` is NOT one physical request. An image step alone can contain
+  // several generations, an application retry loop, a reference edit and a
+  // Vision QA call — wrapping it would give one watcher a lifetime spanning many
+  // requests plus the non-network work between them, which is not what
+  // "physical-request-scoped" means.
+  //
+  // The authority descriptor threads DOWN to the governed adapters instead, and
+  // each opens a watch around exactly one raw SDK call. Absence of a descriptor
+  // is not "unwatched": the adapter derives CONTRACT_ONLY from the execution
+  // contract, so stop observation reaches every sanctioned call.
+  if (isAnthropicModel(model)) return (await runAnthropicStep(input, onChunk, start)).result
+  if (isImageModel(model))     return runImageStep(input, start)
+  if (isOpenAIModel(model))    return runOpenAIStep(input, onChunk, start)
   throw new Error(`Model "${model}" not yet supported. Add routing in lib/ai/runner.ts`)
+}
+
+/** A dispatch result plus, for streams, the promise that marks REAL termination. */
+interface StepDispatch {
+  result: RunStepResult
+  settled?: Promise<unknown>
 }
 
 // ─── Anthropic ───────────────────────────────────────────────────────────────
@@ -503,17 +530,30 @@ async function runAnthropicStep(
   input: RunStepInput,
   onChunk: OnChunk | undefined,
   start: number,
-): Promise<RunStepResult> {
+): Promise<StepDispatch> {
   const { systemPrompt, userMessage, model, maxTokens = 4000, temperature = 0.7 } = input
 
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
 
+  // G3C-3C-A: `onStreamSettled` hands back a promise that completes when the
+  // STREAM terminates — completion, error or abort. Returning the handle is not
+  // the end of the physical request, so an in-flight watcher must be anchored to
+  // this, never to the awaited call below. Declared out here so the return can
+  // hand it to `runStep`.
+  let streamSettled: Promise<unknown> | undefined
+  let streamFlight: { authorityUnavailable: boolean } | undefined
+
   if (onChunk) {
     const stream = await getAnthropic({
       project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.stream',
       agent: input.cost?.agent, runId: input.runId,
+      // G3C-3C-A: RUN_BOUND when a claim owns this; undefined ⇒ the adapter
+      // derives CONTRACT_ONLY. The caller signal composes, never replaces.
+      authority: input.authority, signal: input.signal,
+      onStreamSettled: settled => { streamSettled = settled },
+      onFlight: f => { streamFlight = f },
     }).messages.stream({
       model,
       max_tokens: maxTokens,
@@ -539,6 +579,7 @@ async function runAnthropicStep(
     const response = await getAnthropic({
       project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.create',
       agent: input.cost?.agent, runId: input.runId,
+      authority: input.authority, signal: input.signal,
     }).messages.create({
       model,
       max_tokens: maxTokens,
@@ -556,7 +597,12 @@ async function runAnthropicStep(
   // cost_events is written inside the governed Anthropic boundary from the real
   // usage on the response; logging again here would double-count the call.
 
-  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
+  // `streamSettled` is undefined on the non-streaming branch, which is correct:
+  // that request really is finished when this returns.
+  return {
+    result: { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start },
+    settled: streamSettled,
+  }
 }
 
 // ─── OpenAI text ─────────────────────────────────────────────────────────────
@@ -575,7 +621,7 @@ async function runOpenAIStep(
   if (onChunk) {
     const stream = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority },
       {
         model,
         max_tokens: maxTokens,
@@ -598,7 +644,7 @@ async function runOpenAIStep(
   } else {
     const response = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority },
       {
         model,
         max_tokens: maxTokens,
@@ -713,7 +759,7 @@ async function runImageStep(
         console.log(`[ImageGen] ${label} — försök ${attempt}`)
         const res = await openAIImageGenerate(
           { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'Generate Image',
-            agent: input.cost?.agent ?? 'Image Director', runId: input.runId },
+            agent: input.cost?.agent ?? 'Image Director', runId: input.runId, authority: input.authority },
           { model: 'gpt-image-1', prompt: finalPrompt, n: 1, size },
         )
         return res.data?.[0]
@@ -820,7 +866,7 @@ async function runImageStep(
         // ovan beordrar strikt användning av referensbilden, och det obundna
         // anropet bifogade ingen — det bad modellen följa en bild den inte fick.
         // Misslyckas det här kastas det och bilden hoppas över.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority)
 
       } else if (isActivityMode) {
         // ── Ideogram v3 — flat cartoon square illustration ────────────────────
@@ -867,14 +913,14 @@ async function runImageStep(
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
         // Referensbunden — se kommentaren i saga-grenen.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
         // Referensbunden — och till skillnad från saga/aktivitet finns här ingen
         // Ideogram-väg alls, så detta är hela genereringen för färgläggningssidor.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority)
       }
 
       // gpt-image-1 returnerar b64_json — ladda upp till Storage för permanent URL

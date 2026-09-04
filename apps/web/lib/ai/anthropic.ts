@@ -40,6 +40,12 @@ import { getModelPricing } from './pricing'
 import { logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
 import {
+  watchExecutionAuthority, composeAbortSignals, authorityForRequest,
+  type RunBoundAuthority, type AbortReason,
+} from '@/lib/governance/execution-signal'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveGovernedProjectId } from '@/lib/cost/governed-spend'
+import {
   ProviderNotDispatchedError,
   withGovernedSpend,
   type ProjectRef,
@@ -55,10 +61,33 @@ export interface AnthropicGovernanceContext {
    * at this layer would be a guess made far from the only place that knows.
    */
   execution: ExecutionContract
+  /**
+   * G3C-3C-A. Present only when a CLAIMED RUN owns this call. Absence means
+   * CONTRACT_ONLY derived from `execution` — watched for stops, never for
+   * cancellation or fencing, because it owns no run.
+   */
+  authority?: RunBoundAuthority
+  /** Caller/request-disconnect signal, composed with governance — not replaced. */
+  signal?: AbortSignal
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   /** Recorded on cost_events.agent, e.g. 'Script Writer'. */
   agent?: string
+  /**
+   * Called with a promise that settles when a STREAM actually terminates —
+   * completion, error or abort. Non-streaming calls never invoke it.
+   *
+   * It exists so the caller can hold an in-flight authority watcher for the
+   * stream's true lifetime instead of the handle's. Optional: callers that do
+   * not watch authority simply omit it.
+   */
+  onStreamSettled?: (settled: Promise<unknown>) => void
+  /**
+   * Hands back LIVE flight state for a stream. Read it AFTER settlement: a
+   * boolean copied when the handle returned would answer for a flight that had
+   * barely begun, and authority can become unavailable long afterwards.
+   */
+  onFlight?: (flight: PhysicalFlight | undefined) => void
   /** Recorded on cost_events.operation, e.g. 'Generate Script'. */
   operation?: string
   runId?: string | null
@@ -128,9 +157,62 @@ function provablyNotBilled(e: unknown): boolean {
   return status === 400 || status === 401 || status === 403 || status === 404 || status === 422
 }
 
+/** Live view of one in-flight physical request, plus its disposer. */
+export interface PhysicalFlight {
+  readonly signal: AbortSignal
+  readonly authorityUnavailable: boolean
+  readonly abortReason: AbortReason | null
+  dispose(): void
+}
+
+/**
+ * Opens an in-flight authority watch for ONE physical request.
+ *
+ * RUN_BOUND when a claimed run owns the call; CONTRACT_ONLY otherwise — never
+ * unwatched. The resolver is injected here because this module already imports
+ * the spend layer and the governance module deliberately does not.
+ */
+function beginPhysicalFlight(ctx: AnthropicGovernanceContext): PhysicalFlight {
+  const authority = authorityForRequest(
+    ctx.execution,
+    async ref => { const r = await resolveGovernedProjectId(ref); return r.ok ? r.projectId : null },
+    ctx.authority,
+  )
+  // Thunk, not an instance: a call that finishes inside one poll interval
+  // never builds a client, and a context without credentials latches
+  // AUTHORITY_UNAVAILABLE instead of throwing.
+  const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+  const composed = composeAbortSignals([watch.signal, ctx.signal])
+  return {
+    signal: composed.signal,
+    get authorityUnavailable() { return watch.authorityUnavailable },
+    get abortReason() { return watch.abortReason },
+    dispose() { composed.dispose(); watch.dispose() },
+  }
+}
+
+/** Runs ONE raw non-streaming request under in-flight authority. */
+async function governedPhysical<T>(
+  ctx: AnthropicGovernanceContext,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const flight = beginPhysicalFlight(ctx)
+  try {
+    const value = await run(flight.signal)
+    ctx.onFlight?.(flight)
+    return value
+  } finally {
+    flight.dispose()
+  }
+}
+
 /** One place the credential is read. Callers never pass a key. */
 function raw(): Anthropic {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  // ── G3C-3C-A · maxRetries: 0 ────────────────────────────────────────────
+  // Same reasoning as the OpenAI client: the SDK default is 2 and its retry is
+  // internal recursion, so attempts 2 and 3 were invisible to every governance
+  // boundary and to any in-flight watcher. One invocation, one physical attempt.
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 })
 }
 
 function costContext(ctx: AnthropicGovernanceContext): CostContext {
@@ -171,7 +253,9 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
           async () => {
             let message: Anthropic.Message
             try {
-              message = await raw().messages.create(params, options)
+              // ── G3C-3C-A · ONE PHYSICAL REQUEST ─────────────────────────
+              message = await governedPhysical(ctx, signal =>
+                raw().messages.create(params, { ...options, signal }))
             } catch (e) {
               if (provablyNotBilled(e)) {
                 throw new ProviderNotDispatchedError('anthropic rejected the request before inference', e)
@@ -210,9 +294,13 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             estimatedSek,
           },
           async () => {
+            let flight: PhysicalFlight | undefined
             let stream: ReturnType<Anthropic['messages']['stream']>
             try {
-              stream = raw().messages.stream(params, options)
+              // The watcher is created HERE and released by `done()` below —
+              // the handle returning is not the end of the physical request.
+              flight = beginPhysicalFlight(ctx)
+              stream = raw().messages.stream(params, { ...options, signal: flight.signal })
             } catch (e) {
               if (provablyNotBilled(e)) {
                 throw new ProviderNotDispatchedError('anthropic rejected the stream before inference', e)
@@ -226,6 +314,35 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             void stream.finalMessage()
               .then(msg => logLlmCost(params.model, msg.usage, costContext(ctx)))
               .catch(() => { /* stream aborted or logging failed; estimate stands */ })
+
+            // ── G3C-3C-A · STREAM TERMINATION, NOT HANDLE RETURN ──────────────
+            // Returning the handle is NOT the end of the physical request: the
+            // socket stays open for the whole generation. `ctx.onStreamSettled`
+            // lets the caller keep an in-flight authority watcher alive for that
+            // real lifetime and dispose it exactly once, however the stream ends.
+            //
+            // `done()` is the installed SDK's completion primitive and — unlike
+            // `finalMessage()` — it is the one to anchor to, with `.finally` so
+            // an ERRORED or ABORTED stream releases the watcher just as a
+            // completed one does. `.then` here would leak on every failure.
+            // `done()` is the installed SDK's completion primitive and the one to
+            // prefer. Reached defensively: a stream object without it (an older
+            // client, or a test double standing in for one) must not make the
+            // whole governed call throw — fall back to `finalMessage()`, which
+            // also settles at termination, and to immediate release if neither
+            // exists. Failure to observe termination must never become failure
+            // to make the request.
+            const settled: Promise<unknown> =
+              typeof (stream as { done?: unknown }).done === 'function'
+                ? (stream as { done: () => Promise<unknown> }).done().catch(() => {})
+                : typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
+                  ? (stream as { finalMessage: () => Promise<unknown> }).finalMessage().catch(() => {})
+                  : Promise.resolve()
+            // `.finally` — an errored or aborted stream releases the watcher
+            // exactly as a completed one does. `.then` would leak on failure.
+            void settled.finally(() => flight?.dispose())
+            ctx.onStreamSettled?.(settled)
+            ctx.onFlight?.(flight)
             return stream
           },
         )

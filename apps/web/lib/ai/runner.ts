@@ -25,6 +25,11 @@ import { buildVisionQaPrompt } from './golden-checklist'
 import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import {
+  isExecutionGovernanceControlFlow,
+  composeAbortSignals,
+  type RunBoundAuthority, type AbortReason,
+} from '@/lib/governance/execution-signal'
+import {
   openAIChatCompletion, openAIImageEdit, openAIImageGenerate,
 } from '@/lib/ai/openai-client'
 import { generateIdeogramLegacy, IdeogramHttpError } from '@/lib/media/image-client'
@@ -169,6 +174,16 @@ async function generateWithReference(
   label: string,
   refFilename: string,
   maxRetries = 3,
+  /**
+   * G3C-3C-A. Threaded through the RETRY LOOP so every attempt enters its own
+   * physical-request watch — one watcher around the batch would be exactly the
+   * wrong lifetime.
+   */
+  authority?: RunBoundAuthority,
+  /** Caller abort, composed with authority inside the adapter. */
+  callerSignal?: AbortSignal,
+  /** D2: every retry attempt is its own physical flight, and all of them count. */
+  onFlight?: (f: { readonly authorityUnavailable: boolean } | undefined) => void,
 ): Promise<{ b64_json?: string | null }> {
   // Kastar MissingReferenceError. Ligger FÖRE varje provider-anrop, alltså
   // före den styrda spend-gränsen — ingen reservation hinner göras, och det
@@ -183,7 +198,7 @@ async function generateWithReference(
       console.log(`[ImageGen] ${label} — referens: ${refFilename}, försök ${attempt}`)
       const refFile = await toFile(refBuffer, 'reference.png', { type: 'image/png' })
       const res = await openAIImageEdit(
-        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director' },
+        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director', authority, onFlight },
         {
           model: 'gpt-image-1',
           image: refFile,
@@ -191,6 +206,7 @@ async function generateWithReference(
           n: 1,
           size,
         } as any, // size-typen är mer begränsad i edit() än generate()
+        { signal: callerSignal },
       )
 
       // Ett 2xx utan användbar bild är inte en lyckad referensbunden
@@ -211,6 +227,13 @@ async function generateWithReference(
       // case they are in, so this reads their answer instead of retrying
       // everything. A 429 and a provably-undispatched failure are unaffected —
       // neither is a possible side effect, so the branches below still run.
+      // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
       if (generationMayAlreadyHaveDispatched(err)) throw err
       lastError = err
       const status = err?.status ?? err?.response?.status
@@ -282,6 +305,14 @@ async function generateWithIdeogram(
   aspectRatio: 'ASPECT_1_1' | 'ASPECT_2_3',
   label: string,
   maxRetries = 3,
+  /**
+   * G3C-3C-A · E2. Ideogram is a physical provider call inside a RUN_BOUND
+   * image step, and each retry attempt is its own physical request. Threaded so
+   * every attempt is admitted, watched and aggregated like the OpenAI ones.
+   */
+  authority?: RunBoundAuthority,
+  callerSignal?: AbortSignal,
+  onFlight?: (f: { readonly authorityUnavailable: boolean; readonly abortReason: AbortReason | null }) => void,
 ): Promise<string | null> {
   if (!process.env.IDEOGRAM_API_KEY) {
     console.warn('[Ideogram] IDEOGRAM_API_KEY saknas — faller tillbaka till gpt-image-1')
@@ -295,9 +326,16 @@ async function generateWithIdeogram(
       console.log(`[Ideogram] ${label} — försök ${attempt}/${maxRetries}, aspect=${aspectRatio}`)
 
       let first
+      // ── G3C-3C-A · F4 · THE OUTER COMPOSITION OWNS ITS OWN LISTENERS ─────
+      // This used to be built inline and its disposer thrown away, so every
+      // attempt left a listener attached to the caller's signal and to the
+      // timeout. The adapter disposes ITS composition; it cannot dispose one
+      // it was never handed. Each layer cleans up after itself.
+      const outerSignal = composeAbortSignals([AbortSignal.timeout(90_000), callerSignal])
       try {
         first = await generateIdeogramLegacy(
-          { project, execution, operation: 'Generate Image', agent: 'Image Director' },
+          { project, execution, operation: 'Generate Image', agent: 'Image Director',
+            authority, onFlight },
           {
             prompt,
             model: 'V_3',
@@ -309,9 +347,14 @@ async function generateWithIdeogram(
             magic_prompt_option: 'OFF',
             num_images: 1,
           },
-          { signal: AbortSignal.timeout(90_000) }, // 90s — hänger annars för evigt
+          // The 90s bound is kept; governance composes with it inside the
+          // adapter rather than replacing it.
+          { signal: outerSignal.signal },
         )
       } catch (httpErr: any) {
+        // E3: same rule for the Ideogram attempt loop — a governance stop must
+        // not be slept on and retried as if it were a rate limit.
+        if (isExecutionGovernanceControlFlow(httpErr)) throw httpErr
         // Same 429 backoff as before; the boundary released the reservation, so
         // waiting here does not hold headroom that the retry will need.
         const status = httpErr?.status ?? httpErr?.cause?.status
@@ -322,6 +365,11 @@ async function generateWithIdeogram(
           continue
         }
         throw httpErr
+      } finally {
+        // Disposed once this physical attempt has ended, whatever ended it:
+        // success, refusal, governance abort, timeout or caller abort. A retry
+        // builds a fresh composition, because a retry is a fresh request.
+        outerSignal.dispose()
       }
 
       const imageUrl = first?.url
@@ -341,6 +389,13 @@ async function generateWithIdeogram(
       // case they are in, so this reads their answer instead of retrying
       // everything. A 429 and a provably-undispatched failure are unaffected —
       // neither is a possible side effect, so the branches below still run.
+      // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
       if (generationMayAlreadyHaveDispatched(err)) throw err
       const isLast = attempt === maxRetries
       if (!isLast) {
@@ -397,6 +452,15 @@ async function runVisionQa(
   mode: QaMode,
   project: ProjectRef,
   execution: ExecutionContract,
+  /**
+   * G3C-3C-A · E2. Vision QA is an Anthropic physical call inside a RUN_BOUND
+   * image step. It ran with the contract stop gate and nothing else, so a
+   * cancellation during QA was invisible and the loop continued to the next
+   * image. Same seam as every other claimed physical call.
+   */
+  authority?: RunBoundAuthority,
+  callerSignal?: AbortSignal,
+  onFlight?: (f: PhysicalFlightView | undefined) => void,
 ): Promise<QaResult> {
   try {
     const prompt = buildVisionQaPrompt(mode)
@@ -409,6 +473,7 @@ async function runVisionQa(
 
     const response = await getAnthropic({
       project, execution, agent: 'Vision QA', operation: 'Vision QA',
+      authority, signal: callerSignal, onFlight,
     }).messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 80,
@@ -433,6 +498,12 @@ async function runVisionQa(
 
     return { pass, score, reason, raw }
   } catch (err) {
+    // ── G3C-3C-A · E3 · GOVERNANCE IS NOT A QA DEFECT ────────────────────────
+    // The auto-pass below is right for what it was written for: a flaky vision
+    // call must not block an image that is probably fine. It is exactly wrong
+    // for governance — a cancellation would be swallowed into `pass: true`, the
+    // image accepted, and the loop would continue to the next one.
+    if (isExecutionGovernanceControlFlow(err)) throw err
     // QA-fel ska aldrig blockera bildgenerering — logga och godkänn
     console.warn('[QA] Vision QA misslyckades, godkänner bild automatiskt:', err)
     return { pass: true, score: -1, reason: 'QA unavailable', raw: '' }
@@ -449,6 +520,18 @@ export interface RunStepInput {
   temperature?: number
   /** Used by image steps to name files in Storage */
   runId?: string
+  /**
+   * G3C-3C-A. Who owns this physical request, so an in-flight cancel, stop or
+   * claim rotation can abort the socket.
+   *
+   * Deliberately NOT derived from `runId`: that field exists for cost
+   * attribution and has been carried for years by callers holding no claim at
+   * all. A runId without a claimId is not ownership, so RUN_BOUND must be
+   * passed explicitly by whoever actually holds the claim.
+   */
+  authority?: RunBoundAuthority
+  /** Caller/request-disconnect signal. Composed with governance, never replaced. */
+  signal?: AbortSignal
   /**
    * Override number of images to generate. Defaults to 16 for saga mode, 5 otherwise.
    * Set to 1 in preview/test workflows to reduce cost.
@@ -467,6 +550,46 @@ export interface RunStepResult {
   tokensIn: number
   tokensOut: number
   durationMs: number
+  /**
+   * G3C-3C-A · D2. TRUE when a RUN_BOUND physical request in this step reported
+   * that authority became unreadable while it was in flight.
+   *
+   * It is not a failure and not a refusal: the provider answered, and
+   * `content` is that answer. It means the execution owner must RE-ESTABLISH
+   * canonical authority before doing anything execution-bearing with the
+   * result — a retry, a context write, the next step. Between the boundary
+   * check and now there is a window nobody observed, and a cancellation could
+   * have become durable inside it.
+   *
+   * Deliberately a boolean, not a watcher: nothing below the runner should be
+   * holding provider-layer objects.
+   */
+  authorityRefreshRequired: boolean
+}
+
+/** One in-flight physical request's live authority state, as the runner sees it. */
+type FlightHandle = { readonly authorityUnavailable: boolean }
+/** What an adapter hands back through `onFlight`. */
+type PhysicalFlightView = { readonly authorityUnavailable: boolean; readonly abortReason: AbortReason | null }
+
+/**
+ * Collects the flights of every physical request in one step.
+ *
+ * Read LATE and never cached: `authorityUnavailable` is a LIVE getter that can
+ * turn true long after the handle returned, so copying it at dispatch time
+ * would answer for a request that had barely begun. Sticky by construction —
+ * a later successful request does not erase an earlier unobserved window,
+ * because nothing in a step re-establishes authority between calls.
+ */
+function flightCollector(authority: RunBoundAuthority | undefined) {
+  const seen: FlightHandle[] = []
+  return {
+    onFlight: (f: FlightHandle | undefined) => { if (f) seen.push(f) },
+    // RUN_BOUND only: re-establishment means the claimed-run checkpoint, and a
+    // CONTRACT_ONLY call has no run to re-check. Its stop authority is the
+    // spend boundary's to own.
+    required: () => Boolean(authority) && seen.some(f => f.authorityUnavailable),
+  }
 }
 
 export type OnChunk = (chunk: string) => void
@@ -482,18 +605,20 @@ export async function runStep(
   const start = Date.now()
   const { model } = input
 
-  if (isAnthropicModel(model)) {
-    return runAnthropicStep(input, onChunk, start)
-  }
-
-  if (isImageModel(model)) {
-    return runImageStep(input, start)
-  }
-
-  if (isOpenAIModel(model)) {
-    return runOpenAIStep(input, onChunk, start)
-  }
-
+  // ── G3C-3C-A · NO WATCHER HERE, DELIBERATELY ───────────────────────────────
+  // `runStep` is NOT one physical request. An image step alone can contain
+  // several generations, an application retry loop, a reference edit and a
+  // Vision QA call — wrapping it would give one watcher a lifetime spanning many
+  // requests plus the non-network work between them, which is not what
+  // "physical-request-scoped" means.
+  //
+  // The authority descriptor threads DOWN to the governed adapters instead, and
+  // each opens a watch around exactly one raw SDK call. Absence of a descriptor
+  // is not "unwatched": the adapter derives CONTRACT_ONLY from the execution
+  // contract, so stop observation reaches every sanctioned call.
+  if (isAnthropicModel(model)) return runAnthropicStep(input, onChunk, start)
+  if (isImageModel(model))     return runImageStep(input, start)
+  if (isOpenAIModel(model))    return runOpenAIStep(input, onChunk, start)
   throw new Error(`Model "${model}" not yet supported. Add routing in lib/ai/runner.ts`)
 }
 
@@ -510,10 +635,26 @@ async function runAnthropicStep(
   let inputTokens = 0
   let outputTokens = 0
 
+  // ── G3C-3C-A · F2 · TERMINATION IS OBSERVED BY ITERATING, NOT BY A HANDLE ──
+  // This function used to also return a `settled` promise from
+  // `onStreamSettled`, and `runStep` discarded it — authority metadata that
+  // production threw away, the same shape as the `streamFlight` variable that
+  // was assigned and never read.
+  //
+  // It is unnecessary now, not merely unused: the governed adapter classifies
+  // the failure inside the stream's own iterator, so the `for await` below
+  // receives the governance outcome directly, and `finalMessage()` after it
+  // observes real termination before this step is declared complete.
+  const flights = flightCollector(input.authority)
+
   if (onChunk) {
     const stream = await getAnthropic({
       project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.stream',
       agent: input.cost?.agent, runId: input.runId,
+      // G3C-3C-A: RUN_BOUND when a claim owns this; undefined ⇒ the adapter
+      // derives CONTRACT_ONLY. The caller signal composes, never replaces.
+      authority: input.authority, signal: input.signal,
+      onFlight: flights.onFlight,
     }).messages.stream({
       model,
       max_tokens: maxTokens,
@@ -539,6 +680,8 @@ async function runAnthropicStep(
     const response = await getAnthropic({
       project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.create',
       agent: input.cost?.agent, runId: input.runId,
+      authority: input.authority, signal: input.signal,
+      onFlight: flights.onFlight,
     }).messages.create({
       model,
       max_tokens: maxTokens,
@@ -556,7 +699,12 @@ async function runAnthropicStep(
   // cost_events is written inside the governed Anthropic boundary from the real
   // usage on the response; logging again here would double-count the call.
 
-  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
+  // Read HERE: the stream has been iterated to completion and its final message
+  // awaited above, so a latch that appeared mid-stream is visible.
+  return {
+    content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+    durationMs: Date.now() - start, authorityRefreshRequired: flights.required(),
+  }
 }
 
 // ─── OpenAI text ─────────────────────────────────────────────────────────────
@@ -571,11 +719,13 @@ async function runOpenAIStep(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  const flights = flightCollector(input.authority)
 
   if (onChunk) {
     const stream = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority,
+        onFlight: flights.onFlight },
       {
         model,
         max_tokens: maxTokens,
@@ -586,6 +736,9 @@ async function runOpenAIStep(
           { role: 'user', content: userMessage },
         ],
       },
+      // The caller's signal is COMPOSED with in-flight authority inside
+      // the adapter; passing only one of the two would discard the other.
+      { signal: input.signal },
     )
 
     for await (const chunk of stream) {
@@ -598,7 +751,8 @@ async function runOpenAIStep(
   } else {
     const response = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority,
+        onFlight: flights.onFlight },
       {
         model,
         max_tokens: maxTokens,
@@ -608,6 +762,7 @@ async function runOpenAIStep(
           { role: 'user', content: userMessage },
         ],
       },
+      { signal: input.signal },
     )
     fullContent = response.choices[0]?.message?.content ?? ''
     inputTokens = response.usage?.prompt_tokens ?? 0
@@ -621,7 +776,10 @@ async function runOpenAIStep(
     runId: input.runId,
   })
 
-  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
+  // The streaming branch above iterates to exhaustion before reaching here, so
+  // a latch that appeared mid-stream is already visible.
+  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+           durationMs: Date.now() - start, authorityRefreshRequired: flights.required() }
 }
 
 // ─── DALL-E image generation ──────────────────────────────────────────────────
@@ -660,6 +818,11 @@ async function runImageStep(
   start: number,
 ): Promise<RunStepResult> {
   const { userMessage, runId, systemPrompt } = input
+  // D2: an image step is MANY physical requests — a retry loop per image, plus
+  // reference edits. Every one of them is collected; a later success does not
+  // erase an earlier unobserved window, because nothing here re-establishes
+  // authority between attempts.
+  const flights = flightCollector(input.authority)
   console.log(`[ImageGen] Startar bildgenerering. runId=${runId} systemPromptFlags=${systemPrompt?.slice(0, 80)}`)
 
   // Detect mode from system prompt flags:
@@ -713,8 +876,10 @@ async function runImageStep(
         console.log(`[ImageGen] ${label} — försök ${attempt}`)
         const res = await openAIImageGenerate(
           { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'Generate Image',
-            agent: input.cost?.agent ?? 'Image Director', runId: input.runId },
+            agent: input.cost?.agent ?? 'Image Director', runId: input.runId, authority: input.authority,
+            onFlight: flights.onFlight },
           { model: 'gpt-image-1', prompt: finalPrompt, n: 1, size },
+          { signal: input.signal },
         )
         return res.data?.[0]
       } catch (err: any) {
@@ -723,7 +888,14 @@ async function runImageStep(
         // case they are in, so this reads their answer instead of retrying
         // everything. A 429 and a provably-undispatched failure are unaffected —
         // neither is a possible side effect, so the branches below still run.
-        if (generationMayAlreadyHaveDispatched(err)) throw err
+        // ── G3C-3C-A · E3 · GOVERNANCE CONTROL FLOW LEAVES UNCHANGED ─────────
+      // Asked BEFORE the rate-limit branch, the reference wrapping and the
+      // errors[] aggregation below. A stop, a cancellation, a lost claim or an
+      // in-flight abort is not a provider defect: retrying one re-dispatches
+      // work governance just stopped, and wrapping one hides which authority
+      // spoke. One predicate, asked once, at every such boundary.
+      if (isExecutionGovernanceControlFlow(err)) throw err
+      if (generationMayAlreadyHaveDispatched(err)) throw err
         const status = err?.status ?? err?.response?.status
         const isRateLimit = status === 429 || String(err?.message).includes('rate limit') || String(err?.message).includes('Rate limit')
         if (isRateLimit && attempt < maxRetries) {
@@ -777,7 +949,7 @@ async function runImageStep(
         const sagaPrompt = `${buildStylePrefix('saga')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1}`, 3, input.authority, input.signal, flights.onFlight)
           : null
 
         if (ideogramUrl && runId) {
@@ -785,7 +957,7 @@ async function runImageStep(
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'saga')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost), input.execution)
+            const qa = await runVisionQa(storageUrl, 'saga', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
             if (qa.pass) {
               console.log(`[QA PASS] saga-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -794,10 +966,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] saga-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, sagaPrompt, 'ASPECT_2_3', `saga bild ${i + 1} retry`, 3, input.authority, input.signal, flights.onFlight)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'saga') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost), input.execution)
+              const qa2 = await runVisionQa(retryStorageUrl, 'saga', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
               if (qa2.pass) {
                 console.log(`[QA PASS] saga-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -820,7 +992,7 @@ async function runImageStep(
         // ovan beordrar strikt användning av referensbilden, och det obundna
         // anropet bifogade ingen — det bad modellen följa en bild den inte fick.
         // Misslyckas det här kastas det och bilden hoppas över.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority, input.signal, flights.onFlight)
 
       } else if (isActivityMode) {
         // ── Ideogram v3 — flat cartoon square illustration ────────────────────
@@ -828,14 +1000,14 @@ async function runImageStep(
         const activityPrompt = `${buildStylePrefix('activity')} ${NOVA_DESC}. ${PLING_DESC}. ${NO_TEXT}. Scene: ${prompt}`
 
         const ideogramUrl = runId
-          ? await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`)
+          ? await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1}`, 3, input.authority, input.signal, flights.onFlight)
           : null
 
         if (ideogramUrl && runId) {
           const storageUrl = await downloadAndUploadUrl(ideogramUrl, runId, i, 'aktivitet')
           if (storageUrl) {
             // ── Vision QA gate ────────────────────────────────────────────────
-            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost), input.execution)
+            const qa = await runVisionQa(storageUrl, 'activity', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
             if (qa.pass) {
               console.log(`[QA PASS] activity-${i + 1} score=${qa.score}`)
               urls.push(storageUrl)
@@ -844,10 +1016,10 @@ async function runImageStep(
             }
             // FAIL → retry once
             console.warn(`[QA FAIL] activity-${i + 1} score=${qa.score} reason="${qa.reason}"`)
-            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`)
+            const retryUrl = await generateWithIdeogram(runProject(input.cost), input.execution, activityPrompt, 'ASPECT_1_1', `aktivitet bild ${i + 1} retry`, 3, input.authority, input.signal, flights.onFlight)
             const retryStorageUrl = retryUrl ? await downloadAndUploadUrl(retryUrl, runId, i, 'aktivitet') : null
             if (retryStorageUrl) {
-              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost), input.execution)
+              const qa2 = await runVisionQa(retryStorageUrl, 'activity', runProject(input.cost), input.execution, input.authority, input.signal, flights.onFlight)
               if (qa2.pass) {
                 console.log(`[QA PASS] activity-${i + 1} (retry) score=${qa2.score}`)
               } else {
@@ -867,14 +1039,14 @@ async function runImageStep(
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
         // Referensbunden — se kommentaren i saga-grenen.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority, input.signal, flights.onFlight)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
         // Referensbunden — och till skillnad från saga/aktivitet finns här ingen
         // Ideogram-väg alls, så detta är hela genereringen för färgläggningssidor.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority, input.signal, flights.onFlight)
       }
 
       // gpt-image-1 returnerar b64_json — ladda upp till Storage för permanent URL
@@ -892,6 +1064,18 @@ async function runImageStep(
         errors.push(`Bild ${i + 1}: inget bilddata returnerades`)
       }
     } catch (err) {
+      // ── G3C-3C-A · D1 · A GOVERNANCE REFUSAL IS NOT AN IMAGE FAILURE ───────
+      // This catch collects per-image failures into `errors[]` and moves on to
+      // the next prompt — correct for a provider fault, catastrophic for a
+      // refusal. Swallowed here, a durable cancellation would become a string
+      // in a results array: the loop would re-admit image 2, 3, … (each refused
+      // and each swallowed), return "successfully", and the executor would
+      // persist context for a run that governance had already stopped.
+      //
+      // The in-flight abort is the same class and gets the same answer: a
+      // cancellation that killed image 3's socket must not let image 4 start.
+      // Both leave the step immediately, for their owner to settle.
+      if (isExecutionGovernanceControlFlow(err)) throw err
       consecutiveFailures++
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[ImageGen] ❌ Bild ${i + 1} misslyckades slutgiltigt:`, err)
@@ -913,5 +1097,6 @@ async function runImageStep(
     tokensIn: 0,
     tokensOut: 0,
     durationMs: Date.now() - start,
+    authorityRefreshRequired: flights.required(),
   }
 }

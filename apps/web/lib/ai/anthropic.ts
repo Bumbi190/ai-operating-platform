@@ -40,6 +40,14 @@ import { getModelPricing } from './pricing'
 import { logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
 import {
+  watchExecutionAuthority, composeAbortSignals, authorityForRequest, followAsyncIterable,
+  admitPhysicalRequest, isPhysicalAdmissionRefusal,
+  GovernanceDispatchUnknownError, isGovernanceDispatchUnknown,
+  type RunBoundAuthority, type AbortReason,
+} from '@/lib/governance/execution-signal'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveGovernedProjectId } from '@/lib/cost/governed-spend'
+import {
   ProviderNotDispatchedError,
   withGovernedSpend,
   type ProjectRef,
@@ -55,10 +63,33 @@ export interface AnthropicGovernanceContext {
    * at this layer would be a guess made far from the only place that knows.
    */
   execution: ExecutionContract
+  /**
+   * G3C-3C-A. Present only when a CLAIMED RUN owns this call. Absence means
+   * CONTRACT_ONLY derived from `execution` — watched for stops, never for
+   * cancellation or fencing, because it owns no run.
+   */
+  authority?: RunBoundAuthority
+  /** Caller/request-disconnect signal, composed with governance — not replaced. */
+  signal?: AbortSignal
   /** Required. Which budget this call is charged to. */
   project: ProjectRef
   /** Recorded on cost_events.agent, e.g. 'Script Writer'. */
   agent?: string
+  /**
+   * Called with a promise that settles when a STREAM actually terminates —
+   * completion, error or abort. Non-streaming calls never invoke it.
+   *
+   * It exists so the caller can hold an in-flight authority watcher for the
+   * stream's true lifetime instead of the handle's. Optional: callers that do
+   * not watch authority simply omit it.
+   */
+  onStreamSettled?: (settled: Promise<unknown>) => void
+  /**
+   * Hands back LIVE flight state for a stream. Read it AFTER settlement: a
+   * boolean copied when the handle returned would answer for a flight that had
+   * barely begun, and authority can become unavailable long afterwards.
+   */
+  onFlight?: (flight: PhysicalFlight | undefined) => void
   /** Recorded on cost_events.operation, e.g. 'Generate Script'. */
   operation?: string
   runId?: string | null
@@ -128,9 +159,97 @@ function provablyNotBilled(e: unknown): boolean {
   return status === 400 || status === 401 || status === 403 || status === 404 || status === 422
 }
 
+/** Live view of one in-flight physical request, plus its disposer. */
+export interface PhysicalFlight {
+  readonly signal: AbortSignal
+  readonly authorityUnavailable: boolean
+  readonly abortReason: AbortReason | null
+  dispose(): void
+}
+
+/**
+ * Opens an in-flight authority watch for ONE physical request.
+ *
+ * RUN_BOUND when a claimed run owns the call; CONTRACT_ONLY otherwise — never
+ * unwatched. The resolver is injected here because this module already imports
+ * the spend layer and the governance module deliberately does not.
+ */
+/** The descriptor both physical paths gate and watch on. */
+function physicalAuthority(ctx: AnthropicGovernanceContext) {
+  return authorityForRequest(
+    ctx.execution,
+    async ref => { const r = await resolveGovernedProjectId(ref); return r.ok ? r.projectId : null },
+    ctx.authority,
+  )
+}
+
+/**
+ * Gates ONE physical attempt, then opens the watch that covers it.
+ *
+ * Admission and watching are the same seam here on purpose: separating them
+ * would let a caller take one without the other, and the whole point is that a
+ * cancellation which became durable between the boundary check and this attempt
+ * stops the attempt rather than being noticed once it is already in flight.
+ */
+async function beginPhysicalFlight(ctx: AnthropicGovernanceContext): Promise<PhysicalFlight> {
+  const authority = physicalAuthority(ctx)
+  await admitPhysicalRequest(() => createAdminClient(), authority, 'anthropic')
+  // Thunk, not an instance: a call that finishes inside one poll interval
+  // never builds a client, and a context without credentials latches
+  // AUTHORITY_UNAVAILABLE instead of throwing.
+  const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+  const composed = composeAbortSignals([watch.signal, ctx.signal])
+  return {
+    signal: composed.signal,
+    get authorityUnavailable() { return watch.authorityUnavailable },
+    get abortReason() { return watch.abortReason },
+    dispose() { composed.dispose(); watch.dispose() },
+  }
+}
+
+/**
+ * E1. Classifies a physical failure that happened while a watcher was live.
+ *
+ * The watcher's `abortReason` is the authoritative evidence that governance
+ * fired: the Anthropic client wraps an aborted signal as `APIUserAbortError`
+ * or `APIConnectionError`, so the original `GovernanceAbortError` class does
+ * not reliably survive to the caller. What survives is our own record of why
+ * we aborted.
+ *
+ * The result is MAY_HAVE_DISPATCHED, never an admission refusal: the request
+ * was already on the wire.
+ */
+function governanceInFlight(flight: PhysicalFlight | undefined, e: unknown): unknown {
+  const reason = flight?.abortReason
+  if (!reason) return e
+  if (isGovernanceDispatchUnknown(e)) return e
+  return new GovernanceDispatchUnknownError('anthropic', reason, e)
+}
+
+/** Runs ONE raw non-streaming request under in-flight authority. */
+async function governedPhysical<T>(
+  ctx: AnthropicGovernanceContext,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const flight = await beginPhysicalFlight(ctx)
+  try {
+    const value = await run(flight.signal)
+    ctx.onFlight?.(flight)
+    return value
+  } catch (e) {
+    throw governanceInFlight(flight, e)
+  } finally {
+    flight.dispose()
+  }
+}
+
 /** One place the credential is read. Callers never pass a key. */
 function raw(): Anthropic {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  // ── G3C-3C-A · maxRetries: 0 ────────────────────────────────────────────
+  // Same reasoning as the OpenAI client: the SDK default is 2 and its retry is
+  // internal recursion, so attempts 2 and 3 were invisible to every governance
+  // boundary and to any in-flight watcher. One invocation, one physical attempt.
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 })
 }
 
 function costContext(ctx: AnthropicGovernanceContext): CostContext {
@@ -171,8 +290,19 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
           async () => {
             let message: Anthropic.Message
             try {
-              message = await raw().messages.create(params, options)
+              // ── G3C-3C-A · ONE PHYSICAL REQUEST ─────────────────────────
+              // `signal` LAST would discard a caller's own `options.signal`.
+              // Compose the two so both remain able to abort the request.
+              message = await governedPhysical(ctx, signal => {
+                const merged = composeAbortSignals([signal, options?.signal ?? undefined])
+                return raw().messages.create(params, { ...options, signal: merged.signal })
+                  .finally(() => merged.dispose())
+              })
             } catch (e) {
+              // A governance refusal is not a provider verdict. It must keep its
+              // identity all the way out, or the spend boundary will settle a
+              // reservation for a call that was never made.
+              if (isPhysicalAdmissionRefusal(e)) throw e
               if (provablyNotBilled(e)) {
                 throw new ProviderNotDispatchedError('anthropic rejected the request before inference', e)
               }
@@ -210,10 +340,21 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             estimatedSek,
           },
           async () => {
+            let flight: PhysicalFlight | undefined
+            let optionSignal: { signal: AbortSignal; dispose: () => void } | undefined
             let stream: ReturnType<Anthropic['messages']['stream']>
             try {
-              stream = raw().messages.stream(params, options)
+              // The watcher is created HERE and released by `done()` below —
+              // the handle returning is not the end of the physical request.
+              flight = await beginPhysicalFlight(ctx)
+              // Same composition rule as the non-streaming path: a caller's
+              // `options.signal` must survive alongside governance authority.
+              optionSignal = composeAbortSignals([flight.signal, options?.signal ?? undefined])
+              stream = raw().messages.stream(params, { ...options, signal: optionSignal.signal })
             } catch (e) {
+              optionSignal?.dispose()
+              flight?.dispose()
+              if (isPhysicalAdmissionRefusal(e)) throw e
               if (provablyNotBilled(e)) {
                 throw new ProviderNotDispatchedError('anthropic rejected the stream before inference', e)
               }
@@ -223,9 +364,85 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             // on purpose: the caller owns the stream, and a logging failure must
             // never surface as a broken response. `.catch` is mandatory — an
             // unhandled rejection here would take the process down.
-            void stream.finalMessage()
-              .then(msg => logLlmCost(params.model, msg.usage, costContext(ctx)))
+            //
+            // Guarded because the request has ALREADY been dispatched by this
+            // point: a stream object without `finalMessage` would otherwise
+            // throw out of a governed call that really did reach the provider,
+            // reporting "never happened" about billable work — and stranding
+            // the watcher created three lines above.
+            void Promise.resolve()
+              .then(() => typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
+                ? stream.finalMessage()
+                : Promise.reject(new Error('no finalMessage')))
+              .then(msg => logLlmCost(params.model, (msg as { usage: never }).usage, costContext(ctx)))
               .catch(() => { /* stream aborted or logging failed; estimate stands */ })
+
+            // ── G3C-3C-A · STREAM TERMINATION, NOT HANDLE RETURN ──────────────
+            // Returning the handle is NOT the end of the physical request: the
+            // socket stays open for the whole generation. `ctx.onStreamSettled`
+            // lets the caller keep an in-flight authority watcher alive for that
+            // real lifetime and dispose it exactly once, however the stream ends.
+            //
+            // `done()` is the installed SDK's completion primitive and the one to
+            // prefer; `finalMessage()` also settles at termination and covers the
+            // event-driven consumers that never iterate. Both are reached
+            // defensively: a stream object lacking them (an older client, or a
+            // test double standing in for one) must not make the governed call
+            // throw. Failure to OBSERVE termination must never become failure to
+            // MAKE the request.
+            //
+            // ── C18 · WHY THE LAST TIER NEVER SETTLES ────────────────────────
+            // An immediate `Promise.resolve()` here would tear down the watcher
+            // at handle return for exactly the streams whose end we cannot see —
+            // reporting "finished" about something still on the wire, which is
+            // the one answer we know to be wrong. The honest fallbacks are
+            // iteration (real streams are async-iterable) and, failing even
+            // that, never: keeping a watcher alive costs an unref'd timer, while
+            // releasing early costs the abort authority this phase exists for.
+            const mapError = (e: unknown) => governanceInFlight(flight, e)
+
+            // ── F2 · THE DIRECT CONSUMER GETS THE CLASSIFIED OUTCOME ─────────
+            // `runAnthropicStep` and the routes iterate this handle. Wrapping
+            // the iterator is what puts the governance outcome in front of the
+            // code that actually decides what happened; a classified side
+            // promise only informs whoever thought to await it.
+            const iterated = followAsyncIterable(stream, mapError)
+            // Its rejection is delivered to the consumer by the iterator. This
+            // keeps the promise itself from surfacing as an unhandled one when
+            // termination is anchored to `done()` instead.
+            void iterated?.catch(() => {})
+
+            // `done()` is the installed SDK's completion primitive and the one
+            // to prefer; `finalMessage()` also settles at termination and covers
+            // event-driven consumers that never iterate. Both are reached
+            // defensively: a stream object lacking them must not make the
+            // governed call throw. Failure to OBSERVE termination must never
+            // become failure to MAKE the request.
+            //
+            // ── C18 · WHY THE LAST TIER NEVER SETTLES ────────────────────────
+            // An immediate `Promise.resolve()` would tear down the watcher at
+            // handle return for exactly the streams whose end we cannot see —
+            // reporting "finished" about something still on the wire.
+            //
+            // ── F2 · UNCAUGHT FIRST, CLASSIFIED SECOND ───────────────────────
+            // These are NOT pre-caught. An earlier revision did
+            // `done().catch(() => {})` here, which swallowed the rejection
+            // before anything could classify it and left `classified` unable to
+            // ever see a governance abort.
+            const rawTermination: Promise<unknown> =
+              typeof (stream as { done?: unknown }).done === 'function'
+                ? (stream as { done: () => Promise<unknown> }).done()
+                : typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
+                  ? (stream as { finalMessage: () => Promise<unknown> }).finalMessage()
+                  : iterated ?? new Promise<void>(() => {})
+            const classified = rawTermination.catch(e => { throw mapError(e) })
+            // Detached, for unhandled-rejection hygiene only — after
+            // classification, never instead of it.
+            void classified.catch(() => {}).finally(() => {
+              optionSignal?.dispose(); flight?.dispose()
+            })
+            ctx.onStreamSettled?.(classified)
+            ctx.onFlight?.(flight)
             return stream
           },
         )

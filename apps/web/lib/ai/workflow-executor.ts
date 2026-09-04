@@ -181,6 +181,25 @@ export async function executeRunSteps(
         trackedMaxImages[step.output_key] = stepConfig.max_images
       }
 
+      /**
+       * Re-establishes canonical authority before an execution-bearing
+       * continuation, and settles through the one canonical mapping if refused.
+       *
+       * G3C-3C-A · D2. Two continuation points need this — the validation retry
+       * and the authoritative context write — and a second copy of the refusal
+       * mapping is how the drain and this executor once grew rival cancel
+       * branches. One routine, one mapping.
+       */
+      const reestablishAuthority = async (boundary: string): Promise<void> => {
+        const gate = await checkpointClaimedRun(anyDb, { runId, projectId, claimId, boundary })
+        if (gate.allowed) return
+        const settled = await settleRefusal(anyDb, gate.refusal, runId, claimId)
+        if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, boundary, gate.detail)
+        if (settled === 'CANCELLED') throw cancelledError(runId)
+        if (settled === 'FENCED') throw fencedError(runId)
+        throw new RunCheckpointRefusedError('STOPPED', gate.detail, boundary)
+      }
+
       let result = await runStep({
         // AUTONOMOUS: the executor runs under the drain/scheduler, never a
         // human, and its scope is the instance's own project.
@@ -192,6 +211,11 @@ export async function executeRunSteps(
         temperature: stepConfig?.temperature ?? 0.7,
         maxImages: stepConfig?.max_images,
         runId,
+        // G3C-3C-A: the executor is one of the few places that holds BOTH the
+        // run and its claim, so it can hand the provider boundary real
+        // ownership. Without a claimId this stays absent and the call runs
+        // exactly as before — a runId alone is cost attribution, not authority.
+        ...(claimId ? { authority: { kind: 'RUN_BOUND' as const, runId, claimId } } : {}),
         cost: { projectId, agent: agent.name, operation: step.name },
       })
 
@@ -213,6 +237,14 @@ export async function executeRunSteps(
           ? `${userMessage}\n\n---\n${validation.correctionHint}`
           : userMessage
 
+        // ── G3C-3C-A · CONTINUATION REQUIRES FRESH AUTHORITY ────────────────
+        // The first attempt may have flown while authority became unreadable.
+        // Its result is kept — but a SECOND physical request is a new
+        // execution-bearing unit, so canonical authority must be re-established
+        // first. The checkpoint refuses if it still cannot read, and that
+        // refusal settles through the one canonical mapping.
+        await reestablishAuthority(`unified:step:${step.order}:validation-retry`)
+
         result = await runStep({
           execution: {
             context: 'AUTONOMOUS',
@@ -228,6 +260,11 @@ export async function executeRunSteps(
           // max_images=1 preview run can silently explode cost/runtime on a retry.
           maxImages: stepConfig?.max_images,
           runId,
+          // ── G3C-3C-A · THE RETRY IS ALSO EXECUTION-BEARING ──────────────────
+          // It was dropping the authority descriptor, so the second physical
+          // request ran with no in-flight watcher at all — a cancel landing
+          // between the two attempts could not stop the one that mattered.
+          ...(claimId ? { authority: { kind: 'RUN_BOUND' as const, runId, claimId } } : {}),
           cost: { projectId, agent: agent.name, operation: step.name },
         })
 
@@ -262,6 +299,21 @@ export async function executeRunSteps(
         tokens_out: result.tokensOut,
         duration_ms: result.durationMs,
       })
+
+      // ── G3C-3C-A · D2 · LATCHED UNAVAILABLE ⇒ RE-ESTABLISH BEFORE WRITING ──
+      // The provider answered and `result.content` is kept — a successful
+      // response is never turned into a failure. But authority went unreadable
+      // while that request was in flight, so there is a window nobody observed,
+      // and a cancellation could have become durable inside it. Persisting
+      // context and moving to the next step are execution-bearing acts; both
+      // wait until canonical authority says this worker still owns the run.
+      //
+      // Conditional on the latch, deliberately: an unconditional re-check would
+      // add a round trip to every step to answer a question nothing raised.
+      if (result.authorityRefreshRequired) {
+        console.warn(`[run ${runId}] step "${step.name}": authority was unreadable in flight — re-establishing before continuation`)
+        await reestablishAuthority(`unified:step:${step.order}:post-flight-reestablish`)
+      }
 
       // Ackumulera output i context
       context[step.output_key] = result.content

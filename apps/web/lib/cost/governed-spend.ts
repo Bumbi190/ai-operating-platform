@@ -56,6 +56,10 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
+// Value import, but no runtime cycle: `execution-signal` imports only
+// `run-authority` and `execution-stop`, and the latter's reference back here is
+// `import type` — erased at compile time.
+import { isPhysicalAdmissionRefusal } from '@/lib/governance/execution-signal'
 import {
   ExecutionStoppedError, resolveExecutionStopForContract,
   type ExecutionContract,
@@ -350,6 +354,29 @@ export async function withGovernedSpend<T>(
     await settleSpend(verdict.reservationId, input.estimatedSek)
     return result
   } catch (e) {
+    if (isPhysicalAdmissionRefusal(e)) {
+      // ── G3C-3C-A · GOVERNANCE REFUSED BEFORE DISPATCH ──────────────────────
+      // Nothing left the machine, so this is not the ambiguous case below —
+      // settling would count budget for a call that was never made. Its own
+      // error type, deliberately: reporting it as a provider rejection would be
+      // a lie about who refused and why.
+      //
+      // D4: the release is bookkeeping ABOUT the refusal, never a revision of
+      // it. If it throws, the refusal still stands — the reservation stays
+      // conservatively open and ages out through normal stale handling. Letting
+      // the release error escape instead would turn "governance refused before
+      // dispatch" into an unrecognised failure at the drain, which would then
+      // charge a retry for a request that never left. Same principle as the
+      // canonical stop-refusal path above.
+      try {
+        await releaseSpend(verdict.reservationId)
+      } catch (releaseError) {
+        console.error('[governed-spend] release after admission refusal failed; the '
+          + 'refusal stands and the reservation will age out:',
+          releaseError instanceof Error ? releaseError.message : String(releaseError))
+      }
+      throw e
+    }
     if (e instanceof ProviderNotDispatchedError) {
       // The adapter can prove nothing was billed. Free the headroom now rather
       // than making a burst of auth failures starve the budget for 30 minutes.

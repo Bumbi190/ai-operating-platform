@@ -111,6 +111,41 @@ export const STORY_APPROVAL_CHECKS: readonly DeclaredStoryCheck[] = [
 ]
 
 /**
+ * What each check's evidence must CARRY for the binding to be semantic.
+ *
+ * Phase 2B-0.5 proved the gate binds `recorded_at` — when a fact was recorded,
+ * not what it says. Time is not identity: two stories recorded in the same
+ * instant collide. Every payload below therefore carries the story content hash
+ * explicitly, and the cross-check compares those hashes rather than their
+ * timestamps.
+ */
+export const STORY_EVIDENCE_PAYLOAD_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  story_generated: [
+    'story_content_hash',
+    'generated_from_brief_hash',
+    'story_contract_version',
+    'workflow_instance_id',
+  ],
+  story_structurally_valid: [
+    'story_content_hash',
+    'validation_contract_version',
+  ],
+  story_content_approved: [
+    'story_content_hash',
+    'approval_target_version_hash',
+    // The Editor's identity is NOT copied here. It already lives on the
+    // authorization event, and a second copy is a second answer to "who
+    // approved this" that nothing reconciles.
+  ],
+} as const
+
+/**
+ * Every payload names the story. That is the whole mechanism: three facts from
+ * three parties, each independently pinned to the same bytes.
+ */
+export const STORY_EVIDENCE_COMMON_FIELD = 'story_content_hash' as const
+
+/**
  * What must be true before these can be declared for real.
  *
  * Written down because each is a genuine blocker, not a formality, and because

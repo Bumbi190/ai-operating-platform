@@ -95,6 +95,22 @@ export interface AnthropicGovernanceContext {
   runId?: string | null
   scriptId?: string | null
   metadata?: Record<string, unknown>
+  /**
+   * The caller's SPEND IDENTITY, forwarded to the governed boundary.
+   *
+   * Distinct from `runId`, which is ledger attribution and reaches only
+   * `cost_events`. This is what `budget_reserve` keys on, so supplying it makes
+   * the reservation belong to one execution intent rather than to one call.
+   *
+   * ── WHO MAY SET IT ────────────────────────────────────────────────────────
+   * Only a caller that already has a canonical execution identity — today that
+   * is the workflow engine's governed-effect path, which derives the key from
+   * the run's immutable binding via `computeActionIdempotencyKey`. It is
+   * OPTIONAL because every existing call site has no such identity and must keep
+   * taking a per-call reservation; an invented string here would be worse than
+   * none, since it would make two unrelated calls look like one intent.
+   */
+  idempotencyKey?: string
 }
 
 /**
@@ -286,6 +302,10 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.create',
             estimatedSek,
+            // Run-bound when the caller has a canonical execution identity;
+            // undefined otherwise, which keeps every existing call site taking
+            // its own per-call reservation exactly as before.
+            idempotencyKey: ctx.idempotencyKey,
           },
           async () => {
             let message: Anthropic.Message
@@ -338,6 +358,10 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.stream',
             estimatedSek,
+            // Run-bound when the caller has a canonical execution identity;
+            // undefined otherwise, which keeps every existing call site taking
+            // its own per-call reservation exactly as before.
+            idempotencyKey: ctx.idempotencyKey,
           },
           async () => {
             let flight: PhysicalFlight | undefined

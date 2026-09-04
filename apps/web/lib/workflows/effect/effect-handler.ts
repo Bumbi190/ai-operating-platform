@@ -19,6 +19,7 @@
  * rather than returning a boolean, because a boolean can be ignored.
  */
 
+import type { ExecutionContract } from '@/lib/governance/execution-stop'
 import type { DispatchObservation } from '../action-outcome'
 
 // any: the Supabase client in this project has no generated DB types.
@@ -44,6 +45,15 @@ export interface EffectHandlerInput {
   readonly attemptGroup: string
   /** Stable identity for ONE logical effect; also the spend reservation key. */
   readonly idempotencyKey: string
+  /**
+   * The execution contract, CONSTRUCTED ABOVE and forwarded — never built here.
+   *
+   * A handler that owns its spend boundary must hand this to the governed
+   * boundary unchanged. It is passed rather than derived for the same reason the
+   * executor does not let an adapter name its own context: whoever could choose
+   * it could choose the permissive one.
+   */
+  readonly execution: ExecutionContract
   readonly now: string
   /**
    * A database handle. Present because an effect must usually persist what it
@@ -81,6 +91,17 @@ export interface EffectHandlerOutput {
   readonly evidenceDetail?: Record<string, string | number | boolean | null>
   /** Conservative upper bound in SEK, for classes that require spend enforcement. */
   readonly estimatedSek?: number
+  /**
+   * PROOF that a trusted-adapter boundary actually reserved, and under which
+   * identity.
+   *
+   * Required from a handler whose kind declares `trusted_adapter` ownership for a
+   * class that enforces spend. The executor compares it to the run's own
+   * idempotency key and refuses the result if it is absent or different —
+   * otherwise "the adapter owns the boundary" would be an assertion rather than
+   * a fact, and a handler could claim ownership while reserving nothing.
+   */
+  readonly spendReservedUnderKey?: string
 }
 
 export type EffectHandler = (input: EffectHandlerInput) => Promise<EffectHandlerOutput>

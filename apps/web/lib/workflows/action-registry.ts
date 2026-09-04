@@ -239,6 +239,28 @@ export const ACTION_REGISTRY = {
     description: 'Deterministic governed-effect proof. No provider, no network, no real spend.',
   },
 
+  /**
+   * Generate the month's saga. Phase 2B-2.
+   *
+   * FINANCIAL, and the class table is the reason rather than the label: it calls
+   * a paid model, so `ACTION_CLASS_POLICY.FINANCIAL` gives it authorization,
+   * spend enforcement, pre-commit revalidation, idempotency and a single
+   * attempt. A second attempt is a new intent, never a retry.
+   *
+   * It is deliberately ABSENT from `GOVERNED_EFFECT_ENABLED_KINDS`. The
+   * machinery is complete and proven against a deterministic provider, but no
+   * real model is wired and no first paid dispatch has been authorised. Adding
+   * the kind to that list is the decision that makes real generation possible,
+   * and it belongs to the phase that performs the first controlled run — not to
+   * the one that builds the capability.
+   */
+  generate_monthly_story: {
+    action_class: 'FINANCIAL',
+    executor_family: 'governed_effect',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'content_generation' }],
+    description: "Generate the month's saga from the canonical brief and story contract.",
+  },
+
   // ── Declared for future use. Metadata only: NOT executable. ───────────────
   // Present so the class of a known-dangerous kind is already pinned here
   // rather than being invented later by whoever first needs it, and so the

@@ -105,10 +105,16 @@ describe('the canonical target kinds are not interchangeable', () => {
 // ── D. content_generation regression ───────────────────────────────────────
 
 describe('D — content_generation, the state 2099-01 is sitting in', () => {
-  it('really does declare exactly one REQUIRED check', () => {
+  it('declares three REQUIRED checks, and only one of them is attested', () => {
+    // Phase 2B-2 added the two automated story facts. The property this test
+    // guards is unchanged: the ATTESTED check is still exactly one, so the pin
+    // logic under test still has a single attested subject in this state.
     const req = declared().filter(c => c.state === STATE && c.required)
-    expect(req.map(c => c.check_key)).toEqual([CHECK])
-    expect(req[0].allowed_provenance).toEqual(['attested'])
+    expect(req.map(c => c.check_key).sort())
+      .toEqual([CHECK, 'story_generated', 'story_structurally_valid'].sort())
+    const attested = req.filter(c => c.allowed_provenance.includes('attested'))
+    expect(attested.map(c => c.check_key)).toEqual([CHECK])
+    expect(attested[0].allowed_provenance).toEqual(['attested'])
   })
 
   it('a correctly bound PASS is recognised as current and satisfying', () => {

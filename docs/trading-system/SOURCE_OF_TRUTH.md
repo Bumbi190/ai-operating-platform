@@ -21,6 +21,7 @@
 | Kontraktsvalskod | `specifications/market-data/…Contract Selection Reason Code – Canonical v1.0.md` | **Canonical v1.0** | Låst vokabulär, prospektiv verkan. En positiv kontraktsvalskod under Market Data Canonical §9–§10 (Beslut J) |
 | Beslutsmaterialisering | `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0** | Låst materialiseringssemantik för C3B.1, prospektiv verkan. Tom-endast `evidence`, låst `policyVersion` (Beslut K) |
 | Beslutsinspelning | `specifications/market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | **Canonical v1.0** | Låst inspelnings- och replaysemantik för C3B.2 v1. Lagrat beslut är sanningskälla, uppslagning på `root` + `at` (Beslut L) |
+| Beslutsorkestrering | `specifications/market-data/…Recorded-First Contract Selection Orchestration – Canonical v1.0.md` | **Canonical v1.0** | Låst recorded-first orkestrering för C3B.3. Anroparägd `decisionId`/`decidedAt`, explicit kalenderpin, historik/replay endast (Beslut M) |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -266,7 +267,7 @@ idempotent identisk ominspelning.
 oförändrade. En framtida händelse som refererar ett `decisionId` vore endast
 revisionsprojektion, aldrig sanningskälla.
 
-**Fullständig precedens inom kontraktsval efter Beslut L:**
+**Precedens efter Beslut L** (utvidgad av Beslut M, se nedan)**:**
 
 - Market Data & Contract Lifecycle Canonical v1.0 äger kontrakts-, kalender-,
   resolutions- och replaykravet.
@@ -275,8 +276,7 @@ revisionsprojektion, aldrig sanningskälla.
   beslutsmaterialiseringen.
 - Contract Selection Decision Recording & Replay Canonical v1.0 äger
   inspelningskontext, uppslagning, unikhet och append-semantik.
-- Runtime i TypeScript är **mekanisk transkription** av dessa fyra. **Ingen runtime-fil
-  rangordnas över kanon.**
+- Runtime i TypeScript är **mekanisk transkription**, aldrig en egen källa.
 
 **GATE-08 flyttas inte av Beslut L.** Gaten är fortsatt **delvis stängd**. **C3B.2-runtime
 är inte implementerad:** inget beslutslager, ingen uppslagning och ingen inspelning
@@ -284,6 +284,36 @@ existerar i kod. `GATE-08C-3B DECISION-RECORDED-AT GAP` och `GATE-08C-3B DECISIO
 ORDERING GAP` är uppskjutna och icke-blockerande; `GATE-08C-3B NONEMPTY-EVIDENCE
 VOCABULARY GAP`, `GATE-08C-3A SOURCE-RESULT-SHAPE GAP`, `GATE-08C-2A DST-BOUNDARY GAP`
 och `GATE-08C-2B UNEXPECTED-MINUTE GAP` kvarstår öppna.
+
+**Orkestreringsluckor stängda 2026-09-04:** `GATE-08C-3B.3 DECISION-ID MINTING GAP`,
+`GATE-08C-3B.3 DECIDED-AT OWNERSHIP GAP`, `GATE-08C-3B.3 HISTORICAL-CALENDAR-PIN INPUT
+GAP`, `GATE-08C-3B.3 POST-RECORD RETURN GAP` och `GATE-08C-3B.3 RECORD-DETERMINISM WINDOW
+GAP` genom Beslut M. `specifications/market-data/Omnira Trading System – Recorded-First
+Contract Selection Orchestration – Canonical v1.0.md` är kanonisk auktoritet för hur ett
+inspelat beslut hämtas först och hur återfallet komponeras: varje anrop börjar med
+`store.find(root, at)`, återfallet är ett valfritt inert värdeobjekt med `calendar`,
+`decisionId` och `decidedAt`, orkestreringen myntar ingen identitet och läser ingen
+klocka, den explicita kalendern är §10:s pinning, och efter inspelning läses det lagrade
+beslutet om och returneras.
+
+**Fullständig precedens inom kontraktsval efter Beslut M:**
+
+- Market Data & Contract Lifecycle Canonical v1.0 äger kontrakts-, kalender-,
+  resolutions- och replaykravet.
+- Contract Selection Reason Code Canonical v1.0 äger den positiva provenienskoden.
+- Contract Selection Decision Materialisation Canonical v1.0 äger den oföränderliga
+  beslutsmaterialiseringen.
+- Contract Selection Decision Recording & Replay Canonical v1.0 äger
+  inspelningskontext, uppslagning, unikhet och append-semantik.
+- Recorded-First Contract Selection Orchestration Canonical v1.0 äger historik/replay-
+  ordningen, återfallets ägarskap och kompositionen.
+- Runtime i TypeScript är **mekanisk transkription** av dessa fem. **Ingen runtime-fil
+  rangordnas över kanon.**
+
+**GATE-08 flyttas inte av Beslut M.** Gaten är fortsatt **delvis stängd**.
+**C3B.3-runtime är inte implementerad:** ingen orkestrerare existerar i kod.
+Live-kontraktsval definieras inte — `LIVE CONTRACT SELECTION ORCHESTRATION` förblir en
+separat framtida gräns under Canonical v1.0 §24.
 
 ---
 

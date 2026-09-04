@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { projectMonthReleaseBundle } from '../workflows/bundle/project'
 import {
   projectGithubBinding, GITHUB_BINDING_CHECKS, GITHUB_BINDING_STATE,
+  RELEASE_IDENTITY_CONSUMERS,
 } from '../workflows/bundle/github-binding'
 import { loadVendoredDefinitions, FAMILJE_STUNDEN_MONTHLY_RELEASE } from '../workflows/definitions'
 import { FAMILJE_STUNDEN_CHECKS } from '../workflows/adapters/familje-stunden/checks'
@@ -310,5 +311,239 @@ describe('23-30. inert, and nothing else moved', () => {
     const dep = readFileSync(join(process.cwd(), 'lib/workflows/adapters/familje-stunden/deployment.ts'), 'utf8')
     expect(dep).toContain('/status')
     expect(dep).not.toContain('check-runs')
+  })
+})
+
+// ── 31-40. REBINDING AUTHORITY ───────────────────────────────────────────────
+//
+// Append-only storage gives AUDITABILITY: every binding ever claimed stays
+// readable. It does not give IMMUTABILITY. These tests cover the difference —
+// which recorded claim is authoritative once a verification has already
+// compared production against one of them.
+//
+// The lock boundary is an existing semantic point, not a new state: the first
+// evidence recorded by any check that consumes the release identity. That is
+// strictly earlier than entering approval_release and earlier than RELEASE
+// approval, which is what the requirement asked for.
+
+const T1 = '2026-09-01T00:00:00.000Z' // initial binding
+const T2 = '2026-09-02T00:00:00.000Z' // downstream reliance
+const T3 = '2026-09-03T00:00:00.000Z' // attempted rebind
+
+/** Evidence from a check that CONSUMES the identity — this is what locks it. */
+function consume(
+  instanceId: string, checkKey: string, recorded: string,
+): WorkflowEvidence {
+  return {
+    id: `${instanceId}-${checkKey}-${recorded}`, instance_id: instanceId,
+    state: GITHUB_BINDING_STATE, check_key: checkKey, result: 'pass',
+    source: 'automated', detail: {}, recorded_at: recorded, producer: null,
+    producer_type: null, observed_at: recorded, payload_hash: null,
+    target_hash: null, attestation: {},
+  } as unknown as WorkflowEvidence
+}
+
+const boundAt = (id: string, pr: number, sha: string, at: string) => [
+  bind(id, GITHUB_BINDING_CHECKS.prNumber, pr, at),
+  bind(id, GITHUB_BINDING_CHECKS.expectedMergeSha, sha, at),
+]
+
+describe('31-40. a bound release identity cannot silently switch', () => {
+  it('31. the first valid binding takes authority', () => {
+    const b = projectGithubBinding(boundAt('i', 59, SHA_A, T1), REPO)
+    expect(b.binding_status).toBe('BOUND')
+    expect(b.pr_number).toBe(59)
+    expect(b.expected_merge_sha).toBe(SHA_A)
+    expect(b.generations).toBe(1)
+    expect(b.locked_at).toBeNull()
+    expect(b.rejected_rebind).toBeNull()
+  })
+
+  it('32. two instances lock and conflict independently', () => {
+    const octRows = [
+      ...boundAt('oct', 59, SHA_A, T1),
+      consume('oct', 'github_pr_merged', T2),
+      ...boundAt('oct', 72, SHA_B, T3),
+    ]
+    const novRows = boundAt('nov', 72, SHA_B, T1)
+    const oct = projectGithubBinding(octRows, REPO)
+    const nov = projectGithubBinding(novRows, REPO)
+    expect(oct.binding_status).toBe('CONFLICTED')
+    expect(oct.pr_number).toBe(59)
+    // November never locked and never conflicted — the conflict does not leak.
+    expect(nov.binding_status).toBe('BOUND')
+    expect(nov.pr_number).toBe(72)
+    expect(nov.rejected_rebind).toBeNull()
+  })
+
+  it('33. BEFORE the lock, a COMPLETE correction may replace the identity', () => {
+    // Explicit policy: pre-lock correction is allowed, because nothing has yet
+    // been verified against the old identity. It must restate BOTH fields.
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      ...boundAt('i', 72, SHA_B, T2),
+    ], REPO)
+    expect(b.binding_status).toBe('BOUND')
+    expect(b.pr_number).toBe(72)
+    expect(b.expected_merge_sha).toBe(SHA_B)
+    expect(b.generations).toBe(2)
+  })
+
+  it('34. AFTER the lock, a PR-number rebind is refused authority', () => {
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'github_pr_merged', T2),
+      bind('i', GITHUB_BINDING_CHECKS.prNumber, 72, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.pr_number).toBe(59)
+    expect(b.expected_merge_sha).toBe(SHA_A)
+    expect(b.generations).toBe(1)
+  })
+
+  it('35. AFTER the lock, a SHA rebind is refused authority', () => {
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'vercel_deploy_sha_matches_merge_sha', T2),
+      bind('i', GITHUB_BINDING_CHECKS.expectedMergeSha, SHA_B, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.expected_merge_sha).toBe(SHA_A)
+    expect(b.pr_number).toBe(59)
+  })
+
+  it('36. AFTER the lock, a COMPLETE PR+SHA rebind is refused authority', () => {
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'github_merge_sha_matches_expected', T2),
+      ...boundAt('i', 72, SHA_B, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.pr_number).toBe(59)
+    expect(b.expected_merge_sha).toBe(SHA_A)
+    expect(b.generations).toBe(1)
+    expect(b.rejected_rebind).toEqual({
+      pr_number: 72, expected_merge_sha: SHA_B,
+      recorded_at: T3, reason: 'AFTER_DOWNSTREAM_RELIANCE',
+    })
+  })
+
+  it('36b. every consuming check locks, and the EARLIEST one sets the instant', () => {
+    for (const key of RELEASE_IDENTITY_CONSUMERS) {
+      const b = projectGithubBinding([
+        ...boundAt('i', 59, SHA_A, T1),
+        consume('i', key, T2),
+        ...boundAt('i', 72, SHA_B, T3),
+      ], REPO)
+      expect(b.binding_status, key).toBe('CONFLICTED')
+      expect(b.locked_by, key).toBe(key)
+      expect(b.locked_at, key).toBe(T2)
+    }
+  })
+
+  it('37. both conflicting values remain visible — nothing is erased', () => {
+    const rows = [
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'github_pr_merged', T2),
+      ...boundAt('i', 72, SHA_B, T3),
+    ]
+    const before = JSON.stringify(rows)
+    const b = projectGithubBinding(rows, REPO)
+    // The projection is pure: the evidence it was handed is untouched.
+    expect(JSON.stringify(rows)).toBe(before)
+    // And the refused identity is reported, not hidden.
+    expect(b.rejected_rebind?.pr_number).toBe(72)
+    expect(b.rejected_rebind?.expected_merge_sha).toBe(SHA_B)
+    expect(b.pr_number).toBe(59)
+    // No historical row was mutated or removed by the module.
+    const src = readFileSync(join(process.cwd(), 'lib/workflows/bundle/github-binding.ts'), 'utf8')
+    expect(src).not.toMatch(/\.splice\(|\.pop\(|evidence\s*=/)
+  })
+
+  it('38. a partial rebind never combines with the older half', () => {
+    // THE fabricated-pair case: PR #59 + SHA A, then PR #72 alone.
+    // PR #72 + SHA A is an identity no one ever attested to.
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      bind('i', GITHUB_BINDING_CHECKS.prNumber, 72, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect({ pr: b.pr_number, sha: b.expected_merge_sha })
+      .toEqual({ pr: 59, sha: SHA_A })
+    expect(b.rejected_rebind?.reason).toBe('INCOMPLETE_PAIR')
+
+    // The same in the other direction.
+    const c = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      bind('i', GITHUB_BINDING_CHECKS.expectedMergeSha, SHA_B, T3),
+    ], REPO)
+    expect(c.binding_status).toBe('CONFLICTED')
+    expect({ pr: c.pr_number, sha: c.expected_merge_sha })
+      .toEqual({ pr: 59, sha: SHA_A })
+  })
+
+  it('39. a conflict BLOCKS readiness rather than selecting the newest value', () => {
+    const clean = proj(boundAt('i', 59, SHA_A, T1))
+    const conflicted = proj([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'github_pr_merged', T2),
+      ...boundAt('i', 72, SHA_B, T3),
+    ])
+    expect(conflicted.technical.github.binding_status).toBe('CONFLICTED')
+    expect(conflicted.technical.github.pr_number).toBe(59)
+
+    const codes = conflicted.readiness.blockers.map(b => b.code)
+    expect(codes).toContain('GITHUB_RELEASE_IDENTITY_CONFLICT')
+    expect(clean.readiness.blockers.map(b => b.code))
+      .not.toContain('GITHUB_RELEASE_IDENTITY_CONFLICT')
+    expect(conflicted.readiness.product).toBe('BLOCKED')
+    // Exactly one blocker is added, and nothing else moved: the conflict is
+    // additive, not a rewrite of what else was already holding the release.
+    expect(codes.sort()).toEqual(
+      [...clean.readiness.blockers.map(b => b.code), 'GITHUB_RELEASE_IDENTITY_CONFLICT'].sort())
+    // The blocker is attributed to the state that owns the identity.
+    expect(conflicted.readiness.blockers
+      .find(b => b.code === 'GITHUB_RELEASE_IDENTITY_CONFLICT')?.subject)
+      .toBe(GITHUB_BINDING_STATE)
+  })
+
+  it('40. a conflict cannot be resolved by a global env value', () => {
+    vi.stubEnv('FAMILJE_STUNDEN_RELEASE_PR', '72')
+    vi.stubEnv('FAMILJE_STUNDEN_EXPECTED_MERGE_SHA', SHA_B)
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'github_pr_merged', T2),
+      bind('i', GITHUB_BINDING_CHECKS.prNumber, 72, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.pr_number).toBe(59)
+    // And with nothing bound at all, the env still cannot fill the gap.
+    expect(projectGithubBinding([], REPO).binding_status).toBe('MISSING')
+  })
+
+  it('41. the lock list is explicit, and every key is a declared check', () => {
+    // Membership is never inferred from a name or a state. Each consuming key
+    // must exist in the definition's own catalogue, or the boundary is fiction.
+    expect(RELEASE_IDENTITY_CONSUMERS.length).toBeGreaterThan(0)
+    for (const key of RELEASE_IDENTITY_CONSUMERS) {
+      expect(FAMILJE_STUNDEN_CHECKS.some(c => c.check_key === key), key).toBe(true)
+    }
+    // The binding checks themselves are NOT consumers — recording an identity
+    // must not lock it against its own completion.
+    expect(RELEASE_IDENTITY_CONSUMERS).not.toContain(GITHUB_BINDING_CHECKS.prNumber)
+    expect(RELEASE_IDENTITY_CONSUMERS).not.toContain(GITHUB_BINDING_CHECKS.expectedMergeSha)
+  })
+
+  it('42. an unrelated check does not lock the identity', () => {
+    // Only identity CONSUMERS lock. A local test result at the same state does
+    // not, so a pre-lock correction stays possible while the release is built.
+    const b = projectGithubBinding([
+      ...boundAt('i', 59, SHA_A, T1),
+      consume('i', 'static_tests_passed', T2),
+      ...boundAt('i', 72, SHA_B, T3),
+    ], REPO)
+    expect(b.binding_status).toBe('BOUND')
+    expect(b.pr_number).toBe(72)
+    expect(b.locked_at).toBeNull()
   })
 })

@@ -44,7 +44,7 @@ import type {
   ReachabilitySummary, ReleaseAtMatch, SectionSummary, TechnicalSection, Tri,
 } from './types'
 import { manualPrivilegedPolicy } from './reachability-policy'
-import { projectGithubBinding } from './github-binding'
+import { GITHUB_BINDING_STATE, projectGithubBinding } from './github-binding'
 
 /** Canonical month identity: YYYY-MM, and nothing else. */
 const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -409,6 +409,26 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
         'backend_release_gate', 'high',
       ))
     }
+  }
+
+  // A release identity two attestations disagree about must stop the release.
+  // Every recorded GitHub observation silently depends on which one is true, so
+  // "newest wins" would repoint already-recorded evidence at a different
+  // release. Both values stay in workflow_evidence; neither is deleted.
+  if (technical.github.binding_status === 'CONFLICTED') {
+    const r = technical.github.rejected_rebind
+    warnings.push(blocker(
+      'GITHUB_RELEASE_IDENTITY_CONFLICT',
+      r?.reason === 'INCOMPLETE_PAIR'
+        ? 'A rebinding of the GitHub release identity was started and never completed. ' +
+          'A pull request number and its expected merge SHA are one identity, so the ' +
+          'half-recorded value cannot combine with the previous pair.'
+        : `A conflicting GitHub release identity (PR ${r?.pr_number}, ` +
+          `SHA ${r?.expected_merge_sha}) was recorded after ` +
+          `${technical.github.locked_by} had already verified against ` +
+          `PR ${technical.github.pr_number}. The later value is refused authority.`,
+      GITHUB_BINDING_STATE,
+    ))
   }
 
   for (const g of hard_gates) {

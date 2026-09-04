@@ -242,13 +242,31 @@ export interface TechnicalSection extends SectionSummary {
   deployment_sha_verified: Tri
 }
 
-/** Which GitHub release this month refers to. Descriptive; proves nothing. */
+/**
+ * Which GitHub release this month refers to. Descriptive; proves nothing.
+ *
+ * `CONFLICTED` is the one value here that blocks: it means two attestations
+ * name different releases and at least one recorded verification already
+ * depends on which of them is true.
+ */
 export interface GithubBindingSection {
   repository: string | null
   pr_number: number | null
   expected_merge_sha: string | null
-  binding_status: 'BOUND' | 'PARTIAL' | 'MISSING' | 'INVALID'
+  binding_status: 'BOUND' | 'PARTIAL' | 'MISSING' | 'INVALID' | 'CONFLICTED'
   invalid_fields: string[]
+  /** When the identity became relied upon, and by which declared check. */
+  locked_at: string | null
+  locked_by: string | null
+  /** An identity that was recorded but refused authority. Kept for audit. */
+  rejected_rebind: {
+    pr_number: number | null
+    expected_merge_sha: string | null
+    recorded_at: string | null
+    reason: 'AFTER_DOWNSTREAM_RELIANCE' | 'INCOMPLETE_PAIR'
+  } | null
+  /** How many complete identities have held authority. 1 = never corrected. */
+  generations: number
 }
 
 export interface CostSection {

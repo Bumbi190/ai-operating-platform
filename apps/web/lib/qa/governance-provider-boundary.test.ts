@@ -345,6 +345,23 @@ describe('withGovernedSpend lifecycle', () => {
     expect(settleSpend, 'and never counted as spend').not.toHaveBeenCalled()
   })
 
+  it('D5 — a FAILED release does not replace the admission refusal', async () => {
+    // G3C-3C-A · D4. The release is bookkeeping ABOUT the refusal, never a
+    // revision of it. If the release error escaped, the drain would see an
+    // unrecognised error instead of a refusal — and charge a retry and a
+    // failure for a request that governance stopped before it was made.
+    const { withGovernedSpend } = await boundary()
+    const { PhysicalAdmissionRefusedError } = await import('@/lib/governance/execution-signal')
+    const refusal = new PhysicalAdmissionRefusedError('CANCELLED', 'openai', 'cancellation requested')
+    releaseSpend.mockRejectedValueOnce(new Error('reservation ledger unreachable'))
+    await expect(withGovernedSpend(
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+      async () => { throw refusal },
+    )).rejects.toBe(refusal)
+    expect(releaseSpend, 'the release was attempted').toHaveBeenCalledWith('res-1')
+    expect(settleSpend, 'and the estimate was never counted').not.toHaveBeenCalled()
+  })
+
   // ── Project attribution ────────────────────────────────────────────────────
 
   it('two project contexts reserve against DIFFERENT projects', async () => {

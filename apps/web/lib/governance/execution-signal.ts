@@ -243,8 +243,25 @@ export function followAsyncIterable(value: unknown): Promise<void> | undefined {
       },
       // `return` is what a consumer `break` invokes. Without it an early exit
       // would hold the watcher for the life of the process.
-      async return(v?: unknown) { finish(); return it.return ? it.return(v) : { done: true, value: v } },
-      async throw(e?: unknown) { finish(); if (it.throw) return it.throw(e); throw e },
+      //
+      // ── D3 · TERMINATION MEANS THE UNDERLYING STREAM TERMINATED ────────────
+      // `finish()` runs in `finally`, AFTER the SDK's own return/throw settles.
+      // Finishing first would release the watcher while the client is still
+      // asynchronously aborting the socket — the exact window a break is meant
+      // to cover, reported as already closed. When the underlying iterator has
+      // no return/throw there is nothing to await, and the wrapper can honestly
+      // conclude termination itself.
+      async return(v?: unknown) {
+        try {
+          return it.return ? await it.return(v) : { done: true, value: v }
+        } finally { finish() }
+      },
+      async throw(e?: unknown) {
+        try {
+          if (it.throw) return await it.throw(e)
+          throw e
+        } finally { finish() }
+      },
       [Symbol.asyncIterator]() { return this },
     } as AsyncIterator<unknown>
   }

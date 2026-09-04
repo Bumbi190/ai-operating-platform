@@ -707,3 +707,132 @@ describe('C19–C21 · the RUNNER call sites, not just the adapters', () => {
     await p
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('D10–D12 · termination means the UNDERLYING transport terminated', () => {
+  it('D10 — a break holds the watch until the SDK iterator finishes closing', async () => {
+    // The SDK's `return()` is where the client aborts the socket. Releasing
+    // before it settles reports the stream closed while it is still closing —
+    // ending the watch inside the very window a break exists to cover.
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    let releaseUnderlying!: () => void
+    const underlyingReturned = new Promise<void>(res => { releaseUnderlying = res })
+
+    const target = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() { return { done: false, value: 1 } },
+          async return() { await underlyingReturned; return { done: true, value: undefined } },
+        } as unknown as AsyncIterator<unknown>
+      },
+    }
+    const settled = followAsyncIterable(target)!
+    let done = false
+    void settled.then(() => { done = true })
+
+    const consumer = (async () => { for await (const _ of target as AsyncIterable<unknown>) break })()
+    await new Promise(r => setTimeout(r, 0))
+    expect(done, 'the underlying return is still pending — the watch stays').toBe(false)
+
+    releaseUnderlying()
+    await consumer
+    await settled
+    expect(done, 'and only now is the stream really over').toBe(true)
+  })
+
+  it('D10b — a throw also waits for the underlying iterator to finish', async () => {
+    const { followAsyncIterable } = await import('@/lib/governance/execution-signal')
+    let releaseUnderlying!: () => void
+    const underlyingThrew = new Promise<void>(res => { releaseUnderlying = res })
+    const target = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() { return { done: false, value: 1 } },
+          async throw() { await underlyingThrew; return { done: true, value: undefined } },
+        } as unknown as AsyncIterator<unknown>
+      },
+    }
+    const settled = followAsyncIterable(target)!
+    let done = false
+    void settled.then(() => { done = true })
+    const it = (target as AsyncIterable<unknown>)[Symbol.asyncIterator]()
+    await it.next()
+    const thrown = it.throw!(new Error('consumer gave up'))
+    await new Promise(r => setTimeout(r, 0))
+    expect(done, 'still closing').toBe(false)
+    releaseUnderlying()
+    await thrown
+    await settled
+    expect(done).toBe(true)
+  })
+
+  describe('TTS body cancellation', () => {
+    let realFetch: typeof globalThis.fetch
+    beforeEach(() => { realFetch = globalThis.fetch; process.env.OPENAI_API_KEY = 'test-key' })
+    afterEach(() => { globalThis.fetch = realFetch })
+
+    /** A body whose reader records its cancel and defers completion. */
+    function deferredBody() {
+      const seenCancel: unknown[] = []
+      let releaseCancel!: () => void
+      const cancelled = new Promise<void>(res => { releaseCancel = res })
+      const body = {
+        getReader() {
+          return {
+            read: () => new Promise(() => {}),          // never delivers
+            cancel: (reason: unknown) => { seenCancel.push(reason); return cancelled },
+            releaseLock: () => {},
+          }
+        },
+        // If the wrapper ever reaches for this while the reader holds the lock,
+        // a real ReadableStream would throw. Make that failure loud instead of
+        // silently succeeding in a double.
+        cancel: () => { throw new TypeError('ReadableStream is locked to a reader') },
+      }
+      return { body, seenCancel, releaseCancel }
+    }
+
+    it('D11 — cancelling the returned body cancels through the READER, not the stream', async () => {
+      const { body, seenCancel, releaseCancel } = deferredBody()
+      globalThis.fetch = (() => Promise.resolve({
+        ok: true, status: 200, statusText: 'OK', headers: new Headers(), body,
+      } as unknown as Response)) as never
+      const { openAISpeech } = await import('@/lib/ai/openai-client')
+      const res = await openAISpeech(
+        { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
+        { model: 'tts', input: 'hej' })
+
+      // No `ReadableStream is locked` — the reason reaches the reader.
+      // D11 is about ROUTING; D12 owns the timing, so let the cancel settle.
+      const cancelling = res.body!.cancel('consumer went away')
+      releaseCancel()
+      await expect(cancelling).resolves.toBeUndefined()
+      expect(seenCancel, 'the reader received the reason').toEqual(['consumer went away'])
+    })
+
+    it('D12 — the watch stays alive until the underlying cancel settles', async () => {
+      vi.useFakeTimers()
+      const { body, releaseCancel } = deferredBody()
+      globalThis.fetch = (() => Promise.resolve({
+        ok: true, status: 200, statusText: 'OK', headers: new Headers(), body,
+      } as unknown as Response)) as never
+      const { openAISpeech } = await import('@/lib/ai/openai-client')
+      const res = await openAISpeech(
+        { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
+        { model: 'tts', input: 'hej' })
+
+      const cancelling = res.body!.cancel('consumer went away')
+      await vi.advanceTimersByTimeAsync(0)
+      const during = state.runReads
+      await tick()
+      expect(state.runReads, 'still watching while the transport tears down')
+        .toBeGreaterThan(during)
+
+      releaseCancel()
+      await cancelling
+      const after = state.runReads
+      await tick()
+      expect(state.runReads, 'and released once cancellation really completed').toBe(after)
+    })
+  })
+})

@@ -24,7 +24,10 @@ import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
 import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
-import type { RunBoundAuthority } from '@/lib/governance/execution-signal'
+import {
+  isPhysicalAdmissionRefusal, isGovernanceAbort,
+  type RunBoundAuthority,
+} from '@/lib/governance/execution-signal'
 import {
   openAIChatCompletion, openAIImageEdit, openAIImageGenerate,
 } from '@/lib/ai/openai-client'
@@ -178,6 +181,8 @@ async function generateWithReference(
   authority?: RunBoundAuthority,
   /** Caller abort, composed with authority inside the adapter. */
   callerSignal?: AbortSignal,
+  /** D2: every retry attempt is its own physical flight, and all of them count. */
+  onFlight?: (f: { readonly authorityUnavailable: boolean } | undefined) => void,
 ): Promise<{ b64_json?: string | null }> {
   // Kastar MissingReferenceError. Ligger FÖRE varje provider-anrop, alltså
   // före den styrda spend-gränsen — ingen reservation hinner göras, och det
@@ -192,7 +197,7 @@ async function generateWithReference(
       console.log(`[ImageGen] ${label} — referens: ${refFilename}, försök ${attempt}`)
       const refFile = await toFile(refBuffer, 'reference.png', { type: 'image/png' })
       const res = await openAIImageEdit(
-        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director', authority },
+        { project, execution, operation: 'Generate Image (reference)', agent: 'Image Director', authority, onFlight },
         {
           model: 'gpt-image-1',
           image: refFile,
@@ -489,6 +494,44 @@ export interface RunStepResult {
   tokensIn: number
   tokensOut: number
   durationMs: number
+  /**
+   * G3C-3C-A · D2. TRUE when a RUN_BOUND physical request in this step reported
+   * that authority became unreadable while it was in flight.
+   *
+   * It is not a failure and not a refusal: the provider answered, and
+   * `content` is that answer. It means the execution owner must RE-ESTABLISH
+   * canonical authority before doing anything execution-bearing with the
+   * result — a retry, a context write, the next step. Between the boundary
+   * check and now there is a window nobody observed, and a cancellation could
+   * have become durable inside it.
+   *
+   * Deliberately a boolean, not a watcher: nothing below the runner should be
+   * holding provider-layer objects.
+   */
+  authorityRefreshRequired: boolean
+}
+
+/** One in-flight physical request's live authority state, as the runner sees it. */
+type FlightHandle = { readonly authorityUnavailable: boolean }
+
+/**
+ * Collects the flights of every physical request in one step.
+ *
+ * Read LATE and never cached: `authorityUnavailable` is a LIVE getter that can
+ * turn true long after the handle returned, so copying it at dispatch time
+ * would answer for a request that had barely begun. Sticky by construction —
+ * a later successful request does not erase an earlier unobserved window,
+ * because nothing in a step re-establishes authority between calls.
+ */
+function flightCollector(authority: RunBoundAuthority | undefined) {
+  const seen: FlightHandle[] = []
+  return {
+    onFlight: (f: FlightHandle | undefined) => { if (f) seen.push(f) },
+    // RUN_BOUND only: re-establishment means the claimed-run checkpoint, and a
+    // CONTRACT_ONLY call has no run to re-check. Its stop authority is the
+    // spend boundary's to own.
+    required: () => Boolean(authority) && seen.some(f => f.authorityUnavailable),
+  }
 }
 
 export type OnChunk = (chunk: string) => void
@@ -546,7 +589,10 @@ async function runAnthropicStep(
   // this, never to the awaited call below. Declared out here so the return can
   // hand it to `runStep`.
   let streamSettled: Promise<unknown> | undefined
-  let streamFlight: { authorityUnavailable: boolean } | undefined
+  // D2: the flight is COLLECTED, not merely received. `streamFlight` used to be
+  // assigned and never read — adapter truth with no owner, which is the same
+  // shape as a signal nothing passes.
+  const flights = flightCollector(input.authority)
 
   if (onChunk) {
     const stream = await getAnthropic({
@@ -556,7 +602,7 @@ async function runAnthropicStep(
       // derives CONTRACT_ONLY. The caller signal composes, never replaces.
       authority: input.authority, signal: input.signal,
       onStreamSettled: settled => { streamSettled = settled },
-      onFlight: f => { streamFlight = f },
+      onFlight: flights.onFlight,
     }).messages.stream({
       model,
       max_tokens: maxTokens,
@@ -583,6 +629,7 @@ async function runAnthropicStep(
       project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'messages.create',
       agent: input.cost?.agent, runId: input.runId,
       authority: input.authority, signal: input.signal,
+      onFlight: flights.onFlight,
     }).messages.create({
       model,
       max_tokens: maxTokens,
@@ -603,7 +650,10 @@ async function runAnthropicStep(
   // `streamSettled` is undefined on the non-streaming branch, which is correct:
   // that request really is finished when this returns.
   return {
-    result: { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start },
+    // Read HERE: the stream has been iterated to completion and its final
+    // message awaited above, so a latch that appeared mid-stream is visible.
+    result: { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+              durationMs: Date.now() - start, authorityRefreshRequired: flights.required() },
     settled: streamSettled,
   }
 }
@@ -620,11 +670,13 @@ async function runOpenAIStep(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  const flights = flightCollector(input.authority)
 
   if (onChunk) {
     const stream = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId, authority: input.authority },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority,
+        onFlight: flights.onFlight },
       {
         model,
         max_tokens: maxTokens,
@@ -650,7 +702,8 @@ async function runOpenAIStep(
   } else {
     const response = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
-        agent: input.cost?.agent, runId: input.runId, authority: input.authority },
+        agent: input.cost?.agent, runId: input.runId, authority: input.authority,
+        onFlight: flights.onFlight },
       {
         model,
         max_tokens: maxTokens,
@@ -674,7 +727,10 @@ async function runOpenAIStep(
     runId: input.runId,
   })
 
-  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, durationMs: Date.now() - start }
+  // The streaming branch above iterates to exhaustion before reaching here, so
+  // a latch that appeared mid-stream is already visible.
+  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+           durationMs: Date.now() - start, authorityRefreshRequired: flights.required() }
 }
 
 // ─── DALL-E image generation ──────────────────────────────────────────────────
@@ -713,6 +769,11 @@ async function runImageStep(
   start: number,
 ): Promise<RunStepResult> {
   const { userMessage, runId, systemPrompt } = input
+  // D2: an image step is MANY physical requests — a retry loop per image, plus
+  // reference edits. Every one of them is collected; a later success does not
+  // erase an earlier unobserved window, because nothing here re-establishes
+  // authority between attempts.
+  const flights = flightCollector(input.authority)
   console.log(`[ImageGen] Startar bildgenerering. runId=${runId} systemPromptFlags=${systemPrompt?.slice(0, 80)}`)
 
   // Detect mode from system prompt flags:
@@ -766,7 +827,8 @@ async function runImageStep(
         console.log(`[ImageGen] ${label} — försök ${attempt}`)
         const res = await openAIImageGenerate(
           { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'Generate Image',
-            agent: input.cost?.agent ?? 'Image Director', runId: input.runId, authority: input.authority },
+            agent: input.cost?.agent ?? 'Image Director', runId: input.runId, authority: input.authority,
+            onFlight: flights.onFlight },
           { model: 'gpt-image-1', prompt: finalPrompt, n: 1, size },
           { signal: input.signal },
         )
@@ -874,7 +936,7 @@ async function runImageStep(
         // ovan beordrar strikt användning av referensbilden, och det obundna
         // anropet bifogade ingen — det bad modellen följa en bild den inte fick.
         // Misslyckas det här kastas det och bilden hoppas över.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority, input.signal)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, sagaGptPrompt, '1024x1024', `saga bild ${i + 1}`, sagaRef, 3, input.authority, input.signal, flights.onFlight)
 
       } else if (isActivityMode) {
         // ── Ideogram v3 — flat cartoon square illustration ────────────────────
@@ -921,14 +983,14 @@ async function runImageStep(
         const aktGptPrompt = `Use the reference image as a strict style and character guide. Generate a NEW activity card illustration — same art style, same character designs — but showing a completely new activity scene. Bright flat cartoon children's book style, vibrant full color. ${NO_TEXT}. The illustrated scene fills the TOP 65% of the image. The BOTTOM 35% must be a completely empty soft white-to-light-pastel gradient with no characters, objects, or details — leave it blank for text overlay. ${NOVA_DESC}. ${PLING_DESC}. New scene: ${prompt}`
         const aktRef = `aktivitet-${i + 1}.png`
         // Referensbunden — se kommentaren i saga-grenen.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority, input.signal)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, aktGptPrompt, '1024x1024', `aktivitet bild ${i + 1}`, aktRef, 3, input.authority, input.signal, flights.onFlight)
 
       } else {
         const coloringPrompt = `Use the reference image as a strict style and character guide. Generate a NEW coloring book page — same line art style, same character designs for Nova and Pling — but showing a completely new scene. CRITICAL COLORING BOOK RULES: Black and white line art ONLY. Pure white background. Clean bold outlines. Absolutely NO filled-in areas, NO shading, NO gray tones, NO solid black fills anywhere. ALL regions — including Nova's hair, dark clothing, robot body — must be left as white space with outlines only, ready to be colored in by a child. ${NO_TEXT}. Characters — ${NOVA_DESC} (draw OUTLINES ONLY — do NOT fill in any area including hair). ${PLING_DESC} (draw OUTLINES ONLY — do NOT fill in any area). New scene: ${prompt} Simple cute cartoon style, printable coloring page quality.`
         const imgRef = `image-${i + 1}.png`
         // Referensbunden — och till skillnad från saga/aktivitet finns här ingen
         // Ideogram-väg alls, så detta är hela genereringen för färgläggningssidor.
-        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority, input.signal)
+        imageData = await generateWithReference(runProject(input.cost), input.execution, coloringPrompt, '1024x1024', `färgläggning bild ${i + 1}`, imgRef, 3, input.authority, input.signal, flights.onFlight)
       }
 
       // gpt-image-1 returnerar b64_json — ladda upp till Storage för permanent URL
@@ -946,6 +1008,18 @@ async function runImageStep(
         errors.push(`Bild ${i + 1}: inget bilddata returnerades`)
       }
     } catch (err) {
+      // ── G3C-3C-A · D1 · A GOVERNANCE REFUSAL IS NOT AN IMAGE FAILURE ───────
+      // This catch collects per-image failures into `errors[]` and moves on to
+      // the next prompt — correct for a provider fault, catastrophic for a
+      // refusal. Swallowed here, a durable cancellation would become a string
+      // in a results array: the loop would re-admit image 2, 3, … (each refused
+      // and each swallowed), return "successfully", and the executor would
+      // persist context for a run that governance had already stopped.
+      //
+      // The in-flight abort is the same class and gets the same answer: a
+      // cancellation that killed image 3's socket must not let image 4 start.
+      // Both leave the step immediately, for their owner to settle.
+      if (isPhysicalAdmissionRefusal(err) || isGovernanceAbort(err)) throw err
       consecutiveFailures++
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[ImageGen] ❌ Bild ${i + 1} misslyckades slutgiltigt:`, err)
@@ -967,5 +1041,6 @@ async function runImageStep(
     tokensIn: 0,
     tokensOut: 0,
     durationMs: Date.now() - start,
+    authorityRefreshRequired: flights.required(),
   }
 }

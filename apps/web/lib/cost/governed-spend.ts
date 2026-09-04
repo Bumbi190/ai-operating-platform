@@ -360,7 +360,21 @@ export async function withGovernedSpend<T>(
       // settling would count budget for a call that was never made. Its own
       // error type, deliberately: reporting it as a provider rejection would be
       // a lie about who refused and why.
-      await releaseSpend(verdict.reservationId)
+      //
+      // D4: the release is bookkeeping ABOUT the refusal, never a revision of
+      // it. If it throws, the refusal still stands — the reservation stays
+      // conservatively open and ages out through normal stale handling. Letting
+      // the release error escape instead would turn "governance refused before
+      // dispatch" into an unrecognised failure at the drain, which would then
+      // charge a retry for a request that never left. Same principle as the
+      // canonical stop-refusal path above.
+      try {
+        await releaseSpend(verdict.reservationId)
+      } catch (releaseError) {
+        console.error('[governed-spend] release after admission refusal failed; the '
+          + 'refusal stands and the reservation will age out:',
+          releaseError instanceof Error ? releaseError.message : String(releaseError))
+      }
       throw e
     }
     if (e instanceof ProviderNotDispatchedError) {

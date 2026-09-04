@@ -98,6 +98,26 @@ export async function runSteps(
       tokens_in: result.tokensIn, tokens_out: result.tokensOut, duration_ms: result.durationMs,
     })
 
+    // ── G3C-3C-A · D2 · LATCHED UNAVAILABLE ⇒ RE-ESTABLISH ──────────────────
+    // Same rule as the unified executor. The rollback path must not be the
+    // weaker one: if flag-off execution could persist context and start the
+    // next step after an unobserved authority window, turning the flag off
+    // would turn the guarantee off with it.
+    //
+    // The provider's answer is kept either way — `result.content` is already
+    // written to run_logs above, and a successful response is never converted
+    // into a failure. What waits is the AUTHORITATIVE write below.
+    if (result.authorityRefreshRequired) {
+      const boundary = `legacy:step:${step.order}:post-flight-reestablish`
+      console.warn(`[run ${runId}] step "${step.name}": authority was unreadable in flight — re-establishing before continuation`)
+      const fresh = await checkpointClaimedRun(db, { runId, projectId, claimId, boundary })
+      if (!fresh.allowed) {
+        const settled = await settleRefusal(db, fresh.refusal, runId, claimId)
+        if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, boundary, fresh.detail)
+        throw new RunCheckpointRefusedError(settled, fresh.detail, boundary)
+      }
+    }
+
     context[step.output_key] = result.content
     // G3C-3A: ownership-conditioned. This was an unconditional authoritative
     // write — a worker that had already lost its claim would happily overwrite

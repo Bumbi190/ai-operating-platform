@@ -181,6 +181,25 @@ export async function executeRunSteps(
         trackedMaxImages[step.output_key] = stepConfig.max_images
       }
 
+      /**
+       * Re-establishes canonical authority before an execution-bearing
+       * continuation, and settles through the one canonical mapping if refused.
+       *
+       * G3C-3C-A · D2. Two continuation points need this — the validation retry
+       * and the authoritative context write — and a second copy of the refusal
+       * mapping is how the drain and this executor once grew rival cancel
+       * branches. One routine, one mapping.
+       */
+      const reestablishAuthority = async (boundary: string): Promise<void> => {
+        const gate = await checkpointClaimedRun(anyDb, { runId, projectId, claimId, boundary })
+        if (gate.allowed) return
+        const settled = await settleRefusal(anyDb, gate.refusal, runId, claimId)
+        if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, boundary, gate.detail)
+        if (settled === 'CANCELLED') throw cancelledError(runId)
+        if (settled === 'FENCED') throw fencedError(runId)
+        throw new RunCheckpointRefusedError('STOPPED', gate.detail, boundary)
+      }
+
       let result = await runStep({
         // AUTONOMOUS: the executor runs under the drain/scheduler, never a
         // human, and its scope is the instance's own project.
@@ -224,17 +243,7 @@ export async function executeRunSteps(
         // execution-bearing unit, so canonical authority must be re-established
         // first. The checkpoint refuses if it still cannot read, and that
         // refusal settles through the one canonical mapping.
-        const retryGate = await checkpointClaimedRun(anyDb, {
-          runId, projectId, claimId, boundary: `unified:step:${step.order}:validation-retry`,
-        })
-        if (!retryGate.allowed) {
-          const rb = `unified:step:${step.order}:validation-retry`
-          const settled = await settleRefusal(anyDb, retryGate.refusal, runId, claimId)
-          if (settled === 'ERROR') throw new RunLifecycleWriteError(runId, rb, retryGate.detail)
-          if (settled === 'CANCELLED') throw cancelledError(runId)
-          if (settled === 'FENCED') throw fencedError(runId)
-          throw new RunCheckpointRefusedError('STOPPED', retryGate.detail, rb)
-        }
+        await reestablishAuthority(`unified:step:${step.order}:validation-retry`)
 
         result = await runStep({
           execution: {
@@ -290,6 +299,21 @@ export async function executeRunSteps(
         tokens_out: result.tokensOut,
         duration_ms: result.durationMs,
       })
+
+      // ── G3C-3C-A · D2 · LATCHED UNAVAILABLE ⇒ RE-ESTABLISH BEFORE WRITING ──
+      // The provider answered and `result.content` is kept — a successful
+      // response is never turned into a failure. But authority went unreadable
+      // while that request was in flight, so there is a window nobody observed,
+      // and a cancellation could have become durable inside it. Persisting
+      // context and moving to the next step are execution-bearing acts; both
+      // wait until canonical authority says this worker still owns the run.
+      //
+      // Conditional on the latch, deliberately: an unconditional re-check would
+      // add a round trip to every step to answer a question nothing raised.
+      if (result.authorityRefreshRequired) {
+        console.warn(`[run ${runId}] step "${step.name}": authority was unreadable in flight — re-establishing before continuation`)
+        await reestablishAuthority(`unified:step:${step.order}:post-flight-reestablish`)
+      }
 
       // Ackumulera output i context
       context[step.output_key] = result.content

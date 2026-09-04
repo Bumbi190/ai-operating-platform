@@ -148,9 +148,14 @@ function responseBodyLifetime(res: Response): { response: Response; settled: Pro
   let finished = false
   const finish = () => { if (!finished) { finished = true; done() } }
 
+  // ── D3 · THE READER OWNS THE LOCK, SO THE READER OWNS CANCELLATION ────────
+  // `getReader()` locks the body. A later `body.cancel()` on the locked stream
+  // throws `TypeError: ReadableStream is locked`, so the abandon path has to go
+  // through the reader it was taken with. Hoisted here so `cancel` can reach it.
+  const reader = body.getReader()
+
   const watched = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = body.getReader()
       try {
         for (;;) {
           const chunk = await reader.read()
@@ -164,8 +169,19 @@ function responseBodyLifetime(res: Response): { response: Response; settled: Pro
         finish()
       }
     },
-    // A consumer that abandons the body must not strand the watcher.
-    cancel(reason) { finish(); return body.cancel(reason) },
+    // A consumer that abandons the body must not strand the watcher — and must
+    // not release it early either. `finish()` runs in `finally`, AFTER the
+    // underlying cancellation settles: reporting the transfer finished while
+    // the socket is still tearing down would end the watch during the very
+    // window it exists to cover.
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason)
+      } finally {
+        reader.releaseLock()
+        finish()
+      }
+    },
   })
 
   return {

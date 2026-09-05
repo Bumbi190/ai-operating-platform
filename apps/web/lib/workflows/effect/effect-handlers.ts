@@ -6,18 +6,19 @@
  * read-only map's `ExecutableReadOnlyActionKind` keying and gives the same
  * property: the surface cannot grow by accident.
  *
- * `generate_monthly_story` is deliberately absent. It is declared in the
- * registry with the governed-effect family and it has no entry here, because
- * enabling it is a separate decision belonging to the phase that performs the
- * first real dispatch.
+ * `generate_monthly_story` joined the map in Phase 2B-3, the phase that performs
+ * the first real dispatch. The other four Familje-Stunden write actions are
+ * still absent for exactly the reason it used to be: each is its own decision.
  */
 
 import type { GovernedEffectEnabledKind } from '../action-registry'
 import type { EffectHandler } from './effect-handler'
 import { proofGovernedEffectHandler } from './proof-handler'
+import { generateMonthlyStoryHandler } from './story-handler'
 
 export const EFFECT_HANDLERS: Record<GovernedEffectEnabledKind, EffectHandler> = {
   proof_governed_effect: proofGovernedEffectHandler,
+  generate_monthly_story: generateMonthlyStoryHandler,
 }
 
 export function effectHandlerFor(kind: string): EffectHandler | null {

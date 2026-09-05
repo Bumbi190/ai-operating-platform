@@ -309,7 +309,7 @@ describe('the prompt renders canon, it never states it', () => {
 
 // ── E. The generation action ────────────────────────────────────────────────
 
-describe('generation is governed, and not yet enabled', () => {
+describe('generation is governed, and now enabled', () => {
   it('is FINANCIAL on the class table, not by label', () => {
     expect(ACTION_REGISTRY.generate_monthly_story.action_class).toBe('FINANCIAL')
     const p = ACTION_CLASS_POLICY.FINANCIAL
@@ -324,9 +324,16 @@ describe('generation is governed, and not yet enabled', () => {
     expect(ACTION_REGISTRY.generate_monthly_story.executor_family).toBe('governed_effect')
   })
 
-  it('MUTATION — it is NOT enabled: no real dispatch is authorised yet', () => {
-    expect(isGovernedEffectEnabled('generate_monthly_story')).toBe(false)
-    expect([...GOVERNED_EFFECT_ENABLED_KINDS]).toEqual(['proof_governed_effect'])
+  it('is enabled, and it is the ONLY Familje-Stunden effect that is', () => {
+    // Phase 2B-3. The class policy above is what governs it — enabling a kind
+    // adds no exemption, it only lets the governed path run at all.
+    expect(isGovernedEffectEnabled('generate_monthly_story')).toBe(true)
+    expect([...GOVERNED_EFFECT_ENABLED_KINDS])
+      .toEqual(['proof_governed_effect', 'generate_monthly_story'])
+    for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
+                        'send_release_newsletter', 'upload_protected_artifacts']) {
+      expect(isGovernedEffectEnabled(kind), kind).toBe(false)
+    }
   })
 
   it('is placed only at content_generation', () => {

@@ -26,7 +26,8 @@ import { createWorkflowActionRun } from '../workflows/action-run'
 import { checkAnsweredBy } from '../workflows/action-discovery'
 import { summarizeSchedulingDecision } from '../workflows/action-scheduling'
 import { findAdapter } from '../workflows/adapters/registry'
-import { ACTION_REGISTRY } from '../workflows/action-registry'
+import { ACTION_REGISTRY, isGovernedEffectEnabled } from '../workflows/action-registry'
+import { ACTION_CLASS_POLICY } from '../workflows/action-target'
 
 const FS_DEF_KEY = 'familje-stunden.monthly-release'
 const PROBE_DEF_KEY = 'omnira.probe-validation'
@@ -409,25 +410,42 @@ describe('no other gate moved', () => {
     expect(src).not.toMatch(/input\.actionClass/)
   })
 
-  it('TRIPWIRE — every action that can claim an exemption is READ_ONLY', () => {
-    // Not a prohibition on ever mapping a write, but a deliberate stop: the
-    // exemption would then apply to a write, and that deserves its own review
-    // rather than arriving as a silent consequence of an unrelated edit.
+  it('TRIPWIRE — an exemption reaches a write only under MORE governance', () => {
+    // The stop this tripwire was built for fired in Phase 2B-3, and the review
+    // it demanded happened: `generate_monthly_story` is mapped because
+    // `story_generated` is its OWN output, and gating an action on its own
+    // output is the PR9h deadlock with no exit — no evidence ⇒ no run ⇒ no
+    // evidence.
+    //
+    // So the protected property is restated rather than dropped. An exemption
+    // may reach a non-READ_ONLY action only when that action is subject to
+    // strictly MORE governance than a read: it must be on the governed-effect
+    // allowlist, it must require authorization, and it must be unretryable.
+    // A write that is merely declared cannot claim one.
     const GITHUB = ['observe_github_pr_merged', 'observe_github_pr_checks_green',
                     'observe_github_merge_sha_match',
                     'observe_vercel_production_ready', 'observe_vercel_deploy_sha_match',
                     'observe_vercel_production_alias']
-    for (const kind of ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB]) {
+    const READS = ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB]
+    for (const kind of READS) {
       expect(checkAnsweredBy(kind), kind).not.toBeNull()
       expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class, kind).toBe('READ_ONLY')
     }
     const mapped = Object.keys(ACTION_REGISTRY).filter(k => checkAnsweredBy(k) !== null)
-    expect(mapped.sort()).toEqual(
-      ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB].sort())
-    // The protected property, not the count: an exemption may never reach a
-    // write. Every mapped kind is READ_ONLY, whatever the list grows to.
-    expect(mapped.every(k =>
-      ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY].action_class === 'READ_ONLY')).toBe(true)
+    // Enumerated, so a NEW write arriving in the map still trips this wire and
+    // gets the same review rather than inheriting this one's conclusion.
+    const WRITES = ['generate_monthly_story']
+    expect(mapped.sort()).toEqual([...READS, ...WRITES].sort())
+
+    for (const k of mapped) {
+      const meta = ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY]
+      if (meta.action_class === 'READ_ONLY') continue
+      // Every clause is a way the exemption could have reached something weaker.
+      expect(isGovernedEffectEnabled(k), `${k} must be allowlisted`).toBe(true)
+      const policy = ACTION_CLASS_POLICY[meta.action_class]
+      expect(policy.requiresAuthorization, `${k} must require authorization`).toBe(true)
+      expect(policy.maxAttempts, `${k} must not auto-retry`).toBe(1)
+    }
     // And each mapping is 1:1 — no check is answered by two actions.
     const answered = mapped.map(k => checkAnsweredBy(k))
     expect(new Set(answered).size).toBe(answered.length)

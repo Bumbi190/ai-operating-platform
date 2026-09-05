@@ -47,8 +47,12 @@ const AUTH = {
 // ── A. Enablement is per kind, never per class ──────────────────────────────
 
 describe('widening the family enabled exactly one thing', () => {
-  it('the enabled list holds only the proof action', () => {
-    expect([...GOVERNED_EFFECT_ENABLED_KINDS]).toEqual(['proof_governed_effect'])
+  it('the enabled list holds the proof action and one real effect', () => {
+    // Phase 2B-3 added the second entry. Asserted as an exact list rather than a
+    // count, so a third arrives as a failure here and not as a surprise in
+    // production.
+    expect([...GOVERNED_EFFECT_ENABLED_KINDS])
+      .toEqual(['proof_governed_effect', 'generate_monthly_story'])
   })
 
   it('MUTATION — no Familje-Stunden effectful action became executable', () => {
@@ -68,16 +72,19 @@ describe('widening the family enabled exactly one thing', () => {
     }
   })
 
-  it('the proof action is the only ENABLED governed-effect kind', () => {
-    // Phase 2B-2 declared `generate_monthly_story` in the same family without
-    // enabling it. That is the distinction this suite exists to protect: family
-    // membership describes what a kind WOULD need; the allowlist decides whether
-    // it may run. A kind can sit in the family indefinitely and never act.
+  it('family membership and enablement are still separate decisions', () => {
+    // Phase 2B-2 declared `generate_monthly_story` in the family without
+    // enabling it; Phase 2B-3 enabled it. The distinction this suite protects is
+    // unchanged — family membership describes what a kind WOULD need, the
+    // allowlist decides whether it may run — and it is still load-bearing for
+    // the four Familje-Stunden writes, which carry effectful classes and are
+    // enabled by nothing.
     const fam = Object.entries(ACTION_REGISTRY)
       .filter(([, m]) => (m as { executor_family: string }).executor_family === 'governed_effect')
       .map(([k]) => k).sort()
     expect(fam).toEqual(['generate_monthly_story', 'proof_governed_effect'])
-    expect(fam.filter(isGovernedEffectEnabled)).toEqual(['proof_governed_effect'])
+    expect(fam.filter(isGovernedEffectEnabled).sort())
+      .toEqual(['generate_monthly_story', 'proof_governed_effect'])
   })
 
   it('it is placed only on the Omnira proof definition', () => {

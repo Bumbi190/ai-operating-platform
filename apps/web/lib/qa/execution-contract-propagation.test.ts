@@ -62,6 +62,12 @@ describe('every governed spend supplies an explicit execution contract', () => {
     // claim. Note what did NOT happen: no workflow module outside this branch
     // calls the boundary, and the read-only executor path still cannot.
     'lib/workflows/effect/effect-execution.ts',
+    // Phase 2B-2.6. The deterministic proof handler reserves at its own dispatch
+    // boundary, under the run's identity — the same shape a priced provider call
+    // takes. It is here because a reviewer looked at it, and because proving the
+    // runtime against a zero-cost effect is what let a vacuous reservation pass
+    // for governance in the first place.
+    'lib/workflows/effect/proof-handler.ts',
   ]
 
   it('all runtime withGovernedSpend calls pass `execution`', () => {

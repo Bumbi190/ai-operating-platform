@@ -70,7 +70,7 @@ const CONFIGURED: Record<string, string | undefined> = {
   FAMILJE_STUNDEN_GITHUB_INSTALLATION_ID: '7890123',
   FAMILJE_STUNDEN_GITHUB_APP_PRIVATE_KEY: TEST_PRIVATE_KEY,
   FAMILJE_STUNDEN_GITHUB_REPO: 'owner/repo',
-  FAMILJE_STUNDEN_VERCEL_TOKEN: 'test-token',
+  FAMILJE_STUNDEN_VERCEL_TOKEN: 'vcp_test_project_scoped',
   FAMILJE_STUNDEN_VERCEL_PROJECT_ID: 'prj_test',
   FAMILJE_STUNDEN_EXPECTED_MERGE_SHA: MERGE_SHA,
 }
@@ -140,9 +140,24 @@ function checkRunsBody(over: { supabase?: string | null; comments?: string | nul
   ] }
 }
 
+/**
+ * The LISTING now resolves one id and nothing else — it does not populate
+ * `alias`, which is why reading the verdict from it was the defect.
+ */
 function deployBody(over: Record<string, unknown> = {}) {
-  return { deployments: [{ uid: 'dpl_test', readyState: 'READY', target: 'production',
-    meta: { githubCommitSha: MERGE_SHA }, alias: ['familje-stunden.se'], ...over }] }
+  return { deployments: [{ uid: 'dpl_test', ...over }] }
+}
+
+/** The v13 record: the authority for every field the three checks read. */
+function deployDetail(over: Record<string, unknown> = {}) {
+  return {
+    uid: 'dpl_test', readyState: 'READY', status: 'READY', readySubstate: 'PROMOTED',
+    target: 'production', source: 'git',
+    meta: { githubCommitSha: MERGE_SHA },
+    alias: ['familje-stunden.se', 'familje-stunden-v2.vercel.app'],
+    aliasAssigned: true, aliasError: null,
+    ...over,
+  }
 }
 
 async function runChain(
@@ -205,6 +220,7 @@ describe('deployment verification cannot mutate anything', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     expect(calls.length).toBeGreaterThan(0)
     // Every REPOSITORY request is a GET. The single POST in the whole call
@@ -223,6 +239,7 @@ describe('deployment verification cannot mutate anything', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     // A token in a URL is a token in a log, a proxy and a browser history.
     expect(calls.every(c => !c.url.includes('test-token'))).toBe(true)
@@ -239,6 +256,7 @@ describe('a complete, correct chain', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     expect(out).toHaveLength(6)
     // All six now pass: the GitHub App can read BOTH check systems, so the
@@ -254,6 +272,7 @@ describe('a complete, correct chain', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     // Two different commits, deliberately. What SHIPPED is the merge commit, so
     // the deployment comparison is made against it and nothing else.
@@ -276,8 +295,9 @@ describe('READY on the wrong commit', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       // The listing has a READY production deployment — but for another commit.
-      '/v6/deployments': { body: { deployments: [{ uid: 'dpl_old', readyState: 'READY',
-        target: 'production', meta: { githubCommitSha: OTHER_SHA }, alias: ['x'] }] } },
+      // The sha= filter is server-side now, so a deployment for another commit
+      // simply is not returned: the listing comes back empty.
+      '/v6/deployments': { body: { deployments: [] } },
     })
     // No deployment for the merge SHA exists, so the whole Vercel half is not
     // satisfied — a healthy-looking unrelated deployment must not stand in.
@@ -294,7 +314,8 @@ describe('READY on the wrong commit', () => {
       '/pulls/40': { body: prBody() },
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
-      '/v6/deployments': { body: deployBody({ meta: { githubCommitSha: MERGE_SHA } }) },
+      '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     const out = await withConfig(CONFIGURED,
       () => verifyDeploymentChain({ prNumber: 40 }, NOW, { fetchImpl: f.impl }))
@@ -319,6 +340,7 @@ describe('no link is inferred from another', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     expect(byKey(out, 'github_pr_merged').result).toBe('fail')
     expect(byKey(out, 'vercel_deploy_sha_matches_merge_sha').result).toBe('fail')
@@ -332,6 +354,7 @@ describe('no link is inferred from another', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     })
     // Every required CI signal is green on the head commit — and the pull
     // request is still open. One says nothing about the other.
@@ -355,7 +378,8 @@ describe('no link is inferred from another', () => {
       '/pulls/40': { body: prBody() },
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
-      '/v6/deployments': { body: deployBody({ target: 'preview' }) },
+      '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail({ target: 'preview' }) },
     })
     expect(byKey(out, 'vercel_production_ready').result).toBe('fail')
     expect(byKey(out, 'vercel_production_ready').observed).toContain('not production')
@@ -384,6 +408,7 @@ describe('the expected merge SHA is an independent pin', () => {
       '/statuses': { body: statusBody() },
       '/check-runs': { body: checkRunsBody() },
       '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail() },
     }, CONFIGURED, { prNumber: 40, expectedMergeSha: null })
     // Nothing to compare against. Never PASS: a comparison with no right-hand
     // side proves nothing, and the pin is the instance's, not the deployment's.
@@ -464,11 +489,13 @@ describe('eventual consistency is bounded, and mismatch is not retried', () => {
 
   it('a BUILDING deployment is blocked but an ERROR one is a finding', async () => {
     const building = await runChain({ ...routes,
-      '/v6/deployments': { body: deployBody({ readyState: 'BUILDING' }) } })
+      '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail({ readyState: 'BUILDING', readySubstate: null }) } })
     expect(byKey(building.out, 'vercel_production_ready').result).toBe('blocked')
 
     const errored = await runChain({ ...routes,
-      '/v6/deployments': { body: deployBody({ readyState: 'ERROR' }) } })
+      '/v6/deployments': { body: deployBody() },
+      '/v13/deployments/': { body: deployDetail({ readyState: 'ERROR', readySubstate: null }) } })
     expect(byKey(errored.out, 'vercel_production_ready').result).toBe('fail')
   })
 })

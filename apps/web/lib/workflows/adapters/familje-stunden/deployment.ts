@@ -36,6 +36,9 @@ import {
   observeGithubMergeShaMatch, observeGithubPrChecksGreen, observeGithubPrMerged,
   readPullRequest,
 } from './github-observation'
+import {
+  observeVercelDeployShaMatch, observeVercelProductionAlias, observeVercelProductionReady,
+} from './vercel-observation'
 
 
 const GITHUB_API = 'https://api.github.com'
@@ -64,11 +67,6 @@ const VERCEL_SYSTEM = 'vercel'
 function config() {
   return {
     repo: process.env.FAMILJE_STUNDEN_GITHUB_REPO || null,     // "owner/name"
-    vercelToken: process.env.FAMILJE_STUNDEN_VERCEL_TOKEN || null,
-    vercelProjectId: process.env.FAMILJE_STUNDEN_VERCEL_PROJECT_ID || null,
-    vercelTeamId: process.env.FAMILJE_STUNDEN_VERCEL_TEAM_ID || null,
-    /** The release PR under verification. */
-    releasePr: process.env.FAMILJE_STUNDEN_RELEASE_PR || null,
   }
 }
 
@@ -139,59 +137,12 @@ async function getJson<T>(
 // account-wide with write access to every repository.
 
 // ── Vercel ───────────────────────────────────────────────────────────────────
-
-export interface DeploymentFacts {
-  id: string
-  state: string
-  target: string | null
-  /** Vercel's own authoritative git metadata. Never the site's HTTP status. */
-  commitSha: string | null
-  aliases: string[]
-  observedAt: string
-}
-
-/**
- * The production deployment carrying a given commit SHA.
- *
- * Searched by SHA rather than "the newest production deployment", so a later
- * unrelated deploy cannot be mistaken for the one under verification.
- */
-export async function findProductionDeployment(
-  commitSha: string, now: string, deps: { fetchImpl?: typeof fetch } = {},
-): Promise<Read<DeploymentFacts | null>> {
-  const { vercelToken, vercelProjectId, vercelTeamId } = config()
-  if (!vercelToken || !vercelProjectId) {
-    return { ok: false, failure: 'credential_missing',
-      detail: 'FAMILJE_STUNDEN_VERCEL_TOKEN / FAMILJE_STUNDEN_VERCEL_PROJECT_ID are not configured' }
-  }
-  const params = new URLSearchParams({ projectId: vercelProjectId, target: 'production', limit: '20' })
-  if (vercelTeamId) params.set('teamId', vercelTeamId)
-
-  const r = await getJson<{ deployments?: {
-    uid?: string; id?: string; state?: string; readyState?: string; target?: string | null
-    meta?: { githubCommitSha?: string }; alias?: string[]
-  }[] }>(`${VERCEL_API}/v6/deployments?${params}`,
-    { Authorization: `Bearer ${vercelToken}` }, deps.fetchImpl ?? fetch)
-  if (!r.ok) return r
-
-  const list = r.value?.deployments
-  if (!Array.isArray(list)) {
-    return { ok: false, failure: 'malformed_response', detail: 'deployment listing was not usable' }
-  }
-  const hit = list.find(d => d.meta?.githubCommitSha === commitSha)
-  // Absent is not an error — the deploy may simply not have started yet. The
-  // caller decides whether that is "still coming" or "never arrived".
-  if (!hit) return { ok: true, value: null }
-
-  return {
-    ok: true,
-    value: {
-      id: hit.uid ?? hit.id ?? '', state: hit.readyState ?? hit.state ?? 'UNKNOWN',
-      target: hit.target ?? null, commitSha: hit.meta?.githubCommitSha ?? null,
-      aliases: Array.isArray(hit.alias) ? hit.alias : [], observedAt: now,
-    },
-  }
-}
+//
+// This module no longer talks to Vercel either. The GET-only transport, the
+// exact sha= binding and the three observations live in ./vercel-observation.
+// The predecessor here searched the newest twenty production deployments
+// client-side and read `alias` from that listing — a window that false-fails
+// once a twenty-first lands, and a field the listing does not populate at all.
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
@@ -244,143 +195,46 @@ export async function verifyDeploymentChain(
 
   const pr = await readPullRequest(input.prNumber, deps)
 
-  // ── Vercel side. Verified against the MERGE SHA, never a requested one. ──
-  const mergeSha = pr.ok ? pr.value.mergeCommitSha : null
-  const readyExpected = 'a production deployment for the merge SHA is READY'
-  const matchExpected = 'the deployed SHA is exactly the merge SHA'
-  const aliasExpected = 'the production deployment carries a production alias'
-
-  if (!mergeSha) {
-    for (const [k, e] of [['vercel_production_ready', readyExpected],
-                          ['vercel_deploy_sha_matches_merge_sha', matchExpected],
-                          ['production_alias_attached', aliasExpected]] as const) {
-      out.push(notPass(k, 'authoritative_fail', {
-        expected: e, observed: 'no merge SHA to verify a deployment against',
-        authoritative_system: VERCEL_SYSTEM, observed_at: now, detail: { pr: input.prNumber },
-      }))
-    }
-    return out
+  // ── The three Vercel checks ──
+  // Delegated whole, to the SAME functions the three registered actions call,
+  // so a passive verification and an executed action can never disagree.
+  // Bound by the ACTUAL merge SHA — never the head SHA, never the attested pin.
+  const vercel = {
+    mergeSha: pr.ok ? pr.value.mergeCommitSha : null,
+    prNumber: input.prNumber, attempt, maxAttempts,
   }
-
-  const dep = await findProductionDeployment(mergeSha, now, deps)
-  if (!dep.ok) {
-    for (const [k, e] of [['vercel_production_ready', readyExpected],
-                          ['vercel_deploy_sha_matches_merge_sha', matchExpected],
-                          ['production_alias_attached', aliasExpected]] as const) {
-      out.push(blocked(k, dep.failure, e, dep.detail, VERCEL_SYSTEM, now))
-    }
-    return out
-  }
-
-  const d = dep.value
-  if (d === null) {
-    // Not indexed yet is normal early and a finding late. The retry budget is
-    // what separates the two, so this cannot block a release forever.
-    const exhausted = attempt >= maxAttempts
-    for (const [k, e] of [['vercel_production_ready', readyExpected],
-                          ['vercel_deploy_sha_matches_merge_sha', matchExpected],
-                          ['production_alias_attached', aliasExpected]] as const) {
-      out.push(notPass(k, exhausted ? 'authoritative_fail' : 'service_unavailable', {
-        expected: e,
-        observed: exhausted
-          ? `no production deployment for ${mergeSha} after ${attempt} attempts`
-          : `no production deployment for ${mergeSha} yet (attempt ${attempt}/${maxAttempts})`,
-        authoritative_system: VERCEL_SYSTEM, observed_at: now,
-        detail: { merge_sha: mergeSha, attempt, max_attempts: maxAttempts, retryable: !exhausted },
-      }))
-    }
-    return out
-  }
-
-  const detail = {
-    deployment_id: d.id, state: d.state, target: d.target,
-    deployed_sha: d.commitSha, merge_sha: mergeSha, aliases: d.aliases.length,
-  }
-
-  // ── vercel_production_ready ──
-  if (d.target !== 'production') {
-    out.push(notPass('vercel_production_ready', 'authoritative_fail', {
-      expected: readyExpected, observed: `deployment target is ${d.target ?? 'null'}, not production`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  } else if (d.state === 'BUILDING' || d.state === 'QUEUED' || d.state === 'INITIALIZING') {
-    out.push(notPass('vercel_production_ready', 'service_unavailable', {
-      expected: readyExpected, observed: `deployment is ${d.state}`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail: { ...detail, retryable: true },
-    }))
-  } else if (d.state !== 'READY') {
-    // ERROR and CANCELED are immediate findings, never retried.
-    out.push(notPass('vercel_production_ready', 'authoritative_fail', {
-      expected: readyExpected, observed: `deployment is ${d.state}`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  } else {
-    out.push(pass('vercel_production_ready', {
-      expected: readyExpected, observed: `deployment ${d.id} is READY on production`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  }
-
-  // ── vercel_deploy_sha_matches_merge_sha ──
-  // Deliberately independent of the READY check. A READY deployment on the wrong
-  // commit is the exact failure that looks healthy from outside, so "READY" is
-  // never allowed to imply "the right thing is deployed".
-  if (d.commitSha === null) {
-    out.push(notPass('vercel_deploy_sha_matches_merge_sha', 'malformed_response', {
-      expected: matchExpected, observed: 'deployment carries no authoritative git SHA',
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  } else if (d.commitSha !== mergeSha) {
-    out.push(notPass('vercel_deploy_sha_matches_merge_sha', 'authoritative_fail', {
-      expected: matchExpected,
-      observed: `production is deployed on ${d.commitSha}, merge SHA is ${mergeSha}`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  } else {
-    out.push(pass('vercel_deploy_sha_matches_merge_sha', {
-      expected: matchExpected, observed: `deployed SHA equals merge SHA (${mergeSha})`,
-      authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-    }))
-  }
-
-  // ── production_alias_attached ──
-  out.push(d.aliases.length > 0
-    ? pass('production_alias_attached', {
-        expected: aliasExpected, observed: `${d.aliases.length} alias(es) attached`,
-        authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-      })
-    : notPass('production_alias_attached', 'authoritative_fail', {
-        expected: aliasExpected, observed: 'the production deployment has no alias attached',
-        authoritative_system: VERCEL_SYSTEM, observed_at: now, detail,
-      }))
+  out.push(await observeVercelProductionReady(vercel, now, deps))
+  out.push(await observeVercelDeployShaMatch(vercel, now, deps))
+  out.push(await observeVercelProductionAlias(vercel, now, deps))
 
   return out
 }
 
-/** The release PR from configuration, when one is set. */
-export function configuredReleasePr(): number | null {
-  const raw = config().releasePr
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isInteger(n) && n > 0 ? n : null
-}
-
 /**
- * Adapter entry point. With no PR configured every check reports blocked rather
- * than guessing which pull request a release belongs to.
+ * Adapter entry point for `frontend_deploy`.
+ *
+ * ── WHY THIS CANNOT ANSWER ANY MORE ─────────────────────────────────────────
+ * It used to read `FAMILJE_STUNDEN_RELEASE_PR` — a deployment-global value, one
+ * pull request number for every month that will ever run. That is exactly the
+ * authority PR #184 replaced: a release identity belongs to ONE workflow
+ * instance, and October's PR number silently answering November's question is
+ * the failure the instance binding exists to prevent.
+ *
+ * A passive verifier receives a month key and a clock. It has no instance
+ * evidence, so it cannot name the release — and inventing one from configuration
+ * would reintroduce the defect. It therefore reports BLOCKED with the reason,
+ * and the six checks are answered by the registered READ_ONLY actions, which do
+ * hold the binding.
  */
 export async function verifyReleaseDeployment(
-  now: string, deps: { fetchImpl?: typeof fetch } = {},
+  now: string, _deps: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerificationEvidence[]> {
-  const pr = configuredReleasePr()
-  if (pr === null) {
-    return ['github_pr_merged', 'github_pr_checks_green', 'github_merge_sha_matches_expected',
-            'vercel_production_ready', 'vercel_deploy_sha_matches_merge_sha', 'production_alias_attached']
-      .map(key => notPass(key, 'credential_missing', {
-        expected: 'a release pull request to verify', observed: 'no release PR is configured',
-        authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
-        detail: { missing_config: 'FAMILJE_STUNDEN_RELEASE_PR' },
-      }))
-  }
-  return verifyDeploymentChain({ prNumber: pr }, now, deps)
+  return ['github_pr_merged', 'github_pr_checks_green', 'github_merge_sha_matches_expected',
+          'vercel_production_ready', 'vercel_deploy_sha_matches_merge_sha', 'production_alias_attached']
+    .map(key => notPass(key, 'credential_missing', {
+      expected: 'a release pull request bound to this workflow instance',
+      observed: 'the release identity is instance-bound; a passive verifier cannot name it',
+      authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
+      detail: { reason: 'RELEASE_IDENTITY_IS_INSTANCE_BOUND', retryable: false },
+    }))
 }

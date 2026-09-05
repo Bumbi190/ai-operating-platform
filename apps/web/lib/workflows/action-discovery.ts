@@ -46,6 +46,9 @@ const ANSWERS_CHECK: ReadonlyMap<string, string> = new Map([
   ['observe_github_pr_merged', 'github_pr_merged'],
   ['observe_github_pr_checks_green', 'github_pr_checks_green'],
   ['observe_github_merge_sha_match', 'github_merge_sha_matches_expected'],
+  ['observe_vercel_production_ready', 'vercel_production_ready'],
+  ['observe_vercel_deploy_sha_match', 'vercel_deploy_sha_matches_merge_sha'],
+  ['observe_vercel_production_alias', 'production_alias_attached'],
 ])
 
 /**

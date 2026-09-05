@@ -414,7 +414,9 @@ describe('no other gate moved', () => {
     // exemption would then apply to a write, and that deserves its own review
     // rather than arriving as a silent consequence of an unrelated edit.
     const GITHUB = ['observe_github_pr_merged', 'observe_github_pr_checks_green',
-                    'observe_github_merge_sha_match']
+                    'observe_github_merge_sha_match',
+                    'observe_vercel_production_ready', 'observe_vercel_deploy_sha_match',
+                    'observe_vercel_production_alias']
     for (const kind of ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB]) {
       expect(checkAnsweredBy(kind), kind).not.toBeNull()
       expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class, kind).toBe('READ_ONLY')

@@ -43,6 +43,10 @@ import {
   observeGithubMergeShaMatchHandler, observeGithubPrChecksGreenHandler,
   observeGithubPrMergedHandler,
 } from './handlers/observe-github-release'
+import {
+  observeVercelDeployShaMatchHandler, observeVercelProductionAliasHandler,
+  observeVercelProductionReadyHandler,
+} from './handlers/observe-vercel-release'
 import { observeReleaseGateHandler } from './handlers/observe-release-gate'
 import { composeMonthlyBriefHandler } from './handlers/compose-monthly-brief'
 import { projectScope } from '@/lib/governance/execution-stop'
@@ -64,6 +68,9 @@ const HANDLERS: Record<ExecutableReadOnlyActionKind, ReadOnlyHandler> = {
   observe_github_pr_merged: observeGithubPrMergedHandler,
   observe_github_pr_checks_green: observeGithubPrChecksGreenHandler,
   observe_github_merge_sha_match: observeGithubMergeShaMatchHandler,
+  observe_vercel_production_ready: observeVercelProductionReadyHandler,
+  observe_vercel_deploy_sha_match: observeVercelDeployShaMatchHandler,
+  observe_vercel_production_alias: observeVercelProductionAliasHandler,
 }
 
 export type ExecutorRefusal =

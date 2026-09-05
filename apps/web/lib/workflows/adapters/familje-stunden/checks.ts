@@ -141,6 +141,13 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
     'get-protected-ebook is deployed, active and JWT-verified with the shared manifest'),
   // Re-checked before release and after it: a redeploy between approval and
   // release would otherwise pass unnoticed.
+  // Re-verified against the FINAL release generation. edge_deploy runs BEFORE
+  // frontend_deploy, where the release identity is finalized by its consumers,
+  // so an edge_deploy PASS was made against a generation the release may since
+  // have legitimately moved past. Same provenance, same severity — nothing is
+  // relaxed by re-asking the question later.
+  observedCheck('deployed_manifest_matches_expected', 'approval_release',
+    'The deployed shared manifest equals the hash pinned for the FINAL release generation'),
   observedCheck('shared_manifest_consumers_in_sync', 'approval_release',
     'Consumers still agree on the deployed shared manifest at release approval'),
   observedCheck('shared_manifest_consumers_in_sync', 'post_release_qa',

@@ -278,9 +278,29 @@ export function checkConsumersInSync(reports: ConsumerReport[], now: string): Ve
  * Without an expectation this reports blocked. Guessing one would defeat the
  * entire point.
  */
+export interface ManifestExpectation {
+  expected_manifest_sha256: string
+  /**
+   * The release generation the expectation belongs to.
+   *
+   * Recorded INTO the evidence, so a later consumer can tell whether a green
+   * row applies to the release that actually shipped. `edge_deploy` runs before
+   * the release identity is final, so a PASS here may have been made against a
+   * generation the release has since legitimately moved past — and a check-key
+   * match alone would hide that completely.
+   */
+  release_pr_number: number
+  release_merge_sha: string
+}
+
 export function checkDeployedManifestMatchesExpected(
-  reports: ConsumerReport[], expectedManifestSha: string | null, now: string,
+  reports: ConsumerReport[], expectation: ManifestExpectation | null, now: string,
 ): VerificationEvidence {
+  const expectedManifestSha = expectation?.expected_manifest_sha256 ?? null
+  const generation = expectation === null ? {} : {
+    release_pr_number: expectation.release_pr_number,
+    release_merge_sha: expectation.release_merge_sha,
+  }
 
   const key = 'deployed_manifest_matches_expected'
   const expected = `deployed shared manifest equals the pinned expected hash`
@@ -299,13 +319,17 @@ export function checkDeployedManifestMatchesExpected(
     return notPass(key, FAILURE_TO_KIND[worst.failure], {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: `could not verify ${failed.map(f => f.slug).join(', ')}`,
-      detail: { expected_sha256: expectedManifestSha },
+      detail: { ...generation, expected_sha256: expectedManifestSha },
     })
   }
 
   const facts = reports.map(r => (r.read as { ok: true; facts: DeployedFunctionFacts }).facts)
   const stale = facts.filter(f => f.manifestHash !== expectedManifestSha)
   const detail = {
+    // The generation is recorded on EVERY outcome, most of all on the PASS: a
+    // green row that does not say which release it verified cannot be told
+    // apart from one that verified the release currently being approved.
+    ...generation,
     expected_sha256: expectedManifestSha,
     consumers: facts.map(f => ({ slug: f.slug, version: f.version, manifest_sha256: f.manifestHash })),
   }
@@ -376,13 +400,13 @@ export async function verifyDeployedSource(
    * value answers for a month it does not belong to. A passive verifier has no
    * instance evidence, so it passes null and the dependent check reports blocked.
    */
-  expectedManifestSha: string | null,
+  expectation: ManifestExpectation | null,
   deps: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerificationEvidence[]> {
   const reports = await readAllConsumers(now, deps)
   return [
     checkConsumersInSync(reports, now),
-    checkDeployedManifestMatchesExpected(reports, expectedManifestSha, now),
+    checkDeployedManifestMatchesExpected(reports, expectation, now),
     checkConsumerCurrent(reports[0], 'sign_protected_asset_source_current', now),
     checkConsumerCurrent(reports[1], 'get_protected_ebook_source_current', now),
   ]

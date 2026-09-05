@@ -28,6 +28,8 @@ const manifestBody = (months = ['2026-08', '2026-09', '2026-10']) =>
   months.map(m => `  "${m}": {\n    mp3: "x/${m}.mp3",\n  },`).join('\n') +
   `\n};\n`
 
+const GEN = { release_pr_number: 62, release_merge_sha: 'c'.repeat(40) }
+const exp = (sha: string) => ({ expected_manifest_sha256: sha, ...GEN })
 const HASH = (s: string) => createHash('sha256').update(s).digest('hex')
 
 function fnResponse(over: Record<string, unknown> = {}, body = manifestBody()) {
@@ -160,13 +162,13 @@ describe('deployed manifest vs pinned expectation', () => {
 
   it('PASSES when every consumer matches the pin', () => {
     const e = checkDeployedManifestMatchesExpected(
-      [report('a', BODY), report('b', BODY)], HASH(BODY), NOW)
+      [report('a', BODY), report('b', BODY)], exp(HASH(BODY)), NOW)
     expect(e.result).toBe('pass')
   })
 
   it('FAILS when the pin moved — old deployed source is now stale', () => {
     const e = checkDeployedManifestMatchesExpected(
-      [report('a', BODY), report('b', BODY)], HASH(manifestBody(['2026-11'])), NOW)
+      [report('a', BODY), report('b', BODY)], exp(HASH(manifestBody(['2026-11']))), NOW)
     expect(e.result).toBe('fail')
     expect(e.observed).toMatch(/2 consumer\(s\) deployed with a different manifest/)
   })
@@ -174,7 +176,7 @@ describe('deployed manifest vs pinned expectation', () => {
   it('FAILS naming only the stale consumer when one matches', () => {
     const e = checkDeployedManifestMatchesExpected(
       [report('sign-protected-asset', BODY), report('get-protected-ebook', manifestBody(['2026-08']))],
-      HASH(BODY), NOW)
+      exp(HASH(BODY)), NOW)
     expect(e.result).toBe('fail')
     expect(e.observed).toMatch(/get-protected-ebook/)
   })

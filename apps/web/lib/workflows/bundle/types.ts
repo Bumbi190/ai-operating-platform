@@ -209,12 +209,16 @@ export type Freshness = 'fresh' | 'stale' | 'unknown'
 export interface ManifestBindingSection {
   expected_manifest_sha256: string | null
   binding_status: 'BOUND' | 'MISSING' | 'INVALID' | 'CONFLICTED'
+  /** The release generation this expectation was attested for. */
+  release_pr_number: number | null
+  release_merge_sha: string | null
   locked_at: string | null
   locked_by: string | null
-  /** How many expectations have held authority. 1 = never corrected. */
+  /** Complete attestations for the current generation. 1 = never corrected. */
   generations: number
-  /** A newer expectation that was refused authority, kept visible for audit. */
+  /** An expectation that was refused authority, kept visible for audit. */
   rejected_expected_manifest_sha256: string | null
+  rejected_reason: 'AFTER_DOWNSTREAM_RELIANCE' | 'RELEASE_GENERATION_CHANGED' | null
 }
 
 export interface TechnicalSection extends SectionSummary {

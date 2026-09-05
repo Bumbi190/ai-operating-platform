@@ -65,12 +65,23 @@ export type ExecutorFamily =
  * here is the decision that makes an irreversible act possible, and it should be
  * reviewed as such rather than inherited from a type widening.
  *
- * Today it holds exactly one entry, and that entry touches nothing: it is a
- * deterministic test action used to prove the governance path without a provider,
- * a credential or a product side effect.
+ * The first entry touches nothing: it is a deterministic test action used to
+ * prove the governance path without a provider, a credential or a product side
+ * effect. The second reaches Anthropic and spends. They travel the identical
+ * path, which is the point of having proved it with the first.
  */
 export const GOVERNED_EFFECT_ENABLED_KINDS = [
   'proof_governed_effect',
+  /**
+   * Phase 2B-3. The first entry here that reaches a real provider and spends
+   * real money.
+   *
+   * It is the ONLY Familje-Stunden effect enabled. The other four declared write
+   * actions — protected upload, release-gate migration, newsletter, page audio —
+   * carry effectful classes and a governed-effect family, and remain absent, so
+   * naming this one does not widen the surface to its neighbours.
+   */
+  'generate_monthly_story',
 ] as const
 
 export type GovernedEffectEnabledKind = (typeof GOVERNED_EFFECT_ENABLED_KINDS)[number]

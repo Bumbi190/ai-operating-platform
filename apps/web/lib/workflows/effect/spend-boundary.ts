@@ -50,6 +50,10 @@ export const SPEND_BOUNDARY_BY_KIND: Record<GovernedEffectEnabledKind, SpendBoun
   // The deterministic proof reserves at its own boundary, deliberately, so that
   // the path exercised here is the same shape a priced provider call will take.
   proof_governed_effect: 'trusted_adapter',
+  // `getAnthropic` reserves and settles from inside its own client, pricing the
+  // call from the exact params it sends. The executor cannot price a request it
+  // has not built, so an executor-owned boundary here would reserve zero.
+  generate_monthly_story: 'trusted_adapter',
 }
 
 export function spendBoundaryOwnerFor(kind: string): SpendBoundaryOwner | null {

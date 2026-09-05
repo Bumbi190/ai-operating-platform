@@ -76,7 +76,7 @@ vi.mock('@/lib/cost/governed-spend', async orig => {
 })
 
 const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
-const { ACTION_REGISTRY, isGovernedEffectEnabled } =
+const { ACTION_REGISTRY, isGovernedEffectEnabled, GOVERNED_EFFECT_ENABLED_KINDS } =
   await import('@/lib/workflows/action-registry')
 const { ACTION_CLASS_POLICY } = await import('@/lib/workflows/action-target')
 const { EFFECT_HANDLERS } = await import('@/lib/workflows/effect/effect-handlers')
@@ -314,19 +314,26 @@ describe('evidence cannot outrun certainty', () => {
 // ── E. What did NOT become possible ─────────────────────────────────────────
 
 describe('the runtime opened exactly one door', () => {
-  it('MUTATION — only the proof action is enabled', () => {
-    expect(Object.keys(EFFECT_HANDLERS)).toEqual(['proof_governed_effect'])
-    expect(isGovernedEffectEnabled('generate_monthly_story')).toBe(false)
+  it('MUTATION — the handler map holds exactly the enabled kinds', () => {
+    // The map is keyed by `GovernedEffectEnabledKind`, so these two lists are
+    // the same list by construction. Asserted anyway: the type would accept a
+    // MISSING key, and a kind that is allowlisted with no handler is a kind the
+    // executor accepts and then cannot run.
+    expect(Object.keys(EFFECT_HANDLERS).sort())
+      .toEqual([...GOVERNED_EFFECT_ENABLED_KINDS].sort())
+    expect(isGovernedEffectEnabled('generate_monthly_story')).toBe(true)
   })
 
-  it('MUTATION — generate_monthly_story is refused by the family gate', async () => {
+  it('MUTATION — an unenabled write is still refused by the family gate', async () => {
+    // `generate_monthly_story` used to stand here. It is enabled now, so the
+    // gate is proved with a kind that is still shut — otherwise this test would
+    // reach a real provider, which is exactly what it exists to prevent.
     const r = await executeWorkflowAction(
       fakeDb,
-      { ...runFor('success'), action_kind: 'generate_monthly_story' } as never,
+      { ...runFor('success'), action_kind: 'upload_protected_artifacts' } as never,
       'claim-1', NOW)
     expect(r.executed).toBe(false)
     expect(r.refusal).toBe('not_executable_family')
-    expect(r.detail).toMatch(/not enabled/)
     expect(reserved).not.toHaveBeenCalled()
   })
 

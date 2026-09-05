@@ -49,6 +49,10 @@ const ANSWERS_CHECK: ReadonlyMap<string, string> = new Map([
   ['observe_vercel_production_ready', 'vercel_production_ready'],
   ['observe_vercel_deploy_sha_match', 'vercel_deploy_sha_matches_merge_sha'],
   ['observe_vercel_production_alias', 'production_alias_attached'],
+  // The one governed EFFECT in this map. Its presence is what lets the executor
+  // pin its evidence row to the run; `story_structurally_valid` is a different
+  // check and is deliberately not mapped to any action yet.
+  ['generate_monthly_story', 'story_generated'],
 ])
 
 /**

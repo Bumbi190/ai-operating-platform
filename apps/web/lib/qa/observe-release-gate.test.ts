@@ -220,18 +220,23 @@ describe('13-18. the action is READ_ONLY and adds no dangerous capability', () =
 
   it('no write, comms or spend action became executable', () => {
     // Phase 2B-1 added a `governed_effect` family. The invariant this test exists
-    // for is unchanged and is now stated directly: an effectful kind may only
-    // leave `not_executable` by appearing on the governed-effect ALLOWLIST, which
-    // holds one deterministic proof action that reaches no product system.
+    // for is unchanged: an effectful kind may only leave `not_executable` by
+    // appearing on the governed-effect ALLOWLIST.
+    //
+    // Phase 2B-3 put the first enabled kind on a PRODUCT definition, so the
+    // clause that required every enabled kind to live on the proof definition
+    // could no longer be true. It is replaced by the property it was standing in
+    // for: an enabled kind that touches a product must be one this list names.
+    // The default for everything else is still the proof definition.
+    const ENABLED_ON_PRODUCT = ['generate_monthly_story']
     for (const [kind, meta] of Object.entries(ACTION_REGISTRY)) {
       if (meta.executor_family === 'read_only_observation') {
         expect(meta.action_class, `${kind} is executable`).toBe('READ_ONLY')
       }
       if (meta.action_class !== 'READ_ONLY' && meta.executor_family !== 'not_executable') {
         // Declared in the governed family is NOT permission to run. Only an
-        // allowlist entry is, and anything enabled must be a proof action that
-        // reaches no product system.
-        if (isGovernedEffectEnabled(kind)) {
+        // allowlist entry is.
+        if (isGovernedEffectEnabled(kind) && !ENABLED_ON_PRODUCT.includes(kind)) {
           for (const p of meta.placements) {
             expect(p.def_key, `${kind} is enabled on a product definition`)
               .toBe('omnira.execution-proof')
@@ -239,6 +244,11 @@ describe('13-18. the action is READ_ONLY and adds no dangerous capability', () =
         }
       }
     }
+    // And the named exception is exactly one action, on exactly one state of one
+    // definition — not a licence for the rest of that workflow.
+    expect(ACTION_REGISTRY.generate_monthly_story.placements).toEqual([
+      { def_key: 'familje-stunden.monthly-release', state: 'content_generation' },
+    ])
   })
 
   it('every Familje-Stunden write, comms or spend action is still inert', () => {

@@ -235,8 +235,10 @@ describe('Phase 2B-0.5 changed no execution surface', () => {
   it('ExecutorFamily gained governed_effect in Phase 2B-1, and nothing else', () => {
     // This pin was written when two values were the whole story. The third
     // arrived deliberately; what still must hold is that naming a family is not
-    // permission to act, which the allowlist below carries.
-    expect([...GOVERNED_EFFECT_ENABLED_KINDS]).toEqual(['proof_governed_effect'])
+    // permission to act, which the four inert kinds below carry — each declares
+    // an effectful CLASS and is enabled by nothing.
+    expect([...GOVERNED_EFFECT_ENABLED_KINDS])
+      .toEqual(['proof_governed_effect', 'generate_monthly_story'])
     for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
                         'send_release_newsletter', 'upload_protected_artifacts'] as const) {
       expect(ACTION_REGISTRY[kind].executor_family, kind).toBe('not_executable')

@@ -55,7 +55,8 @@ vi.mock('@/lib/cost/governed-spend', async orig => {
 const { executeWorkflowAction } = await import('@/lib/workflows/action-executor')
 const { SPEND_BOUNDARY_BY_KIND, spendBoundaryOwnerFor, executorReservationIsMeaningful } =
   await import('@/lib/workflows/effect/spend-boundary')
-const { GOVERNED_EFFECT_ENABLED_KINDS } = await import('@/lib/workflows/action-registry')
+const { GOVERNED_EFFECT_ENABLED_KINDS, isGovernedEffectEnabled } =
+  await import('@/lib/workflows/action-registry')
 const { PROOF_EFFECT_ESTIMATED_SEK } = await import('@/lib/workflows/effect/proof-adapter')
 
 const NOW = '2026-09-04T12:00:00.000Z'
@@ -178,7 +179,10 @@ describe('ownership is declared, and a claim must be a fact', () => {
   })
 
   it('an undeclared kind has no owner, so it cannot spend', () => {
-    expect(spendBoundaryOwnerFor('generate_monthly_story')).toBeNull()
+    // `generate_monthly_story` declared an owner in Phase 2B-3. The property
+    // being protected is the DEFAULT — an unknown kind gets no owner, and the
+    // executor refuses `no_spend_owner_declared` rather than picking one.
+    expect(spendBoundaryOwnerFor('upload_protected_artifacts')).toBeNull()
     expect(spendBoundaryOwnerFor('anything_else')).toBeNull()
   })
 
@@ -281,12 +285,25 @@ describe('the provider boundary was extended, not opened', () => {
 // ── F. Nothing else moved ───────────────────────────────────────────────────
 
 describe('no product capability was opened', () => {
-  it('generate_monthly_story is still not enabled and has no spend owner', () => {
-    expect([...GOVERNED_EFFECT_ENABLED_KINDS]).toEqual(['proof_governed_effect'])
-    expect(spendBoundaryOwnerFor('generate_monthly_story')).toBeNull()
+  it('generate_monthly_story is enabled, and its boundary is the adapter', () => {
+    expect([...GOVERNED_EFFECT_ENABLED_KINDS])
+      .toEqual(['proof_governed_effect', 'generate_monthly_story'])
+    // `trusted_adapter`, because `getAnthropic` prices and reserves from inside
+    // its own client. An executor-owned boundary here would reserve zero.
+    expect(spendBoundaryOwnerFor('generate_monthly_story')).toBe('trusted_adapter')
   })
 
-  it('no StoryTextProvider implementation exists yet', () => {
+  it('the FS effect surface is exactly one action', () => {
+    // The other four declared Familje-Stunden writes carry effectful classes and
+    // are enabled by nothing. Enabling one did not enable its neighbours.
+    for (const kind of ['apply_release_gate_migration', 'generate_page_audio',
+                        'send_release_newsletter', 'upload_protected_artifacts']) {
+      expect(isGovernedEffectEnabled(kind), kind).toBe(false)
+      expect(spendBoundaryOwnerFor(kind), kind).toBeNull()
+    }
+  })
+
+  it('exactly one StoryTextProvider implementation reaches a provider', () => {
     const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
     let out = ''
     try {
@@ -296,7 +313,23 @@ describe('no product capability was opened', () => {
     const impls = out.trim().split('\n').filter(Boolean)
       .filter(f => !f.includes('/qa/'))
       .map(f => f.slice(f.lastIndexOf('/') + 1)).sort()
-    // Only the seam and the deterministic fake. No Anthropic implementation.
-    expect(impls).toEqual(['fake-provider.ts', 'provider.ts'])
+    // The seam, the deterministic fake, and ONE real implementation.
+    expect(impls).toEqual(['anthropic-provider.ts', 'fake-provider.ts', 'provider.ts'])
+  })
+
+  it('MUTATION — the real provider takes no second spend wrapper', () => {
+    // `getAnthropic` already reserves and settles. A `withGovernedSpend` in
+    // either the provider or its handler would be a SECOND reservation for one
+    // intent — the exact defect Phase 2B-2.6 closed.
+    for (const f of ['lib/workflows/story/anthropic-provider.ts',
+                     'lib/workflows/effect/story-handler.ts']) {
+      const src = readFileSync(join(process.cwd(), f), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+      expect(src, f).not.toMatch(/withGovernedSpend\s*\(/)
+      // And no second billing classifier: the client owns that judgement.
+      expect(src, f).not.toMatch(/provablyNotBilled/)
+      // And no raw client: `getAnthropic` is the only door.
+      expect(src, f).not.toMatch(/new Anthropic\s*\(/)
+    }
   })
 })

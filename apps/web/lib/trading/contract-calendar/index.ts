@@ -38,14 +38,23 @@
  * needs. Keeping the two apart is what lets the resolver above stay a pure
  * function of (calendar, root, at) with no clock and no reason registry.
  *
- * NOT YET HERE — GATE-08C-3 AND LATER
- * ───────────────────────────────────
+ * THE LAYERS ABOVE THIS ONE — AND WHAT STILL REMAINS
+ * ──────────────────────────────────────────────────
  * SessionCalendar, the canonical 1m grid, aggregation, BarCompleteness and
- * ContractCandleSegment all EXIST now, in their own packages — they are simply
- * not this package's concern. What genuinely remains is the contract-scoped
- * data SOURCE contract (GATE-08C-3A SOURCE-RESULT-SHAPE GAP is open) and the
- * recording and orchestration of decisions (C3B.2, C3B.3). GATE-08 stays
- * DELVIS STÄNGD.
+ * ContractCandleSegment all exist in their own packages — they are simply not
+ * this package's concern. Neither is the rest of the recorded selection chain,
+ * which is complete (GATE-08C-3B) and lives above this package:
+ *
+ *     materialisation   `@/lib/trading/contract-selection`
+ *     recording/replay  `@/lib/trading/contract-selection-store`
+ *     recorded-first    `@/lib/trading/contract-selection-orchestration`
+ *
+ * They stay separate on purpose, and the dependency runs one way: each layer
+ * consumes the one below it, and nothing above reaches back into this one.
+ *
+ * What genuinely remains here is the contract-scoped data SOURCE contract —
+ * GATE-08C-3A SOURCE-RESULT-SHAPE GAP is still open. GATE-08 stays DELVIS
+ * STÄNGD.
  */
 
 // ─── Lifecycle facts ──────────────────────────────────────────────────────────

@@ -139,29 +139,42 @@ describe('shared manifest consumer agreement', () => {
 describe('deployed manifest vs pinned expectation', () => {
   const BODY = manifestBody()
 
-  it('is blocked when nothing is pinned — never inferred from local source', () => {
-    const e = checkDeployedManifestMatchesExpected([report('a', BODY), report('b', BODY)], NOW)
+  it('is blocked when nothing is bound — never inferred from local source', () => {
+    const e = checkDeployedManifestMatchesExpected([report('a', BODY), report('b', BODY)], null, NOW)
     expect(e.result).toBe('blocked')
-    expect(e.detail.missing_config).toBe('FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256')
+    expect(e.detail.reason).toBe('EXPECTED_MANIFEST_NOT_BOUND')
+  })
+
+  it('NEGATIVE CONTROL — the deployment-global env var is not a fallback', () => {
+    // The value that used to answer. It must now answer nothing: the
+    // expectation is a parameter, and null means null.
+    process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 = HASH(BODY)
+    try {
+      const e = checkDeployedManifestMatchesExpected([report('a', BODY), report('b', BODY)], null, NOW)
+      expect(e.result).toBe('blocked')
+      expect(e.result).not.toBe('pass')
+    } finally {
+      delete process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256
+    }
   })
 
   it('PASSES when every consumer matches the pin', () => {
-    process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 = HASH(BODY)
-    const e = checkDeployedManifestMatchesExpected([report('a', BODY), report('b', BODY)], NOW)
+    const e = checkDeployedManifestMatchesExpected(
+      [report('a', BODY), report('b', BODY)], HASH(BODY), NOW)
     expect(e.result).toBe('pass')
   })
 
   it('FAILS when the pin moved — old deployed source is now stale', () => {
-    process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 = HASH(manifestBody(['2026-11']))
-    const e = checkDeployedManifestMatchesExpected([report('a', BODY), report('b', BODY)], NOW)
+    const e = checkDeployedManifestMatchesExpected(
+      [report('a', BODY), report('b', BODY)], HASH(manifestBody(['2026-11'])), NOW)
     expect(e.result).toBe('fail')
     expect(e.observed).toMatch(/2 consumer\(s\) deployed with a different manifest/)
   })
 
   it('FAILS naming only the stale consumer when one matches', () => {
-    process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 = HASH(BODY)
     const e = checkDeployedManifestMatchesExpected(
-      [report('sign-protected-asset', BODY), report('get-protected-ebook', manifestBody(['2026-08']))], NOW)
+      [report('sign-protected-asset', BODY), report('get-protected-ebook', manifestBody(['2026-08']))],
+      HASH(BODY), NOW)
     expect(e.result).toBe('fail')
     expect(e.observed).toMatch(/get-protected-ebook/)
   })
@@ -279,7 +292,7 @@ describe('the deployed reader', () => {
 
   it('verifyDeployedSource emits all four checks', async () => {
     withCreds()
-    const e = await verifyDeployedSource(NOW, {
+    const e = await verifyDeployedSource(NOW, null, {
       fetchImpl: (async () => ok(fnResponse())) as unknown as typeof fetch,
     })
     expect(e.map(x => x.check_key)).toEqual([

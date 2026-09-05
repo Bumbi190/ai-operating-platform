@@ -67,11 +67,10 @@ const READ_TIMEOUT_MS = 12_000
  * control one bug away from the internet. Until that trade is decided
  * explicitly, every check here reports `credential_missing`.
  */
-function config(): { token: string | null; projectRef: string | null; expectedManifestSha: string | null } {
+function config(): { token: string | null; projectRef: string | null } {
   return {
     token: process.env.FAMILJE_STUNDEN_MANAGEMENT_TOKEN || null,
     projectRef: process.env.FAMILJE_STUNDEN_PROJECT_REF || null,
-    expectedManifestSha: process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 || null,
   }
 }
 
@@ -259,25 +258,38 @@ export function checkConsumersInSync(reports: ConsumerReport[], now: string): Ve
 }
 
 /**
- * Does the deployed manifest match the pinned expectation?
+ * Does the deployed manifest match the expectation bound to THIS release?
  *
- * Needs `FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256`, which binds a repository
- * commit to a manifest content hash. Without it this reports blocked — inferring
- * the expectation from local source would defeat the entire point, since local
- * source is what you meant to deploy, not what is running.
+ * ── THE EXPECTATION IS A PARAMETER, NOT AN ENVIRONMENT READ ─────────────────
+ * It used to come from `FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256`, a
+ * deployment-global value — one hash for every month that will ever run, so
+ * October's expectation would still answer in November. It now arrives from the
+ * instance binding, which belongs to one month and locks once this check has
+ * relied on it.
+ *
+ * ── AND IT MAY NOT COME FROM WHAT IT CHECKS ─────────────────────────────────
+ * Not from the deployed function, not from the Management API response, not
+ * from a runtime self-report, not from whatever the repository happens to say
+ * at verification time. Each of those derives the expectation from the thing
+ * being verified, which reduces this check to "production equals itself" — and
+ * the incident it exists for is exactly a case where local source and deployed
+ * source disagreed.
+ *
+ * Without an expectation this reports blocked. Guessing one would defeat the
+ * entire point.
  */
 export function checkDeployedManifestMatchesExpected(
-  reports: ConsumerReport[], now: string,
+  reports: ConsumerReport[], expectedManifestSha: string | null, now: string,
 ): VerificationEvidence {
+
   const key = 'deployed_manifest_matches_expected'
-  const { expectedManifestSha } = config()
   const expected = `deployed shared manifest equals the pinned expected hash`
 
   if (!expectedManifestSha) {
     return notPass(key, 'credential_missing', {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: 'no expected manifest hash is pinned for this release',
-      detail: { missing_config: 'FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256' },
+      detail: { reason: 'EXPECTED_MANIFEST_NOT_BOUND', retryable: false },
     })
   }
 
@@ -355,12 +367,22 @@ export function checkConsumerCurrent(
 
 /** Every deployed-source check, from one read of production. */
 export async function verifyDeployedSource(
-  now: string, deps: { fetchImpl?: typeof fetch } = {},
+  now: string,
+  /**
+   * The expectation bound to THIS instance, or null when none is bound.
+   *
+   * A parameter rather than an environment read, and deliberately not defaulted:
+   * a default would be a fallback, and a fallback is how a deployment-global
+   * value answers for a month it does not belong to. A passive verifier has no
+   * instance evidence, so it passes null and the dependent check reports blocked.
+   */
+  expectedManifestSha: string | null,
+  deps: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerificationEvidence[]> {
   const reports = await readAllConsumers(now, deps)
   return [
     checkConsumersInSync(reports, now),
-    checkDeployedManifestMatchesExpected(reports, now),
+    checkDeployedManifestMatchesExpected(reports, expectedManifestSha, now),
     checkConsumerCurrent(reports[0], 'sign_protected_asset_source_current', now),
     checkConsumerCurrent(reports[1], 'get_protected_ebook_source_current', now),
   ]

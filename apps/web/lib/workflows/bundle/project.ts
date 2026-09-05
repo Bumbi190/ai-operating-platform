@@ -42,9 +42,11 @@ import type {
   GithubBindingSection, MonthReleaseBundle, ProductReadiness, Provenance,
   Reachability, ReachabilityReason,
   ReachabilitySummary, ReleaseAtMatch, SectionSummary, TechnicalSection, Tri,
+  ManifestBindingSection,
 } from './types'
 import { manualPrivilegedPolicy } from './reachability-policy'
 import { GITHUB_BINDING_STATE, projectGithubBinding } from './github-binding'
+import { projectManifestBinding, type ManifestBinding } from './manifest-binding'
 
 /** Canonical month identity: YYYY-MM, and nothing else. */
 const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -209,6 +211,24 @@ function summarise(
   }
 }
 
+/**
+ * Sanitised view of the manifest expectation.
+ *
+ * Named fields only. `invalid_fields` and the full rejected record stay out of
+ * the bundle: the digest that was refused is worth seeing, the internal shape
+ * is not.
+ */
+function manifestSection(b: ManifestBinding): ManifestBindingSection {
+  return {
+    expected_manifest_sha256: b.expected_manifest_sha256,
+    binding_status: b.binding_status,
+    locked_at: b.locked_at,
+    locked_by: b.locked_by,
+    generations: b.generations,
+    rejected_expected_manifest_sha256: b.rejected_rebind?.expected_manifest_sha256 ?? null,
+  }
+}
+
 /** A single check's status as a tri-state, for the technical headline fields. */
 function triFor(checks: readonly CheckProjection[], key: string): Tri {
   const rows = checks.filter(c => c.check_key === key)
@@ -356,6 +376,9 @@ export function projectMonthReleaseBundle(input: ProjectionInput): MonthReleaseB
     // Descriptive. Binding says WHICH release to look at; it never says the PR
     // merged, the checks were green, or the SHAs agreed.
     github: projectGithubBinding(input.evidence, input.githubRepository ?? null) as GithubBindingSection,
+    // Pure projection over the instance's own evidence. No network, no
+    // credential, no Management API read — rendering never fetches deployed state.
+    manifest: manifestSection(projectManifestBinding(input.evidence)),
     release_instant_computed: triFor(checks, 'release_instant_computed'),
     manifest_in_sync: triFor(checks, 'shared_manifest_consumers_in_sync'),
     anonymous_access_denied: triFor(checks, 'anonymous_protected_access_denied'),

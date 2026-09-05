@@ -250,10 +250,31 @@ describe('the Familje-Stunden check catalogue', () => {
   it('covers the states local QA actually happens in', () => {
     // Phase 2B-2 added the Editor's story decision, which is attested by
     // definition — no machine can make it — so approval_content joins the list.
+    // `edge_deploy` joins it for a narrower reason: the instance-bound expected
+    // manifest hash is a recorded FACT a human states, not a verification.
     expect(attestableStates()).toEqual([
-      'approval_content', 'content_generation', 'ebook_build', 'frontend_deploy',
-      'local_qa', 'pdf_build', 'protected_upload', 'visual_generation',
+      'approval_content', 'content_generation', 'ebook_build', 'edge_deploy',
+      'frontend_deploy', 'local_qa', 'pdf_build', 'protected_upload',
+      'visual_generation',
     ])
+  })
+
+  it('edge_deploy became attestable ONLY for the binding — not for verification', () => {
+    // The distinction that matters. A state appearing in `attestableStates()`
+    // must never be read as "its deployed-source checks now accept attestation":
+    // those still require automated evidence Omnira cannot yet produce, and
+    // relaxing them is exactly what the standing security decision forbids.
+    const atEdge = FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'edge_deploy')
+    const attested = atEdge.filter(c => c.allowed_provenance.includes('attested'))
+    expect(attested.map(c => c.check_key)).toEqual(['expected_manifest_sha256'])
+    expect(attested[0].required).toBe(false)
+
+    for (const key of ['shared_manifest_consumers_in_sync', 'deployed_manifest_matches_expected',
+                       'sign_protected_asset_source_current', 'get_protected_ebook_source_current']) {
+      const c = atEdge.find(x => x.check_key === key)!
+      expect([...c.allowed_provenance], key).toEqual(['automated'])
+      expect(c.required, key).toBe(true)
+    }
   })
 
   it('has unique keys per state', () => {

@@ -432,7 +432,8 @@ describe('30. the bundle stays passive', () => {
     const src = readFileSync(join(process.cwd(), 'lib/workflows/bundle/project.ts'), 'utf8')
     const imports = [...src.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map(m => m[1])
     expect(imports.sort()).toEqual(
-      ['../attestation', '../types', './github-binding', './reachability-policy', './types'])
+      ['../attestation', '../types', './github-binding', './manifest-binding',
+       './reachability-policy', './types'])
     expect(src).not.toMatch(/\bfetch\s*\(/)
     expect(src).not.toMatch(/observeReleaseGate/)
     // The fourth import is the reachability POLICY TABLE: a const list of

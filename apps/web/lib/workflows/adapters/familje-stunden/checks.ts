@@ -26,6 +26,7 @@
 
 import type { AttestableCheck } from '@/lib/workflows/attestation'
 import { GITHUB_BINDING_CHECKS, GITHUB_BINDING_STATE } from '@/lib/workflows/bundle/github-binding'
+import { MANIFEST_BINDING_CHECKS, MANIFEST_BINDING_STATE } from '@/lib/workflows/bundle/manifest-binding'
 
 /** Claims about built files. Rebuilding must invalidate them, so they bind the manifest. */
 const artifactCheck = (
@@ -182,6 +183,13 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // meaning the deployment verifier already gives it, now per instance.
   bindingCheck(GITHUB_BINDING_CHECKS.expectedMergeSha, GITHUB_BINDING_STATE,
     'The merge SHA this release was independently expected to produce'),
+  // The manifest the approved release is supposed to be running. Attested
+  // because a human is the authority on which manifest the release approved —
+  // and because deriving it from the deployed function, the repository at
+  // verification time, or a runtime self-report would make
+  // `deployed_manifest_matches_expected` compare production against itself.
+  bindingCheck(MANIFEST_BINDING_CHECKS.expectedSha, MANIFEST_BINDING_STATE,
+    'The sha256 of the canonical shared protected manifest for this release'),
 
   // ── The fail-open invariant (Phase 1B) ───────────────────────────────────
   // Automated-only, and necessarily so. The release gate is FAIL-OPEN: a month

@@ -28,6 +28,8 @@ import { projectMonthReleaseBundle } from '../workflows/bundle/project'
 import { loadVendoredDefinitions, FAMILJE_STUNDEN_MONTHLY_RELEASE } from '../workflows/definitions'
 import { FAMILJE_STUNDEN_CHECKS } from '../workflows/adapters/familje-stunden/checks'
 import { GITHUB_BINDING_CHECKS, GITHUB_BINDING_STATE } from '../workflows/bundle/github-binding'
+import { evaluateCheck } from '../workflows/evidence-consumption'
+import { computeEvidenceTargetHash } from '../workflows/attestation'
 import type { WorkflowDef, WorkflowEvidence, WorkflowInstance, WorkflowTransition } from '../workflows/types'
 
 const MAN_A = 'a'.repeat(64)
@@ -183,6 +185,109 @@ describe('1-11. one inseparable generation', () => {
     expect(bind([row], GEN_A).binding_status).toBe('INVALID')
     expect(bind([], GEN_A).binding_status).toBe('MISSING')
     expect(bind([consume(GEN_A, T(1))], GEN_A).binding_status).toBe('MISSING')
+  })
+})
+
+// ── B. SAME-GENERATION CONFLICT IS STICKY ────────────────────────────────────
+
+describe('B. a post-reliance conflict taints its generation permanently', () => {
+  const consumed = [attest(MAN_A, GEN_A, T(1)), consume(GEN_A, T(2))]
+
+  it('restating the ORIGINAL hash does not clear the conflict', () => {
+    // H1 -> consumed -> H2 (conflict) -> H1 again. The last row is a perfectly
+    // ordinary, valid, idempotent-looking restatement of the value that was
+    // actually verified. It must not launder the conflict away: append-only
+    // evidence records what happened, and what happened is that somebody tried
+    // to change a verified expectation.
+    const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_A, GEN_A, T(4))], GEN_A)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.rejected_rebind?.reason).toBe('AFTER_DOWNSTREAM_RELIANCE')
+    expect(b.expected_manifest_sha256).toBe(MAN_A)   // the verified one still answers
+  })
+
+  it('repeating the CONFLICTING hash does not newest-wins it into BOUND', () => {
+    const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_C, GEN_A, T(4))], GEN_A)
+    expect(b.binding_status).toBe('CONFLICTED')
+    expect(b.expected_manifest_sha256).toBe(MAN_A)
+  })
+
+  it('a third distinct hash does not resolve it either', () => {
+    const MAN_D = 'd'.repeat(64)
+    const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_D, GEN_A, T(4))], GEN_A)
+    expect(b.binding_status).toBe('CONFLICTED')
+  })
+
+  it('and the taint survives a detour through another generation and back', () => {
+    // A conflicts, the release legitimately moves to B, then legitimately
+    // returns to A. Re-deriving A must reach the same verdict it always had:
+    // the conflicting row is still in the history.
+    const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_B, GEN_B, T(4))], GEN_A)
+    expect(b.binding_status).toBe('CONFLICTED')
+    // Meanwhile B, which never had a conflict, is cleanly BOUND.
+    const asB = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_B, GEN_B, T(4))], GEN_B)
+    expect(asB.binding_status).toBe('BOUND')
+    expect(asB.expected_manifest_sha256).toBe(MAN_B)
+  })
+
+  it('RELEASE_GENERATION_CHANGED stays recoverable — the two are not the same', () => {
+    // The distinction the sticky rule must not destroy: a stale generation is
+    // fixed by attesting for the current one; a violated generation is not.
+    const stale = bind([attest(MAN_A, GEN_A, T(1))], GEN_B)
+    expect(stale.rejected_rebind?.reason).toBe('RELEASE_GENERATION_CHANGED')
+    const recovered = bind([attest(MAN_A, GEN_A, T(1)), attest(MAN_B, GEN_B, T(2))], GEN_B)
+    expect(recovered.binding_status).toBe('BOUND')
+  })
+})
+
+// ── C. A → B → A REPLAY ──────────────────────────────────────────────────────
+
+describe('C. old evidence cannot be replayed into a later placement', () => {
+  it('an edge_deploy row cannot satisfy the approval_release placement', () => {
+    // The mechanism is the evidence target pin, which includes the STATE. A row
+    // recorded at edge_deploy is bound to edge_deploy's target; the
+    // approval_release placement computes a different target and the row reads
+    // as STALE, not satisfied — so a first visit to generation A cannot answer
+    // the final pre-release re-check even when A is current again.
+    const edgeTarget = 'edge-target-hash'
+    const approvalTarget = 'approval-target-hash'
+    const rowAtEdge = {
+      ...consume(GEN_A, T(3)), target_hash: edgeTarget,
+    } as WorkflowEvidence
+
+    const declared = FAMILJE_STUNDEN_CHECKS.find(
+      c => c.check_key === 'deployed_manifest_matches_expected' && c.state === 'approval_release')!
+    const verdict = evaluateCheck(declared, declared.check_key, [rowAtEdge], approvalTarget)
+    expect(verdict.satisfies).toBe(false)
+    expect(verdict.satisfaction).toBe('stale')
+
+    // The same row DOES satisfy its own placement, which is what makes the
+    // previous assertion about the placement rather than about the row.
+    const atEdge = FAMILJE_STUNDEN_CHECKS.find(
+      c => c.check_key === 'deployed_manifest_matches_expected' && c.state === 'edge_deploy')!
+    expect(evaluateCheck(atEdge, atEdge.check_key, [rowAtEdge], edgeTarget).satisfies).toBe(true)
+  })
+
+  it('the state is part of the evidence target, so the two placements differ', () => {
+    const v = loadVendoredDefinitions().find(d => d.def_key === FAMILJE_STUNDEN_MONTHLY_RELEASE)!
+    const inst = {
+      id: 'i', def_id: 'd', def_key: FAMILJE_STUNDEN_MONTHLY_RELEASE, def_version: v.version,
+      def_hash: 'h', project_id: 'p', instance_key: '2099-01', current_state: 'edge_deploy',
+      status: 'active', wake_at: null, last_tick_at: null, last_tick_outcome: null,
+      created_at: NOW, closed_at: null,
+    } as WorkflowInstance
+    const target = (state: string) => computeEvidenceTargetHash({
+      instance: inst, spec: v.spec, state,
+      checkKey: 'deployed_manifest_matches_expected',
+      sourceCommit: null, artifactManifestHash: null,
+    })
+    expect(target('edge_deploy')).not.toBe(target('approval_release'))
+  })
+
+  it('and generation identity is checked on top of the placement', () => {
+    // Two independent gates: the row must belong to this placement AND name the
+    // current generation. Neither substitutes for the other.
+    expect(evidenceMatchesGeneration(consume(GEN_A, T(3)), GEN_A)).toBe(true)
+    expect(evidenceMatchesGeneration(consume(GEN_A, T(3)), GEN_B)).toBe(false)
   })
 })
 

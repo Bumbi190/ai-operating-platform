@@ -67,11 +67,10 @@ const READ_TIMEOUT_MS = 12_000
  * control one bug away from the internet. Until that trade is decided
  * explicitly, every check here reports `credential_missing`.
  */
-function config(): { token: string | null; projectRef: string | null; expectedManifestSha: string | null } {
+function config(): { token: string | null; projectRef: string | null } {
   return {
     token: process.env.FAMILJE_STUNDEN_MANAGEMENT_TOKEN || null,
     projectRef: process.env.FAMILJE_STUNDEN_PROJECT_REF || null,
-    expectedManifestSha: process.env.FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256 || null,
   }
 }
 
@@ -259,25 +258,58 @@ export function checkConsumersInSync(reports: ConsumerReport[], now: string): Ve
 }
 
 /**
- * Does the deployed manifest match the pinned expectation?
+ * Does the deployed manifest match the expectation bound to THIS release?
  *
- * Needs `FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256`, which binds a repository
- * commit to a manifest content hash. Without it this reports blocked — inferring
- * the expectation from local source would defeat the entire point, since local
- * source is what you meant to deploy, not what is running.
+ * ── THE EXPECTATION IS A PARAMETER, NOT AN ENVIRONMENT READ ─────────────────
+ * It used to come from `FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256`, a
+ * deployment-global value — one hash for every month that will ever run, so
+ * October's expectation would still answer in November. It now arrives from the
+ * instance binding, which belongs to one month and locks once this check has
+ * relied on it.
+ *
+ * ── AND IT MAY NOT COME FROM WHAT IT CHECKS ─────────────────────────────────
+ * Not from the deployed function, not from the Management API response, not
+ * from a runtime self-report, not from whatever the repository happens to say
+ * at verification time. Each of those derives the expectation from the thing
+ * being verified, which reduces this check to "production equals itself" — and
+ * the incident it exists for is exactly a case where local source and deployed
+ * source disagreed.
+ *
+ * Without an expectation this reports blocked. Guessing one would defeat the
+ * entire point.
  */
+export interface ManifestExpectation {
+  expected_manifest_sha256: string
+  /**
+   * The release generation the expectation belongs to.
+   *
+   * Recorded INTO the evidence, so a later consumer can tell whether a green
+   * row applies to the release that actually shipped. `edge_deploy` runs before
+   * the release identity is final, so a PASS here may have been made against a
+   * generation the release has since legitimately moved past — and a check-key
+   * match alone would hide that completely.
+   */
+  release_pr_number: number
+  release_merge_sha: string
+}
+
 export function checkDeployedManifestMatchesExpected(
-  reports: ConsumerReport[], now: string,
+  reports: ConsumerReport[], expectation: ManifestExpectation | null, now: string,
 ): VerificationEvidence {
+  const expectedManifestSha = expectation?.expected_manifest_sha256 ?? null
+  const generation = expectation === null ? {} : {
+    release_pr_number: expectation.release_pr_number,
+    release_merge_sha: expectation.release_merge_sha,
+  }
+
   const key = 'deployed_manifest_matches_expected'
-  const { expectedManifestSha } = config()
   const expected = `deployed shared manifest equals the pinned expected hash`
 
   if (!expectedManifestSha) {
     return notPass(key, 'credential_missing', {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: 'no expected manifest hash is pinned for this release',
-      detail: { missing_config: 'FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256' },
+      detail: { reason: 'EXPECTED_MANIFEST_NOT_BOUND', retryable: false },
     })
   }
 
@@ -287,13 +319,17 @@ export function checkDeployedManifestMatchesExpected(
     return notPass(key, FAILURE_TO_KIND[worst.failure], {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: `could not verify ${failed.map(f => f.slug).join(', ')}`,
-      detail: { expected_sha256: expectedManifestSha },
+      detail: { ...generation, expected_sha256: expectedManifestSha },
     })
   }
 
   const facts = reports.map(r => (r.read as { ok: true; facts: DeployedFunctionFacts }).facts)
   const stale = facts.filter(f => f.manifestHash !== expectedManifestSha)
   const detail = {
+    // The generation is recorded on EVERY outcome, most of all on the PASS: a
+    // green row that does not say which release it verified cannot be told
+    // apart from one that verified the release currently being approved.
+    ...generation,
     expected_sha256: expectedManifestSha,
     consumers: facts.map(f => ({ slug: f.slug, version: f.version, manifest_sha256: f.manifestHash })),
   }
@@ -355,12 +391,22 @@ export function checkConsumerCurrent(
 
 /** Every deployed-source check, from one read of production. */
 export async function verifyDeployedSource(
-  now: string, deps: { fetchImpl?: typeof fetch } = {},
+  now: string,
+  /**
+   * The expectation bound to THIS instance, or null when none is bound.
+   *
+   * A parameter rather than an environment read, and deliberately not defaulted:
+   * a default would be a fallback, and a fallback is how a deployment-global
+   * value answers for a month it does not belong to. A passive verifier has no
+   * instance evidence, so it passes null and the dependent check reports blocked.
+   */
+  expectation: ManifestExpectation | null,
+  deps: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerificationEvidence[]> {
   const reports = await readAllConsumers(now, deps)
   return [
     checkConsumersInSync(reports, now),
-    checkDeployedManifestMatchesExpected(reports, now),
+    checkDeployedManifestMatchesExpected(reports, expectation, now),
     checkConsumerCurrent(reports[0], 'sign_protected_asset_source_current', now),
     checkConsumerCurrent(reports[1], 'get_protected_ebook_source_current', now),
   ]

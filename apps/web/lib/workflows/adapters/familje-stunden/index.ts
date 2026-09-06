@@ -453,7 +453,9 @@ const VERIFIABLE: Record<string, (monthKey: string, now: string) => Promise<Veri
   ],
   // KFM 3/4/5: a merged shared file is not a deployed shared file. This is the
   // state where that is established, against production rather than the repo.
-  edge_deploy: async (_monthKey, now) => verifyDeployedSource(now),
+  // null, not a configured value: the expectation is instance-bound and a
+  // passive verifier holds no instance evidence, so it cannot name one.
+  edge_deploy: async (_monthKey, now) => verifyDeployedSource(now, null),
   // The frontend half of the chain. Deliberately separate from edge_deploy:
   // Vercel deploys only the frontend and never touches the Edge Functions, so
   // a green Vercel deployment says nothing about the protected manifest.

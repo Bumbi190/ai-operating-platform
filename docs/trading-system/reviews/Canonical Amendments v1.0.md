@@ -1323,6 +1323,88 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 
 ---
 
+## Beslut N — Kontraktsskopat historiskt candle-källresultat
+
+**Stänger:** GATE-08C-3A SOURCE-RESULT-SHAPE GAP, SOURCE-TECHNICAL-FAILURE STYLE
+CONFLICT, OBSERVATION-SOURCE-STATE PRODUCER GAP (historisk C3C)
+**Karaktär:** Ny kanonisk källresultatsemantik. Ingen befintlig regel upphävs, inget
+befintligt fält byter innebörd, ingen befintlig kod ändras. `HistoricalContractRequest`
+från GATE-08C-3A är oförändrad, och Beslut K, L och M står orörda.
+
+Canonical v1.0 §24 räknar upp vad historik och live delar och säger sedan uttryckligen:
+*"Inte gemensamt: paginering, uttömning, prenumerationslivscykel, backpressure."*
+Paginering och uttömning var alltså kanoniskt **öppna med avsikt**. Ett symmetriskt
+gemensamt gränssnitt är förbjudet, och ingen text hade avgjort hur ett kontraktsskopat,
+intervallavgränsat historiskt anrop redovisar täckning, uttömning, tomhet och fel.
+
+En stängningsrevision inför C3C fann att det mesta redan var låst — intervallsemantik,
+1m-låsning, `PriceText`, volymnullbarhet, `openTime`-identitet, kuvertburen
+kontraktsidentitet, rolloverdelning, SessionCalendar-ägarskap och continuous-brandväggen.
+Det som saknades var **resultatet**.
+
+Revisionen fann också två fakta som gjorde besluten enklare. `ObservationSourceState` med
+exakt `SETTLED | UNKNOWN` **finns redan** i completeness-lagret och ingenting producerar
+den — bryggan var byggd men omatad. Och den befintliga Stage 1.9B-källan dokumenterar sitt
+eget uttömningsfält som *"A hint, not a promise"*, vilket duger för ett diagram och
+diskvalificerar sig självt som strategibevis.
+
+**Canonical betydelse:**
+
+```
+källresultat
+  = sanningsenlig intervalltäckning + settledness + observationsmaterial
+
+≠ kanonisk fullständighet   (BarCompleteness äger COMPLETE/PARTIAL/UNKNOWN)
+≠ segment                   (buildContractCandleSegment är validerande konstruktor)
+≠ providerpaginering        (adapterintern detalj, läcker aldrig ut)
+≠ teknisk feldomän          (avvisat löfte förblir avvisat löfte)
+```
+
+### N1 — Ny specifikation
+
+`specifications/market-data/Omnira Trading System – Contract-Scoped Historical Candle
+Source Result – Canonical v1.0.md` skapad. Den låser:
+
+- **N1 · Täckningsform.** Ett intervall-chunk-resultat med ekat `ResolvedContract`,
+  explicit halvöppen `coverage`, `ObservationSourceState` och observationsmaterial.
+  Täckningen ska vara ett **prefix** av förfrågan: `coverage.from` motsvarar
+  `request.from`, `coverage.from < coverage.to`, `coverage.to <= request.to`. Ingen
+  cursor, ingen `count`/`limit`, ingen providerpagineringstoken, inget `hasMoreBefore`.
+- **N2 · Uttömning.** Täckningsintervallet är ett **löfte, inte en gissning**. Uttömning
+  får aldrig härledas ur `candles.length`, ur sidstorlek eller ur en tom sida.
+  Förfrågans slut är nått när `coverage.to == request.to` med instantsemantik; ingen
+  separat `EXHAUSTED`-flagga upprepar det. Fortsättning sker vid
+  `next.from = accepterad coverage.to`.
+- **N3 · Tomsemantik.** `OBSERVATIONS` och `NO_DATA` är skilda **lyckade** utfall; en
+  naken `candles: []` duger inte. `NO_DATA` betyder endast att källan inte returnerade
+  observationer — inte stängd marknad, helgdag, sessionslucka eller noll förväntade
+  minuter. Ingen åttavägs tomorsaksuppräkning. Semantisk källvägran hålls skild som
+  `SOURCE_REQUEST_UNAVAILABLE`.
+- **N4 · Settledness.** `ObservationSourceState` återanvänds **exakt** som
+  `SETTLED | UNKNOWN`; ingen parallell uppräkning införs. `SETTLED` betyder att källan
+  intygar att dess observationsmängd för den angivna täckningen är fullständigt
+  uppräknad — **inte** att varje förväntad handelsminut finns. Källan returnerar aldrig
+  `BarCompleteness`. Bryggan går genom `ObservedMinutes` till `evaluateBucketEvidence`.
+- **N5 · Tekniskt fel.** Semantiska källutfall resolvar; tekniskt fel och
+  infrastrukturfel **avvisar löftet**. Inga `ERROR`, `UNAVAILABLE`, `NETWORK_ERROR`,
+  `SOURCE_ERROR`, `INFRA_ERROR` eller `UNKNOWN_ERROR` som domänutfall. Stage 1.9B:s
+  form ärvs uttryckligen inte och dess runtime ändras inte.
+- **N6 · Kontraktseko.** Lyckade resultat måste eka `ResolvedContract`. Likheten är
+  strukturell på `root`, `cycle.year` och `cycle.quarterMonth` — aldrig `JSON.stringify`,
+  hash eller objektidentitet. Fel kontrakt failar closed före segment, `ObservedMinutes`,
+  aggregering och detektorindata. `CONTRACT_MISMATCH` och `INVALID_COVERAGE` är lokala
+  källgränsinvarianter, inte `ReasonCode`s.
+
+**Uttryckligen inte beslutat:** proveniensfält (`NONEMPTY-EVIDENCE VOCABULARY GAP` är
+fortsatt öppen), `receivedAt`-krav, cachesemantik, providerkapacitetsarkitektur, och om
+providerns candle-payload ögonblicksbildas för replay — den sista registreras som
+`HISTORICAL DATA SNAPSHOT / REPLAY GAP`, **öppen/uppskjuten och ingen C3C-blockerare**.
+
+**GATE-08 flyttas inte av Beslut N.** Gaten är fortsatt **delvis stängd**.
+**C3C-runtime är inte implementerad:** ingen historisk kontraktskälla existerar i kod.
+
+---
+
 ## Ändrade filer
 
 | Fil | Ändring |
@@ -1371,3 +1453,6 @@ Ingen implementation ingår. Ingen provider, inget nätverk, ingen order.
 | `specifications/market-data/…Recorded-First Contract Selection Orchestration – Canonical v1.0.md` | M1 — ny, recorded-first orkestreringssemantik |
 | `specifications/README.md` | M1 — indexrad |
 | `SOURCE_OF_TRUTH.md` | M1 — kanonisk källa, orkestreringsluckor stängda för C3B.3 |
+| `specifications/market-data/…Contract-Scoped Historical Candle Source Result – Canonical v1.0.md` | N1 — ny, kontraktsskopad källresultatsemantik |
+| `specifications/README.md` | N1 — indexrad |
+| `SOURCE_OF_TRUTH.md` | N1 — kanonisk källa, källresultatluckor stängda för C3C |

@@ -325,7 +325,7 @@ describe('PROBE-S2 · a mid-probe refusal never enters the failure model', () =>
       'observe_github_pr_merged', 'observe_release_gate',
       'observe_vercel_deploy_sha_match', 'observe_vercel_production_alias',
       'observe_vercel_production_ready',
-                'probe_anonymous_protected_access'])
+                'probe_anonymous_protected_access', 'validate_monthly_story'])
     expect(ACTION_CLASS_POLICY.READ_ONLY.requiresAuthorization).toBe(false)
     expect(ACTION_CLASS_POLICY.MATERIAL_WRITE.requiresPreCommitRevalidation,
       'writes keep the stricter pre-commit contract').toBe(true)

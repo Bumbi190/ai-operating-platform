@@ -258,18 +258,41 @@ export const ACTION_REGISTRY = {
    * spend enforcement, pre-commit revalidation, idempotency and a single
    * attempt. A second attempt is a new intent, never a retry.
    *
-   * It is deliberately ABSENT from `GOVERNED_EFFECT_ENABLED_KINDS`. The
-   * machinery is complete and proven against a deterministic provider, but no
-   * real model is wired and no first paid dispatch has been authorised. Adding
-   * the kind to that list is the decision that makes real generation possible,
-   * and it belongs to the phase that performs the first controlled run — not to
-   * the one that builds the capability.
+   * Phase 2B-3 added it to `GOVERNED_EFFECT_ENABLED_KINDS`; it is the first
+   * enabled kind that reaches a real provider. Enablement is still a separate
+   * decision from family membership, which is what keeps the four inert
+   * Familje-Stunden writes inert.
+   *
+   * It answers `story_generated` and only that. The structural verdict on what
+   * it produced belongs to `validate_monthly_story` below, because an automated
+   * evidence row is bound to the single check its action kind answers and an
+   * action must not vouch for a fact it did not establish.
    */
   generate_monthly_story: {
     action_class: 'FINANCIAL',
     executor_family: 'governed_effect',
     placements: [{ def_key: 'familje-stunden.monthly-release', state: 'content_generation' }],
     description: "Generate the month's saga from the canonical brief and story contract.",
+  },
+
+  /**
+   * The structural verdict on a story that already exists.
+   *
+   * READ_ONLY in the strong sense: it consults nothing external, spends nothing,
+   * and changes nothing. It re-reads one exact persisted story — named by this
+   * instance's own `story_generated` evidence, never by recency — and runs the
+   * canonical validator against the brief that story was generated for.
+   *
+   * It proves structure only: counts, roles, numbering, the sentence bound and
+   * the brief/contract binding. Whether the saga is good Swedish, age-apt or in
+   * character is an Editor's judgement, and `story_content_approved` stays
+   * attested-only so automation cannot drift into answering it.
+   */
+  validate_monthly_story: {
+    action_class: 'READ_ONLY',
+    executor_family: 'read_only_observation',
+    placements: [{ def_key: 'familje-stunden.monthly-release', state: 'content_generation' }],
+    description: "Validate the generated saga against the canonical structural rules.",
   },
 
   /**

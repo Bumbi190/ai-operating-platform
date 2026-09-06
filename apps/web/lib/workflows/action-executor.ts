@@ -49,6 +49,9 @@ import {
 } from './handlers/observe-vercel-release'
 import { observeReleaseGateHandler } from './handlers/observe-release-gate'
 import { composeMonthlyBriefHandler } from './handlers/compose-monthly-brief'
+import { validateMonthlyStoryHandler } from './handlers/validate-monthly-story'
+import { projectGeneratedStoryTarget } from './story/generated-target'
+import { readStoryByHash } from './story/store'
 import { projectScope } from '@/lib/governance/execution-stop'
 import { rearmForAuthorization } from './rearm'
 import { executeGovernedEffect } from './effect/effect-execution'
@@ -65,6 +68,7 @@ const HANDLERS: Record<ExecutableReadOnlyActionKind, ReadOnlyHandler> = {
   probe_anonymous_protected_access: probeAnonymousProtectedAccessHandler,
   observe_release_gate: observeReleaseGateHandler,
   compose_monthly_brief: composeMonthlyBriefHandler,
+  validate_monthly_story: validateMonthlyStoryHandler,
   observe_github_pr_merged: observeGithubPrMergedHandler,
   observe_github_pr_checks_green: observeGithubPrChecksGreenHandler,
   observe_github_merge_sha_match: observeGithubMergeShaMatchHandler,
@@ -430,11 +434,15 @@ export async function executeWorkflowAction(
   })
   if (started.fenced) return { executed: false, refusal: 'fenced', detail: 'claim rotated before dispatch' }
 
+  // Bound once. The closures below outlive this scope's narrowing, and the state
+  // an action was bound to must not be re-read per call anyway.
+  const fromState = run.workflow_from_state
+
   let output: ReadOnlyHandlerOutput
   try {
     output = await handler({
       instanceKey: instance.instance_key,
-      state: run.workflow_from_state,
+      state: fromState,
       defKey: def.def_key,
       defVersion: def.version,
       now,
@@ -444,6 +452,33 @@ export async function executeWorkflowAction(
       readReleaseBinding: async () => projectGithubBinding(
         await listEvidence(db, instance.id),
         process.env.FAMILJE_STUNDEN_GITHUB_REPO || null),
+      // The story under validation, resolved HERE for the same reason: the
+      // handler never touches the database, and the identity comes from this
+      // instance's own evidence rather than from recency or a caller.
+      //
+      // Two steps, both narrow. `projectGeneratedStoryTarget` is pure and picks
+      // the identity; `readStoryByHash` fetches that exact row. There is no
+      // "latest" lookup anywhere on this path, and nothing the handler receives
+      // can be pointed at another table, another instance, or a write.
+      readGeneratedStory: async () => {
+        const projected = projectGeneratedStoryTarget(
+          await listEvidence(db, instance.id), fromState)
+        if (!projected.ok) {
+          return { ok: false as const, refusal: projected.refusal, detail: projected.detail }
+        }
+        const stored = await readStoryByHash(
+          db, instance.id, projected.target.storyContentHash)
+        if (stored === null) {
+          // Evidence names a story the store does not hold. Fail closed: the
+          // check stays unanswered rather than silently validating something
+          // else. `readStoryByHash` also yields null when a supposedly unique
+          // identity matched more than one row, which is the same refusal.
+          return { ok: false as const, refusal: 'story_not_found',
+            detail: `no stored story ${projected.target.storyContentHash} for this instance` }
+        }
+        return { ok: true as const, target: projected.target,
+          story: stored.story, storedHash: stored.story_content_hash }
+      },
       // G3C-3A: this handler emits several requests, so each one re-authorises.
       // Governance stays HERE, above the adapter — the adapter only asks.
       beforeAttempt: async () => {

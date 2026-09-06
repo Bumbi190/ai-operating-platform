@@ -8,9 +8,28 @@
  * observation. It has no database handle, no credential and no way to reach the
  * network unless it imports one itself, which the negative-architecture tests
  * forbid for this family.
+ *
+ * Where a handler genuinely needs stored state, it is handed the ANSWER through
+ * a narrow closure the executor owns — `readReleaseBinding`, `readGeneratedStory`
+ * — never a client it could point somewhere else. That is what keeps "read-only"
+ * a property of the capability rather than a promise about the code.
  */
 
 import type { GithubBinding } from '../bundle/github-binding'
+import type { GeneratedStoryTarget } from '../story/generated-target'
+import type { StoryV1 } from '../story/types'
+
+/**
+ * The outcome of looking up the story a validation is about.
+ *
+ * A discriminated union rather than `StoryV1 | null`, because "there is no story
+ * to validate" and "the evidence naming it is malformed" are different facts and
+ * a validator must report which one it met. Collapsing them to null is how a
+ * missing story and a broken pointer both become the same silent non-answer.
+ */
+export type GeneratedStoryRead =
+  | { ok: true; target: GeneratedStoryTarget; story: StoryV1; storedHash: string }
+  | { ok: false; refusal: string; detail: string }
 
 /** The PR4 vocabulary, unchanged: "could not verify" never becomes PASS. */
 export type ReadOnlyResult = 'pass' | 'fail' | 'blocked' | 'error'
@@ -44,6 +63,20 @@ export interface ReadOnlyHandlerInput {
    * deployment-global environment variable, and never from a caller.
    */
   readReleaseBinding?: () => Promise<GithubBinding>
+  /**
+   * The exact persisted story this state's evidence says was generated.
+   *
+   * The same shape as `readReleaseBinding` and for the same reasons: a closure,
+   * so a handler that does not need a story never pays for the query, and the
+   * executor owns the read so the handler still holds no database handle.
+   *
+   * It is deliberately NOT a table capability. What comes back is one story,
+   * chosen by the identity in this instance's own `story_generated` evidence —
+   * never by recency, never by revision number, and never by anything a caller
+   * or a handler could name. There is no path from here to a second table, to a
+   * different instance, or to a write.
+   */
+  readGeneratedStory?: () => Promise<GeneratedStoryRead>
 }
 
 export interface ReadOnlyHandlerOutput {

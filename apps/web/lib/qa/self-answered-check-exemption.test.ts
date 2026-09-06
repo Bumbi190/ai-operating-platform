@@ -426,7 +426,8 @@ describe('no other gate moved', () => {
                     'observe_github_merge_sha_match',
                     'observe_vercel_production_ready', 'observe_vercel_deploy_sha_match',
                     'observe_vercel_production_alias']
-    const READS = ['compute_release_instant', PROBE_ACTION, 'observe_release_gate', ...GITHUB]
+    const READS = ['compute_release_instant', PROBE_ACTION, 'observe_release_gate',
+                   'validate_monthly_story', ...GITHUB]
     for (const kind of READS) {
       expect(checkAnsweredBy(kind), kind).not.toBeNull()
       expect(ACTION_REGISTRY[kind as keyof typeof ACTION_REGISTRY].action_class, kind).toBe('READ_ONLY')

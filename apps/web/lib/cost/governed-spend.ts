@@ -226,10 +226,15 @@ export interface GovernedSpendInput {
    * whose reservation had already settled came back `allowed = true` with no new
    * reservation and no budget check.
    *
-   * G2 moved the locks above the replay and made the verdict a closed state
-   * machine: only a still-OPEN reservation replays as allowed (it is holding its
-   * own headroom); settled and released are terminal refusals. A key can
-   * therefore no longer resurrect a completed spend.
+   * G2 moved the locks above the replay evaluation and closed that resurrection
+   * bypass. The final hardening then went further than "one reservation per key":
+   * ZERO existing-key states authorize another dispatch. A fresh OPEN row is
+   * `replay_in_flight` (another call may be live), a stale OPEN row is
+   * `replay_stale` (a visibility timeout proves nothing finished, so it is
+   * refused and released rather than re-granted), and SETTLED, RELEASED and a
+   * changed identity are `replay_settled`, `replay_released` and
+   * `replay_identity_mismatch`. No replay state returns `allowed` — a live OPEN
+   * row is the LEAST reusable of them, not the most.
    *
    * WHAT IT GUARANTEES: at most one reservation per key, and — since the final
    * hardening — that an existing key can NEVER authorise a second provider

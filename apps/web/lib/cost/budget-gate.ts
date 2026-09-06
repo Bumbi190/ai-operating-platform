@@ -27,8 +27,9 @@
  * in this file computes a limit — it forwards a verdict, which is what keeps
  * exactly one budget authority.
  *
- * ── ADVISORY BY DEFAULT ────────────────────────────────────────────────────
- * `H1_SPEND_GATE` (default OFF) decides whether a refusal is HONOURED. SQL always
+ * ── ADVISORY BY DEFAULT — FOR BUDGET POLICY ────────────────────────────────
+ * `H1_SPEND_GATE` (default OFF) decides whether a BUDGET-POLICY refusal is
+ * HONOURED: `budget_exceeded` and the unconfigured-ceiling refusals. SQL always
  * returns the honest verdict and always records the reservation, so advisory mode
  * produces real accounting instead of a guess about what would have happened, and
  * enforcement is later a flag flip with no schema or code change. This matters
@@ -36,10 +37,24 @@
  * already at ~33% of its budget, so switching straight to hard refusal would risk
  * breaking working automation on a number nobody has validated yet.
  *
+ * ── BUT DISPATCH SAFETY IS NEVER ADVISORY ──────────────────────────────────
+ * A replay verdict is not a budget opinion. It says this logical spend identity
+ * has already been consumed, or may still be live on another worker, and
+ * downgrading one would return `allowed: true` carrying THAT worker's reservation
+ * id — so the second caller would dispatch the provider again and settle a row it
+ * does not own. The cost of a wrong ceiling call is money; the cost of a wrong
+ * replay call is a duplicate external effect. Only the first is a rollout risk
+ * worth taking, so every replay verdict is hard whatever the flag says. See
+ * `isReplayRefusal`.
+ *
+ * This says nothing about the other refusal classes: `unavailable` and the
+ * unconfigured-budget refusals keep exactly the behaviour they had.
+ *
  * ── NEVER THROWS ───────────────────────────────────────────────────────────
  * Same contract as the rest of lib/cost. A gate that crashes the pipeline it
  * guards is worse than the problem. A DB failure is reported as `unavailable`;
- * whether that blocks is the caller's decision, and in advisory mode it never does.
+ * whether that blocks is the caller's decision, and advisory mode does not block
+ * it.
  */
 
 import 'server-only'
@@ -154,7 +169,21 @@ function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: Spend
 export interface ReserveInput {
   projectId: string
   estimatedSek: number
-  /** Two retries of the same logical spend must reserve once, not twice. */
+  /**
+   * Names ONE logical spend.
+   *
+   * If the key already exists, the call is a REPLAY and cannot authorize another
+   * physical dispatch — every existing-key state refuses, including a still-open
+   * one. A genuinely new spend therefore needs a new logical key, not a reuse of
+   * this one.
+   *
+   * Generic provider retry wrappers OMIT it, deliberately: they sit outside this
+   * boundary, so attempt 2 arrives after attempt 1 has already settled or
+   * released, and a key would refuse the retry rather than let it through. Each
+   * physical attempt takes its own reservation instead.
+   *
+   * Says nothing about PROVIDER-side idempotency, which nothing here relies on.
+   */
   idempotencyKey?: string
   provider?: string
   operation?: string

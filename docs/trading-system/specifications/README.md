@@ -17,6 +17,7 @@ Varje specifikation finns som `.docx` (originalet) och `.md` (aktiv text).
 | Contract Selection Decision Materialisation | `market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-03 (Beslut K). Materialiseringssemantik för C3B.1, prospektiv verkan |
 | Contract Selection Decision Recording & Replay | `market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-04 (Beslut L). Inspelnings- och replaysemantik för C3B.2, prospektiv verkan |
 | Recorded-First Contract Selection Orchestration | `market-data/…Recorded-First Contract Selection Orchestration – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-04 (Beslut M). Recorded-first orkestrering för C3B.3, prospektiv verkan |
+| Contract-Scoped Historical Candle Source Result | `market-data/…Contract-Scoped Historical Candle Source Result – Canonical v1.0.md` | **Canonical v1.0**, rev. 2026-09-05 (Beslut N). Kontraktsskopat historiskt källresultat för C3C, prospektiv verkan |
 | Datamodell | `data-model/…v0.1.md` | v0.1, rev. 2026-08-27 (additivt fält) |
 | Prop firm | `prop-firm/` | Tom, GATE-09 |
 | Pattern detection | `pattern-detection/` | Tom, GATE-01/02 |

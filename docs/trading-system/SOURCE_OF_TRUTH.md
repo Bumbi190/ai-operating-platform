@@ -22,6 +22,7 @@
 | Beslutsmaterialisering | `specifications/market-data/…Contract Selection Decision Materialisation – Canonical v1.0.md` | **Canonical v1.0** | Låst materialiseringssemantik för C3B.1, prospektiv verkan. Tom-endast `evidence`, låst `policyVersion` (Beslut K) |
 | Beslutsinspelning | `specifications/market-data/…Contract Selection Decision Recording & Replay – Canonical v1.0.md` | **Canonical v1.0** | Låst inspelnings- och replaysemantik för C3B.2 v1. Lagrat beslut är sanningskälla, uppslagning på `root` + `at` (Beslut L) |
 | Beslutsorkestrering | `specifications/market-data/…Recorded-First Contract Selection Orchestration – Canonical v1.0.md` | **Canonical v1.0** | Låst recorded-first orkestrering för C3B.3. Anroparägd `decisionId`/`decidedAt`, explicit kalenderpin, historik/replay endast (Beslut M) |
+| Historiskt källresultat | `specifications/market-data/…Contract-Scoped Historical Candle Source Result – Canonical v1.0.md` | **Canonical v1.0** | Låst kontraktsskopat källresultat för C3C. Intervalltäckning som prefix, `ObservationSourceState`, avvisat löfte vid tekniskt fel (Beslut N) |
 | Datamodell | `specifications/data-model/Omnira Trading System – Datamodell v0.1.md` | v0.1 | Fas 0-baseline. Rev. 2026-08-27, additivt fält |
 | Öppna gates | `reviews/Open Implementation Gates v1.0.md` | v1.0 | Aktiv, 11 öppna |
 | Ändringsspår | `reviews/Canonical Amendments v1.0.md` | v1.0 | Aktiv |
@@ -296,7 +297,24 @@ inspelat beslut hämtas först och hur återfallet komponeras: varje anrop börj
 klocka, den explicita kalendern är §10:s pinning, och efter inspelning läses det lagrade
 beslutet om och returneras.
 
-**Fullständig precedens inom kontraktsval efter Beslut M:**
+**GATE-08 flyttas inte av Beslut M.** Gaten är fortsatt **delvis stängd**.
+**C3B.3-runtime är inte implementerad:** ingen orkestrerare existerar i kod.
+Live-kontraktsval definieras inte — `LIVE CONTRACT SELECTION ORCHESTRATION` förblir en
+separat framtida gräns under Canonical v1.0 §24.
+
+**Källresultatluckor stängda 2026-09-05:** `GATE-08C-3A SOURCE-RESULT-SHAPE GAP`,
+`SOURCE-TECHNICAL-FAILURE STYLE CONFLICT` och `OBSERVATION-SOURCE-STATE PRODUCER GAP`
+(historisk C3C) genom Beslut N. `specifications/market-data/Omnira Trading System –
+Contract-Scoped Historical Candle Source Result – Canonical v1.0.md` är kanonisk
+auktoritet för vad en kontraktsskopad historisk candle-källa returnerar: resultatet bär
+ekat `ResolvedContract`, en halvöppen `coverage` som är ett **prefix** av förfrågan, och
+`ObservationSourceState`. Täckningen är ett **löfte, inte en gissning**; ingen cursor,
+ingen `limit` och inget `hasMoreBefore` exponeras; `OBSERVATIONS` och `NO_DATA` är skilda
+lyckade utfall; källan returnerar aldrig `BarCompleteness`; och tekniskt fel **avvisar
+löftet** i stället för att bli ett domänutfall. `HistoricalContractRequest` från
+GATE-08C-3A är oförändrad.
+
+**Fullständig precedens inom kontraktsval och historisk marknadsdata efter Beslut N:**
 
 - Market Data & Contract Lifecycle Canonical v1.0 äger kontrakts-, kalender-,
   resolutions- och replaykravet.
@@ -307,13 +325,17 @@ beslutet om och returneras.
   inspelningskontext, uppslagning, unikhet och append-semantik.
 - Recorded-First Contract Selection Orchestration Canonical v1.0 äger historik/replay-
   ordningen, återfallets ägarskap och kompositionen.
-- Runtime i TypeScript är **mekanisk transkription** av dessa fem. **Ingen runtime-fil
+- Contract-Scoped Historical Candle Source Result Canonical v1.0 äger det historiska
+  kontraktsskopade källresultatet: täckning, uttömning, tomsemantik, settledness,
+  tekniskt fel och kontraktseko.
+- Runtime i TypeScript är **mekanisk transkription** av dessa sex. **Ingen runtime-fil
   rangordnas över kanon.**
 
-**GATE-08 flyttas inte av Beslut M.** Gaten är fortsatt **delvis stängd**.
-**C3B.3-runtime är inte implementerad:** ingen orkestrerare existerar i kod.
-Live-kontraktsval definieras inte — `LIVE CONTRACT SELECTION ORCHESTRATION` förblir en
-separat framtida gräns under Canonical v1.0 §24.
+**GATE-08 flyttas inte av Beslut N.** Gaten är fortsatt **delvis stängd**.
+**C3C-runtime är inte implementerad:** ingen historisk kontraktskälla existerar i kod.
+`LIVE CONTRACT CANDLE SOURCE` och `LIVE CONTRACT SELECTION ORCHESTRATION` förblir
+separata framtida gränser under Canonical v1.0 §24. `HISTORICAL DATA SNAPSHOT / REPLAY
+GAP` registreras som **öppen/uppskjuten** och är ingen C3C-blockerare.
 
 ---
 

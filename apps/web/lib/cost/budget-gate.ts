@@ -101,12 +101,46 @@ export interface SpendVerdict {
   bindingScope: BudgetScope | null
 }
 
+/**
+ * Refusals that are DISPATCH SAFETY, not budget policy.
+ *
+ * ── WHY THESE MAY NEVER BE ADVISORY ────────────────────────────────────────
+ * `H1_SPEND_GATE` exists so a budget CEILING can be rolled out gradually: while
+ * it is advisory, "you are over budget" is downgraded to a warning and the call
+ * proceeds. That is a deliberate, bounded risk — the worst case is money.
+ *
+ * A replay refusal is a different sentence. It says this logical spend identity
+ * has already been consumed, or may still be live on another worker. Downgrading
+ * it would return `allowed: true` carrying THE OTHER CALLER'S reservation id, and
+ * the second caller would then dispatch the provider a second time and settle a
+ * row it does not own. The worst case there is not money — it is a duplicate
+ * external effect, which is the exact outcome `budget_reserve`'s replay state
+ * machine was built to make impossible ("NO EXISTING IDEMPOTENCY KEY AUTHORIZES
+ * ANOTHER PROVIDER DISPATCH").
+ *
+ * ── BACKWARD COMPATIBILITY, EXACTLY ────────────────────────────────────────
+ * `budget_reserve` returns a replay reason ONLY inside its `p_idempotency_key is
+ * not null` branch. Every unkeyed caller — which today is every generic provider
+ * retry — can therefore never observe one, and its advisory behaviour is
+ * unchanged to the letter.
+ */
+const REPLAY_REFUSALS: readonly SpendRefusal[] = [
+  'replay_in_flight', 'replay_stale', 'replay_settled',
+  'replay_released', 'replay_identity_mismatch',
+]
+
+export function isReplayRefusal(reason: SpendVerdict['reason']): boolean {
+  return (REPLAY_REFUSALS as readonly string[]).includes(reason)
+}
+
 function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: SpendVerdict['reason'] }): SpendVerdict {
   const enforced = isSpendGateEnforced()
+  // A dispatch-safety refusal stands whether or not the ceiling is enforced.
+  const hardRefusal = !p.wouldAllow && isReplayRefusal(p.reason)
   return {
-    allowed: p.wouldAllow || !enforced,
+    allowed: p.wouldAllow || (!enforced && !hardRefusal),
     wouldAllow: p.wouldAllow,
-    advisoryOverride: !p.wouldAllow && !enforced,
+    advisoryOverride: !p.wouldAllow && !enforced && !hardRefusal,
     reason: p.reason,
     reservationId: p.reservationId ?? null,
     budgetSek: p.budgetSek ?? null,
@@ -206,7 +240,16 @@ export async function withSpendGate<T>(
 ): Promise<T> {
   const v = await reserveSpend(input)
   if (!v.allowed) {
-    await releaseSpend(v.reservationId)
+    // ── A REFUSAL GRANTS NO RESERVATION OWNERSHIP ───────────────────────────
+    // `budget_reserve` already left every refused reservation in the state its
+    // refusal requires: `budget_exceeded` inserts the row already RELEASED,
+    // `replay_stale` releases the stale row itself, and `replay_in_flight`
+    // deliberately leaves the OTHER caller's row OPEN because that dispatch may
+    // still be running. Releasing here reached across into that row.
+    //
+    // This helper has no runtime callers today, but the rule is the same one
+    // `withGovernedSpend` follows — two different replay-ownership semantics in
+    // one codebase is how the wrong one gets copied.
     return onRefused(v)
   }
   try {

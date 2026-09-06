@@ -240,13 +240,36 @@ export interface GovernedSpendInput {
    * `replay_identity_mismatch` if the key names a different project, provider,
    * operation or a larger estimate. Zero replay states return allowed.
    *
-   * STILL DORMANT AT RUNTIME. No adapter passes one, for a reason measured
-   * rather than assumed (`budget-retry-lifecycle.test.ts`): every retry wrapper
-   * in this codebase sits OUTSIDE this boundary, so attempt 1 has already
-   * settled or released before attempt 2 begins. A key would therefore turn a
-   * retryable 503 into a spend refusal. Activation waits for a dispatch-claim
-   * design; until then, every attempt takes its own reservation, which
-   * over-reserves on retry and can never under-reserve.
+   * ── FOUR DIFFERENT THINGS, KEPT APART ────────────────────────────────────
+   *
+   * 1. LOGICAL EFFECT IDENTITY — what a key names.
+   *    For a workflow governed effect it is `runs.idempotency_key`: the action
+   *    identity, which already includes `attempt_group`. Those kinds are
+   *    FINANCIAL, so `runs_material_actions_single_attempt` pins `max_attempts`
+   *    to 1 and there is no in-run retry for a key to collide with.
+   *
+   * 2. BOUNDARY CAPABILITY — which adapters can carry one.
+   *    This boundary, the Anthropic client and the Ideogram v3 client all accept
+   *    a key. Capability is not use.
+   *
+   * 3. CURRENT NON-NULL CALLERS — who actually supplies one today.
+   *    The governed-effect handlers, reaching this boundary through the trusted
+   *    Anthropic adapter. Ideogram v3 is key-CAPABLE but has no non-null caller:
+   *    `generateNewsImages` takes `spendSubject` as its sixth parameter and no
+   *    call site passes six arguments. The executor-level keyed reservation in
+   *    `effect-execution.ts` is likewise unreached, because every enabled kind
+   *    declares `trusted_adapter` as its spend boundary owner.
+   *
+   * 4. GENERIC RETRY WRAPPERS — who must never supply one.
+   *    Measured rather than assumed (`budget-retry-lifecycle.test.ts`): every
+   *    retry wrapper in this codebase sits OUTSIDE this boundary, so attempt 1
+   *    has already settled or released before attempt 2 begins. A key there
+   *    would turn a retryable 503 into a spend refusal. Each attempt takes its
+   *    own reservation, which over-reserves on retry and can never under-reserve.
+   *
+   * No replay state authorizes another dispatch, and a replay refusal is never
+   * downgraded by advisory mode — see `isReplayRefusal`. None of this says
+   * anything about PROVIDER-side idempotency, which no adapter here relies on.
    */
   idempotencyKey?: string
 }
@@ -286,10 +309,28 @@ export async function withGovernedSpend<T>(
   })
 
   if (!verdict.allowed) {
-    // The reservation row, if any, is already 'released' by budget_reserve when
-    // it refuses; releasing again is a harmless no-op that also covers the
-    // replay path, where the id belongs to a reservation we did not create.
-    await releaseSpend(verdict.reservationId)
+    // ── A REFUSAL GRANTS NO RESERVATION OWNERSHIP ─────────────────────────────
+    // This used to release `verdict.reservationId`, on the belief that doing so
+    // was "a harmless no-op that also covers the replay path". It is not, and
+    // the replay path is exactly where it is not.
+    //
+    // On a replay refusal the id belongs to ANOTHER caller's reservation, and
+    // `budget_reserve` has already left it in the state its refusal requires:
+    //
+    //   budget_exceeded     the row is INSERTed already 'released' → nothing to do
+    //   replay_stale        SQL released the stale row itself      → nothing to do
+    //   replay_settled/…    terminal                               → nothing to do
+    //   replay_in_flight    the row is OPEN **on purpose**, because that dispatch
+    //                       may still be running
+    //
+    // `budget_release` guards on `status = 'open'`, so the terminal cases really
+    // were no-ops — which is why this looked safe. The two that were not:
+    // `replay_in_flight` always, and `replay_identity_mismatch` whenever the
+    // existing row is open. In both, this line released a LIVE reservation
+    // belonging to a dispatch still in flight, breaking the one invariant the
+    // replay machine exists to hold: one live dispatch, one held reservation.
+    //
+    // The caller owns no reservation here. SQL decided the state; we report it.
     throw new SpendRefusedError({
       reason: verdict.reason, provider, operation,
       detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom `

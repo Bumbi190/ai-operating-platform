@@ -124,6 +124,7 @@ describe('the read-only executor cannot be handed a write', () => {
       'observe_vercel_deploy_sha_match', 'observe_vercel_production_alias',
       'observe_vercel_production_ready',
       'probe_anonymous_protected_access',
+      'validate_monthly_story',
     ])
   })
 

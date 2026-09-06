@@ -123,7 +123,7 @@ describe('multi-placement registry', () => {
 // ── Executor ────────────────────────────────────────────────────────────────
 
 describe('executor widening', () => {
-  it('exactly ten READ_ONLY kinds are executable — no eleventh', () => {
+  it('exactly eleven READ_ONLY kinds are executable — no twelfth', () => {
     // Phase 1B raised the third: observe_release_gate. The property this pins is
     // not the number but that every executable kind is READ_ONLY, which the
     // HANDLERS type enforces; the count is the tripwire that a new one arrived
@@ -135,6 +135,7 @@ describe('executor widening', () => {
       'observe_vercel_deploy_sha_match', 'observe_vercel_production_alias',
       'observe_vercel_production_ready',
       'probe_anonymous_protected_access',
+      'validate_monthly_story',
     ])
   })
 

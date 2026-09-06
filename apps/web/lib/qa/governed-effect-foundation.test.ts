@@ -115,6 +115,7 @@ describe('the READ_ONLY path did not move', () => {
       'observe_vercel_deploy_sha_match', 'observe_vercel_production_alias',
       'observe_vercel_production_ready',
       'probe_anonymous_protected_access',
+      'validate_monthly_story',
     ])
     for (const k of kinds) {
       const meta = ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY]

@@ -206,6 +206,21 @@ export type ReleaseAtMatch = 'MATCH' | 'MISMATCH' | 'UNKNOWN'
  */
 export type Freshness = 'fresh' | 'stale' | 'unknown'
 
+export interface ManifestBindingSection {
+  expected_manifest_sha256: string | null
+  binding_status: 'BOUND' | 'MISSING' | 'INVALID' | 'CONFLICTED'
+  /** The release generation this expectation was attested for. */
+  release_pr_number: number | null
+  release_merge_sha: string | null
+  locked_at: string | null
+  locked_by: string | null
+  /** Complete attestations for the current generation. 1 = never corrected. */
+  generations: number
+  /** An expectation that was refused authority, kept visible for audit. */
+  rejected_expected_manifest_sha256: string | null
+  rejected_reason: 'AFTER_DOWNSTREAM_RELIANCE' | 'RELEASE_GENERATION_CHANGED' | null
+}
+
 export interface TechnicalSection extends SectionSummary {
   /**
    * The fail-open invariant, tri-state and never inferred.
@@ -235,6 +250,8 @@ export interface TechnicalSection extends SectionSummary {
    * because a stale global pin would let one month satisfy another's check.
    */
   github: GithubBindingSection
+  /** Which shared manifest this release expects. Instance-bound, never global. */
+  manifest: ManifestBindingSection
 
   release_instant_computed: Tri
   manifest_in_sync: Tri

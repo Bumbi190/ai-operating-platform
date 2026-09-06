@@ -279,7 +279,8 @@ describe('11-13. side-effect freedom and boundary', () => {
     const imports = [...src.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map(m => m[1])
     // Type-only imports of the domain plus the bundle's own schema. Nothing else.
     expect(imports.sort()).toEqual(
-      ['../attestation', '../types', './github-binding', './reachability-policy', './types'])
+      ['../attestation', '../types', './github-binding', './manifest-binding',
+       './reachability-policy', './types'])
     expect(src).not.toMatch(/\bfetch\s*\(/)
     expect(src).not.toMatch(/createAdminClient|createClient|supabase/i)
     expect(src).not.toMatch(/executeWorkflowAction|appendTransition|recordEvidence/)
@@ -303,6 +304,19 @@ describe('11-13. side-effect freedom and boundary', () => {
       expect(binding, forbidden).not.toContain(forbidden)
     }
 
+    // The sixth import is the MANIFEST expectation binding — the same shape, and
+    // held to the same standard. It matters most here: the value it carries
+    // exists to be compared against DEPLOYED source, so a module that could
+    // reach the Management API could quietly supply its own expectation and
+    // turn the comparison into production equalling itself.
+    const manifestSrc = readFileSync(join(process.cwd(), 'lib/workflows/bundle/manifest-binding.ts'), 'utf8')
+    const manifestCode = manifestSrc.split('\n')
+      .filter(l => { const t = l.trim(); return !t.startsWith('*') && !t.startsWith('//') && !t.startsWith('/*') })
+      .join('\n')
+    for (const forbidden of ['fetch(', 'process.env', 'import(', 'require(', 'supabase',
+                             'api.supabase.com', 'MANAGEMENT']) {
+      expect(manifestCode, forbidden).not.toContain(forbidden)
+    }
   })
 
   it('cannot reach a write, comms or spend action class', () => {

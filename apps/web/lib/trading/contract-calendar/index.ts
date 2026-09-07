@@ -52,9 +52,23 @@
  * They stay separate on purpose, and the dependency runs one way: each layer
  * consumes the one below it, and nothing above reaches back into this one.
  *
- * What genuinely remains here is the contract-scoped data SOURCE contract —
- * GATE-08C-3A SOURCE-RESULT-SHAPE GAP is still open. GATE-08 stays DELVIS
- * STÄNGD.
+ * The contract-scoped data SOURCE contract is settled too. Beslut N canonized
+ * what a historical source RESULT is — interval coverage as a prefix of the
+ * request, `ObservationSourceState`, observations distinguished from explicit
+ * absence, a contract echo, and technical failure left as a rejected promise —
+ * so GATE-08C-3A SOURCE-RESULT-SHAPE GAP is CLOSED:
+ *
+ *     source result     `…/market-data/…Contract-Scoped Historical Candle
+ *                       Source Result – Canonical v1.0.md`
+ *
+ * What remains is the RUNTIME. No provider-neutral historical contract source
+ * exists in code: there is no `HistoricalContractCandleSource`, no adapter and
+ * no provider integration anywhere in this tree, and implementing that source is
+ * the next Trading boundary. A live contract candle source is separate future
+ * work again under Canonical v1.0 §24 — historical and live are distinct
+ * contracts and a symmetric shared interface stays forbidden.
+ *
+ * GATE-08 stays DELVIS STÄNGD.
  */
 
 // ─── Lifecycle facts ──────────────────────────────────────────────────────────

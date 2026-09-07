@@ -16,6 +16,10 @@ import {
   markAtlasProjectRailOpen,
   takeAtlasProjectRailRestoreFocus,
 } from './AtlasProjectReturnShortcut'
+import { KeyboardHintList } from '@/components/platform/os/KeyboardHintList'
+import { routeKeyboardHintsFor } from '@/lib/nav/keyboard-hints'
+import { ATLAS_HOME_PATH } from '@/lib/nav/activity-peek-visibility'
+import hintStyles from '@/components/platform/os/KeyboardHints.module.css'
 import styles from './AtlasHomeVNext.module.css'
 
 function relativeTime(iso: string, generatedAt: string): string {
@@ -112,7 +116,7 @@ export function ProjectRail({ cards, generatedAt, availability }: ProjectRailPro
   }, [cards, centerCard, replaceProjectQuery])
 
   const openProject = useCallback((card: AtlasRailCard) => {
-    markAtlasProjectRailOpen(card.selectionKey)
+    markAtlasProjectRailOpen(card.selectionKey, 'atlas-home')
     router.push(card.href)
   }, [router])
 
@@ -187,6 +191,14 @@ export function ProjectRail({ cards, generatedAt, availability }: ProjectRailPro
           <p className={styles.sectionKicker}>Levande projektportfölj</p>
           <h2 id="atlas-projects-title">Välj vad Atlas ska fokusera på</h2>
         </div>
+        {/* The rail's own shortcuts, from the shared metadata and rendered with
+            the shared caps. The shell's hint bar stands down on Atlas Home — it
+            is sticky, and Atlas Home is the locked composition — so the rail
+            shows them in flow instead. Supplemental: aria-hidden, no pointer
+            events, and both keys work whether or not this is on screen. */}
+        <span className={hintStyles.inline} aria-hidden="true">
+          <KeyboardHintList hints={routeKeyboardHintsFor(ATLAS_HOME_PATH)} />
+        </span>
         <span aria-label={`${cards.length} kort`}>{String(selectedIndex + 1).padStart(2, '0')} / {String(cards.length).padStart(2, '0')}</span>
       </div>
 
@@ -290,7 +302,7 @@ export function ProjectRail({ cards, generatedAt, availability }: ProjectRailPro
               <Link
                 href={card.href}
                 className={styles.projectDirectLink}
-                onClick={() => markAtlasProjectRailOpen(card.selectionKey)}
+                onClick={() => markAtlasProjectRailOpen(card.selectionKey, 'atlas-home')}
               >
                 {system ? 'Öppna arbetsyta' : 'Öppna projekt'} <ArrowUpRight size={13} aria-hidden="true" />
               </Link>

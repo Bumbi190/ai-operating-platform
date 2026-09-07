@@ -85,10 +85,11 @@ describe('organisation · the route is real', () => {
     expect(hit.some((r) => r.href === '/organisation')).toBe(true)
   })
 
-  it('does NOT change the approved sidebar IA', () => {
-    // Adding a nav item would change navigation membership, which is a locked
-    // decision from Phase 0. The destination exists; the sidebar does not move.
-    expect(vnextNavItems().some((item) => item.href === '/organisation')).toBe(false)
+  it('is in the sidebar, in the Atlas group, without moving anything else', () => {
+    // Phase 6 added the destination but deliberately left the sidebar alone —
+    // navigation membership was a locked Phase 0 decision. Phase 6.5 approved
+    // the entry; the surrounding groups are pinned in navigation-closure.test.
+    expect(vnextNavItems().some((item) => item.href === '/organisation')).toBe(true)
   })
 
   it('renders the spatial view for vNext and a plain list for legacy', () => {

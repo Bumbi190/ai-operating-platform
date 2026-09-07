@@ -12,6 +12,7 @@ import {
   type SpiralSpread,
 } from '@/lib/atlas/project-spiral-geometry'
 import type { AtlasRailCard } from '@/lib/atlas/first-party-workspaces'
+import { markAtlasProjectRailOpen } from './AtlasProjectReturnShortcut'
 import styles from './ProjectSpiral.module.css'
 
 interface ProjectSpiralProps {
@@ -77,10 +78,12 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
     // Straight to the destination the card already carries — the real project
     // route. No second project command-center route is introduced here.
     //
-    // Deliberately NOT calling `markAtlasProjectRailOpen`: that marker is what
-    // makes Esc on a project page return to ATLAS HOME, which is the wrong
-    // destination for someone who arrived from the spiral. Redirecting it would
-    // be new back-behaviour, and this phase does not invent any.
+    // The marker now records WHERE the project was opened from, so Esc on the
+    // project page returns to the spiral rather than to Atlas Home. Phase 5
+    // deliberately left this unmarked precisely because the marker could not
+    // yet express an origin, and returning to the wrong surface would have been
+    // worse than not returning at all.
+    markAtlasProjectRailOpen(card.selectionKey, 'projects-index')
     router.push(card.href)
   }, [router])
 
@@ -173,6 +176,9 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
                 aria-current={placement.focused ? 'true' : undefined}
                 onMouseEnter={() => select(index)}
                 onFocus={() => select(index)}
+                // The pointer path navigates through the link itself, so it
+                // records the origin here — the same place ProjectRail does.
+                onClick={() => markAtlasProjectRailOpen(card.selectionKey, 'projects-index')}
               >
                 <span className={styles.cardTop}>
                   <span className={styles.cardMark} aria-hidden="true">

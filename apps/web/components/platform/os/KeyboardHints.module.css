@@ -92,3 +92,52 @@
     display: none;
   }
 }
+
+/* ── Inline variant ──────────────────────────────────────────────────────────
+   For a surface that shows its own hints in place rather than in the shell bar.
+   Atlas Home is the case: it is the locked visual reference and a sticky strip
+   would sit over its composition, so its project rail renders the same caps
+   from the same metadata, in flow, beside the rail heading.
+
+   Same caps, same labels, same scale behaviour — only the container differs. */
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  /* Never a second row, and never a scroller: hints drop instead. */
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  /* Never shrink below the caps. This sits inside someone else's flex heading,
+     and with `min-width: 0` the row squeezed it under its content width and
+     clipped the last cap — measured at 375px: 53px of box for 63px of caps.
+     The heading's text is the flexible part; a fixed affordance is not. */
+  flex: none;
+  /* Belt and braces: with `flex: none` the content always fits, but if the hint
+     set ever grows this still clips rather than opening a sideways scroller. */
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Below this width the caps alone carry it — same rule the bar uses, so the
+   two variants degrade identically. */
+@media (max-width: 640px) {
+  .inline .label {
+    display: none;
+  }
+}
+
+/* The bar drops whole hints by priority in JS, measuring the viewport. The
+   inline variant sits inside someone else's heading and cannot measure the
+   space it is given, so it drops positionally instead: below this width only
+   the first hint survives. That is priority order, because `keyboardHintsFor`
+   returns the route's hints in declaration order and they are declared most
+   important first — the same ordering `visibleKeyboardHints` sorts by.
+   Without this the second hint's caps are clipped by `overflow: hidden`
+   rather than dropped, which is the one failure mode both variants must
+   avoid. */
+@media (max-width: 520px) {
+  .inline .hint:not(:first-child) {
+    display: none;
+  }
+}

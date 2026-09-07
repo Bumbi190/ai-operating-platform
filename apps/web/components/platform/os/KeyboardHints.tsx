@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
   keyboardHintsFor,
@@ -9,6 +9,7 @@ import {
 } from '@/lib/nav/keyboard-hints'
 import type { OmniraUiGeneration } from '@/lib/ui/generation'
 import { DISPLAY_SCALE_ATTRIBUTE } from '@/lib/ui/display-preferences'
+import { KeyboardHintList } from './KeyboardHintList'
 import styles from './KeyboardHints.module.css'
 
 interface KeyboardHintsProps {
@@ -85,18 +86,7 @@ export function KeyboardHints({ uiGeneration }: KeyboardHintsProps) {
 
   return (
     <div className={styles.bar} aria-hidden="true">
-      {hints.map((hint) => (
-        <span key={`${hint.keys.join('+')}-${hint.label}`} className={styles.hint}>
-          <span className={styles.keys}>
-            {hint.keys.map((cap, index) => (
-              <Fragment key={`${cap}-${index}`}>
-                <kbd className={styles.cap}>{cap}</kbd>
-              </Fragment>
-            ))}
-          </span>
-          <span className={styles.label}>{hint.label}</span>
-        </span>
-      ))}
+      <KeyboardHintList hints={hints} />
     </div>
   )
 }

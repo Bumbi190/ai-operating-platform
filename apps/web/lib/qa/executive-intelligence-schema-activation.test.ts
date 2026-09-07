@@ -178,9 +178,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 64', () => {
+  it('enforces exactly the expected number of migrations — currently 65', () => {
+    // 65 since Phase 2B-3C added `spend_advisory_overrides` — an additive,
+    // append-only observability table. Every increment here is a deliberate
+    // production DDL decision, which is why the count is pinned rather than
+    // derived: a migration arriving without this line changing is a migration
+    // nobody reviewed.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(64)
+    expect(enforced).toBe(65)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

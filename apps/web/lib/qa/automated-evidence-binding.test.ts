@@ -340,8 +340,16 @@ describe('attestation stays exactly as it was', () => {
 
   it('no authorization or human identity is synthesized anywhere on this path', () => {
     const src = readFileSync(join(process.cwd(), 'lib/workflows/store.ts'), 'utf8')
-    const fn = src.slice(src.indexOf('export async function recordEvidence'),
-                         src.indexOf('/** Evidence for one instance'))
+    const whole = src.slice(src.indexOf('export async function recordEvidence'),
+                            src.indexOf('/** Evidence for one instance'))
+    // Comments stripped before matching. `actor` is a word this function's own
+    // documentation legitimately uses — it explains that the future privileged
+    // producer will validate the actor BEFORE reaching here — and a guard that
+    // fires on prose pushes the next author to delete the explanation rather
+    // than keep the property. The property is about CODE.
+    const fn = whole
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
     expect(fn).not.toMatch(/atlas_authorizations|authorization_id|actor|granted_by/)
     expect(fn).toMatch(/observationTargetHash = automatedObservationTargetHash\(/)
   })

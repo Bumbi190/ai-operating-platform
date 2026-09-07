@@ -159,7 +159,25 @@ export type EvidenceResult = 'pass' | 'fail' | 'blocked' | 'error' | 'skipped'
  *               test) and unreachable from a serverless runtime, so the record
  *               must keep the two apart rather than flatten them into "passed".
  */
-export type EvidenceSource = 'automated' | 'attested'
+/**
+ * Where a piece of evidence came from, and therefore what it is worth.
+ *
+ * `automated`          Omnira performed the check itself and owns the result.
+ * `attested`           a human ran it elsewhere and reported the outcome.
+ * `manual_privileged`  an authorized Editor executed a NAMED read-only
+ *                      privileged procedure and submitted the result. Distinct
+ *                      from `attested` on purpose: the four deployed-source
+ *                      checks need truth that only an account-wide Supabase
+ *                      Management token can read, so the read happens on an
+ *                      Editor's machine — and "I ran the privileged procedure"
+ *                      is not the same claim as "I ran ffprobe".
+ *
+ * NOTHING CAN WRITE `manual_privileged` YET. `recordEvidence` refuses it, both
+ * evidence writers hard-code their own provenance, and no check lists it in
+ * `allowed_provenance`. The value exists so the producer can be added as its
+ * own reviewable change rather than smuggled in alongside one.
+ */
+export type EvidenceSource = 'automated' | 'attested' | 'manual_privileged'
 
 export interface WorkflowEvidence {
   id: string

@@ -426,6 +426,22 @@ export async function recordEvidence(
   db: WorkflowDb,
   input: RecordEvidenceInput,
 ): Promise<WorkflowEvidence> {
+  // FIRST, before any database work: a provenance nothing may produce is
+  // refused outright. Ordering matters — this is a statement about the caller,
+  // not about the instance, so it must not depend on a lookup succeeding.
+  //
+  // recordEvidence takes `source: EvidenceSource`, so widening the union made
+  // `manual_privileged` type-legal at every call site. A producer that appears
+  // as a side effect of a type change is an authority nobody reviewed. Its real
+  // producer is a later slice that will validate the procedure, the actor and
+  // the report before reaching this function.
+  if (input.source === 'manual_privileged') {
+    throw new Error(
+      'recordEvidence: manual_privileged evidence has no producer yet; ' +
+      'the authorized privileged submission path is a later slice',
+    )
+  }
+
   const instance = await readInstance(db, input.instanceId)
   if (!instance) throw new Error(`recordEvidence: unknown instance ${input.instanceId}`)
 

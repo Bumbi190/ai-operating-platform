@@ -180,25 +180,25 @@
    hover and focus through colour, border and glow, which need no movement. */
 
 @media (prefers-reduced-motion: reduce) {
-  .launcher,
-  .aura,
-  .crystal,
-  .tooltip { transition: none; }
+  :where(html:not([data-motion='full'])) .launcher,
+  :where(html:not([data-motion='full'])) .aura,
+  :where(html:not([data-motion='full'])) .crystal,
+  :where(html:not([data-motion='full'])) .tooltip { transition: none; }
 
-  .launcher:hover,
-  .launcher:focus-visible,
-  .launcher:active { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:hover,
+  :where(html:not([data-motion='full'])) .launcher:focus-visible,
+  :where(html:not([data-motion='full'])) .launcher:active { transform: none; }
 
-  .launcher:hover .aura,
-  .launcher:focus-visible .aura { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:hover .aura,
+  :where(html:not([data-motion='full'])) .launcher:focus-visible .aura { transform: none; }
 
-  .launcher:hover .crystal,
-  .launcher:focus-visible .crystal { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:hover .crystal,
+  :where(html:not([data-motion='full'])) .launcher:focus-visible .crystal { transform: none; }
 
-  .launcher[data-phase='listening'] .stateRing,
-  .launcher[data-phase='thinking'] .stateRing,
-  .launcher[data-phase='speaking'] .stateRing { animation: none; }
+  :where(html:not([data-motion='full'])) .launcher[data-phase='listening'] .stateRing,
+  :where(html:not([data-motion='full'])) .launcher[data-phase='thinking'] .stateRing,
+  :where(html:not([data-motion='full'])) .launcher[data-phase='speaking'] .stateRing { animation: none; }
 
-  .launcher:hover + .tooltip,
-  .launcher:focus-visible + .tooltip { transform: translateY(-50%); }
+  :where(html:not([data-motion='full'])) .launcher:hover + .tooltip,
+  :where(html:not([data-motion='full'])) .launcher:focus-visible + .tooltip { transform: translateY(-50%); }
 }

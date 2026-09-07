@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;background:#050714;color:#f4f8ff;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#67e8f9;text-decoration:none}a:hover{color:#a5f3fc}
+@keyframes omBreath{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.08);opacity:.9}}
+@keyframes omSpin{to{transform:rotateX(72deg) rotateZ(360deg)}}
+@keyframes omOrbit{to{transform:rotate(360deg)}}
+@keyframes omPulseDown{0%{transform:translateY(-6px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(40px);opacity:0}}
+@keyframes omBlink{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:linear-gradient(145deg,#03060f,#050714 50%,#040610);padding:48px clamp(20px,5vw,80px) 80px;position:relative">
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 50% 30% at 50% 0%,rgba(7,150,180,.12),transparent 70%)"></div>
+  <div style="position:relative;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:56px">
+
+    <header style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px"><img src="assets/omnira-mark.svg" alt="" style="width:28px;height:28px;filter:drop-shadow(0 0 8px rgba(34,211,238,.5))"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:rgba(83,229,211,.85)">Omnira Design System · v1 · 2026-09-05</span></div>
+      <h1 style="margin:0;font-size:clamp(30px,4vw,48px);font-weight:600;letter-spacing:-.02em;line-height:1.05;max-width:800px;text-wrap:pretty">Ett levande, spatialt AI-operativsystem — normaliserat från referenserna.</h1>
+      <p style="margin:0;max-width:720px;font-size:15px;line-height:1.6;color:rgba(244,248,255,.7);text-wrap:pretty">Källa: <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a5f3fc">Design/references/</code> (13 filer) + befintliga tokens i <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a5f3fc">apps/web/app/globals.css</code>. Prototyp: <a href="Omnira OS.dc.html">Omnira OS →</a></p>
+    </header>
+
+    <!-- 0. Audit -->
+    <section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+      <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">00</span><h2 style="margin:0;font-size:22px;font-weight:600">Audit av referenserna</h2></div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:20px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6ee7b7">Återkommande mönster — behålls</span>
+        <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:rgba(244,248,255,.8)">
+          <li>Nästan svart marinblå void med svag cyan-nebulosa uppe till vänster, violett nedre höger</li>
+          <li>Glaskort: 1px ljuskant, inre glöd, mörk halvtransparent fyllning</li>
+          <li>Cyan/teal = intelligens-energi; violett = kreativt/prompt-kontext; grön = liv/hälsa/aktiv</li>
+          <li>Per-projekt-nyans på ikonplattan (grön, cyan, violett, teal), aldrig på hela kortet</li>
+          <li>Vertikal lysande ryggrad (spine) som organiserande axel — org-vy, spiral, kommandocenter</li>
+          <li>Statusprick + text ("● Aktiv"), mono-versaler för etiketter, keycaps för tangentbord</li>
+          <li>Atlas alltid som orb med ringar och partiklar — aldrig avatar</li>
+        </ul>
+      </div>
+      <div style="border-radius:16px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);padding:20px;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#fcd34d">Inkonsekvenser — löses så här</span>
+        <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:rgba(244,248,255,.8)">
+          <li>Två sidofält (slim 8 poster vs grupperat SV) → <b>ett grupperat</b>: Atlas / Arbete / Intelligens / Aktiva projekt</li>
+          <li>Två logotyper (ring vs 4-uddig stjärna) → <b>stjärnan</b> (finns i koden: <code style="font-family:'JetBrains Mono',monospace;font-size:12px">OmniraLogo.tsx</code>)</li>
+          <li>Atlas som blå klot vs stjärna-i-sfär → <b>stjärna-i-sfär</b> (orb-v1.png) som kärna, CSS-ringar runt</li>
+          <li>EN/SV blandat → <b>svenska</b> i UI, engelska produktnamn behålls</li>
+          <li>Trading = agentnoder på spine, Familje/GainPilot = KPI-dashboards → stabil <b>Projekt-shell</b> + dynamisk <b>Workflow-renderer</b> + utbytbar <b>specialistarbetsyta</b></li>
+          <li>Agentantal skiljer mellan vyer, spökoperatör "Alex Stratton", för många permanenta paneler → data från runtime, en operatör, max en högerpanel</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 1. Color -->
+    <section style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">01</span><h2 style="margin:0;font-size:22px;font-weight:600">Färg</h2><span style="font-size:13px;color:rgba(244,248,255,.55)">En energifärg. Violett sparsamt. Status alltid semantisk.</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#050714"></div><div style="padding:10px;font-size:12px"><b>Void</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#050714</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#0b0f24"></div><div style="padding:10px;font-size:12px"><b>Bg-3</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#0b0f24</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#22d3ee"></div><div style="padding:10px;font-size:12px"><b>Cyan · energi</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#22d3ee</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#2dd4bf"></div><div style="padding:10px;font-size:12px"><b>Teal</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#2dd4bf</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#a5f3fc"></div><div style="padding:10px;font-size:12px"><b>Aqua · text på cyan</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#a5f3fc</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#a78bfa"></div><div style="padding:10px;font-size:12px"><b>Violett · accent</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#a78bfa</div></div></div>
+        <div style="border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:hidden"><div style="height:72px;background:#f4f8ff"></div><div style="padding:10px;font-size:12px"><b>Text-0</b><div style="font-family:'JetBrains Mono',monospace;color:rgba(244,248,255,.55)">#f4f8ff · 72% · 55%</div></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.08)"><span style="width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399"></span><span style="font-size:13px"><b>Aktiv / Klar</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">#34d399</div></span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(34,211,238,.3);background:rgba(34,211,238,.08)"><span style="width:8px;height:8px;border-radius:50%;background:#22d3ee;box-shadow:0 0 8px #22d3ee;animation:omBlink 1.1s ease-in-out infinite"></span><span style="font-size:13px"><b>Exekverar</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">#22d3ee · blink 1.1s</div></span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(167,139,250,.3);background:rgba(167,139,250,.08)"><span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;box-shadow:0 0 8px #a78bfa;animation:omBlink 1.6s ease-in-out infinite"></span><span style="font-size:13px"><b>Tänker</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">#a78bfa · blink 1.6s</div></span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08)"><span style="width:8px;height:8px;border-radius:50%;background:#fbbf24;box-shadow:0 0 8px #fbbf24;animation:omBlink 2.2s ease-in-out infinite"></span><span style="font-size:13px"><b>Väntar godkännande</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">#fbbf24 · blink 2.2s</div></span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.08)"><span style="width:8px;height:8px;border-radius:50%;background:#f87171;box-shadow:0 0 8px #f87171;animation:omBlink .9s ease-in-out infinite"></span><span style="font-size:13px"><b>Varning / Blockerad</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">#f87171 · blink .9s</div></span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03)"><span style="width:8px;height:8px;border-radius:50%;background:rgba(244,248,255,.35)"></span><span style="font-size:13px"><b>Vilar</b><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">white 35% · ingen glöd</div></span></div>
+      </div>
+      <p style="margin:0;font-size:13px;color:rgba(244,248,255,.6);line-height:1.6;max-width:760px;text-wrap:pretty">Projektnyanser (Familje grön #34d399, Trading cyan #22d3ee, The Prompt violett #a78bfa, GainPilot teal #2dd4bf) används endast på ikonplattan, monogram, kantlinje och glöd — <b style="color:rgba(244,248,255,.85)">aldrig som kortfyllnad</b>. Textkontrast: all brödtext ≥ 4.5:1 mot void (text-2 = 72 % vit ≈ 9.8:1).</p>
+    </section>
+
+    <!-- 2. Type -->
+    <section style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:start">
+      <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">02</span><h2 style="margin:0;font-size:22px;font-weight:600">Typografi</h2><span style="font-size:13px;color:rgba(244,248,255,.55)">Inter för UI · JetBrains Mono för etiketter, siffror, keycaps — som i koden.</span></div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:30px;font-weight:600;letter-spacing:-.015em;line-height:1.1">Sidtitel 30/600 −1.5%</div>
+        <div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Sektionsrubrik 22/600</div>
+        <div style="font-size:16px;font-weight:600">Korttitel 16/600</div>
+        <div style="font-size:14px;line-height:1.5;color:rgba(244,248,255,.9)">Brödtext 14/400 · radavstånd 1.5 · text-1</div>
+        <div style="font-size:12.5px;color:rgba(244,248,255,.72)">Sekundär 12.5/400 · text-2 (72 %)</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:rgba(83,229,211,.85)">Eyebrow · mono 10 · +18 % spårning · versaler</div>
+        <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:rgba(244,248,255,.6)"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(244,248,255,.8);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:1px 6px;background:rgba(255,255,255,.03)">↵</span>Keycap · mono 10 · 1px kant</div>
+      </div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:22px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;color:rgba(244,248,255,.75)">
+        <b style="color:#f4f8ff">Spacing · rytm 4</b>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <span style="width:4px;height:4px;background:#22d3ee"></span><span style="width:8px;height:8px;background:#22d3ee"></span><span style="width:12px;height:12px;background:#22d3ee"></span><span style="width:16px;height:16px;background:#22d3ee"></span><span style="width:24px;height:24px;background:#22d3ee"></span><span style="width:32px;height:32px;background:#22d3ee"></span><span style="width:48px;height:48px;background:#22d3ee"></span>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px">4 · 8 · 12 · 16 · 24 · 32 · 48</span>
+        <span>Kort-padding 14–16 · sektionsgap 18–24 · sidmarginal 24. Radie: 8 chips · 10 knappar · 12–16 kort · 18–20 hero-kort · 999 piller.</span>
+        <b style="color:#f4f8ff;margin-top:6px">Minimimått</b>
+        <span>Klickyta ≥ 36 px höjd (sidofält, knappar), 44 px på touch. Brödtext ≥ 12.5 px.</span>
+      </div>
+    </section>
+
+    <!-- 3. Surfaces & glow -->
+    <section style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">03</span><h2 style="margin:0;font-size:22px;font-weight:600">Ytor, kanter & glöd</h2><span style="font-size:13px;color:rgba(244,248,255,.55)">Glöd är ett fokus- och energisignal — max en glödkälla per vy utöver Atlas.</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+        <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:16px;min-height:130px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px"><b style="font-size:13.5px">Glass-1 · vila</b><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">bg white 2.5 % · edge 8 % · ingen glöd</span></div>
+        <div style="border-radius:16px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);padding:16px;min-height:130px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px"><b style="font-size:13.5px">Glass-2 · hover</b><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">bg 5 % · edge 18 % · 200 ms</span></div>
+        <div style="border-radius:16px;border:1px solid rgba(34,211,238,.6);background:linear-gradient(160deg,rgba(34,211,238,.09),rgba(255,255,255,.02) 70%);box-shadow:0 0 0 1px rgba(34,211,238,.2),0 0 40px rgba(34,211,238,.25);padding:16px;min-height:130px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px"><b style="font-size:13.5px">Fokus / vald</b><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">edge nyans 60 % · ring 1px 20 % · glöd 40px 25 %</span></div>
+        <div style="position:relative;border-radius:16px;border:1px solid rgba(34,211,238,.22);background:rgba(255,255,255,.025);padding:16px;min-height:130px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px;overflow:hidden"><span style="position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,#22d3ee,transparent);opacity:.7"></span><b style="font-size:13.5px">Aktiv (energi passerar)</b><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,248,255,.55)">topplinje 1px gradient · puls längs anslutning</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+        <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:16px;display:flex;flex-direction:column;gap:12px">
+          <b style="font-size:13.5px">Anslutning & puls</b>
+          <div style="display:flex;align-items:center;gap:20px"><div style="position:relative;width:1px;height:44px;background:linear-gradient(180deg,rgba(34,211,238,.6),rgba(34,211,238,.25))"><span style="position:absolute;left:-2px;top:0;width:5px;height:5px;border-radius:50%;background:#a5f3fc;box-shadow:0 0 8px #22d3ee;animation:omPulseDown 2.4s linear infinite"></span></div><span style="font-size:12px;color:rgba(244,248,255,.65);line-height:1.5">1 px linje, nyans 60→25 %. Puls = 5 px prick, 2.2–2.6 s linjär, endast där ett workflow kör.</span></div>
+        </div>
+        <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:16px;display:flex;flex-direction:column;gap:12px">
+          <b style="font-size:13.5px">Ikonplatta & monogram</b>
+          <div style="display:flex;gap:10px"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:#34d399;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);box-shadow:0 0 18px rgba(52,211,153,.25)">FS</span><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:#22d3ee;background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.35);box-shadow:0 0 18px rgba(34,211,238,.25)">TR</span><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:#a78bfa;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.35);box-shadow:0 0 18px rgba(167,139,250,.25)">TP</span><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:#2dd4bf;background:rgba(45,212,191,.12);border:1px solid rgba(45,212,191,.35);box-shadow:0 0 18px rgba(45,212,191,.25)">GP</span></div>
+          <span style="font-size:12px;color:rgba(244,248,255,.65);line-height:1.5">Nyans 12 % fyllning · 35 % kant · 25 % glöd. Ikoner från referenserna ersätts med monogram tills ikonset finns.</span>
+        </div>
+        <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:16px;display:flex;flex-direction:column;gap:12px">
+          <b style="font-size:13.5px">Collapse-tillstånd</b>
+          <div style="display:flex;gap:8px"><span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);font-size:11.5px"><span style="font-family:'JetBrains Mono',monospace;display:inline-block;transform:rotate(180deg)">⌄</span>Dölj</span><span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);font-size:11.5px"><span style="font-family:'JetBrains Mono',monospace">⌄</span>Agenter</span></div>
+          <span style="font-size:12px;color:rgba(244,248,255,.65);line-height:1.5">Chevron roterar 250 ms. Innehåll tonar in 300 ms (opacity + 6 px). Ihopfällt kort behåller statusprick och räknare så inget läge tystar status.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Atlas -->
+    <section style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:center;border-radius:20px;border:1px solid rgba(34,211,238,.25);background:linear-gradient(135deg,rgba(34,211,238,.07),rgba(255,255,255,.02) 60%);padding:28px">
+      <span style="position:relative;width:120px;height:120px;display:grid;place-items:center;margin:14px">
+        <span style="position:absolute;inset:-8px;border-radius:50%;background:radial-gradient(circle,rgba(34,211,238,.35),transparent 70%);animation:omBreath 2s ease-in-out infinite"></span>
+        <span style="position:absolute;inset:-16px;border-radius:50%;border:1px solid rgba(34,211,238,.28);transform:rotateX(72deg);animation:omSpin 14s linear infinite"></span>
+        <span style="position:absolute;inset:-16px;animation:omOrbit 9s linear infinite"><span style="position:absolute;top:-3px;left:50%;width:6px;height:6px;border-radius:50%;background:#a5f3fc;box-shadow:0 0 10px #22d3ee"></span></span>
+        <span style="position:relative;width:120px;height:120px;border-radius:50%;overflow:hidden;box-shadow:0 0 30px rgba(34,211,238,.35)"><img src="refs/atlas-orb.png" alt="Atlas" style="position:absolute;inset:-22%;width:144%;height:144%"></span>
+      </span>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px;line-height:1.6;color:rgba(244,248,255,.8)">
+        <div style="display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">04</span><h2 style="margin:0;font-size:22px;font-weight:600">Atlas-identitet</h2></div>
+        <p style="margin:0;text-wrap:pretty">Kärna = referensens orb (<code style="font-family:'JetBrains Mono',monospace;font-size:12px">omnira-atlas-orb-v1.png</code>, cirkelmaskad). Runt den: två lutade CSS-omloppsbanor (14 s / 22 s), 1–2 orbitala noder (9 s / 15 s motsatt riktning), andningsglöd. Atlas är den enda orben i systemet — agenter får monogram.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:11px">
+          <span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.12)">idle · andning 5 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.12)">lyssnar · 2.4 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(167,139,250,.4);color:#c4b5fd">tänker · 1.6 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.12)">talar · 1.2 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(34,211,238,.4);color:#a5f3fc">exekverar · 1.4 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(251,191,36,.4);color:#fde68a">väntar godkännande · 3 s</span><span style="padding:4px 9px;border-radius:6px;border:1px solid rgba(248,113,113,.4);color:#fca5a5">varning · .9 s</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Shell -->
+    <section style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">05</span><h2 style="margin:0;font-size:22px;font-weight:600">Normaliserad app-shell</h2></div>
+      <div style="display:grid;grid-template-columns:150px minmax(0,1fr) 120px;grid-template-rows:44px minmax(0,1fr) 30px;gap:8px;height:340px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);padding:10px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:rgba(244,248,255,.7)">
+        <div style="grid-row:1/4;border-radius:10px;border:1px dashed rgba(34,211,238,.35);background:rgba(34,211,238,.04);padding:10px;display:flex;flex-direction:column;gap:8px"><b style="color:#a5f3fc">SIDOFÄLT 236</b><span>Atlas</span><span>· Organisation</span><span>· Projekt</span><span style="margin-top:4px">Arbete</span><span style="margin-top:4px">Intelligens</span><span style="margin-top:4px">Aktiva projekt</span><span style="margin-top:auto">Operatör</span></div>
+        <div style="grid-column:2/4;border-radius:10px;border:1px dashed rgba(255,255,255,.2);padding:10px;display:flex;align-items:center;gap:12px"><b>TOPPRAD 64</b><span>brödsmulor</span><span style="margin-left:auto">sök ⌘K · Atlas-status · notiser</span></div>
+        <div style="border-radius:10px;border:1px dashed rgba(52,211,153,.4);background:rgba(52,211,153,.04);padding:10px;display:flex;flex-direction:column;gap:6px"><b style="color:#6ee7b7">SCEN (flytande)</b><span>Organisation · Spiral · Projekt-shell → [Workflow-renderer] + [Specialistarbetsyta] · Agent · Färdigheter</span></div>
+        <div style="border-radius:10px;border:1px dashed rgba(251,191,36,.4);background:rgba(251,191,36,.04);padding:10px;display:flex;flex-direction:column;gap:6px"><b style="color:#fde68a">HÖGERPANEL 300–340</b><span>Endast en: status · chatt · detalj</span></div>
+        <div style="grid-column:2/4;border-radius:10px;border:1px dashed rgba(255,255,255,.2);padding:0 10px;display:flex;align-items:center;gap:12px"><b>TANGENTRAD 40</b><span>↵ öppna · ⌫/Esc tillbaka · ←→/A D fokus</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;font-size:13px;line-height:1.55;color:rgba(244,248,255,.75)">
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)"><b style="color:#f4f8ff">Projekt-shell = stabil</b><br>Header (platta, namn, status, åtgärder), agentremsa, högerpanel Projektstatus + delegationer. Identisk för alla projekt.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)"><b style="color:#f4f8ff">Workflow-renderer = dynamisk</b><br>N workflows × M steg från runtime. Status, ansvarig, blockerare, godkännande, utdata. Kollapsbar per rad och globalt.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)"><b style="color:#f4f8ff">Specialistarbetsyta = utbytbar</b><br>Paneler från projektets kapabilitetsschema: Trading → marknad, planerade affärer, positioner, performance/journal.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)"><b style="color:#f4f8ff">Atlas global · agenter projektscopade</b><br>Atlas-chip i toppraden och orb i Organisation. Agentchatt visar alltid "Atlas övervakar samtalet".</div>
+      </div>
+    </section>
+
+    <!-- 6. Motion + a11y -->
+    <section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+      <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">06</span><h2 style="margin:0;font-size:22px;font-weight:600">Rörelse, fokus & tillgänglighet</h2></div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:20px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.65;color:rgba(244,248,255,.8)">
+        <b style="color:#f4f8ff">Rörelseprinciper</b>
+        <span>1. Lugn, kontrollerad, aldrig spelmeny: easing ease-out, 200–400 ms för UI, 9–22 s för ambient.</span>
+        <span>2. Rörelse bär information: puls = arbete pågår, blink = tillstånd, glöd = fokus. Inget rör sig utan orsak.</span>
+        <span>3. Spiralen: fokusvinkel easas 7 %/frame; ofokuserade kort svävar ±6 px / ±0.05 rad; fokuserat kort står stilla.</span>
+        <span>4. Djup via skala 0.7–1.0, opacitet 0.32–1.0, blur upp till 1.6 px bakom ryggraden.</span>
+        <span>5. Gest-/rörelsestyrning i framtiden mappar till samma tre verb: <i>flytta fokus · aktivera · tillbaka</i>.</span>
+      </div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:20px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.65;color:rgba(244,248,255,.8)">
+        <b style="color:#f4f8ff">Fokus & tangentbord</b>
+        <span>Fokusram = nyanskant 60–75 % + 1 px ring + glöd. Aldrig enbart färg: fokuserat kort växer eller får keycap-hint.</span>
+        <span>←→ / A D flyttar fokus · ↵ aktiverar · ⌫ / Esc går tillbaka i historikstacken. Tangentrad längst ned visar alltid aktuella kommandon.</span>
+        <b style="color:#f4f8ff;margin-top:6px">Reducerad rörelse</b>
+        <span><code style="font-family:'JetBrains Mono',monospace;font-size:12px">prefers-reduced-motion</code> och tweaken <i>reducedMotion</i>: alla animationer stängs av, spiralen hoppar direkt till fokus, pulser ersätts av statisk statusprick. Kontrast och hierarki får aldrig bero på animation.</span>
+      </div>
+    </section>
+
+    <!-- 7. Atlas home + display scale -->
+    <section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+      <div style="grid-column:1/-1;display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">07</span><h2 style="margin:0;font-size:22px;font-weight:600">Atlas-sidan & visningsstorlek</h2><span style="font-size:13px;color:rgba(244,248,255,.55)">v1.1 · källa: omnira-atlas-home-living-intelligence-v1.png</span></div>
+      <div style="border-radius:16px;border:1px solid rgba(34,211,238,.25);background:linear-gradient(135deg,rgba(34,211,238,.06),rgba(255,255,255,.02) 60%);padding:20px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.6;color:rgba(244,248,255,.8)">
+        <div style="display:flex;gap:16px;align-items:flex-start"><img src="assets/atlas-face.png" alt="Atlas levande intelligens" style="width:120px;height:auto;flex:none;border-radius:12px"><div style="text-wrap:pretty"><b style="color:#f4f8ff">Levande intelligens, inte avatar.</b> Ansiktet är en abstrakt manifestation av ljus, partiklar och neurala linjer (referensens huvud, beskuret och kantmaskat). Orb-PNG:n sitter i pannan som kärna; CSS-omloppsbanor, noder, andningsglöd och ryggradslinje ligger ovanpå och drivs av tillståndet.</div></div>
+        <span><b style="color:#f4f8ff">Tillstånd → intensitet</b> (0.5–1.0) styr glöd, ansiktets opacitet/saturation, omloppshastighet (22→10 s) och pulstakt. Färg: idle/talar cyan · lyssnar aqua · tänker violett · exekverar grön · väntar gul · varning röd.</span>
+        <span><b style="color:#f4f8ff">Sidan innehåller</b> hälsning + tillståndspiller, chattfält, två kollapsbara sammanfattningar (Aktiv övervakning, Nuvarande fokus). Inga agenter visas förrän man öppnar dem.</span>
+      </div>
+      <div style="border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);padding:20px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;line-height:1.6;color:rgba(244,248,255,.8)">
+        <b style="color:#f4f8ff">Visningsstorlek — Kompakt · Standard · Stor</b>
+        <div style="display:flex;gap:6px"><span style="flex:1;height:38px;border-radius:9px;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace"><span style="font-size:11px;font-weight:600">A</span><span style="font-size:10px;font-family:Inter">0.9</span></span><span style="flex:1;height:38px;border-radius:9px;border:1px solid rgba(34,211,238,.45);background:rgba(34,211,238,.1);color:#a5f3fc;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace"><span style="font-size:14px;font-weight:600">A</span><span style="font-size:10px;font-family:Inter">1.0</span></span><span style="flex:1;height:38px;border-radius:9px;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace"><span style="font-size:18px;font-weight:600">A</span><span style="font-size:10px;font-family:Inter">1.15</span></span></div>
+        <span>Skalan appliceras som CSS-zoom på hela shellen så att layouten <i>flödar om</i> (rutnät bryter till färre kolumner, högerpaneler faller under, tabeller får intern horisontell scroll) i stället för att klippas. Shellens höjd räknas om (100vh / skala) så inget hamnar utanför vyn.</span>
+        <span>Preferensen sparas (<code style="font-family:'JetBrains Mono',monospace;font-size:12px">omnira.displayScale</code>) och ligger ovanpå webbläsarzoom. <b style="color:#f4f8ff">Reducerad rörelse</b> är en separat sparad preferens (<code style="font-family:'JetBrains Mono',monospace;font-size:12px">omnira.reducedMotion</code>) och följer dessutom <code style="font-family:'JetBrains Mono',monospace;font-size:12px">prefers-reduced-motion</code>.</span>
+        <span><b style="color:#f4f8ff">Inga döda kontroller:</b> varje instrument som saknas i prototypen öppnar en tydlig platshållarvy med Tillbaka och "Fråga Atlas".</span>
+      </div>
+    </section>
+
+    <!-- 8. Instruments -->
+    <section style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:baseline;gap:12px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#67e8f9">08</span><h2 style="margin:0;font-size:22px;font-weight:600">Instrument</h2><span style="font-size:13px;color:rgba(244,248,255,.55)">v1.2 · byggda på befintliga runtime-begrepp i repot</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;font-size:13px;line-height:1.55;color:rgba(244,248,255,.75)">
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.04)"><b style="color:#f4f8ff">Granskningar</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">approvals</code> (pending / approved / rejected / revised), FeedbackDecision. Kö + historik, projektfilter, risk/påverkan, Godkänn · Revidera · Avvisa · Inspektera. Beslut här stänger godkännandesteget i workflowet.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(34,211,238,.25);background:rgba(34,211,238,.04)"><b style="color:#f4f8ff">Aktivitet</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">runs</code> (RunStatus), RunningAgent/RecentRun, LiveRefresh 15 s. Kronologisk ström med typ-chip, live-puls på pågående, expanderbar detalj (agent, workflow, run-id, varaktighet).</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(167,139,250,.25);background:rgba(167,139,250,.04)"><b style="color:#f4f8ff">Planering</b> ← WorkflowTrigger cron, /releases, PlanningBoard-poster. Projektlinjer × dag/vecka/månad. Fyra slag: Release (fyrkant), Schemalagt (cirkel), Deadline (streck), Återkommande (grön cirkel).</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(52,211,153,.25);background:rgba(52,211,153,.04)"><b style="color:#f4f8ff">Minne</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">MemoryItem</code> {category, key, value.note, value.source, confidence, evidenceCount, lastSeenAt}. Sök, omfång (organisation/projekt), konfidensstapel (≥70 grön · ≥45 gul · röd), provenance (seed / feedback / journal), relationer → projekt, agent, workflow, graf.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(96,165,250,.25);background:rgba(96,165,250,.04);grid-column:1/-1"><b style="color:#f4f8ff">Capabilities v2 · Färdigheter / Verktyg / Behörigheter</b> — repo-first. <b>Färdigheter</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">agents.skill_ids</code> (enda verkliga operationen: tilldela/ta bort från agent); version, beroenden, aktivera/inaktivera, uppdatera och "Lägg till" bär chip PROTOTYP. Agentfilter-chips (från Agent Detail → Hantera färdigheter). <b>Verktyg</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">lib/atlas/capability/*</code>: endast de två registrerade kapaciteterna (desktop.commander, media.generate), båda licens draft · L0 · autonomousExecution false; krävda grants färgade per effektklass, förbjudna ansvar, förutsättningar (levererad / EJ LEVERERAD). Ingen agent→verktyg-modell finns — sägs explicit; tilldela/höj licens är inaktiverade. <b>Behörigheter</b> ← Ch18 (licens, autonomi), Ch21 (DelegationEnvelope authority/tools/dataScope), <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">lib/governance/execution-stop.ts</code>: fyra lager per agent — 1 Kapacitet finns · 2 Tilldelad agenten · 3 Runtime tillåter (stop-scope, L0, ingen provider) · 4 Godkännande krävs — plus effektklasser (Endast läsning · Skriv · Styrd effekt · Godkännande krävs · Otillgänglig). Ingen per-agent behörighetstabell skapas.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(167,139,250,.25);background:rgba(167,139,250,.04);grid-column:1/-1"><b style="color:#f4f8ff">Agent Detail v2</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">agents</code> (id, project_id, name, description, model, skill_ids, config), <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">workflows.steps[].agent_id</code>, runs, approvals. Övervakningskedja Andre → Atlas → Projekt → Agent ovanför headern; agentidentitet = monogram i projektfärg med live-statuspunkt, aldrig porträtt. Header: namn · status · "Övervakad av Atlas" · roll · modell · pågående · senast aktiv; åtgärder Starta samtal · Hantera färdigheter · Pausa/Återuppta · Eskalera till Atlas. Flikar: Översikt (standard) · Samtal · Färdigheter · Verktyg · Minne · Behörigheter · Workflows · Uppgifter. Översikt = Gör just nu + fyra kollapsbara kort (Ansvar, Kapacitet, Blockerat, Nyligen) som svarar på ansvar / nu / kan / blockerat / förändrat. Sektioner utan runtime-stöd (Verktyg per agent, per-agent behörigheter) renderas som tydligt märkta otillgängliga/regel-tillstånd — ingen påhittad auktoritet. Workflows/Uppgifter härleds från steg där agenten är tilldelad.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(45,212,191,.25);background:rgba(45,212,191,.04);grid-column:1/-1"><b style="color:#f4f8ff">Trading · Atlas Market View (chart-first)</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">components/platform/trading/*</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">lib/trading/market-view/snapshot.ts</code>. Chart 72–78 % + operationell rail (clamp 300–380 px; hamnar under charten på smala bredder). Slim strip: instrument (NQ/MNQ/ES) · timeframe · bias · session · FIXTURDATA. Overlays: likviditet teal, FVG violett translucent (öppen / mitigerad streckad / inverterad punktad), 4H-open cyan streckad, planerad entry cyan, SL rosa, TP grön, BE neutral, aktiv entry solid cyan 2 px, sweep-/CISD-markörer. Rail: Planerade trades (lifecycle ARMED/WATCHING, R:R, riskStatus, propStatus) → Observerade positioner (avg/last/SL/TP, orealiserat, provenance, färskhet) → Setup · Risk · Prop · Förslag (kollapsbara). Under charten: Atlas · kontext (öppen), Workflows (kollapsad), Prestanda (inaktiverad — "Prestandadata är inte tillgänglig i Stage 1"), Utvecklarverktyg (fixturscenario + replay). Inga Godkänn/Avvisa-kontroller — beslut hanteras i Granskningar; ingen exekveringsförmåga antyds.</div>
+        <div style="padding:14px;border-radius:12px;border:1px solid rgba(244,114,182,.25);background:rgba(244,114,182,.04);grid-column:1/-1"><b style="color:#f4f8ff">Intelligence Graph vNext</b> ← <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">graph-contract.ts</code> (project · agent · workflow · approval; CONTAINS · DELEGATED_TO · REQUESTED_APPROVAL; DERIVED). <b>Relationer, inte hierarki</b>: Andre överst, Atlas i centrum med omloppsbanor, fyra projektkluster i kvadranter, Kunskap (organisationsminne + data) nedanför. Nodformer per typ: cirkel = aktör/projekt/workflow, hexagon = minne/färdighet/kunskap/data, romb = approval. Kurvade luminösa kanter; aktiva kanter pulserar och bär vandrande energipunkter (offset-path); aktiva noder andas + halo. Val dämpar allt utanför grannskapet till 14 %. Typfilter (Projekt · Agenter · Färdigheter · Minnen · Workflows · Data), sök, zoom (scroll / ±), panorering, Fokusera (F), fäll ihop projekt (dubbelklick / C). Inspektor är en overlay — canvasen krymper aldrig — med flikar Översikt (status, kopplade noder, konfidens/provenance) · Relationer · Aktivitet. Minne → "Visa i Intelligence Graph" öppnar grafen fokuserad på noden. Reduced motion stänger av alla pulser, banor och andning.</div>
+      </div>
+    </section>
+
+    <p style="margin:0;font-size:12.5px;color:rgba(244,248,255,.5)">Nästa steg: ikonset (ersätter monogram), riktiga Atlas-tillstånd kopplade till runtime, Familje-Stunden och GainPilot-arbetsytor som schema.</p>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

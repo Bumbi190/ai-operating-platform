@@ -68,27 +68,51 @@ const VOICE: KeyboardHint = { keys: ['Alt', 'Space'], label: 'Atlas röst', prio
 /** Present on every vNext route, in this order. */
 const GLOBAL_HINTS: readonly KeyboardHint[] = [COMMAND_PALETTE, VOICE]
 
+interface RouteHints {
+  readonly base: string
+  /**
+   * Match this path ONLY, not its children.
+   *
+   * `/projects` needs it: the spiral's ← → Enter belong to the index, and a
+   * prefix match would advertise them on every project page and every page
+   * beneath one, where nothing binds them.
+   */
+  readonly exact?: boolean
+  readonly hints: readonly KeyboardHint[]
+}
+
 /**
  * Route-specific hints, each one traced to the code that implements it.
  *
- * Matched by longest prefix, so a deeper route can carry its own set without
- * the shallower one having to know about it.
+ * Matched by longest base, so a deeper route can carry its own set without the
+ * shallower one having to know about it.
  */
-const ROUTE_HINTS: ReadonlyArray<readonly [string, readonly KeyboardHint[]]> = [
-  [
+const ROUTE_HINTS: readonly RouteHints[] = [
+  {
+    // app/(platform)/projects/page.tsx → ProjectSpiral, which asks
+    // resolveProjectRailKeyAction in the 'atlas' context — the same resolver,
+    // the same guards, and the same meanings the Atlas rail already uses.
+    base: '/projects',
+    exact: true,
+    hints: [
+      { keys: ['←', '→'], label: 'bläddra projekt', priority: 0 },
+      { keys: ['Enter'], label: 'öppna projekt', priority: 1 },
+    ],
+  },
+  {
     // components/platform/trading/AtlasMarketView.tsx →
     // lib/trading/market-view/keyboard.ts → resolveProjectRailKeyAction
-    '/trading',
-    [
+    base: '/trading',
+    hints: [
       { keys: ['←', '→'], label: 'byt instrument', priority: 0 },
       { keys: ['Esc'], label: 'tillbaka till Atlas', priority: 1 },
     ],
-  ],
-  [
+  },
+  {
     // components/platform/intelligence/GraphCanvas.tsx — handleCanvasKeyDown
     // and the per-node handler. These need canvas focus, which Tab reaches.
-    '/intelligence/graph',
-    [
+    base: '/intelligence/graph',
+    hints: [
       { keys: ['←', '→', '↑', '↓'], label: 'navigera noder', priority: 0 },
       { keys: ['Enter'], label: 'inspektera', priority: 1 },
       { keys: ['/'], label: 'sök', priority: 1 },
@@ -97,16 +121,18 @@ const ROUTE_HINTS: ReadonlyArray<readonly [string, readonly KeyboardHint[]]> = [
       { keys: ['0'], label: 'anpassa', priority: 2 },
       { keys: ['Esc'], label: 'rensa urval', priority: 1 },
     ],
-  ],
+  },
 ]
 
 /** The hints for a pathname: the route's own, then the global ones. */
 export function keyboardHintsFor(pathname: string): KeyboardHint[] {
   const path = normalizePath(pathname ?? '/')
   const match = ROUTE_HINTS
-    .filter(([base]) => path === base || path.startsWith(base + '/'))
-    .sort((a, b) => b[0].length - a[0].length)[0]
-  return [...(match?.[1] ?? []), ...GLOBAL_HINTS]
+    .filter((entry) => entry.exact
+      ? path === entry.base
+      : path === entry.base || path.startsWith(entry.base + '/'))
+    .sort((a, b) => b.base.length - a.base.length)[0]
+  return [...(match?.hints ?? []), ...GLOBAL_HINTS]
 }
 
 /**

@@ -333,6 +333,20 @@ export function pathToDestination(pathname: string): DestinationId | null {
   return null
 }
 
+/**
+ * The base path a destination lives at, with no project or filters applied.
+ *
+ * `resolveDestination` deliberately returns null for a path-mode destination
+ * with no project — `/projects` on its own was not a page. Now that the index
+ * exists, callers that want the SECTION rather than one project need the base,
+ * and this exposes what ROUTE_MAP already knows rather than making them restate
+ * the path. Forward routing is unchanged: `project_home` still requires a
+ * project to resolve to a project.
+ */
+export function destinationBasePath(id: DestinationId): string | null {
+  return ROUTE_MAP[id] ?? null
+}
+
 /** Human label for a destination ("Approvals", "Money", …). */
 export function destinationLabel(id: DestinationId): string {
   return DESTINATIONS[id]?.label ?? id

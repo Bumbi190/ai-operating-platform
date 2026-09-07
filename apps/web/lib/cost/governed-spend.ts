@@ -55,6 +55,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { recordAdvisoryOverride } from './advisory-override'
 import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
 // Value import, but no runtime cycle: `execution-signal` imports only
 // `run-authority` and `execution-stop`, and the latter's reference back here is
@@ -283,6 +284,24 @@ export async function withGovernedSpend<T>(
     idempotencyKey: input.idempotencyKey,
     provider,
     operation,
+  })
+
+  // ── 2B-3C · OBSERVE, NEVER DECIDE ────────────────────────────────────────
+  // Recorded HERE — after the runtime verdict exists and before dispatch —
+  // because this is the only point where the fact is true and knowable. The
+  // verdict's own `advisoryOverride` flag is the condition; nothing below
+  // re-derives it. Awaited so the row lands before the provider is called, and
+  // internally non-throwing so it cannot change what happens next.
+  //
+  // This runs for EVERY governed client, because every one of them reaches the
+  // provider through this function. There is deliberately no per-client logging:
+  // a second recorder in the Anthropic path would measure Anthropic, not spend.
+  await recordAdvisoryOverride({
+    projectId: resolved.projectId,
+    provider, operation,
+    estimatedSek: input.estimatedSek,
+    idempotencyKey: input.idempotencyKey,
+    verdict,
   })
 
   if (!verdict.allowed) {

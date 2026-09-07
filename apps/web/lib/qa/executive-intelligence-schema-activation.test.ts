@@ -178,9 +178,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 65', () => {
+  it('enforces exactly the expected number of migrations — currently 66', () => {
+    // 66: `workflow_manual_privileged_provenance` (65) and Phase 2B-3C's
+    // `spend_advisory_overrides` (66) landed in parallel branches, and BOTH bumped
+    // this line to 65 independently. The merge conflict is the tripwire working:
+    // the count is pinned rather than derived precisely so two concurrent
+    // migrations cannot both look reviewed while only one was counted.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(65)
+    expect(enforced).toBe(66)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

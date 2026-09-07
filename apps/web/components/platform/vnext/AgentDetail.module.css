@@ -1,0 +1,450 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   AGENT DETAIL v2
+   ─────────────────────────────────────────────────────────────────────────
+   Inspection surface. Glass over a deep navy field, project accent carried
+   into the agent's own mark, cyan for the intelligence layer — but deliberately
+   quieter than Atlas Home or the Spiral, because an agent sits BENEATH the
+   project in the hierarchy and should not read as a standalone profile page.
+
+   Sized in rem throughout so the display-scale preference reaches it, and laid
+   out in flow so Large takes more vertical space rather than clipping.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.page {
+  position: relative;
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 4rem;
+  overflow-x: hidden;
+}
+
+.ambient {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 18rem;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 70% 100% at 20% 0%,
+    color-mix(in srgb, var(--agent-accent) 9%, transparent),
+    transparent 68%
+  );
+}
+
+/* ── Identity ────────────────────────────────────────────────────────────── */
+
+.identity {
+  position: relative;
+  padding-bottom: 1.125rem;
+}
+
+.context {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  margin: 0 0 0.625rem;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.contextLink {
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.68);
+  text-decoration: none;
+}
+
+.contextLink:hover {
+  color: var(--omnira-cyan);
+}
+
+.contextSep {
+  color: rgb(var(--omnira-aqua-rgb) / 0.24);
+}
+
+.contextLeaf {
+  color: rgb(var(--omnira-aqua-rgb) / 0.4);
+}
+
+.identityRow {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--agent-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--agent-accent) 14%, transparent);
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--agent-accent) 78%, white);
+}
+
+.identityText {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: hsl(var(--foreground));
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  margin: 0.1875rem 0 0;
+  font-size: 0.6875rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.5);
+}
+
+.status[data-status='working'] {
+  color: var(--omnira-emerald);
+}
+
+.statusDot {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+}
+
+.statusDot[data-status='working'] {
+  background: var(--omnira-emerald);
+  box-shadow: 0 0 0.5rem var(--omnira-emerald);
+  animation: agent-pulse 2.2s ease-in-out infinite;
+}
+
+.statusDot[data-status='idle'] {
+  background: rgb(var(--omnira-aqua-rgb) / 0.28);
+}
+
+/* Unknown is a ring, never a filled dot — visibly distinct from idle. */
+.statusDot[data-status='unknown'] {
+  background: transparent;
+  border: 1px solid rgb(var(--omnira-aqua-rgb) / 0.35);
+}
+
+@keyframes agent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.metaSep {
+  color: rgb(var(--omnira-aqua-rgb) / 0.22);
+}
+
+.model {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.45);
+}
+
+.editAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: none;
+  padding: 0.4375rem 0.8125rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.24);
+  background: rgb(var(--omnira-cyan-rgb) / 0.07);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--omnira-aqua);
+  text-decoration: none;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.editAction:hover {
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.45);
+  background: rgb(var(--omnira-cyan-rgb) / 0.12);
+}
+
+.description {
+  margin: 0.875rem 0 0;
+  max-width: 46rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgb(var(--omnira-aqua-rgb) / 0.62);
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.1);
+  /* Narrow widths scroll the tab strip rather than wrapping it into rows or
+     pushing the page sideways. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  flex: none;
+  padding: 0.4375rem 0.6875rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  font-size: 0.75rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.5);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.tab[data-active] {
+  color: var(--omnira-aqua);
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.28);
+  background: rgb(var(--omnira-cyan-rgb) / 0.09);
+  font-weight: 500;
+}
+
+.tab:focus-visible,
+.panel:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.8);
+  outline-offset: 2px;
+}
+
+/* A quiet ring marking a section with no runtime behind it. Never the only
+   signal — the panel itself says so in words. */
+.tabMark {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: 50%;
+  border: 1px solid rgb(var(--omnira-aqua-rgb) / 0.3);
+}
+
+.panel {
+  padding-top: 1.25rem;
+}
+
+/* ── Overview facts ──────────────────────────────────────────────────────── */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.fact {
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.1);
+  background: rgb(5 14 26 / 0.55);
+  min-width: 0;
+}
+
+.factLabel {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-aqua-rgb) / 0.38);
+}
+
+.factValue {
+  margin: 0.3125rem 0 0;
+  font-size: 0.8125rem;
+  color: hsl(var(--foreground) / 0.9);
+  overflow-wrap: anywhere;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+.section {
+  display: grid;
+  gap: 0.875rem;
+}
+
+.sectionNote {
+  margin: 0;
+  max-width: 44rem;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--omnira-aqua-rgb) / 0.5);
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.45);
+}
+
+.skillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill {
+  padding: 0.3125rem 0.5625rem;
+  border-radius: 0.4375rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.16);
+  background: rgb(var(--omnira-cyan-rgb) / 0.05);
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.6875rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.72);
+  overflow-wrap: anywhere;
+}
+
+.workflowList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow {
+  padding: 0.6875rem 0.875rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.1);
+  background: rgb(5 14 26 / 0.55);
+  min-width: 0;
+}
+
+.workflowHead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.workflowName {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.92);
+}
+
+.workflowRunning {
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.3125rem;
+  border: 1px solid color-mix(in srgb, var(--omnira-emerald) 40%, transparent);
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.05em;
+  color: var(--omnira-emerald);
+}
+
+.workflowSteps {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.42);
+  overflow-wrap: anywhere;
+}
+
+/* ── Unavailable state ───────────────────────────────────────────────────── */
+
+.unavailable {
+  max-width: 40rem;
+  padding: 1.375rem 1.5rem;
+  border-radius: 0.875rem;
+  border: 1px dashed rgb(var(--omnira-aqua-rgb) / 0.18);
+  background: rgb(5 14 26 / 0.45);
+}
+
+.unavailableBadge {
+  display: inline-block;
+  margin: 0 0 0.625rem;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 0.3125rem;
+  border: 1px solid rgb(var(--omnira-amber-rgb, 251 191 36) / 0.28);
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--omnira-amber);
+}
+
+.unavailableTitle {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.unavailableWhat {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.62);
+}
+
+.unavailableWhy {
+  margin: 0.625rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: rgb(var(--omnira-aqua-rgb) / 0.44);
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .page {
+    padding: 1.25rem 1rem 3.5rem;
+  }
+
+  /* The edit action drops onto its own line rather than squeezing the name. */
+  .editAction {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   The resolved Phase 3 signal stops animation globally; this states the intent
+   for the OS-preference path too. Nothing here carries state by movement — the
+   status is a dot AND a word, and the three dot styles differ by fill, ring and
+   colour, so they stay distinguishable with no animation at all. */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .statusDot[data-status='working'] {
+    animation: none;
+  }
+
+  :where(html:not([data-motion='full'])) .tab,
+  :where(html:not([data-motion='full'])) .editAction {
+    transition: none;
+  }
+}

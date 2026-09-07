@@ -99,6 +99,7 @@ const SEGMENT_LABELS: Readonly<Record<string, string>> = {
   operations: 'Operations Center',
   releases: 'Releases',
   run: 'Kör',
+  edit: 'Redigera',
   // The media page has no stable heading of its own — it renders an empty state
   // or a pipeline dashboard depending on configuration — so the route name
   // stands in rather than a label invented to fill the gap.

@@ -32,6 +32,10 @@ supabase/.temp
 # Handoff-filer — innehåller ibland konfidentiell info, lagras aldrig i repo
 HANDOFF*.md
 handoff*.md
+# Undantag: den frysta designöverlämningen är referensmaterial utan hemligheter,
+# och hela poängen med design/references/ är att den versioneras. Utan den här
+# raden faller HANDOFF.md tyst ur exporten och "frusen" betyder ingenting.
+!design/references/**/HANDOFF.md
 .vercel
 .env*
 

@@ -25,9 +25,15 @@ import type { DestinationId } from '@/lib/nav/registry'
  * never had. This model exists so a fourth cannot appear and the existing drift
  * has somewhere to converge.
  *
- * NOT WIRED YET. Nothing renders from this file. It encodes the owner-approved
- * IA so the later slices can switch renderers over one at a time, each with its
- * own proof, rather than changing structure and renderer in the same step.
+ * WIRED. `Sidebar` renders the desktop shell from `vnextNavGroupsFor('desktop')`
+ * whenever the request resolves to the vNext generation; legacy keeps its own
+ * frozen definition in legacy-nav.ts. This model was written before that switch
+ * happened and said so — it no longer applies, and the note is corrected here
+ * rather than left to mislead the next reader into thinking the IA is inert.
+ *
+ * It remains the single definition for both the desktop shell and
+ * AtlasMobileNav, so the drift it was created to absorb still has exactly one
+ * place to converge.
  *
  * Scope boundaries this model deliberately respects:
  *

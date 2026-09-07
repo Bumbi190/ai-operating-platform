@@ -112,6 +112,18 @@
   --omnira-amber:       #fbbf24;
   --omnira-rose:        #f87171;
 
+  /* Channel forms of the vNext accent family.
+     CSS cannot derive `34 211 238` from `#22d3ee`, so a surface that needs a
+     variable opacity of an accent has to either restate the channels inline or
+     read them from here. Every value below is the exact channel form of the hex
+     token directly above it, so the two can never disagree — and because they
+     are only declarations, adding them changes nothing on screen. */
+  --omnira-cyan-rgb:       34 211 238;   /* --omnira-cyan       #22d3ee */
+  --omnira-cyan-soft-rgb: 103 232 249;   /* --omnira-cyan-soft  #67e8f9 */
+  --omnira-teal-rgb:       45 212 191;   /* --omnira-teal       #2dd4bf */
+  --omnira-teal-soft-rgb:  94 234 212;   /* --omnira-teal-soft  #5eead4 */
+  --omnira-aqua-rgb:      165 243 252;   /* --omnira-aqua       #a5f3fc */
+
   /* Text scale — tuned for WCAG AA on the OLED canvas (#050714).
      text-2 (secondary) and text-3 (meta) now clear 4.5:1 for normal text;
      text-4 stays decorative-only (non-essential glyphs, never body copy). */
@@ -880,13 +892,27 @@
   color: rgba(255,255,255,0.95);
   background: rgba(255,255,255,0.035);
 }
+/* The active pill speaks through the OS accent contract rather than restating
+   indigo four times. In :root the contract resolves to exactly the indigo these
+   rules used to hard-code, so this is a rename, not a repaint.
+
+   Note what it does NOT do. The sidebar is mounted OUTSIDE the platform canvas
+   (the layout puts data-ui-generation on <main>, not on the shell root), so
+   these rules read :root in BOTH generations and stay indigo in both. The vNext
+   sidebar's cyan therefore has to come from SidebarVNext.module.css and cannot
+   come from here — which is also why, before that module was completed, a vNext
+   active pill wore a cyan wash with an indigo border, shadow and marker. */
 .nav-pill[data-active="true"] {
   color: rgba(255,255,255,0.98);
-  background: linear-gradient(180deg, rgba(99,102,241,0.16), rgba(99,102,241,0.06));
-  border-color: rgba(99,102,241,0.30);
+  background: linear-gradient(
+    180deg,
+    rgb(var(--os-accent-rgb) / 0.16),
+    rgb(var(--os-accent-rgb) / 0.06)
+  );
+  border-color: rgb(var(--os-accent-rgb) / 0.30);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.06),
-    0 8px 20px -10px rgba(99,102,241,0.45);
+    0 8px 20px -10px rgb(var(--os-accent-rgb) / 0.45);
 }
 .nav-pill[data-active="true"]::before {
   content: '';
@@ -897,8 +923,12 @@
   height: 14px;
   margin-top: -7px;
   border-radius: 1px;
-  background: linear-gradient(180deg, #a5b4fc, #818cf8);
-  box-shadow: 0 0 8px rgba(165,180,252,0.6);
+  background: linear-gradient(
+    180deg,
+    rgb(var(--os-accent-tint-rgb)),
+    var(--os-accent-soft)
+  );
+  box-shadow: 0 0 8px rgb(var(--os-accent-tint-rgb) / 0.6);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

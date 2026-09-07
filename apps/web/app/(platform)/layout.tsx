@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
-  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, type ActivityEvent,
+  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
@@ -269,6 +269,20 @@ export default async function PlatformLayout({
           <ShellMobileNav uiGeneration={uiGeneration}>
             <AtlasMobileNav />
           </ShellMobileNav>
+
+          {/* ─── Breadcrumbs ───────────────────────────────────────────────
+              Orientation for every vNext route except Atlas Home, which is the
+              locked surface, owns its whole canvas, and is where the root crumb
+              already points. Legacy is untouched: it keeps CommandBar, which
+              carries its own chrome, and the rollback path stays as it was.
+
+              The projects handed down are the same allow-listed set the sidebar
+              renders from, so a project crumb can name a project without this
+              layer querying anything or widening scope. */}
+          <Breadcrumbs
+            uiGeneration={uiGeneration}
+            projects={projects.map((p: any) => ({ slug: p.slug, name: p.name }))}
+          />
 
           {/* Page canvas */}
           <div className="relative z-content">

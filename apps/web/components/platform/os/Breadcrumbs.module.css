@@ -1,0 +1,124 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   BREADCRUMBS · vNext
+   ─────────────────────────────────────────────────────────────────────────
+   Orientation chrome, not a navigation bar. It sits above the page canvas at
+   low visual weight: no pills, no surface of its own, no border — just a line
+   of text that happens to be climbable. Cyan appears on hover and focus only,
+   so the trail never competes with the page title beneath it.
+
+   Colours come from the tokens Phase 1 established. Nothing here restates a
+   hex value.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.nav {
+  /* Aligns with the page canvas padding used by OSPage/OSLayer. */
+  padding: 14px 28px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* One line, always. Long trails truncate from the middle rather than wrap
+     and push the page down. */
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.link,
+.currentLabel,
+.plainLabel {
+  display: block;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ancestors that have somewhere to go. */
+.link {
+  color: rgb(var(--omnira-aqua-rgb) / 0.55);
+  text-decoration: none;
+  border-radius: 4px;
+  transition: color 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.link:hover {
+  color: var(--omnira-cyan);
+}
+
+/* Focus must stay visible — the trail is keyboard-reachable like any nav. */
+.link:focus-visible {
+  outline: 1px solid rgb(var(--omnira-cyan-rgb) / 0.7);
+  outline-offset: 3px;
+  color: var(--omnira-cyan);
+}
+
+/* A level that names a hierarchy step with no route of its own — "Projekt"
+   has no index page. Rendered as text, never as a dead link. */
+.plainLabel {
+  color: rgb(var(--omnira-aqua-rgb) / 0.4);
+}
+
+/* The page you are on. Brightest thing in the trail, and not a link. */
+.currentLabel {
+  color: hsl(var(--foreground) / 0.82);
+  font-weight: 500;
+  /* The current page keeps more room than its ancestors when space is tight. */
+  max-width: 34ch;
+}
+
+.separator {
+  color: rgb(var(--omnira-aqua-rgb) / 0.22);
+  user-select: none;
+  flex: none;
+}
+
+/* ── Narrow widths ───────────────────────────────────────────────────────
+   Intermediate crumbs give up their labels before the page identity does.
+   The root and the current page always survive; everything between them
+   truncates hard, then collapses to an ellipsis placeholder, so header
+   controls are never pushed off-screen. */
+
+@media (max-width: 900px) {
+  .link,
+  .plainLabel {
+    max-width: 14ch;
+  }
+}
+
+/* The collapsed-middle marker exists only below 640px. Declared before the
+   media query so the query overrides it — same specificity, later wins. */
+.item[data-position='ellipsis'] {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .nav {
+    padding: 12px 18px 0;
+  }
+
+  /* Everything except the root and the current page collapses. `.item` is a
+     flex row, so hiding the label while keeping the separator would leave a
+     stray glyph — the whole item goes, and one ellipsis stands in for the
+     middle of the trail. */
+  .item[data-position='middle'] {
+    display: none;
+  }
+
+  .item[data-position='ellipsis'] {
+    display: flex;
+  }
+}

@@ -136,12 +136,14 @@ describe('breadcrumbs · ancestors link only to real destinations', () => {
     expect(buildBreadcrumbs('/approvals')[0].href).toBe('/atlas')
   })
 
-  it('"Projekt" carries no href — /projects has no index page', () => {
-    // Confirmed against the route tree: only /projects/[slug] and /projects/new
-    // exist. A link here would be a dead destination.
+  it('"Projekt" links to the index, which Phase 5 built', () => {
+    // This crumb carried no href while /projects had no page — only
+    // /projects/[slug] and /projects/new existed, so linking it would have
+    // offered a dead destination. The index is real now, so it links, and the
+    // path comes from the registry rather than being restated in the builder.
     const projekt = buildBreadcrumbs('/projects/trading', { projects: PROJECTS })[1]
     expect(projekt.label).toBe('Projekt')
-    expect(projekt.href).toBeUndefined()
+    expect(projekt.href).toBe('/projects')
     expect(projekt.current).toBe(false)
   })
 
@@ -151,7 +153,7 @@ describe('breadcrumbs · ancestors link only to real destinations', () => {
     })
     expect(built.map((i) => i.href)).toEqual([
       '/atlas',
-      undefined, // Projekt
+      '/projects', // the index — a real page since Phase 5
       '/projects/trading',
       '/projects/trading/agents',
       undefined, // current

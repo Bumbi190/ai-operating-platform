@@ -3,6 +3,7 @@ import { ATLAS_HOME_PATH } from '@/lib/nav/activity-peek-visibility'
 import {
   pathToDestination,
   destinationLabel,
+  destinationBasePath,
   resolveDestination,
   projectDisplayName,
   type DestinationId,
@@ -68,9 +69,12 @@ export interface BuildBreadcrumbsOptions {
 const ROOT_LABEL = 'Omnira'
 
 /**
- * `/projects` has no index page — only `/projects/[slug]` and `/projects/new`
- * exist. The crumb is therefore structural: it names the level so the hierarchy
- * reads correctly, and carries no href because there is nothing to open.
+ * The projects level.
+ *
+ * This crumb used to carry no href: `/projects` had no page, only
+ * `/projects/[slug]` and `/projects/new`, so linking it would have offered a
+ * dead destination. Phase 5 built the index, so it links now — and the path
+ * comes from the registry rather than being restated here.
  */
 const PROJECTS_SEGMENT = 'projects'
 const PROJECTS_LABEL = 'Projekt'
@@ -238,7 +242,7 @@ function buildProjectTrail(
   trail: Array<Omit<BreadcrumbItem, 'current'>>,
   options: BuildBreadcrumbsOptions,
 ): void {
-  trail.push({ label: PROJECTS_LABEL })
+  trail.push({ label: PROJECTS_LABEL, href: destinationBasePath('project_home') ?? undefined })
 
   const [, second, ...rest] = segments
   if (!second) return

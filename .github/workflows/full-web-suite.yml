@@ -1,0 +1,203 @@
+# Full Web Suite — manual, exact-head repository-wide regression gate.
+#
+# WHAT THIS IS
+# ────────────
+# One deliberate run of the whole `apps/web` Vitest suite against ONE named
+# commit, on an ephemeral runner. It exists so a workstream can prove the broad
+# regression surface without needing ~1 GiB of local disk headroom to do it —
+# the proof moves to a machine that is discarded afterwards, not to a weaker
+# standard.
+#
+# WHAT IT IS NOT
+# ──────────────
+# It does NOT replace the focused gates. Memory M4 Boundary remains the
+# authority for the Memory SQL isolation contract and its anti-skip proof;
+# Trading Canon Integrity remains the authority for the manifest hashes; a
+# domain slice still runs its own focused suites, `tsc` and canon verification
+# locally before it is ever pushed.
+#
+# It does NOT build. `next build` is deployment validation and belongs to
+# Vercel, not to a test gate.
+#
+# It does NOT grant merge authority by itself. A green run here is evidence that
+# one specific commit passed the broad suite — nothing more. The merge decision
+# stays with the reviewer and the required checks.
+#
+# It is NOT branch-protection-required, and must not be made so while it is
+# `workflow_dispatch`-only: a manual check cannot be satisfied by every PR, and
+# this suite is too expensive to run automatically for unrelated work.
+#
+# WHY `expected_sha` IS REQUIRED
+# ──────────────────────────────
+# `workflow_dispatch --ref <branch>` resolves the branch at dispatch time. If
+# the branch moved — a rebase, a follow-up commit, someone else's push — the run
+# would go green for a commit nobody reviewed, and that green would be quoted as
+# proof for a different head. So the job refuses to install anything until the
+# checked-out HEAD equals the SHA the operator named. Evidence is bound to a
+# commit, not to a branch name.
+#
+# Consequently: IF THE PR HEAD CHANGES, PREVIOUS EVIDENCE IS STALE and the run
+# must be repeated against the new head.
+#
+# POSTGRESQL IS RUNNER-LOCAL AND THROWAWAY
+# ────────────────────────────────────────
+# GitHub Actions sets CI=true, which makes the Memory SQL boundary suite FAIL
+# rather than skip when no database is reachable. A service container is
+# therefore required for the full suite to mean anything. It is an ephemeral
+# `postgres:16` with throwaway credentials, reachable only from inside this job,
+# destroyed with the runner. No Supabase project, no developer database, no
+# stored secret, no production credential is used anywhere in this file.
+
+name: Full Web Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: >-
+          The exact 40-character commit SHA this run must test. The job fails
+          before installing anything if the checked-out HEAD differs, so a green
+          result can never be attributed to the wrong head.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Scoped to the dispatched ref so two runs of the same branch supersede each
+  # other, while unrelated branches never serialise against one another.
+  group: full-web-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-suite:
+    name: Full web Vitest suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Same interface the Memory boundary suite already supports: a superuser
+      # DSN against the runner-local service. The suite creates and drops its
+      # OWN throwaway database. Never a Supabase or production target.
+      ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # THE GUARD. Nothing is installed and nothing is executed until the head
+      # under test is proven to be the head the operator named.
+      - name: Verify HEAD is the expected commit
+        run: |
+          set -euo pipefail
+          expected='${{ inputs.expected_sha }}'
+          actual="$(git rev-parse HEAD)"
+          echo "expected: $expected"
+          echo "actual  : $actual"
+          if [ "${#expected}" -ne 40 ]; then
+            echo "::error::expected_sha must be a full 40-character commit SHA, got ${#expected} characters"
+            exit 1
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::HEAD $actual does not match expected_sha $expected — refusing to produce evidence for the wrong commit"
+            exit 1
+          fi
+          echo "HEAD matches expected_sha — proceeding"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # package.json engines: node >=20
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+      - name: Prove PostgreSQL is reachable
+        run: |
+          set -euo pipefail
+          psql --version
+          psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select version()"
+
+      # The whole suite. No path filter, no project selection — this is the
+      # broad regression proof that previously ran locally.
+      - name: Run the full web suite
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/full-web-suite.json"
+
+      # Console output is not evidence; the JSON results are. This step is the
+      # one that decides the job, and it runs even when Vitest itself failed so
+      # the counts are always reported.
+      - name: Verify the suite actually ran and nothing failed
+        if: always()
+        run: |
+          set -euo pipefail
+          node - "$RUNNER_TEMP/full-web-suite.json" <<'NODE'
+          const fs = require('node:fs')
+          const [, , resultsPath] = process.argv
+
+          if (!fs.existsSync(resultsPath)) {
+            console.error(`::error::no vitest results at ${resultsPath} — the suite did not run`)
+            process.exit(1)
+          }
+
+          const report = JSON.parse(fs.readFileSync(resultsPath, 'utf8'))
+          const files = report.testResults ?? []
+
+          if (files.length === 0) {
+            console.error('::error::the results contain zero test files — a green run here would prove nothing')
+            process.exit(1)
+          }
+
+          const counts = {
+            passed: report.numPassedTests ?? 0,
+            failed: report.numFailedTests ?? 0,
+            pending: report.numPendingTests ?? 0,
+            todo: report.numTodoTests ?? 0,
+            total: report.numTotalTests ?? 0,
+          }
+          const suites = {
+            files: files.length,
+            failedFiles: report.numFailedTestSuites ?? 0,
+            totalFiles: report.numTotalTestSuites ?? files.length,
+          }
+
+          console.log(`test files seen : ${suites.files}`)
+          console.log(`failed suites   : ${suites.failedFiles}`)
+          console.log(`passed tests    : ${counts.passed}`)
+          console.log(`failed tests    : ${counts.failed}`)
+          console.log(`pending/skipped : ${counts.pending}`)
+          console.log(`todo            : ${counts.todo}`)
+          console.log(`total tests     : ${counts.total}`)
+
+          // Skipped tests are reported, not punished. Whether a given suite is
+          // allowed to skip is that suite's own contract — Memory M4 Boundary
+          // owns the anti-skip proof for the SQL isolation file, and duplicating
+          // that rule here would let this gate disagree with the authority.
+          let failed = false
+          if (counts.failed > 0) {
+            console.error(`::error::${counts.failed} test(s) failed`)
+            failed = true
+          }
+          if (suites.failedFiles > 0) {
+            console.error(`::error::${suites.failedFiles} test file(s) failed`)
+            failed = true
+          }
+          process.exit(failed ? 1 : 0)
+          NODE

@@ -1,0 +1,146 @@
+# Atlas Project Isolation — the DB-free project-scoping contract.
+#
+# WHAT THIS IS
+# ────────────
+# One focused PR gate over the three suites that prove a single claim: no Atlas
+# tool may read or write a project the operator does not own. It is deliberately
+# narrow. Memory M4 Boundary remains the authority for the Memory SQL isolation
+# contract; Trading Canon Integrity remains the authority for the manifest
+# hashes; neither is touched here, and this gate must not absorb their scope.
+#
+# WHY IT EXISTS
+# ─────────────
+# The boundary it guards was fail-open in production until
+# `fix/atlas-legacy-delegate-project-isolation`: the legacy `delegate` tool
+# resolved a missing `project_id` with
+#
+#     db.from('projects').select('id').limit(1).maybeSingle()
+#
+# on the SERVICE-ROLE client — an arbitrary first project, RLS bypassed, no
+# allow-list consulted — and then wrote manager_tasks and agent_messages into
+# it. That regression lived in a single unguarded branch for as long as it did
+# precisely because no gate ran the isolation suites on a pull request. A
+# boundary test that nothing runs is a boundary test that silently rots.
+#
+# WHY NO DATABASE
+# ───────────────
+# All three suites are pure: in-memory query fakes, no `pg`, no
+# ATLAS_SQL_TEST_URL, no network, no secrets. That is a property worth keeping.
+# If a future isolation suite needs a real database, it belongs behind its own
+# gate with its own service container — do NOT add one here and make this job
+# slow enough that people start wanting to skip it.
+#
+# WHY THE ANTI-SKIP PROOF
+# ───────────────────────
+# `vitest run` exits 0 when it runs nothing it was not asked for, and a green
+# console is not evidence that the boundary was actually exercised. A renamed
+# file, a `describe.skip`, or a suite gutted down to one trivial assertion would
+# all pass silently. So the job reads the JSON results and fails unless every
+# named file is present, nothing was skipped, and each suite still carries at
+# least the number of tests it had when this gate was written. Raise those
+# floors when you add tests; never lower them to make a run go green.
+
+name: Atlas Project Isolation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-project-isolation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolation:
+    name: Atlas project isolation suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # package.json engines: node >=20
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+      # No database is configured on purpose. If any of these suites ever needs
+      # one, this assertion is where you will find out — before a silent skip.
+      - name: Assert no database is configured for this job
+        run: |
+          set -euo pipefail
+          if [ -n "${ATLAS_SQL_TEST_URL-}" ]; then
+            echo "::error::ATLAS_SQL_TEST_URL is set — these suites must stay DB-free"
+            exit 1
+          fi
+          echo "ATLAS_SQL_TEST_URL: unset (as required)"
+
+      - name: Run the Atlas project isolation suites
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/legacy-delegate-isolation.test.ts \
+            lib/qa/isolation.test.ts \
+            lib/qa/record-access.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
+
+      # The anti-skip proof. Console text is not evidence; the JSON results are.
+      - name: Verify every isolation suite RAN and did not skip
+        if: always()
+        run: |
+          set -euo pipefail
+          node - "$RUNNER_TEMP/atlas-isolation.json" <<'NODE'
+          const fs = require('node:fs')
+          const [, , resultsPath] = process.argv
+          if (!fs.existsSync(resultsPath)) {
+            console.error(`::error::no vitest results at ${resultsPath} — the suites did not run`)
+            process.exit(1)
+          }
+          const report = JSON.parse(fs.readFileSync(resultsPath, 'utf8'))
+          const files = report.testResults ?? []
+
+          // Floors are the counts these suites carried when the gate was
+          // written. Raise them when you add tests; never lower them.
+          const REQUIRED = {
+            'legacy-delegate-isolation.test.ts': 10,
+            'isolation.test.ts': 17,
+            'record-access.test.ts': 13,
+          }
+
+          let failed = false
+          const seen = files.map((f) => String(f.name).split('/').pop())
+
+          for (const [file, floor] of Object.entries(REQUIRED)) {
+            // endsWith('/' + file) so `isolation.test.ts` cannot be satisfied
+            // by `legacy-delegate-isolation.test.ts`.
+            const result = files.find((f) => String(f.name).endsWith(`/${file}`))
+            if (!result) {
+              console.error(`::error::${file} is absent from the results — that boundary was NOT proven`)
+              console.error(`files seen: ${seen.join(', ')}`)
+              failed = true
+              continue
+            }
+            const assertions = result.assertionResults ?? []
+            const skipped = assertions.filter((a) => a.status !== 'passed' && a.status !== 'failed')
+            if (skipped.length > 0) {
+              console.error(`::error::${file} has ${skipped.length} skipped/pending test(s) — a skipped boundary proves nothing`)
+              for (const a of skipped) console.error(`  ${a.status}: ${a.fullName ?? a.title}`)
+              failed = true
+            }
+            if (assertions.length < floor) {
+              console.error(`::error::${file} ran ${assertions.length} tests, below its floor of ${floor} — the suite was weakened`)
+              failed = true
+            }
+            const passed = assertions.filter((a) => a.status === 'passed').length
+            console.log(`${file}: ${assertions.length} tests, ${passed} passed (floor ${floor})`)
+          }
+
+          if (failed) process.exit(1)
+          console.log('Atlas project isolation: every named suite ran in full, nothing skipped.')
+          NODE

@@ -266,7 +266,7 @@ describe('the Familje-Stunden check catalogue', () => {
     // relaxing them is exactly what the standing security decision forbids.
     const atEdge = FAMILJE_STUNDEN_CHECKS.filter(c => c.state === 'edge_deploy')
     const attested = atEdge.filter(c => c.allowed_provenance.includes('attested'))
-    expect(attested.map(c => c.check_key)).toEqual(['expected_manifest_sha256'])
+    expect(attested.map(c => c.check_key)).toEqual(['expected_manifest_source_sha256'])
     expect(attested[0].required).toBe(false)
 
     for (const key of ['shared_manifest_consumers_in_sync', 'deployed_manifest_matches_expected',

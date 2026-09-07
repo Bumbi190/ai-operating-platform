@@ -220,7 +220,7 @@ function summarise(
  */
 function manifestSection(b: ManifestBinding): ManifestBindingSection {
   return {
-    expected_manifest_sha256: b.expected_manifest_sha256,
+    expected_manifest_source_sha256: b.expected_manifest_source_sha256,
     binding_status: b.binding_status,
     // Which release the expectation belongs to. Without it a CONFLICTED status
     // cannot be told apart from a BOUND one that simply moved on.
@@ -229,7 +229,7 @@ function manifestSection(b: ManifestBinding): ManifestBindingSection {
     locked_at: b.locked_at,
     locked_by: b.locked_by,
     generations: b.generations,
-    rejected_expected_manifest_sha256: b.rejected_rebind?.expected_manifest_sha256 ?? null,
+    rejected_expected_manifest_source_sha256: b.rejected_rebind?.expected_manifest_source_sha256 ?? null,
     rejected_reason: b.rejected_rebind?.reason ?? null,
   }
 }

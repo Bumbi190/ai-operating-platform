@@ -29,7 +29,7 @@ const manifestBody = (months = ['2026-08', '2026-09', '2026-10']) =>
   `\n};\n`
 
 const GEN = { release_pr_number: 62, release_merge_sha: 'c'.repeat(40) }
-const exp = (sha: string) => ({ expected_manifest_sha256: sha, ...GEN })
+const exp = (sha: string) => ({ expected_manifest_source_sha256: sha, ...GEN })
 const HASH = (s: string) => createHash('sha256').update(s).digest('hex')
 
 function fnResponse(over: Record<string, unknown> = {}, body = manifestBody()) {
@@ -375,7 +375,7 @@ describe('the verifier cannot change anything', () => {
 
   it('distinguishes expected from observed explicitly', () => {
     const code = CODE(SRC)
-    expect(code).toMatch(/expectedManifestSha/)
+    expect(code).toMatch(/expectedManifestSourceSha/)
     expect(code).toMatch(/manifestHash/)
   })
 })

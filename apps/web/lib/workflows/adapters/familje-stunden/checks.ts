@@ -195,7 +195,7 @@ export const FAMILJE_STUNDEN_CHECKS: readonly AttestableCheck[] = [
   // and because deriving it from the deployed function, the repository at
   // verification time, or a runtime self-report would make
   // `deployed_manifest_matches_expected` compare production against itself.
-  bindingCheck(MANIFEST_BINDING_CHECKS.expectedSha, MANIFEST_BINDING_STATE,
+  bindingCheck(MANIFEST_BINDING_CHECKS.expectedSourceSha, MANIFEST_BINDING_STATE,
     'The sha256 of the canonical shared protected manifest for this release'),
 
   // ── The fail-open invariant (Phase 1B) ───────────────────────────────────

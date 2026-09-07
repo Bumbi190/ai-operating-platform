@@ -244,10 +244,15 @@ describe('I/J. no check, no reachability, no readiness moved', () => {
     }
   })
 
-  it('P. the expected-manifest key was NOT renamed in this slice', () => {
+  it('P. the expected-manifest key now names its hash domain', () => {
+    // This guard previously pinned the OPPOSITE — that the provenance slice
+    // stayed focused and did not rename anything. The rename has since landed
+    // as its own change, so the guard now pins the result rather than the
+    // deferral: the live key says which domain it is, and the old ambiguous
+    // name is gone from the module entirely.
     const binding = readFileSync(
       join(process.cwd(), 'lib/workflows/bundle/manifest-binding.ts'), 'utf8')
-    expect(binding).toContain("expectedSha: 'expected_manifest_sha256'")
-    expect(binding).not.toContain('expected_manifest_source_sha256')
+    expect(binding).toContain("expectedSourceSha: 'expected_manifest_source_sha256'")
+    expect(binding).not.toContain("'expected_manifest_sha256'")
   })
 })

@@ -36,6 +36,8 @@ import { isActionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
+import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
@@ -1027,36 +1029,6 @@ export async function POST(request: Request) {
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
-/**
- * Resolve a model-supplied project reference (UUID, slug, or name) to a project
- * id the operator OWNS, or null. Mirrors the get_records/fetchRecords pattern so
- * the Dream tools accept the same identifiers Atlas actually has in context
- * (LIVE LÄGE / CURRENT VIEW expose name + slug, never the UUID).
- *
- * Isolation is preserved: a raw id is only accepted if it's in the allow-list,
- * and a slug/name lookup is scoped via scopeProjectFilter (empty allow-list →
- * impossible id → no match), so this can never reach another tenant's project.
- */
-async function resolveOwnedProjectId(
-  db: AdminClient,
-  input: string | undefined,
-  allowedProjectIds: string[],
-): Promise<string | null> {
-  if (!input) return null
-  // 1) Already an owned UUID → trust as-is.
-  if (assertProjectAllowed(input, allowedProjectIds)) return input
-  // 2) Treat as name/slug → canonical slug → owned project id (scoped lookup).
-  const slug = resolveProjectSlug(input)
-  if (!slug) return null
-  const { data } = await db
-    .from('projects')
-    .select('id')
-    .eq('slug', slug)
-    .in('id', scopeProjectFilter(allowedProjectIds))
-    .maybeSingle()
-  return (data as { id: string } | null)?.id ?? null
-}
-
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -1359,35 +1331,11 @@ async function executeTool(
   }
 
   if (name === 'delegate') {
-    const { goal, project_id, tasks } = input as { goal: string; project_id?: string; tasks: { title: string; agent?: string }[] }
-    const adb: any = db
-    let projectId = project_id
-    if (!projectId) {
-      const { data: p } = await db.from('projects').select('id').limit(1).maybeSingle()
-      projectId = (p as { id?: string } | null)?.id
-    }
-    const created: { id: string; title: string; status: string }[] = []
-    for (const t of (tasks ?? [])) {
-      try {
-        const { data } = await adb.from('manager_tasks').insert({
-          project_id:  projectId,
-          title:       t.title,
-          description: t.agent ? `Ägare: ${t.agent}` : null,
-          status:      'pending',
-        }).select('id, title, status').single()
-        if (data) created.push(data)
-      } catch { /* hoppa över enskild uppgift */ }
-    }
-    try {
-      await adb.from('agent_messages').insert({
-        project_id:   projectId,
-        from_agent:   'Atlas',
-        to_agent:     'Operator',
-        message_type: 'daily_plan',
-        content:      `Delegering: ${goal} — ${created.length} uppgifter skapade och tilldelade.`,
-      })
-    } catch { /* icke-kritiskt */ }
-    return { goal, created: created.length, tasks: created, note: 'Uppgifterna syns nu live i Atlas Activity Center.' }
+    return await executeLegacyDelegate(
+      db,
+      input as unknown as Parameters<typeof executeLegacyDelegate>[1],
+      allowedProjectIds,
+    )
   }
 
   if (name === 'present_links') {

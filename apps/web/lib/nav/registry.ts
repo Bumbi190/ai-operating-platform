@@ -38,6 +38,7 @@ export type DestinationId =
   | 'settings'
   | 'intelligence_graph'
   | 'trading'
+  | 'organisation'
   | 'project_home'
 
 type ProjectMode = 'none' | 'query' | 'path'
@@ -88,6 +89,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   settings: '/settings',
   intelligence_graph: '/intelligence/graph',
   trading: '/trading',
+  organisation: '/organisation',
   project_home: '/projects', // path mode → /projects/<slug>
 }
 
@@ -162,6 +164,11 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     ],
     // Project-neutral: the Trading system is its own workspace, not a lens on
     // one of the Supabase-backed businesses in the project rail.
+    projectMode: 'none',
+  },
+  organisation: {
+    id: 'organisation', label: 'Organisation',
+    keywords: ['organisation', 'organization', 'hierarki', 'team', 'agenter', 'struktur', 'who'],
     projectMode: 'none',
   },
   project_home: {

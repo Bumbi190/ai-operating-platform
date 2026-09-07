@@ -40,7 +40,7 @@ import type { WorkflowEvidence } from '../types'
 export const MANIFEST_BINDING_STATE = 'edge_deploy'
 
 export const MANIFEST_BINDING_CHECKS = {
-  expectedSha: 'expected_manifest_sha256',
+  expectedSourceSha: 'expected_manifest_source_sha256',
 } as const
 
 /**
@@ -87,14 +87,14 @@ export const sameGeneration = (
 
 /** An expectation that was recorded but refused authority. Kept for audit. */
 export interface RejectedManifestRebind {
-  expected_manifest_sha256: string | null
+  expected_manifest_source_sha256: string | null
   release: ReleaseGeneration | null
   recorded_at: string | null
   reason: 'AFTER_DOWNSTREAM_RELIANCE' | 'RELEASE_GENERATION_CHANGED'
 }
 
 export interface ManifestBinding {
-  expected_manifest_sha256: string | null
+  expected_manifest_source_sha256: string | null
   /** The release generation the authoritative expectation was attested for. */
   release: ReleaseGeneration | null
   binding_status: ManifestBindingStatus
@@ -123,8 +123,8 @@ function parseAttestation(
   // Normalize before validating. A digest is case-insensitive as a value, so a
   // re-attestation in another case must not read as a different expectation and
   // block a release over nothing but letter case.
-  const sha = typeof o.expected_manifest_sha256 === 'string'
-    ? o.expected_manifest_sha256.trim().toLowerCase() : null
+  const sha = typeof o.expected_manifest_source_sha256 === 'string'
+    ? o.expected_manifest_source_sha256.trim().toLowerCase() : null
   const mergeSha = typeof o.expected_merge_sha === 'string'
     ? o.expected_merge_sha.trim().toLowerCase() : null
   const pr = o.release_pr_number
@@ -178,7 +178,7 @@ export function projectManifestBinding(input: ManifestBindingInput): ManifestBin
   const { evidence, release } = input
 
   const rows = [...evidence]
-    .filter(e => e.check_key === MANIFEST_BINDING_CHECKS.expectedSha
+    .filter(e => e.check_key === MANIFEST_BINDING_CHECKS.expectedSourceSha
               && e.state === MANIFEST_BINDING_STATE)
     .sort(oldestFirst)
 
@@ -186,7 +186,7 @@ export function projectManifestBinding(input: ManifestBindingInput): ManifestBin
   const parsed = rows
     .map(r => ({ at: r.recorded_at, a: parseAttestation(r.detail?.value) }))
   const malformedNewest = parsed.length > 0 && parsed[parsed.length - 1].a === null
-  const invalid_fields = malformedNewest ? [MANIFEST_BINDING_CHECKS.expectedSha] : []
+  const invalid_fields = malformedNewest ? [MANIFEST_BINDING_CHECKS.expectedSourceSha] : []
 
   // 2. The lock is PER GENERATION: consuming evidence locks only the generation
   //    it actually verified. A's consumption must not freeze B.
@@ -220,7 +220,7 @@ export function projectManifestBinding(input: ManifestBindingInput): ManifestBin
       // Same generation, already verified against. Refused, recorded, visible.
       conflicted = true
       rejected = {
-        expected_manifest_sha256: value, release,
+        expected_manifest_source_sha256: value, release,
         recorded_at: p.at, reason: 'AFTER_DOWNSTREAM_RELIANCE',
       }
       continue
@@ -237,7 +237,7 @@ export function projectManifestBinding(input: ManifestBindingInput): ManifestBin
     const newest = foreign[foreign.length - 1]
     conflicted = true
     rejected = {
-      expected_manifest_sha256: newest.a!.sha,
+      expected_manifest_source_sha256: newest.a!.sha,
       release: newest.a!.release,
       recorded_at: newest.at,
       reason: 'RELEASE_GENERATION_CHANGED',
@@ -251,7 +251,7 @@ export function projectManifestBinding(input: ManifestBindingInput): ManifestBin
   else binding_status = 'MISSING'
 
   return {
-    expected_manifest_sha256: committed,
+    expected_manifest_source_sha256: committed,
     release: committed !== null ? release : null,
     binding_status,
     invalid_fields,

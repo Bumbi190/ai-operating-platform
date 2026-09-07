@@ -279,7 +279,7 @@ export function checkConsumersInSync(reports: ConsumerReport[], now: string): Ve
  * entire point.
  */
 export interface ManifestExpectation {
-  expected_manifest_sha256: string
+  expected_manifest_source_sha256: string
   /**
    * The release generation the expectation belongs to.
    *
@@ -296,7 +296,7 @@ export interface ManifestExpectation {
 export function checkDeployedManifestMatchesExpected(
   reports: ConsumerReport[], expectation: ManifestExpectation | null, now: string,
 ): VerificationEvidence {
-  const expectedManifestSha = expectation?.expected_manifest_sha256 ?? null
+  const expectedManifestSourceSha = expectation?.expected_manifest_source_sha256 ?? null
   const generation = expectation === null ? {} : {
     release_pr_number: expectation.release_pr_number,
     release_merge_sha: expectation.release_merge_sha,
@@ -305,7 +305,7 @@ export function checkDeployedManifestMatchesExpected(
   const key = 'deployed_manifest_matches_expected'
   const expected = `deployed shared manifest equals the pinned expected hash`
 
-  if (!expectedManifestSha) {
+  if (!expectedManifestSourceSha) {
     return notPass(key, 'credential_missing', {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: 'no expected manifest hash is pinned for this release',
@@ -319,18 +319,18 @@ export function checkDeployedManifestMatchesExpected(
     return notPass(key, FAILURE_TO_KIND[worst.failure], {
       expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now,
       observed: `could not verify ${failed.map(f => f.slug).join(', ')}`,
-      detail: { ...generation, expected_sha256: expectedManifestSha },
+      detail: { ...generation, expected_sha256: expectedManifestSourceSha },
     })
   }
 
   const facts = reports.map(r => (r.read as { ok: true; facts: DeployedFunctionFacts }).facts)
-  const stale = facts.filter(f => f.manifestHash !== expectedManifestSha)
+  const stale = facts.filter(f => f.manifestHash !== expectedManifestSourceSha)
   const detail = {
     // The generation is recorded on EVERY outcome, most of all on the PASS: a
     // green row that does not say which release it verified cannot be told
     // apart from one that verified the release currently being approved.
     ...generation,
-    expected_sha256: expectedManifestSha,
+    expected_sha256: expectedManifestSourceSha,
     consumers: facts.map(f => ({ slug: f.slug, version: f.version, manifest_sha256: f.manifestHash })),
   }
 
@@ -342,7 +342,7 @@ export function checkDeployedManifestMatchesExpected(
   }
   return pass(key, {
     expected, authoritative_system: FAMILJE_STUNDEN_SYSTEM, observed_at: now, detail,
-    observed: `all consumers deployed with the expected manifest ${expectedManifestSha.slice(0, 16)}…`,
+    observed: `all consumers deployed with the expected manifest ${expectedManifestSourceSha.slice(0, 16)}…`,
   })
 }
 

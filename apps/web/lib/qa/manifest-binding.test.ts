@@ -44,9 +44,9 @@ const T = (n: number) => `2026-09-0${n}T00:00:00.000Z`
 
 const attest = (sha: string, gen: ReleaseGeneration, at: string): WorkflowEvidence => ({
   id: `man-${at}-${sha.slice(0, 4)}`, instance_id: 'i', state: MANIFEST_BINDING_STATE,
-  check_key: MANIFEST_BINDING_CHECKS.expectedSha, result: 'pass', source: 'attested',
+  check_key: MANIFEST_BINDING_CHECKS.expectedSourceSha, result: 'pass', source: 'attested',
   detail: { value: {
-    expected_manifest_sha256: sha,
+    expected_manifest_source_sha256: sha,
     release_pr_number: gen.pr_number,
     expected_merge_sha: gen.expected_merge_sha,
   } },
@@ -79,21 +79,21 @@ describe('K. the reproduced bug, now closed', () => {
     // 1-3: everything is fine while the release is still A.
     const asA = bind(timeline, GEN_A)
     expect(asA.binding_status).toBe('BOUND')
-    expect(asA.expected_manifest_sha256).toBe(MAN_A)
+    expect(asA.expected_manifest_source_sha256).toBe(MAN_A)
 
     // 4-5: the release is legitimately corrected to B before its own lock.
     const asB = bind(timeline, GEN_B)
     expect(asB.binding_status).toBe('CONFLICTED')
-    expect(asB.expected_manifest_sha256).toBeNull()
+    expect(asB.expected_manifest_source_sha256).toBeNull()
     expect(asB.rejected_rebind?.reason).toBe('RELEASE_GENERATION_CHANGED')
     expect(asB.rejected_rebind?.release).toEqual(GEN_A)
 
     // 6-7: a fresh attestation for B restores BOUND, and A is untouched.
     const withB = bind([...timeline, attest(MAN_B, GEN_B, T(4))], GEN_B)
     expect(withB.binding_status).toBe('BOUND')
-    expect(withB.expected_manifest_sha256).toBe(MAN_B)
+    expect(withB.expected_manifest_source_sha256).toBe(MAN_B)
     expect(withB.release).toEqual(GEN_B)
-    expect(bind([...timeline, attest(MAN_B, GEN_B, T(4))], GEN_A).expected_manifest_sha256).toBe(MAN_A)
+    expect(bind([...timeline, attest(MAN_B, GEN_B, T(4))], GEN_A).expected_manifest_source_sha256).toBe(MAN_A)
 
     // 7b: generation-A verification evidence cannot satisfy B.
     expect(evidenceMatchesGeneration(consume(GEN_A, T(3)), GEN_B)).toBe(false)
@@ -110,8 +110,8 @@ describe('1-11. one inseparable generation', () => {
     // Every field travels in ONE evidence value, so no arrangement of rows can
     // pair a hash from one generation with an identity from another.
     for (const partial of [
-      { expected_manifest_sha256: MAN_A, release_pr_number: 59 },          // no merge sha
-      { expected_manifest_sha256: MAN_A, expected_merge_sha: SHA_A },      // no pr
+      { expected_manifest_source_sha256: MAN_A, release_pr_number: 59 },          // no merge sha
+      { expected_manifest_source_sha256: MAN_A, expected_merge_sha: SHA_A },      // no pr
       { release_pr_number: 59, expected_merge_sha: SHA_A },                // no manifest
       MAN_A,                                                              // legacy bare string
     ]) {
@@ -129,21 +129,21 @@ describe('1-11. one inseparable generation', () => {
   it('4/5. the old manifest becomes non-authoritative and cannot satisfy the new release', () => {
     const b = bind([attest(MAN_A, GEN_A, T(1))], GEN_B)
     expect(b.binding_status).toBe('CONFLICTED')
-    expect(b.expected_manifest_sha256).toBeNull()
+    expect(b.expected_manifest_source_sha256).toBeNull()
   })
 
   it('6/7. re-attesting for B restores BOUND, and A stays in history', () => {
     const evidence = [attest(MAN_A, GEN_A, T(1)), attest(MAN_B, GEN_B, T(2))]
-    expect(bind(evidence, GEN_B).expected_manifest_sha256).toBe(MAN_B)
-    expect(bind(evidence, GEN_A).expected_manifest_sha256).toBe(MAN_A)   // preserved
+    expect(bind(evidence, GEN_B).expected_manifest_source_sha256).toBe(MAN_B)
+    expect(bind(evidence, GEN_A).expected_manifest_source_sha256).toBe(MAN_A)   // preserved
   })
 
   it('8. same generation, post-consumption hash change → CONFLICTED', () => {
     const b = bind([attest(MAN_A, GEN_A, T(1)), consume(GEN_A, T(2)), attest(MAN_C, GEN_A, T(3))], GEN_A)
     expect(b.binding_status).toBe('CONFLICTED')
-    expect(b.expected_manifest_sha256).toBe(MAN_A)          // the verified one survives
+    expect(b.expected_manifest_source_sha256).toBe(MAN_A)          // the verified one survives
     expect(b.rejected_rebind?.reason).toBe('AFTER_DOWNSTREAM_RELIANCE')
-    expect(b.rejected_rebind?.expected_manifest_sha256).toBe(MAN_C)
+    expect(b.rejected_rebind?.expected_manifest_source_sha256).toBe(MAN_C)
   })
 
   it('8b. the lock is PER GENERATION — A being consumed does not freeze B', () => {
@@ -153,7 +153,7 @@ describe('1-11. one inseparable generation', () => {
     expect(b.binding_status).toBe('BOUND')
     expect(b.locked_at).toBeNull()          // nothing has consumed B yet
     // And a correction WITHIN B is still allowed until B itself is consumed.
-    expect(bind([...evidence, attest(MAN_C, GEN_B, T(4))], GEN_B).expected_manifest_sha256).toBe(MAN_C)
+    expect(bind([...evidence, attest(MAN_C, GEN_B, T(4))], GEN_B).expected_manifest_source_sha256).toBe(MAN_C)
   })
 
   it('9. an identical same-generation restatement is idempotent', () => {
@@ -165,7 +165,7 @@ describe('1-11. one inseparable generation', () => {
 
   it('10. same-timestamp ambiguity fails closed', () => {
     const b = bind([attest(MAN_A, GEN_A, T(1)), attest(MAN_C, GEN_A, T(2)), consume(GEN_A, T(2))], GEN_A)
-    expect(b.expected_manifest_sha256).toBe(MAN_A)
+    expect(b.expected_manifest_source_sha256).toBe(MAN_A)
     expect(b.binding_status).toBe('CONFLICTED')
   })
 
@@ -174,13 +174,13 @@ describe('1-11. one inseparable generation', () => {
     // PR #184 owns that lifecycle; this only refuses to invent one.
     const b = bind([attest(MAN_A, GEN_A, T(1))], null)
     expect(b.binding_status).toBe('CONFLICTED')
-    expect(b.expected_manifest_sha256).toBeNull()
+    expect(b.expected_manifest_source_sha256).toBeNull()
     expect(sameGeneration(GEN_A, null)).toBe(false)
     expect(sameGeneration(null, null)).toBe(false)
   })
 
   it('11b. an invalid newest attestation is INVALID, and MISSING stays MISSING', () => {
-    const row = { ...attest(MAN_A, GEN_A, T(1)), detail: { value: { expected_manifest_sha256: 'nope',
+    const row = { ...attest(MAN_A, GEN_A, T(1)), detail: { value: { expected_manifest_source_sha256: 'nope',
       release_pr_number: 59, expected_merge_sha: SHA_A } } } as WorkflowEvidence
     expect(bind([row], GEN_A).binding_status).toBe('INVALID')
     expect(bind([], GEN_A).binding_status).toBe('MISSING')
@@ -202,13 +202,13 @@ describe('B. a post-reliance conflict taints its generation permanently', () => 
     const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_A, GEN_A, T(4))], GEN_A)
     expect(b.binding_status).toBe('CONFLICTED')
     expect(b.rejected_rebind?.reason).toBe('AFTER_DOWNSTREAM_RELIANCE')
-    expect(b.expected_manifest_sha256).toBe(MAN_A)   // the verified one still answers
+    expect(b.expected_manifest_source_sha256).toBe(MAN_A)   // the verified one still answers
   })
 
   it('repeating the CONFLICTING hash does not newest-wins it into BOUND', () => {
     const b = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_C, GEN_A, T(4))], GEN_A)
     expect(b.binding_status).toBe('CONFLICTED')
-    expect(b.expected_manifest_sha256).toBe(MAN_A)
+    expect(b.expected_manifest_source_sha256).toBe(MAN_A)
   })
 
   it('a third distinct hash does not resolve it either', () => {
@@ -226,7 +226,7 @@ describe('B. a post-reliance conflict taints its generation permanently', () => 
     // Meanwhile B, which never had a conflict, is cleanly BOUND.
     const asB = bind([...consumed, attest(MAN_C, GEN_A, T(3)), attest(MAN_B, GEN_B, T(4))], GEN_B)
     expect(asB.binding_status).toBe('BOUND')
-    expect(asB.expected_manifest_sha256).toBe(MAN_B)
+    expect(asB.expected_manifest_source_sha256).toBe(MAN_B)
   })
 
   it('RELEASE_GENERATION_CHANGED stays recoverable — the two are not the same', () => {
@@ -320,7 +320,7 @@ describe('12-17. re-verified against the FINAL release generation', () => {
 
   it('16b. the check RECORDS the generation it verified', () => {
     const e = checkDeployedManifestMatchesExpected([], {
-      expected_manifest_sha256: MAN_A,
+      expected_manifest_source_sha256: MAN_A,
       release_pr_number: GEN_A.pr_number, release_merge_sha: GEN_A.expected_merge_sha,
     }, NOW)
     expect(e.detail.release_pr_number).toBe(59)
@@ -343,7 +343,7 @@ describe('18-22. the expectation stays independent of the observed side', () => 
   it('18. NEGATIVE CONTROL — the deployment-global env var is not a fallback', () => {
     vi.stubEnv('FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256', MAN_A)
     expect(bind([], GEN_A).binding_status).toBe('MISSING')
-    expect(bind([], GEN_A).expected_manifest_sha256).toBeNull()
+    expect(bind([], GEN_A).expected_manifest_source_sha256).toBeNull()
     expect(code).not.toContain('process.env')
     const e = checkDeployedManifestMatchesExpected([], null, NOW)
     expect(e.result).toBe('blocked')
@@ -374,14 +374,14 @@ describe('18-22. the expectation stays independent of the observed side', () => 
   it('M. the bundle explains BOUND vs CONFLICTED', () => {
     const bound = bundle([...githubRows(GEN_A, T(1)), attest(MAN_A, GEN_A, T(2))]).technical.manifest
     expect(bound.binding_status).toBe('BOUND')
-    expect(bound.expected_manifest_sha256).toBe(MAN_A)
+    expect(bound.expected_manifest_source_sha256).toBe(MAN_A)
     expect(bound.release_pr_number).toBe(59)
 
     // The release moved; the stale expectation and the reason are both visible.
     const moved = bundle([...githubRows(GEN_A, T(1)), attest(MAN_A, GEN_A, T(2)),
                           ...githubRows(GEN_B, T(3))]).technical.manifest
     expect(moved.binding_status).toBe('CONFLICTED')
-    expect(moved.rejected_expected_manifest_sha256).toBe(MAN_A)
+    expect(moved.rejected_expected_manifest_source_sha256).toBe(MAN_A)
     expect(moved.rejected_reason).toBe('RELEASE_GENERATION_CHANGED')
   })
 
@@ -448,3 +448,69 @@ function bundle(evidence: WorkflowEvidence[]) {
 }
 
 export { MANIFEST_IDENTITY_CONSUMERS }
+
+// ── N. THE OLD NAME IS GONE, NOT ALIASED ─────────────────────────────────────
+
+describe('N. the old ambiguous identifier has no authority anywhere', () => {
+  const SRC = 'lib/workflows/bundle/manifest-binding.ts'
+  const src = readFileSync(join(process.cwd(), SRC), 'utf8')
+  const code = src.split('\n')
+    .filter(l => { const t = l.trim(); return !t.startsWith('*') && !t.startsWith('//') && !t.startsWith('/*') })
+    .join('\n')
+
+  /** An attestation written the OLD way: right value, retired field name. */
+  const legacyRow = (sha: string, gen: ReleaseGeneration, at: string): WorkflowEvidence => ({
+    ...attest(sha, gen, at),
+    detail: { value: {
+      expected_manifest_sha256: sha,                 // the retired name
+      release_pr_number: gen.pr_number,
+      expected_merge_sha: gen.expected_merge_sha,
+    } },
+  } as unknown as WorkflowEvidence)
+
+  it('1/2. an old-field attestation cannot bind — it names no expectation at all', () => {
+    const b = bind([legacyRow(MAN_A, GEN_A, T(1))], GEN_A)
+    expect(b.binding_status).toBe('INVALID')
+    expect(b.expected_manifest_source_sha256).toBeNull()
+    // And it cannot silently ride alongside a valid one either: the newest row
+    // is the one validated, so a legacy row landing last invalidates.
+    const mixed = bind([attest(MAN_A, GEN_A, T(1)), legacyRow(MAN_B, GEN_A, T(2))], GEN_A)
+    expect(mixed.binding_status).toBe('INVALID')
+  })
+
+  it('1b. and an old CHECK KEY records nothing this binding will read', () => {
+    const wrongKey = {
+      ...attest(MAN_A, GEN_A, T(1)), check_key: 'expected_manifest_sha256',
+    } as WorkflowEvidence
+    expect(bind([wrongKey], GEN_A).binding_status).toBe('MISSING')
+  })
+
+  it('3. the retired environment variable is not an authority either', () => {
+    vi.stubEnv('FAMILJE_STUNDEN_EXPECTED_MANIFEST_SHA256', MAN_A)
+    vi.stubEnv('FAMILJE_STUNDEN_EXPECTED_MANIFEST_SOURCE_SHA256', MAN_A)
+    expect(bind([], GEN_A).binding_status).toBe('MISSING')
+    expect(code).not.toContain('process.env')
+  })
+
+  it('4. NO runtime alias from the old name to the new one exists', () => {
+    // A fallback would preserve the ambiguity the rename exists to remove.
+    expect(code).not.toContain('expected_manifest_sha256')
+    expect(code).not.toMatch(/expected_manifest_sha256\s*(\?\?|\|\|)/)
+    expect(code).not.toContain('expectedSha')
+  })
+
+  it('5. a semantic digest cannot populate the source-hash domain', () => {
+    // Both domains are SHA-256, which is exactly why the name carries the
+    // domain. A field named for the other domain is not read.
+    const semantic = {
+      ...attest(MAN_A, GEN_A, T(1)),
+      detail: { value: {
+        expected_manifest_semantic_sha256: MAN_A,
+        release_pr_number: GEN_A.pr_number,
+        expected_merge_sha: GEN_A.expected_merge_sha,
+      } },
+    } as WorkflowEvidence
+    expect(bind([semantic], GEN_A).binding_status).toBe('INVALID')
+    expect(code).not.toContain('semantic')
+  })
+})

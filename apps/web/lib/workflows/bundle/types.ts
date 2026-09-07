@@ -207,7 +207,7 @@ export type ReleaseAtMatch = 'MATCH' | 'MISMATCH' | 'UNKNOWN'
 export type Freshness = 'fresh' | 'stale' | 'unknown'
 
 export interface ManifestBindingSection {
-  expected_manifest_sha256: string | null
+  expected_manifest_source_sha256: string | null
   binding_status: 'BOUND' | 'MISSING' | 'INVALID' | 'CONFLICTED'
   /** The release generation this expectation was attested for. */
   release_pr_number: number | null
@@ -217,7 +217,7 @@ export interface ManifestBindingSection {
   /** Complete attestations for the current generation. 1 = never corrected. */
   generations: number
   /** An expectation that was refused authority, kept visible for audit. */
-  rejected_expected_manifest_sha256: string | null
+  rejected_expected_manifest_source_sha256: string | null
   rejected_reason: 'AFTER_DOWNSTREAM_RELIANCE' | 'RELEASE_GENERATION_CHANGED' | null
 }
 

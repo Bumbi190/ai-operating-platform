@@ -39,6 +39,10 @@
 # Consequently: IF THE PR HEAD CHANGES, PREVIOUS EVIDENCE IS STALE and the run
 # must be repeated against the new head.
 #
+# The input reaches that guard as an environment value, never spliced into the
+# shell program, and is checked against ^[0-9a-f]{40}$ before it is used. A guard
+# that could itself be subverted by its own input would prove nothing.
+#
 # POSTGRESQL IS RUNNER-LOCAL AND THROWAWAY
 # ────────────────────────────────────────
 # GitHub Actions sets CI=true, which makes the Memory SQL boundary suite FAIL
@@ -103,14 +107,25 @@ jobs:
       # THE GUARD. Nothing is installed and nothing is executed until the head
       # under test is proven to be the head the operator named.
       - name: Verify HEAD is the expected commit
+        # The input is bound to an environment variable rather than interpolated
+        # into the script. A `${{ … }}` expression is substituted textually BEFORE
+        # the shell parses anything, so a quote character in a dispatch input
+        # would close the string early and the remainder would become executable
+        # shell — and it would do so before any length or format check could run.
+        # Binding it here makes the input DATA the shell reads, never source the
+        # shell executes. The guard that protects the evidence must not itself be
+        # a way to alter the run.
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
-          expected='${{ inputs.expected_sha }}'
+          expected="$EXPECTED_SHA"
           actual="$(git rev-parse HEAD)"
           echo "expected: $expected"
           echo "actual  : $actual"
-          if [ "${#expected}" -ne 40 ]; then
-            echo "::error::expected_sha must be a full 40-character commit SHA, got ${#expected} characters"
+          # Validated for exact form before it is compared or echoed onward.
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_sha must be exactly 40 lowercase hexadecimal characters"
             exit 1
           fi
           if [ "$expected" != "$actual" ]; then

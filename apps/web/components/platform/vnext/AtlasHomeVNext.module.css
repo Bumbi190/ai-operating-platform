@@ -748,19 +748,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orbHalo,
-  .orbEnergyField,
-  .orbMark,
-  .orbButton[data-state='thinking'] .orbOrbitOuter,
-  .orbButton[data-state='thinking'] .orbOrbitInner,
-  .orbButton[data-state='executing'] .orbOrbitOuter,
-  .orbButton[data-state='executing'] .orbOrbitInner { animation: none; }
-  .orbButton,
-  .projectCard,
-  .projectMedia img,
-  .projectDots button,
-  .voiceButton,
-  .sendButton { transition: none; }
+  :where(html:not([data-motion='full'])) .orbHalo,
+  :where(html:not([data-motion='full'])) .orbEnergyField,
+  :where(html:not([data-motion='full'])) .orbMark,
+  :where(html:not([data-motion='full'])) .orbButton[data-state='thinking'] .orbOrbitOuter,
+  :where(html:not([data-motion='full'])) .orbButton[data-state='thinking'] .orbOrbitInner,
+  :where(html:not([data-motion='full'])) .orbButton[data-state='executing'] .orbOrbitOuter,
+  :where(html:not([data-motion='full'])) .orbButton[data-state='executing'] .orbOrbitInner { animation: none; }
+  :where(html:not([data-motion='full'])) .orbButton,
+  :where(html:not([data-motion='full'])) .projectCard,
+  :where(html:not([data-motion='full'])) .projectMedia img,
+  :where(html:not([data-motion='full'])) .projectDots button,
+  :where(html:not([data-motion='full'])) .voiceButton,
+  :where(html:not([data-motion='full'])) .sendButton { transition: none; }
 }
 
 @keyframes orb-breathe {

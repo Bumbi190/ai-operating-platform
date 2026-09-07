@@ -1,0 +1,109 @@
+/* Display scale + motion controls. Compact, token-driven, no raw hex. */
+
+.root {
+  display: grid;
+  gap: 18px;
+}
+
+.group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.group[disabled] {
+  opacity: 0.55;
+}
+
+.legend {
+  padding: 0;
+  font-size: 0.75rem; /* 12px @ default */
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+.hint {
+  margin: 3px 0 9px;
+  font-size: 0.6875rem; /* 11px @ default */
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* The whole chip is the label, so the hit target is the visible control. */
+.option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.14);
+  border-radius: 8px;
+  font-size: 0.71875rem; /* 11.5px @ default */
+  color: rgb(var(--omnira-aqua-rgb) / 0.62);
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.option:hover {
+  color: hsl(var(--foreground));
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.3);
+}
+
+.option[data-selected='true'] {
+  background: rgb(var(--omnira-cyan-rgb) / 0.09);
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.28);
+  color: var(--omnira-aqua);
+  font-weight: 500;
+}
+
+.group[disabled] .option {
+  cursor: not-allowed;
+}
+
+/* The radio stays in the accessibility tree and keeps keyboard behaviour;
+   only its default painting is removed. Never `display: none`, which would
+   take it out of the tab order and out of the arrow-key roving group. */
+.radio {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+}
+
+/* Focus is drawn on the chip, since the input itself is invisible. */
+.option:has(.radio:focus-visible) {
+  outline: 1px solid rgb(var(--omnira-cyan-rgb) / 0.7);
+  outline-offset: 2px;
+  color: var(--omnira-cyan);
+}
+
+.optionLabel {
+  pointer-events: none;
+}
+
+.selectedHint,
+.resolved {
+  margin: 8px 0 0;
+  font-size: 0.65625rem; /* 10.5px @ default */
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+.resolved {
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.resolvedValue {
+  color: var(--omnira-aqua);
+  font-weight: 600;
+}

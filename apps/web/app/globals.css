@@ -152,6 +152,11 @@
   --os-accent-tint-rgb: 165 180 252;                /* indigo-300 — eyebrow tint */
   --os-accent-edge:     rgb(var(--os-accent-rgb) / 0.18);
 
+  /* Display scale multiplier. 1 until a vNext operator chooses otherwise, and
+     only ever consulted through the [data-display-scale] rule below — so with
+     no attribute on the root this token has no effect anywhere. */
+  --os-scale: 1;
+
   /* Spacing rhythm */
   --rhythm-1: 4px;
   --rhythm-2: 8px;
@@ -222,6 +227,62 @@
     radial-gradient(ellipse 50% 50% at 88% 100%, rgba(212,165,116,0.04) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 50% 40%,  rgba(139,92,246,0.025) 0%, transparent 60%),
     linear-gradient(180deg, #050714 0%, #060919 50%, #050714 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DISPLAY SCALE
+   ─────────────────────────────────────────────────────────────────────────
+   The design prototype demonstrated this as CSS `zoom` on the shell root. That
+   was measured against this codebase before being adopted, and rejected: at
+   1.15, `zoom` renders a `100dvh` element 692px tall inside a 600px viewport
+   and the page scrolls. Applying it to the document root does not help — the
+   viewport units do not rescale either. There are 20+ viewport-unit consumers
+   inside the shell, six of them in Atlas Home's own stylesheet and more in the
+   trading chart, so `zoom` would have meant editing the locked surface and a
+   specialist canvas to repair damage the mechanism itself caused.
+
+   Scaling the ROOT FONT SIZE has none of those effects. Measured across all
+   three levels: viewport units unchanged, fixed positioning unchanged, canvas
+   measurement unchanged — which is exactly what a chart or graph canvas needs —
+   while the rem-based scale the UI is mostly built on follows correctly.
+
+   Gated behind the attribute, and the attribute is only ever set for vNext, so
+   legacy resolves the browser default font size and is untouched by
+   construction rather than by care.
+═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-display-scale] {
+  font-size: calc(16px * var(--os-scale));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTION
+   ─────────────────────────────────────────────────────────────────────────
+   `data-motion` carries the RESOLVED answer — never the raw preference — so no
+   stylesheet ever has to combine the OS preference with the operator's choice.
+   That combination happens once, in lib/ui/display-preferences.ts.
+
+   Two rules make one signal out of what used to be two:
+
+     1. Below: when the resolved answer is `reduce`, motion stops everywhere,
+        including for an operator whose device requests no such thing.
+     2. In each component stylesheet: the existing
+        `@media (prefers-reduced-motion: reduce)` blocks are now scoped with
+        `:where(html:not([data-motion='full']))`, so an operator who explicitly
+        asks for full motion actually gets it on a device that requests
+        reduction. `:where()` contributes zero specificity, so the cascade
+        inside those blocks is exactly what it was.
+
+   Together: CSS can no longer say "reduce" while JS says "full".
+═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 .os-stage {
@@ -882,7 +943,10 @@
   padding: 8px 12px;
   border-radius: 10px;
   color: rgba(255,255,255,0.55);
-  font-size: 12.5px;
+  /* rem so the display-scale preference reaches the shell's navigation.
+     0.78125rem is exactly 12.5px at the default root size, so legacy and
+     Standard render byte-identically to before. */
+  font-size: 0.78125rem;
   font-weight: 500;
   letter-spacing: -0.005em;
   transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);

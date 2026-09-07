@@ -13,7 +13,7 @@
 .nav {
   /* Aligns with the page canvas padding used by OSPage/OSLayer. */
   padding: 14px 28px 0;
-  font-size: 11.5px;
+  font-size: 0.71875rem; /* 11.5px @ default */
   line-height: 1.4;
 }
 

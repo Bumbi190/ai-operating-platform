@@ -436,7 +436,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chartShellButton { transition: none; }
+  :where(html:not([data-motion='full'])) .chartShellButton { transition: none; }
 }
 
 .chartFrame {
@@ -950,8 +950,8 @@
 /* ── Reduced motion ───────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .segment,
-  .scenarioButton {
+  :where(html:not([data-motion='full'])) .segment,
+  :where(html:not([data-motion='full'])) .scenarioButton {
     transition: none;
   }
 }

@@ -62,9 +62,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .node,
-  .identity,
-  .statusRing {
+  :where(html:not([data-motion='full'])) .node,
+  :where(html:not([data-motion='full'])) .identity,
+  :where(html:not([data-motion='full'])) .statusRing {
     animation: none !important;
     transition: none !important;
   }

@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { User, Key, Info, Zap, Database, Instagram } from 'lucide-react'
+import { User, Key, Info, Zap, Database, Instagram, MonitorCog } from 'lucide-react'
 import { SeedButton } from './SeedButton'
 import { TokenUpdater } from './TokenUpdater'
+import { DisplayPreferences } from './DisplayPreferences'
 import { OSPage, OSLayer, Panel, PanelHeader, StatusChip } from '@/components/platform/os'
 
 export default async function SettingsPage() {
@@ -82,6 +83,12 @@ export default async function SettingsPage() {
           </p>
           <SeedButton />
         </div>
+      </Panel>
+
+      {/* Visning — presentationsinställningar (display scale + rörelse) */}
+      <Panel className="p-5">
+        <PanelHeader icon={<MonitorCog className="w-4 h-4 text-muted-foreground" />} title="Visning" />
+        <DisplayPreferences />
       </Panel>
 
       {/* Social media tokens */}

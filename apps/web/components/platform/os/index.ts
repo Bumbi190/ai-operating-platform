@@ -53,10 +53,11 @@ export {
   OrchestrationReasoning,
 } from './cognition'
 
-// Operator modes
+// Operator modes + the presentation preferences that share its provider
 export {
   OperatorModeProvider,
   useOperatorMode,
+  useDisplayPreferences,
   OperatorModeSwitcher,
   ModeIndicator,
 } from './OperatorMode'

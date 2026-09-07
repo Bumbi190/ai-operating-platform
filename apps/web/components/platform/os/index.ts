@@ -16,6 +16,7 @@ export { CommandBar } from './CommandBar'
 export { CommandPalette } from './CommandPalette'
 export { CommandPaletteHost } from './CommandPaletteHost'
 export { Breadcrumbs } from './Breadcrumbs'
+export { KeyboardHints } from './KeyboardHints'
 export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center

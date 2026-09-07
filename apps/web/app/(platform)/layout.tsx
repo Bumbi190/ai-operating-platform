@@ -5,7 +5,8 @@ import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
-  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, type ActivityEvent,
+  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, KeyboardHints,
+  type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
@@ -325,6 +326,16 @@ export default async function PlatformLayout({
           <div className="relative z-content">
             {children}
           </div>
+
+          {/* ─── Keyboard hints ────────────────────────────────────────────
+              One contextual strip for the whole vNext shell, describing the
+              bindings the specialist surfaces already own — it registers no
+              listener and takes no shortcut away from them.
+
+              Stands down on Atlas Home, which is the locked surface and
+              already carries its own composer hint. Legacy renders nothing:
+              CommandBar shows its own ⌘K caps. */}
+          <KeyboardHints uiGeneration={uiGeneration} />
         </main>
 
         {/* ─── Aktivitets-peek (P0): railen är inte längre en permanent kolumn.

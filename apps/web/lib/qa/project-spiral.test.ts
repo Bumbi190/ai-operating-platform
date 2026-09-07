@@ -128,11 +128,16 @@ describe('projects index · opening a project', () => {
     }
   })
 
-  it('does not claim the rail\'s return marker', () => {
-    // markAtlasProjectRailOpen makes Esc on a project page return to ATLAS
-    // HOME. That is the wrong destination for a spiral entry, and redirecting
-    // it would be new back-behaviour this phase does not invent.
-    expect(codeOnly(SPIRAL)).not.toContain('markAtlasProjectRailOpen')
+  it('records the spiral as the return origin', () => {
+    // Phase 5 marked nothing at all: the marker could only mean "return to
+    // Atlas Home", which is the wrong destination for a spiral entry, and
+    // returning to the wrong surface is worse than not returning. Phase 6.5
+    // gave the marker an origin, so the spiral now claims it — and every call
+    // site, keyboard and pointer, names its own origin.
+    const marks = [...SPIRAL.matchAll(/markAtlasProjectRailOpen\([^)]*\)/g)].map((m) => m[0])
+    expect(marks.length).toBeGreaterThanOrEqual(2)
+    for (const call of marks) expect(call).toContain("'projects-index'")
+    expect(codeOnly(SPIRAL)).not.toContain("'atlas-home'")
   })
 })
 

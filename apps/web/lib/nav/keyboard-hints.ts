@@ -89,6 +89,22 @@ interface RouteHints {
  */
 const ROUTE_HINTS: readonly RouteHints[] = [
   {
+    // components/platform/vnext/ProjectRail.tsx → resolveProjectRailKeyAction
+    // in the 'atlas' context. Exact, because the rail is only on Atlas Home;
+    // /atlas/content and the other sub-routes bind nothing of the kind.
+    //
+    // The shell hint bar still stands down here (see shouldRenderKeyboardHints).
+    // Atlas Home is the locked surface, so these render inside the rail itself,
+    // through the same metadata and the same cap presentation — one hint
+    // system, two mounting points.
+    base: ATLAS_HOME_PATH,
+    exact: true,
+    hints: [
+      { keys: ['←', '→'], label: 'bläddra projekt', priority: 0 },
+      { keys: ['Enter'], label: 'öppna projekt', priority: 1 },
+    ],
+  },
+  {
     // app/(platform)/projects/page.tsx → ProjectSpiral, which asks
     // resolveProjectRailKeyAction in the 'atlas' context — the same resolver,
     // the same guards, and the same meanings the Atlas rail already uses.
@@ -124,15 +140,29 @@ const ROUTE_HINTS: readonly RouteHints[] = [
   },
 ]
 
-/** The hints for a pathname: the route's own, then the global ones. */
-export function keyboardHintsFor(pathname: string): KeyboardHint[] {
-  const path = normalizePath(pathname ?? '/')
-  const match = ROUTE_HINTS
+function routeEntryFor(path: string): RouteHints | undefined {
+  return ROUTE_HINTS
     .filter((entry) => entry.exact
       ? path === entry.base
       : path === entry.base || path.startsWith(entry.base + '/'))
     .sort((a, b) => b.base.length - a.base.length)[0]
+}
+
+/** The hints for a pathname: the route's own, then the global ones. */
+export function keyboardHintsFor(pathname: string): KeyboardHint[] {
+  const match = routeEntryFor(normalizePath(pathname ?? '/'))
   return [...(match?.hints ?? []), ...GLOBAL_HINTS]
+}
+
+/**
+ * Only the route's own hints, without the global ones.
+ *
+ * For a surface that shows its hints in place rather than in the shell bar:
+ * ⌘K and Alt+Space are shell-level facts and would be noise inside a page's own
+ * chrome, while the route's keys are exactly what that chrome is explaining.
+ */
+export function routeKeyboardHintsFor(pathname: string): KeyboardHint[] {
+  return [...(routeEntryFor(normalizePath(pathname ?? '/'))?.hints ?? [])]
 }
 
 /**

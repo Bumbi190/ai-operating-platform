@@ -30,7 +30,11 @@ describe('vnext nav · approved information architecture', () => {
     const byGroup = Object.fromEntries(
       VNEXT_NAV.map((g) => [g.id, g.items.map((i) => i.label)]),
     )
-    expect(byGroup.atlas).toEqual(['Atlas', 'Chat'])
+    // Organisation joined the Atlas group in Phase 6.5, once /organisation was
+    // a real route. It sits with Atlas rather than under Intelligens because it
+    // is the operator's own structure seen from Atlas — the Intelligence Graph
+    // remains the instrument for relationships and knowledge flow.
+    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Organisation'])
     expect(byGroup.arbete).toEqual([
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
@@ -38,11 +42,13 @@ describe('vnext nav · approved information architecture', () => {
     expect(byGroup.system).toEqual(['System', 'Inställningar'])
   })
 
-  it('adds exactly the two destinations legacy could not reach', () => {
+  it('adds exactly the destinations legacy could not reach', () => {
     const legacyHrefs = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
     const added = vnextNavItems().map((i) => i.href).filter((h) => !legacyHrefs.has(h))
     // /settings was always reachable, but as a footer pill outside the nav model.
-    expect(added.sort()).toEqual(['/planning', '/settings', '/system'])
+    // /organisation is a vNext-only surface — legacy renders a plain list at
+    // the same route but has never carried it in its nav model.
+    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
   })
 
   it('carries no individual project links', () => {
@@ -102,7 +108,7 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
   it('desktop renders all four groups, each with its approved items', () => {
     const groups = vnextNavGroupsFor('desktop')
     expect(groups.map((g) => [g.label, g.items.length])).toEqual([
-      ['Atlas', 2], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
+      ['Atlas', 3], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
     ])
     // Grouping must not have changed the C4 order.
     expect(groups.flatMap((g) => g.items.map((i) => i.href))).toEqual(

@@ -96,8 +96,12 @@ function seed() {
       { project_id: THEIRS, status: 'new', created_at: monthISO() },
     ],
     runs: [
-      { project_id: MINE, status: 'done', created_at: iso(10) },
-      { project_id: THEIRS, status: 'failed', created_at: iso(10) },
+      { id: 'run-mine', project_id: MINE, status: 'running', created_at: iso(10) },
+      { id: 'run-theirs', project_id: THEIRS, status: 'running', created_at: iso(10) },
+    ],
+    run_logs: [
+      { id: 'rl-mine', run_id: 'run-mine', created_at: iso(9), content: 'min logg' },
+      { id: 'rl-theirs', run_id: 'run-theirs', created_at: iso(9), content: 'SECRET-LOG' },
     ],
     approvals,
     leads: [
@@ -164,6 +168,8 @@ function fakeDb(tables: Record<string, any[]>) {
       },
       limit: (n: number) => { rec.ops.push(['limit', String(n), n]); rows = rows.slice(0, n); return q },
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+      single: async () => ({ data: rows[0] ?? null, error: rows[0] ? null : { message: 'no rows' } }),
+      gt: (c: string, v: string) => { rec.ops.push(['gt', c, v]); rows = rows.filter(r => String(get(r, c)) > v); return q },
       then: (ok: any, err?: any) =>
         Promise.resolve(head ? { data: null, count: rows.length, error: null }
                              : { data: rows, count: rows.length, error: null }).then(ok, err),
@@ -177,7 +183,12 @@ let CURRENT: ReturnType<typeof fakeDb>
 let CURRENT_USER: { id: string } | null = { id: ME }
 
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) } }),
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) },
+    // The stream route reads `runs` through the RLS client. The fake records it
+    // in the SAME ledger so the explicit allow-list filter is observable.
+    from: (t: string) => CURRENT.db.from(t),
+  }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
 // The briefing cron sends mail; the delivery is irrelevant to isolation.
@@ -504,6 +515,171 @@ describe('9S · call sites — each caller states the authority it is entitled t
     CURRENT = fakeDb(seed())
     const { GET } = await import('@/app/api/briefing/cron/route')
     const res = await GET(new Request('https://x.test/api/briefing/cron'))
+    expect(res.status).toBe(401)
+    expect(CURRENT.seen).toHaveLength(0)
+  })
+})
+
+// ═══ Phase 9T · approvals API + run stream ═══════════════════════════════════
+//
+// Two direct-by-id / list gaps the Phase 9S sweep surfaced. One of them I had
+// classified wrongly, and the correction is worth keeping in the file: the run
+// stream's ownership lookup already went through the RLS client, so a foreign
+// run WAS refused by the database. My sweep counted `createAdminClient` per
+// FILE rather than per QUERY — the same mistake made and corrected on the
+// Manager page in 9M and Atlas Home in 9Q. What was genuinely wrong is that the
+// protection was implicit: it rested on which client one line happened to use,
+// while every read after it uses the service-role client.
+
+describe('9T · approvals API — the list is scoped through the parent run', () => {
+  /** The route reads `req.nextUrl.searchParams`, so a plain Request is not
+   *  enough — give it the NextRequest shape it actually consumes. */
+  const nextReq = (qs = '') => {
+    const url = `https://x.test/api/approvals${qs ? '?' + qs : ''}`
+    return Object.assign(new Request(url), { nextUrl: new URL(url) }) as never
+  }
+  const call = async (qs = '') => {
+    vi.resetModules()
+    const { GET } = await import('@/app/api/approvals/route')
+    return GET(nextReq(qs))
+  }
+
+  it('an owned approval is returned and a foreign one is not', async () => {
+    const res = await call()
+    const body = await res.json()
+    const ids = body.approvals.map((a: any) => a.id)
+    expect(ids).toContain('ap-mine-1')
+    expect(ids.some((i: string) => String(i).startsWith('ap-theirs'))).toBe(false)
+  })
+
+  it('a NULL-project approval whose RUN is owned is still returned', async () => {
+    // The Phase 9L semantics: most live rows leave approvals.project_id null,
+    // so filtering that column alone would empty the queue instead of scoping
+    // it. Ownership resolves through the run.
+    const res = await call()
+    const ids = (await res.json()).approvals.map((a: any) => a.id)
+    expect(ids).toContain('ap-mine-pending')     // project_id null, run owned
+  })
+
+  it('a NULL-project approval whose run is FOREIGN is dropped', async () => {
+    const res = await call()
+    const ids = (await res.json()).approvals.map((a: any) => a.id)
+    expect(ids).not.toContain('ap-theirs-pending')
+  })
+
+  it('the filter travels through an INNER embed, not the approvals column', async () => {
+    vi.resetModules(); CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/approvals/route')
+    await GET(nextReq())
+    const rec = find(CURRENT.seen, 'approvals', 'in:runs.project_id')!
+    expect(rec, 'approvals not scoped through runs').toBeTruthy()
+    expect(rec.inner).toContain('runs')
+    expect(scopeArg(rec, 'runs.project_id')).toEqual([MINE])
+    // Scoping the nullable column directly would be the wrong fix.
+    expect(rec.ops.some(([op, c]) => op === 'in' && c === 'project_id')).toBe(false)
+  })
+
+  it('the scope precedes the ordering and the limit(50)', async () => {
+    // 100 foreign approvals are newer than the operator's; unscoped they fill
+    // the slice and the operator's own queue disappears.
+    vi.resetModules(); CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/approvals/route')
+    const res = await GET(nextReq())
+    const o = opNames(find(CURRENT.seen, 'approvals', 'in:runs.project_id')!)
+    const scope = o.indexOf('in:runs.project_id')
+    expect(scope).toBeGreaterThan(-1)
+    expect(o.findIndex(x => x.startsWith('order:'))).toBeGreaterThan(scope)
+    expect(o.findIndex(x => x.startsWith('limit:'))).toBeGreaterThan(scope)
+    expect((await res.json()).approvals.length).toBeGreaterThan(0)
+  })
+
+  it('foreign workflow and agent names cannot leak through the embeds', async () => {
+    const res = await call()
+    expect(JSON.stringify(await res.json())).not.toContain('SECRET')
+  })
+
+  it('an operator who owns nothing gets zero approvals, not the platform', async () => {
+    vi.resetModules(); CURRENT_USER = { id: 'nobody' }; CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/approvals/route')
+    const res = await GET(nextReq())
+    expect((await res.json()).approvals).toEqual([])
+    expect(scopeArg(find(CURRENT.seen, 'approvals', 'in:runs.project_id'), 'runs.project_id'))
+      .toEqual([IMPOSSIBLE_PROJECT_ID])
+  })
+
+  it('an unauthenticated request never reaches a query', async () => {
+    vi.resetModules(); CURRENT_USER = null; CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/approvals/route')
+    const res = await GET(nextReq())
+    expect(res.status).toBe(401)
+    expect(CURRENT.seen).toHaveLength(0)
+  })
+})
+
+describe('9T · run stream — the route param is not a permission', () => {
+  const open = async (id: string) => {
+    vi.resetModules()
+    const { GET } = await import('@/app/api/runs/[id]/stream/route')
+    return GET(new Request(`https://x.test/api/runs/${id}/stream`), { params: { id } })
+  }
+
+  it('an owned run opens the stream', async () => {
+    const res = await open('run-mine')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+  })
+
+  it('a FOREIGN run id is refused before any stream exists', async () => {
+    const res = await open('run-theirs')
+    expect(res.status).toBe(404)
+    expect(res.headers.get('Content-Type')).not.toBe('text/event-stream')
+  })
+
+  it('a missing run id is refused identically — no existence probing', async () => {
+    const foreign = await open('run-theirs')
+    const missing = await open('run-does-not-exist')
+    expect(foreign.status).toBe(missing.status)
+    expect(await foreign.text()).toEqual(await missing.text())
+  })
+
+  it('the run lookup carries the allow-list explicitly, not just via the client', async () => {
+    vi.resetModules(); CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/runs/[id]/stream/route')
+    await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
+    const lookup = find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id')
+    expect(lookup, 'the run lookup is not scoped by allow-list').toBeTruthy()
+    expect(scopeArg(lookup, 'project_id')).toEqual([MINE])
+  })
+
+  it('no run_logs are read for a foreign run — the refusal precedes the stream', async () => {
+    vi.resetModules(); CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/runs/[id]/stream/route')
+    await GET(new Request('https://x.test/api/runs/run-theirs/stream'), { params: { id: 'run-theirs' } })
+    expect(q(CURRENT.seen, 'run_logs')).toHaveLength(0)
+  })
+
+  it('a reconnect with a foreign id re-runs the proof and is refused again', async () => {
+    // Every connection is a fresh request, so the guard cannot be established
+    // once and reused with a different id.
+    expect((await open('run-mine')).status).toBe(200)
+    expect((await open('run-theirs')).status).toBe(404)
+    expect((await open('run-mine')).status).toBe(200)
+  })
+
+  it('an operator who owns nothing gets the impossible id and no stream', async () => {
+    vi.resetModules(); CURRENT_USER = { id: 'nobody' }; CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/runs/[id]/stream/route')
+    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
+    expect(res.status).toBe(404)
+    expect(scopeArg(find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id'), 'project_id'))
+      .toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(q(CURRENT.seen, 'run_logs')).toHaveLength(0)
+  })
+
+  it('an unauthenticated request never reaches a query', async () => {
+    vi.resetModules(); CURRENT_USER = null; CURRENT = fakeDb(seed())
+    const { GET } = await import('@/app/api/runs/[id]/stream/route')
+    const res = await GET(new Request('https://x.test/api/runs/run-mine/stream'), { params: { id: 'run-mine' } })
     expect(res.status).toBe(401)
     expect(CURRENT.seen).toHaveLength(0)
   })

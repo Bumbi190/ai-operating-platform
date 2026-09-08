@@ -15,6 +15,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,17 +32,32 @@ export async function GET(
 
   const runId = params.id
 
-  // Verify run belongs to user's project
+  // ISOLATION. This lookup already went through the RLS client, so a foreign
+  // run was refused by the database — but that protection was implicit: it
+  // rested entirely on WHICH client this one line happened to use, and every
+  // read after it uses the service-role client. Swapping `supabase` for
+  // `admin` here would have opened the whole stream and nothing would have
+  // failed. The allow-list check states the boundary explicitly, so the guard
+  // no longer depends on that choice; RLS remains underneath it as a backstop.
+  //
+  // A foreign id and a missing id both yield no row and the same 404, so the
+  // endpoint cannot be used to probe which run ids exist.
+  const admin = createAdminClient()
+  const allowedProjectIds = await getAllowedProjectIds(admin, user.id)
+
   const { data: run } = await supabase
     .from('runs')
     .select('id, status, project_id')
     .eq('id', runId)
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
     .single()
 
   if (!run) return new Response('Run inte hittad', { status: 404 })
 
-  // Use admin client for polling — no cookie dependency during streaming
-  const admin = createAdminClient()
+  // Everything below reads by `runId`, which is now a SERVER-PROVEN owned run:
+  // it was authorized above and cannot change for the life of this request.
+  // The polling loop therefore never widens authority, and a reconnect is a
+  // new request that runs this same proof again.
 
   let lastCreatedAt: string | null = null
   let polls = 0

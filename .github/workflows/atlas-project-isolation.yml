@@ -159,12 +159,13 @@ jobs:
             // earlier per-table version passed while one of two `runs` reads
             // was still global.
             'atlas-pages-isolation.test.ts': 19,
-            // Phase 9S — sub-page/API isolation. DB-free. Covers the two
+            // Phase 9S + 9T — sub-page/API isolation. DB-free. Covers the two
             // marketing GET routes and the business-snapshot authority
-            // contract, INCLUDING the call sites: the helper's machine mode is
+            // contract, INCLUDING the call sites (the helper's machine mode is
             // no protection if an operator page is the one asking for it, and
-            // the briefing cron must stay global rather than be narrowed.
-            'subpage-api-isolation.test.ts': 29,
+            // the briefing cron must stay global rather than be narrowed), plus
+            // the approvals API list and the run-stream direct-by-id guard.
+            'subpage-api-isolation.test.ts': 45,
           }
 
           let failed = false

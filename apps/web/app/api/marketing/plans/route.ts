@@ -10,6 +10,7 @@
  */
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 
 const FAMILJE_SLUG = 'familje-stunden'
@@ -24,7 +25,18 @@ export async function GET(request: Request) {
   const planId = url.searchParams.get('plan_id')
 
   const db = createAdminClient()
-  const { data: project } = await db.from('projects').select('id').eq('slug', FAMILJE_SLUG).maybeSingle()
+
+  // ISOLATION: the slug is a server-side constant, not caller input, but
+  // resolving it through the service-role client meant ANY authenticated user
+  // received this project's plans. Authorizing the ROOT closes the whole route,
+  // because every read below derives from `projectId` — the same shape already
+  // landed for getMarketingReview. An operator who does not own it falls into
+  // the existing 404 branch, indistinguishable from the project being absent.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const { data: project } = await db.from('projects').select('id')
+    .eq('slug', FAMILJE_SLUG)
+    .in('id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
   const projectId = (project as { id?: string } | null)?.id
   if (!projectId) return NextResponse.json({ error: `Projekt ${FAMILJE_SLUG} saknas` }, { status: 404 })
 

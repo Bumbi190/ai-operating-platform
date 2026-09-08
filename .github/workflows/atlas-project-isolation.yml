@@ -96,6 +96,7 @@ jobs:
             lib/qa/revenue-project-isolation.test.ts \
             lib/qa/agent-activity-isolation.test.ts \
             lib/qa/atlas-pages-isolation.test.ts \
+            lib/qa/subpage-api-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -158,6 +159,12 @@ jobs:
             // earlier per-table version passed while one of two `runs` reads
             // was still global.
             'atlas-pages-isolation.test.ts': 19,
+            // Phase 9S — sub-page/API isolation. DB-free. Covers the two
+            // marketing GET routes and the business-snapshot authority
+            // contract, INCLUDING the call sites: the helper's machine mode is
+            // no protection if an operator page is the one asking for it, and
+            // the briefing cron must stay global rather than be narrowed.
+            'subpage-api-isolation.test.ts': 29,
           }
 
           let failed = false

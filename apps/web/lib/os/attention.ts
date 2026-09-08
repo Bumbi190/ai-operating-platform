@@ -43,7 +43,7 @@ export async function collectAttentionItems(
   allowedProjectIds: string[],
 ): Promise<AttentionResult> {
   const scopedIds = scopeProjectFilter(allowedProjectIds)
-  const businesses = await fetchBusinessSnapshots(db, projects)
+  const businesses = await fetchBusinessSnapshots(db, projects, { kind: 'operator', allowedProjectIds })
 
   const [pubCountRes, insCountRes] = await Promise.all([
     (db.from('media_scripts') as any).select('id', { count: 'exact', head: true })

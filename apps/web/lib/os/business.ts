@@ -13,6 +13,7 @@
  */
 
 import 'server-only'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Project } from '@/lib/supabase/types'
 
@@ -94,45 +95,89 @@ function rows<T>(res: PromiseSettledResult<{ data: T[] | null }>): T[] {
 
 // ─── Verksamhetssnapshots · ett kort per projekt ───────────────────────────
 
+/**
+ * WHO is asking, and therefore what they may see.
+ *
+ * This helper serves two callers with genuinely different authority, and until
+ * now the difference was implicit: it read every table globally and let the
+ * `projects` array sort it out in JS afterwards. That is fine for the briefing
+ * cron, which legitimately wants the whole platform, and wrong for an operator
+ * page. Rather than infer intent from an absent argument — the exact footgun
+ * that let three Atlas pages read globally for four phases — the caller must
+ * now SAY which it is. There is no default and no `undefined` branch.
+ */
+export type SnapshotAuthority =
+  /** A signed-in operator: only their own projects, enforced in the query. */
+  | { kind: 'operator'; allowedProjectIds: string[] }
+  /** A machine job that is global BY DESIGN (the briefing cron). Must be asked for. */
+  | { kind: 'machine-global' }
+
 export async function fetchBusinessSnapshots(
   admin: SupabaseClient,
   projects: Project[],
+  authority: SnapshotAuthority,
 ): Promise<BusinessSnapshot[]> {
   if (projects.length === 0) return []
 
   const monthISO = startOfMonthISO()
 
+  // `null` means machine-global — and only ever because a caller asked for it.
+  // For an operator, `scopeProjectFilter` substitutes an impossible id for an
+  // empty allow-list, so owning nothing yields nothing rather than everything.
+  const scopeIds = authority.kind === 'operator'
+    ? scopeProjectFilter(authority.allowedProjectIds)
+    : null
+
+  /**
+   * Applied immediately after `.select()`, so the filter always precedes any
+   * `.order()`/`.limit()`. That ordering is the point: a limit over a global
+   * read is spent on whoever was most recent platform-wide, which does not
+   * merely leak rows, it pushes the operator's own out of the slice.
+   */
+  const scoped = <Q extends { in: (col: string, vals: string[]) => Q }>(q: Q, col = 'project_id'): Q =>
+    scopeIds ? q.in(col, scopeIds) : q
+
   const [
     outputsRes, scriptsRes, newsRes, runsRes, approvalsRes,
     leadsRes, revenueRes, campaignsRes, publishedRes, decidedRes, insightsRes,
   ] = await Promise.allSettled([
-    (admin.from('outputs') as any)
-      .select('project_id, type, created_at').gte('created_at', monthISO),
-    (admin.from('media_scripts') as any)
-      .select('project_id, status, video_status, hook, published_at, generated_at').gte('generated_at', monthISO),
-    (admin.from('media_news_items') as any)
-      .select('project_id, status, created_at').gte('created_at', monthISO),
-    (admin.from('runs') as any)
-      .select('project_id, status, created_at'),
-    (admin.from('approvals') as any)
-      .select('id, status, runs(project_id)').eq('status', 'pending'),
-    (admin.from('leads') as any)
-      .select('project_id, created_at').gte('created_at', monthISO),
-    (admin.from('revenue_events') as any)
-      .select('project_id, amount_sek, occurred_at').gte('occurred_at', monthISO),
-    (admin.from('campaigns') as any)
-      .select('project_id, status').eq('status', 'active'),
-    // Senaste publiceringar (för "senaste publikation"-raden)
-    (admin.from('media_scripts') as any)
-      .select('project_id, hook, published_at').eq('status', 'published')
+    scoped((admin.from('outputs') as any)
+      .select('project_id, type, created_at')).gte('created_at', monthISO),
+    scoped((admin.from('media_scripts') as any)
+      .select('project_id, status, video_status, hook, published_at, generated_at')).gte('generated_at', monthISO),
+    scoped((admin.from('media_news_items') as any)
+      .select('project_id, status, created_at')).gte('created_at', monthISO),
+    scoped((admin.from('runs') as any)
+      .select('project_id, status, created_at')),
+    // `approvals.project_id` is nullable and this code has always resolved
+    // ownership through the parent run, so the scope travels the same way.
+    // `runs!inner` is what makes the filter drop rows: a plain embed would only
+    // null the embedded object, leaving the parent row fetched.
+    scoped((admin.from('approvals') as any)
+      .select('id, status, runs!inner(project_id)'), 'runs.project_id').eq('status', 'pending'),
+    scoped((admin.from('leads') as any)
+      .select('project_id, created_at')).gte('created_at', monthISO),
+    scoped((admin.from('revenue_events') as any)
+      .select('project_id, amount_sek, occurred_at')).gte('occurred_at', monthISO),
+    scoped((admin.from('campaigns') as any)
+      .select('project_id, status')).eq('status', 'active'),
+    // Senaste publiceringar. NOTE: this result is currently shadowed inside the
+    // map below and never read, so its limit displaces nothing today — the
+    // scope is added so it cannot start leaking the day it is revived.
+    scoped((admin.from('media_scripts') as any)
+      .select('project_id, hook, published_at')).eq('status', 'published')
       .order('published_at', { ascending: false }).limit(40),
-    // Fattade beslut senaste 30d (godkännanden du hanterat)
-    (admin.from('approvals') as any)
-      .select('id, status, reviewed_at, runs(project_id)').in('status', ['approved', 'rejected', 'revised'])
+    // Fattade beslut senaste 30d. This one IS read (decisions30d), so an
+    // unscoped limit(80) could be filled entirely by other tenants' approvals
+    // and report zero decisions to an operator who made plenty.
+    scoped((admin.from('approvals') as any)
+      .select('id, status, reviewed_at, runs!inner(project_id)'), 'runs.project_id')
+      .in('status', ['approved', 'rejected', 'revised'])
       .order('reviewed_at', { ascending: false }).limit(80),
-    // Instagram-engagemang denna månad (Phase 4b — tomt tills cron fyllt det)
-    (admin.from('media_insights') as any)
-      .select('project_id, reach, total_interactions, published_at').gte('published_at', monthISO),
+    // `media_insights.project_id` is nullable; `.in()` excludes NULL, matching
+    // the rule the Atlas call sites already apply to unresolvable ownership.
+    scoped((admin.from('media_insights') as any)
+      .select('project_id, reach, total_interactions, published_at')).gte('published_at', monthISO),
   ])
 
   const outputs   = rows<{ project_id: string; type: string; created_at: string }>(outputsRes)

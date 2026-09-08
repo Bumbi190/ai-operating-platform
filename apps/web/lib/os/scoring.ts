@@ -14,6 +14,7 @@
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type { Agent, RunLog, Run } from '@/lib/supabase/types'
 
 export interface AgentScorecard {
@@ -41,25 +42,58 @@ interface ScorecardOptions {
   agentIds?: string[] // restrict to these agents (otherwise all)
 }
 
+/**
+ * Per-agent scorecards, scoped to the operator's projects.
+ *
+ * ALL THREE inputs are scoped, not just the agents. A scorecard is an
+ * aggregate, and an aggregate is only as isolated as its weakest input:
+ * scoped agents joined against global logs would still let a foreign project's
+ * steps inflate an owned agent's token count, success rate and last-active
+ * time. Every row is therefore filtered BEFORE any grouping or averaging
+ * happens below — there is no post-hoc filtering of a global aggregate.
+ *
+ * `run_logs` has NO project_id — its only link is `run_id NOT NULL REFERENCES
+ * runs(id)` — so its scope travels through an INNER join on the parent run.
+ * `!inner` is what makes the embedded filter restrict the outer rows rather
+ * than merely nulling the embed.
+ *
+ * PRE-EXISTING, NOT INTRODUCED HERE: logs are attributed to agents by matching
+ * `run_logs.step_name` to `agents.name`, case-insensitively (see below). That
+ * is a name match, not a relation, so two agents sharing a name inside the
+ * SAME allowed scope will pool their statistics. Scoping cannot fix that, and
+ * fixing it means changing what a scorecard measures — out of scope for an
+ * isolation repair. Reported rather than quietly altered.
+ */
 export async function fetchAgentScorecards(
   admin: SupabaseClient,
+  /** The operator's projects, ALREADY RESOLVED by the caller. Required. */
+  allowedProjectIds: string[],
   opts: ScorecardOptions = {},
 ): Promise<AgentScorecard[]> {
   const windowMs = opts.windowMs ?? 7 * 24 * 60 * 60 * 1000
   const sinceISO = new Date(Date.now() - windowMs).toISOString()
+  // Never an empty `.in()`: an empty allow-list becomes an impossible project
+  // id, so a scope-less operator gets no scorecards rather than everyone's.
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
 
   const [agentsRes, logsRes, runsRes] = await Promise.allSettled([
+    // Both branches are scoped. `opts.agentIds` NARROWS an already-scoped set;
+    // it must never be able to reach an agent outside it.
     opts.agentIds && opts.agentIds.length > 0
       ? (admin.from('agents') as any)
           .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at')
+          .in('project_id', scopedIds)
           .in('id', opts.agentIds)
       : (admin.from('agents') as any)
-          .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at'),
+          .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at')
+          .in('project_id', scopedIds),
     (admin.from('run_logs') as any)
-      .select('id, run_id, step_order, step_name, role, content, tokens_in, tokens_out, duration_ms, created_at')
+      .select('id, run_id, step_order, step_name, role, content, tokens_in, tokens_out, duration_ms, created_at, runs!inner(project_id)')
+      .in('runs.project_id', scopedIds)
       .gte('created_at', sinceISO),
     (admin.from('runs') as any)
       .select('id, status, workflow_id, project_id')
+      .in('project_id', scopedIds)
       .gte('created_at', sinceISO),
   ])
 

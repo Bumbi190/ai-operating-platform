@@ -18,9 +18,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OSPage, OSLayer, Panel, SectionHeader, PulseDot, EmptyState } from '@/components/platform/os'
 import { deriveWorkflowStatus } from '@/lib/workflows/machine'
-import { listEvidence, listInstances, listTransitions, readDefinitionById } from '@/lib/workflows/store'
+import { listEvidence, listInstancesForProjects, listTransitions, readDefinitionById } from '@/lib/workflows/store'
 import { deriveWorkflowGateStatus } from '@/lib/workflows/authorization'
-import { assertProjectAllowed } from '@/lib/atlas/isolation'
+import { assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import type { WorkflowGateState } from '@/lib/workflows/gate'
 import { wakeState } from '@/lib/workflows/schedule'
@@ -62,12 +62,20 @@ export default async function ReleasesPage() {
   const db = createAdminClient()
   const vendored = loadVendoredDefinitions()
 
-  // Which projects this viewer actually owns. Used ONLY to avoid rendering
-  // controls the server would refuse anyway — it is not the authority check.
-  // That lives in the authorization write boundary, which derives the principal
-  // from the session and can never be satisfied by a service role.
+  // Which projects this viewer actually owns. This is now LOAD-BEARING TWICE:
+  // it scopes the instance READ below, and it decides whether a control the
+  // server would refuse anyway is worth rendering. It is still not the
+  // authority check — that lives in the authorization write boundary, which
+  // derives the principal from the session and can never be satisfied by a
+  // service role.
+  //
+  // Failing to resolve access is NOT an empty release list. Reading this page
+  // with an unresolved scope would either show nothing (a lie: instances may
+  // exist) or, worse, tempt a global fallback. The page redirects instead —
+  // the same explicit failure the unauthenticated case already takes.
   const access = await resolveProjectAccess()
-  const allowedProjectIds = access.ok ? access.allowedProjectIds : []
+  if (!access.ok) redirect('/login')
+  const allowedProjectIds = access.allowedProjectIds
 
   const cards: {
     instanceId: string
@@ -97,7 +105,15 @@ export default async function ReleasesPage() {
 
   let loadError: string | null = null
   try {
-    const instances = await listInstances(db, FAMILJE_STUNDEN_MONTHLY_RELEASE)
+    // Scoped at the QUERY, not after it. `db` is a service-role client and so
+    // bypasses RLS; passing the allow-list through `scopeProjectFilter` is what
+    // keeps it from broadening what this operator may read. An empty allow-list
+    // becomes an impossible project id — zero rows, never every row.
+    const instances = await listInstancesForProjects(
+      db,
+      scopeProjectFilter(allowedProjectIds),
+      { defKey: FAMILJE_STUNDEN_MONTHLY_RELEASE },
+    )
     for (const instance of instances) {
       const def = await readDefinitionById(db, instance.def_id)
       const transitions = await listTransitions(db, instance.id)

@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
+import { resolveProjectAccess } from '@/lib/auth/project-access'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
@@ -38,13 +40,28 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const db = createAdminClient()
 
+  // Which projects this operator owns, resolved SERVER-SIDE before any read.
+  // `db` is a service-role client and bypasses RLS, so the snapshot cannot be
+  // allowed to derive its own scope — it is handed one.
+  //
+  // A scope that cannot be resolved is not an empty dashboard. Rendering zeroes
+  // for an authorization failure would report "nothing is running" when the
+  // truth is "we could not ask", so this takes the same explicit failure the
+  // unauthenticated case already takes rather than falling back to global data.
+  const access = await resolveProjectAccess()
+  if (!access.ok) redirect('/login')
+
   // Parallel — all real-data fetches.
   const [snapshot, activeExec, memory, publishing, scorecards, platformConfig] = await Promise.all([
-    fetchDashboardSnapshot(supabase, db),
-    fetchActiveExecution(db),
-    fetchMemorySnapshot(db),
-    fetchPublishPipeline(db),
-    fetchAgentScorecards(db),
+    // Every project-owned reader on this page receives the SAME resolved
+    // allow-list. `getPlatformConfig` is the one exception and takes none: it
+    // reads the `platform_config` singleton, which is platform-level settings
+    // with no project dimension to scope by.
+    fetchDashboardSnapshot(supabase, db, access.allowedProjectIds),
+    fetchActiveExecution(db, access.allowedProjectIds),
+    fetchMemorySnapshot(db, access.allowedProjectIds),
+    fetchPublishPipeline(db, access.allowedProjectIds),
+    fetchAgentScorecards(db, access.allowedProjectIds),
     getPlatformConfig(db),
   ])
 

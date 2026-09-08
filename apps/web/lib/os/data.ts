@@ -18,6 +18,7 @@
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type {
   Project, Agent, Workflow, Run, RunLog, Memory, RunStatus, WorkflowStep,
 } from '@/lib/supabase/types'
@@ -67,10 +68,24 @@ function pickCount(res: PromiseSettledResult<{ count: number | null }>): number 
 
 export async function fetchDashboardSnapshot(
   supabase: SupabaseClient,
-  /** admin client (bypasses RLS) for cross-user/system reads */
+  /**
+   * Service-role client. It bypasses RLS, which is exactly why every query
+   * below is scoped by hand: a service role must never broaden what the
+   * signed-in operator is allowed to read.
+   */
   admin: SupabaseClient,
+  /**
+   * The operator's projects, ALREADY RESOLVED by the caller through
+   * `getAllowedProjectIds` / `resolveProjectAccess`. Required, not optional —
+   * an optional scope is one forgotten argument away from being global again,
+   * and this function has no session of its own to fall back on.
+   */
+  allowedProjectIds: string[],
 ): Promise<DashboardSnapshot> {
   const since24hISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Never an empty `.in()`: an empty allow-list becomes an impossible project
+  // id, so a scope-less operator sees zero rows rather than every row.
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
 
   const [
     projectsRes,
@@ -98,45 +113,62 @@ export async function fetchDashboardSnapshot(
       // Single literal string: PostgREST infers the row type from the select
       // text itself, so concatenating it collapses the result to an error type.
       .select('id, owner_id, name, slug, color, settings, created_at, execution_paused, paused_at, paused_reason, atlas_mode')
+      // RLS already limits this client to owned projects; scoping by id as well
+      // keeps ONE rule true of every query here — each carries a scope clause —
+      // so a missing one is visible rather than a judgement call.
+      .in('id', scopedIds)
       .order('created_at', { ascending: true }),
 
     admin
       .from('agents')
       .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: true }),
 
     admin
       .from('workflows')
       .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at, side_effect_class')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: true }),
 
     // Recent runs (with joins for the UI rows)
     (admin.from('runs') as any)
       .select('id, workflow_id, project_id, status, input, context, error, started_at, finished_at, created_at, workflows(id, name), projects(id, name, slug, color)')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: false })
       .limit(10),
 
     // Counts
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'done'),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'failed'),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'running'),
-    (admin.from('approvals') as any).select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'done'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'failed'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'running'),
+    // `approvals.project_id` is NULLABLE. `.in()` does not match NULL, so an
+    // approval with no project is EXCLUDED rather than counted globally — the
+    // same fail-closed choice the operations graph makes for the same column.
+    (admin.from('approvals') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'pending'),
 
     // Activity window
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).gte('created_at', since24hISO),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).gte('created_at', since24hISO),
 
     // Memory presence
-    (admin.from('memories') as any).select('id', { count: 'exact', head: true }),
+    (admin.from('memories') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds),
 
     // Token aggregate (last 24h)
+    // `run_logs` has NO project_id — its only link is `run_id NOT NULL
+    // REFERENCES runs(id)` — so the scope travels through an INNER join on the
+    // parent run. `!inner` is what makes the embedded filter restrict the outer
+    // rows instead of merely nulling the embed. Verified against the live
+    // database: an impossible project id returns zero rows, not every row.
     (admin.from('run_logs') as any)
-      .select('tokens_in, tokens_out, duration_ms')
+      .select('tokens_in, tokens_out, duration_ms, runs!inner(project_id)')
+      .in('runs.project_id', scopedIds)
       .gte('created_at', since24hISO),
 
     // Average duration of completed runs (last 24h)
     (admin.from('runs') as any)
       .select('started_at, finished_at')
+      .in('project_id', scopedIds)
       .eq('status', 'done')
       .gte('created_at', since24hISO)
       .not('started_at', 'is', null)
@@ -213,12 +245,34 @@ export interface ActiveExecution {
   agentsById: Record<string, Agent>
 }
 
+/**
+ * The most recent run worth visualising, scoped to the operator's projects.
+ *
+ * `admin` is a service-role client and bypasses RLS, so the scope is applied
+ * to BOTH candidate queries. It has to be applied before `.limit(1)`, not
+ * after: picking the newest run globally and then checking whether the
+ * operator owns it would return null whenever someone else's run happened to
+ * be newer — leaking the existence of foreign activity through an empty panel.
+ *
+ * LIMITATION (unchanged, documented rather than silently accepted): the return
+ * type is `ActiveExecution | null`, so a query FAILURE and "no runs exist" are
+ * indistinguishable to the caller. That was already true before scoping and
+ * the reader API cannot express the difference; widening it is a change to
+ * every consumer of this contract and is not part of this repair.
+ */
 export async function fetchActiveExecution(
   admin: SupabaseClient,
+  /** The operator's projects, ALREADY RESOLVED by the caller. Required. */
+  allowedProjectIds: string[],
 ): Promise<ActiveExecution | null> {
+  // Never an empty `.in()`: an empty allow-list becomes an impossible project
+  // id, so a scope-less operator sees no execution rather than someone else's.
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
+
   // 1. Find the most recent running run.
   const { data: running, error: rErr } = await (admin.from('runs') as any)
     .select('id, workflow_id, project_id, status, input, context, error, started_at, finished_at, created_at, workflows(id, project_id, name, description, steps, trigger, cron_expr, active, created_at), projects(id, name, slug, color)')
+    .in('project_id', scopedIds)
     .eq('status', 'running')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -228,28 +282,39 @@ export async function fetchActiveExecution(
     // Fallback to most recent completed/failed run so we always have *something* to visualize
     const { data: latest } = await (admin.from('runs') as any)
       .select('id, workflow_id, project_id, status, input, context, error, started_at, finished_at, created_at, workflows(id, project_id, name, description, steps, trigger, cron_expr, active, created_at), projects(id, name, slug, color)')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
     if (!latest) return null
-    return hydrateExecution(admin, latest)
+    return hydrateExecution(admin, latest, scopedIds)
   }
 
-  return hydrateExecution(admin, running)
+  return hydrateExecution(admin, running, scopedIds)
 }
 
-async function hydrateExecution(admin: SupabaseClient, run: any): Promise<ActiveExecution> {
+async function hydrateExecution(admin: SupabaseClient, run: any, scopedIds: string[]): Promise<ActiveExecution> {
   const workflow = (Array.isArray(run.workflows) ? run.workflows[0] : run.workflows) ?? null
 
   const [logsRes, agentsRes] = await Promise.allSettled([
+    // `run_logs` has no project_id, but `run.id` came from an already-scoped
+    // query above, so these rows are scoped TRANSITIVELY through their run.
+    // That is the whole reason the scope must be applied before `.limit(1)`.
     (admin.from('run_logs') as any)
       .select('id, run_id, step_order, step_name, role, content, tokens_in, tokens_out, duration_ms, created_at')
       .eq('run_id', run.id)
       .order('created_at', { ascending: true }),
 
+    // Agent ids come out of `workflows.steps`, which is JSONB the engine wrote
+    // — not a foreign key. Nothing stops a step naming an agent in another
+    // project, so this read is scoped in its own right rather than trusting
+    // the ids it was handed. An agent outside the scope is simply not
+    // hydrated; the step then renders without a name instead of with a
+    // foreign one.
     workflow?.steps?.length
       ? (admin.from('agents') as any)
           .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at')
+          .in('project_id', scopedIds)
           .in('id', (workflow.steps as WorkflowStep[]).map(s => s.agent_id).filter(Boolean))
       : Promise.resolve({ data: [] }),
   ])
@@ -282,13 +347,28 @@ export interface MemorySnapshot {
   bySource: Record<string, number>
 }
 
-export async function fetchMemorySnapshot(admin: SupabaseClient): Promise<MemorySnapshot> {
+/**
+ * Long-term memory as it stands, scoped to the operator's projects.
+ *
+ * `memories.project_id` is NOT NULL, so scoping is exact — there is no
+ * project-less memory bucket to reason about, and nothing is dropped by the
+ * filter. Memory's own semantics are untouched: this narrows WHICH rows are
+ * read, never what a row means, and no agent-level scoping is invented here
+ * because the schema has none.
+ */
+export async function fetchMemorySnapshot(
+  admin: SupabaseClient,
+  /** The operator's projects, ALREADY RESOLVED by the caller. Required. */
+  allowedProjectIds: string[],
+): Promise<MemorySnapshot> {
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
   const [recentRes, allCountRes] = await Promise.allSettled([
     (admin.from('memories') as any)
       .select('id, project_id, key, value, source, updated_at')
+      .in('project_id', scopedIds)
       .order('updated_at', { ascending: false })
       .limit(24),
-    (admin.from('memories') as any).select('id', { count: 'exact', head: true }),
+    (admin.from('memories') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds),
   ])
 
   const recent: Memory[] = recentRes.status === 'fulfilled' ? ((recentRes.value as any).data ?? []) : []
@@ -323,9 +403,26 @@ export interface PublishRow {
   projects?: { name: string; slug: string; color: string } | null
 }
 
-export async function fetchPublishPipeline(admin: SupabaseClient): Promise<PublishRow[]> {
+/**
+ * The distribution timeline, scoped to the operator's projects.
+ *
+ * `media_scripts.project_id` is NOT NULL — checked against the live table as
+ * well as the generated types, because the types in this repository have been
+ * stale before — so every row has a usable project relation and the filter
+ * drops nothing. There is no project-less media row to report as a gap.
+ *
+ * `PublishRow.project_id` is still declared nullable; that declaration is
+ * wider than the column and is left alone here rather than tightened as a
+ * drive-by change to a rendering type.
+ */
+export async function fetchPublishPipeline(
+  admin: SupabaseClient,
+  /** The operator's projects, ALREADY RESOLVED by the caller. Required. */
+  allowedProjectIds: string[],
+): Promise<PublishRow[]> {
   const { data } = await (admin.from('media_scripts') as any)
     .select('id, project_id, hook, script, voice_status, video_status, status, audio_url, video_url, duration_ms, generated_at, reviewed_at, published_at, projects:projects(name, slug, color)')
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
     .order('generated_at', { ascending: false })
     .limit(12)
 

@@ -11,6 +11,7 @@ import {
   resolveAtlasOrbQuality,
   type AtlasOrbQualityTier,
 } from '@/lib/atlas/orb-quality'
+import { MOTION_ATTRIBUTE, REDUCED_MOTION_QUERY } from '@/lib/ui/display-preferences'
 import styles from './AtlasHomeVNext.module.css'
 
 interface Particle {
@@ -45,11 +46,28 @@ function seededParticles(count: number): Particle[] {
   }))
 }
 
+/**
+ * The resolved motion answer, read from the root attribute the preference
+ * provider writes — the same single source every stylesheet keys off.
+ *
+ * Reading `matchMedia` directly here is what this replaces: it answered the OS
+ * preference only, so an operator who had chosen "Full" in Omnira still got the
+ * reduced-quality orb, and one who had chosen "Reducerad" on a device with no
+ * such preference still got the full one. The media query stays as the fallback
+ * for the moment before the provider has written the attribute.
+ */
+function prefersReducedMotion(): boolean {
+  const resolved = document.documentElement.getAttribute(MOTION_ATTRIBUTE)
+  if (resolved === 'reduce') return true
+  if (resolved === 'full') return false
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches
+}
+
 function browserQuality(): AtlasOrbQualityTier {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
   const testCanvas = document.createElement('canvas')
   return resolveAtlasOrbQuality({
-    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reducedMotion: prefersReducedMotion(),
     canvasSupported: !!testCanvas.getContext('2d'),
     viewportWidth: window.innerWidth,
     devicePixelRatio: window.devicePixelRatio || 1,
@@ -74,14 +92,23 @@ export function AtlasOrbCanvas({ state, audioLevel, completionEvent, onFailure }
   }, [completionEvent])
 
   useEffect(() => {
-    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const motionQuery = window.matchMedia(REDUCED_MOTION_QUERY)
     const updateQuality = () => setQuality(browserQuality())
     updateQuality()
     window.addEventListener('resize', updateQuality, { passive: true })
     motionQuery.addEventListener('change', updateQuality)
+    // The operator can change the preference without the OS preference moving,
+    // so the root attribute is watched too — otherwise the orb would keep the
+    // quality tier it resolved at mount until the next resize.
+    const attributeObserver = new MutationObserver(updateQuality)
+    attributeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [MOTION_ATTRIBUTE],
+    })
     return () => {
       window.removeEventListener('resize', updateQuality)
       motionQuery.removeEventListener('change', updateQuality)
+      attributeObserver.disconnect()
     }
   }, [])
 

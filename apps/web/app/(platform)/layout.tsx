@@ -5,7 +5,8 @@ import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
 import {
   ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
-  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, type ActivityEvent,
+  MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, KeyboardHints,
+  type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
@@ -14,6 +15,14 @@ import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
 import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
+import {
+  DISPLAY_SCALE_ATTRIBUTE,
+  DISPLAY_SCALE_FACTORS,
+  DISPLAY_SCALE_STORAGE_KEY,
+  MOTION_ATTRIBUTE,
+  MOTION_STORAGE_KEY,
+  REDUCED_MOTION_QUERY,
+} from '@/lib/ui/display-preferences'
 
 // Single source of truth for routes — resolve a registry href (with a safe
 // fallback if a destination/project can't be resolved).
@@ -183,13 +192,42 @@ export default async function PlatformLayout({
   //   and breathes across the viewport from 1440 → 1920 → 2560 → 3840.
   //
   //     grid-cols → [sidebar 260px] [canvas 1fr] [rail 300px]
+  //
+  //   The sidebar column stays a PX literal on purpose. Making it 16.25rem so
+  //   it followed the display-scale preference narrowed the canvas by ~39px at
+  //   Large, and `responsive-table-contract` exists precisely because the table
+  //   floors are computed against this width with only 16px of headroom. Shell
+  //   geometry is therefore scale-invariant; typography inside it still scales.
   //     mobile    → canvas fills, sidebar + rail collapse to overlays
   //
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
     <AtlasRuntimeProvider projects={projects}>
-    <OperatorModeProvider>
+    <OperatorModeProvider uiGeneration={uiGeneration}>
+      {/* Presentation preferences are applied before first paint.
+          Without this the provider would only reach the DOM after hydration, so
+          an operator who asked for reduced motion would still see one frame of
+          animation, and Large would flash at Standard first.
+
+          Motion is applied in BOTH generations — it is an accessibility choice
+          and must survive a UI rollback. Display scale is vNext-only, which is
+          what keeps legacy rendering at the browser's default font size. */}
+      <script
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{var r=document.documentElement;`
+            + `var m=localStorage.getItem(${JSON.stringify(MOTION_STORAGE_KEY)});`
+            + `var reduce=m==='reduce'||(m!=='full'&&window.matchMedia(${JSON.stringify(REDUCED_MOTION_QUERY)}).matches);`
+            + `r.setAttribute(${JSON.stringify(MOTION_ATTRIBUTE)},reduce?'reduce':'full');`
+            + `if(${JSON.stringify(isVNext(uiGeneration))}){`
+            + `var s=localStorage.getItem(${JSON.stringify(DISPLAY_SCALE_STORAGE_KEY)});`
+            + `var f=${JSON.stringify(DISPLAY_SCALE_FACTORS)};`
+            + `if(f[s]){r.setAttribute(${JSON.stringify(DISPLAY_SCALE_ATTRIBUTE)},s);`
+            + `r.style.setProperty('--os-scale',String(f[s]));}}`
+            + `}catch(e){}})()`,
+        }}
+      />
       <AtlasProjectReturnShortcut />
       <div
         className="
@@ -270,10 +308,34 @@ export default async function PlatformLayout({
             <AtlasMobileNav />
           </ShellMobileNav>
 
+          {/* ─── Breadcrumbs ───────────────────────────────────────────────
+              Orientation for every vNext route except Atlas Home, which is the
+              locked surface, owns its whole canvas, and is where the root crumb
+              already points. Legacy is untouched: it keeps CommandBar, which
+              carries its own chrome, and the rollback path stays as it was.
+
+              The projects handed down are the same allow-listed set the sidebar
+              renders from, so a project crumb can name a project without this
+              layer querying anything or widening scope. */}
+          <Breadcrumbs
+            uiGeneration={uiGeneration}
+            projects={projects.map((p: any) => ({ slug: p.slug, name: p.name }))}
+          />
+
           {/* Page canvas */}
           <div className="relative z-content">
             {children}
           </div>
+
+          {/* ─── Keyboard hints ────────────────────────────────────────────
+              One contextual strip for the whole vNext shell, describing the
+              bindings the specialist surfaces already own — it registers no
+              listener and takes no shortcut away from them.
+
+              Stands down on Atlas Home, which is the locked surface and
+              already carries its own composer hint. Legacy renders nothing:
+              CommandBar shows its own ⌘K caps. */}
+          <KeyboardHints uiGeneration={uiGeneration} />
         </main>
 
         {/* ─── Aktivitets-peek (P0): railen är inte längre en permanent kolumn.

@@ -1,33 +1,107 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIDEBAR · vNext skin
+   ─────────────────────────────────────────────────────────────────────────
+   The vNext retint of the shared Sidebar. Structure, navigation model and
+   visibility rules all live in the component and in lib/nav — nothing here
+   decides what appears, only how it looks.
+
+   Every colour is now read from a token. Before Phase 1 this file carried
+   eleven hard-coded rgba constants, five of which were already exact restate-
+   ments of palette tokens (cyan, cyan-soft, teal, teal-soft) and so could
+   drift away from them silently. The remaining values are named below as
+   deliberately sidebar-local, with the reason they are not shared.
+
+   Values are reconciled toward Omnira Design vNext v1
+   (design/references/omnira-vnext-v1): active item on a flat cyan wash with a
+   cyan edge and aqua label, rather than the indigo-derived gradient the shared
+   .nav-pill inherits from legacy.
+═══════════════════════════════════════════════════════════════════════════ */
+
 .sidebar {
+  /* Local: the shell's outer seam. A hairline separating two near-black
+     surfaces is a boundary treatment, not an accent, so it stays a touch
+     cooler and dimmer than --omnira-cyan would render at any opacity. */
   border-right-color: rgba(72, 205, 220, 0.11) !important;
-  box-shadow: inset -1px 0 rgba(125, 211, 252, 0.025), 22px 0 70px rgba(0, 5, 14, 0.16);
+  box-shadow:
+    inset -1px 0 rgb(var(--omnira-cyan-soft-rgb) / 0.025),
+    22px 0 70px rgba(0, 5, 14, 0.16);
 }
 
 .sidebar nav {
-  scrollbar-color: rgba(45, 212, 191, 0.14) transparent;
+  scrollbar-color: rgb(var(--omnira-teal-rgb) / 0.14) transparent;
 }
 
+/* ── Group headings ──────────────────────────────────────────────────────
+   The design sets its four group labels in mono, quiet and widely tracked, so
+   they read as structure rather than as items. .eyebrow already supplies the
+   size and weight; only the family and colour are retuned, and only inside the
+   vNext sidebar — the global .eyebrow still resolves to its own stack every-
+   where else, in both generations. */
+.sidebar nav :global(.eyebrow) {
+  font-family: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.42) !important;
+  letter-spacing: 0.14em;
+}
+
+/* ── Navigation items ────────────────────────────────────────────────────
+   The shared .nav-pill now derives its active colours from --os-accent-rgb,
+   which this generation already resolves to cyan, so nothing here restates a
+   colour to correct a hue. What it does is flatten the inherited gradient to
+   the single low wash the design specifies, and lift the label to aqua. */
 .sidebar :global(.nav-pill) {
-  color: rgba(187, 210, 220, 0.58);
+  color: rgb(var(--omnira-aqua-rgb) / 0.58);
 }
 
-.sidebar :global(.nav-pill:hover),
+.sidebar :global(.nav-pill:hover) {
+  color: hsl(var(--foreground));
+  background: rgb(var(--omnira-cyan-rgb) / 0.05);
+}
+
 .sidebar :global(.nav-pill[data-active='true']) {
-  color: rgba(235, 251, 255, 0.94);
-  background: linear-gradient(90deg, rgba(34, 211, 238, 0.065), transparent 88%);
+  color: var(--omnira-aqua);
+  background: rgb(var(--omnira-cyan-rgb) / 0.09);
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 22px -14px rgb(var(--omnira-cyan-rgb) / 0.5);
 }
 
+/* The active marker is a solid cyan tick in the design, not a two-stop
+   gradient. */
+.sidebar :global(.nav-pill[data-active='true'])::before {
+  background: var(--omnira-cyan);
+  box-shadow: 0 0 10px rgb(var(--omnira-cyan-rgb) / 0.7);
+}
+
+/* Icons carry a legacy indigo utility class from the shared component. The
+   component is generation-agnostic by design, so the correction belongs here
+   rather than in a branch in the markup. */
+.sidebar :global(.nav-pill) svg {
+  color: inherit;
+}
+
+/* ── Primary (Atlas) entry ───────────────────────────────────────────────
+   Its surface is set inline by the component and is already generation-aware;
+   only the standing rail is drawn here. */
 .primaryNav::after {
   content: '';
   position: absolute;
   inset: 20% auto 20% 0;
   width: 2px;
   border-radius: 999px;
-  background: #5eead4;
-  box-shadow: 0 0 12px rgba(94, 234, 212, 0.8);
+  background: var(--omnira-teal-soft);
+  box-shadow: 0 0 12px rgb(var(--omnira-teal-soft-rgb) / 0.8);
 }
 
+/* ── Operator card ───────────────────────────────────────────────────────
+   Local: a two-stop deep-teal glass unique to this one card. The stops are
+   compositing values, not palette entries — promoting them would put a colour
+   in the shared vocabulary that exactly one surface can ever use. */
 .operatorCard {
-  background: linear-gradient(115deg, rgba(11, 41, 53, 0.72), rgba(4, 18, 31, 0.64)) !important;
-  border-color: rgba(103, 232, 249, 0.1) !important;
+  background: linear-gradient(
+    115deg,
+    rgba(11, 41, 53, 0.72),
+    rgba(4, 18, 31, 0.64)
+  ) !important;
+  border-color: rgb(var(--omnira-cyan-soft-rgb) / 0.1) !important;
 }

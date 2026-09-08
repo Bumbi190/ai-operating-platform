@@ -38,6 +38,7 @@ export type DestinationId =
   | 'settings'
   | 'intelligence_graph'
   | 'trading'
+  | 'organisation'
   | 'project_home'
 
 type ProjectMode = 'none' | 'query' | 'path'
@@ -88,6 +89,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   settings: '/settings',
   intelligence_graph: '/intelligence/graph',
   trading: '/trading',
+  organisation: '/organisation',
   project_home: '/projects', // path mode → /projects/<slug>
 }
 
@@ -162,6 +164,11 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     ],
     // Project-neutral: the Trading system is its own workspace, not a lens on
     // one of the Supabase-backed businesses in the project rail.
+    projectMode: 'none',
+  },
+  organisation: {
+    id: 'organisation', label: 'Organisation',
+    keywords: ['organisation', 'organization', 'hierarki', 'team', 'agenter', 'struktur', 'who'],
     projectMode: 'none',
   },
   project_home: {
@@ -331,6 +338,20 @@ export function pathToDestination(pathname: string): DestinationId | null {
     if (path === base || path.startsWith(base + '/')) return CANONICAL_BY_ROUTE[base] ?? id
   }
   return null
+}
+
+/**
+ * The base path a destination lives at, with no project or filters applied.
+ *
+ * `resolveDestination` deliberately returns null for a path-mode destination
+ * with no project — `/projects` on its own was not a page. Now that the index
+ * exists, callers that want the SECTION rather than one project need the base,
+ * and this exposes what ROUTE_MAP already knows rather than making them restate
+ * the path. Forward routing is unchanged: `project_home` still requires a
+ * project to resolve to a project.
+ */
+export function destinationBasePath(id: DestinationId): string | null {
+  return ROUTE_MAP[id] ?? null
 }
 
 /** Human label for a destination ("Approvals", "Money", …). */

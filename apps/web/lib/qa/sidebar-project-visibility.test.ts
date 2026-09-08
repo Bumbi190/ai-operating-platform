@@ -124,17 +124,18 @@ describe('sidebar · settings placement', () => {
 describe('sidebar · which nav list each generation renders', () => {
   it('vNext renders the canonical model in its approved order', () => {
     expect(vnextNavItemsFor('desktop').map((i) => i.label)).toEqual([
-      'Atlas', 'Chat',
+      // Organisation joined the Atlas group in Phase 6.5.
+      'Atlas', 'Chat', 'Organisation',
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
       'Minne', 'Intelligence Graph', 'Revenue Center',
       'System', 'Inställningar',
     ])
   })
 
-  it('adds exactly the three approved destinations', () => {
+  it('adds exactly the approved destinations', () => {
     const legacy = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
     const added = vnextNavItemsFor('desktop').map((i) => i.href).filter((h) => !legacy.has(h))
-    expect(added.sort()).toEqual(['/planning', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
   })
 
   it('drops nothing that legacy carried', () => {

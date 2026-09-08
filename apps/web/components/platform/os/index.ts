@@ -15,6 +15,8 @@ export { OSPage, OSLayer, OSGrid } from './OSPage'
 export { CommandBar } from './CommandBar'
 export { CommandPalette } from './CommandPalette'
 export { CommandPaletteHost } from './CommandPaletteHost'
+export { Breadcrumbs } from './Breadcrumbs'
+export { KeyboardHints } from './KeyboardHints'
 export { AtlasActionChips } from './AtlasActionChips'
 
 // Business command center
@@ -52,10 +54,11 @@ export {
   OrchestrationReasoning,
 } from './cognition'
 
-// Operator modes
+// Operator modes + the presentation preferences that share its provider
 export {
   OperatorModeProvider,
   useOperatorMode,
+  useDisplayPreferences,
   OperatorModeSwitcher,
   ModeIndicator,
 } from './OperatorMode'

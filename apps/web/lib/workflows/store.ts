@@ -216,6 +216,33 @@ export async function listInstances(
   return ((data ?? []) as unknown[]).map(rowToInstance)
 }
 
+/**
+ * Instances belonging to a set of projects, newest first. Bounded.
+ *
+ * The project-scoped sibling of `listInstances`. `workflow_instances.project_id`
+ * is NOT NULL, so scoping is exact — there is no null-project bucket to reason
+ * about. Callers pass an ALREADY-RESOLVED allow-list; this function never
+ * derives one, so it cannot widen access on its own.
+ *
+ * An empty allow-list must still produce a scoped query, which is why the
+ * caller is expected to pass the value through `scopeProjectFilter` — an
+ * unscoped `.in()` on an empty array is the footgun that helper exists to
+ * prevent. Read-only: this issues a SELECT and nothing else.
+ */
+export async function listInstancesForProjects(
+  db: WorkflowDb,
+  scopedProjectIds: string[],
+  limit = 24,
+): Promise<WorkflowInstance[]> {
+  const { data, error } = await (db as AnyDb)
+    .from('workflow_instances').select(INSTANCE_COLS)
+    .in('project_id', scopedProjectIds)
+    .order('instance_key', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(`listInstancesForProjects failed: ${error.message}`)
+  return ((data ?? []) as unknown[]).map(rowToInstance)
+}
+
 // ── Transitions ──────────────────────────────────────────────────────────────
 
 /** Ordered history of one instance. `seq` is the authoritative order. */

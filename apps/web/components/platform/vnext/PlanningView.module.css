@@ -1,0 +1,617 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLANNING · /planning
+   ─────────────────────────────────────────────────────────────────────────
+   An operational planning command centre over three real runtime sources:
+   the delegated-work backlog, cron-triggered workflows, and long-lived
+   workflow instances.
+
+   READ ONLY BY CONSTRUCTION. There is not a single control in this stylesheet
+   that implies a write — no drag affordance, no drop target, no add button.
+   The previous board had all three and persisted none of them.
+
+   Everything is sized in rem so the display-scale preference reaches it, and
+   every section is flow-based, so Large takes more vertical space instead of
+   clipping. The one horizontally-scrolling element is the recurring TABLE,
+   which is genuinely tabular; the page itself never scrolls sideways.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: 1.5rem 1.5rem 5rem;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 34% at 22% 0%, rgb(var(--omnira-cyan-rgb) / 0.07), transparent 64%),
+    radial-gradient(ellipse 54% 30% at 82% 12%, rgb(var(--omnira-teal-rgb) / 0.05), transparent 68%);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  position: relative;
+}
+
+.kicker {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.5);
+}
+
+.title {
+  margin: 0.375rem 0 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: hsl(var(--foreground));
+}
+
+/* The read-only statement. Not a "coming soon" — a description of the surface. */
+.readOnly {
+  margin: 0.4375rem 0 0;
+  max-width: 46rem;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--omnira-aqua-rgb) / 0.55);
+}
+
+/* ── Source summary ──────────────────────────────────────────────────────── */
+
+.sources {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  flex: 1 1 10rem;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.14);
+  background: rgb(4 14 26 / 0.62);
+}
+
+.sourceCount {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.sourceCountUnavailable {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--omnira-amber);
+}
+
+.sourceLabel {
+  font-size: 0.6875rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.6);
+}
+
+.sourceTable {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-aqua-rgb) / 0.36);
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+.section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+
+.sectionMeta {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-aqua-rgb) / 0.36);
+}
+
+/* Query failure. Deliberately NOT styled like an empty state — an unreadable
+   source and an empty source say opposite things about the operator's work. */
+.unavailable {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(251 191 36 / 0.28);
+  background: rgb(251 191 36 / 0.06);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--omnira-amber);
+}
+
+.empty {
+  padding: 0.875rem;
+  border-radius: 0.625rem;
+  border: 1px dashed rgb(var(--omnira-cyan-rgb) / 0.16);
+  font-size: 0.75rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.45);
+}
+
+.truncated {
+  font-size: 0.6875rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.42);
+}
+
+/* ── Backlog · status lanes ──────────────────────────────────────────────── */
+
+.lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.12);
+  background: rgb(4 14 26 / 0.55);
+}
+
+.laneHead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5625rem 0.75rem;
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.1);
+}
+
+.laneDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+
+/* The RAW status value. Never a prettier synonym — the vocabulary is the
+   database's, and renaming it in the UI would change what the row means. */
+.laneStatus {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.laneCount {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--omnira-aqua-rgb) / 0.42);
+}
+
+/* A status outside the declared CHECK vocabulary. Shown, not hidden. */
+.laneUnknown {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--omnira-amber);
+}
+
+.laneBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+}
+
+/* ── Task card ───────────────────────────────────────────────────────────── */
+
+.task {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5625rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.1);
+  background: rgb(6 18 32 / 0.7);
+}
+
+.taskTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4375rem;
+}
+
+/* Project accent. A 2px rail, not a coloured card — the accent identifies the
+   project without competing with the status hierarchy. */
+.taskAccent {
+  width: 2px;
+  align-self: stretch;
+  min-height: 1rem;
+  border-radius: 999px;
+  flex: none;
+  background: var(--task-accent, var(--omnira-cyan));
+}
+
+.taskTitle {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-weight: 550;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+.taskMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3125rem;
+  padding-left: 0.4375rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 0.25rem;
+  font-size: 0.5625rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.chipProject {
+  color: rgb(var(--omnira-aqua-rgb) / 0.62);
+  border-color: rgb(var(--omnira-aqua-rgb) / 0.16);
+}
+
+.chipPriority {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.chipSource {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  letter-spacing: 0.05em;
+  color: rgb(167 139 250 / 0.7);
+  border-color: rgb(167 139 250 / 0.2);
+}
+
+/* Free text from `manager_tasks.owner`. Styled as a QUOTED STRING, not as a
+   person chip with an avatar, because no task → agent relation exists. */
+.chipOwner {
+  font-style: italic;
+  color: rgb(var(--omnira-aqua-rgb) / 0.55);
+  border-color: rgb(var(--omnira-aqua-rgb) / 0.14);
+}
+
+.taskLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding-left: 0.4375rem;
+}
+
+.taskLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.66);
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.22);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.taskLink:hover {
+  color: var(--omnira-aqua-bright);
+  border-bottom-color: rgb(var(--omnira-cyan-rgb) / 0.55);
+}
+
+.taskLink:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.7);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+/* ── Recurring · a genuinely tabular sub-surface ─────────────────────────── */
+
+.tableScroll {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.12);
+  background: rgb(4 14 26 / 0.55);
+}
+
+.table {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-aqua-rgb) / 0.4);
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.12);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.06);
+  color: hsl(var(--foreground));
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cellName {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  min-width: 0;
+}
+
+.cellAccent {
+  width: 2px;
+  height: 0.875rem;
+  border-radius: 999px;
+  flex: none;
+  background: var(--task-accent, var(--omnira-cyan));
+}
+
+/* A link whose text is STORED DATA, not a label.
+   `.taskLink` uppercases, because "Workflow" and "Körning" there are captions
+   this file writes. A workflow's name is the operator's own string and must
+   read exactly as it was saved — uppercasing it would misreport the row. */
+.cellLink {
+  color: hsl(var(--foreground));
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.22);
+  transition: color 0.16s ease, border-color 0.16s ease;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cellLink:hover {
+  color: var(--omnira-aqua-bright);
+  border-bottom-color: rgb(var(--omnira-cyan-rgb) / 0.55);
+}
+
+.cellLink:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.7);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+/* The cron expression, verbatim. No parser exists in this repository, so no
+   next-run time and no human-readable recurrence is derived from it. */
+.cron {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.6875rem;
+  color: var(--omnira-aqua);
+  white-space: nowrap;
+}
+
+.cronMissing {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.6875rem;
+  color: var(--omnira-amber);
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.stateDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+
+.stateActive { color: var(--omnira-emerald); }
+.statePaused { color: rgb(var(--omnira-aqua-rgb) / 0.4); }
+
+/* A slow halo on the active schedules. Decoration only — `.stateActive`
+   already carries the colour and the row already carries the word. */
+.stateActive .stateDot {
+  box-shadow: 0 0 0 0 rgb(52 211 153 / 0.5);
+  animation: planning-ping 2.8s ease-out infinite;
+}
+
+@keyframes planning-ping {
+  0%   { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.45); }
+  70%  { box-shadow: 0 0 0 0.3125rem rgb(52 211 153 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0); }
+}
+
+/* ── Releases ────────────────────────────────────────────────────────────── */
+
+.releases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+
+.release {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(167 139 250 / 0.16);
+  background:
+    linear-gradient(180deg, rgb(139 92 246 / 0.05), transparent 62%),
+    rgb(4 14 26 / 0.6);
+}
+
+.releaseTop {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.releaseKey {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: hsl(var(--foreground));
+}
+
+/* `workflow_instances.status`, verbatim. Deliberately NOT uppercased: the
+   backlog two sections above prints `pending` and `in_progress` exactly as
+   stored, and printing this one as ACTIVE would render two stored enums from
+   the same page in two different vocabularies. Captions in this file are
+   uppercased; stored values never are. */
+.releaseStatus {
+  margin-left: auto;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.05em;
+  color: rgb(var(--omnira-aqua-rgb) / 0.55);
+}
+
+.releaseDef {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.05em;
+  color: rgb(var(--omnira-aqua-rgb) / 0.34);
+  overflow-wrap: anywhere;
+}
+
+.releaseRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4375rem;
+  font-size: 0.6875rem;
+  min-width: 0;
+}
+
+.releaseRowLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-aqua-rgb) / 0.34);
+  flex: none;
+}
+
+.releaseRowValue {
+  color: rgb(var(--omnira-aqua-rgb) / 0.72);
+  overflow-wrap: anywhere;
+}
+
+.wakeDue       { color: var(--omnira-amber); }
+.wakeSleeping  { color: rgb(var(--omnira-aqua-rgb) / 0.6); }
+.wakeNone      { color: rgb(var(--omnira-aqua-rgb) / 0.36); }
+
+/* ── Narrow ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 40rem) {
+  .field {
+    padding: 1.125rem 1rem 4rem;
+    gap: 1.375rem;
+  }
+
+  /* Lanes stack rather than squeeze: a 4-across kanban at 375px is unreadable,
+     and the section distinction is what has to survive, not the columns. */
+  .lanes,
+  .releases {
+    grid-template-columns: 1fr;
+  }
+
+  .source {
+    flex-basis: 100%;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+
+/* Scoped with :where(html:not([data-motion='full'])) so an operator who has
+   explicitly chosen full motion still gets it on a device that requests
+   reduction. :where() contributes zero specificity, so the cascade inside is
+   unchanged. The global html[data-motion='reduce'] rule collapses durations;
+   this removes the halo outright, because a keyframe that never advances
+   leaves its first frame painted. Nothing here carries information — the
+   active state is already a colour and a word. */
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .stateActive .stateDot {
+    animation: none;
+    box-shadow: none;
+  }
+}
+
+html[data-motion='reduce'] .stateActive .stateDot {
+  animation: none;
+  box-shadow: none;
+}

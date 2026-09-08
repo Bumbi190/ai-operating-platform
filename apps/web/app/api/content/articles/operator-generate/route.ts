@@ -20,7 +20,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { generateArticle } from '@/lib/article'
-import { saveGeneratedArticle, type WebsiteContentType } from '@/lib/article/store'
+import { saveGeneratedArticle, SYSTEM_A_PROJECT_SLUG, type WebsiteContentType } from '@/lib/article/store'
 import type { LengthTier, NewsItemInput } from '@/lib/article/types'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
@@ -84,6 +84,31 @@ export async function POST(request: Request) {
   // generation input, so the model sees exactly what it saw before.
   const { project_id: _sourceProjectId, ...newsFields } = newsRow as Record<string, unknown>
   const newsItem = newsFields as unknown as NewsItemInput
+
+  // DESTINATION AUTHORISATION — a SECOND, independent boundary.
+  //
+  // Owning the source news item says nothing about the project the article will
+  // be written into. `saveGeneratedArticle` always lands the row in the System A
+  // project, and it resolves that destination AFTER generation has already been
+  // paid for — so the check cannot live there. It lives here, before the spend.
+  //
+  // The slug comes from the writer's own exported constant, never from the
+  // request: a client that could name its destination could write into any
+  // project. One query proves three things at once — the destination exists, it
+  // is one of this operator's projects, and an empty allow-list resolves to the
+  // impossible id rather than to everything.
+  const { data: destination } = await db
+    .from('projects')
+    .select('id')
+    .eq('slug', SYSTEM_A_PROJECT_SLUG)
+    .in('id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
+  // Same neutral 404 as a missing news item: "the destination exists but is not
+  // yours" and "there is no such destination" must not be tellable apart, and
+  // neither may leak the project's id, owner or name.
+  if (!destination) {
+    return NextResponse.json({ error: 'news_item not found' }, { status: 404 })
+  }
 
   try {
     const generated = await generateArticle(newsItem, {

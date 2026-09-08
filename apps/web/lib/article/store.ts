@@ -15,8 +15,16 @@ import type { Json } from '@/lib/supabase/database.types'
 import type { GeneratedArticle } from './index'
 
 /** The Prompt's Omnira project. Articles + reels share this project; A/B
- *  separation is enforced at the TABLE level (website_content vs media_scripts). */
-const SYSTEM_A_PROJECT_SLUG = 'ai-media-automation'
+ *  separation is enforced at the TABLE level (website_content vs media_scripts).
+ *
+ *  EXPORTED so a caller that must AUTHORISE this destination reads the same
+ *  value the write uses. It deliberately is not taken from the spend constants:
+ *  `MEDIA_PIPELINE_PROJECT_SLUG` happens to hold the same string today, and
+ *  `lib/cost/governed-spend.ts` already records why sharing a value is not a
+ *  reason to share a meaning — billing attribution is not authority, and
+ *  neither is a content destination. Three separate facts, three named
+ *  constants; if this one ever moves, the check moves with it. */
+export const SYSTEM_A_PROJECT_SLUG = 'ai-media-automation'
 
 export type WebsiteContentType = 'article' | 'news' | 'blog' | 'guide' | 'evergreen'
 

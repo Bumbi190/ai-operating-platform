@@ -13,6 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
+import { SYSTEM_A_PROJECT_SLUG as REAL_DESTINATION_SLUG } from '@/lib/article/store'
 
 let mockUser: { id?: string; email?: string } | null = null
 let mockNewsRow: Record<string, unknown> | null = null
@@ -35,6 +36,12 @@ vi.mock('@/lib/supabase/server', () => ({
  * let every ownership test pass against an unguarded route.
  */
 let mockOwnedProjectIds: string[] = []
+/** The System A destination as the database holds it. */
+let mockDestinationSlug: string = REAL_DESTINATION_SLUG
+/** null = the destination project row does not exist at all. */
+let mockDestinationProjectId: string | null = 'p-dest'
+/** Every predicate set the route used to look the destination up. */
+let destinationLookups: Record<string, unknown>[] = []
 /** Every predicate the route issued against media_news_items, in order. */
 let newsFilters: [string, unknown][] = []
 
@@ -42,12 +49,28 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => {
       if (table === 'projects') {
-        // getAllowedProjectIds: select('id').eq('owner_id', userId)
-        return {
-          select: () => ({
-            eq: async () => ({ data: mockOwnedProjectIds.map(id => ({ id })), error: null }),
-          }),
+        // Two different shapes hit this table:
+        //   getAllowedProjectIds : select('id').eq('owner_id', uid)          → awaited
+        //   destination lookup   : select('id').eq('slug', s).in('id', …).maybeSingle()
+        // The builder serves both and APPLIES the destination predicates —
+        // a mock that ignored them would let the destination tests pass
+        // against a route with no destination guard at all.
+        const preds: Record<string, unknown> = {}
+        const b: any = {
+          select: () => b,
+          eq: (col: string, val: unknown) => { preds[col] = val; return b },
+          in: (col: string, vals: unknown[]) => { preds[col] = vals; return b },
+          maybeSingle: async () => {
+            destinationLookups.push({ ...preds })
+            const slugOk = preds.slug === mockDestinationSlug
+            const ids = (preds.id as string[]) ?? []
+            const idOk = mockDestinationProjectId !== null && ids.includes(mockDestinationProjectId)
+            return { data: slugOk && idOk ? { id: mockDestinationProjectId } : null, error: null }
+          },
+          then: (ok: any) =>
+            Promise.resolve({ data: mockOwnedProjectIds.map(id => ({ id })), error: null }).then(ok),
         }
+        return b
       }
       if (table !== 'media_news_items') throw new Error(`unexpected table: ${table}`)
       const filters: [string, unknown][] = newsFilters
@@ -93,13 +116,20 @@ vi.mock('@/lib/article', () => ({
   },
 }))
 
-vi.mock('@/lib/article/store', () => ({
-  saveGeneratedArticle: async (args: Record<string, unknown>) => {
-    capturedSave = args
-    if (saveThrows) throw saveThrows
-    return { id: 'row-uuid', externalId: 'omnira_news-1', status: 'pending_review' as const }
-  },
-}))
+vi.mock('@/lib/article/store', async (importOriginal) => {
+  // The destination slug comes from the REAL module, not a literal invented
+  // here: the route must authorise the same project the writer writes to, and a
+  // test that hard-coded the value would keep passing if the constant moved.
+  const actual = await importOriginal<typeof import('@/lib/article/store')>()
+  return {
+    SYSTEM_A_PROJECT_SLUG: actual.SYSTEM_A_PROJECT_SLUG,
+    saveGeneratedArticle: async (args: Record<string, unknown>) => {
+      capturedSave = args
+      if (saveThrows) throw saveThrows
+      return { id: 'row-uuid', externalId: 'omnira_news-1', status: 'pending_review' as const }
+    },
+  }
+})
 
 import { POST } from '@/app/api/content/articles/operator-generate/route'
 
@@ -122,9 +152,13 @@ describe('POST /api/content/articles/operator-generate', () => {
     saveThrows = null
     capturedSave = null
     capturedGenerateInput = null
-    // Default for the pre-existing tests: the news item belongs to the caller,
-    // so every path below behaves exactly as it did before Phase 9H.
-    mockOwnedProjectIds = ['p-mine']
+    // Default for the pre-existing tests: the caller owns BOTH the news item's
+    // project and the System A destination, so every path below behaves exactly
+    // as it did before Phase 9J.
+    mockOwnedProjectIds = ['p-mine', 'p-dest']
+    mockDestinationSlug = REAL_DESTINATION_SLUG
+    mockDestinationProjectId = 'p-dest'
+    destinationLookups = []
   })
 
   it('401 when no session', async () => {
@@ -250,8 +284,12 @@ describe('9H · operator-generate — ownership precedes spend', () => {
     saveThrows = null
     capturedSave = null
     capturedGenerateInput = null
-    mockOwnedProjectIds = ['p-mine']
+    // Owns the source project AND the System A destination.
+    mockOwnedProjectIds = ['p-mine', 'p-dest']
     newsFilters = []
+    mockDestinationSlug = REAL_DESTINATION_SLUG
+    mockDestinationProjectId = 'p-dest'
+    destinationLookups = []
   })
 
   it('an OWNED news item proceeds: generation runs and the article is saved', async () => {
@@ -329,9 +367,9 @@ describe('9H · operator-generate — ownership precedes spend', () => {
 
   it('a populated allow-list is passed through unchanged', async () => {
     mockNewsRow = OWNED_NEWS
-    mockOwnedProjectIds = ['p-mine', 'p-other-of-mine']
+    mockOwnedProjectIds = ['p-mine', 'p-other-of-mine', 'p-dest']
     await POST(jsonPost({ news_item_id: NEWS_ITEM_ID }))
-    expect(newsFilters).toContainEqual(['project_id', ['p-mine', 'p-other-of-mine']])
+    expect(newsFilters).toContainEqual(['project_id', ['p-mine', 'p-other-of-mine', 'p-dest']])
   })
 
   it('a client-supplied project id cannot authorise anything', async () => {
@@ -356,5 +394,170 @@ describe('9H · operator-generate — ownership precedes spend', () => {
     const sent = capturedGenerateInput!.newsItem as Record<string, unknown>
     expect(sent.title).toBe('My headline')
     expect(sent).not.toHaveProperty('project_id')
+  })
+})
+
+// ═══ Phase 9J · destination project authorization ════════════════════════════
+
+/**
+ * Owning the SOURCE says nothing about the DESTINATION.
+ *
+ * `saveGeneratedArticle` always lands the row in the System A project and
+ * resolves that destination AFTER generation has already been paid for, so the
+ * check cannot live there — an operator authorised for the news item could
+ * still write into a project they do not own, and would be billed for the
+ * privilege. These are two independent boundaries and the matrix below is what
+ * keeps them independent: source-owned/destination-foreign is the case that
+ * exists ONLY because the destination guard exists.
+ *
+ * Every assertion is a COUNT at the paid boundary. A refusal that arrives after
+ * `generateArticle` has run is not a refusal — the money is already spent.
+ */
+describe('9J · destination authorization precedes spend', () => {
+  const SOURCE_OWNED = {
+    project_id: 'p-mine', id: NEWS_ITEM_ID, title: 'My headline', summary: 'My summary',
+    key_insight: null, url: null, source_name: 'Wired AI', content_angle: null,
+  }
+  const SOURCE_FOREIGN = { ...SOURCE_OWNED, project_id: 'p-theirs', title: 'SECRET-HEADLINE' }
+
+  const run = () => POST(jsonPost({ news_item_id: NEWS_ITEM_ID }))
+  const spentNothing = () => {
+    expect(capturedGenerateInput, 'paid generation must not have run').toBeNull()
+    expect(capturedSave, 'article must not have been persisted').toBeNull()
+  }
+
+  beforeEach(() => {
+    mockUser = { id: 'u-1', email: 'op@example.com' }
+    mockNewsRow = null
+    mockNewsError = null
+    generateThrows = null
+    saveThrows = null
+    capturedSave = null
+    capturedGenerateInput = null
+    newsFilters = []
+    destinationLookups = []
+    mockDestinationSlug = REAL_DESTINATION_SLUG
+    mockDestinationProjectId = 'p-dest'
+    mockOwnedProjectIds = ['p-mine', 'p-dest']
+  })
+
+  it('source owned + destination owned → proceeds, generates, persists', async () => {
+    mockNewsRow = SOURCE_OWNED
+    const res = await run()
+    expect(res.status).toBe(200)
+    expect(capturedGenerateInput).not.toBeNull()
+    expect(capturedSave).not.toBeNull()
+  })
+
+  it('source owned + destination FOREIGN → zero generation, zero persistence', async () => {
+    // The case that exists only because the destination guard does.
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = ['p-mine']          // owns the source, NOT the destination
+    const res = await run()
+    expect(res.status).toBe(404)
+    spentNothing()
+  })
+
+  it('a foreign destination leaks no destination metadata', async () => {
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = ['p-mine']
+    const res = await run()
+    const body = JSON.stringify(await res.json())
+    expect(body).not.toContain('p-dest')
+    expect(body).not.toContain(REAL_DESTINATION_SLUG)
+    expect(body).not.toMatch(/destination|another project|not yours|owner/i)
+  })
+
+  it('source FOREIGN + destination owned → zero generation (9H preserved)', async () => {
+    mockNewsRow = SOURCE_FOREIGN
+    const res = await run()
+    expect(res.status).toBe(404)
+    spentNothing()
+  })
+
+  it('source FOREIGN + destination FOREIGN → zero generation', async () => {
+    mockNewsRow = SOURCE_FOREIGN
+    mockOwnedProjectIds = []
+    const res = await run()
+    expect(res.status).toBe(404)
+    spentNothing()
+  })
+
+  it('destination MISSING entirely → zero generation, zero persistence', async () => {
+    mockNewsRow = SOURCE_OWNED
+    mockDestinationProjectId = null           // no such project row
+    const res = await run()
+    expect(res.status).toBe(404)
+    spentNothing()
+  })
+
+  it('an EMPTY allow-list denies both boundaries and spends nothing', async () => {
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = []
+    const res = await run()
+    expect(res.status).toBe(404)
+    spentNothing()
+  })
+
+  it('the destination lookup is scoped by the caller’s allow-list, not left open', async () => {
+    mockNewsRow = SOURCE_OWNED
+    await run()
+    expect(destinationLookups.length).toBeGreaterThan(0)
+    const probe = destinationLookups[0]
+    expect(probe.slug, 'destination must be looked up by the canonical slug').toBe(REAL_DESTINATION_SLUG)
+    expect(probe.id, 'destination must be constrained to owned ids').toEqual(['p-mine', 'p-dest'])
+  })
+
+  it('an empty allow-list is denied at the SOURCE, before the destination is even queried', async () => {
+    // The two guards are ordered, so this is what actually happens: with no
+    // allowed projects the scoped source read returns nothing and the request
+    // is refused there. The destination lookup is never reached — asserting it
+    // carried the impossible id would be asserting a query that does not run.
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = []
+    const res = await run()
+    expect(res.status).toBe(404)
+    expect(newsFilters).toContainEqual(['project_id', [IMPOSSIBLE_PROJECT_ID]])
+    expect(destinationLookups, 'destination must not be queried after a source refusal').toEqual([])
+    spentNothing()
+  })
+
+  it('the destination guard is what refuses when ONLY the destination is unowned', async () => {
+    // The complement of the test above: here the source passes, so the refusal
+    // can only be the destination guard. Without it the request would generate.
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = ['p-mine']
+    const res = await run()
+    expect(res.status).toBe(404)
+    expect(newsFilters.length, 'source was queried and passed').toBeGreaterThan(0)
+    expect(destinationLookups.length, 'destination was the guard that fired').toBe(1)
+    spentNothing()
+  })
+
+  it('the destination is never taken from the request body', async () => {
+    mockNewsRow = SOURCE_OWNED
+    mockOwnedProjectIds = ['p-mine']          // does not own the real destination
+    // Every shape a client might try to smuggle a destination through.
+    const res = await POST(jsonPost({
+      news_item_id: NEWS_ITEM_ID,
+      project_id: 'p-mine',
+      destination_project_id: 'p-mine',
+      destination_slug: 'p-mine',
+      user_id: 'someone-else',
+    }))
+    expect(res.status).toBe(404)
+    spentNothing()
+    // The lookup still used the canonical slug, not anything from the body.
+    expect(destinationLookups[0]?.slug).toBe(REAL_DESTINATION_SLUG)
+  })
+
+  it('BOTH authorizations complete before the generator is ever reached', async () => {
+    // Ordering as behaviour: by the time generation runs, the source query and
+    // the destination query have both been issued.
+    mockNewsRow = SOURCE_OWNED
+    await run()
+    expect(newsFilters.length, 'source was not queried').toBeGreaterThan(0)
+    expect(destinationLookups.length, 'destination was not queried').toBeGreaterThan(0)
+    expect(capturedGenerateInput, 'generation should have run for an authorised pair').not.toBeNull()
   })
 })

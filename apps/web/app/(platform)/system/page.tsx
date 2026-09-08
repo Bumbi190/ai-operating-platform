@@ -53,11 +53,15 @@ export default async function DashboardPage() {
 
   // Parallel — all real-data fetches.
   const [snapshot, activeExec, memory, publishing, scorecards, platformConfig] = await Promise.all([
+    // Every project-owned reader on this page receives the SAME resolved
+    // allow-list. `getPlatformConfig` is the one exception and takes none: it
+    // reads the `platform_config` singleton, which is platform-level settings
+    // with no project dimension to scope by.
     fetchDashboardSnapshot(supabase, db, access.allowedProjectIds),
-    fetchActiveExecution(db),
-    fetchMemorySnapshot(db),
-    fetchPublishPipeline(db),
-    fetchAgentScorecards(db),
+    fetchActiveExecution(db, access.allowedProjectIds),
+    fetchMemorySnapshot(db, access.allowedProjectIds),
+    fetchPublishPipeline(db, access.allowedProjectIds),
+    fetchAgentScorecards(db, access.allowedProjectIds),
     getPlatformConfig(db),
   ])
 

@@ -370,7 +370,7 @@ export async function loadPlanningModel(): Promise<PlanningModel | null> {
       .eq('trigger', 'cron')
       .in('project_id', scopedIds)
       .limit(PLANNING_RECURRING_LIMIT),
-    listInstancesForProjects(db, scopedIds, PLANNING_RELEASE_LIMIT),
+    listInstancesForProjects(db, scopedIds, { limit: PLANNING_RELEASE_LIMIT }),
   ])
 
   // A rejected settle and a PostgREST error envelope are the same outcome here:

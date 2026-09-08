@@ -18,6 +18,7 @@
 
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type {
   Project, Agent, Workflow, Run, RunLog, Memory, RunStatus, WorkflowStep,
 } from '@/lib/supabase/types'
@@ -67,10 +68,24 @@ function pickCount(res: PromiseSettledResult<{ count: number | null }>): number 
 
 export async function fetchDashboardSnapshot(
   supabase: SupabaseClient,
-  /** admin client (bypasses RLS) for cross-user/system reads */
+  /**
+   * Service-role client. It bypasses RLS, which is exactly why every query
+   * below is scoped by hand: a service role must never broaden what the
+   * signed-in operator is allowed to read.
+   */
   admin: SupabaseClient,
+  /**
+   * The operator's projects, ALREADY RESOLVED by the caller through
+   * `getAllowedProjectIds` / `resolveProjectAccess`. Required, not optional —
+   * an optional scope is one forgotten argument away from being global again,
+   * and this function has no session of its own to fall back on.
+   */
+  allowedProjectIds: string[],
 ): Promise<DashboardSnapshot> {
   const since24hISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Never an empty `.in()`: an empty allow-list becomes an impossible project
+  // id, so a scope-less operator sees zero rows rather than every row.
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
 
   const [
     projectsRes,
@@ -98,45 +113,62 @@ export async function fetchDashboardSnapshot(
       // Single literal string: PostgREST infers the row type from the select
       // text itself, so concatenating it collapses the result to an error type.
       .select('id, owner_id, name, slug, color, settings, created_at, execution_paused, paused_at, paused_reason, atlas_mode')
+      // RLS already limits this client to owned projects; scoping by id as well
+      // keeps ONE rule true of every query here — each carries a scope clause —
+      // so a missing one is visible rather than a judgement call.
+      .in('id', scopedIds)
       .order('created_at', { ascending: true }),
 
     admin
       .from('agents')
       .select('id, project_id, name, description, system_prompt, model, skill_ids, config, created_at')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: true }),
 
     admin
       .from('workflows')
       .select('id, project_id, name, description, steps, trigger, cron_expr, active, created_at, side_effect_class')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: true }),
 
     // Recent runs (with joins for the UI rows)
     (admin.from('runs') as any)
       .select('id, workflow_id, project_id, status, input, context, error, started_at, finished_at, created_at, workflows(id, name), projects(id, name, slug, color)')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: false })
       .limit(10),
 
     // Counts
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'done'),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'failed'),
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).eq('status', 'running'),
-    (admin.from('approvals') as any).select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'done'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'failed'),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'running'),
+    // `approvals.project_id` is NULLABLE. `.in()` does not match NULL, so an
+    // approval with no project is EXCLUDED rather than counted globally — the
+    // same fail-closed choice the operations graph makes for the same column.
+    (admin.from('approvals') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).eq('status', 'pending'),
 
     // Activity window
-    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).gte('created_at', since24hISO),
+    (admin.from('runs') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds).gte('created_at', since24hISO),
 
     // Memory presence
-    (admin.from('memories') as any).select('id', { count: 'exact', head: true }),
+    (admin.from('memories') as any).select('id', { count: 'exact', head: true }).in('project_id', scopedIds),
 
     // Token aggregate (last 24h)
+    // `run_logs` has NO project_id — its only link is `run_id NOT NULL
+    // REFERENCES runs(id)` — so the scope travels through an INNER join on the
+    // parent run. `!inner` is what makes the embedded filter restrict the outer
+    // rows instead of merely nulling the embed. Verified against the live
+    // database: an impossible project id returns zero rows, not every row.
     (admin.from('run_logs') as any)
-      .select('tokens_in, tokens_out, duration_ms')
+      .select('tokens_in, tokens_out, duration_ms, runs!inner(project_id)')
+      .in('runs.project_id', scopedIds)
       .gte('created_at', since24hISO),
 
     // Average duration of completed runs (last 24h)
     (admin.from('runs') as any)
       .select('started_at, finished_at')
+      .in('project_id', scopedIds)
       .eq('status', 'done')
       .gte('created_at', since24hISO)
       .not('started_at', 'is', null)

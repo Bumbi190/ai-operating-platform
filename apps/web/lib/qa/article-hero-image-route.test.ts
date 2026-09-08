@@ -22,6 +22,35 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }))
 
+/**
+ * The ownership guard (Phase 9D) reads the article's project and the caller's
+ * allowed projects through the SERVICE-ROLE client, so the admin client has to
+ * be mocked too. `mockArticle` is the row the route finds by id; `mockOwned`
+ * is the caller's allow-list. Setting them apart is how a foreign article is
+ * expressed.
+ */
+let mockArticle: { id: string; project_id: string } | null = null
+let mockOwned: string[] = []
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: (table: string) => {
+      if (table === 'projects') {
+        // getAllowedProjectIds: select('id').eq('owner_id', userId)
+        return {
+          select: () => ({ eq: async () => ({ data: mockOwned.map(id => ({ id })), error: null }) }),
+        }
+      }
+      // website_content: select(...).eq('id', …).maybeSingle()
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: mockArticle, error: null }) }),
+        }),
+      }
+    },
+  }),
+}))
+
 let receivedExecution: unknown = null
 
 vi.mock('@/lib/article/hero-image', () => ({
@@ -42,9 +71,58 @@ beforeEach(() => {
   mockUser = null
   mockResult = null
   receivedArticleId = null
+  // Default: the article exists and belongs to the caller, so the pre-existing
+  // response-shape tests below exercise the same paths they always did.
+  mockArticle = { id: 'article-1', project_id: 'p-mine' }
+  mockOwned = ['p-mine']
 })
 
 describe('POST /api/content/articles/[id]/hero-image — MVP Commit 4', () => {
+  // ── Phase 9D · a directly addressable id is not an authorization ──────────
+
+  it('404 when the article belongs to another project; module NEVER called', async () => {
+    // The detail page only renders this button for an owned article, but the
+    // request can be made without the page. Hiding a control is not a check.
+    mockUser = { id: 'u-1', email: 'op@example.com' }
+    mockArticle = { id: 'article-1', project_id: 'p-theirs' }
+    mockOwned = ['p-mine']
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    expect(res.status).toBe(404)
+    // The paid generation must not run for a foreign article.
+    expect(receivedArticleId).toBeNull()
+  })
+
+  it('a foreign article is INDISTINGUISHABLE from a nonexistent one', async () => {
+    mockUser = { id: 'u-1', email: 'op@example.com' }
+
+    mockArticle = { id: 'article-1', project_id: 'p-theirs' }
+    mockOwned = ['p-mine']
+    const foreign = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+
+    mockArticle = null
+    const missing = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'nope' } })
+
+    expect(foreign.status).toBe(missing.status)
+    expect(await foreign.json()).toEqual(await missing.json())
+  })
+
+  it('an EMPTY allow-list fails closed — nothing is owned', async () => {
+    mockUser = { id: 'u-1', email: 'op@example.com' }
+    mockArticle = { id: 'article-1', project_id: 'p-mine' }
+    mockOwned = []
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    expect(res.status).toBe(404)
+    expect(receivedArticleId).toBeNull()
+  })
+
+  it('401 is still decided BEFORE any ownership read', async () => {
+    mockUser = null
+    mockArticle = { id: 'article-1', project_id: 'p-mine' }
+    mockOwned = ['p-mine']
+    const res = await POST(new Request('http://localhost/x', { method: 'POST' }), { params: { id: 'article-1' } })
+    expect(res.status).toBe(401)
+  })
+
   it('401 when unauthenticated; module never called', async () => {
     mockUser = null
     const req = new Request('http://localhost/x', { method: 'POST' })

@@ -93,6 +93,7 @@ jobs:
             lib/qa/list-surface-isolation.test.ts \
             lib/qa/article-operator-generate-route.test.ts \
             lib/qa/manager-approvals-isolation.test.ts \
+            lib/qa/revenue-project-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -134,6 +135,13 @@ jobs:
             // Phase 9L — manager + approvals isolation, including the
             // aggregate-before-compute rule. DB-free.
             'manager-approvals-isolation.test.ts': 24,
+            // Phase 9N + 9N.5 — the whole /revenue surface, page and the nested
+            // CostIntelligence section. DB-free: both real server components are
+            // invoked against a fake that applies PostgREST semantics, so the
+            // assertions read the strings they actually render. Every figure
+            // here is an aggregate, so the rule under test is
+            // scope-before-arithmetic.
+            'revenue-project-isolation.test.ts': 32,
           }
 
           let failed = false

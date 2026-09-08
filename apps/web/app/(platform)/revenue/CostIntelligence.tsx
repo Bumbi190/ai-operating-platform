@@ -9,6 +9,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import { Activity, TrendingUp, CalendarDays, CalendarClock, Cpu, AlertTriangle } from 'lucide-react'
 import { OSLayer } from '@/components/platform/os'
 import { LiveRefresh } from './LiveRefresh'
@@ -81,8 +82,27 @@ interface CostRow {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export async function CostIntelligence() {
+/**
+ * PROJECT ISOLATION (Phase 9N.5).
+ *
+ * This section renders inside /revenue, so it sits behind the SAME
+ * authorization boundary as the page around it — scoping the page's own
+ * metrics while this component still summed every tenant's spend would leave
+ * the Revenue surface unisolated.
+ *
+ * `allowedProjectIds` is a REQUIRED prop, deliberately with no default: the
+ * caller has already resolved the operator's allow-list, and a component that
+ * could be rendered without one would silently go global again. It carries the
+ * RAW allow-list rather than a pre-filtered array, and `scopeProjectFilter` is
+ * applied HERE, so the impossible-id guarantee holds at the point of use even
+ * if a future caller passes an empty array.
+ *
+ * This component invents no ownership model of its own and performs no auth of
+ * its own — it inherits both from the page, which is the only correct source.
+ */
+export async function CostIntelligence({ allowedProjectIds }: { allowedProjectIds: string[] }) {
   const db = createAdminClient()
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
   const now = new Date()
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const weekStart  = new Date(now.getTime() - 7 * 864e5)
@@ -94,6 +114,7 @@ export async function CostIntelligence() {
   const { data: rowsRaw } = await (db as any)
     .from('cost_events')
     .select('project_id, provider, model, agent, operation, unit_type, units, tokens_in, tokens_out, cost_sek, created_at')
+    .in('project_id', scopedIds)
     .gte('created_at', lastMonthStart.toISOString())
     .order('created_at', { ascending: false })
 
@@ -105,11 +126,11 @@ export async function CostIntelligence() {
     cost_sek: Number(r.cost_sek ?? 0),
   }))
 
-  const { data: projectsRaw } = await db.from('projects').select('id, name, color')
+  const { data: projectsRaw } = await db.from('projects').select('id, name, color').in('id', scopedIds)
   const projects = (projectsRaw ?? []) as { id: string; name: string; color: string }[]
   const projectById = new Map(projects.map(p => [p.id, p]))
 
-  const { data: budgetsRaw } = await (db as any).from('project_budgets').select('project_id, monthly_sek')
+  const { data: budgetsRaw } = await (db as any).from('project_budgets').select('project_id, monthly_sek').in('project_id', scopedIds)
   const budgetByProject = new Map<string, number>(
     ((budgetsRaw ?? []) as any[]).map(b => [b.project_id as string, Number(b.monthly_sek ?? 0)]),
   )

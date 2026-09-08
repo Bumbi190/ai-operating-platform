@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { calculateCost, formatCost, getModelPricing } from '@/lib/ai/pricing'
 import {
@@ -103,15 +104,31 @@ export default async function RevenuePage() {
 
   const db = createAdminClient()
 
+  // ── Project isolation boundary ────────────────────────────────────────────
+  // Every source below is project-owned, and every figure on this page is an
+  // AGGREGATE. Aggregates are the dangerous shape: a single foreign row does
+  // not merely appear in a list, it silently moves a total. So the allow-list
+  // is resolved ONCE here and applied inside every query — never as a
+  // post-filter over a service-role read, and never after a sum.
+  //
+  // `scopeProjectFilter` substitutes an impossible id for an empty allow-list,
+  // so a user who owns nothing gets zeroes, never the platform's books.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
+
   const now = new Date()
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const sevenDaysAgo  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000).toISOString()
   const monthStart    = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
   // ── 1. Projects ─────────────────────────────────────────────────────────
+  // `projects` is the identity table, so the scope column is `id` (not
+  // `project_id`). This query uses the ADMIN client, so RLS does not apply to
+  // it — on main it returned every tenant's project name and colour.
   const { data: projectsRaw } = await db
     .from('projects')
     .select('id, name, color')
+    .in('id', scopedIds)
 
   const projects: ProjectRow[] = (projectsRaw ?? []) as ProjectRow[]
   const projectById = new Map(projects.map(p => [p.id, p]))
@@ -120,6 +137,7 @@ export default async function RevenuePage() {
   const { data: revenueRaw } = await (db as any)
     .from('revenue_events')
     .select('id, project_id, amount_sek, source, description, occurred_at')
+    .in('project_id', scopedIds)
     .gte('occurred_at', thirtyDaysAgo)
 
   const revenueEvents: RevenueEvent[] = (revenueRaw ?? []) as RevenueEvent[]
@@ -128,11 +146,17 @@ export default async function RevenuePage() {
   const { data: leadsRaw } = await (db as any)
     .from('leads')
     .select('id, project_id, name, company, status, estimated_value, actual_value, created_at, last_contact_at')
+    .in('project_id', scopedIds)
     .order('created_at', { ascending: false })
 
   const leads: Lead[] = (leadsRaw ?? []) as Lead[]
 
   // ── 4. Run logs for AI cost (last 30 days) ────────────────────────────
+  // `run_logs` has no project_id of its own — its only ownership link is the
+  // parent run. `runs!inner` turns the embed into a JOIN so `runs.project_id`
+  // can be filtered IN THE QUERY; a plain embed would still return every
+  // tenant's log rows. The `!inner` keeps the exact same to-one object shape,
+  // so the `Array.isArray(log.runs)` unwrapping below is unaffected.
   const { data: logsRaw } = await db
     .from('run_logs')
     .select(`
@@ -140,11 +164,12 @@ export default async function RevenuePage() {
       tokens_out,
       created_at,
       step_order,
-      runs (
+      runs!inner (
         project_id,
         workflows ( steps )
       )
     `)
+    .in('runs.project_id', scopedIds)
     .gte('created_at', thirtyDaysAgo)
     .eq('role', 'assistant')
     .not('tokens_in', 'is', null)
@@ -152,9 +177,14 @@ export default async function RevenuePage() {
   const runLogs = (logsRaw ?? []) as any[]
 
   // ── 5. Agents for model resolution ────────────────────────────────────
+  // Only used to resolve a step's model for pricing. Scoped so a foreign
+  // agent's model can never be read; because the run logs above are already
+  // scoped, every step they reference resolves within the same allow-list, so
+  // the resolved model — and therefore the cost — is unchanged for owned rows.
   const { data: agentsRaw } = await db
     .from('agents')
     .select('id, model')
+    .in('project_id', scopedIds)
 
   const agentById = new Map(
     ((agentsRaw ?? []) as { id: string; model: string }[]).map(a => [a.id, a])
@@ -164,6 +194,7 @@ export default async function RevenuePage() {
   const { data: recentRunsRaw } = await db
     .from('runs')
     .select('project_id')
+    .in('project_id', scopedIds)
     .gte('created_at', sevenDaysAgo)
 
   const recentRuns = (recentRunsRaw ?? []) as RunCountRow[]
@@ -515,7 +546,7 @@ export default async function RevenuePage() {
       </OSLayer>
 
       {/* ── KOSTNADER (P0: f.d. /costs) ─────────────────────────────────── */}
-      <CostIntelligence />
+      <CostIntelligence allowedProjectIds={allowedProjectIds} />
 
     </OSPage>
   )

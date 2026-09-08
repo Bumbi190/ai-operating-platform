@@ -129,7 +129,7 @@ jobs:
             // Phase 9H — ownership before paid generation. DB-free: the route
             // runs against a mocked supabase, generator and store, so a foreign
             // request reaching the paid boundary is provable without spending.
-            'article-operator-generate-route.test.ts': 17,
+            'article-operator-generate-route.test.ts': 29,
           }
 
           let failed = false

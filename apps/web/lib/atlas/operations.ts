@@ -111,7 +111,14 @@ function wfName(r: any): string | null {
   return w?.name ?? null
 }
 
-export async function getOperations(db: AnyDb, allowedProjectIds?: string[]): Promise<OperationsSnapshot> {
+/**
+ * `allowedProjectIds` is REQUIRED — same reason as `gatherAtlasContext`: every
+ * project-owned source below is scoped through `applyProjectScope`, which does
+ * nothing at all when the argument is `undefined`. `token_health` and
+ * `cron_heartbeat` stay unscoped on purpose: neither has a project_id, they are
+ * platform infrastructure.
+ */
+export async function getOperations(db: AnyDb, allowedProjectIds: string[]): Promise<OperationsSnapshot> {
   const safe = async <T>(p: Promise<{ data: T | null }>, fb: T): Promise<T> => {
     try { const { data } = await p; return data ?? fb } catch { return fb }
   }

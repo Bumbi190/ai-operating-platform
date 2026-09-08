@@ -22,7 +22,8 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const db = createAdminClient()
-  const review = await getMarketingReview(db)
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const review = await getMarketingReview(db, allowedProjectIds)
   return NextResponse.json(review)
 }
 

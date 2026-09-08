@@ -9,6 +9,7 @@
  */
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import { getMarketingReview } from '@/lib/marketing/review'
@@ -22,7 +23,8 @@ export default async function MarketingReviewPage() {
   if (!user) redirect('/login')
 
   const db = createAdminClient()
-  const review = await getMarketingReview(db)
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const review = await getMarketingReview(db, allowedProjectIds)
 
   return (
     <OSPage density="comfortable">

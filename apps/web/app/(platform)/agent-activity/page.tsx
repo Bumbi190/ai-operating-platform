@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getAllowedProjectIds } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Cpu, Clock, Activity, Zap } from 'lucide-react'
@@ -26,7 +27,13 @@ export default async function AgentActivityPage() {
   if (!user) redirect('/login')
 
   const db = createAdminClient()
-  const { running, recent } = await fetchAgentActivity(db)
+
+  // Everything this page shows is project-owned and read through the
+  // service-role client, so the boundary is re-applied here and handed to the
+  // loader. The refs published to Atlas view awareness below are built from the
+  // same scoped result, so a foreign run id can never be announced either.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const { running, recent } = await fetchAgentActivity(db, allowedProjectIds)
 
   // Atlas view awareness — publish the runs on screen (running first, then recent).
   const visibleRefs = [

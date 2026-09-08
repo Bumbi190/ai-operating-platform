@@ -12,6 +12,7 @@
  *   4. cron_heartbeat       — döda/sena cron-jobb
  */
 
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type { Project } from '@/lib/supabase/types'
 import { fetchBusinessSnapshots } from './business'
 import { buildAttentionItems, type AttentionItem } from './priority'
@@ -27,15 +28,30 @@ export interface AttentionResult {
   actionable: number
 }
 
+/**
+ * `allowedProjectIds` is REQUIRED. `projects` alone was not enough: the counts
+ * and the stuck-pipeline scan below are this function's OWN reads and were
+ * global, so another tenant's published-script count could raise an alarm here
+ * and a foreign video's `hook` could be printed verbatim in an item title.
+ *
+ * `token_health` and `cron_heartbeat` are deliberately left unscoped — neither
+ * has a project_id; they describe platform infrastructure, not tenant data.
+ */
 export async function collectAttentionItems(
   db: AnyDb,
   projects: Project[],
+  allowedProjectIds: string[],
 ): Promise<AttentionResult> {
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
   const businesses = await fetchBusinessSnapshots(db, projects)
 
   const [pubCountRes, insCountRes] = await Promise.all([
-    (db.from('media_scripts') as any).select('id', { count: 'exact', head: true }).eq('status', 'published'),
-    (db.from('media_insights') as any).select('id', { count: 'exact', head: true }),
+    (db.from('media_scripts') as any).select('id', { count: 'exact', head: true })
+      .in('project_id', scopedIds).eq('status', 'published'),
+    // `media_insights.project_id` is nullable; `.in()` excludes NULL, which is
+    // the rule the Atlas call sites already apply to nullable ownership.
+    (db.from('media_insights') as any).select('id', { count: 'exact', head: true })
+      .in('project_id', scopedIds),
   ])
   const instagramInsightsMissing = (pubCountRes.count ?? 0) > 0 && (insCountRes.count ?? 0) === 0
 
@@ -66,8 +82,11 @@ export async function collectAttentionItems(
 
   // Pipeline-steg som nått max försök (kräver operatör) → brådskande.
   try {
+    // Scope precedes `.limit(10)`: ten foreign stuck videos would otherwise
+    // fill the slice and hide the operator's own broken pipeline entirely.
     const { data: stuck } = await (db.from('media_scripts') as any)
       .select('id, hook, voice_status, video_status, voice_attempts, render_attempts, pipeline_failed_reason')
+      .in('project_id', scopedIds)
       .or('and(voice_status.eq.failed,voice_attempts.gte.3),and(video_status.eq.failed,render_attempts.gte.3)')
       .limit(10)
     for (const s of (stuck ?? []) as Array<{ id: string; hook: string | null; voice_status: string; pipeline_failed_reason: string | null }>) {

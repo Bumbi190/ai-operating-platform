@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -57,7 +58,11 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
   if (!user) redirect('/login')
 
   const db        = createAdminClient()
-  const ctx       = await gatherAtlasContext(db)
+
+  // Legacy (rollback) render path. The vNext path above returns earlier and is
+  // already scoped inside `loadAtlasHomeViewModel`; this branch was not.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const ctx       = await gatherAtlasContext(db, allowedProjectIds)
   const bugDigest = await getMorningBugDigest(db)
 
   // Executive Brief — conformant apex artifact (EI-S1.2).
@@ -76,7 +81,10 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
     .from('projects')
     .select('id, owner_id, name, slug, color, settings, created_at')
     .order('created_at', { ascending: true })
-  const attention  = await collectAttentionItems(db, (projectsRaw ?? []) as Project[])
+  // Two independent input paths, so both are scoped independently: `projectsRaw`
+  // comes from the RLS client (the database enforces ownership on that read),
+  // and the allow-list covers the service-role queries inside the collector.
+  const attention  = await collectAttentionItems(db, (projectsRaw ?? []) as Project[], allowedProjectIds)
   const topActions = [...attention.urgent, ...attention.important].slice(0, 5)
 
   return (

@@ -9,6 +9,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import { getOperations } from '@/lib/atlas/operations'
@@ -37,7 +38,8 @@ export default async function AtlasOperations() {
   if (!user) redirect('/login')
 
   const db = createAdminClient()
-  const o = await getOperations(db)
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const o = await getOperations(db, allowedProjectIds)
 
   const promptAttention = o.prompt.failed24h > 0
   const sysAttention    = o.system.stuckWorkflows > 0 || o.system.failedWorkflows > 0

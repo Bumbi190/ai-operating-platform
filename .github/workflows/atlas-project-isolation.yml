@@ -91,6 +91,7 @@ jobs:
             lib/qa/direct-id-isolation.test.ts \
             lib/qa/chat-conversation-ownership.test.ts \
             lib/qa/list-surface-isolation.test.ts \
+            lib/qa/article-operator-generate-route.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -125,6 +126,10 @@ jobs:
             // keeps this distinct from `isolation.test.ts`: a path ending in
             // `-isolation.test.ts` does not end in `/isolation.test.ts`.
             'list-surface-isolation.test.ts': 19,
+            // Phase 9H — ownership before paid generation. DB-free: the route
+            // runs against a mocked supabase, generator and store, so a foreign
+            // request reaching the paid boundary is provable without spending.
+            'article-operator-generate-route.test.ts': 17,
           }
 
           let failed = false

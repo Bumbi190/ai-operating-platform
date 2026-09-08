@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { ConversationList } from './ConversationList'
 import { ExecutiveAssistant } from './ExecutiveAssistant'
@@ -12,6 +13,12 @@ export default async function ChatIndexPage() {
 
   const db = createAdminClient()
 
+  // TWO DIFFERENT OWNERSHIP DIMENSIONS ON ONE PAGE, deliberately kept apart.
+  //
+  // A conversation is USER-owned: `conversations.user_id`. That contract is
+  // already correct and is left exactly as it was — it is stronger here than a
+  // project scope would be, and rewriting it into project semantics would
+  // weaken it, because a conversation may carry no project at all.
   const { data: conversations } = await db
     .from('conversations')
     .select('id, title, project_id, updated_at, projects(name, slug)')
@@ -19,9 +26,14 @@ export default async function ChatIndexPage() {
     .order('updated_at', { ascending: false })
     .limit(50)
 
+  // A project is PROJECT-authorised. This picker was unscoped: it listed every
+  // project in the database — id, name and slug — to any signed-in operator,
+  // through a service-role client that bypasses RLS. The names and slugs alone
+  // disclose what other tenants are working on.
   const { data: projects } = await db
     .from('projects')
     .select('id, name, slug')
+    .in('id', scopeProjectFilter(await getAllowedProjectIds(db, user.id)))
     .order('name')
 
   const operatorName = deriveOperatorName(

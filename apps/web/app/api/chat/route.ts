@@ -143,14 +143,29 @@ ${ctx.businesses.map(b => `- ${b.name}: intäkt ${k(b.revenueMonthSek)}, kostnad
  */
 async function buildToolMemory(
   db: ReturnType<typeof createAdminClient>,
-  conversationId?: string,
+  conversationId: string | undefined,
+  /**
+   * The AUTHENTICATED user. Required, and deliberately not optional: this
+   * function's output goes straight into the system prompt, so a caller that
+   * forgot to pass an owner would contaminate the model's context with another
+   * operator's tool history. `conversation_id` arrives in the request body and
+   * is untrusted; this is what makes it safe to use.
+   */
+  userId: string,
 ): Promise<string> {
   if (!conversationId) return ''
   try {
+    // Scoped THROUGH THE PARENT CONVERSATION. `conversation_messages` carries
+    // neither user_id nor project_id — its only link is conversation_id — so
+    // ownership has to travel over the join. `!inner` is what makes the
+    // embedded filter restrict the outer rows instead of merely nulling the
+    // embed, and it costs no extra round trip: this query was already being
+    // made, it just answered for every conversation in the database.
     const { data } = await db
       .from('conversation_messages')
-      .select('tool_data, created_at')
+      .select('tool_data, created_at, conversations!inner(user_id)')
       .eq('conversation_id', conversationId)
+      .eq('conversations.user_id', userId)
       .eq('role', 'tool')
       .order('created_at', { ascending: false })
       .limit(12)
@@ -610,6 +625,37 @@ export async function POST(request: Request) {
   const db = createAdminClient()
   const tStart = Date.now()
 
+  // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────
+  // `conversation_id` arrives in the REQUEST BODY. It is a client-supplied id
+  // and proves nothing: without this, any signed-in operator could name another
+  // operator's conversation and have their messages appended to it.
+  //
+  // Resolved LAZILY and AT MOST ONCE per request. Lazily because the check must
+  // not become a blocking round trip before the first token — this route's own
+  // contract is that it never waits on the database before the stream starts,
+  // and a point query to this database measured ~100 ms. Every caller below is
+  // already `void`/non-blocking, so awaiting the proof there costs nothing that
+  // the operator can feel. Once, because a memoised promise means five write
+  // sites share a single query rather than issuing five.
+  //
+  // Returns the id ONLY when the conversation is the caller's; otherwise null,
+  // which every write site treats exactly like "no conversation supplied".
+  let ownedConversationPromise: Promise<string | null> | null = null
+  const resolveOwnedConversationId = (): Promise<string | null> => {
+    if (!conversation_id) return Promise.resolve(null)
+    ownedConversationPromise ??= (db.from('conversations') as any)
+      .select('id')
+      .eq('id', conversation_id)
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(
+        ({ data }: { data: { id: string } | null }) => (data ? conversation_id : null),
+        // A failed ownership read is NOT permission. Fail closed.
+        () => null,
+      )
+    return ownedConversationPromise!
+  }
+
   // ── FAST PATH-beslut ────────────────────────────────────────────────────────
   // Routing is decided from the message alone, BEFORE any database work. Every
   // classifier here is a pure function, so hoisting them above the isolation
@@ -692,7 +738,7 @@ export async function POST(request: Request) {
     } catch { /* icke-kritiskt */ }
     // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
     // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id) } catch { /* icke-kritiskt */ }
+    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
     // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
     // across chats/sessions. Also reports whether a delegation is on record, used
     // to suppress a false-claim correction on truthful recall.
@@ -754,18 +800,26 @@ export async function POST(request: Request) {
 
   // Helper: persist a message to DB
   async function saveMessage(role: string, content: string | null, toolData?: unknown) {
-    if (!conversation_id) return
+    // The proof, not the request body. A foreign or unknown id resolves to null
+    // and is indistinguishable here from "no conversation supplied" — the same
+    // silent no-op this function already performed in that case.
+    const ownedConversationId = await resolveOwnedConversationId()
+    if (!ownedConversationId) return
     try {
       await db.from('conversation_messages').insert({
-        conversation_id,
+        conversation_id: ownedConversationId,
         role,
         content,
         tool_data: toolData ? toJson(toolData) : null,
       })
-      // Touch updated_at on conversation
+      // Touch updated_at on conversation. `user_id` is repeated here on purpose:
+      // the row is already proven, so this is defence in depth — an UPDATE that
+      // carries its own ownership predicate cannot be made unsafe by a later
+      // refactor moving it away from the proof.
       await db.from('conversations')
         .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversation_id)
+        .eq('id', ownedConversationId)
+        .eq('user_id', userId)
     } catch { /* non-fatal */ }
   }
 
@@ -776,7 +830,13 @@ export async function POST(request: Request) {
     void saveMessage('user', lastMsg.content)
     if (conversation_id && messages.filter(m => m.role === 'user').length === 1) {
       const title = lastMsg.content.slice(0, 60) + (lastMsg.content.length > 60 ? '…' : '')
-      void db.from('conversations').update({ title }).eq('id', conversation_id)
+      // Renaming someone else's conversation is a write like any other, and it
+      // is the one an operator would notice. Same proof, same extra predicate.
+      void (async () => {
+        const owned = await resolveOwnedConversationId()
+        if (!owned) return
+        await db.from('conversations').update({ title }).eq('id', owned).eq('user_id', userId)
+      })()
     }
   }
 
@@ -931,7 +991,7 @@ export async function POST(request: Request) {
             if (toolUse.name === 'delegate_dream_finding' && ra?.ok === true) {
               void recordAction(db, {
                 projectId: ra.project_id ?? null,
-                conversationId: conversation_id,
+                conversationId: await resolveOwnedConversationId(),
                 actionType: 'dream_delegation',
                 toolName: 'delegate_dream_finding',
                 targetKind: 'manager_task',
@@ -944,7 +1004,7 @@ export async function POST(request: Request) {
             if (toolUse.name === 'trigger_workflow' && !errored && ra?.run_id) {
               void recordAction(db, {
                 projectId: ra.project_id ?? null,
-                conversationId: conversation_id,
+                conversationId: await resolveOwnedConversationId(),
                 actionType: 'workflow_run',
                 toolName: 'trigger_workflow',
                 targetKind: 'run',

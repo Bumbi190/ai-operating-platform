@@ -8,6 +8,7 @@
  * ⛔ Endast Familje-Stunden. Ingen publicering/scheduling/Meta här.
  */
 import 'server-only'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -113,8 +114,28 @@ function classifyQueue(status: string): ReviewQueue {
   return 'pending' // drafted, guard_passed
 }
 
-export async function getMarketingReview(db: AdminClient, now: Date = new Date()): Promise<ReviewData> {
-  const { data: project } = await db.from('projects').select('id').eq('slug', FAMILJE_SLUG).maybeSingle()
+/**
+ * `allowedProjectIds` is REQUIRED.
+ *
+ * Everything this function returns hangs off ONE root lookup: the project is
+ * resolved by a hard-coded slug, and campaign_plans → campaign_briefs →
+ * draft_posts → guard_reports → runs are each derived from the previous id set.
+ * That chain was already tight; what it lacked was authorization at the root.
+ * The slug is a server-side constant, not caller input, but resolving it
+ * through the service-role client meant ANY authenticated operator received
+ * this project's marketing pipeline. Scoping the root lookup to the caller's
+ * allow-list closes the whole chain at once — an operator who does not own the
+ * project falls into the existing empty-result branch below.
+ */
+export async function getMarketingReview(
+  db: AdminClient,
+  allowedProjectIds: string[],
+  now: Date = new Date(),
+): Promise<ReviewData> {
+  const { data: project } = await db.from('projects').select('id')
+    .eq('slug', FAMILJE_SLUG)
+    .in('id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
   const projectId = (project as { id?: string } | null)?.id
   if (!projectId) return { months: [], counts: { pending: 0, approved: 0, rejected: 0, needs_input: 0 }, cards: [] }
 

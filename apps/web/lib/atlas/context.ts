@@ -93,7 +93,14 @@ export function selectActiveDecisions(rows: DecisionRow[]): DecisionContext[] {
     }))
 }
 
-export async function gatherAtlasContext(db: AnyDb, allowedProjectIds?: string[]): Promise<AtlasContext> {
+/**
+ * `allowedProjectIds` is REQUIRED. It was optional, and `applyProjectScope`
+ * treats `undefined` as "no scope" — so a caller that simply forgot the second
+ * argument got a silent global read. Atlas Home did exactly that for four
+ * phases while /api/chat and the operational reader passed it correctly. A
+ * required parameter turns that omission into a compile error.
+ */
+export async function gatherAtlasContext(db: AnyDb, allowedProjectIds: string[]): Promise<AtlasContext> {
   // ISOLATION: scope every project-native read to the caller's allowed projects.
   // `undefined` = no scoping (legacy/global callers); an array (even empty) scopes.
   const now = new Date()

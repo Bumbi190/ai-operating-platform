@@ -7,6 +7,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { OSPage, ViewSelectionSync } from '@/components/platform/os'
@@ -31,12 +32,29 @@ export default async function ContentDetail({ params }: { params: { id: string }
   if (!user) redirect('/login')
 
   const db: AnyDb = createAdminClient()
+
+  // A DIRECTLY ADDRESSABLE ID IS NOT AN AUTHORIZATION.
+  //
+  // `db` is a service-role client and bypasses RLS, so `.eq('id', …)` alone
+  // returned any row in the database to any signed-in operator — the full
+  // article: title, summary, body, QA report, model and cost. Ownership is now
+  // part of the QUERY, not a check performed on a row already fetched, so a
+  // foreign row never reaches this process at all.
+  //
+  // `website_content.project_id` is NOT NULL, so the scope is exact. An empty
+  // allow-list becomes an impossible project id — zero rows, never every row.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
   const { data: row } = await db
     .from('website_content')
     .select('*')
     .eq('id', params.id)
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
     .maybeSingle()
 
+  // Deliberately the SAME outcome as a nonexistent id. Distinguishing the two
+  // would confirm that an article exists in someone else's project, which is
+  // itself a disclosure — so no "belongs to another project" message is ever
+  // rendered, and nothing is redirected into a project the operator does own.
   if (!row) notFound()
 
   const payload = (row.payload ?? {}) as Record<string, any>

@@ -88,6 +88,7 @@ jobs:
             lib/qa/legacy-delegate-isolation.test.ts \
             lib/qa/isolation.test.ts \
             lib/qa/record-access.test.ts \
+            lib/qa/direct-id-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -111,6 +112,10 @@ jobs:
             'legacy-delegate-isolation.test.ts': 10,
             'isolation.test.ts': 17,
             'record-access.test.ts': 13,
+            // Phase 9D — direct by-id ownership. The `/${file}` lookup below
+            // keeps this distinct from `isolation.test.ts`: a path ending in
+            // `-isolation.test.ts` does not end in `/isolation.test.ts`.
+            'direct-id-isolation.test.ts': 20,
           }
 
           let failed = false

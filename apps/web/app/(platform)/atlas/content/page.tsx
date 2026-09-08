@@ -10,6 +10,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { OSPage, ViewVisibleSync } from '@/components/platform/os'
@@ -65,10 +66,23 @@ export default async function ContentCenter() {
     try { const { data } = await p; return data ?? fb } catch { return fb }
   }
 
+  // `db` is a service-role client and bypasses RLS, so both reads below are
+  // scoped by hand. BOTH of them: this page renders two project-owned tables,
+  // and scoping one while leaving the other global is still a leak — the news
+  // picker would hand the operator another project's headlines even with the
+  // article queue correctly filtered.
+  //
+  // `website_content.project_id` and `media_news_items.project_id` are both NOT
+  // NULL, so the scope is exact and drops nothing. An empty allow-list becomes
+  // an impossible project id — zero rows, never every row.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
+
   // System A ONLY.
   const rows = await safe<ContentRow[]>(
     db.from('website_content')
       .select('id, title, content_type, status, model, cost_usd, created_at, destination_url, summary, qa')
+      .in('project_id', scopedIds)
       .order('created_at', { ascending: false })
       .limit(200),
     [],
@@ -79,6 +93,7 @@ export default async function ContentCenter() {
   const newsItems = await safe<NewsItemForPicker[]>(
     db.from('media_news_items')
       .select('id, title, source_name, virality_score, created_at')
+      .in('project_id', scopedIds)
       .eq('status', 'new')
       .order('created_at', { ascending: false })
       .limit(30),

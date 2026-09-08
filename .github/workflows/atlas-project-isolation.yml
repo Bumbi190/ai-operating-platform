@@ -90,6 +90,7 @@ jobs:
             lib/qa/record-access.test.ts \
             lib/qa/direct-id-isolation.test.ts \
             lib/qa/chat-conversation-ownership.test.ts \
+            lib/qa/list-surface-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -120,6 +121,10 @@ jobs:
             // Phase 9E — /api/chat conversation ownership. DB-free: the route
             // runs against mocked supabase and model clients.
             'chat-conversation-ownership.test.ts': 24,
+            // Phase 9G — list-surface isolation. DB-free. The `/${file}` lookup
+            // keeps this distinct from `isolation.test.ts`: a path ending in
+            // `-isolation.test.ts` does not end in `/isolation.test.ts`.
+            'list-surface-isolation.test.ts': 19,
           }
 
           let failed = false

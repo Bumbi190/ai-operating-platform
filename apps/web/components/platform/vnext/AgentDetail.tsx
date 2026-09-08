@@ -3,13 +3,16 @@
 import { useId, useState } from 'react'
 import Link from 'next/link'
 import { Pencil } from 'lucide-react'
+// Runtime values come from the client-safe sibling; `lib/os/agent-detail` is
+// `server-only` and importing these from there pulled it into the client bundle.
 import {
   AGENT_DETAIL_TABS,
   AGENT_DETAIL_TAB_LABELS,
   AGENT_DETAIL_TAB_UNAVAILABLE,
-  type AgentDetailModel,
   type AgentDetailTabId,
-} from '@/lib/os/agent-detail'
+} from '@/lib/os/agent-detail-shared'
+// Type-only, so it is erased at compile time and reaches no bundle.
+import type { AgentDetailModel } from '@/lib/os/agent-detail'
 import styles from './AgentDetail.module.css'
 
 /**

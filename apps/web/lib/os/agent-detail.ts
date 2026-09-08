@@ -2,6 +2,14 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveDestination } from '@/lib/nav/registry'
 import type { WorkflowStep } from '@/lib/supabase/types'
+// Types only. The tab vocabulary lives in a client-safe sibling because the
+// client component needs its runtime values, and this module is `server-only`.
+//
+// Deliberately NOT re-exported from here: a re-export would let a client
+// component import those constants through this module and pull `server-only`
+// into the bundle again — the exact failure this split fixes. Consumers import
+// them from `agent-detail-shared` directly.
+import type { AgentDetailTabId, TabAvailability } from '@/lib/os/agent-detail-shared'
 
 /**
  * Agent Detail — what this agent is, what it is doing, and what Omnira can
@@ -33,8 +41,6 @@ import type { WorkflowStep } from '@/lib/supabase/types'
  * Absence is reported as absence. A tab with no runtime link renders an
  * explicit unavailable state, never an empty list that reads as "none".
  */
-
-export type TabAvailability = 'REAL' | 'PARTIAL' | 'UNAVAILABLE'
 
 export interface AgentWorkflowMembership {
   workflowId: string
@@ -76,55 +82,6 @@ export interface AgentDetailModel {
   workflowsAvailable: boolean
   /** What each section can truthfully show. */
   tabs: Record<AgentDetailTabId, TabAvailability>
-}
-
-export const AGENT_DETAIL_TABS = [
-  'overview', 'chat', 'skills', 'tools', 'memory', 'permissions', 'workflows', 'tasks',
-] as const
-export type AgentDetailTabId = (typeof AGENT_DETAIL_TABS)[number]
-
-export const AGENT_DETAIL_TAB_LABELS: Record<AgentDetailTabId, string> = {
-  overview: 'Översikt',
-  chat: 'Chatt',
-  skills: 'Färdigheter',
-  tools: 'Verktyg',
-  memory: 'Minne',
-  permissions: 'Behörigheter',
-  workflows: 'Workflows',
-  tasks: 'Uppgifter',
-}
-
-/**
- * Why a section shows nothing.
- *
- * Written as a statement of the current runtime, not as a promise. "Kommer
- * snart" would claim a roadmap position this repository does not represent
- * anywhere; "finns inte i runtime ännu" is simply what is true today.
- */
-export const AGENT_DETAIL_TAB_UNAVAILABLE: Partial<Record<AgentDetailTabId, {
-  what: string
-  why: string
-}>> = {
-  chat: {
-    what: 'En direkt konversation med den här agenten.',
-    why: 'Det finns ingen agentspecifik chattruntime. `agent_messages` bär meddelanden mellan agenter och Manager, inte mellan dig och en agent.',
-  },
-  tools: {
-    what: 'De verktyg agenten får använda.',
-    why: 'Ingen per-agent verktygskoppling finns i runtime. Omnira har kapabiliteter, men ingen modell som tilldelar dem till en enskild agent.',
-  },
-  memory: {
-    what: 'Vad agenten minns mellan körningar.',
-    why: 'Minne lagras per projekt, inte per agent. Att visa projektets minne här vore att påstå en koppling som inte finns.',
-  },
-  permissions: {
-    what: 'Vad agenten har rätt att göra.',
-    why: 'Behörigheter modelleras inte per agent. Autonomi, delegering och godkännandegrindar hör till uppdrag och körningar — inte till en stående agentroll.',
-  },
-  tasks: {
-    what: 'Uppgifter som tilldelats agenten.',
-    why: 'Ingen uppgift pekar på en agent. `manager_tasks` kopplas till projekt, körningar och workflows — aldrig till en agentrad.',
-  },
 }
 
 interface RawAgent {

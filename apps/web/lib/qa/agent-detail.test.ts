@@ -18,12 +18,12 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { assembleAgentDetail } from '@/lib/os/agent-detail'
 import {
-  assembleAgentDetail,
   AGENT_DETAIL_TABS,
   AGENT_DETAIL_TAB_LABELS,
   AGENT_DETAIL_TAB_UNAVAILABLE,
-} from '@/lib/os/agent-detail'
+} from '@/lib/os/agent-detail-shared'
 import { buildBreadcrumbs } from '@/lib/nav/breadcrumbs'
 import { keyboardHintsFor } from '@/lib/nav/keyboard-hints'
 import { resolveDestination } from '@/lib/nav/registry'
@@ -38,6 +38,7 @@ const PAGE = read('app/(platform)/projects/[slug]/agents/[id]/page.tsx')
 const EDIT_PAGE = read('app/(platform)/projects/[slug]/agents/[id]/edit/page.tsx')
 const EDITOR = read('app/(platform)/projects/[slug]/agents/[id]/EditAgentClient.tsx')
 const ORGANISATION = read('lib/os/organisation.ts')
+const SHARED = read('lib/os/agent-detail-shared.ts')
 
 const codeOnly = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
@@ -296,6 +297,48 @@ describe('agent detail · claims no capability Omnira does not model', () => {
       workflowId: 'w1', workflowName: 'Morgonbriefing', running: true,
     })
     expect(VIEW.replace(/\s+/g, ' ')).toMatch(/Historik per agent finns inte/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The server/client boundary
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('agent detail · the server/client boundary holds', () => {
+  it('the loader stays server-only', () => {
+    expect(LOADER).toMatch(/^import 'server-only'/)
+    expect(LOADER).toContain('createAdminClient')
+  })
+
+  it('the shared contract carries no server-only marker and no data access', () => {
+    // It is imported by a client component, so anything server-side in here
+    // lands in the browser bundle.
+    expect(SHARED).not.toContain("import 'server-only'")
+    for (const forbidden of ['createAdminClient', 'createClient', 'from(', 'supabase']) {
+      expect(SHARED, forbidden).not.toContain(forbidden)
+    }
+  })
+
+  it('the client component takes runtime values ONLY from the shared module', () => {
+    // This is the regression `next build` caught: importing these three
+    // constants from the server-only loader pulled it into the client bundle.
+    // `tsc` and vitest both pass either way — only the build enforces it.
+    expect(VIEW).toMatch(/^'use client'/)
+    for (const value of ['AGENT_DETAIL_TABS', 'AGENT_DETAIL_TAB_LABELS', 'AGENT_DETAIL_TAB_UNAVAILABLE']) {
+      expect(SHARED, value).toContain(`export const ${value}`)
+    }
+    const runtimeImport = VIEW.slice(VIEW.indexOf('import {'), VIEW.indexOf('import type'))
+    expect(runtimeImport).toContain("from '@/lib/os/agent-detail-shared'")
+    // The only thing it may take from the server-only module is a type.
+    expect(VIEW).toMatch(/import type \{ AgentDetailModel \} from '@\/lib\/os\/agent-detail'/)
+    expect(VIEW).not.toMatch(/^import \{[^}]*\} from '@\/lib\/os\/agent-detail'/m)
+  })
+
+  it('the loader does not re-export the contract', () => {
+    // A re-export would let a client component reach those constants THROUGH
+    // the server-only module and reintroduce the exact failure.
+    expect(LOADER).not.toMatch(/export \{[^}]*AGENT_DETAIL_TAB/)
+    expect(LOADER).not.toMatch(/export \* from '@\/lib\/os\/agent-detail-shared'/)
   })
 })
 

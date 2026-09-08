@@ -488,10 +488,22 @@ Return ONLY valid JSON:
    * about the Executive authority chain. `readWorkPackage` is the Work
    * Package-aware path.
    */
-  async getActiveTasks(projectId?: string): Promise<ManagerTask[]> {
+  /**
+   * @param scopedProjectIds The caller's allowed projects, ALREADY passed
+   *   through `scopeProjectFilter`. Required, not optional: this reads
+   *   `manager_tasks` through the service-role client, and an optional scope is
+   *   one forgotten argument away from returning every operator's backlog.
+   *   `manager_tasks.project_id` is nullable, so a task with no project cannot
+   *   match `.in(...)` and is DROPPED — the same fail-closed choice the
+   *   operations graph makes for the same column.
+   * @param projectId Optional NARROWING to a single project. It filters within
+   *   the scope; it can never reach outside it.
+   */
+  async getActiveTasks(scopedProjectIds: string[], projectId?: string): Promise<ManagerTask[]> {
     let query = this.db
       .from('manager_tasks')
       .select('*')
+      .in('project_id', scopedProjectIds)
       .in('status', ['pending', 'in_progress'])
       .or(`${LEGACY_TASK_FILTER}`)
       .order('created_at', { ascending: false })
@@ -554,11 +566,26 @@ Return ONLY valid JSON:
     }
   }
 
-  async getRecentMessages(limit = 30): Promise<unknown[]> {
+  /**
+   * @param scopedProjectIds The caller's allowed projects, ALREADY passed
+   *   through `scopeProjectFilter`. Required for the same reason as above.
+   *
+   *   `agent_messages.project_id` is nullable and a null-project message
+   *   carries no `run_id` either, so — unlike an approval — there is nothing to
+   *   resolve it through. Those rows are DROPPED rather than shown globally.
+   *   That is a visible reduction, and it is the correct one: a message whose
+   *   project cannot be established must not appear on every operator's page.
+   *
+   *   The scope is the FIRST parameter so it cannot be defaulted away — a
+   *   scope with a default is one forgotten argument from silence, and
+   *   `getActiveTasks` above requires its own for the same reason.
+   */
+  async getRecentMessages(scopedProjectIds: string[], limit = 30): Promise<unknown[]> {
     try {
       const { data } = await this.db
         .from('agent_messages')
         .select('*')
+        .in('project_id', scopedProjectIds)
         .order('created_at', { ascending: false })
         .limit(limit)
       return data ?? []

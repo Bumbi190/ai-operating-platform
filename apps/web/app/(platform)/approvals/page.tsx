@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { ApprovalCard } from './ApprovalCard'
@@ -25,9 +26,25 @@ export default async function ApprovalsPage() {
 
   const db = createAdminClient()
 
+  // `db` is a service-role client and bypasses RLS, so this read is scoped by
+  // hand — it renders approval CONTENT, which is the reviewable output itself.
+  //
+  // SCOPED THROUGH THE RUN, not through `approvals.project_id`. That column is
+  // nullable and almost every row leaves it null, so filtering on it directly
+  // would empty the queue rather than isolate it. The repository already
+  // settled what a null-project approval means: the decision route resolves
+  // `project_id ?? runs.project_id` before it will act on one, and the
+  // operations graph includes such rows only when their run resolves to an
+  // allowed project, dropping them otherwise. `runs!inner` is that same rule.
+  //
+  // EDGE CASE, stated rather than hidden: an approval carrying a direct
+  // project_id but NO run would be excluded by the inner join. No such row
+  // exists today, and excluding it is the fail-closed direction.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
   const { data: approvals, error: approvalsError } = await db
     .from('approvals')
-    .select('id, output_key, content, status, reviewer_notes, created_at, reviewed_at')
+    .select('id, output_key, content, status, reviewer_notes, created_at, reviewed_at, runs!inner(project_id)')
+    .in('runs.project_id', scopeProjectFilter(allowedProjectIds))
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -35,7 +52,14 @@ export default async function ApprovalsPage() {
     console.error('[approvals/page] Query error:', approvalsError.message)
   }
 
-  const all = (approvals ?? []) as ApprovalRow[]
+  // The `runs` embed exists only to authorise the read. Stripping it keeps the
+  // rendering contract exactly as it was — ApprovalCard still receives
+  // `runs: null` and its own fallbacks — so the scope changed what is
+  // returned, not what is displayed.
+  const all: ApprovalRow[] = (approvals ?? []).map((row) => {
+    const { runs: _scopeOnly, ...rest } = row as Record<string, unknown>
+    return { ...rest, runs: null } as ApprovalRow
+  })
   const counts = {
     pending:  all.filter(a => a.status === 'pending').length,
     approved: all.filter(a => a.status === 'approved').length,

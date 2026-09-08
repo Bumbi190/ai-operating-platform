@@ -66,6 +66,13 @@ const inMonth = () => {
 const REVENUE_OWNED = 1_000
 const REVENUE_FOREIGN = 99_000
 
+// CostIntelligence money, chosen so a leak is never a rounding argument.
+const COST_OWNED = 123
+const COST_FOREIGN = 987_654
+const COST_PLATFORM = 41
+const BUDGET_OWNED = 1_000
+const BUDGET_FOREIGN = 5_000_000
+
 const TOKENS_OWNED = { in: 1_000, out: 500 }
 const TOKENS_FOREIGN = { in: 5_000_000, out: 2_000_000 }
 
@@ -100,6 +107,25 @@ function seedTables() {
       { id: 'r-mine-1', project_id: MINE, created_at: iso(1) },
       { id: 'r-theirs-1', project_id: THEIRS, created_at: iso(1) },
       { id: 'r-theirs-2', project_id: THEIRS, created_at: iso(2) },
+    ],
+    // ── Phase 9N.5: CostIntelligence sources ──────────────────────────────
+    cost_events: [
+      { project_id: MINE, provider: 'anthropic', model: 'm', agent: 'Min Agent', operation: 'op',
+        unit_type: 'tokens', units: 100, tokens_in: 100, tokens_out: 50, cost_sek: COST_OWNED, created_at: inMonth() },
+      { project_id: THEIRS, provider: 'openai', model: 'm', agent: 'SECRET-AGENT', operation: 'SECRET-OP',
+        unit_type: 'tokens', units: 9e6, tokens_in: 9e6, tokens_out: 9e6, cost_sek: COST_FOREIGN, created_at: inMonth() },
+      // `cost_events.project_id` is NULLABLE and the DDL calls NULL
+      // "plattformsglobal". These rows carry no run_id either (verified in
+      // production: 87 of 87 null-project rows have run_id NULL), so there is
+      // nothing to resolve them through and they are DROPPED — the same rule
+      // Phase 9L applied to agent_messages, and the rule the three existing
+      // Atlas call sites already enforce via applyProjectScope.
+      { project_id: null, provider: 'anthropic', model: 'm', agent: 'PLATFORM-AGENT', operation: 'op',
+        unit_type: 'tokens', units: 10, tokens_in: 10, tokens_out: 10, cost_sek: COST_PLATFORM, created_at: inMonth() },
+    ],
+    project_budgets: [
+      { project_id: MINE, monthly_sek: BUDGET_OWNED },
+      { project_id: THEIRS, monthly_sek: BUDGET_FOREIGN },
     ],
   }
 }
@@ -178,10 +204,13 @@ function collect(node: any, out: string[], depth = 0) {
   }
 }
 
+let lastPageTree: any = null
+
 async function renderRevenue() {
   vi.resetModules()
   const mod = await import('@/app/(platform)/revenue/page')
   const el = await mod.default()
+  lastPageTree = el
   const out: string[] = []
   collect(el, out)
   // `text` keeps token boundaries; `tight` re-joins adjacent JSX children so a
@@ -189,11 +218,60 @@ async function renderRevenue() {
   return { text: out.join(' | '), tight: out.join(''), parts: out, seen: CURRENT.seen }
 }
 
+/**
+ * CostIntelligence is a nested async server component. Invoking the page only
+ * CREATES its element — it does not run it — so these helpers find that element
+ * and execute it with the props the page actually handed it. That is what makes
+ * the propagation itself testable: drop the prop and the child either throws or
+ * goes global, and either way these assertions move.
+ */
+function findChild(node: any, name: string, depth = 0): any {
+  if (node == null || depth > 80) return null
+  if (Array.isArray(node)) {
+    for (const c of node) { const hit = findChild(c, name, depth + 1); if (hit) return hit }
+    return null
+  }
+  if (typeof node !== 'object') return null
+  if (typeof node.type === 'function' && node.type.name === name) return node
+  if (node.props) {
+    for (const [k, v] of Object.entries(node.props)) {
+      if (k === 'className' || k === 'style') continue
+      const hit = findChild(v, name, depth + 1); if (hit) return hit
+    }
+  }
+  return null
+}
+
+async function renderCostIntelligence() {
+  const { seen } = await renderRevenue()
+  const el = findChild((await lastPageTree), 'CostIntelligence')
+  expect(el, 'CostIntelligence element not found on the page').toBeTruthy()
+  const rendered = await el.type(el.props)
+  const out: string[] = []
+  collect(rendered, out)
+  return { props: el.props as { allowedProjectIds?: string[] }, text: out.join(' | '), tight: out.join(''), parts: out, seen }
+}
+
+/** The page's own formatter for cost figures (sv-SE, no decimals). */
+const cost = (n: number) =>
+  new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' kr'
+
 const queryFor = (seen: Seen[], table: string) => seen.filter(s => s.table === table)
+/**
+ * `projects` is read up to three times per render, in a fixed order:
+ *   [0] getAllowedProjectIds — the allow-list lookup (eq owner_id)
+ *   [1] the page's own project cards
+ *   [2] CostIntelligence's name lookup — only when the child is executed
+ * Addressing them by position keeps an assertion from silently retargeting.
+ */
+const PROJECTS_ALLOWLIST = 0
+const PROJECTS_PAGE = 1
+const PROJECTS_COST_INTELLIGENCE = 2
+
 /** The data read, i.e. not the allow-list lookup on `projects`. */
 const dataQuery = (seen: Seen[], table: string) => {
   const all = queryFor(seen, table)
-  return table === 'projects' ? all[all.length - 1] : all[0]
+  return table === 'projects' ? all[PROJECTS_PAGE] : all[0]
 }
 const scopeArg = (rec: Seen | undefined, col: string) =>
   rec?.ops.find(([op, c]) => op === 'in' && c === col)?.[2] as string[] | undefined
@@ -353,5 +431,162 @@ describe('9N · revenue — the scope is in the query, ahead of everything else'
     const { seen } = await renderRevenue()
     const lookup = queryFor(seen, 'projects')[0]
     expect(lookup.ops).toContainEqual(['eq', 'owner_id', ME])
+  })
+})
+
+// ═══ Phase 9N.5 · CostIntelligence ═══════════════════════════════════════════
+//
+// CostIntelligence renders INSIDE /revenue, so it sits behind the same
+// authorization boundary. Scoping the page's own metrics while this section
+// still summed every tenant's spend would leave the surface unisolated.
+
+describe('9N.5 · CostIntelligence — the parent allow-list reaches the child', () => {
+  it('the page hands its already-resolved allow-list to the component', async () => {
+    const { props } = await renderCostIntelligence()
+    expect(props.allowedProjectIds).toEqual([MINE])
+  })
+
+  it('its own projects read is scoped too, on the identity column', async () => {
+    // Honest scope of this guard: every key CostIntelligence looks up in this
+    // table already comes from a scoped source (cost_events project ids, and
+    // the budget rows built from them), so on its own it changes no rendered
+    // value. What it does is stop another tenant's project names and colours
+    // being read into the process — and, together with the project_budgets
+    // filter, it is what prevents a foreign budget bar. Neither guard alone
+    // closes that path, which is why both are here.
+    const { seen } = await renderCostIntelligence()
+    expect(scopeArg(queryFor(seen, 'projects')[PROJECTS_COST_INTELLIGENCE], 'id')).toEqual([MINE])
+  })
+
+  it('the component performs no auth of its own — it only reads what it was given', async () => {
+    // Its three queries must all carry the parent's scope; there is no second
+    // ownership model, and no session lookup inside the child.
+    const { seen } = await renderCostIntelligence()
+    expect(scopeArg(dataQuery(seen, 'cost_events'), 'project_id')).toEqual([MINE])
+    expect(scopeArg(queryFor(seen, 'project_budgets')[0], 'project_id')).toEqual([MINE])
+  })
+})
+
+describe('9N.5 · CostIntelligence — foreign spend never reaches a displayed figure', () => {
+  it('the month total is the owned cost, not the global one', async () => {
+    const { text } = await renderCostIntelligence()
+    expect(text).toContain(cost(COST_OWNED))
+    expect(text).not.toContain(cost(COST_FOREIGN))
+    expect(text).not.toContain(cost(COST_OWNED + COST_FOREIGN))
+  })
+
+  it('provider totals and rankings exclude the foreign provider', async () => {
+    const { text } = await renderCostIntelligence()
+    expect(text).not.toContain('OpenAI')
+    expect(text).not.toContain('SECRET-AGENT')
+    expect(text).not.toContain('SECRET-OP')
+  })
+
+  it('the forecast is projected from owned spend only', async () => {
+    // Formula unchanged: (monthSek / dayOfMonth) * daysInMonth.
+    const { text } = await renderCostIntelligence()
+    const now = new Date()
+    const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    expect(text).toContain(cost((COST_OWNED / now.getDate()) * days))
+    expect(text).not.toContain(cost((COST_FOREIGN / now.getDate()) * days))
+  })
+
+  it('the per-project ranking shows only the owned project', async () => {
+    const { text } = await renderCostIntelligence()
+    expect(text).toContain('Mitt Projekt')
+    expect(text).not.toContain('SECRET-PROJECT')
+  })
+
+  it('percentage insights are computed over the owned total', async () => {
+    // "<provider> står för N% …" — with a leak the owned provider's share
+    // collapses from 100% to well under 1%.
+    const { tight } = await renderCostIntelligence()
+    expect(tight).toContain('står för 100%')
+  })
+
+  it('platform-global (null project) cost is dropped, not attributed to the operator', async () => {
+    // `cost_events.project_id` is NULLABLE; the DDL calls NULL
+    // "plattformsglobal". Such a row belongs to no project, and in production
+    // every one of them also has run_id NULL, so nothing can resolve it. It is
+    // excluded rather than added to whichever operator happens to be looking.
+    const { text } = await renderCostIntelligence()
+    expect(text).not.toContain('PLATFORM-AGENT')
+    expect(text).not.toContain(cost(COST_OWNED + COST_PLATFORM))
+  })
+})
+
+describe('9N.5 · CostIntelligence — budgets', () => {
+  it('the budget bar uses the owned budget and its own spend', async () => {
+    const { text, tight } = await renderCostIntelligence()
+    expect(text).toContain(cost(BUDGET_OWNED))
+    expect(text).not.toContain(cost(BUDGET_FOREIGN))
+    // 123 / 1 000 → 12%. A foreign budget or foreign spend would move this.
+    expect(tight).toContain(`${((COST_OWNED / BUDGET_OWNED) * 100).toFixed(0)}% förbrukat`)
+  })
+
+  it('project_budgets is filtered in the query, so a foreign budget is never read', async () => {
+    // Honest scope of this guard: while the `projects` scope holds, a foreign
+    // budget could not reach a bar anyway — budget rows are built by iterating
+    // the (scoped) project list. Filtering here is what stops another tenant's
+    // budget figures being read into this process at all, and it means budget
+    // isolation does not depend on the projects scope staying correct.
+    const { seen } = await renderCostIntelligence()
+    expect(scopeArg(queryFor(seen, 'project_budgets')[0], 'project_id')).toEqual([MINE])
+  })
+})
+
+describe('9N.5 · CostIntelligence — fail closed, never fall back', () => {
+  it('an operator who owns nothing gets the impossible id on every cost query', async () => {
+    CURRENT_USER = { id: 'user-with-nothing' }
+    const { text, seen } = await renderCostIntelligence()
+
+    expect(text).not.toContain('SECRET-PROJECT')
+    expect(text).not.toContain(cost(COST_OWNED))
+    expect(text).not.toContain(cost(COST_FOREIGN))
+
+    // Zeroes must come from an impossible-id query, not a skipped filter.
+    expect(scopeArg(dataQuery(seen, 'cost_events'), 'project_id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(scopeArg(queryFor(seen, 'project_budgets')[0], 'project_id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(scopeArg(queryFor(seen, 'projects')[PROJECTS_COST_INTELLIGENCE], 'id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+  })
+
+  it('there is no first-project fallback — an empty allow-list stays empty', async () => {
+    CURRENT_USER = { id: 'user-with-nothing' }
+    const { text } = await renderCostIntelligence()
+    expect(text).toContain('Inga kostnadshändelser loggade ännu')
+    expect(text).not.toContain('Mitt Projekt')
+  })
+
+  it('the child guarantees fail-closed itself, even if a caller passes []', async () => {
+    // `allowedProjectIds` is the RAW list and scopeProjectFilter is applied
+    // inside the component, so the impossible-id guarantee holds at the point
+    // of use rather than depending on every future caller getting it right.
+    vi.resetModules()
+    CURRENT = fakeDb(seedTables())
+    const mod = await import('@/app/(platform)/revenue/CostIntelligence')
+    const rendered = await mod.CostIntelligence({ allowedProjectIds: [] })
+    const out: string[] = []
+    collect(rendered, out)
+    expect(out.join(' | ')).not.toContain(cost(COST_FOREIGN))
+    expect(scopeArg(dataQuery(CURRENT.seen, 'cost_events'), 'project_id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+  })
+})
+
+describe('9N.5 · CostIntelligence — scope precedes window, ordering and slicing', () => {
+  it('cost_events is scoped before its date window and before the ordering', async () => {
+    // The live stream renders `rows.slice(0, 22)` off this ordering, so a scope
+    // applied after it would let foreign events displace owned ones on screen.
+    const { seen } = await renderCostIntelligence()
+    const ops = dataQuery(seen, 'cost_events')!.ops.map(([op, c]) => `${op}:${c}`)
+    const scope = ops.indexOf('in:project_id')
+    expect(scope).toBeGreaterThan(-1)
+    expect(ops.findIndex(o => o.startsWith('gte:'))).toBeGreaterThan(scope)
+    expect(ops.findIndex(o => o.startsWith('order:'))).toBeGreaterThan(scope)
+  })
+
+  it('the 22-row live stream can only contain owned events', async () => {
+    const { text } = await renderCostIntelligence()
+    expect(text).toContain('Min Agent')
+    expect(text).not.toContain('SECRET-AGENT')
   })
 })

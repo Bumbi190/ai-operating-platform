@@ -546,7 +546,7 @@ export default async function RevenuePage() {
       </OSLayer>
 
       {/* ── KOSTNADER (P0: f.d. /costs) ─────────────────────────────────── */}
-      <CostIntelligence />
+      <CostIntelligence allowedProjectIds={allowedProjectIds} />
 
     </OSPage>
   )

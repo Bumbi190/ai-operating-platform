@@ -40,7 +40,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getManager } from '@/lib/ai/manager'
 import { toCanonicalManagerEvaluationRecord } from '@/lib/ai/memory/stage1-foundation'
-import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prepareDelegation, revokeDelegation, type DelegationWriteResult } from '@/lib/atlas/delegation/principal-write'
 import type { DelegationNarrowing } from '@/lib/atlas/delegation/attenuate'
@@ -391,10 +391,21 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // The two helpers below now REQUIRE the caller's allowed projects. That is
+  // deliberate: scoping them for the Manager page while leaving this route
+  // calling the same helpers unscoped would move the leak rather than close it.
+  const adminDb = createAdminClient()
+  const scopedProjectIds = scopeProjectFilter(await getAllowedProjectIds(adminDb, user.id))
+
   const manager = getManager()
   const [tasks, messages, todaysPlan] = await Promise.allSettled([
-    manager.getActiveTasks(),
-    manager.getRecentMessages(20),
+    manager.getActiveTasks(scopedProjectIds),
+    manager.getRecentMessages(scopedProjectIds, 20),
+    // NOT scoped in this phase. getTodaysPlan reads `agent_messages` filtered to
+    // from_agent='manager' / message_type='daily_plan' — a plan row whose
+    // project dimension has not been established. It is not reachable from the
+    // Manager PAGE, so determining its canonical ownership is left to its own
+    // slice rather than guessed at here. Reported, not silently scoped.
     manager.getTodaysPlan(),
   ])
 

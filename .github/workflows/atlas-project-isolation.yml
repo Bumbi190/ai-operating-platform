@@ -92,6 +92,7 @@ jobs:
             lib/qa/chat-conversation-ownership.test.ts \
             lib/qa/list-surface-isolation.test.ts \
             lib/qa/article-operator-generate-route.test.ts \
+            lib/qa/manager-approvals-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -130,6 +131,9 @@ jobs:
             // runs against a mocked supabase, generator and store, so a foreign
             // request reaching the paid boundary is provable without spending.
             'article-operator-generate-route.test.ts': 29,
+            // Phase 9L — manager + approvals isolation, including the
+            // aggregate-before-compute rule. DB-free.
+            'manager-approvals-isolation.test.ts': 24,
           }
 
           let failed = false

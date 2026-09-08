@@ -11,6 +11,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { WorkflowStep } from '@/lib/supabase/types'
+import { scopeProjectFilter } from '@/lib/atlas/isolation'
 
 export interface RunningAgent {
   runId:        string
@@ -46,15 +47,42 @@ function truncate(s: string | null | undefined, n = 120): string | null {
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + '…'
 }
 
-export async function fetchAgentActivity(admin: SupabaseClient): Promise<AgentActivity> {
+/**
+ * PROJECT ISOLATION.
+ *
+ * `allowedProjectIds` is REQUIRED and comes second so it cannot be defaulted
+ * away: this helper reads through the SERVICE-ROLE client, which bypasses RLS,
+ * and it has exactly one caller — the Agent Activity page — so there is no
+ * global-by-design consumer whose semantics this would break.
+ *
+ * WHY THE SCOPE MUST PRECEDE `.limit()`, not merely filter afterwards.
+ * Both reads take the newest N runs across the whole table. Without a scope
+ * the limit is spent on whoever ran most recently, so an operator does not
+ * just see other people's runs — their OWN runs vanish from a full slice.
+ * Production makes that concrete: 947 runs belong to one project and 53 to
+ * another, and the unscoped `limit(8)` slice is 100% the first project. This
+ * is why post-filtering a global read would be the wrong fix; it would leave
+ * the smaller tenant with an empty page.
+ *
+ * `scopeProjectFilter` substitutes an impossible id for an empty allow-list,
+ * so an operator who owns nothing sees nothing rather than everything.
+ */
+export async function fetchAgentActivity(
+  admin: SupabaseClient,
+  allowedProjectIds: string[],
+): Promise<AgentActivity> {
+  const scopedIds = scopeProjectFilter(allowedProjectIds)
+
   const [runningRes, recentRes] = await Promise.allSettled([
     (admin.from('runs') as any)
       .select('id, status, started_at, project_id, workflows(name, steps), projects(name, color)')
+      .in('project_id', scopedIds)
       .eq('status', 'running')
       .order('started_at', { ascending: false })
       .limit(10),
     (admin.from('runs') as any)
       .select('id, status, started_at, finished_at, created_at, workflows(name), projects(name, color)')
+      .in('project_id', scopedIds)
       .neq('status', 'running')
       .order('created_at', { ascending: false })
       .limit(8),
@@ -70,8 +98,16 @@ export async function fetchAgentActivity(admin: SupabaseClient): Promise<AgentAc
     const steps = ((wf?.steps ?? []) as WorkflowStep[]).slice().sort((a, b) => a.order - b.order)
     const totalSteps = steps.length || 1
 
+    // `run_logs` has no project_id — its only ownership link is the parent run.
+    // `r.id` already came out of the scoped query above, so this fan-out is
+    // owned by derivation; the transitive filter is added anyway so the query
+    // is safe by construction rather than by caller discipline. If a run id
+    // ever reached this helper from somewhere other than the scoped read, this
+    // is the guard that would still hold. `runs!inner` is what makes the filter
+    // drop rows: a plain embed would only null the embedded object.
     const { data: logs } = await (admin.from('run_logs') as any)
-      .select('step_order, step_name, role, content, duration_ms, created_at')
+      .select('step_order, step_name, role, content, duration_ms, created_at, runs!inner(project_id)')
+      .in('runs.project_id', scopedIds)
       .eq('run_id', r.id)
       .order('created_at', { ascending: true })
 

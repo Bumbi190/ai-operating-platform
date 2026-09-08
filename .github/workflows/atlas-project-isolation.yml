@@ -94,6 +94,7 @@ jobs:
             lib/qa/article-operator-generate-route.test.ts \
             lib/qa/manager-approvals-isolation.test.ts \
             lib/qa/revenue-project-isolation.test.ts \
+            lib/qa/agent-activity-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -142,6 +143,12 @@ jobs:
             // here is an aggregate, so the rule under test is
             // scope-before-arithmetic.
             'revenue-project-isolation.test.ts': 32,
+            // Phase 9P — Agent Activity. DB-free: the real page and its
+            // RunningCard are executed against a fake that applies PostgREST
+            // semantics IN CALL ORDER, which is what makes the central claim
+            // testable — a scope after `.limit()` cannot restore rows the
+            // limit already discarded.
+            'agent-activity-isolation.test.ts': 18,
           }
 
           let failed = false

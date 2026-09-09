@@ -97,6 +97,7 @@ jobs:
             lib/qa/agent-activity-isolation.test.ts \
             lib/qa/atlas-pages-isolation.test.ts \
             lib/qa/subpage-api-isolation.test.ts \
+            lib/qa/write-callback-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -166,6 +167,13 @@ jobs:
             // the briefing cron must stay global rather than be narrowed), plus
             // the approvals API list and the run-stream direct-by-id guard.
             'subpage-api-isolation.test.ts': 45,
+            // Phase 9V-1 — the first WRITE-side guard in this gate. DB-free.
+            // The render-status route was the only finding that needed no
+            // credentials at all, so the tests assert the ordering as much as
+            // the filter: an unauthorized caller must cost zero provider calls
+            // and zero writes, and the provider is polled with the STORED
+            // render id, never the one in the request.
+            'write-callback-isolation.test.ts': 14,
           }
 
           let failed = false

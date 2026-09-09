@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -39,6 +40,28 @@ export async function POST(req: NextRequest) {
   const db = createAdminClient()
   const body = await req.json().catch(() => ({}))
   const { project_id, title } = body as { project_id?: string; title?: string }
+
+  // ISOLATION. A conversation is USER-owned — `user_id` is taken from the
+  // session and never from the body — but `project_id` arrived from the request
+  // and was written through the service-role client with no check, so a caller
+  // could tag their conversation with another tenant's project.
+  //
+  // PROJECTLESS IS THE NORMAL CASE, NOT AN EDGE CASE: 90 of 91 live rows carry
+  // no project, and four of the five callers post `{}` or an explicit null. So
+  // omitting the field stays valid and untouched — only a SUPPLIED value is
+  // validated.
+  //
+  // A foreign or nonexistent project is REFUSED rather than quietly rewritten
+  // to null. Silently nulling would be indistinguishable from success to the
+  // caller, and on a surface where almost every row is projectless it would
+  // hide the mistake completely. `assertProjectAllowed` answers false for both
+  // cases, so they return the same 404.
+  if (project_id != null) {
+    const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+    if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+      return NextResponse.json({ error: 'Projekt hittades inte' }, { status: 404 })
+    }
+  }
 
   const { data, error } = await db
     .from('conversations')

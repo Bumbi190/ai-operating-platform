@@ -178,14 +178,22 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 66', () => {
+  it('enforces exactly the expected number of migrations — currently 67', () => {
     // 66: `workflow_manual_privileged_provenance` (65) and Phase 2B-3C's
     // `spend_advisory_overrides` (66) landed in parallel branches, and BOTH bumped
     // this line to 65 independently. The merge conflict is the tripwire working:
     // the count is pinned rather than derived precisely so two concurrent
     // migrations cannot both look reviewed while only one was counted.
+    //
+    // 67: Phase 9Y's `workflow_stories_rls`. The tripwire caught it on the first
+    // full run, which is the point — and there is some irony in where it landed.
+    // This suite exists because three migrations sat in the repo-root directory
+    // that the guard did not scan; Phase 9Y's finding was a table whose creation
+    // migration sat in THIS directory and simply never mentioned row level
+    // security. Two different blind spots, one lesson: a migration corpus is only
+    // as good as what is actually counted.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(66)
+    expect(enforced).toBe(67)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

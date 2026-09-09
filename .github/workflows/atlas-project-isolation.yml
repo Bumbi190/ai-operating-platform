@@ -100,6 +100,7 @@ jobs:
             lib/qa/write-callback-isolation.test.ts \
             lib/qa/media-script-authorization.test.ts \
             lib/qa/pipeline-orchestration-isolation.test.ts \
+            lib/qa/final-production-surface-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -204,6 +205,16 @@ jobs:
             // story outranking the owned one on ORDER BY virality_score DESC
             // LIMIT 1.
             'pipeline-orchestration-isolation.test.ts': 22,
+            // Phase 9V-4 — the last four production surfaces, and they did NOT
+            // share one shape. Two live Settings buttons got project guards
+            // (seed, insights/check); fix-image-agent is a deliberately
+            // platform-wide repair, so it got the machine credential this repo
+            // already uses rather than a guard that would misdescribe it; and
+            // intelligence/graph/operations needed no change at all — the sweep
+            // flagged it only because the scoping lives one level down in
+            // buildOperationsGraph. The last block pins that "already safe"
+            // claim, because an untested claim of safety is one that can rot.
+            'final-production-surface-isolation.test.ts': 21,
           }
 
           let failed = false

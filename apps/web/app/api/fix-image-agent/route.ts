@@ -6,17 +6,35 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function GET() {
-  return POST()
+export async function GET(request: Request) {
+  return POST(request)
 }
 
-export async function POST() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function POST(request: Request) {
+  // MACHINE BOUNDARY. This repair is deliberately platform-wide — it rewrites
+  // EVERY dall-e agent in the database, across all projects — so a project guard
+  // would misdescribe it. A session was the wrong credential: any signed-in user
+  // could rewrite every tenant's image agent, and GET delegates to POST, so a
+  // page load sufficed.
+  //
+  // The credential is the one this repo already uses for unattended surfaces
+  // (`publishing/smoke`, `collectors/social/account`, `media/news/cron`), and it
+  // is never shipped to a browser. Production-disabling by NODE_ENV was the
+  // other candidate and was rejected: the repo has no env-gating convention at
+  // all, and inventing one for a single route is worse than reusing the
+  // established machine principal.
+  //
+  // Nothing in the app calls this route: the dev path is the standalone
+  // `scripts/fix-image-agent.ts`, which talks to Supabase directly and is
+  // unaffected. Live truth at the time of writing: zero dall-e agents remain,
+  // and dall-e-3 was retired 2026-03-04.
+  const authHeader = request.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const db = createAdminClient()
 

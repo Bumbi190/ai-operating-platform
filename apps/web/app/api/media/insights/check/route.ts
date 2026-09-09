@@ -9,6 +9,7 @@
  *   { ok: true,  sample: {...} }                      → insights fungerar
  *   { ok: false, reason: 'permission' | 'no_media', error }  → åtgärd krävs
  */
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -26,8 +27,18 @@ export async function GET() {
   if (!stored) return NextResponse.json({ ok: false, reason: 'no_token', message: 'Inget Instagram-token hittat.' })
 
   const db = createAdminClient()
+
+  // ISOLATION. A live Settings diagnostic (`TokenUpdater.tsx`), so the caller is
+  // an operator — but the probe row was chosen from EVERY tenant's published
+  // scripts and the response echoes `script.hook`, which is content. Scope
+  // precedes `.order()`/`.limit(1)`: with one slot to fill, an unscoped read
+  // lets a newer foreign post take it outright, so filtering afterwards would
+  // not merely be untidy, it would return the wrong row every time.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
   const { data: script } = await (db.from('media_scripts') as any)
     .select('id, instagram_media_id, hook')
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
     .eq('status', 'published')
     .not('instagram_media_id', 'is', null)
     .order('published_at', { ascending: false })

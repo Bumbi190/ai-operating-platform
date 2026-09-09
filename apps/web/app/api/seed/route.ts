@@ -10,6 +10,7 @@
  * någonstans i kodbasen.
  */
 
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -26,10 +27,24 @@ export async function POST() {
 
   const db = createAdminClient()
 
-  // ── Hämta första projektet (Familje-Stunden) ──────────────────────────────
+  // ISOLATION. This is a LIVE operator surface, not dev-only tooling: the button
+  // lives in Settings (`SeedButton.tsx`). It reached every project in the
+  // database through the service-role client, picked one by name — falling back
+  // to `projects[0]` across ALL tenants — and then inserted/updated agents and
+  // workflows into it. A session was the only thing required, and GET delegates
+  // to POST, so a plain page load was enough to write into another tenant.
+  //
+  // The read is now bounded by the caller's own projects. The name match and the
+  // `?? projects[0]` selection below are kept exactly as they were: they now
+  // choose among projects the caller already owns, which is a preference, not an
+  // authority fallback. An operator who owns nothing gets IMPOSSIBLE_PROJECT_ID,
+  // zero rows, and the existing 400 — fail closed, no writes.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
   const { data: projects } = await db
     .from('projects')
     .select('id, name')
+    .in('id', scopeProjectFilter(allowedProjectIds))
     .order('created_at', { ascending: true })
 
   if (!projects || projects.length === 0) {

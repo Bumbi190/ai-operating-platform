@@ -35,7 +35,7 @@ import { isNavIntent } from '@/lib/atlas/nav-intent'
 import { isActionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
-import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter, scopeToProjects } from '@/lib/atlas/isolation'
 import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
@@ -1106,9 +1106,24 @@ async function executeTool(
   }
 
   if (name === 'list_workflows') {
-    const { data: workflows } = await db
-      .from('workflows')
-      .select('id, name, description, steps, projects(name, slug)')
+    // ISOLATION. `db` is the service-role client, so it bypasses RLS — this read
+    // returned EVERY project's workflows, and the formatter below hands their
+    // names, descriptions, project names and input-variable structure straight
+    // back to whoever is chatting. The scope was simply missing: its siblings
+    // already guard (`trigger_workflow`, `get_run_status`, `ask_manager`,
+    // `save_workflow`), and `allowedProjectIds` has been a parameter of this
+    // function all along.
+    //
+    // `workflows.project_id` is NOT NULL, so the row is its own authority: a
+    // direct filter, no relation walk. It precedes `.order()` so foreign rows are
+    // never in the set being ordered — there is no LIMIT here today, but scoping
+    // first is what keeps that true if one is ever added.
+    const { data: workflows } = await scopeToProjects(
+      db
+        .from('workflows')
+        .select('id, name, description, steps, projects(name, slug)'),
+      allowedProjectIds,
+    )
       .order('created_at', { ascending: false })
 
     return (workflows ?? []).map((w) => {

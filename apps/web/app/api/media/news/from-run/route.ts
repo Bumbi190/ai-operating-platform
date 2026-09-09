@@ -5,8 +5,12 @@
  * to parse the JSON output and save it as a structured media_news_items row.
  *
  * Body: { run_id: string, project_id: string }
+ *   run_id     — SELECTOR. Authority is the run's own project_id.
+ *   project_id — NOT authority. Required (unchanged), but validated against the
+ *                server-proven run rather than trusted.
  * The run must have context.news_json set by the News Hunter agent.
  */
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
@@ -27,13 +31,45 @@ export async function POST(request: Request) {
 
   const db = createAdminClient()
 
+  // ISOLATION. Two separate things were wrong here, and they need two guards.
+  //
+  // 1. The run was fetched by id alone through the service-role client, so any
+  //    signed-in operator could read ANY tenant's run — and this route does not
+  //    merely read it, it parses `run.context.news_json` and persists that
+  //    content. `runs.project_id` is NOT NULL in production, so the run row is
+  //    its own authority: no join, no nullable-ownership policy needed.
+  //    Selection and authorization are the SAME query, so a foreign run and a
+  //    missing one are indistinguishable and the check cannot drift out of order.
+  //
+  // 2. `project_id` arrived in the request body and was written straight into
+  //    media_news_items. A selector is not a permission and a caller-supplied
+  //    foreign key is not attribution: the body value is now VALIDATED against
+  //    the server-proven run, and the row is written from the run either way.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
   const { data: run } = await db
     .from('runs')
     .select('id, status, context, project_id')
     .eq('id', run_id)
-    .single()
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
 
   if (!run) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+
+  // Caller integrity. Reaching this line means the run is already authorized, so
+  // this is NOT a tenant boundary and deliberately uses a different status: 404
+  // means "no such run for you", 400 means "your body contradicts a run you own".
+  // The response never echoes the run's real project_id — a caller who guessed
+  // wrong learns only that they guessed wrong.
+  //
+  // Rejecting rather than repairing is the point. Silently substituting
+  // run.project_id would let a caller believe it wrote somewhere it did not.
+  if (project_id !== run.project_id) {
+    return NextResponse.json(
+      { error: 'project_id does not match the run' },
+      { status: 400 },
+    )
+  }
   if (run.status !== 'done') {
     return NextResponse.json({ error: `Run is not done yet (status: ${run.status})` }, { status: 400 })
   }
@@ -56,8 +92,11 @@ export async function POST(request: Request) {
   const { data: newsItem, error } = await db
     .from('media_news_items')
     .insert({
-      project_id,
-      run_id,
+      // Server-proven, not the body value — even though they were just checked
+      // to be equal. The validated request is a precondition; the run is the
+      // source of truth, and only one of those two survives a future refactor.
+      project_id: run.project_id,
+      run_id: run.id,
       title: parsed.title,
       summary: parsed.summary,
       key_insight: parsed.key_insight,

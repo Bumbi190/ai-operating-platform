@@ -12,6 +12,7 @@
  *   5. Return { renderId, bucketName }
  */
 
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -40,15 +41,33 @@ export async function POST(request: Request) {
   // ── Load script ──────────────────────────────────────────────────────────────
   // Note: newer columns (composition, background_music_url, instagram_*) are excluded here
   // to maintain compatibility with older DB schemas that may not have them yet.
+  // ISOLATION. The script id is a SELECTOR, not a permission: it arrives from the
+  // caller and this lookup runs through the service-role client, so nothing about
+  // the id proves the caller may act on it. The row's `project_id` was already
+  // being read here — it was simply never checked against the caller's projects.
+  //
+  // NOTE ON governed spend: `projectScope({ projectId })` below is BILLING
+  // attribution, not authorization. `lib/cost/governed-spend.ts` contains no
+  // session check and no allow-list, and it attributes to a fixed platform slug.
+  // A reader who sees `withGovernedSpend` and assumes the route is guarded would
+  // be wrong; this is the guard.
+  //
+  // Selection and authorization are the SAME query, so a foreign script and a
+  // missing one are indistinguishable, and the check cannot drift out of order.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
     .select('id, project_id, hook, audio_url, timing_url, duration_ms, images, video_status')
     .eq('id', scriptId)
-    .single()
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
 
   if (scriptError || !script) {
+    // The message is fixed on purpose: echoing the DB error back would let a
+    // caller tell "not yours" apart from "does not exist".
     console.error('[render/start] script lookup failed:', scriptError?.message)
-    return NextResponse.json({ error: scriptError?.message ?? 'Script not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
   if (!script.audio_url || !script.timing_url) {
     return NextResponse.json({ error: 'Voice not ready yet' }, { status: 400 })

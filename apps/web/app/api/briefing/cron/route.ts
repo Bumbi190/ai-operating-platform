@@ -32,7 +32,10 @@ export async function GET(request: Request) {
     .order('created_at', { ascending: true })
   const projects = (projectsRaw ?? []) as Project[]
 
-  const businesses = await fetchBusinessSnapshots(db, projects)
+  // Global BY DESIGN: this job is Bearer-CRON_SECRET authenticated, reads every
+  // project above, and emails one platform-wide briefing. The authority is
+  // stated explicitly so it can never be confused with an operator request.
+  const businesses = await fetchBusinessSnapshots(db, projects, { kind: 'machine-global' })
   const hero = await fetchHeroSummary(db, projects, businesses)
 
   const [pubCountRes, insCountRes] = await Promise.all([

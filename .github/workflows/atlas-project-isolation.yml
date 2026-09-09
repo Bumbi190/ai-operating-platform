@@ -103,6 +103,7 @@ jobs:
             lib/qa/final-production-surface-isolation.test.ts \
             lib/qa/breaking-dual-authority-isolation.test.ts \
             lib/qa/chat-operator-capability.test.ts \
+            lib/qa/chat-workflow-read-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -233,6 +234,13 @@ jobs:
             // SECOND account on purpose — production has one user today, so a suite
             // that leaned on that would be testing the deployment, not the code.
             'chat-operator-capability.test.ts': 18,
+            // Phase 9X.2 — the chat tool READ that the operator phase deliberately
+            // left alone. list_workflows read every tenant's workflows through the
+            // service-role client; the scope was simply missing while every sibling
+            // already guarded. Mixed-tenant fixture with the FOREIGN rows newer, so
+            // ordering alone would surface them first, and both accounts asserted so
+            // isolation is proven in both directions rather than from one seat.
+            'chat-workflow-read-isolation.test.ts': 14,
           }
 
           let failed = false

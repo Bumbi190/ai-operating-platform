@@ -102,6 +102,7 @@ jobs:
             lib/qa/pipeline-orchestration-isolation.test.ts \
             lib/qa/final-production-surface-isolation.test.ts \
             lib/qa/breaking-dual-authority-isolation.test.ts \
+            lib/qa/chat-operator-capability.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -224,6 +225,14 @@ jobs:
             // sub-requests and the Instagram/Facebook/YouTube publishes had
             // already happened.
             'breaking-dual-authority-isolation.test.ts': 21,
+            // Phase 9X — the operator capability boundary in Atlas chat. A session
+            // proves identity, never platform authority, and owning a project
+            // proves neither: run_media_step leaves the caller's projects entirely
+            // and spends and publishes on the PLATFORM's accounts. These drive the
+            // real POST handler and the real tool dispatch, and they simulate a
+            // SECOND account on purpose — production has one user today, so a suite
+            // that leaned on that would be testing the deployment, not the code.
+            'chat-operator-capability.test.ts': 18,
           }
 
           let failed = false

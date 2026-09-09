@@ -99,6 +99,7 @@ jobs:
             lib/qa/subpage-api-isolation.test.ts \
             lib/qa/write-callback-isolation.test.ts \
             lib/qa/media-script-authorization.test.ts \
+            lib/qa/pipeline-orchestration-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -194,6 +195,15 @@ jobs:
             // routes all pass projectScope() into governed spend, which is
             // BILLING attribution and was never authorization.
             'media-script-authorization.test.ts': 39,
+            // Phase 9V-3c — the three SSE orchestrators. DB-free, with every
+            // paid provider and external source instrumented, because on these
+            // routes a LATE guard still looks like a rejection to the caller
+            // while the spend has already happened. Denial must cost exactly
+            // zero provider calls and zero writes, which is what the counters
+            // assert. Includes the pipeline/daily displacement case: a foreign
+            // story outranking the owned one on ORDER BY virality_score DESC
+            // LIMIT 1.
+            'pipeline-orchestration-isolation.test.ts': 22,
           }
 
           let failed = false

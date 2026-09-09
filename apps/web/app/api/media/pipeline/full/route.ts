@@ -23,6 +23,7 @@
  *   data: {"step":"error","message":"..."}
  */
 
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
@@ -182,6 +183,26 @@ export async function POST(request: Request) {
   const isLite = mode !== 'full'
 
   const db = createAdminClient()
+  // ISOLATION. `project_id` arrives in the request body and is the canonical
+  // selector for EVERYTHING this route does — every read, every provider call,
+  // every write and every storage path derive from it. A selector is not a
+  // permission, so it is validated against the caller's allow-list HERE, at the
+  // entry point, before anything else runs.
+  //
+  // One guard is enough only because it dominates the whole handler: every
+  // helper below receives `project_id` as a parameter rather than resolving a
+  // project of its own, so none of them can fan out to another tenant. The 7 provider calls,
+  // 11 write sites and both mode branches all sit inside the SSE stream, which is
+  // only constructed after this returns.
+  //
+  // NOTE ON governed spend: `projectScope({ projectId })` is BILLING attribution,
+  // not authorization. `lib/cost/governed-spend.ts` has no session check and no
+  // allow-list; it attributes to a fixed platform slug. This is the guard.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+    return new Response('Project not found', { status: 404 })
+  }
+
   const claude = getAnthropic({
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'OPERATOR_EXECUTION', scope: projectScope({ projectId: project_id }) }, agent: 'Pipeline', operation: 'Full Pipeline',
   })

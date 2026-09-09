@@ -22,6 +22,7 @@
  *   { step: 'error',      message: '...' }
  */
 
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -55,6 +56,26 @@ export async function POST(request: Request) {
   if (!project_id) return new Response('project_id required', { status: 400 })
 
   const db = createAdminClient()
+  // ISOLATION. `project_id` arrives in the request body and is the canonical
+  // selector for EVERYTHING this route does — every read, every provider call,
+  // every write and every storage path derive from it. A selector is not a
+  // permission, so it is validated against the caller's allow-list HERE, at the
+  // entry point, before anything else runs.
+  //
+  // One guard is enough only because it dominates the whole handler: every
+  // helper below receives `project_id` as a parameter rather than resolving a
+  // project of its own, so none of them can fan out to another tenant. `deduplicateAgainstDB`
+  // reads media_news_items for the passed project only, and the auto_save insert
+  // files the row under that same project — both were reachable for a project
+  // the caller does not own.
+  //
+  // NOTE ON governed spend: `projectScope({ projectId })` is BILLING attribution,
+  // not authorization. `lib/cost/governed-spend.ts` has no session check and no
+  // allow-list; it attributes to a fixed platform slug. This is the guard.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  if (!assertProjectAllowed(project_id, allowedProjectIds)) {
+    return new Response('Project not found', { status: 404 })
+  }
 
   const stream = new ReadableStream({
     async start(controller) {

@@ -83,9 +83,35 @@ export async function POST(req: NextRequest) {
   }
 
   const db = createAdminClient()
+
+  // ISOLATION: `run_id` arrives in the request body and the insert runs through
+  // the service-role client, so the id proves nothing on its own. Without this
+  // guard any authenticated user could attach an approval to ANOTHER tenant's
+  // run — and because `approvals.project_id` is nullable and ownership resolves
+  // through the run (Phase 9L), the row would then surface in that tenant's
+  // approval queue rather than merely carrying a wrong label.
+  //
+  // The run lookup IS the ownership proof: selection and authorization happen in
+  // one query, so a foreign run and a nonexistent one produce the same 404 and
+  // the endpoint cannot be used to probe which run ids exist. The insert then
+  // uses the server-proven `run.id`, never the body value that was checked, so
+  // the two cannot drift apart.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+  const { data: runRow } = await db
+    .from('runs')
+    .select('id')
+    .eq('id', run_id)
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
+
+  const ownedRun = runRow as { id: string } | null
+  if (!ownedRun) {
+    return NextResponse.json({ error: 'Körning hittades inte' }, { status: 404 })
+  }
+
   const { data, error } = await db
     .from('approvals')
-    .insert({ run_id, output_key, content, status: 'pending' })
+    .insert({ run_id: ownedRun.id, output_key, content, status: 'pending' })
     .select()
     .single()
 

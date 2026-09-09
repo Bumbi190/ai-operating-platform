@@ -63,6 +63,10 @@ function fakeDb(tables: Record<string, any[]>) {
     const q: any = {
       select: () => q,
       update: (patch: any) => { rec.ops.push(['update', table, patch]); rec.updates.push(patch); return q },
+      insert: (row: any) => { rec.ops.push(['insert', table, row]); return q },
+      order: () => q,
+      limit: () => q,
+      single: async () => ({ data: rows[0] ?? { id: 'new-row' }, error: null }),
       eq: (c: string, v: unknown) => { rec.ops.push(['eq', c, v]); rows = rows.filter(r => get(r, c) === v); return q },
       in: (c: string, v: unknown[]) => { rec.ops.push(['in', c, v]); rows = rows.filter(r => v.includes(get(r, c) as never)); return q },
       maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
@@ -102,6 +106,14 @@ async function call(scriptId: string | null, renderId = 'render-attacker-supplie
 }
 
 const updatesFor = (seen: Seen[]) => seen.flatMap(s => s.updates)
+const find = (seen: Seen[], t: string, ...must: string[]) =>
+  seen.filter(s => s.table === t).find(r => {
+    const o = r.ops.map(([op, c]) => `${op}:${c}`)
+    return must.every(m => o.includes(m))
+  })
+/** The `.in()` value on ONE recorded query (the 9V-1 `scopeArg` scans all of them). */
+const scopeIn = (rec: Seen | undefined, col: string) =>
+  rec?.ops.find(([op, c]) => op === 'in' && c === col)?.[2] as string[] | undefined
 const scopeArg = (seen: Seen[]) =>
   seen.flatMap(s => s.ops).find(([op, c]) => op === 'in' && c === 'project_id')?.[2] as string[] | undefined
 
@@ -227,5 +239,203 @@ describe('9V-1 · render status — fail closed', () => {
   it('the lookup is scoped in the query, not filtered afterwards', async () => {
     await call('ms-mine')
     expect(scopeArg(CURRENT.seen)).toEqual([MINE])
+  })
+})
+
+// ═══ Phase 9V-2 · foreign-key attribution ════════════════════════════════════
+//
+// Two POST methods accepted a client-supplied foreign key as attribution with
+// session auth only. Same shape, different severity, and the tests keep that
+// distinction rather than flattening it:
+//
+//   POST /api/approvals      — the row lands in ANOTHER tenant's approval queue,
+//     because approvals.project_id is nullable and ownership resolves through
+//     the run (Phase 9L). Higher severity.
+//   POST /api/conversations  — the row stays user_id-owned, so the creator is
+//     still the only reader; what leaks is a false project label. Lower
+//     severity, still a definite integrity bug.
+//
+// The conversations policy came from the database, not from inference: 90 of 91
+// live rows are projectless and four of five callers post `{}` or an explicit
+// null, so omitting the field had to stay valid. Only a SUPPLIED value is
+// validated, and a foreign one is REFUSED rather than rewritten to null —
+// silently nulling would look identical to success on a surface where almost
+// every row is projectless.
+
+const OWNED_RUN = 'run-mine'
+const FOREIGN_RUN = 'run-theirs'
+
+function seedAttribution() {
+  return {
+    projects: [
+      { id: MINE, owner_id: ME },
+      { id: THEIRS, owner_id: 'user-other' },
+    ],
+    runs: [
+      { id: OWNED_RUN, project_id: MINE },
+      { id: FOREIGN_RUN, project_id: THEIRS },
+    ],
+    approvals: [],
+    conversations: [],
+  }
+}
+
+/** The routes take NextRequest and read `.json()`; give them that shape. */
+function jsonReq(url: string, body: unknown) {
+  const req: any = new Request(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  req.nextUrl = new URL(url)
+  return req as never
+}
+
+const inserts = (seen: Seen[], table: string) =>
+  seen.filter(s => s.table === table).flatMap(s => s.ops).filter(([op]) => op === 'insert').map(o => o[2])
+
+describe('9V-2 · approvals POST — a body run_id is not a permission', () => {
+  const post = async (body: unknown) => {
+    vi.resetModules()
+    const { POST } = await import('@/app/api/approvals/route')
+    return POST(jsonReq('https://x.test/api/approvals', body))
+  }
+  beforeEach(() => { CURRENT = fakeDb(seedAttribution()) })
+
+  it('an owned run inserts the approval', async () => {
+    const res = await post({ run_id: OWNED_RUN, output_key: 'k', content: 'c' })
+    expect(res.status).toBe(201)
+    const rows = inserts(CURRENT.seen, 'approvals')
+    expect(rows).toHaveLength(1)
+    expect((rows[0] as any).run_id).toBe(OWNED_RUN)
+    expect((rows[0] as any).status).toBe('pending')
+  })
+
+  it('a FOREIGN run inserts nothing', async () => {
+    const res = await post({ run_id: FOREIGN_RUN, output_key: 'k', content: 'SECRET' })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'approvals')).toHaveLength(0)
+  })
+
+  it('a missing run inserts nothing', async () => {
+    const res = await post({ run_id: 'run-nope', output_key: 'k', content: 'c' })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'approvals')).toHaveLength(0)
+  })
+
+  it('foreign and missing are indistinguishable', async () => {
+    const foreign = await post({ run_id: FOREIGN_RUN, output_key: 'k', content: 'c' })
+    const missing = await post({ run_id: 'run-nope', output_key: 'k', content: 'c' })
+    expect(foreign.status).toBe(missing.status)
+    expect(await foreign.json()).toEqual(await missing.json())
+  })
+
+  it('the run lookup carries the allow-list, and the insert uses the proven id', async () => {
+    await post({ run_id: OWNED_RUN, output_key: 'k', content: 'c' })
+    const lookup = find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id')
+    expect(lookup, 'run lookup not scoped').toBeTruthy()
+    expect(scopeIn(lookup, 'project_id')).toEqual([MINE])
+  })
+
+  it('a client-supplied project_id cannot become authority', async () => {
+    const res = await post({ run_id: FOREIGN_RUN, output_key: 'k', content: 'c', project_id: THEIRS })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'approvals')).toHaveLength(0)
+  })
+
+  it('an operator who owns nothing inserts nothing', async () => {
+    CURRENT_USER = { id: 'nobody' }
+    const res = await post({ run_id: OWNED_RUN, output_key: 'k', content: 'c' })
+    expect(res.status).toBe(404)
+    expect(scopeIn(find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id'), 'project_id'))
+      .toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(inserts(CURRENT.seen, 'approvals')).toHaveLength(0)
+  })
+
+  it('an unauthenticated request never reaches a query', async () => {
+    CURRENT_USER = null
+    const res = await post({ run_id: OWNED_RUN, output_key: 'k', content: 'c' })
+    expect(res.status).toBe(401)
+    expect(CURRENT.seen).toHaveLength(0)
+  })
+})
+
+describe('9V-2 · conversations POST — a supplied project must be owned', () => {
+  const post = async (body: unknown) => {
+    vi.resetModules()
+    const { POST } = await import('@/app/api/conversations/route')
+    return POST(jsonReq('https://x.test/api/conversations', body))
+  }
+  beforeEach(() => { CURRENT = fakeDb(seedAttribution()) })
+
+  it('an omitted project_id still creates a projectless conversation', async () => {
+    // 90 of 91 live rows and four of five callers do exactly this.
+    const res = await post({})
+    expect(res.status).toBe(201)
+    const rows = inserts(CURRENT.seen, 'conversations')
+    expect(rows).toHaveLength(1)
+    expect((rows[0] as any).project_id).toBeNull()
+    expect((rows[0] as any).user_id).toBe(ME)
+  })
+
+  it('an explicit null project_id behaves the same', async () => {
+    const res = await post({ project_id: null, title: 'Ny' })
+    expect(res.status).toBe(201)
+    expect((inserts(CURRENT.seen, 'conversations')[0] as any).project_id).toBeNull()
+  })
+
+  it('an owned project_id is accepted and persisted', async () => {
+    const res = await post({ project_id: MINE })
+    expect(res.status).toBe(201)
+    expect((inserts(CURRENT.seen, 'conversations')[0] as any).project_id).toBe(MINE)
+  })
+
+  it('a FOREIGN project_id is refused — and NOT rewritten to null', async () => {
+    // Rewriting would look identical to success to the caller.
+    const res = await post({ project_id: THEIRS })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'conversations')).toHaveLength(0)
+  })
+
+  it('a nonexistent project_id is refused', async () => {
+    const res = await post({ project_id: '99999999-9999-9999-9999-999999999999' })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'conversations')).toHaveLength(0)
+  })
+
+  it('foreign and nonexistent are indistinguishable', async () => {
+    const foreign = await post({ project_id: THEIRS })
+    const missing = await post({ project_id: '99999999-9999-9999-9999-999999999999' })
+    expect(foreign.status).toBe(missing.status)
+    expect(await foreign.json()).toEqual(await missing.json())
+  })
+
+  it('user_id is always the session user, never the body', async () => {
+    const res = await post({ user_id: 'user-other', title: 'spoof' })
+    expect(res.status).toBe(201)
+    expect((inserts(CURRENT.seen, 'conversations')[0] as any).user_id).toBe(ME)
+  })
+
+  it('an operator who owns nothing cannot attach any project', async () => {
+    CURRENT_USER = { id: 'nobody' }
+    const res = await post({ project_id: MINE })
+    expect(res.status).toBe(404)
+    expect(inserts(CURRENT.seen, 'conversations')).toHaveLength(0)
+  })
+
+  it('an operator who owns nothing may still create a projectless conversation', async () => {
+    // Projectless creation needs no project authority, so it must not become
+    // collateral damage of the new guard.
+    CURRENT_USER = { id: 'nobody' }
+    const res = await post({})
+    expect(res.status).toBe(201)
+    expect((inserts(CURRENT.seen, 'conversations')[0] as any).project_id).toBeNull()
+  })
+
+  it('an unauthenticated request never reaches a query', async () => {
+    CURRENT_USER = null
+    const res = await post({ project_id: MINE })
+    expect(res.status).toBe(401)
+    expect(CURRENT.seen).toHaveLength(0)
   })
 })

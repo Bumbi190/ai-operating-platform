@@ -101,6 +101,7 @@ jobs:
             lib/qa/media-script-authorization.test.ts \
             lib/qa/pipeline-orchestration-isolation.test.ts \
             lib/qa/final-production-surface-isolation.test.ts \
+            lib/qa/breaking-dual-authority-isolation.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -215,6 +216,14 @@ jobs:
             // buildOperationsGraph. The last block pins that "already safe"
             // claim, because an untested claim of safety is one that can rot.
             'final-production-surface-isolation.test.ts': 21,
+            // Phase 9W — the one finding the closure audit turned up. The route
+            // is DUAL-MODE and the two principals must not merge: cron keeps its
+            // platform-global reach, a session is bounded by its allow-list. The
+            // counters carry the weight, because a late guard would still look
+            // like a rejection while the spend, the writes, the cron-authenticated
+            // sub-requests and the Instagram/Facebook/YouTube publishes had
+            // already happened.
+            'breaking-dual-authority-isolation.test.ts': 21,
           }
 
           let failed = false

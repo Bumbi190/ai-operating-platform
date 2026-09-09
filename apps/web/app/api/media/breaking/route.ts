@@ -10,9 +10,14 @@
  * Flöde (återanvänder den testade pipelinen via ?scriptId): analysera → manus →
  * spara approved+breaking → step2 (röst+bild) → step3 (render) → poll step4 → publish → youtube.
  *
- * Auth: inloggad operatör ELLER Bearer {CRON_SECRET}.
+ * Auth: DUAL-MODE.
+ *   Bearer {CRON_SECRET} — unattended, platform-global (default project slug).
+ *   inloggad operatör    — project-scoped: body.project_id must be in the
+ *                          caller's allow-list before ANY read, spend, write,
+ *                          chained cron sub-request or publish.
  */
 import { NextResponse } from 'next/server'
+import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Anthropic } from '@anthropic-ai/sdk'
@@ -42,12 +47,13 @@ export async function POST(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
   const viaCron = !!cronSecret && authHeader === `Bearer ${cronSecret}`
-  let authed = viaCron
-  if (!authed) {
+  let sessionUser: { id: string } | null = null
+  if (!viaCron) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    authed = !!user
+    sessionUser = user ?? null
   }
+  const authed = viaCron || !!sessionUser
   if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // DUAL-MODE. The context follows the branch that ACTUALLY authenticated, not
@@ -61,12 +67,44 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { project_id?: string; url?: string; text?: string }
   const db = createAdminClient()
+
+  // ISOLATION — the two principals get two authorities, and they must not merge.
+  //
+  // `viaCron` is unattended platform work: it keeps the global authority it has
+  // always had, including the DEFAULT_PROJECT_SLUG fallback below. Nothing about
+  // the machine branch changes here.
+  //
+  // A SESSION is different. `body.project_id` is a selector the caller types, and
+  // it was previously handed straight to a service-role project lookup with no
+  // ownership check — so any signed-in operator could name another tenant's
+  // project and drive Anthropic, ElevenLabs, Ideogram and Lambda spend, write
+  // media_news_items and media_scripts into that project, and publish to its
+  // Instagram, Facebook and YouTube. The guard sits HERE, above the project
+  // lookup, because everything downstream — every read, every provider call,
+  // every write, and the cron-authenticated sub-requests at the end — descends
+  // from that one lookup.
+  //
+  // The sole browser caller (BreakingButton.tsx) always sends project_id, so the
+  // session branch REQUIRES it rather than inheriting the machine default: a
+  // silent fallback to the platform project would be a fallback to authority the
+  // caller has not proven.
+  if (!viaCron) {
+    const allowedProjectIds = await getAllowedProjectIds(db, sessionUser!.id)
+    if (!assertProjectAllowed(body.project_id, allowedProjectIds)) {
+      // One answer for foreign, unknown and omitted — a caller learns nothing
+      // about whose project an id is, and no project metadata is returned.
+      return NextResponse.json({ error: 'Projekt saknas' }, { status: 404 })
+    }
+  }
+
   const claude = getAnthropic({
     project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Breaking News', operation: 'Breaking News',
   })
   const steps: Record<string, unknown> = {}
 
   // ── Projekt ─────────────────────────────────────────────────────────────────
+  // Session requests reached here only with an authorized `body.project_id`; the
+  // slug fallback is therefore machine-only in practice.
   let projectQuery = db.from('projects').select('id, slug')
   projectQuery = body.project_id ? projectQuery.eq('id', body.project_id) : projectQuery.eq('slug', DEFAULT_PROJECT_SLUG)
   const { data: project } = await projectQuery.limit(1).single()

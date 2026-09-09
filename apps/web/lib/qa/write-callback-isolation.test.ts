@@ -439,3 +439,160 @@ describe('9V-2 · conversations POST — a supplied project must be owned', () =
     expect(CURRENT.seen).toHaveLength(0)
   })
 })
+
+// ═══ Phase 9V-3b · run-rooted news creation ══════════════════════════════════
+//
+// POST /api/media/news/from-run had BOTH defects this suite covers, in one
+// handler. It fetched the run by id alone through the service-role client, so
+// any signed-in operator could reach another tenant's run — and it does not
+// merely read that run, it parses `run.context.news_json` and PERSISTS the
+// content. Then it wrote `project_id` straight from the request body, so the
+// resulting row could be filed under any project the caller cared to name.
+//
+// The two defects need two guards, and the tests keep them apart: a foreign or
+// missing run is a TENANT boundary (404, indistinguishable), while an owned run
+// plus a contradicting body is CALLER INTEGRITY (400) — by the time that check
+// runs, the caller has already been proven entitled to the run, so collapsing
+// the two would throw away the distinction rather than protect anything.
+//
+// The nullable-ownership policy from Phase 9L is deliberately NOT copied here.
+// Live schema truth: `runs.project_id` is NOT NULL (and `media_news_items.
+// project_id` likewise), so the run row is its own authority — no join, no
+// resolve-through-parent, no drop rule. All 99 live run-linked news rows
+// already agree with their run's project, so the invariant breaks nothing.
+
+const RUN_DONE = 'run-mine-done'
+const RUN_FOREIGN_DONE = 'run-theirs-done'
+const NEWS_JSON = JSON.stringify({
+  title: 'T', summary: 'S', key_insight: 'K',
+  target_audience: 'A', content_angle: 'C', virality_score: 7,
+})
+
+function seedFromRun() {
+  return {
+    projects: [
+      { id: MINE, owner_id: ME },
+      { id: THEIRS, owner_id: 'user-other' },
+    ],
+    runs: [
+      { id: RUN_DONE, project_id: MINE, status: 'done', context: { news_json: NEWS_JSON } },
+      { id: RUN_FOREIGN_DONE, project_id: THEIRS, status: 'done', context: { news_json: NEWS_JSON } },
+    ],
+    media_news_items: [],
+  }
+}
+
+describe('9V-3b · news from-run — the run is the authority, the body is not', () => {
+  const post = async (body: unknown) => {
+    vi.resetModules()
+    const { POST } = await import('@/app/api/media/news/from-run/route')
+    return POST(jsonReq('https://x.test/api/media/news/from-run', body))
+  }
+  const news = () => inserts(CURRENT.seen, 'media_news_items')
+  beforeEach(() => { CURRENT = fakeDb(seedFromRun()) })
+
+  // ── owned ──────────────────────────────────────────────────────────────────
+  it('an owned run with a matching project_id is accepted', async () => {
+    const res = await post({ run_id: RUN_DONE, project_id: MINE })
+    expect(res.status).toBe(201)
+    expect(news()).toHaveLength(1)
+  })
+
+  it('the persisted project_id comes from the run row', async () => {
+    await post({ run_id: RUN_DONE, project_id: MINE })
+    expect((news()[0] as any).project_id).toBe(MINE)
+    expect((news()[0] as any).run_id).toBe(RUN_DONE)
+  })
+
+  it('the run lookup is scoped to the caller allow-list, in the SAME query as the selector', async () => {
+    await post({ run_id: RUN_DONE, project_id: MINE })
+    const rec = find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id')
+    expect(rec, 'the run was not selected and authorized by one query').toBeDefined()
+    expect(scopeIn(rec, 'project_id')).toEqual([MINE])
+  })
+
+  // ── foreign / missing: a tenant boundary ───────────────────────────────────
+  it('a foreign run is refused and writes nothing', async () => {
+    const res = await post({ run_id: RUN_FOREIGN_DONE, project_id: THEIRS })
+    expect(res.status).toBe(404)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('a foreign run is refused even when the body names a project the caller DOES own', async () => {
+    // The interesting attack: read another tenant's run context and file the
+    // result under your own project. The run guard, not the body, stops it.
+    const res = await post({ run_id: RUN_FOREIGN_DONE, project_id: MINE })
+    expect(res.status).toBe(404)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('a missing run is refused and writes nothing', async () => {
+    const res = await post({ run_id: 'run-does-not-exist', project_id: MINE })
+    expect(res.status).toBe(404)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('foreign and missing are indistinguishable', async () => {
+    const foreign = await post({ run_id: RUN_FOREIGN_DONE, project_id: MINE })
+    const missing = await post({ run_id: 'run-does-not-exist', project_id: MINE })
+    expect(foreign.status).toBe(missing.status)
+    expect(await foreign.json()).toEqual(await missing.json())
+  })
+
+  // ── mismatch: caller integrity, deliberately a different status ────────────
+  it('an owned run with a FOREIGN body project_id is rejected, not repaired', async () => {
+    const res = await post({ run_id: RUN_DONE, project_id: THEIRS })
+    expect(res.status).toBe(400)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('an owned run with an unrelated body project_id is rejected', async () => {
+    const res = await post({ run_id: RUN_DONE, project_id: '99999999-9999-9999-9999-999999999999' })
+    expect(res.status).toBe(400)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('the mismatch rejection never echoes the run real project_id', async () => {
+    const res = await post({ run_id: RUN_DONE, project_id: THEIRS })
+    expect(JSON.stringify(await res.json())).not.toContain(MINE)
+  })
+
+  it('mismatch is NOT collapsed into the tenant boundary', async () => {
+    // 404 means "no such run for you"; 400 means "your body contradicts a run
+    // you own". The caller is already entitled to the run by this point.
+    const mismatch = await post({ run_id: RUN_DONE, project_id: THEIRS })
+    const foreign  = await post({ run_id: RUN_FOREIGN_DONE, project_id: THEIRS })
+    expect(mismatch.status).toBe(400)
+    expect(foreign.status).toBe(404)
+    expect(mismatch.status).not.toBe(foreign.status)
+  })
+
+  // ── empty scope ────────────────────────────────────────────────────────────
+  it('an operator who owns nothing authorizes no run at all', async () => {
+    CURRENT_USER = { id: 'nobody' }
+    const res = await post({ run_id: RUN_DONE, project_id: MINE })
+    expect(res.status).toBe(404)
+    expect(news()).toHaveLength(0)
+  })
+
+  it('an empty allow-list scopes to the impossible id, never to nothing', async () => {
+    CURRENT_USER = { id: 'nobody' }
+    await post({ run_id: RUN_DONE, project_id: MINE })
+    const rec = find(CURRENT.seen, 'runs', 'eq:id', 'in:project_id')
+    expect(scopeIn(rec, 'project_id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+  })
+
+  // ── ordering + unauthenticated ─────────────────────────────────────────────
+  it('no write happens before the run is authorized', async () => {
+    await post({ run_id: RUN_FOREIGN_DONE, project_id: THEIRS })
+    const tables = CURRENT.seen.filter(s => s.ops.some(([op]) => op === 'insert')).map(s => s.table)
+    expect(tables).toEqual([])
+  })
+
+  it('an unauthenticated request never reaches a query', async () => {
+    CURRENT_USER = null
+    const res = await post({ run_id: RUN_DONE, project_id: MINE })
+    expect(res.status).toBe(401)
+    expect(CURRENT.seen).toHaveLength(0)
+  })
+})

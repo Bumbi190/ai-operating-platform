@@ -36,6 +36,7 @@ import { isActionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
@@ -1171,6 +1172,31 @@ async function executeTool(
   }
 
   if (name === 'run_media_step') {
+    // OPERATOR CAPABILITY. This is the one chat tool that leaves the caller's own
+    // projects entirely: it dispatches to the platform media pipeline with
+    // `Bearer ${CRON_SECRET}`, which spends (Anthropic, ElevenLabs, Ideogram,
+    // Lambda) and can publish to the platform's Instagram, Facebook and YouTube.
+    //
+    // A session proves identity, not platform authority, and owning a project
+    // proves neither — `allowedProjectIds` bounds this route's READ context and
+    // says nothing about who may operate the platform. So the gate is a distinct
+    // capability, resolved server-side from the verified session email through the
+    // helper the repo already uses for global stop authority. Nothing a caller or
+    // the model can put in a tool argument reaches it, and an unset allow-list
+    // authorises nobody.
+    //
+    // It sits FIRST, above the confirm_publish branch: confirmation is the user
+    // agreeing to a public post, which is a different question from whether they
+    // are allowed to post at all. Both are required, in that order.
+    const operator = await resolvePlatformOperator()
+    if (!operator.ok) {
+      return {
+        error: 'Plattformsglobala mediasteg kräver operatörsbehörighet.',
+        denied: 'platform_operator_required',
+        reason: operator.reason,
+      }
+    }
+
     const { step, confirm_publish } = input as { step: string; confirm_publish?: boolean }
     const cfg = MEDIA_STEPS[step]
     if (!cfg) return { error: `Okänt media-steg: ${step}` }

@@ -13,6 +13,7 @@
  * Returns the updated script row.
  */
 
+import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -109,13 +110,32 @@ export async function POST(
   const db = createAdminClient()
 
   // Load current script + linked news item
-  const { data: script, error: scriptErr } = await db
+  // ISOLATION. The script id is a SELECTOR, not a permission: it arrives from the
+  // caller and this lookup runs through the service-role client, so nothing about
+  // the id proves the caller may act on it. The row's `project_id` was already
+  // being read here — it was simply never checked against the caller's projects.
+  //
+  // NOTE ON governed spend: `projectScope({ projectId })` below is BILLING
+  // attribution, not authorization. `lib/cost/governed-spend.ts` contains no
+  // session check and no allow-list, and it attributes to a fixed platform slug.
+  // A reader who sees `withGovernedSpend` and assumes the route is guarded would
+  // be wrong; this is the guard.
+  //
+  // Selection and authorization are the SAME query, so a foreign script and a
+  // missing one are indistinguishable, and the check cannot drift out of order.
+  // This route has TWO independent side-effect branches (`what === 'script'` and
+  // `what === 'image'`), and both read from this one row, so a single guard here
+  // dominates both. There is no later branch that re-resolves the script.
+  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
+
+  const { data: script, error: scriptError } = await db
     .from('media_scripts')
     .select('*, media_news_items(title, summary, key_insight, content_angle, virality_score)')
     .eq('id', id)
-    .single()
+    .in('project_id', scopeProjectFilter(allowedProjectIds))
+    .maybeSingle()
 
-  if (scriptErr || !script) {
+  if (scriptError || !script) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
 

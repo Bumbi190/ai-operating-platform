@@ -98,6 +98,7 @@ jobs:
             lib/qa/atlas-pages-isolation.test.ts \
             lib/qa/subpage-api-isolation.test.ts \
             lib/qa/write-callback-isolation.test.ts \
+            lib/qa/media-script-authorization.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -178,6 +179,14 @@ jobs:
             // PROJECTLESS creation stays valid — 90 of 91 live rows have no
             // project — and that a foreign project is refused, never nulled.
             'write-callback-isolation.test.ts': 32,
+            // Phase 9V-3a — the five script-rooted media routes. DB-free, with
+            // every paid provider and outbound publisher instrumented, because
+            // the claim is about ORDERING as much as filtering: a denied request
+            // must cost zero ElevenLabs / Ideogram / Anthropic / Lambda calls and
+            // zero Instagram posts, not merely return 404 after paying. These
+            // routes all pass projectScope() into governed spend, which is
+            // BILLING attribution and was never authorization.
+            'media-script-authorization.test.ts': 39,
           }
 
           let failed = false

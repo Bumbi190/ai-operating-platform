@@ -1,0 +1,731 @@
+{
+  "_meta": {
+    "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
+    "captured_from": "production project iboepohjwrhtgshrqaol",
+    "captured_at": "2026-09-09",
+    "total_tables": 70,
+    "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
+    "regenerate": "Introspect pg_class.relrowsecurity, pg_policies and information_schema.role_table_grants for schema 'public' and rewrite this file. lib/qa/schema-security-invariant.test.ts defines the exact contract each entry must satisfy.",
+    "classes": {
+      "SERVER_ONLY": "Service-role only. anon and authenticated hold NO grants at all. RLS must be enabled.",
+      "TENANT_RLS": "Reached by user-bound clients under an owner-rooted policy. Default Supabase grants remain and are inert because RLS gates every row. RLS must be enabled and at least one policy must exist.",
+      "INTERNAL_DENY_ALL": "RLS enabled with zero policies: default-deny for anon and authenticated. Grants remain but reach nothing. Safe; revoking them too would be belt-and-braces.",
+      "INTENTIONALLY_PUBLIC": "Deliberately reachable without a session. Requires an explicit reviewed entry and may hold SELECT only, never DML. NONE exist today \u2014 the class is declared so a future one is a deliberate, reviewed act rather than a silent default."
+    },
+    "limitations": [
+      "This is a point-in-time capture. A change made directly in the Supabase dashboard after capture is not detected until the file is regenerated.",
+      "It records grants and RLS state, not policy semantics: a policy that is present but wrongly written is out of scope here and is covered by the route-level isolation suites.",
+      "The paired migration-text rule in the invariant is forward-looking only; it governs tables created from now on.",
+      "The migration-text rule accepts a table whose RLS was enabled out-of-band ONLY when the registry records it in _meta.out_of_band_rls. A table with RLS declared nowhere and absent from the registry fails both halves."
+    ],
+    "out_of_band_rls": {
+      "tables": [
+        "dream_issues"
+      ],
+      "meaning": "These tables are created by a repo migration that never declares row level security, yet the live catalog shows RLS enabled \u2014 it was turned on outside the migration corpus (Supabase advisor or dashboard). The database is safe; the REPO is not self-describing for them. Recorded explicitly so the divergence is reviewed rather than invisible. Phase 9Y deliberately does NOT alter these tables: doing so would widen a focused security slice into unrelated schema.",
+      "followup": "Declare RLS for these tables in a migration so the repo states what the database does."
+    }
+  },
+  "tables": {
+    "account_snapshots": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "agent_messages": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "agents": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "approvals": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "asset_provenance": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "assets": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_actions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "atlas_authorizations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_decision_ledger": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_delegation_ledger": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_entities": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_intelligence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_mission_ledger": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_signals": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "bug_reports": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "bugscan_findings": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "bugscan_runs": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "campaign_briefs": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "campaign_plans": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "campaigns": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "collector_runs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "comment_replies": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "content_feedback": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "conversation_messages": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "conversations": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "cost_events": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "cost_rates": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "cron_heartbeat": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "daily_notes": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "draft_posts": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "dream_issues": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": false,
+      "created_by_migration": true
+    },
+    "evaluations": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "guard_reports": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "infra_costs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "leads": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "manager_tasks": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "media_insights": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "media_job_reconciliations": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "media_jobs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "media_news_items": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "media_scripts": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "memories": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "morning_briefings": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "opportunities": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "outputs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "planning_items": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "platform_config": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "platform_memory": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "platform_tokens": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "project_api_credentials": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "project_budgets": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "project_scanners": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "projects": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "revenue_events": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "revenue_snapshots": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "run_logs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "runs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "spend_advisory_overrides": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "spend_reservations": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sprints": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    },
+    "stop_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "token_health": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_content": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_action_reconciliations": {
+      "class": "INTERNAL_DENY_ALL",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_defs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_instances": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_stories": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_transitions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflows": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": true,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": null,
+      "created_by_migration": false
+    }
+  }
+}

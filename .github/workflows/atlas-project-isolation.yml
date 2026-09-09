@@ -104,6 +104,7 @@ jobs:
             lib/qa/breaking-dual-authority-isolation.test.ts \
             lib/qa/chat-operator-capability.test.ts \
             lib/qa/chat-workflow-read-isolation.test.ts \
+            lib/qa/schema-security-invariant.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -241,6 +242,17 @@ jobs:
             // ordering alone would surface them first, and both accounts asserted so
             // isolation is proven in both directions rather than from one seat.
             'chat-workflow-read-isolation.test.ts': 14,
+            // Phase 9Y — the schema layer. Every phase from 9J to 9X.2 audited
+            // ROUTE code and every one was clean; the exposure that blocked
+            // closure was a TABLE. workflow_stories was created with no row
+            // level security, so Supabase's default anon/authenticated grants —
+            // inert on all 69 siblings because RLS gates them — were live on
+            // that one. No route reads it, so no route audit could ever have
+            // seen it. This suite audits effective catalog state against a
+            // classification registry AND requires any migration that creates a
+            // public table to enable RLS on it, which is the half that would
+            // have caught it on the day it was written.
+            'schema-security-invariant.test.ts': 21,
           }
 
           let failed = false

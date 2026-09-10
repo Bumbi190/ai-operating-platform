@@ -36,6 +36,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { evaluatePolicy, isBlocking, lex, type Allowlist, type Pol, type Registry } from './migration-security-gate'
 
 function findPsql(): string | null {
   const candidates = [
@@ -136,6 +137,8 @@ let dsn = ''
 let applied: string[] = []
 let failures: { file: string; err: string }[] = []
 let tables: { name: string; rls: boolean; anonDml: boolean; authDml: boolean }[] = []
+let views: { name: string; invoker: boolean; anonSelect: boolean; authSelect: boolean }[] = []
+let policies: Pol[] = []
 
 const d = AVAILABLE ? describe : describe.skip
 
@@ -200,6 +203,29 @@ beforeAll(() => {
       rls: r[1] === 't' || r[1] === 'true',
       anonDml: r[2] === 't' || r[2] === 'true',
       authDml: r[3] === 't' || r[3] === 'true',
+    }))
+
+  // Phase 9AA: tables alone are not the boundary. A view runs as its owner unless
+  // it is security_invoker, and a policy can be on, mention auth.uid(), and still
+  // admit everyone through one OR branch.
+  const b = (v: string) => v === 't' || v === 'true'
+  views = query(dsn, `
+    select c.relname, (coalesce(array_to_string(c.reloptions, ','), '') ~ 'security_invoker=(true|on|1|yes)')::text,
+      has_table_privilege('anon', c.oid, 'SELECT')::text, has_table_privilege('authenticated', c.oid, 'SELECT')::text
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('v', 'm') order by 1;`)
+    .map(r => ({ name: r[0], invoker: b(r[1]), anonSelect: b(r[2]), authSelect: b(r[3]) }))
+  // Policy expressions come back multi-line and may contain `|`, so read them as
+  // one JSON value rather than through the row/field splitter above.
+  const raw = execFileSync(PSQL!, ['-X', '-q', '-t', '-A', '-d', dsn, '-c',
+    `select coalesce(jsonb_agg(jsonb_build_object('t', tablename, 'n', policyname, 'c', lower(cmd), 'r', roles,
+       'p', permissive, 'u', qual, 'w', with_check) order by tablename, policyname), '[]'::jsonb)::text
+     from pg_policies where schemaname = 'public'`],
+    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120_000 }).trim()
+  policies = (JSON.parse(raw) as { t: string; n: string; c: string; r: string[]; p: string; u: string | null; w: string | null }[])
+    .map(r => ({
+      table: `public.${r.t}`, name: r.n, cmd: r.c as Pol['cmd'], roles: r.r, explicitRoles: true,
+      permissive: r.p === 'PERMISSIVE', using: r.u ? lex(r.u) : null, check: r.w ? lex(r.w) : null,
     }))
 }, 600_000)
 
@@ -309,5 +335,49 @@ d('Phase 9Z — a rebuild from repo SQL is as safe as production', () => {
       + `  ordering/dependency cascades (${other.length}): ${other.map(f => f.file).join(', ') || '—'}\n`
       + '  None left a security gap — proven by the assertion above, not by this list.',
     )
+  })
+})
+
+/**
+ * Phase 9AA — table security was never the whole of it.
+ *
+ * The 9AA survey found `agent_scorecards`, a view created by the same migration as
+ * agent_decisions: it ran as its owner over agents, runs and run_logs, and
+ * Supabase's default privileges handed it to anon. Production never had it; a
+ * rebuild did, and there anon read every tenant through it. This suite compared
+ * tables only, so it could not see that. It now judges views and policy semantics
+ * too, with the same analyzer the migration gate uses.
+ */
+d('Phase 9AA — a rebuild is as safe as production for views and policy semantics too', () => {
+  const REGISTRY = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/isolation/schema-security.json'), 'utf8')) as Registry
+  const ALLOW = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/isolation/migration-security-allowlist.json'), 'utf8')) as Allowlist
+
+  it('NO client-readable public view runs as its owner — the agent_scorecards class', () => {
+    const bypass = views.filter(v => (v.anonSelect || v.authSelect) && !v.invoker).map(v => v.name)
+    expect(bypass, 'a view bypasses base-table RLS for a client role').toEqual([])
+  })
+
+  it('agent_scorecards — the Phase 9AA subject — comes up security_invoker and unreachable by clients', () => {
+    const v = views.find(x => x.name === 'agent_scorecards')
+    expect(v, 'the creating migration no longer applies here — the subject vanished').toBeDefined()
+    expect(v!.invoker).toBe(true)
+    expect(v!.anonSelect).toBe(false)
+    expect(v!.authSelect).toBe(false)
+  })
+
+  it('NO policy reachable by anon or PUBLIC carries a caller-independent branch', () => {
+    expect(policies.length, 'no policies read back — the check would be vacuous').toBeGreaterThan(20)
+    const risky = policies.flatMap(pol => evaluatePolicy(REGISTRY, pol)
+      .filter(r => r.rule === 'PUBLIC_POLICY_CALLER_INDEPENDENT' || r.rule === 'PUBLIC_POLICY_WRITE_EXTENSION')
+      .map(r => `${pol.table}.${pol.name}: ${r.rule} (${r.detail})`))
+    expect(risky).toEqual([])
+  })
+
+  it('every other blocking policy verdict in the rebuild is one the allowlist reviewed as current', () => {
+    const current = new Set(ALLOW.exceptions.filter(e => e.status === 'CURRENT_INTENTIONAL').map(e => `${e.table}|${e.policy}|${e.rule}`))
+    const unreviewed = policies.flatMap(pol => evaluatePolicy(REGISTRY, pol)
+      .filter(r => isBlocking(r.rule) && !current.has(`${pol.table}|${pol.name}|${r.rule}`))
+      .map(r => `${pol.table}.${pol.name}: ${r.rule}`))
+    expect(unreviewed).toEqual([])
   })
 })

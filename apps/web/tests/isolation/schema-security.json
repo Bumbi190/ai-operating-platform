@@ -30,9 +30,16 @@
         "memory_refs"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
-      "requirement": "Every entry must have RLS declared in the migration corpus."
+      "requirement": "Every entry must have RLS declared in the migration corpus.",
+      "classes": {
+        "agent_decisions": "SERVER_ONLY",
+        "ai_cost_snapshots": "SERVER_ONLY",
+        "memory_refs": "SERVER_ONLY"
+      },
+      "classes_note": "Phase 9AA. The migration security gate needs a class for every table a migration touches. These three are not live, so they cannot be introspected; Phase 9AB made all three server-only (policies dropped, client grants revoked) and no application code reads them, so SERVER_ONLY is their intended class."
     },
-    "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked."
+    "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked.",
+    "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production."
   },
   "tables": {
     "account_snapshots": {
@@ -734,6 +741,19 @@
       "service_role": true,
       "rls_declared_in_migration": null,
       "created_by_migration": false
+    }
+  },
+  "views": {
+    "agent_scorecards": {
+      "class": "SERVER_ONLY",
+      "live": false,
+      "security_invoker": true,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "created_by": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "secured_by": "apps/web/supabase/migrations/20260910150000_agent_scorecards_view_isolation.sql",
+      "note": "Reads agents, runs and run_logs. No application caller: lib/os/scoring.ts builds scorecards from the base tables directly."
     }
   }
 }

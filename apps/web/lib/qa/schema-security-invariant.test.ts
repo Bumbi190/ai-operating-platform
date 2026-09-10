@@ -407,3 +407,78 @@ describe('Phase 9Z — declarative RLS parity', () => {
     expect(outOfBand, 'an out-of-band RLS exception survived its declarative fix').toEqual([])
   })
 })
+
+/**
+ * Phase 9AB — the cost-ledger policy fix, held in CI.
+ *
+ * The behavioural proof lives in `cost-ledger-rls-isolation-sql.test.ts`, which
+ * needs Postgres and therefore skips in CI. Without this block the only thing
+ * standing between a reverted fix and production would be a suite that never
+ * runs on a pull request. This is NOT the Phase 9AA migration-security gate —
+ * it pins this one change; the general detector for the class is 9AA's job.
+ */
+describe('Phase 9AB — cost-ledger RLS isolation', () => {
+  const FILE = resolve(process.cwd(), 'supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql')
+  const RAW = existsSync(FILE) ? readFileSync(FILE, 'utf8') : ''
+  const EXEC = RAW.split('\n').filter(l => !l.trim().startsWith('--')).join('\n').toLowerCase()
+
+  const POLICIES: [string, string][] = [
+    ['cost_events', 'cost_events_owner'],
+    ['infra_costs', 'infra_costs_owner'],
+    ['agent_decisions', 'decisions readable by project owner'],
+    ['memory_refs', 'memory_refs readable through decision'],
+    ['ai_cost_snapshots', 'cost_snap_owner'],
+  ]
+
+  it('the migration exists', () => { expect(existsSync(FILE)).toBe(true) })
+
+  for (const [table, policy] of POLICIES) {
+    it(`drops the caller-independent policy on ${table}`, () => {
+      expect(EXEC).toContain(`drop policy if exists "${policy}" on public.${table}`)
+    })
+    it(`revokes anon and authenticated on ${table}, and keeps service_role`, () => {
+      expect(EXEC).toMatch(new RegExp(`revoke\\s+all\\s+on\\s+public\\.${table}\\s+from\\s+anon,\\s*authenticated`))
+      expect(EXEC).toMatch(new RegExp(`grant\\s+all\\s+on\\s+public\\.${table}\\s+to\\s+service_role`))
+    })
+  }
+
+  it('does not merely retarget the policy to authenticated — the branch itself goes', () => {
+    expect(EXEC).not.toMatch(/create\s+policy/)
+    expect(EXEC).not.toMatch(/alter\s+policy/)
+    expect(EXEC).not.toMatch(/\bto\s+authenticated\b/)
+  })
+
+  it('is policy-and-privilege only: no data operation, no RLS disable, no schema change', () => {
+    for (const bad of ['disable row level security', 'insert into', 'update public', 'delete from',
+      'truncate', 'drop table', 'alter column', 'add constraint', 'drop constraint', 'create trigger']) {
+      expect(EXEC.includes(bad), `migration contains ${bad}`).toBe(false)
+    }
+  })
+
+  it('grants nothing to anon or authenticated — revoke-only toward the client roles', () => {
+    // A bare grant here would be inert while RLS has no policy, but it would move
+    // these tables from SERVER_ONLY back toward reachable, silently. Pinned so the
+    // one migration that established the boundary cannot quietly undo half of it.
+    expect(EXEC).not.toMatch(/grant[^;]*\bto\s+(anon|authenticated|public)\b/)
+  })
+
+  it('touches no table outside the five', () => {
+    const touched = new Set([...EXEC.matchAll(/public\.([a-z_0-9]+)/g)].map(m => m[1]))
+    expect([...touched].sort()).toEqual(POLICIES.map(p => p[0]).sort())
+  })
+
+  it('guards the three fresh-deploy-only tables on existence, so it applies to production', () => {
+    for (const t of ['agent_decisions', 'memory_refs', 'ai_cost_snapshots']) {
+      expect(EXEC).toContain(`to_regclass('public.${t}') is not null`)
+    }
+  })
+
+  it('the registry records cost_events and infra_costs as SERVER_ONLY — enforced by the rules above', () => {
+    for (const t of ['cost_events', 'infra_costs']) {
+      expect(REGISTRY.tables[t].class, t).toBe('SERVER_ONLY')
+      expect(REGISTRY.tables[t].anon_grants, t).toBe(false)
+      expect(REGISTRY.tables[t].authenticated_grants, t).toBe(false)
+      expect(REGISTRY.tables[t].policies, t).toBe(0)
+    }
+  })
+})

@@ -256,7 +256,10 @@ jobs:
             // requires a `public.` prefix (the Phase 9Y version missed 21 tables,
             // two of which were real declarative-RLS gaps), plus direct tests for
             // every CREATE form the corpus uses and for the parity migration.
-            'schema-security-invariant.test.ts': 43,
+            // Phase 9AB pins the cost-ledger policy fix here too. Its behavioural
+            // proof needs Postgres and skips in CI, so without these the only guard
+            // against a reverted fix would be a suite that never runs on a PR.
+            'schema-security-invariant.test.ts': 60,
           }
 
           let failed = false

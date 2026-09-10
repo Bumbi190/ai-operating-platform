@@ -10,6 +10,12 @@
  *      - After 3 failures: sends alert email via Brevo
  *   2. Creates Instagram media container → saves instagram_creation_id
  *
+ * Destination (Phase 9AC, closure audit #6 A6-3): the container is a write to
+ * the PLATFORM's Instagram account, so only the platform social project's
+ * scripts get one. The scheduled pass selects only those; a named ?scriptId
+ * (the breaking chain) is still render-polled for its own project, but is
+ * checked before any container is made.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -22,6 +28,7 @@ import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
+import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -66,7 +73,8 @@ export async function GET(request: Request) {
       timing_url,
       duration_ms,
       images,
-      media_news_items ( url, source_name )
+      media_news_items ( url, source_name ),
+      projects!inner ( slug )
     `)
     .eq('status', 'approved')
     .is('published_at', null)
@@ -80,6 +88,11 @@ export async function GET(request: Request) {
     query = query
       .in('video_status', ['rendering', 'ready'])
       .gte('generated_at', cutoff)
+      // DESTINATION (Phase 9AC, A6-3): the scheduled pass exists to prepare the
+      // platform's own post, so it picks only the platform social project's
+      // scripts — a newer tenant video can neither get a platform container nor
+      // crowd the platform's own script out of this one-row slot.
+      .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
   }
 
   const { data: script } = await query.single()
@@ -231,6 +244,23 @@ export async function GET(request: Request) {
 
   if (!videoUrl) {
     return NextResponse.json({ status: 'no_video_url', scriptId: script.id })
+  }
+
+  // ── DESTINATION AUTHORITY (Phase 9AC · closure audit #6, A6-3) ─────────────
+  // A container is a write to the PLATFORM's Instagram account. The render above
+  // served the script's own project (a named ?scriptId from the breaking chain
+  // may belong to any owner); this step serves the platform, so it runs only for
+  // the platform social project's scripts. Decided in the query, before any Meta
+  // call.
+  const { data: destination } = await db
+    .from('media_scripts')
+    .select('id, projects!inner ( slug )')
+    .eq('id', script.id)
+    .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
+    .maybeSingle()
+  if (!destination) {
+    log(`Script ${script.id} is not the platform social project's — rendered, no platform container`)
+    return NextResponse.json({ status: 'not_platform_destination', scriptId: script.id })
   }
 
   // ── Step 2: Create Instagram container ───────────────────────────────────────

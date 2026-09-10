@@ -15,6 +15,11 @@
  *   inloggad operatör    — project-scoped: body.project_id must be in the
  *                          caller's allow-list before ANY read, spend, write,
  *                          chained cron sub-request or publish.
+ *
+ * Destination (Phase 9AC, closure audit #6 A6-3): the last two hops post to the
+ * PLATFORM's Instagram, Facebook and YouTube. A session reaches them only as the
+ * platform operator; a project owner's video is made and rendered in their own
+ * project and stops there.
  */
 import { NextResponse } from 'next/server'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
@@ -31,6 +36,7 @@ import { toJson } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300   // hela kedjan inkl. render-poll
@@ -96,6 +102,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Projekt saknas' }, { status: 404 })
     }
   }
+
+  // ── DESTINATION AUTHORITY (Phase 9AC · closure audit #6, A6-3) ────────────
+  // Everything up to the render belongs to the project the caller owns. The last
+  // two hops do not: cron/publish and cron/youtube post to the PLATFORM's
+  // Instagram, Facebook and YouTube accounts, and they run as the machine
+  // principal (`Bearer ${CRON_SECRET}`). Without this, a project owner's request
+  // BECAME the platform publisher at exactly the point where it reached a
+  // platform-owned destination. Ownership authorises the content, not those
+  // accounts (9X; 9J). Decided here, from the principal that actually
+  // authenticated and before any spend: the unattended machine branch keeps its
+  // platform authority; a session must be the platform operator.
+  const mayPublishToPlatform = viaCron || (await resolvePlatformOperator()).ok
 
   const claude = getAnthropic({
     project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Breaking News', operation: 'Breaking News',
@@ -196,7 +214,17 @@ export async function POST(request: Request) {
     }
     steps.renderReady = ready
 
-    if (ready) {
+    if (!mayPublishToPlatform) {
+      // A project owner's video, made and rendered in their own project. The
+      // platform's accounts are not theirs to post to, and no machine hop is
+      // entered on their behalf.
+      steps.publish = { skipped: 'platform_operator_required' }
+      steps.youtube = { skipped: 'platform_operator_required' }
+      steps.note = 'Videon skapas i projektet. Publicering till plattformens kanaler kräver operatörsbehörighet.'
+    } else if (ready) {
+      // `?scriptId` binds each hop to the script this request just wrote:
+      // cron/publish and cron/youtube select by it, so the chain posts THIS
+      // video, never some older ready one that happens to head the queue.
       steps.publish = await callStep('/api/media/cron/publish')   // IG + FB
       steps.youtube = await callStep('/api/media/cron/youtube')   // YouTube
     } else {

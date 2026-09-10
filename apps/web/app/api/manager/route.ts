@@ -3,7 +3,8 @@
  * Central dispatcher for all Manager Agent actions.
  *
  * Actions:
- *   daily_plan   — generate (or refresh) today's operational plan
+ *   daily_plan   — generate (or refresh) today's operational plan. Platform-
+ *                  level: platform operator AND whole-portfolio authority only.
  *   chat         — ask the manager a question
  *   evaluate     — evaluate a pending approval
  *   plan_tasks   — break a goal into manager_tasks
@@ -49,6 +50,11 @@ import type { ProposedChange } from '@/lib/atlas/delegation/classify'
 import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
 import type { WorkPackageWriteResult } from '@/lib/atlas/workpackage/principal-write'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import {
+  resolvePlatformPortfolioAuthority,
+  type PlatformPortfolioAuthority,
+  type PlatformPortfolioDenial,
+} from '@/lib/auth/portfolio-authority'
 
 /**
  * Map a Work Package boundary status to HTTP without inventing detail.
@@ -107,6 +113,18 @@ function delegationResponse(result: DelegationWriteResult): NextResponse {
   return NextResponse.json(body, { status: code })
 }
 
+/**
+ * One answer for every platform-authority denial. The reason is logged, not
+ * returned: a caller must not learn the platform's authorization posture
+ * (who is configured, whether the portfolio has other owners) from a refusal.
+ */
+function platformAuthorityDenied(reason: PlatformPortfolioDenial | 'not_resolved'): NextResponse {
+  console.warn(`[/api/manager] platform authority denied: ${reason}`)
+  if (reason === 'unauthenticated') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return NextResponse.json(
+    { error: 'Forbidden', denied: 'platform_authority_required' }, { status: 403 })
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -114,6 +132,23 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { action } = body as { action: string }
+
+  // ── PLATFORM AUTHORITY (Phase 9AC · closure audit #6, A6-1) ─────────────────
+  // The daily plan is platform-level. Its context is every project's runs,
+  // failures, approvals, agents and tasks; it is paid for on the platform's
+  // budget; and it is cached as the platform's plan. A session proves identity,
+  // and owning a project proves authority over THAT project, not over the
+  // platform. So it takes the platform operator's whole-portfolio authority (the
+  // Executive Brief's rule), resolved HERE: before the Manager, the service-role
+  // client, any context read, the model and the cache exist. `project_id` is
+  // read only after this, so naming one can narrow a plan, never widen who may
+  // ask for it.
+  let platformAuthority: PlatformPortfolioAuthority | null = null
+  if (action === 'daily_plan') {
+    const authority = await resolvePlatformPortfolioAuthority()
+    if (!authority.ok) return platformAuthorityDenied(authority.reason)
+    platformAuthority = authority
+  }
 
   const manager = getManager()
 
@@ -128,11 +163,17 @@ export async function POST(req: NextRequest) {
       // ── Generate / refresh daily plan ──────────────────────────────────────
       case 'daily_plan': {
         const { project_id, force } = body as { project_id?: string; force?: boolean }
-        // A specified project must be owned; unspecified stays global (cron/owner use).
+        // Resolved above, before anything privileged; kept here so this case
+        // cannot run without it even if the dispatcher is ever reordered.
+        if (!platformAuthority) return platformAuthorityDenied('not_resolved')
+        // A specified project must exist among the caller's projects (a
+        // portfolio principal owns them all). It narrows the plan to that
+        // project; the unspecified plan is the platform-wide one.
         if (project_id && !assertProjectAllowed(project_id, allowedProjectIds)) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 })
         }
         const plan = await manager.generateDailyPlan(
+          platformAuthority,
           // A plan FOR a project is that project's work; a plan with no project
           // is platform-level. Both cases are real, so the scope is conditional
           // rather than defaulted.
@@ -397,16 +438,18 @@ export async function GET(req: NextRequest) {
   const adminDb = createAdminClient()
   const scopedProjectIds = scopeProjectFilter(await getAllowedProjectIds(adminDb, user.id))
 
+  // Today's cached plan is the PLATFORM plan: the artifact the daily_plan action
+  // generates from every project (Phase 9AC, A6-1). Reading it takes the same
+  // authority, resolved before the read, so an ordinary session is never handed
+  // it and the plan cache is not even queried on their behalf. Their own tasks
+  // and messages below are unaffected.
+  const platformAuthority = await resolvePlatformPortfolioAuthority()
+
   const manager = getManager()
   const [tasks, messages, todaysPlan] = await Promise.allSettled([
     manager.getActiveTasks(scopedProjectIds),
     manager.getRecentMessages(scopedProjectIds, 20),
-    // NOT scoped in this phase. getTodaysPlan reads `agent_messages` filtered to
-    // from_agent='manager' / message_type='daily_plan' — a plan row whose
-    // project dimension has not been established. It is not reachable from the
-    // Manager PAGE, so determining its canonical ownership is left to its own
-    // slice rather than guessed at here. Reported, not silently scoped.
-    manager.getTodaysPlan(),
+    platformAuthority.ok ? manager.getTodaysPlan(platformAuthority) : Promise.resolve(null),
   ])
 
   return NextResponse.json({

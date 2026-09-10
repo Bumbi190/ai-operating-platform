@@ -32,7 +32,7 @@
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus."
     },
-    "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare."
+    "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked."
   },
   "tables": {
     "account_snapshots": {
@@ -286,11 +286,11 @@
       "created_by_migration": false
     },
     "cost_events": {
-      "class": "TENANT_RLS",
+      "class": "SERVER_ONLY",
       "rls": true,
-      "policies": 1,
-      "anon_grants": true,
-      "authenticated_grants": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true
@@ -366,11 +366,11 @@
       "created_by_migration": true
     },
     "infra_costs": {
-      "class": "TENANT_RLS",
+      "class": "SERVER_ONLY",
       "rls": true,
-      "policies": 1,
-      "anon_grants": true,
-      "authenticated_grants": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true

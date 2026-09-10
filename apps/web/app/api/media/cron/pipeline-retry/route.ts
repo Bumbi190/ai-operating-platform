@@ -19,6 +19,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPipelineAlert } from '@/lib/media/alert'
+import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -132,10 +133,15 @@ export async function GET(request: Request) {
   }
 
   // ── 2c. BREAKING: publicera ready newsjacking-videos OMEDELBART (ej 08/18-slot) ─
+  // DESTINATION (Phase 9AC, closure audit #6 A6-3): these hops post to the
+  // PLATFORM's own accounts, so only the platform social project's breaking
+  // videos are due here. Another tenant's breaking video is theirs to render
+  // (9W), not the platform's to post.
   const { data: breakingDue } = await db.from('media_scripts')
-    .select('id')
+    .select('id, projects!inner ( slug )')
     .eq('breaking', true).eq('video_status', 'ready').eq('status', 'approved')
     .is('published_at', null)
+    .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
     .gte('generated_at', freshCutoff)
     .order('generated_at', { ascending: true })
     .limit(PER_TICK)

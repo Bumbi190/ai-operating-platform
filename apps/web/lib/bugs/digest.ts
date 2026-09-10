@@ -7,8 +7,16 @@
  *
  * SÄKER: all DB-åtkomst är try/catch:ad och returnerar tomt vid fel/saknade
  * tabeller (innan migrationen körts). Får ALDRIG krascha hemvyn.
+ *
+ * BEHÖRIGHET (Phase 9AC, closure audit #6 A6-2): detta är PLATTFORMSDIAGNOSTIK
+ * — varje projekts scan-fynd och öppna akuta rapporter, lästa med
+ * service-role-klienten. Samma publik som buggscannern själv (som mejlar
+ * fynden till operatören), alltså bara plattformsoperatören. Funktionen kräver
+ * därför operatörens verifierade resultat som argument; anroparen avgör
+ * behörigheten INNAN något läses, och utan den läses ingenting.
  */
 
+import type { PlatformOperatorOk } from '@/lib/auth/platform-operator'
 import type { BugReport, BugscanFinding } from './types'
 
 export interface MorningBugDigest {
@@ -17,8 +25,10 @@ export interface MorningBugDigest {
   runAt: string | null
 }
 
-export async function getMorningBugDigest(db: any): Promise<MorningBugDigest> {
+export async function getMorningBugDigest(db: any, operator: PlatformOperatorOk): Promise<MorningBugDigest> {
   const empty: MorningBugDigest = { findings: [], reports: [], runAt: null }
+  // Only a resolved platform operator reaches the reads below.
+  if (operator?.ok !== true) return empty
   try {
     const { data: runRows } = await db
       .from('bugscan_runs')

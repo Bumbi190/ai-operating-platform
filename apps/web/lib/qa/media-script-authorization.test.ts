@@ -26,7 +26,7 @@
  * branch separately rather than assuming that.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 
 const ME = 'user-me'
@@ -85,8 +85,17 @@ function fakeDb(tables: Record<string, any[]>) {
 let CURRENT: ReturnType<typeof fakeDb>
 let CURRENT_USER: { id: string } | null = { id: ME }
 
+// Phase 9AC: media/publish/instagram now requires PLATFORM operator authority
+// before it reads anything (the channels are the platform's; 9AC's own suite
+// proves a non-operator owner is refused). For this matrix to keep exercising
+// the ownership check behind that gate, every principal here is the configured
+// operator: the session email is derived from the id and allow-listed below.
+// The other four routes never consult it.
+const operatorEmail = (id: string) => `${id}@operator.test`
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) } }),
+  createClient: async () => ({ auth: { getUser: async () => ({
+    data: { user: CURRENT_USER ? { ...CURRENT_USER, email: operatorEmail(CURRENT_USER.id) } : null },
+  }) } }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
 
@@ -176,7 +185,11 @@ async function run(fn: () => Promise<Response>) {
   return { res, calls: CALLS, seen: CURRENT.seen }
 }
 
-beforeEach(() => { CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = [] })
+beforeEach(() => {
+  CURRENT_USER = { id: ME }; CURRENT = fakeDb(seed()); CALLS = []
+  process.env.PLATFORM_OPERATOR_EMAILS = [ME, 'nobody'].map(operatorEmail).join(',')
+})
+afterEach(() => { delete process.env.PLATFORM_OPERATOR_EMAILS })
 
 // ═══ The denial boundary, proved per route ═══════════════════════════════════
 

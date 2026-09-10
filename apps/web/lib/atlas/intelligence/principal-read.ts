@@ -53,32 +53,27 @@
  * caller happened to inject — the caller's privilege level can no longer change
  * the answer. `import 'server-only'` keeps this module (and the service-role
  * key its default seam uses) out of any client bundle.
+ *
+ * Phase 9AC moved that seam and `provePortfolioAuthority`, unchanged, to
+ * lib/auth/portfolio-authority.ts: the Manager's platform daily plan is a second
+ * portfolio-wide artifact and must answer to the same rule, not to a copy of it.
  */
 
 import 'server-only'
 
 import { getAllowedProjectIds } from '@/lib/atlas/isolation'
-import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  provePortfolioAuthority,
+  serviceRolePortfolioReader,
+  type PortfolioAuthorityReader,
+} from '@/lib/auth/portfolio-authority'
 import { createIntelligenceStore } from './postgres-store'
 import type { IntelligenceStore } from './store'
 import type { ExecutiveBriefBody, IntelligenceObject } from './types'
 
 type AnyDb = any
 
-/**
- * One project row as the authority seam sees it. Least privilege: identity and
- * ownership only — never settings, names or any other project content.
- */
-export interface PortfolioProjectRow {
-  id: string
-  owner_id: string | null
-}
-
-/**
- * Enumerates EVERY project on the platform, independently of the caller.
- * Must not be backed by a user-filtered client; see the header.
- */
-export type PortfolioAuthorityReader = () => Promise<PortfolioProjectRow[]>
+export type { PortfolioProjectRow, PortfolioAuthorityReader } from '@/lib/auth/portfolio-authority'
 
 export interface PrincipalBriefRequest {
   /**
@@ -152,43 +147,4 @@ export async function readExecutiveBriefForPrincipal(
   } catch {
     return DENIED('unavailable')
   }
-}
-
-/**
- * Default authority seam. Uses the service-role client deliberately and
- * narrowly: enumerating the whole platform is precisely the question being
- * asked, and a user-scoped client cannot answer it without begging it. The
- * select is limited to `id, owner_id` so no project content is read, and this
- * module is `server-only` so the key never reaches a browser bundle.
- */
-const serviceRolePortfolioReader: PortfolioAuthorityReader = async () => {
-  const { data, error } = await createAdminClient().from('projects').select('id, owner_id')
-  if (error) throw new Error(`[principal-read] portfolio enumeration failed: ${error.message}`)
-  return (data ?? []) as unknown as PortfolioProjectRow[]
-}
-
-/**
- * True only when the principal owns EVERY project on the platform.
- *
- * A world-scope (`project_id IS NULL`) Executive Brief is synthesised from
- * platform-wide signals — `querySignals` applies no project filter for global
- * scope — so its conclusions can be drawn from any project. Reading it is only
- * safe for a principal who holds authority over all of them.
- *
- * Fails closed on every uncertainty: a read error, an empty platform, an
- * unowned project, or a project owned by anyone else. Authority must be
- * positively held, never inferred from absence.
- */
-async function provePortfolioAuthority(
-  userId: string,
-  readPortfolio: PortfolioAuthorityReader,
-): Promise<boolean> {
-  let projects: PortfolioProjectRow[]
-  try {
-    projects = await readPortfolio()
-  } catch {
-    return false
-  }
-  if (projects.length === 0) return false
-  return projects.every(project => project.owner_id === userId)
 }

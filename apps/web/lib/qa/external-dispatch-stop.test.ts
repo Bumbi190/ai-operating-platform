@@ -13,7 +13,7 @@
  * stop policy is reimplemented in this file.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ─── Stop authority, answered exactly as production answers it ────────────────
 
@@ -77,9 +77,14 @@ function makeChain(table: string) {
 }
 
 vi.mock('server-only', () => ({}))
+// Phase 9AC: the operator publish route now also requires PLATFORM operator
+// authority (the channels are the platform's), so this session carries the
+// configured operator's email. What these tests prove — that a stop refuses the
+// write — is unchanged and still runs behind that gate.
+const OPERATOR_EMAIL = 'operator-1@operator.test'
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: { id: 'operator-1' } } }) },
+    auth: { getUser: async () => ({ data: { user: { id: 'operator-1', email: OPERATOR_EMAIL } } }) },
   }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({
@@ -194,6 +199,7 @@ beforeEach(() => {
   stop.global = false; stop.project = false; stop.projectFound = true
   dbState.scripts = []; dbState.comments = []; dbState.updates = []; dbState.lookupScript = null
   process.env.CRON_SECRET = 'test-secret'
+  process.env.PLATFORM_OPERATOR_EMAILS = OPERATOR_EMAIL
   process.env.INSTAGRAM_ACCESS_TOKEN = 'IGtoken'
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'FBtoken'
   process.env.FACEBOOK_PAGE_ID = 'PAGE'
@@ -201,6 +207,7 @@ beforeEach(() => {
   postReelToInstagram.mockResolvedValue({ mediaId: 'IG_1', permalink: 'https://ig/1' })
   postReelToFacebook.mockResolvedValue({ postId: 'FB_1', url: 'https://fb/1' })
 })
+afterEach(() => { delete process.env.PLATFORM_OPERATOR_EMAILS })
 
 // ══ STEP 4 ═══════════════════════════════════════════════════════════════════
 

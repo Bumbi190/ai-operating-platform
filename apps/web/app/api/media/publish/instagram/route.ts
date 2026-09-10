@@ -5,6 +5,9 @@
  * and simultaneously to Facebook Page if FACEBOOK_PAGE_ACCESS_TOKEN is set.
  * Streams progress as Server-Sent Events.
  *
+ * Authority: the PLATFORM operator (these are the platform's accounts), AND
+ * ownership of the script's project. Neither substitutes for the other.
+ *
  * Body: { scriptId: string }
  *
  * SSE events:
@@ -23,6 +26,7 @@ import { postReelToFacebook } from '@/lib/media/facebook'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 300  // Video processing can take up to 5 min
@@ -35,6 +39,23 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+
+  // ── DESTINATION AUTHORITY (Phase 9AC · closure audit #6, A6-3) ────────────
+  // This route posts to the PLATFORM's Instagram account and Facebook Page:
+  // instagram.ts and facebook.ts publish with the platform credentials, whatever
+  // project the script is in. Owning the script's project authorises its
+  // CONTENT, never the destination. 9X locked posting to platform-owned channels
+  // to platform operator authority, and 9J requires the destination to be
+  // authorised, not just the source. So this check comes first: before the
+  // service-role client, the script read, any token and any provider call. The
+  // ownership check below still applies too; an operator publishes only scripts
+  // in projects they own.
+  const operator = await resolvePlatformOperator()
+  if (!operator.ok) {
+    // One answer for every reason; the reason itself stays in the server log.
+    console.warn(`[publish/instagram] denied: ${operator.reason}`)
+    return Response.json({ error: 'Forbidden', denied: 'platform_operator_required' }, { status: 403 })
+  }
 
   const { scriptId } = await request.json() as { scriptId: string }
   if (!scriptId) return new Response('scriptId required', { status: 400 })

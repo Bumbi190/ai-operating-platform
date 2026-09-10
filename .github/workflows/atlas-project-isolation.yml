@@ -107,6 +107,7 @@ jobs:
             lib/qa/schema-security-invariant.test.ts \
             lib/qa/migration-security-gate.test.ts \
             lib/qa/bugscanner-run-authorization.test.ts \
+            lib/qa/platform-authority-closure.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -280,6 +281,14 @@ jobs:
             // than the status: denial must cost zero service-role reads, zero
             // outbound checks and zero admin email.
             'bugscanner-run-authorization.test.ts': 23,
+            // Phase 9AC — closure audit #6 A6-1/A6-2/A6-3, in one multi-tenant
+            // world (A owns A, B owns B, C owns nothing, one operator). The
+            // platform daily plan takes operator AND whole-portfolio authority;
+            // the legacy bug digest is operator-only; the platform's Instagram,
+            // Facebook and YouTube take operator authority for a person and the
+            // platform social project's own content for a machine. Denial must
+            // cost zero service-role clients, reads, model calls, tokens and posts.
+            'platform-authority-closure.test.ts': 53,
           }
 
           let failed = false

@@ -37,6 +37,13 @@
  * ?dryRun=1 kör hela urvals- och beslutslogiken men anropar ALDRIG någon
  * skrivande publiceringsendpoint och rör aldrig databasen.
  *
+ * ── Destination och ?scriptId (Phase 9AC, closure audit #6 A6-3) ─────────────
+ * Kanalerna är PLATTFORMENS egna konton, så kön innehåller bara plattformens
+ * sociala projekts scripts (lib/media/social-destination.ts) — en annan
+ * tenants godkända video är inte plattformens att posta. ?scriptId (breaking-
+ * kedjan, pipeline-retry) binder körningen till EXAKT det scriptet: det eller
+ * inget, aldrig det äldsta i kön.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -68,6 +75,7 @@ import { withRetry } from '@/lib/media/retry'
 import { MetaApiError, errorSummary, isPermanentError, redactSecrets } from '@/lib/media/meta-errors'
 import { decideContainerAction, containerAgeHours } from '@/lib/media/container-policy'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
+import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 120
@@ -130,6 +138,9 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const dryRun = searchParams.get('dryRun') === '1'
+  // A caller that names a script (the breaking chain, pipeline-retry) gets THAT
+  // script or nothing — never the oldest ready one on the platform.
+  const scriptIdParam = searchParams.get('scriptId')
 
   const db = createAdminClient()
 
@@ -219,7 +230,7 @@ export async function GET(request: Request) {
   }
 
   // ── Find ready-but-unpublished scripts (FIFO: äldsta FÄRSKA först) ─────────────
-  const { data: scripts } = await db
+  let queue = db
     .from('media_scripts')
     .select(`
       id,
@@ -238,7 +249,8 @@ export async function GET(request: Request) {
       facebook_post_id,
       facebook_url,
       published_at,
-      media_news_items ( url, source_name )
+      media_news_items ( url, source_name ),
+      projects!inner ( slug )
     `)
     .eq('video_status', 'ready')
     // `status` är den auktoritativa kövakten, INTE published_at. Ett script som
@@ -247,6 +259,13 @@ export async function GET(request: Request) {
     // satt. Lyckade kanaler skyddas av sina id-kolumner, inte av kön.
     .eq('status', 'approved')
     .gte('generated_at', freshCutoff)
+    // DESTINATION (Phase 9AC, A6-3): these are the platform's own accounts, so
+    // only the platform social project's scripts may reach them through this
+    // machine principal. `projects!inner` makes it a join the filter can bind;
+    // a plain embed would still return every tenant's rows.
+    .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
+  if (scriptIdParam) queue = queue.eq('id', scriptIdParam)
+  const { data: scripts } = await queue
     .order('generated_at', { ascending: true })
     .limit(1)
 

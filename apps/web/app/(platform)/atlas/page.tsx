@@ -22,6 +22,7 @@ import { AtlasVoiceHome } from './AtlasVoiceHome'
 import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { AlertTriangle, ArrowRight, Clock } from 'lucide-react'
 import { loadAtlasHomeViewModel } from '@/lib/atlas/home-view-model'
 import { AtlasHomeVNext } from '@/components/platform/vnext/AtlasHomeVNext'
@@ -63,7 +64,18 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
   // already scoped inside `loadAtlasHomeViewModel`; this branch was not.
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
   const ctx       = await gatherAtlasContext(db, allowedProjectIds)
-  const bugDigest = await getMorningBugDigest(db)
+
+  // The morning bug digest is PLATFORM diagnostics: every project's scan
+  // findings and open critical reports, read through the service-role client
+  // (Phase 9AC, closure audit #6 A6-2). Its audience is the platform operator,
+  // the same one the bug scanner mails. Resolved from the verified session
+  // BEFORE any digest read; `?ui=legacy` and the omnira_ui cookie only chose
+  // this render path and are not consulted here. Anyone else gets no digest and
+  // causes no digest read — the section renders nothing, as on a quiet night.
+  const operator  = await resolvePlatformOperator()
+  const bugDigest = operator.ok
+    ? await getMorningBugDigest(db, operator)
+    : { findings: [], reports: [], runAt: null }
 
   // Executive Brief — conformant apex artifact (EI-S1.2).
   //

@@ -44,6 +44,10 @@ import {
 import type { WorkPackageRequest } from '@/lib/atlas/workpackage/attenuate'
 import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
+import {
+  assertPlatformPortfolioAuthority,
+  type PlatformPortfolioAuthority,
+} from '@/lib/auth/portfolio-authority'
 
 /**
  * Governed per call rather than once per module: the spend boundary needs the
@@ -75,6 +79,35 @@ function managerClient(operation: string, execution: ExecutionContract, projectI
  * existing task list. Written once here so no consumer can get it subtly wrong.
  */
 export const LEGACY_TASK_FILTER = 'source.is.null,source.neq.work_package'
+
+/**
+ * Phase 9AC (closure audit #6, A6-1) — what an operational context may read.
+ *
+ * There is deliberately no default and no way to spell "unscoped". The optional
+ * allow-list this replaces meant EVERY TENANT whenever a caller left it out, and
+ * two callers did: the daily plan and `planTasks` both built their prompt from
+ * every project's runs, failures, approvals, agents and tasks, so a user naming
+ * their own project was shown everyone else's.
+ */
+export type ManagerContextScope =
+  /** The caller's own projects: an allow-list, or the one owned project a request is for. */
+  | { kind: 'projects'; projectIds: string[] }
+  /** Platform-wide, for a principal proven to be the platform operator AND to own every project. */
+  | { kind: 'portfolio'; authority: PlatformPortfolioAuthority }
+
+/**
+ * The allow-list `applyProjectScope` receives. `undefined` (no scoping) is
+ * reachable ONLY through a minted portfolio authority; a `projects` scope always
+ * scopes, and an empty one yields the impossible id, i.e. zero rows.
+ */
+function contextAllowList(scope: ManagerContextScope): string[] | undefined {
+  if (scope?.kind === 'projects' && Array.isArray(scope.projectIds)) return scope.projectIds
+  if (scope?.kind === 'portfolio') {
+    assertPlatformPortfolioAuthority(scope.authority)
+    return undefined
+  }
+  throw new Error('[manager] an operational context needs an explicit scope')
+}
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
@@ -152,15 +185,16 @@ export class ManagerAgent {
   // ── Context builder ─────────────────────────────────────────────────────────
   // Assembles a rich operational snapshot for LLM reasoning.
 
-  private async buildContext(projectId?: string, allowedProjectIds?: string[]): Promise<string> {
+  private async buildContext(scope: ManagerContextScope): Promise<string> {
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-    // ISOLATION: scope every project-native read to the caller's allowed
-    // projects. `undefined` = no scoping (daily-plan/cron callers stay global);
-    // a provided array (even empty → impossible id → zero rows) scopes.
+    // ISOLATION: every project-native read below is scoped by this list. It is
+    // `undefined` (platform-wide) only for a proven portfolio scope; see
+    // ManagerContextScope. Resolved first, so a bad scope reads nothing.
+    const allowedProjectIds = contextAllowList(scope)
 
     // Parallel DB fetches
     const [runsRes, agentsRes, approvalsRes, costsRes, tasksRes, projectsRes] =
@@ -298,7 +332,7 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
     projectId?: string,
     allowedProjectIds: string[] = [],
   ): Promise<string> {
-    const context = await this.buildContext(projectId, allowedProjectIds)
+    const context = await this.buildContext({ kind: 'projects', projectIds: allowedProjectIds })
 
     const response = await managerClient('Manager Chat', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
@@ -323,19 +357,30 @@ ${tasks.map((t: any) => `  - [${t.priority?.toUpperCase()}] ${t.title} (${t.stat
   /**
    * Generates today's operational plan. Caches result in agent_messages.
    * Idempotent — returns cached plan if already generated today.
+   *
+   * Platform-level output (Phase 9AC, A6-1): it takes the platform operator's
+   * whole-portfolio authority, checked here BEFORE the cache, the context and
+   * the model, so no caller can reach them without it.
    */
   async generateDailyPlan(
+    authority: PlatformPortfolioAuthority,
     execution: ExecutionContract,
     projectId?: string,
     force = false,
   ): Promise<DailyPlan> {
+    assertPlatformPortfolioAuthority(authority)
+
     // Return cached plan if available today
     if (!force) {
-      const cached = await this.getTodaysPlan()
+      const cached = await this.getTodaysPlan(authority, projectId)
       if (cached) return cached
     }
 
-    const context = await this.buildContext(projectId)
+    // A plan FOR a project reads that project; a plan with none is the
+    // platform-wide plan the authority above permits.
+    const context = await this.buildContext(projectId
+      ? { kind: 'projects', projectIds: [projectId] }
+      : { kind: 'portfolio', authority })
 
     const response = await managerClient('Daily Plan', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
@@ -434,7 +479,9 @@ Return ONLY valid JSON:
    * Breaks a high-level goal into manager_tasks and persists them.
    */
   async planTasks(goal: string, projectId: string, execution: ExecutionContract): Promise<ManagerTask[]> {
-    const context = await this.buildContext(projectId)
+    // The route has already proven the caller owns projectId; the model is shown
+    // that project and nothing else.
+    const context = await this.buildContext({ kind: 'projects', projectIds: [projectId] })
 
     const response = await managerClient('Plan Tasks', execution, projectId).messages.create({
       model: 'claude-sonnet-4-6',
@@ -594,14 +641,23 @@ Return ONLY valid JSON:
     }
   }
 
-  async getTodaysPlan(): Promise<DailyPlan | null> {
+  /**
+   * Today's cached plan. The same platform-level artifact `generateDailyPlan`
+   * writes, so reading it takes the same authority (Phase 9AC, A6-1). The cache
+   * is keyed by the scope it was generated for: a project's plan is never served
+   * as the platform plan, nor the reverse.
+   */
+  async getTodaysPlan(authority: PlatformPortfolioAuthority, projectId?: string): Promise<DailyPlan | null> {
+    // Outside the try: a missing authority is a refusal, not "no plan today".
+    assertPlatformPortfolioAuthority(authority)
     const today = new Date().toISOString().slice(0, 10)
     try {
-      const { data } = await this.db
+      const cache = this.db
         .from('agent_messages')
         .select('content')
         .eq('from_agent', 'manager')
         .eq('message_type', 'daily_plan')
+      const { data } = await (projectId ? cache.eq('project_id', projectId) : cache.is('project_id', null))
         .gte('created_at', today + 'T00:00:00Z')
         .order('created_at', { ascending: false })
         .limit(1)

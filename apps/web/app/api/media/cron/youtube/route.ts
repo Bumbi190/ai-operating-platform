@@ -25,6 +25,10 @@
  *
  * Stödjer ?scriptId=xxx för manuell testning (kringgår tidsfönstret).
  *
+ * DESTINATION (Phase 9AC, closure audit #6 A6-3): kanalen är PLATTFORMENS
+ * YouTube-konto, så bara plattformens sociala projekts videor laddas upp —
+ * i den schemalagda kön OCH för ett namngivet ?scriptId.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -36,6 +40,7 @@ import { projectScope, type ExecutionContract } from '@/lib/governance/execution
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { logRun } from '@/lib/media/run-log'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
+import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -119,9 +124,14 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name ), projects!inner ( slug )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
+    // DESTINATION (Phase 9AC, A6-3): the platform's channel posts only the
+    // platform social project's videos — for a named ?scriptId (the breaking
+    // chain, pipeline-retry) exactly as for the schedule. `!inner` makes the
+    // filter bind the row, not just the embed.
+    .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
 
   if (scriptIdParam) {
     query = query.eq('id', scriptIdParam).limit(1)

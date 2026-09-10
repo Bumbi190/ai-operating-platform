@@ -1,0 +1,325 @@
+{
+  "_meta": {
+    "purpose": "Reviewed exceptions for lib/qa/migration-security-gate.ts. A blocking finding (WEAKENING or UNKNOWN) passes CI only when an entry here matches it EXACTLY: migration path, schema-qualified object, policy name (or null), rule, and the fingerprint of the statement itself.",
+    "rules": [
+      "No wildcards anywhere. One entry excuses one statement in one file for one rule.",
+      "HISTORICAL_SUPERSEDED entries must name the later migration that fixed the condition, and the gate re-checks that the condition is really gone at the end of the replayed corpus.",
+      "CURRENT_INTENTIONAL entries must still describe something that exists; an entry whose subject disappeared is stale and fails.",
+      "An entry that matches no finding is stale and fails. Editing an excused statement changes its fingerprint, so the exception stops applying rather than following the edit."
+    ],
+    "internal_schemas_rule": "Security statements on these schemas are judged as internal: policies and RLS there are recorded, but any grant of a table, schema or default privilege to anon/authenticated/public is still a blocking finding. A schema not listed here, and not public, fails closed."
+  },
+  "internal_schemas": [
+    {
+      "schema": "atlas",
+      "exposed_via_data_api": false,
+      "verified": "2026-09-10 — anon GET /rest/v1/memories with Accept-Profile: atlas → 406 PGRST106 (invalid schema)",
+      "justification": "Atlas memory store. Created by apps/web/supabase/migrations/20260616120000_atlas_schema_init.sql, which grants schema usage and default table privileges to service_role only."
+    },
+    {
+      "schema": "atlas_cron",
+      "exposed_via_data_api": false,
+      "verified": "2026-09-10 — anon GET with Accept-Profile: atlas_cron → 406 PGRST106",
+      "justification": "Scheduler bookkeeping for the Atlas cron jobs; server-side only, no client role holds usage on it."
+    },
+    {
+      "schema": "omnira_cron",
+      "exposed_via_data_api": false,
+      "verified": "2026-09-10 — anon GET with Accept-Profile: omnira_cron → 406 PGRST106",
+      "justification": "pg_cron configuration and reaper functions; supabase/migrations/20260528_pg_cron_setup.sql revokes it from anon and authenticated."
+    },
+    {
+      "schema": "cron",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed pg_cron schema; not in the Data API exposed schemas",
+      "justification": "Owned by the pg_cron extension. Migrations only call cron.schedule / cron.unschedule here."
+    },
+    {
+      "schema": "auth",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed; never exposed through PostgREST",
+      "justification": "Supabase Auth's own schema. Migrations only read auth.users and call auth.uid()."
+    },
+    {
+      "schema": "storage",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed; served by the Storage API, not PostgREST",
+      "justification": "Supabase Storage metadata; bucket rows are created by migrations but access is governed by the Storage service."
+    },
+    {
+      "schema": "extensions",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed extensions schema; not exposed",
+      "justification": "Holds extension objects (pgcrypto, uuid-ossp, pg_stat_statements); migrations only reference functions in it."
+    },
+    {
+      "schema": "net",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed pg_net schema; not exposed",
+      "justification": "pg_net's HTTP request queue, used by cron jobs through net.http_post."
+    },
+    {
+      "schema": "vault",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed; not exposed; vault.decrypted_secrets holds no client grants (checked 2026-09-10)",
+      "justification": "Supabase Vault. Listed so a reference to it is judged, not failed as unknown; any client grant here is still blocking."
+    },
+    {
+      "schema": "supabase_migrations",
+      "exposed_via_data_api": false,
+      "verified": "Supabase-managed migration ledger; client roles hold no usage (Phase 9Z audit)",
+      "justification": "The migration ledger read by scripts/check-migrations.mjs through a SECURITY DEFINER RPC granted to service_role only."
+    }
+  ],
+  "exceptions": [
+    {
+      "migration": "apps/web/supabase/migrations/20260520_media_tables.sql",
+      "table": "public.media_news_items",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "8e7ff1b22c2bded4",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260613_media_rls_hardening.sql",
+      "justification": "Created with no RLS by the first media migration; 20260613_media_rls_hardening.sql enables RLS and adds the owner policy. Live: RLS on, TENANT_RLS."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260520_media_tables.sql",
+      "table": "public.media_scripts",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "fdbae06a7ad4e3a0",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260613_media_rls_hardening.sql",
+      "justification": "Created with no RLS by the first media migration; 20260613_media_rls_hardening.sql enables RLS and adds the owner policy. Live: RLS on, TENANT_RLS."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "table": "public.agent_decisions",
+      "policy": "decisions readable by project owner",
+      "rule": "CLIENT_POLICY_ON_SERVER_ONLY",
+      "fingerprint": "97d775f70277df3d",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "table": "public.agent_decisions",
+      "policy": "decisions readable by project owner",
+      "rule": "PUBLIC_POLICY_CALLER_INDEPENDENT",
+      "fingerprint": "97d775f70277df3d",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "table": "public.memory_refs",
+      "policy": "memory_refs readable through decision",
+      "rule": "CLIENT_POLICY_ON_SERVER_ONLY",
+      "fingerprint": "ec9388d1a093c39d",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only. The branch is inlined inside the subquery memory_refs reads agent_decisions through."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "table": "public.memory_refs",
+      "policy": "memory_refs readable through decision",
+      "rule": "PUBLIC_POLICY_CALLER_INDEPENDENT",
+      "fingerprint": "ec9388d1a093c39d",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only. The branch is inlined inside the subquery memory_refs reads agent_decisions through."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "table": "public.agent_scorecards",
+      "policy": null,
+      "rule": "VIEW_RLS_BYPASS",
+      "fingerprint": "87df0aa1a0b13b41",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910150000_agent_scorecards_view_isolation.sql",
+      "justification": "Phase 9AA finding: an owner-executed view over agents, runs and run_logs left readable by anon and authenticated, so a rebuild leaked every tenant. The 9AA migration sets security_invoker and revokes client access; the view has never existed in production."
+    },
+    {
+      "migration": "supabase/migrations/20260528_pass_a_safeguards.sql",
+      "table": "public.platform_config",
+      "policy": "authenticated_read_platform_config",
+      "rule": "AUTH_POLICY_CROSS_TENANT",
+      "fingerprint": "47e57724a70b9ff2",
+      "status": "CURRENT_INTENTIONAL",
+      "justification": "Platform-global configuration knobs, deliberately readable by every signed-in user: the table has no tenant column and holds no tenant secrets, the policy is SELECT only and there is no write policy. Reviewed in the Phase 9AB live policy sweep and in closure audit #5."
+    },
+    {
+      "migration": "supabase/migrations/20260529_comment_replies.sql",
+      "table": "public.comment_replies",
+      "policy": "authenticated_read_comment_replies",
+      "rule": "AUTH_POLICY_CROSS_TENANT",
+      "fingerprint": "de8aa9abda07b7c6",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "supabase/migrations/20260606_pr2_route_webhook_isolation.sql",
+      "justification": "The original USING (true) read for every signed-in user. 20260606_pr2_route_webhook_isolation.sql drops it and creates the owner-scoped comment_replies_owner_read, which is the policy live in production."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "table": "public.ai_cost_snapshots",
+      "policy": "cost_snap_owner",
+      "rule": "CLIENT_POLICY_ON_SERVER_ONLY",
+      "fingerprint": "f259d4a3522c9b69",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "table": "public.ai_cost_snapshots",
+      "policy": "cost_snap_owner",
+      "rule": "PUBLIC_POLICY_CALLER_INDEPENDENT",
+      "fingerprint": "f259d4a3522c9b69",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "table": "public.ai_cost_snapshots",
+      "policy": "cost_snap_owner",
+      "rule": "PUBLIC_POLICY_WRITE_EXTENSION",
+      "fingerprint": "f259d4a3522c9b69",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only. FOR ALL with no WITH CHECK extended the same branch to INSERT/UPDATE/DELETE."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "table": "public.morning_briefings",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "df8abf6e094c9610",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910090000_declarative_rls_parity.sql",
+      "justification": "Created with no RLS; closure audit #4 proved a rebuild left it anon-writable. The Phase 9Z declarative-parity migration enables RLS (production already had it out of band)."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_atlas_bi_foundation.sql",
+      "table": "public.infra_costs",
+      "policy": "infra_costs_owner",
+      "rule": "CLIENT_POLICY_ON_SERVER_ONLY",
+      "fingerprint": "dafc6dbfe1d38644",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_atlas_bi_foundation.sql",
+      "table": "public.infra_costs",
+      "policy": "infra_costs_owner",
+      "rule": "PUBLIC_POLICY_CALLER_INDEPENDENT",
+      "fingerprint": "dafc6dbfe1d38644",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_atlas_bi_foundation.sql",
+      "table": "public.infra_costs",
+      "policy": "infra_costs_owner",
+      "rule": "PUBLIC_POLICY_WRITE_EXTENSION",
+      "fingerprint": "dafc6dbfe1d38644",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "Phase 9AB finding: a role-PUBLIC policy whose `project_id IS NULL OR …` branch does not depend on the caller. The 9AB migration drops it and revokes anon/authenticated, applied to production 2026-09-10; a rebuild now creates the table server-only. FOR ALL with no WITH CHECK extended the same branch to INSERT/UPDATE/DELETE."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_cost_events.sql",
+      "table": "public.cost_events",
+      "policy": "cost_events_owner",
+      "rule": "CLIENT_POLICY_ON_SERVER_ONLY",
+      "fingerprint": "45280c5d6dc9d413",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "The live Phase 9AB exposure: anon read 87 null-project cost rows in production, and FOR ALL with no WITH CHECK let it write them. Dropped, with client grants revoked, by the 9AB migration (applied 2026-09-10)."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_cost_events.sql",
+      "table": "public.cost_events",
+      "policy": "cost_events_owner",
+      "rule": "PUBLIC_POLICY_CALLER_INDEPENDENT",
+      "fingerprint": "45280c5d6dc9d413",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "The live Phase 9AB exposure: anon read 87 null-project cost rows in production, and FOR ALL with no WITH CHECK let it write them. Dropped, with client grants revoked, by the 9AB migration (applied 2026-09-10)."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_cost_events.sql",
+      "table": "public.cost_events",
+      "policy": "cost_events_owner",
+      "rule": "PUBLIC_POLICY_WRITE_EXTENSION",
+      "fingerprint": "45280c5d6dc9d413",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910120000_cost_ledger_rls_isolation.sql",
+      "justification": "The live Phase 9AB exposure: anon read 87 null-project cost rows in production, and FOR ALL with no WITH CHECK let it write them. Dropped, with client grants revoked, by the 9AB migration (applied 2026-09-10)."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260602_cost_events.sql",
+      "table": "public.cost_rates",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "6578cf22ac7f0d24",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910090000_declarative_rls_parity.sql",
+      "justification": "Created with no RLS; closure audit #4 proved a rebuild left it anon-writable. The Phase 9Z declarative-parity migration enables RLS (production already had it out of band)."
+    },
+    {
+      "migration": "supabase/migrations/20260603_cron_heartbeat.sql",
+      "table": "public.cron_heartbeat",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "4e3492299de5d7e0",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "supabase/migrations/20260707172102_enable_public_rls_for_internal_tables.sql",
+      "justification": "Created with no RLS, but the same file revokes anon and authenticated, so it was never client-reachable. 20260707172102_enable_public_rls_for_internal_tables.sql enables RLS. Live: SERVER_ONLY."
+    },
+    {
+      "migration": "supabase/migrations/20260603_token_health.sql",
+      "table": "public.token_health",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "37a30cbb52aac77c",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "supabase/migrations/20260707172102_enable_public_rls_for_internal_tables.sql",
+      "justification": "Created with no RLS, but the same file revokes anon and authenticated, so it was never client-reachable. 20260707172102_enable_public_rls_for_internal_tables.sql enables RLS. Live: SERVER_ONLY."
+    },
+    {
+      "migration": "supabase/migrations/20260609_dream_issues_ledger.sql",
+      "table": "public.dream_issues",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "1bd5222490ead2b7",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260910090000_declarative_rls_parity.sql",
+      "justification": "Created with no RLS; production had RLS out of band and closure audit #4 proved a rebuild left it anon-writable. The Phase 9Z declarative-parity migration declares it."
+    },
+    {
+      "migration": "supabase/migrations/20260611_atlas_actions.sql",
+      "table": "public.atlas_actions",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "1155fc4e6f007745",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "supabase/migrations/20260707172102_enable_public_rls_for_internal_tables.sql",
+      "justification": "Created with no RLS while default grants reached anon and authenticated; 20260707172102_enable_public_rls_for_internal_tables.sql enables RLS and revokes the client grants. Live: SERVER_ONLY."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20260904120000_workflow_stories.sql",
+      "table": "public.workflow_stories",
+      "policy": null,
+      "rule": "NEW_TABLE_WITHOUT_RLS",
+      "fingerprint": "24cfbd29f314f30e",
+      "status": "HISTORICAL_SUPERSEDED",
+      "superseded_by": "apps/web/supabase/migrations/20260909120000_workflow_stories_rls.sql",
+      "justification": "The closure audit #3 finding: anon read and write live in production. The Phase 9Y migration enables RLS and revokes client grants; applied 2026-09-09."
+    }
+  ]
+}

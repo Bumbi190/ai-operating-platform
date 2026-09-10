@@ -105,6 +105,8 @@ jobs:
             lib/qa/chat-operator-capability.test.ts \
             lib/qa/chat-workflow-read-isolation.test.ts \
             lib/qa/schema-security-invariant.test.ts \
+            lib/qa/migration-security-gate.test.ts \
+            lib/qa/bugscanner-run-authorization.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -260,6 +262,24 @@ jobs:
             // proof needs Postgres and skips in CI, so without these the only guard
             // against a reverted fix would be a suite that never runs on a PR.
             'schema-security-invariant.test.ts': 60,
+            // Phase 9AA — the migration security DIFF gate. Closure audit #5
+            // wrote throwaway migrations that DISABLE RLS, add an anon USING
+            // (true) policy and grant anon onto a server-only table, and CI
+            // passed every one: the invariant above asks whether an ENABLE
+            // exists anywhere, which an older migration always satisfies. This
+            // suite replays BOTH migration roots over a model of the schema and
+            // judges each migration on its own delta — policies whose OR
+            // branches ignore the caller (the Phase 9AB class), FOR ALL with no
+            // WITH CHECK, client grants on SERVER_ONLY tables, and views that
+            // run as their owner. A blocking finding passes only with an exact
+            // reviewed allowlist entry. No database: it is pure text analysis.
+            'migration-security-gate.test.ts': 117,
+            // Phase 9AA — POST /api/bugscanner/run compared
+            // `user.email !== BREVO_ADMIN_EMAIL`, which admitted an email-less
+            // session whenever the address was unset. The counters matter more
+            // than the status: denial must cost zero service-role reads, zero
+            // outbound checks and zero admin email.
+            'bugscanner-run-authorization.test.ts': 23,
           }
 
           let failed = false

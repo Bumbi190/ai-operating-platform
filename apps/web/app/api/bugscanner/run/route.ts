@@ -26,9 +26,12 @@ export async function POST(request: Request) {
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    const adminEmail = process.env.BREVO_ADMIN_EMAIL
+    const adminEmail = normalizeEmail(process.env.BREVO_ADMIN_EMAIL)
+    const userEmail = normalizeEmail(user?.email)
 
-    if (!user || user.email !== adminEmail) {
+    // Fail-closed: saknad admin-adress eller en session utan e-post är aldrig en
+    // matchning. Tidigare släppte `undefined !== undefined` igenom.
+    if (!user || !adminEmail || !userEmail || userEmail !== adminEmail) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
@@ -58,6 +61,12 @@ export async function POST(request: Request) {
       { status: 500 },
     )
   }
+}
+
+/** Samma normalisering som lib/auth/platform-operator.ts: trim + gemener, tomt blir null. */
+function normalizeEmail(value: string | null | undefined): string | null {
+  const email = value?.trim().toLowerCase()
+  return email ? email : null
 }
 
 // GET — enkel hälsokoll att endpointen finns

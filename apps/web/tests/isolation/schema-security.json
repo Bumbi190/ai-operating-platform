@@ -2,7 +2,7 @@
   "_meta": {
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
-    "captured_at": "2026-09-09",
+    "captured_at": "2026-09-10",
     "total_tables": 70,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "regenerate": "Introspect pg_class.relrowsecurity, pg_policies and information_schema.role_table_grants for schema 'public' and rewrite this file. lib/qa/schema-security-invariant.test.ts defines the exact contract each entry must satisfy.",
@@ -16,15 +16,23 @@
       "This is a point-in-time capture. A change made directly in the Supabase dashboard after capture is not detected until the file is regenerated.",
       "It records grants and RLS state, not policy semantics: a policy that is present but wrongly written is out of scope here and is covered by the route-level isolation suites.",
       "The paired migration-text rule in the invariant is forward-looking only; it governs tables created from now on.",
-      "The migration-text rule accepts a table whose RLS was enabled out-of-band ONLY when the registry records it in _meta.out_of_band_rls. A table with RLS declared nowhere and absent from the registry fails both halves."
+      "The registry is a live-catalog snapshot, so a migration-created table that is not live is absent by construction; _meta.created_not_live records those and the invariant requires each to declare RLS."
     ],
     "out_of_band_rls": {
+      "tables": [],
+      "meaning": "Empty since Phase 9Z. It previously held dream_issues, whose RLS existed in production but was declared in no migration. Closure audit #4 showed that was not an isolated case and not merely documentation debt: a database rebuilt from repo SQL created dream_issues, cost_rates and morning_briefings with RLS OFF and anon DML live. supabase/migrations/20260910090000_declarative_rls_parity.sql declares all three, so the exception has no remaining subject.",
+      "rule": "An entry here excuses a table from the migration-text rule. It must still be RLS-enabled in effective state, and it should be treated as temporary: an exception that outlives its cause is a hole with a comment next to it."
+    },
+    "created_not_live": {
       "tables": [
-        "dream_issues"
+        "agent_decisions",
+        "ai_cost_snapshots",
+        "memory_refs"
       ],
-      "meaning": "These tables are created by a repo migration that never declares row level security, yet the live catalog shows RLS enabled \u2014 it was turned on outside the migration corpus (Supabase advisor or dashboard). The database is safe; the REPO is not self-describing for them. Recorded explicitly so the divergence is reviewed rather than invisible. Phase 9Y deliberately does NOT alter these tables: doing so would widen a focused security slice into unrelated schema.",
-      "followup": "Declare RLS for these tables in a migration so the repo states what the database does."
-    }
+      "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
+      "requirement": "Every entry must have RLS declared in the migration corpus."
+    },
+    "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare."
   },
   "tables": {
     "account_snapshots": {
@@ -94,8 +102,8 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "atlas_authorizations": {
       "class": "SERVER_ONLY",
@@ -224,8 +232,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "collector_runs": {
       "class": "TENANT_RLS",
@@ -244,8 +252,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "content_feedback": {
       "class": "TENANT_RLS",
@@ -254,8 +262,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "conversation_messages": {
       "class": "TENANT_RLS",
@@ -284,8 +292,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "cost_rates": {
       "class": "INTERNAL_DENY_ALL",
@@ -294,8 +302,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "cron_heartbeat": {
       "class": "SERVER_ONLY",
@@ -334,7 +342,7 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": false,
+      "rls_declared_in_migration": true,
       "created_by_migration": true
     },
     "evaluations": {
@@ -344,8 +352,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "guard_reports": {
       "class": "INTERNAL_DENY_ALL",
@@ -364,8 +372,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "leads": {
       "class": "TENANT_RLS",
@@ -374,8 +382,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "manager_tasks": {
       "class": "TENANT_RLS",
@@ -394,8 +402,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "media_job_reconciliations": {
       "class": "TENANT_RLS",
@@ -424,8 +432,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "media_scripts": {
       "class": "TENANT_RLS",
@@ -434,8 +442,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "memories": {
       "class": "TENANT_RLS",
@@ -454,8 +462,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "opportunities": {
       "class": "INTERNAL_DENY_ALL",
@@ -494,8 +502,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "platform_memory": {
       "class": "TENANT_RLS",
@@ -504,8 +512,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "platform_tokens": {
       "class": "INTERNAL_DENY_ALL",
@@ -514,8 +522,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "project_api_credentials": {
       "class": "SERVER_ONLY",
@@ -534,8 +542,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "project_scanners": {
       "class": "INTERNAL_DENY_ALL",
@@ -564,8 +572,8 @@
       "anon_grants": true,
       "authenticated_grants": true,
       "service_role": true,
-      "rls_declared_in_migration": null,
-      "created_by_migration": false
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "revenue_snapshots": {
       "class": "INTERNAL_DENY_ALL",

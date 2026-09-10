@@ -73,14 +73,35 @@ function migrationSources(): { file: string; sql: string }[] {
 const SOURCES = migrationSources()
 const ALL_SQL = SOURCES.map(s => s.sql).join('\n').toLowerCase()
 
-/** Public tables the migration corpus creates. */
+/**
+ * Public tables the migration corpus creates.
+ *
+ * Phase 9Z. The Phase 9Y version of this required a `public.` prefix, and every
+ * unqualified `CREATE TABLE foo` was therefore invisible to it — 37 tables seen
+ * where 61 names matched without the requirement. Two of the three declarative
+ * RLS gaps closure audit #4 found (`cost_rates`, `morning_briefings`) are
+ * created exactly that way, so the rule that was supposed to catch them never
+ * looked at them.
+ *
+ * The schema is now optional. A name qualified with anything OTHER than
+ * `public` is excluded, because `create table atlas.memories` is a different
+ * schema and not this invariant's business — that exclusion is what stops the
+ * looser pattern from dragging in the atlas.* and cron.* tables.
+ */
+export function extractCreatedTables(sql: string): Set<string> {
+  const out = new Set<string>()
+  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?([a-z_][a-z_0-9]*)"?\s*\.\s*)?"?([a-z_][a-z_0-9]*)"?\s*\(/gi
+  for (const m of sql.matchAll(re)) {
+    const schema = (m[1] ?? 'public').toLowerCase()
+    if (schema !== 'public') continue
+    out.add(m[2].toLowerCase())
+  }
+  return out
+}
+
 function createdTables(): Set<string> {
   const created = new Set<string>()
-  for (const { sql } of SOURCES) {
-    for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_0-9]+)/gi)) {
-      created.add(m[1].toLowerCase())
-    }
-  }
+  for (const { sql } of SOURCES) for (const t of extractCreatedTables(sql)) created.add(t)
   return created
 }
 
@@ -167,11 +188,27 @@ describe('Phase 9Y — schema-security invariant: migration text, forward-lookin
     expect([...roots].sort()).toEqual(['apps/web', 'repo-root'])
   })
 
-  it('every public table CREATED by a migration is present in the registry — new tables fail closed', () => {
+  it('every public table CREATED by a migration is present in the registry, or recorded as not-live', () => {
     const created = createdTables()
     expect(created.size, 'no CREATE TABLE found — the rule would be vacuous').toBeGreaterThan(5)
-    const unregistered = [...created].filter(t => !(t in REGISTRY.tables)).sort()
+    // The registry is a snapshot of the LIVE catalog, so a table created by a
+    // migration that was never applied to production (or was dropped there) is
+    // absent by construction rather than unclassified. Those are named in
+    // _meta.created_not_live and must still declare RLS, so a rebuild creates
+    // them protected. Anything else — created, unregistered, unrecorded — fails.
+    const notLive = new Set(
+      ((REGISTRY._meta.created_not_live as { tables?: string[] } | undefined)?.tables ?? []),
+    )
+    const unregistered = [...created].filter(t => !(t in REGISTRY.tables) && !notLive.has(t)).sort()
     expect(unregistered, 'a migration creates a public table that no one classified').toEqual([])
+  })
+
+  it('a not-live table is excused from the table map but NOT from declaring RLS', () => {
+    const notLive = ((REGISTRY._meta.created_not_live as { tables?: string[] } | undefined)?.tables ?? [])
+    for (const t of notLive) {
+      expect(rlsDeclaredInMigrations(t), `${t} is excused as not-live but declares no RLS — a rebuild would create it unprotected`).toBe(true)
+      expect(t in REGISTRY.tables, `${t} is listed as not-live but also appears in the live table map`).toBe(false)
+    }
   })
 
   it('every public table CREATED by a migration has RLS declared there, or a reviewed out-of-band entry', () => {
@@ -263,5 +300,110 @@ describe('Phase 9Y — /memory/patterns manifest truthfulness', () => {
     expect(row!.auth).toBe('User')
     expect(row!.scope).toBe('project_id')
     expect(String(row!.note)).toMatch(/getMemory/)
+  })
+})
+
+
+/**
+ * Phase 9Z — the detector itself, tested directly.
+ *
+ * The Phase 9Y rule was correct in concept and wrong in reach: it only saw
+ * `CREATE TABLE public.foo`. These cases are the ones the migration corpus
+ * actually contains, so a regression here silently reopens the class rather
+ * than failing loudly.
+ */
+describe('Phase 9Z — CREATE TABLE detection covers the forms the repo really uses', () => {
+  const cases: [string, string, string[]][] = [
+    ['qualified',                       'create table public.foo (id uuid);',                 ['foo']],
+    ['unqualified',                     'create table foo (id uuid);',                        ['foo']],
+    ['qualified, if not exists',        'create table if not exists public.foo (id uuid);',   ['foo']],
+    ['unqualified, if not exists',      'CREATE TABLE IF NOT EXISTS foo (id uuid);',          ['foo']],
+    ['uppercase, unqualified',          'CREATE TABLE COST_RATES (id uuid);',                 ['cost_rates']],
+    ['quoted identifier',               'create table "foo" (id uuid);',                      ['foo']],
+    ['quoted schema and identifier',    'create table "public"."foo" (id uuid);',             ['foo']],
+    ['multiline',                       'create table if not exists\n  public.foo\n(\n id uuid\n);', ['foo']],
+    ['extra whitespace around dot',     'create table public . foo (id uuid);',               ['foo']],
+    ['two in one file',                 'create table a (id uuid);\ncreate table public.b (id uuid);', ['a','b']],
+  ]
+  for (const [label, sql, expected] of cases) {
+    it(`detects: ${label}`, () => {
+      expect([...extractCreatedTables(sql)].sort()).toEqual(expected.sort())
+    })
+  }
+
+  it('does NOT claim tables from another schema — atlas.memories is not ours', () => {
+    expect([...extractCreatedTables('create table atlas.memories (id uuid);')]).toEqual([])
+    expect([...extractCreatedTables('create table if not exists cron.job (id int);')]).toEqual([])
+  })
+
+  it('the three tables Phase 9Z declares are now visible to the detector', () => {
+    const created = createdTables()
+    for (const t of ['cost_rates', 'dream_issues', 'morning_briefings']) {
+      expect(created.has(t), `${t} is created by a migration but the detector cannot see it`).toBe(true)
+    }
+  })
+
+  it('sees materially more than the qualified-only pattern it replaced', () => {
+    const all = createdTables()
+    const qualifiedOnly = new Set<string>()
+    for (const { sql } of SOURCES) {
+      for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?public\.([a-z_0-9]+)/gi)) {
+        qualifiedOnly.add(m[1].toLowerCase())
+      }
+    }
+    expect(all.size).toBeGreaterThan(qualifiedOnly.size)
+  })
+})
+
+/**
+ * Phase 9Z — the declarative parity migration itself.
+ */
+describe('Phase 9Z — declarative RLS parity', () => {
+  const FILE = resolve(process.cwd(), 'supabase/migrations/20260910090000_declarative_rls_parity.sql')
+  const SQL = existsSync(FILE) ? readFileSync(FILE, 'utf8').toLowerCase() : ''
+
+  it('the migration exists', () => {
+    expect(existsSync(FILE), 'the Phase 9Z migration is missing').toBe(true)
+  })
+
+  for (const t of ['cost_rates', 'dream_issues', 'morning_briefings']) {
+    it(`declares RLS for ${t}`, () => {
+      expect(SQL).toMatch(new RegExp(`alter\\s+table\\s+public\\.${t}\\s+enable\\s+row\\s+level\\s+security`))
+    })
+  }
+
+  it('touches no other table — a parity migration is not a place to tidy', () => {
+    const touched = new Set([...SQL.matchAll(/public\.([a-z_0-9]+)/g)]
+      .map(m => m[1])
+      .filter(t => !SQL.slice(0, SQL.indexOf(t)).endsWith('-- ')))
+    const exec = SQL.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    const execTouched = new Set([...exec.matchAll(/public\.([a-z_0-9]+)/g)].map(m => m[1]))
+    expect([...execTouched].sort()).toEqual(['cost_rates', 'dream_issues', 'morning_briefings'])
+    expect(touched.size).toBeGreaterThan(0)
+  })
+
+  it('is enable-only: no policy, no revoke, no grant, no data operation, no FORCE', () => {
+    const exec = SQL.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    for (const forbidden of [
+      'create policy', 'revoke', 'grant', 'drop', 'delete from', 'truncate',
+      'force row level security', 'disable row level security', 'create table',
+    ]) {
+      expect(exec.includes(forbidden), `parity migration contains ${forbidden}`).toBe(false)
+    }
+  })
+
+  it('every table it declares is one a migration actually creates', () => {
+    const created = createdTables()
+    for (const t of ['cost_rates', 'dream_issues', 'morning_briefings']) {
+      expect(created.has(t)).toBe(true)
+    }
+  })
+
+  it('no table is left excused by the out-of-band escape hatch any more', () => {
+    const outOfBand = ((REGISTRY._meta.out_of_band_rls as { tables?: string[] } | undefined)?.tables ?? [])
+    // Phase 9Y needed this hatch for dream_issues. Phase 9Z declares it, so the
+    // hatch should now be empty: an exception that outlives its cause becomes a
+    // hole with a comment next to it.
+    expect(outOfBand, 'an out-of-band RLS exception survived its declarative fix').toEqual([])
   })
 })

@@ -1,0 +1,49 @@
+-- Phase 9Z — declarative RLS parity.
+--
+-- WHAT THIS FIXES. Production is safe: all 70 public tables have row level
+-- security enabled. Three of them are safe only because RLS was switched on
+-- OUTSIDE the migration corpus — no migration and no bootstrap file in this repo
+-- ever says so. A database rebuilt from repo SQL therefore creates them with RLS
+-- OFF, and Supabase's default privileges hand `anon` and `authenticated` full
+-- DML on every new public table. That is the exact shape of the workflow_stories
+-- exposure Phase 9Y closed, waiting to be recreated by the next deployment.
+--
+--   public.cost_rates          created unqualified in apps/web/.../20260602_cost_events.sql
+--   public.dream_issues        created qualified   in supabase/.../20260609_dream_issues_ledger.sql
+--   public.morning_briefings   created unqualified in apps/web/.../20260601_revenue_os.sql
+--
+-- Proven by reconstruction, not inferred: bootstrap + all 119 migrations applied
+-- to a throwaway Postgres produced exactly these three with RLS off and anon
+-- INSERT/UPDATE/DELETE live.
+--
+-- WHY ENABLE-ONLY, AND NO REVOKE. The goal is PARITY: a fresh database should
+-- end up where production already is, not somewhere stricter that production has
+-- never been tested in. Production holds RLS on, zero policies, and the default
+-- anon/authenticated grants still present — the INTERNAL_DENY_ALL shape, where
+-- the grants reach nothing because RLS denies every row to a non-bypass role.
+-- Enabling RLS reproduces that exactly. Adding a revoke here would change
+-- production's grant state as a side effect of a parity migration, which is a
+-- different decision and not this phase's.
+--
+-- (Contrast Phase 9Y: workflow_stories is SERVER_ONLY and its grants WERE
+-- revoked, because there the revoke was the boundary being established rather
+-- than an unrequested tightening of a table already in its intended state.)
+--
+-- WHY NO POLICY. All three are reached only by the service-role client from
+-- server-side code — cost_rates by lib/cost/rates.ts, dream_issues by
+-- lib/ai/dream.ts, morning_briefings by the morning-briefing cron route. Zero
+-- browser callers, zero user-bound clients. There is no owner-scoped access to
+-- express, and inventing one would describe a surface that does not exist.
+--
+-- NOT FORCE RLS. The owner is `postgres`, which holds BYPASSRLS, so FORCE would
+-- change nothing here while adding a trap for a future owner change — the same
+-- reasoning recorded in the Phase 9Y migration.
+--
+-- IDEMPOTENT AND PRODUCTION-INERT. `enable row level security` on a table that
+-- already has it is a no-op. No data operation, no policy, no trigger, no
+-- constraint, no grant change. Expected effective delta on production: NONE.
+-- Expected effective delta on a fresh deployment: RLS OFF -> RLS ON.
+
+alter table public.cost_rates        enable row level security;
+alter table public.dream_issues      enable row level security;
+alter table public.morning_briefings enable row level security;

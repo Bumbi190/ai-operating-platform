@@ -79,8 +79,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     // Atlas Memory — procedural feedback signal (mirrors /api/approvals/[id] pattern).
     // sourceId=params.id on the idempotency index (source, source_id, event_type) ensures
     // a double-submit of the same review produces no duplicate event (the status guard
-    // above catches it first, but this is the backstop).
-    void recordMemoryEvent({
+    // above catches it first, but this is the backstop). Source stays 'approval': the
+    // consolidation function weighs evidence by source (approval → 0.80, unknown → 0.50),
+    // so a distinct source is a semantic change that ships only with its trust migration.
+    // `structured.producer` carries the provenance meanwhile — consolidation never reads
+    // `structured`. The payload records the outcome only — who reviewed stays on the
+    // content row, not in memory. Awaited: a detached promise does not survive the
+    // request, and recordMemoryEvent never throws.
+    await recordMemoryEvent({
       scope:      'project',
       eventType:  'feedback',
       projectId:  row.project_id,
@@ -93,10 +99,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
       content:    `rejected: article output${body.notes ? ` — ${body.notes.slice(0, 200)}` : ''}`,
       confidence: 0.80,
       structured: {
+        producer:    'article_review',
         action:      'reject',
         contentId:   params.id,
         destination: row.destination_key,
-        reviewer,
         hasNotes:    !!body.notes,
       },
     }, db)
@@ -118,8 +124,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     published_at: nowIso,
   }
 
+  let result: Awaited<ReturnType<typeof publishArticle>>
   try {
-    const result = await publishArticle(destinationKey, payload)
+    result = await publishArticle(destinationKey, payload)
     const { error } = await db.from('website_content').update({
       status:            'published',
       reviewed_at:       nowIso,
@@ -132,31 +139,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
       updated_at:        nowIso,
     }).eq('id', row.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    // Atlas Memory — emitted only after the DB update confirms 'published'. A publish
-    // infrastructure failure lands in the catch block below and sets status='failed';
-    // no emit there — that is not a quality signal, only an infrastructure failure.
-    void recordMemoryEvent({
-      scope:      'project',
-      eventType:  'feedback',
-      projectId:  row.project_id,
-      entityKind: 'output_type',
-      entityId:   'article',
-      dedupeKey:  'feedback:article',
-      source:     'approval',
-      sourceId:   params.id,
-      subject:    'Content review: article',
-      content:    'approved: article output',
-      confidence: 0.70,
-      structured: {
-        action:       'approve',
-        contentId:    params.id,
-        destination:  row.destination_key,
-        publishedUrl: result.published_url,
-        reviewer,
-        hasNotes:     false,
-      },
-    }, db)
-    return NextResponse.json({ ok: true, status: 'published', published_url: result.published_url, operation: result.operation })
   } catch (e) {
     const msg = e instanceof PublishError ? `${e.code}: ${e.message}` : (e instanceof Error ? e.message : String(e))
     await db.from('website_content').update({
@@ -169,4 +151,33 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }).eq('id', row.id)
     return NextResponse.json({ ok: false, status: 'failed', error: msg }, { status: 502 })
   }
+
+  // Atlas Memory — emitted only after the DB update confirmed 'published'. A publish
+  // infrastructure failure took the catch above and set status='failed'; no emit
+  // there — that is not a quality signal, only an infrastructure failure. Outside the
+  // publish `try` on purpose: nothing about memory may ever be read as a publish
+  // failure and mark a live article 'failed'. Same source, key, provenance and payload
+  // rules as the reject path above.
+  await recordMemoryEvent({
+    scope:      'project',
+    eventType:  'feedback',
+    projectId:  row.project_id,
+    entityKind: 'output_type',
+    entityId:   'article',
+    dedupeKey:  'feedback:article',
+    source:     'approval',
+    sourceId:   params.id,
+    subject:    'Content review: article',
+    content:    'approved: article output',
+    confidence: 0.70,
+    structured: {
+      producer:     'article_review',
+      action:       'approve',
+      contentId:    params.id,
+      destination:  row.destination_key,
+      publishedUrl: result.published_url,
+      hasNotes:     false,
+    },
+  }, db)
+  return NextResponse.json({ ok: true, status: 'published', published_url: result.published_url, operation: result.operation })
 }

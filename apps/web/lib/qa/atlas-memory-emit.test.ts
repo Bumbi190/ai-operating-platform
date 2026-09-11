@@ -27,7 +27,9 @@ function fakeDb(opts: { data?: unknown; error?: { message: string } | null; thro
   return { db, calls }
 }
 
-const base = { scope: 'project', eventType: 'feedback', content: 'c', source: 'approval', projectId: 'p1' } as const
+// sourceId is required (Memory Slice 2A): without it the call is refused before the
+// RPC, and the db-error tests below would pass without ever reaching the wrapper.
+const base = { scope: 'project', eventType: 'feedback', content: 'c', source: 'approval', projectId: 'p1', sourceId: 'a1' } as const
 
 describe('eventTypeToClass — central taxonomy mapping', () => {
   it('maps every event_type to the right memory_class', () => {

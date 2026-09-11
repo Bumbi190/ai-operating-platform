@@ -98,6 +98,8 @@ jobs:
             lib/qa/atlas-memory-recall.test.ts \
             lib/qa/atlas-memory-emit.test.ts \
             lib/qa/atlas-memory-context.test.ts \
+            lib/qa/atlas-memory-emit-durability.test.ts \
+            lib/qa/atlas-memory-emit-idempotency-sql.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/memory-boundary.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.

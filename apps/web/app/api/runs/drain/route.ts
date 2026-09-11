@@ -53,6 +53,60 @@ const UNIFIED_EXECUTOR = process.env.H1_UNIFIED_EXECUTOR === '1'
 // (decision B — no legacy fallback); marketing runs stay ungated (decision A).
 const POLICY_GATE = process.env.H1_POLICY_GATE === '1'
 
+/**
+ * Run statuses a workflow-action run can durably END in. `partial` is not one:
+ * reconciliation owns it, and a premature memory event would be the one that
+ * survives dedupe when the real outcome arrives.
+ */
+const ACTION_TERMINAL_STATUSES = ['done', 'failed', 'cancelled', 'rejected'] as const
+type ActionTerminalStatus = (typeof ACTION_TERMINAL_STATUSES)[number]
+const ACTION_OUTCOME_CONFIDENCE: Record<ActionTerminalStatus, number> = {
+  done: 0.65, cancelled: 0.40, failed: 0.35, rejected: 0.35,
+}
+
+/**
+ * Atlas Memory M4 — episodic terminal outcome of a bound workflow-action run.
+ *
+ * Read back from the DURABLE row rather than inferred from the executor's result:
+ * the executor's fenced writes can match zero rows, and memory must record what
+ * the run actually became. Same canonical model as every other drain outcome —
+ * source 'drain', sourceId = run id, event 'outcome', project from the run row —
+ * so a retry of the same run dedupes onto the first event.
+ */
+async function recordActionRunOutcome(db: ReturnType<typeof createAdminClient>, runId: string): Promise<void> {
+  // Never throws. The run's outcome is already durable; an exception escaping
+  // here would reach the drain's failure accounting and rewrite a finished run.
+  try {
+    const { data: row, error } = await db.from('runs')
+      .select('id, project_id, status, kind, attempts, action_outcome, last_error')
+      .eq('id', runId)
+      .maybeSingle()
+    if (error || !row) {
+      console.error(`[run ${runId}] action outcome unreadable — no memory event: ${error?.message ?? 'row missing'}`)
+      return
+    }
+    if (!(ACTION_TERMINAL_STATUSES as readonly string[]).includes(row.status)) return
+    const status = row.status as ActionTerminalStatus
+    const kind = row.kind ?? 'unknown'
+    const actionOutcome = row.action_outcome ? `, action outcome: ${row.action_outcome}` : ''
+    const failure = status === 'failed' || status === 'rejected'
+      ? `: ${(row.last_error ?? 'unknown').slice(0, 200)}` : ''
+    const verb = status === 'done' ? 'completed' : status
+    await recordMemoryEvent({
+      scope: 'project', eventType: 'outcome', projectId: row.project_id,
+      entityKind: 'run', entityId: row.id, source: 'drain', sourceId: row.id,
+      subject: `Run outcome: ${status}`,
+      content: `Run ${row.id.slice(0, 8)} ${verb}${failure} (kind: ${kind}${actionOutcome})`,
+      confidence: ACTION_OUTCOME_CONFIDENCE[status],
+      structured: { runId: row.id, kind: row.kind ?? null, status, attempts: row.attempts ?? 1,
+                    error: failure ? (row.last_error?.slice(0, 300) ?? null) : null,
+                    actionOutcome: row.action_outcome ?? null },
+    }, db)
+  } catch (err) {
+    console.error(`[run ${runId}] action outcome unreadable — no memory event: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
@@ -74,12 +128,12 @@ export async function GET(request: Request) {
    * the same four outcomes. `settleRefusal` already owns the truth; this owns
    * the single translation of that truth into what the drain reports.
    */
-  const reportSettled = (
+  const reportSettled = async (
     run: Run & { claim_id?: string | null },
     settled: 'CANCELLED' | 'STOPPED' | 'FENCED' | 'ERROR',
     detail: string,
     stopReason?: string,
-  ): Record<string, unknown> => {
+  ): Promise<Record<string, unknown>> => {
     if (settled === 'ERROR') {
       // The owned lifecycle write failed. Touch nothing and start nothing: the
       // run keeps its lease, and expiry plus the reaper decide its durable
@@ -90,8 +144,8 @@ export async function GET(request: Request) {
     if (settled === 'FENCED') return { run_id: run.id, status: 'fenced', detail }
     if (settled === 'CANCELLED') {
       // Atlas Memory M4 — episodic outcome, emitted only once this worker has
-      // confirmed it owns the terminal write.
-      void recordMemoryEvent({
+      // confirmed it owns the terminal write. Awaited, like every memory emit.
+      await recordMemoryEvent({
         scope: 'project', eventType: 'outcome', projectId: run.project_id,
         entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
         subject: 'Run outcome: cancelled',
@@ -139,7 +193,7 @@ export async function GET(request: Request) {
         // between the two turns STOPPED into a real cancellation (R9), and a
         // database fault is neither a stop, a cancellation, nor lost ownership.
         const settled = await settleRefusal(db, entry.refusal, run.id, run.claim_id)
-        results.push(reportSettled(run, settled, entry.detail, stopReason))
+        results.push(await reportSettled(run, settled, entry.detail, stopReason))
         continue
       }
 
@@ -153,6 +207,9 @@ export async function GET(request: Request) {
         // The executor owns this run's terminal write (fenced on claim_id), so
         // the drain records the outcome and moves on — it must not also flip
         // status, which would overwrite what the executor just decided.
+        // A fenced invocation lost the run: it records nothing, and the owner
+        // that holds it emits when it finishes.
+        if (result.refusal !== 'fenced') await recordActionRunOutcome(db, run.id)
         results.push({
           run_id: run.id, status: result.executed ? 'action_executed' : 'action_refused',
           action: result.detail,
@@ -227,6 +284,19 @@ export async function GET(request: Request) {
         // below, and shadowing it here would be a silent bug waiting to happen.
         const term = await terminalizeCancelledRun(db, run.id, run.claim_id)
         console.warn(`[run ${run.id}] cancelled at finalization — not marked done`)
+        if (term === 'CANCELLED') {
+          // Atlas Memory M4 — episodic outcome, only once this worker's terminal
+          // write actually landed (FENCED/ERROR wrote nothing of ours).
+          await recordMemoryEvent({
+            scope: 'project', eventType: 'outcome', projectId: run.project_id,
+            entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+            subject: 'Run outcome: cancelled',
+            content: `Run ${run.id.slice(0, 8)} cancelled at finalization (kind: ${run.kind ?? 'unknown'})`,
+            confidence: 0.40,
+            structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled',
+                          attempts: run.attempts ?? 1, error: null },
+          }, db)
+        }
         results.push({
           run_id: run.id,
           // Same taxonomy as the entry boundary: a failed lifecycle write is
@@ -361,8 +431,9 @@ export async function GET(request: Request) {
           continue
         }
         // Atlas Memory M4 Commit 4 — episodic outcome: run completed successfully.
-        // Emitted after fenced=false confirms ownership. Non-blocking void side-channel.
-        void recordMemoryEvent({
+        // Emitted after fenced=false confirms ownership. Awaited: recordMemoryEvent
+        // never throws, so the run's outcome can never be failed by its memory.
+        await recordMemoryEvent({
           scope: 'project', eventType: 'outcome', projectId: run.project_id,
           entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
           subject: 'Run outcome: done',
@@ -404,7 +475,7 @@ export async function GET(request: Request) {
       if (e instanceof ExecutionStoppedError) {
         const settled = await settleRefusal(db, 'STOPPED', run.id, run.claim_id)
         console.warn(`[run ${run.id}] pre-dispatch stop (${e.reason}) → ${settled} — not a failure`)
-        results.push(reportSettled(run, settled, e.message, e.reason))
+        results.push(await reportSettled(run, settled, e.message, e.reason))
         continue
       }
 
@@ -489,7 +560,7 @@ export async function GET(request: Request) {
         // E4: the CANONICAL reason the admission carried, so a deferred run
         // says whether the platform or only this project is paused. A synthetic
         // `physical_admission_stop` answered neither.
-        results.push(reportSettled(run, settled, e.message, e.stopReason))
+        results.push(await reportSettled(run, settled, e.message, e.stopReason))
         continue
       }
       if (isRunCheckpointRefusal(e)) {
@@ -508,7 +579,7 @@ export async function GET(request: Request) {
         // Atlas Memory M4 Commit 4 — episodic outcome: cancelled at step boundary.
         // The executor already wrote status='cancelled' (fenced) before throwing CancelledError,
         // so this executor owns the terminal write. No fenced check needed here.
-        void recordMemoryEvent({
+        await recordMemoryEvent({
           scope: 'project', eventType: 'outcome', projectId: run.project_id,
           entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
           subject: 'Run outcome: cancelled',
@@ -555,7 +626,7 @@ export async function GET(request: Request) {
       // willRetry runs are non-terminal — the run continues; emit would be premature.
       // Emitted after fenced=false confirms this executor owns the failure write.
       if (!willRetry) {
-        void recordMemoryEvent({
+        await recordMemoryEvent({
           scope: 'project', eventType: 'outcome', projectId: run.project_id,
           entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
           subject: 'Run outcome: failed',

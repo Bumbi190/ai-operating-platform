@@ -148,9 +148,10 @@ export async function PATCH(
     // feedback for the same output type consolidates to ONE atlas.memories row (bounded growth).
     // sourceId=approvalId drives the idempotency index: network retries are safe (deduped).
     // Re-review (same approval PATCH'd twice): first human decision wins — second is deduped.
-    // void = non-blocking side-channel; must never delay or fail the approval response.
+    // Awaited: a detached promise does not survive the request. recordMemoryEvent never
+    // throws, so the decision above can never be failed by its memory.
     const outputType = existing.output_key ?? 'unknown'
-    void recordMemoryEvent({
+    await recordMemoryEvent({
       scope:      'project',
       eventType:  'feedback',
       projectId,

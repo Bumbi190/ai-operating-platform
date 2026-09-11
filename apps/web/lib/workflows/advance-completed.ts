@@ -34,16 +34,63 @@
 import 'server-only'
 
 import { checkPrerequisites, deriveCurrentState, getState } from './machine'
-import { appendTransition, listEvidence, listTransitions, readDefinitionById } from './store'
+import { appendTransition, listEvidence, listTransitions, readDefinitionById, readInstance } from './store'
 import { summarizeStateEvidence } from './evidence-consumption'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { registeredActionsAt } from './action-discovery'
 import { classifyPriorObservation, type PriorObservation } from './action-identity'
 import { findAdapter } from './adapters/registry'
-import type { WorkflowInstance } from './types'
+import type { WorkflowInstance, WorkflowTransition } from './types'
+import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 
 // any: the Supabase client in this project has no generated DB types.
 type AnyDb = any
+
+/**
+ * Atlas Memory M4 — the observational record that a workflow instance completed.
+ *
+ * Called by both advance paths (this module and `advance.ts`) AFTER
+ * `appendTransition` has returned, never from `store.ts`: the store is imported
+ * by authorization and read paths, and memory must not enter their graphs.
+ *
+ * Completion is proven, not inferred. `workflow_append_transition` appends the
+ * transition and closes the instance in one statement, so the row is read back
+ * and must be `complete` at exactly this transition's target. An intermediate
+ * transition leaves the instance active and records nothing. The event's
+ * identity is the transition id — one transition, one event — and its project
+ * is the stored instance's, never the caller's copy. It is an outcome, not a
+ * decision: the authorization that opened a human gate is recorded only as
+ * `authorized: true`, never by id. Nothing in the workflow runtime reads it back.
+ *
+ * Never throws: the transition has committed, and a memory problem must not be
+ * reported as a failed advance.
+ */
+export async function recordWorkflowCompletion(
+  db: AnyDb, instance: WorkflowInstance, transition: WorkflowTransition,
+): Promise<void> {
+  try {
+    if (!isMemoryEnabled()) return
+    const current = await readInstance(db, transition.instance_id)
+    if (!current || current.id !== instance.id) return
+    if (current.status !== 'complete' || current.current_state !== transition.to_state) return
+    await recordMemoryEvent({
+      scope: 'project', eventType: 'outcome', projectId: current.project_id,
+      entityKind: 'workflow_instance', entityId: current.id,
+      source: 'workflow', sourceId: transition.id,
+      subject: 'Workflow outcome: complete',
+      content: `Workflow ${current.def_key} v${current.def_version} completed (${transition.from_state ?? 'start'} → ${transition.to_state})`,
+      confidence: 0.65,
+      structured: {
+        instanceId: current.id, defKey: current.def_key, defVersion: current.def_version,
+        fromState: transition.from_state, toState: transition.to_state,
+        transitionId: transition.id, actor: transition.actor,
+        authorized: transition.authorization_id !== null,
+      },
+    }, db)
+  } catch (err) {
+    console.error(`[workflow ${instance.id}] completion not recorded in memory: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
 
 export type CompletionRefusal =
   | 'inactive_instance'
@@ -239,8 +286,9 @@ export async function advanceCompletedWorkflowState(
   //     so a null here is accepted by design rather than by exception. The RPC
   //     takes the instance row FOR UPDATE and compares stored current_state to
   //     the from-state, so two concurrent advances cannot both append.
+  let transition: WorkflowTransition
   try {
-    await appendTransition(db, {
+    transition = await appendTransition(db, {
       instanceId: instance.id,
       to,
       reason: `automated completion: "${from}" work complete and verified`,
@@ -250,6 +298,9 @@ export async function advanceCompletedWorkflowState(
   } catch (e) {
     return refuse('append_refused', e instanceof Error ? e.message : 'append failed', { toState: to })
   }
+  // After the append committed and outside its try: a memory problem can never be
+  // read as a refused append.
+  await recordWorkflowCompletion(db, instance, transition)
 
   return {
     outcome: 'advanced', fromState: from, toState: to, reasonCode: null,

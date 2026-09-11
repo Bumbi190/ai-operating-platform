@@ -72,7 +72,9 @@ function gapsOf(classes: string[]): string[] {
   return classes.filter((c) => new RegExp('(^|:)gap(-x|-y)?-').test(c)).sort()
 }
 
-const PROJECT_HOME = read('app/(platform)/projects/[slug]/page.tsx')
+// The legacy project body moved verbatim into ProjectLegacy.tsx in vNext Phase 10
+// (it is the `?ui=legacy` rollback); its layout contract is unchanged and still held here.
+const PROJECT_HOME = read('app/(platform)/projects/[slug]/ProjectLegacy.tsx')
 
 /**
  * The project-home stat grid. Anchored on the map that renders it: this file

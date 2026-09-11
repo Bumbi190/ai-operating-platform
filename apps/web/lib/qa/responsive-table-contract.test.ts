@@ -99,7 +99,8 @@ const SURFACES: Surface[] = [
   },
   {
     id: 'project home',
-    rel: 'app/(platform)/projects/[slug]/page.tsx',
+    // Moved verbatim to the legacy rollback body in vNext Phase 10.
+    rel: 'app/(platform)/projects/[slug]/ProjectLegacy.tsx',
     columns: 4,
     cellPadPx: 32,
     avgTypePx: 14,

@@ -322,7 +322,11 @@ describe('the operator controls are reachable and honest', () => {
   })
 
   it('both scopes are actually mounted somewhere an operator can reach', () => {
-    expect(code('app/(platform)/projects/[slug]/page.tsx')).toContain('<ProjectPauseToggle')
+    // Both generations of the project page mount the same project control: the
+    // vNext Project Command Center (default) and the legacy body (`?ui=legacy`).
+    expect(code('components/platform/vnext/ProjectCommandCenter.tsx')).toContain('<ProjectPauseToggle')
+    expect(code('app/(platform)/projects/[slug]/ProjectLegacy.tsx')).toContain('<ProjectPauseToggle')
+    expect(code('app/(platform)/projects/[slug]/page.tsx')).toMatch(/<ProjectLegacy\b[\s\S]*<ProjectCommandCenter\b/)
     expect(code('app/(platform)/system/page.tsx')).toContain('<PauseToggle')
   })
 

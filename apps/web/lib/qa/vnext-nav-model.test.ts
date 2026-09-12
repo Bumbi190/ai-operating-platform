@@ -38,7 +38,7 @@ describe('vnext nav · approved information architecture', () => {
     expect(byGroup.arbete).toEqual([
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
-    expect(byGroup.intelligens).toEqual(['Minne', 'Intelligence Graph', 'Revenue Center'])
+    expect(byGroup.intelligens).toEqual(['Minne', 'Intelligence Graph', 'Pengar'])
     expect(byGroup.system).toEqual(['System', 'Inställningar'])
   })
 

@@ -36,6 +36,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as React from 'react'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 import { calculateCost, formatCost } from '@/lib/ai/pricing'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 // The page is compiled with the classic JSX runtime.
 ;(globalThis as any).React = React
@@ -208,8 +210,12 @@ let lastPageTree: any = null
 
 async function renderRevenue() {
   vi.resetModules()
-  const mod = await import('@/app/(platform)/revenue/page')
-  const el = await mod.default()
+  // The legacy body, which this suite is about: every aggregate it pins is the
+  // service-role read Phase 9N scoped. vNext renders a different surface at the
+  // same route and is covered by `money-overview.test.ts`; CostIntelligence is
+  // still imported by this body, unchanged, so the child assertions hold too.
+  const mod = await import('@/app/(platform)/revenue/RevenueLegacy')
+  const el = await mod.RevenueLegacy()
   lastPageTree = el
   const out: string[] = []
   collect(el, out)
@@ -588,5 +594,56 @@ describe('9N.5 · CostIntelligence — scope precedes window, ordering and slici
     const { text } = await renderCostIntelligence()
     expect(text).toContain('Min Agent')
     expect(text).not.toContain('SECRET-AGENT')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 — the vNext surface at the same route
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The body above is the legacy one, reached by `?ui=legacy`. vNext renders
+// Pengar at the same path, and it reads the SAME service-role-only sources —
+// `cost_events` and the budget functions were revoked from `authenticated` in
+// 9AB — so the rule this suite exists for applies again: the scope lands inside
+// every query, before any sum. These assertions read the loader's code.
+
+describe('9N · revenue — the vNext surface keeps the boundary', () => {
+  const src = readFileSync(resolve(__dirname, '../../lib/os/money.ts'), 'utf8')
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+
+  it('resolves the scope from the session and fails closed without one', () => {
+    expect(code).toMatch(/resolveProjectAccess\(\)/)
+    expect(code).toMatch(/if \(!access\.ok\) return null/)
+    expect(code).toMatch(/scopeProjectFilter\(access\.allowedProjectIds\)/)
+  })
+
+  it('scopes every project-owned read inside the query, never after a sum', () => {
+    for (const table of ['cost_events', 'revenue_events', 'leads', 'spend_advisory_overrides']) {
+      const re = new RegExp(`from\\('${table}'\\)[\\s\\S]{0,200}?\\.in\\('project_id', scope\\)`)
+      expect(code, table).toMatch(re)
+    }
+  })
+
+  it('re-filters in the assembler, so one layer failing cannot move a total', () => {
+    expect(code).toMatch(/pid !== null && owned\.has\(pid\)/)
+    expect(code).toMatch(/if \(!pid \|\| !owned\.has\(pid\)\) continue/)
+  })
+
+  it('keeps only PROJECT scopes from the gate, whose global rows sum every project', () => {
+    expect(code).toMatch(/if \(!isProjectBudgetScope\(row\?\.scope\)\) continue/)
+  })
+
+  it('does not re-price and does not read the token estimate the legacy page used', () => {
+    expect(code).not.toMatch(/run_logs|calculateCost|getModelPricing|getRates|MONTHLY_AI_BUDGET/)
+  })
+
+  it('narrowing by slug can only remove ids', () => {
+    expect(code).toMatch(/scopeProjectFilter\(match \? \[match\.id\] : \[\]\)/)
+  })
+
+  it('both generations are mounted at the one route', () => {
+    const page = readFileSync(resolve(__dirname, '../../app/(platform)/revenue/page.tsx'), 'utf8')
+    expect(page).toMatch(/<RevenueLegacy \/>/)
+    expect(page).toMatch(/<MoneyOverview model=/)
   })
 })

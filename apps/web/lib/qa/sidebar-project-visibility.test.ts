@@ -127,7 +127,7 @@ describe('sidebar · which nav list each generation renders', () => {
       // Organisation joined the Atlas group in Phase 6.5.
       'Atlas', 'Chat', 'Organisation',
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
-      'Minne', 'Intelligence Graph', 'Revenue Center',
+      'Minne', 'Intelligence Graph', 'Pengar',
       'System', 'Inställningar',
     ])
   })

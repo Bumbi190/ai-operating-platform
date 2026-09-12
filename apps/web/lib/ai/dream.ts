@@ -12,7 +12,9 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { deriveIssueId } from '@/lib/atlas/dream'
+import { deriveIssueId, normSeverity } from '@/lib/atlas/dream'
+import type { DreamSeverity } from '@/lib/atlas/dream'
+import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
@@ -103,6 +105,121 @@ export interface DreamResult {
     successful: number
     failed: number
     fail_rate_pct: number
+  }
+}
+
+/** One analyzer finding, after key normalization. */
+interface DreamInsight { key: string; issue_id?: string; value: string; severity: string; action: string }
+
+/** An issue this cycle actually created in the ledger. */
+interface NewIssueRecord {
+  id: string; slug: string; severity: DreamSeverity
+  title: string; memoryKey: string; firstSeenAt: string | null
+}
+
+/** An issue whose stored severity this cycle actually changed. */
+interface SeverityChangeRecord {
+  id: string; slug: string; from: DreamSeverity; to: DreamSeverity
+}
+
+/** Keep a payload readable without carrying a model blob into memory. */
+function clip(text: string, max = 200): string {
+  const t = (text ?? '').trim()
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t
+}
+
+/**
+ * Atlas Memory M4 — what a Dream cycle actually changed.
+ *
+ * Three reflections, all episodic, all keyed so a retry is the same event:
+ *   • a new issue            → `<issue id>:first_seen`  (once per issue, ever)
+ *   • a severity change      → `<issue id>:severity:<new>:<UTC date>`
+ *   • the gated cycle summary→ `<project id>:<UTC date>` (one per project/day)
+ *
+ * The severity key carries the cycle date on purpose. Cron, a manual "Kör nu"
+ * and any retry on the same UTC day collapse to one event, while a genuine later
+ * transition back to a severity the issue held before stays observable — a
+ * lifetime `:severity:<new>` key would silently swallow it.
+ *
+ * The delta is built from ledger writes that LANDED, never from model output, so
+ * memory cannot claim an issue Postgres refused. A night where known issues
+ * merely recur produces no event at all: not a summary, not an issue event.
+ *
+ * Never throws: the ledger is already committed and Dream's result must not turn
+ * into a failure because a memory write did.
+ */
+async function recordDreamCycleMemory(
+  db: ReturnType<typeof createAdminClient>,
+  project: { id: string; name: string },
+  cycleDate: string,
+  newIssues: NewIssueRecord[],
+  severityChanges: SeverityChangeRecord[],
+  stats: { runsAnalyzed: number; failRatePct: number },
+): Promise<void> {
+  try {
+    if (!isMemoryEnabled()) return
+    // The gate. Recurrence-only nights — occurrences++, last_seen, restated
+    // wording — are the normal case here, and they are not worth remembering.
+    if (newIssues.length === 0 && severityChanges.length === 0) return
+
+    for (const issue of newIssues) {
+      await recordMemoryEvent({
+        scope: 'project', eventType: 'reflection', projectId: project.id,
+        entityKind: 'dream_issue', entityId: issue.id,
+        source: 'dream', sourceId: `${issue.id}:first_seen`,
+        subject: `Dream issue: ${issue.slug}`,
+        content: `New issue "${issue.slug}" (${issue.severity}): ${clip(issue.title)}`,
+        confidence: 0.50,
+        structured: {
+          issueId: issue.id, issueSlug: issue.slug, severity: issue.severity,
+          occurrences: 1, firstSeenAt: issue.firstSeenAt, memoryKey: issue.memoryKey,
+          cycleDate,
+        },
+      }, db)
+    }
+
+    for (const change of severityChanges) {
+      await recordMemoryEvent({
+        scope: 'project', eventType: 'reflection', projectId: project.id,
+        entityKind: 'dream_issue', entityId: change.id,
+        source: 'dream', sourceId: `${change.id}:severity:${change.to}:${cycleDate}`,
+        subject: `Dream severity: ${change.slug}`,
+        content: `Issue "${change.slug}" severity ${change.from} → ${change.to}`,
+        confidence: 0.50,
+        structured: {
+          issueId: change.id, issueSlug: change.slug,
+          fromSeverity: change.from, toSeverity: change.to, cycleDate,
+        },
+      }, db)
+    }
+
+    await recordMemoryEvent({
+      scope: 'project', eventType: 'reflection', projectId: project.id,
+      entityKind: 'project', entityId: project.id,
+      source: 'dream', sourceId: `${project.id}:${cycleDate}`,
+      subject: `Dream cycle: ${cycleDate}`,
+      content:
+        `Dream cycle ${cycleDate}: ${newIssues.length} new issue(s), ` +
+        `${severityChanges.length} severity change(s) across ${stats.runsAnalyzed} run(s) ` +
+        `(fail rate ${stats.failRatePct}%)`,
+      confidence: 0.50,
+      structured: {
+        cycleDate,
+        newIssues: newIssues.length,
+        severityChanges: severityChanges.length,
+        // Only what this cycle changed — never the standing issue list, and
+        // never the analyzer's free text.
+        issues: [
+          ...newIssues.map((i) => ({ slug: i.slug, severity: i.severity, kind: 'new' as const })),
+          ...severityChanges.map((c) => ({ slug: c.slug, severity: c.to, kind: 'severity' as const })),
+        ],
+        runsAnalyzed: stats.runsAnalyzed, failRatePct: stats.failRatePct,
+      },
+    }, db)
+  } catch (err) {
+    console.error(
+      `[dream ${project.id}] cycle not recorded in memory: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }
 
@@ -293,6 +410,8 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
     await db.from('memories').delete().in('id', idsToDelete)
   }
 
+  // Compatibility log: unchanged, one row per insight, failures only affect the
+  // reported count. dream_issues below is the canonical ledger.
   let savedCount = 0
   for (const insight of normalizedInsights) {
     const { error } = await db.from('memories').upsert(
@@ -305,33 +424,60 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
       { onConflict: 'project_id,key' },
     )
     if (!error) savedCount++
+  }
 
-    // ── Stable issue ledger ──────────────────────────────────────────────────
-    // Stamp the finding onto its stable issue. Recurring issues (same issue_id)
-    // UPDATE the existing row — occurrences++ / last_seen — instead of forking a
-    // new lifecycle. Lifecycle itself is NOT stored here; it is derived from the
-    // linked manager_task (single source of truth), so we never touch the link.
+  // ── Stable issue ledger ────────────────────────────────────────────────────
+  // Stamp the findings onto their stable issues. Recurring issues (same issue_id)
+  // UPDATE the existing row — occurrences++ / last_seen — instead of forking a
+  // new lifecycle. Lifecycle itself is NOT stored here; it is derived from the
+  // linked manager_task (single source of truth), so we never touch the link.
+  //
+  // One mutation per issue per cycle: an analyzer answer that names the same
+  // issue twice used to insert it and then immediately update it — inflating
+  // occurrences and leaving "what changed tonight" ambiguous. Fold first (last
+  // finding wins), then the cycle's canonical delta falls out of the writes.
+  const byIssue = new Map<string, DreamInsight>()
+  for (const insight of normalizedInsights) {
+    const slug = ((insight as { issue_id?: string }).issue_id || '').trim() || deriveIssueId(insight.key)
+    byIssue.set(slug, insight)
+  }
+
+  const cycleDate = new Date().toISOString().slice(0, 10)
+  const newIssues: NewIssueRecord[] = []
+  const severityChanges: SeverityChangeRecord[] = []
+
+  for (const [slug, insight] of byIssue) {
     try {
-      const slug = ((insight as { issue_id?: string }).issue_id || '').trim() || deriveIssueId(insight.key)
       const { data: existing } = await db
         .from('dream_issues')
-        .select('id, occurrences')
+        .select('id, occurrences, severity')
         .eq('project_id', project.id)
         .eq('issue_id', slug)
         .maybeSingle()
 
       if (existing) {
-        await db.from('dream_issues').update({
+        const row = existing as { id: string; occurrences?: number; severity?: string | null }
+        const before = normSeverity(row.severity)
+        const after = normSeverity(insight.severity)
+        const { data: updated, error } = await db.from('dream_issues').update({
           severity: insight.severity,
           latest_insight: insight.value,
           latest_action: insight.action,
           latest_memory_key: insight.key,
-          occurrences: ((existing as { occurrences?: number }).occurrences ?? 1) + 1,
+          occurrences: (row.occurrences ?? 1) + 1,
           last_seen_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }).eq('id', (existing as { id: string }).id)
+        }).eq('id', row.id).select('id, severity').maybeSingle()
+
+        // A severity change is only real once the new value is STORED. Same
+        // canonical severity, a bumped occurrence count or restated wording is
+        // a recurrence, and recurrences are not remembered.
+        const stored = updated as { severity?: string | null } | null
+        if (!error && stored && before !== after && normSeverity(stored.severity) === after) {
+          severityChanges.push({ id: row.id, slug, from: before, to: after })
+        }
       } else {
-        await db.from('dream_issues').insert({
+        const { data: inserted, error } = await db.from('dream_issues').insert({
           project_id: project.id,
           issue_id: slug,
           title: insight.value,
@@ -339,10 +485,27 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
           latest_insight: insight.value,
           latest_action: insight.action,
           latest_memory_key: insight.key,
-        })
+        }).select('id, severity, first_seen_at').single()
+
+        // Losing the (project_id, issue_id) race means another run owns this
+        // issue's first sighting: no row of ours landed, so there is nothing to
+        // record and the winner's event stands alone.
+        const row = inserted as { id: string; severity?: string | null; first_seen_at?: string | null } | null
+        if (!error && row) {
+          newIssues.push({
+            id: row.id, slug, severity: normSeverity(row.severity),
+            title: insight.value, memoryKey: insight.key,
+            firstSeenAt: row.first_seen_at ?? null,
+          })
+        }
       }
     } catch { /* ledger is best-effort; memory log already persisted */ }
   }
+
+  // Atlas Memory M4 — after the ledger committed, and only about what it stored.
+  await recordDreamCycleMemory(db, project, cycleDate, newIssues, severityChanges, {
+    runsAnalyzed: totalRuns, failRatePct: failRate,
+  })
 
   return {
     ran: true,

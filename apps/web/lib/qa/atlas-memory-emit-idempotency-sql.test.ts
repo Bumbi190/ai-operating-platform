@@ -87,6 +87,8 @@ const ACTION_RUN = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
 const CANCELLED_RUN = '12121212-1212-4212-8212-121212121212'
 const CHECKPOINT_RUN = '13131313-1313-4313-8313-131313131313'
 const WORKFLOW_TRANSITION = '14141414-1414-4414-8414-141414141414'
+const DREAM_ISSUE = '17171717-1717-4717-8717-171717171717'
+const DREAM_DAY = '2026-09-12'
 
 // ── Harness discovery (same contract as the recall SQL suite) ────────────────
 
@@ -216,6 +218,9 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('Slice 2A — emit idempotency in t
     ['finalization cancel', { eventType: 'outcome', source: 'drain', sourceId: CANCELLED_RUN }],
     ['step-checkpoint cancel (2B-1)', { eventType: 'outcome', source: 'drain', sourceId: CHECKPOINT_RUN }],
     ['workflow completion (2B-1, transition id)', { eventType: 'outcome', source: 'workflow', sourceId: WORKFLOW_TRANSITION }],
+    ['dream new issue (2B-2)', { eventType: 'reflection', source: 'dream', sourceId: `${DREAM_ISSUE}:first_seen` }],
+    ['dream severity change (2B-2, dated)', { eventType: 'reflection', source: 'dream', sourceId: `${DREAM_ISSUE}:severity:critical:${DREAM_DAY}` }],
+    ['dream cycle summary (2B-2, project + date)', { eventType: 'reflection', source: 'dream', sourceId: `${PROJECT}:${DREAM_DAY}` }],
   ])('%s: a retry of the same emit is one event', (_label, key) => {
     const first = emit(key)
     const retry = emit(key)
@@ -247,6 +252,56 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('Slice 2A — emit idempotency in t
     expect(countKey('drain', LEGACY_RUN, 'outcome')).toBe(1)
     const [[content]] = query(dsn, `select content from atlas.memory_events where source='drain' and source_id='${LEGACY_RUN}'`)
     expect(content).not.toBe('cancelled later')
+  })
+
+  it('a Dream issue is first seen once for its whole lifetime, however often it recurs', () => {
+    const issue = '18181818-1818-4818-8818-181818181818'
+    const key = `${issue}:first_seen`
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: key, content: 'new issue' })).not.toBeNull()
+    // 30 more nights of the same issue recurring: the producer emits nothing, and
+    // even a retried first sighting cannot fork a second identity.
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: key, content: 'seen again' })).toBeNull()
+    expect(countKey('dream', key, 'reflection')).toBe(1)
+  })
+
+  it('a severity change dedupes within its UTC cycle but stays visible on a later date', () => {
+    const issue = '19191919-1919-4919-8919-191919191919'
+    const day1 = `${issue}:severity:critical:2026-09-12`
+    const day8 = `${issue}:severity:critical:2026-09-19`
+    // cron, then a manual run, then a retry — one UTC day, one event.
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day1 })).not.toBeNull()
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day1 })).toBeNull()
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day1 })).toBeNull()
+    expect(countKey('dream', day1, 'reflection')).toBe(1)
+    // A genuine later flip back to `critical` is a different night, so it stands:
+    // this is exactly what a lifetime `:severity:<new>` key would have swallowed.
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day8 })).not.toBeNull()
+    expect(countKey('dream', day8, 'reflection')).toBe(1)
+    const [[n]] = query(dsn, `select count(*) from atlas.memory_events
+      where source='dream' and source_id like '${issue}:severity:%'`)
+    expect(Number(n)).toBe(2)
+  })
+
+  it('a project gets at most one Dream summary per UTC cycle date', () => {
+    const day = `${PROJECT}:2026-09-20`
+    const next = `${PROJECT}:2026-09-21`
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day, content: 'cron' })).not.toBeNull()
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: day, content: 'manual, same day' })).toBeNull()
+    expect(countKey('dream', day, 'reflection')).toBe(1)
+    expect(emit({ eventType: 'reflection', source: 'dream', sourceId: next, content: 'next night' })).not.toBeNull()
+    const [[content]] = query(dsn, `select content from atlas.memory_events where source='dream' and source_id='${day}'`)
+    expect(content).toBe('cron')
+  })
+
+  it('the three Dream identities never collide with each other or with the June backfill', () => {
+    const issue = '20202020-2020-4020-8020-202020202020'
+    const ids = [`${issue}:first_seen`, `${issue}:severity:warning:${DREAM_DAY}`, `${PROJECT}:${DREAM_DAY}`,
+                 `alerting_missing:${DREAM_DAY}`]
+    const written = ids.map((sourceId) => emit({ eventType: 'reflection', source: 'dream', sourceId }))
+    expect(written.filter(Boolean)).toHaveLength(3) // the summary key already exists from the it.each row
+    const [[n]] = query(dsn, `select count(distinct source_id) from atlas.memory_events
+      where source='dream' and source_id in (${ids.map((i) => lit(i)).join(',')})`)
+    expect(Number(n)).toBe(4)
   })
 
   it('an article review and an approval decision share a source but never dedupe onto each other', () => {

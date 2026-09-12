@@ -103,7 +103,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     filters: { state: ['pending', 'approved', 'rejected', 'revised'] },
   },
   activity: {
-    id: 'activity', label: 'Activity',
+    id: 'activity', label: 'Aktivitet',
     keywords: ['activity', 'aktivitet', 'runs', 'körningar', 'failed', 'fallerade', 'agent activity'],
     projectMode: 'query',
     filters: { status: ['failed', 'running', 'done', 'queued', 'stalled'] },

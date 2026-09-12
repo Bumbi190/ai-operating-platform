@@ -113,7 +113,8 @@ const SURFACES: Surface[] = [
   },
   {
     id: 'agent activity',
-    rel: 'app/(platform)/agent-activity/page.tsx',
+    // Phase 13 moved this body verbatim into AgentActivityLegacy (`?ui=legacy`).
+    rel: 'app/(platform)/agent-activity/AgentActivityLegacy.tsx',
     columns: 5,
     cellPadPx: 40,
     // Three columns at 12px, two at 10.5px.

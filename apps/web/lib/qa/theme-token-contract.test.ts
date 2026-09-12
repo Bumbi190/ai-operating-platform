@@ -156,7 +156,7 @@ describe('theme tokens · component defaults must not defeat call-site utilities
     // actually carry the utilities they intend to win with.
     const sites: Array<[string, string[]]> = [
       ['app/(platform)/chat/ExecutiveAssistant.tsx', ['text-[22px]', 'leading-tight']],
-      ['app/(platform)/agent-activity/page.tsx', ['text-[26px]', 'md:text-[30px]']],
+      ['app/(platform)/agent-activity/AgentActivityLegacy.tsx', ['text-[26px]', 'md:text-[30px]']],
       ['components/platform/os/DashboardHero.tsx', ['text-[26px]', 'md:text-[32px]']],
     ]
     for (const [rel, utils] of sites) {

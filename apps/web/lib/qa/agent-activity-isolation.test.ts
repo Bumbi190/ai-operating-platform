@@ -31,6 +31,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as React from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 
 ;(globalThis as any).React = React
@@ -228,8 +230,11 @@ function renderChildren(node: any, name: string, out: string[], depth = 0) {
 
 async function render() {
   vi.resetModules()
-  const mod = await import('@/app/(platform)/agent-activity/page')
-  const el = await mod.default()
+  // The legacy body, which this suite is about: it is the service-role read
+  // that the `.limit()` ordering argument below concerns. vNext renders a
+  // different, RLS-bound surface and is covered by `activity-stream.test.ts`.
+  const mod = await import('@/app/(platform)/agent-activity/AgentActivityLegacy')
+  const el = await mod.AgentActivityLegacy()
   const out: string[] = []
   collect(el, out)
   const cards: string[] = []
@@ -437,5 +442,56 @@ describe('9P · agent activity — the loader cannot be called without a scope',
     expect(activity.running.map(r => r.runId)).toEqual(['r-mine-running'])
     expect(activity.recent.map(r => r.runId).sort()).toEqual(['r-mine-done-1', 'r-mine-done-2'])
     expect(JSON.stringify(activity)).not.toContain('SECRET')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 13 — the vNext surface at the same route
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The body above is the legacy one, reached by `?ui=legacy`. vNext renders a
+// different read at the same path, so the boundary has to hold twice. It is a
+// STRONGER read, not a looser one: RLS-bound rather than service-role, which is
+// why these assertions are about what it must NOT contain.
+
+describe('9P · agent activity — the vNext surface is bound at least as tightly', () => {
+  const src = readFileSync(resolve(__dirname, '../../lib/os/activity.ts'), 'utf8')
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+
+  it('does not reach for the service-role client at all', () => {
+    expect(code).not.toMatch(/createAdminClient|service_role/)
+  })
+
+  it('reads through the RLS client, so the owner boundary is the database\'s', () => {
+    expect(code).toMatch(/from '@\/lib\/supabase\/server'/)
+    expect(code).toMatch(/createClient\(\)/)
+  })
+
+  it('fails closed without a session rather than rendering a scopeless page', () => {
+    expect(code).toMatch(/if \(!user\) return null/)
+  })
+
+  it('scopes approvals through the run, never through approvals.project_id', () => {
+    // `approvals.project_id` is null on 12 of 13 production rows; gating on it
+    // would drop almost every review instead of placing it.
+    expect(code).toMatch(/runs!inner\(id, projects!inner\(/)
+    expect(code).not.toMatch(/\.eq\('project_id'/)
+  })
+
+  it('bounds every read it makes', () => {
+    const limits = code.match(/\.limit\(/g) ?? []
+    expect(limits.length).toBeGreaterThanOrEqual(3)
+    expect(code).not.toMatch(/\.limit\(\s*\)/)
+  })
+
+  it('fans out to run_logs only over ids that came from the scoped read', () => {
+    expect(code).toMatch(/\.in\('run_id', runIds\)/)
+    expect(code).toMatch(/runIds = runRows\.map/)
+  })
+
+  it('both generations are mounted at the one route', () => {
+    const page = readFileSync(resolve(__dirname, '../../app/(platform)/agent-activity/page.tsx'), 'utf8')
+    expect(page).toMatch(/<AgentActivityLegacy \/>/)
+    expect(page).toMatch(/<ActivityStream model=/)
   })
 })

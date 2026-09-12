@@ -42,7 +42,9 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const DATA = read('lib/os/data.ts')
 const SCORING = read('lib/os/scoring.ts')
-const SYSTEM = read('app/(platform)/system/page.tsx')
+// Phase 12 moved this body verbatim into SystemLegacy (`?ui=legacy`); the
+// route itself is now the generation branch.
+const SYSTEM = read('app/(platform)/system/SystemLegacy.tsx')
 
 const codeOnly = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')

@@ -131,7 +131,8 @@ const SURFACES: Surface[] = [
   },
   {
     id: 'system',
-    rel: 'app/(platform)/system/page.tsx',
+    // Phase 12 moved this body verbatim into SystemLegacy (`?ui=legacy`).
+    rel: 'app/(platform)/system/SystemLegacy.tsx',
     columns: 6,
     cellPadPx: 48,
     // Four columns at 12px, two at 10.5px.

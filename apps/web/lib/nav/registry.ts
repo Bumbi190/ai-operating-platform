@@ -130,7 +130,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     projectMode: 'none',
   },
   health: {
-    id: 'health', label: 'Health',
+    id: 'health', label: 'Systemhälsa',
     keywords: ['health', 'system', 'telemetry', 'hälsa', 'status', 'tokens'],
     projectMode: 'none',
   },

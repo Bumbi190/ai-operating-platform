@@ -327,7 +327,12 @@ describe('the operator controls are reachable and honest', () => {
     expect(code('components/platform/vnext/ProjectCommandCenter.tsx')).toContain('<ProjectPauseToggle')
     expect(code('app/(platform)/projects/[slug]/ProjectLegacy.tsx')).toContain('<ProjectPauseToggle')
     expect(code('app/(platform)/projects/[slug]/page.tsx')).toMatch(/<ProjectLegacy\b[\s\S]*<ProjectCommandCenter\b/)
-    expect(code('app/(platform)/system/page.tsx')).toContain('<PauseToggle')
+    // Phase 12 does the same for the global control: the vNext Systemhälsa
+    // surface (default) and the legacy body (`?ui=legacy`) both mount it, and
+    // the route branches between them.
+    expect(code('components/platform/vnext/SystemHealth.tsx')).toContain('<PauseToggle')
+    expect(code('app/(platform)/system/SystemLegacy.tsx')).toContain('<PauseToggle')
+    expect(code('app/(platform)/system/page.tsx')).toMatch(/<SystemLegacy\b[\s\S]*<SystemHealth\b/)
   })
 
   it('the two scopes have SEPARATE controls', () => {

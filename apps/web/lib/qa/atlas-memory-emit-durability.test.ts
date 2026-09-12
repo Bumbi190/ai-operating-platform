@@ -393,10 +393,13 @@ describe('Slice 2A — no memory emit is ever detached', () => {
     //   Slice 2A: approvals 1 · article review 2 · drain 6
     //   Slice 2B-1: drain +3 (step-checkpoint, final-write and approval-write cancels)
     //               workflows +1 (recordWorkflowCompletion, in advance-completed.ts)
+    //   Slice 2B-2: dream +3 (new issue, severity change, gated cycle summary —
+    //               all inside recordDreamCycleMemory, in lib/ai/dream.ts)
     expect(perFile).toEqual({
       'app/api/approvals/[id]/route.ts': 1,
       'app/api/content/articles/[id]/review/route.ts': 2,
       'app/api/runs/drain/route.ts': 9,
+      'lib/ai/dream.ts': 3,
       'lib/workflows/advance-completed.ts': 1,
     })
     expect(sites.filter((s) => !s.awaited).map((s) => `${s.file}: ${s.snippet}`)).toEqual([])
@@ -418,7 +421,7 @@ describe('Slice 2A — no memory emit is ever detached', () => {
 
   it('no `void recordMemoryEvent` (or any detached memory emit) remains in production code', () => {
     const detached = PRODUCTION.filter((f) =>
-      /\bvoid\s+(recordMemoryEvent|recordActionRunOutcome|recordCheckpointCancelOutcome|recordWorkflowCompletion)\b|\b(recordMemoryEvent|recordActionRunOutcome|recordCheckpointCancelOutcome|recordWorkflowCompletion)\([^;]*?\)\s*\.then\(/
+      /\bvoid\s+(recordMemoryEvent|recordActionRunOutcome|recordCheckpointCancelOutcome|recordWorkflowCompletion|recordDreamCycleMemory)\b|\b(recordMemoryEvent|recordActionRunOutcome|recordCheckpointCancelOutcome|recordWorkflowCompletion|recordDreamCycleMemory)\([^;]*?\)\s*\.then\(/
         .test(codeOnly(fs.readFileSync(f, 'utf8'))))
     expect(detached.map(rel)).toEqual([])
   })
@@ -429,7 +432,7 @@ describe('Slice 2A — no memory emit is ever detached', () => {
   })
 
   it('every product emitter payload is explicitly project-scoped; none names world or org', () => {
-    for (const file of ['app/api/approvals/[id]/route.ts', 'app/api/content/articles/[id]/review/route.ts', 'app/api/runs/drain/route.ts', 'lib/workflows/advance-completed.ts']) {
+    for (const file of ['app/api/approvals/[id]/route.ts', 'app/api/content/articles/[id]/review/route.ts', 'app/api/runs/drain/route.ts', 'lib/workflows/advance-completed.ts', 'lib/ai/dream.ts']) {
       const code = codeOnly(fs.readFileSync(path.join(WEB_ROOT, file), 'utf8'))
       const emits = code.split(/recordMemoryEvent\(/).slice(1).map((s) => s.slice(0, 700))
       expect(emits.length, file).toBeGreaterThan(0)

@@ -747,15 +747,19 @@ describe('2B-1 · placement and boundaries', () => {
     expect(apprBlock.indexOf('await recordMemoryEvent(')).toBeGreaterThan(apprBlock.indexOf("status: 'returned'"))
   })
 
-  it('Dream and the media pipeline gained no memory producer in this slice', () => {
-    for (const f of ['lib/ai/dream.ts', 'lib/atlas/dream.ts', 'app/api/media/cron/dream/route.ts',
+  it('the media pipeline gained no memory producer, and Dream gained none HERE', () => {
+    // Slice 2B-2 added the Dream producer in lib/ai/dream.ts — the one file chat
+    // cannot reach — and atlas-memory-dream-producers.test.ts owns it. Everything
+    // else on the Dream path, and the whole media pipeline, stays memory-free.
+    for (const f of ['lib/atlas/dream.ts', 'app/api/media/cron/dream/route.ts',
                      'app/api/projects/[slug]/dream/route.ts', 'lib/media/run-log.ts']) {
       expect(codeOnly(read(f)), f).not.toMatch(MEMORY_IMPORT)
     }
     const media = path.join(WEB_ROOT, 'app/api/media')
     const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true })
       .flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)])
-    const mediaWriters = walk(media).filter((f) => /\.ts$/.test(f) && MEMORY_IMPORT.test(codeOnly(fs.readFileSync(f, 'utf8'))))
+    const mediaWriters = walk(media)
+      .filter((f) => /\.ts$/.test(f) && !/cron\/dream/.test(f) && MEMORY_IMPORT.test(codeOnly(fs.readFileSync(f, 'utf8'))))
     expect(mediaWriters.map((f) => path.relative(WEB_ROOT, f))).toEqual([])
     expect(codeOnly(read('app/api/runs/drain/route.ts'))).not.toMatch(/media_pipeline/)
   })

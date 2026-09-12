@@ -116,7 +116,13 @@ export function deriveIssueId(key: string): string {
   return stem || (key ?? '').trim() || 'unknown'
 }
 
-function normSeverity(s: string | null | undefined): DreamSeverity {
+/**
+ * The canonical severity vocabulary: anything the analyzer invents outside
+ * critical/warning collapses to `info`. Exported (pure, no I/O) so the Dream
+ * engine compares severities the same way this module renders them — a second
+ * implementation would let a "changed" severity mean two different things.
+ */
+export function normSeverity(s: string | null | undefined): DreamSeverity {
   const v = (s ?? '').toLowerCase()
   return v === 'critical' || v === 'warning' ? v : 'info'
 }

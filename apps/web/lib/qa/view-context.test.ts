@@ -93,7 +93,7 @@ describe('renderViewBlock — compact [CURRENT VIEW]', () => {
     })!
     const block = renderViewBlock(v)
     expect(block).toContain('[CURRENT VIEW')
-    expect(block).toContain('Page: Approvals')
+    expect(block).toContain('Page: Granskningar')  // the registry's label, aligned with the product word in Phase 11
     expect(block).toContain('GainPilot (gainpilot)')
     expect(block).toContain('state=pending')
     expect(block).toContain('approvals:a1 "Reel #4"')

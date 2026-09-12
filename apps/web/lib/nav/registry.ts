@@ -97,7 +97,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
   atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'home', 'start', 'hem', 'briefing'], projectMode: 'none' },
   chat: { id: 'chat', label: 'Chat', keywords: ['chat', 'ask atlas', 'prata', 'fråga'], projectMode: 'none' },
   approvals: {
-    id: 'approvals', label: 'Approvals',
+    id: 'approvals', label: 'Granskningar',
     keywords: ['approvals', 'godkännanden', 'granskningar', 'review', 'pending'],
     projectMode: 'query',
     filters: { state: ['pending', 'approved', 'rejected', 'revised'] },

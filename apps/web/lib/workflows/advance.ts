@@ -33,7 +33,8 @@ import { systemAuthorizationVerifier, systemDeriveWorkflowGate } from './system-
 import { summarizeStateEvidence } from './evidence-consumption'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { findAdapter } from './adapters/registry'
-import type { WorkflowInstance } from './types'
+import type { WorkflowInstance, WorkflowTransition } from './types'
+import { recordWorkflowCompletion } from './advance-completed'
 import type { LedgerReader } from './system-authorization'
 
 // any: the Supabase client in this project has no generated DB types.
@@ -142,8 +143,9 @@ export async function advanceAuthorizedWorkflow(
 
   // The append. SQL re-validates the grant independently; if it disagrees with
   // anything derived above, the transition is refused there rather than here.
+  let transition: WorkflowTransition
   try {
-    await appendTransition(db, {
+    transition = await appendTransition(db, {
       instanceId: instance.id,
       to: state.next_state,
       reason: `human gate satisfied: ${state.human_gate.decision ?? 'authorized'}`,
@@ -161,6 +163,9 @@ export async function advanceAuthorizedWorkflow(
       outcome: 'append_refused', detail: e instanceof Error ? e.message : 'append failed',
     }
   }
+  // Atlas Memory — after the append committed and outside its try: a memory
+  // problem can never be read as a refused append. Observational only.
+  await recordWorkflowCompletion(db, instance, transition)
 
   return {
     outcome: 'advanced', fromState: from, toState: state.next_state,

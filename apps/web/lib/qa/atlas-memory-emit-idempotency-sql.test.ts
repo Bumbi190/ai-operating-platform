@@ -85,6 +85,8 @@ const ARTICLE_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const LEGACY_RUN = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 const ACTION_RUN = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
 const CANCELLED_RUN = '12121212-1212-4212-8212-121212121212'
+const CHECKPOINT_RUN = '13131313-1313-4313-8313-131313131313'
+const WORKFLOW_TRANSITION = '14141414-1414-4414-8414-141414141414'
 
 // ── Harness discovery (same contract as the recall SQL suite) ────────────────
 
@@ -212,12 +214,31 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('Slice 2A — emit idempotency in t
     ['legacy drained run', { eventType: 'outcome', source: 'drain', sourceId: LEGACY_RUN }],
     ['workflow-action run', { eventType: 'outcome', source: 'drain', sourceId: ACTION_RUN }],
     ['finalization cancel', { eventType: 'outcome', source: 'drain', sourceId: CANCELLED_RUN }],
+    ['step-checkpoint cancel (2B-1)', { eventType: 'outcome', source: 'drain', sourceId: CHECKPOINT_RUN }],
+    ['workflow completion (2B-1, transition id)', { eventType: 'outcome', source: 'workflow', sourceId: WORKFLOW_TRANSITION }],
   ])('%s: a retry of the same emit is one event', (_label, key) => {
     const first = emit(key)
     const retry = emit(key)
     expect(first).toMatch(/^[0-9a-f-]{36}$/)
     expect(retry, 'the wrapper returns NULL when it dedupes').toBeNull()
     expect(countKey(key.source, key.sourceId, key.eventType)).toBe(1)
+  })
+
+  it('a run cancelled through several cancel paths (reclaim, final write, approval write) is one event', () => {
+    const run = '15151515-1515-4515-8515-151515151515'
+    const paths = ['cancelled at a step checkpoint', 'cancelled before completion', 'cancelled before approval']
+    const ids = paths.map((content) => emit({ eventType: 'outcome', source: 'drain', sourceId: run, content }))
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(ids.slice(1)).toEqual([null, null])
+    expect(countKey('drain', run, 'outcome')).toBe(1)
+  })
+
+  it('a workflow transition id is its own identity: two completions are two events, one completion is one', () => {
+    const second = '16161616-1616-4616-8616-161616161616'
+    expect(emit({ eventType: 'outcome', source: 'workflow', sourceId: second })).not.toBeNull()
+    expect(emit({ eventType: 'outcome', source: 'workflow', sourceId: second })).toBeNull()
+    expect(countKey('workflow', second, 'outcome')).toBe(1)
+    expect(countKey('workflow', WORKFLOW_TRANSITION, 'outcome')).toBe(1)
   })
 
   it('a run cannot gain a second terminal outcome — the first one stands', () => {

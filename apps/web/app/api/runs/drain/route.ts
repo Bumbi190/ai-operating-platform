@@ -25,7 +25,7 @@ import type { Run } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { sendAdminNotification } from '@/lib/email/brevo'
 import { getApprovalPendingEmail } from '@/lib/email/templates'
-import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
+import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { executeWorkflowAction, isWorkflowActionRun } from '@/lib/workflows/action-executor'
 import { isPhysicalAdmissionRefusal, isGovernanceDispatchUnknown } from '@/lib/governance/execution-signal'
 import { ExecutionStoppedError } from '@/lib/governance/execution-stop'
@@ -104,6 +104,48 @@ async function recordActionRunOutcome(db: ReturnType<typeof createAdminClient>, 
     }, db)
   } catch (err) {
     console.error(`[run ${runId}] action outcome unreadable — no memory event: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+/**
+ * Atlas Memory M4 — the outcome of a run cancelled at a legacy-runner step
+ * checkpoint.
+ *
+ * The runner settles the refusal itself and throws `CANCELLED` only when that
+ * settle returned CANCELLED, i.e. its ownership-conditioned terminal write
+ * landed. The error carries no proof of that write, so the row is read back: it
+ * must be `cancelled` AND still carry this invocation's claim. Both cancel
+ * writers keep `claim_id` on the terminal row, so a cancellation that belongs to
+ * another owner — or never landed — records nothing here.
+ */
+async function recordCheckpointCancelOutcome(
+  db: ReturnType<typeof createAdminClient>,
+  run: { id: string; project_id: string; claim_id?: string | null; kind?: string | null; attempts?: number | null },
+): Promise<void> {
+  // Never throws: the cancellation is already durable, and this runs inside the
+  // drain's catch, where an escaping exception would abandon the rest of the batch.
+  try {
+    if (!isMemoryEnabled() || !run.claim_id) return
+    const { data: row, error } = await db.from('runs')
+      .select('status, claim_id')
+      .eq('id', run.id)
+      .maybeSingle()
+    if (error || !row) {
+      console.error(`[run ${run.id}] checkpoint cancel unreadable — no memory event: ${error?.message ?? 'row missing'}`)
+      return
+    }
+    if (row.status !== 'cancelled' || row.claim_id !== run.claim_id) return
+    await recordMemoryEvent({
+      scope: 'project', eventType: 'outcome', projectId: run.project_id,
+      entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+      subject: 'Run outcome: cancelled',
+      content: `Run ${run.id.slice(0, 8)} cancelled at a step checkpoint (kind: ${run.kind ?? 'unknown'})`,
+      confidence: 0.40,
+      structured: { runId: run.id, kind: run.kind ?? null, status: 'cancelled',
+                    attempts: run.attempts ?? 1, error: null },
+    }, db)
+  } catch (err) {
+    console.error(`[run ${run.id}] checkpoint cancel unreadable — no memory event: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
@@ -382,6 +424,18 @@ export async function GET(request: Request) {
             .update({ status: 'returned', reviewed_at: new Date().toISOString() })
             .eq('run_id', run.id).eq('status', 'pending')
           console.warn(`[run ${run.id}] cancelled at finalization — approval returned`)
+          // Atlas Memory M4 — episodic outcome, after the canonical writes. CANCELLED
+          // means the ownership-conditioned cancel in finalizeOwnedRunUnlessCancelled
+          // changed this row: the cancellation is this worker's and it has landed.
+          await recordMemoryEvent({
+            scope: 'project', eventType: 'outcome', projectId: run.project_id,
+            entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+            subject: 'Run outcome: cancelled',
+            content: `Run ${run.id.slice(0, 8)} cancelled before approval (kind: ${kind ?? 'unknown'})`,
+            confidence: 0.40,
+            structured: { runId: run.id, kind: kind ?? null, status: 'cancelled',
+                          attempts: run.attempts ?? 1, error: null },
+          }, db)
           results.push({ run_id: run.id, status: 'cancelled', detail: appr.detail })
           continue
         }
@@ -414,6 +468,18 @@ export async function GET(request: Request) {
         })
         if (done.outcome === 'CANCELLED') {
           console.warn(`[run ${run.id}] cancelled inside the finalization window — not marked done`)
+          // Atlas Memory M4 — episodic outcome, after the canonical write. CANCELLED
+          // means the ownership-conditioned cancel in finalizeOwnedRunUnlessCancelled
+          // changed this row: the cancellation is this worker's and it has landed.
+          await recordMemoryEvent({
+            scope: 'project', eventType: 'outcome', projectId: run.project_id,
+            entityKind: 'run', entityId: run.id, source: 'drain', sourceId: run.id,
+            subject: 'Run outcome: cancelled',
+            content: `Run ${run.id.slice(0, 8)} cancelled before completion (kind: ${kind ?? 'unknown'})`,
+            confidence: 0.40,
+            structured: { runId: run.id, kind: kind ?? null, status: 'cancelled',
+                          attempts: run.attempts ?? 1, error: null },
+          }, db)
           results.push({ run_id: run.id, status: 'cancelled', detail: done.detail })
           continue
         }
@@ -567,6 +633,9 @@ export async function GET(request: Request) {
         const status = e.refusal === 'STOPPED' ? 'deferred_by_stop'
           : e.refusal === 'CANCELLED' ? 'cancelled' : 'fenced'
         console.warn(`[run ${run.id}] ${e.boundary}: ${e.refusal} — not a failure`)
+        // Atlas Memory M4 — only a CANCELLED refusal, and only once the row proves
+        // the cancellation is this worker's (see recordCheckpointCancelOutcome).
+        if (e.refusal === 'CANCELLED') await recordCheckpointCancelOutcome(db, run)
         results.push({ run_id: run.id, status, detail: e.message })
         continue
       }

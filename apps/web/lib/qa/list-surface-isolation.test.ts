@@ -32,7 +32,9 @@ import { scopeProjectFilter, IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation
 const WEB_ROOT = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
-const CONTENT_LIST = read('app/(platform)/atlas/content/page.tsx')
+// Phase 15 moved this body verbatim into ContentLegacy (`?ui=legacy`); the
+// scoping assertions below are about that service-role read, so they follow it.
+const CONTENT_LIST = read('app/(platform)/atlas/content/ContentLegacy.tsx')
 const CHAT_LIST = read('app/(platform)/chat/page.tsx')
 
 const codeOnly = (s: string) =>
@@ -251,5 +253,56 @@ describe('9G · the conversation list keeps its own ownership dimension', () => 
     expect(conv).not.toMatch(/getAllowedProjectIds/)
     expect(picker).toMatch(/getAllowedProjectIds/)
     expect(picker).not.toMatch(/user_id/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 15 — the vNext surface at the same route
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The body above is the legacy one, reached by `?ui=legacy`. vNext renders the
+// editorial queue at the same path from the SAME two project-owned tables, read
+// through the same service-role client — so the rule this suite exists for
+// applies again: both reads carry a scope, and one scoped source cannot hide
+// another unscoped one. These assertions read the loader's code.
+
+describe('9G · atlas/content — the vNext surface keeps both scopes', () => {
+  const LOADER_CODE = codeOnly(read('lib/os/content-center.ts'))
+
+  it('resolves the scope from the session and fails closed without one', () => {
+    expect(LOADER_CODE).toMatch(/resolveProjectAccess\(\)/)
+    expect(LOADER_CODE).toMatch(/if \(!access\.ok\) return null/)
+    expect(LOADER_CODE).toMatch(/scopeProjectFilter\(access\.allowedProjectIds\)/)
+  })
+
+  it('scopes website_content inside the query', () => {
+    const wc = between(LOADER_CODE, "db.from('website_content')", "db.from('media_news_items')")
+    expect(wc).toMatch(/\.in\('project_id', scope\)/)
+  })
+
+  it('scopes media_news_items inside the query — the picker cannot show foreign headlines', () => {
+    const newsRead = between(LOADER_CODE, "db.from('media_news_items')", "db.from('projects')")
+    expect(newsRead).toMatch(/\.in\('project_id', scope\)/)
+  })
+
+  it('scopes project names on the identity column', () => {
+    const proj = between(LOADER_CODE, "db.from('projects')", 'return assembleContentCenter')
+    expect(proj).toMatch(/\.in\('id', scope\)/)
+  })
+
+  it('re-filters in the assembler, so one layer failing cannot move a row onto the page', () => {
+    expect(LOADER_CODE).toMatch(/if \(!id \|\| pid === null \|\| !owned\.has\(pid\)\) continue/)
+    expect(LOADER_CODE).toMatch(/return pid !== null && owned\.has\(pid\) && text\(row\?\.id\) !== null/)
+  })
+
+  it('has no first-project fallback and never scopes by the raw allow-list', () => {
+    expect(LOADER_CODE).not.toMatch(/allowedProjectIds\[0\]|projects\[0\]/)
+    expect(LOADER_CODE).not.toMatch(/\.in\('project_id', access\.allowedProjectIds\)/)
+  })
+
+  it('both generations are mounted at the one route', () => {
+    const page = read('app/(platform)/atlas/content/page.tsx')
+    expect(page).toMatch(/<ContentLegacy \/>/)
+    expect(page).toMatch(/<ContentCenter model=/)
   })
 })

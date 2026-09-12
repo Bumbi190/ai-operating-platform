@@ -663,10 +663,20 @@ describe('what the global stop PROMISES matches what it DOES', () => {
   })
 
   it('the paused banner explains the real scope', () => {
-    const page = src('app/(platform)/system/page.tsx')
+    // Phase 12 moved this body verbatim into SystemLegacy (`?ui=legacy`).
+    const page = src('app/(platform)/system/SystemLegacy.tsx')
     expect(page).not.toContain('All automation är manuellt pausad')
     expect(page).toMatch(/All exekvering är stoppad/)
     expect(page).toMatch(/Atlas och styrning är fortfarande tillgängliga/)
+  })
+
+  it('the vNext system surface states the same scope beside its control', () => {
+    // Phase 12. Systemhälsa carries the global stop; understating what it does is
+    // how an operator presses it expecting less than they get.
+    const surface = src('components/platform/vnext/SystemHealth.tsx')
+    expect(surface).toMatch(/både automatisk och manuellt begärd/)
+    expect(surface).toMatch(/Atlas.*förblir tillgängliga/)
+    expect(surface).toMatch(/<PauseToggle paused=\{platform\.stopped\} \/>/)
   })
 
   it('the resolver documents the legacy-name / current-semantics split', () => {

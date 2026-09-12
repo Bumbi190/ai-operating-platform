@@ -23,7 +23,9 @@ import { resolve } from 'node:path'
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '../..', rel), 'utf8')
 
-const SYSTEM = read('app/(platform)/system/page.tsx')
+// Phase 12 moved this body verbatim into SystemLegacy (`?ui=legacy`); the
+// route itself is now the generation branch.
+const SYSTEM = read('app/(platform)/system/SystemLegacy.tsx')
 
 /** The three instruments in this group, in render order. */
 const INSTRUMENTS = ['Snittkörning', 'Tokens · 24h', 'Kölängd']

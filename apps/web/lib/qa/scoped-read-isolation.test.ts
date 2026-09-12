@@ -35,7 +35,10 @@ const WEB_ROOT = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const RELEASES = read('app/(platform)/releases/page.tsx')
-const SYSTEM = read('app/(platform)/system/page.tsx')
+// Phase 12 moved this body verbatim into SystemLegacy (`?ui=legacy`); the
+// route itself is now the generation branch.
+const SYSTEM = read('app/(platform)/system/SystemLegacy.tsx')
+const SYSTEM_HEALTH = read('lib/os/system-health.ts')
 const DATA = read('lib/os/data.ts')
 const STORE = read('lib/workflows/store.ts')
 
@@ -322,7 +325,7 @@ describe('9A · every caller supplies scope canonically', () => {
       .filter(f => !f.startsWith('lib/qa/'))
       .filter(f => f !== 'lib/os/data.ts')          // the definition itself
       .sort()
-    expect(hits).toEqual(['app/(platform)/system/page.tsx'])
+    expect(hits).toEqual(['app/(platform)/system/SystemLegacy.tsx'])
     expect(SYSTEM_CODE).toMatch(/fetchDashboardSnapshot\(supabase, db, access\.allowedProjectIds\)/)
   })
 
@@ -332,6 +335,18 @@ describe('9A · every caller supplies scope canonically', () => {
     const readAt = SYSTEM_CODE.indexOf('fetchDashboardSnapshot(')
     expect(resolveAt).toBeGreaterThan(-1)
     expect(readAt).toBeGreaterThan(resolveAt)
+  })
+
+  it('the vNext system loader resolves the same scope, and fails closed too', () => {
+    // Phase 12. Systemhälsa reads the same project-owned tables through its own
+    // loader, so it carries the same obligation: resolve the allow-list first,
+    // hand it to every project read, and answer null — which the page turns into
+    // a redirect — rather than reading globally.
+    expect(SYSTEM_HEALTH).toMatch(/resolveProjectAccess\(\)/)
+    expect(SYSTEM_HEALTH).toMatch(/if \(!access\.ok\) return null/)
+    expect(SYSTEM_HEALTH.indexOf("from('projects')")).toBeGreaterThan(SYSTEM_HEALTH.indexOf('resolveProjectAccess()'))
+    expect(SYSTEM_HEALTH).toMatch(/scopeProjectFilter\(access\.allowedProjectIds\)/)
+    expect(SYSTEM_HEALTH).not.toMatch(/allowedProjectIds\[0\]/)
   })
 
   it('the caller fails closed rather than rendering an empty dashboard', () => {

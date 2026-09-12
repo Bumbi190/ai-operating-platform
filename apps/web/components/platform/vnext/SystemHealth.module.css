@@ -1,0 +1,330 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SYSTEMHÄLSA · /system
+   ─────────────────────────────────────────────────────────────────────────
+   The operator's system surface. State first, then what needs attention, then
+   the lanes that explain it. No gauges, no score, no decorative chart: the page
+   this replaces drew a radial dial from `100 - failRate * 2`, which read
+   "Optimal" on a platform that had never run anything.
+
+   The safety area is deliberately set apart — its own border and ground — so a
+   kill switch never sits inside routine monitoring. Everything is sized in rem
+   so the display-scale preference reaches it, every region is flow-based, and
+   nothing scrolls sideways: long reasons wrap, cron expressions break, and the
+   two columns become one before either gets narrow.
+
+   Colour carries tone only. Every state is also a word.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.field {
+  position: relative;
+  /* The same declaration the locked Atlas Home and the other vNext surfaces
+     make on their own roots: the app's Inter variable is scoped to <body> while
+     Tailwind's preflight reads it on <html>, so a surface that declares nothing
+     inherits the browser's default serif. Local to THIS surface; the global
+     font decision stays deferred. */
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem 1.5rem 5rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 64% 26% at 14% 0%, rgb(var(--omnira-cyan-rgb) / 0.075), transparent 64%),
+    radial-gradient(ellipse 46% 24% at 94% 6%, rgb(var(--omnira-violet-rgb) / 0.045), transparent 70%);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.headline { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-rgb) / 0.8);
+}
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--foreground); }
+.lede { margin: 0; max-width: 54ch; font-size: 0.8125rem; line-height: 1.55; color: rgb(var(--foreground-rgb) / 0.62); }
+.stamp { margin: 0; font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.5); }
+
+/* ── Systemstatus tiles ───────────────────────────────────────────────────── */
+
+.components {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.5rem;
+}
+
+.component {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.09);
+  border-left-width: 2px;
+  border-radius: 0.5rem;
+  background: rgb(var(--foreground-rgb) / 0.02);
+  min-width: 0;
+}
+.component[data-state='stopped']     { border-left-color: rgb(248 113 113 / 0.7); }
+.component[data-state='attention']   { border-left-color: rgb(251 191 36 / 0.7); }
+.component[data-state='active']      { border-left-color: rgb(var(--omnira-cyan-rgb) / 0.8); }
+.component[data-state='idle']        { border-left-color: rgb(var(--foreground-rgb) / 0.2); }
+.component[data-state='unavailable'] { border-left-color: rgb(var(--omnira-violet-rgb) / 0.75); }
+.component[data-state='unknown']     { border-left-color: rgb(var(--foreground-rgb) / 0.12); }
+
+.componentLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.componentState { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); }
+.component[data-state='stopped'] .componentState   { color: rgb(248 113 113); }
+.component[data-state='attention'] .componentState { color: rgb(251 191 36); }
+.component[data-state='active'] .componentState    { color: rgb(var(--omnira-cyan-rgb)); }
+.componentDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
+
+/* ── Warnings ─────────────────────────────────────────────────────────────── */
+
+.warnings, .panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.09);
+  border-radius: 0.75rem;
+  background: rgb(var(--foreground-rgb) / 0.018);
+  padding: 1rem;
+}
+
+.calm {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px dashed rgb(var(--foreground-rgb) / 0.14);
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  color: rgb(var(--foreground-rgb) / 0.6);
+}
+
+.warningList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border-left: 2px solid transparent;
+  background: rgb(var(--foreground-rgb) / 0.03);
+  min-width: 0;
+}
+.warning[data-tone='stop']       { border-left-color: rgb(248 113 113 / 0.8); }
+.warning[data-tone='attention']  { border-left-color: rgb(251 191 36 / 0.8); }
+.warning[data-tone='unreadable'] { border-left-color: rgb(var(--omnira-violet-rgb) / 0.8); }
+.warningMain { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.warningTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.warningDetail { font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
+
+/* ── Columns and panels ───────────────────────────────────────────────────── */
+
+.columns {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1rem;
+  align-items: start;
+}
+.column { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+.sectionHead { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.75rem; }
+.sectionTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); }
+.count {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--foreground-rgb) / 0.55);
+}
+
+/* The safety area is set apart on purpose — a stop control must never read as
+   one more monitoring panel. */
+.panel[data-safety='true'] {
+  border-color: rgb(248 113 113 / 0.28);
+  background:
+    linear-gradient(180deg, rgb(248 113 113 / 0.05), transparent 42%),
+    rgb(var(--foreground-rgb) / 0.02);
+}
+
+.stopRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.625rem;
+}
+.stopState { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.stopLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.stopValue { font-size: 1rem; font-weight: 650; color: var(--foreground); }
+.stopState[data-stopped='true'] .stopValue { color: rgb(248 113 113); }
+.stopReason { font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
+
+.flags { list-style: none; margin: 0.625rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.12);
+  background: rgb(var(--foreground-rgb) / 0.03);
+  font-size: 0.625rem;
+}
+.flag[data-on='false'] { border-color: rgb(251 191 36 / 0.45); }
+.flagName { font-family: var(--font-geist-mono, ui-monospace), monospace; color: rgb(var(--foreground-rgb) / 0.75); }
+.flagState { color: rgb(var(--foreground-rgb) / 0.55); }
+.flag[data-on='false'] .flagState { color: rgb(251 191 36); }
+
+/* ── Facts and rows ───────────────────────────────────────────────────────── */
+
+.facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 0.625rem 1rem; }
+.fact { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.fact dt {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.fact dd { margin: 0; font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--foreground); }
+.fact[data-tone='attention'] dd { color: rgb(251 191 36); }
+.absent { color: rgb(var(--foreground-rgb) / 0.42); font-style: italic; font-size: 0.8125rem; font-weight: 400; }
+
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  background: rgb(var(--foreground-rgb) / 0.02);
+  min-width: 0;
+}
+.row[data-paused='true'] { background: rgb(248 113 113 / 0.06); }
+.rowMain { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.rowTitle { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; font-weight: 550; color: var(--foreground); overflow-wrap: anywhere; }
+.rowMeta { font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.55); overflow-wrap: anywhere; }
+.dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; flex: none; }
+.stopChip { color: rgb(248 113 113); }
+
+.chip {
+  flex: none;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.14);
+  color: rgb(var(--foreground-rgb) / 0.72);
+  background: rgb(var(--foreground-rgb) / 0.04);
+  white-space: nowrap;
+}
+.chip[data-on='true'] { color: rgb(var(--omnira-cyan-rgb)); border-color: rgb(var(--omnira-cyan-rgb) / 0.32); }
+.chip[data-severity='critical'] { color: rgb(248 113 113); border-color: rgb(248 113 113 / 0.35); }
+.chip[data-severity='warning'] { color: rgb(251 191 36); border-color: rgb(251 191 36 / 0.35); }
+
+.code { font-family: var(--font-geist-mono, ui-monospace), monospace; font-size: 0.625rem; overflow-wrap: anywhere; }
+
+/* ── Notes, meta, diagnostics ─────────────────────────────────────────────── */
+
+.note {
+  margin: 0;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px dashed rgb(var(--foreground-rgb) / 0.14);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--foreground-rgb) / 0.6);
+}
+.note[data-tone='error'] {
+  border-style: solid;
+  border-color: rgb(var(--omnira-violet-rgb) / 0.35);
+  color: rgb(var(--foreground-rgb) / 0.85);
+}
+.note[data-tone='warning'] { border-color: rgb(251 191 36 / 0.4); color: rgb(var(--foreground-rgb) / 0.8); }
+
+.meta { margin: 0.625rem 0 0; font-size: 0.6875rem; line-height: 1.5; color: rgb(var(--foreground-rgb) / 0.5); }
+.inlineLink { color: rgb(var(--omnira-cyan-rgb)); text-decoration: none; }
+.inlineLink:hover { text-decoration: underline; }
+
+.diagnostics {
+  position: relative;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.08);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgb(var(--foreground-rgb) / 0.015);
+}
+.diagnosticsSummary { cursor: pointer; font-size: 0.75rem; font-weight: 600; color: rgb(var(--foreground-rgb) / 0.7); }
+.diagnosticsSummary:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.6); outline-offset: 2px; }
+.diagList { margin: 0.75rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem 1rem; }
+.diagItem { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.diagItem dt {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.diagItem dd { margin: 0; font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.75); overflow-wrap: anywhere; }
+
+/* ── Narrow desktop ───────────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .field { padding: 1rem 0.875rem 4.5rem; gap: 1rem; }
+  .components { grid-template-columns: minmax(0, 1fr); }
+  /* The stop control gets its own line, so it is never a mis-tap away from the
+     state it describes. */
+  .stopRow { flex-direction: column; align-items: stretch; gap: 0.625rem; }
+  .row { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .warning { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .diagnostics,
+  :where(html:not([data-motion='full'])) .component {
+    transition: none;
+  }
+}

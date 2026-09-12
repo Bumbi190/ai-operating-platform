@@ -179,9 +179,10 @@ describe('reverse resolution is canonical, not incidental', () => {
     // declared first.
     const v = normalizeView({ pathname: '/system' })!
     expect(v.destinationId).toBe('health')
-    expect(v.destinationLabel).toBe('Health')
+    // Phase 12 aligned the registry label with the product word.
+    expect(v.destinationLabel).toBe('Systemhälsa')
     const block = renderViewBlock(v)
-    expect(block).toContain('Page: Health')
+    expect(block).toContain('Page: Systemhälsa')
     expect(block).not.toContain('Page: Dream Findings')
   })
 

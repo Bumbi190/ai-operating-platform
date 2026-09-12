@@ -136,12 +136,17 @@ describe('aktivitet · a run is never credited to an agent it did not record', (
 
   it('a workflow that names an agent TODAY cannot attribute an old run', () => {
     // The embed carries the current definition. Reading it would be the bug.
-    const row = runRow({
-      steps_snapshot: [],
-      workflows: { name: 'Månadsproduktion', steps: [{ order: 1, agent_id: 'agent-current' }] },
-    })
-    expect(runRecordsAgent(row)).toBe(false)
-    expect(runs(assembleActivity(input({ runs: { ok: true, rows: [row] } })))[0].agentRecorded).toBe(false)
+    // Both snapshot shapes are covered on purpose: an EMPTY snapshot and NO
+    // snapshot. Only the second is nullish, so only the second would let a
+    // `?? workflows.steps` fallback through — which is exactly the mistake.
+    for (const steps_snapshot of [[], null, undefined]) {
+      const row = runRow({
+        steps_snapshot,
+        workflows: { name: 'Månadsproduktion', steps: [{ order: 1, agent_id: 'agent-current' }] },
+      })
+      expect(runRecordsAgent(row), String(steps_snapshot)).toBe(false)
+      expect(runs(assembleActivity(input({ runs: { ok: true, rows: [row] } })))[0].agentRecorded).toBe(false)
+    }
   })
 
   it('the loader never selects the workflow steps that would make that possible', () => {
@@ -186,6 +191,15 @@ describe('aktivitet · what happened is read, never reconstructed', () => {
   it('a log belonging to another run never describes this one', () => {
     const model = assembleActivity(input({ logs: { ok: true, rows: [logRow({ run_id: 'run-other' })] } }))
     expect(runs(model)[0].detail).toBeNull()
+  })
+
+  it('a log with NO run id attaches to nothing, not to the first run', () => {
+    for (const run_id of [null, undefined, '']) {
+      const model = assembleActivity(input({
+        logs: { ok: true, rows: [logRow({ run_id, content: 'orphan' })] },
+      }))
+      expect(runs(model)[0].detail, String(run_id)).toBeNull()
+    }
   })
 
   it('an unreadable log source leaves detail absent rather than guessed', () => {
@@ -338,6 +352,16 @@ describe('aktivitet · a review is placed by its run, not by its own column', ()
     const row = { ...reviewRow(), project_id: null }
     const model = assembleActivity(input({ runs: { ok: true, rows: [] }, reviews: { ok: true, rows: [row] } }))
     expect(model.entries[0].project.name).toBe(PROJ_B.name)
+  })
+
+  it('the RUN wins even when the approval carries a project of its own', () => {
+    // The one production row that has a project_id is the reason this matters:
+    // an approvals-side embed must not be preferred, or a disagreement between
+    // the two would be resolved in favour of the unreliable column.
+    const row = { ...reviewRow(), project_id: 'other', projects: PROJ_A }
+    const model = assembleActivity(input({ runs: { ok: true, rows: [] }, reviews: { ok: true, rows: [row] } }))
+    expect(model.entries[0].project.slug).toBe(PROJ_B.slug)
+    expect(model.entries[0].project.slug).not.toBe(PROJ_A.slug)
   })
 
   it('the loader selects approvals through runs!inner and never gates on approvals.project_id', () => {

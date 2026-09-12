@@ -1,223 +1,54 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { CheckCircle2, XCircle, Clock, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
-import { ApprovalCard } from './ApprovalCard'
-import { Panel, SectionHeader, PulseDot, HeroStat, OSPage, OSLayer, ViewVisibleSync, EmptyState } from '@/components/platform/os'
+import { createClient } from '@/lib/supabase/server'
+import { loadReviewQueue } from '@/lib/os/review-queue'
+import { ReviewQueue, ReviewQueueLoading } from '@/components/platform/vnext/ReviewQueue'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
+import { ApprovalsLegacy } from './ApprovalsLegacy'
 
+/**
+ * `/approvals` — Granskningar, the global review queue.
+ *
+ * vNext renders the queue across every project the session owns; `?ui=legacy`
+ * renders the previous body, moved verbatim into `ApprovalsLegacy`. Both start
+ * from the same guard — a signed-in session — and the legacy branch returns
+ * before the queue loader is reached, so a rollback costs nothing and cannot
+ * fail on a read it does not use.
+ *
+ * `?project=<slug>` narrows the queue. That is the shape the nav registry
+ * itself produces for this destination, and narrowing only ever removes rows:
+ * the read is RLS-bound, so it cannot reach a project the session does not own.
+ */
 export const dynamic = 'force-dynamic'
 
-interface ApprovalRow {
-  id: string
-  output_key: string
-  content: string
-  status: 'pending' | 'approved' | 'rejected' | 'revised'
-  reviewer_notes: string | null
-  created_at: string
-  reviewed_at: string | null
-  runs: null  // Not fetched — ApprovalCard handles this with fallbacks
-}
-
-export default async function ApprovalsPage() {
+export default async function ApprovalsPage({
+  searchParams,
+}: {
+  searchParams?: { project?: string | string[] }
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const db = createAdminClient()
-
-  // `db` is a service-role client and bypasses RLS, so this read is scoped by
-  // hand — it renders approval CONTENT, which is the reviewable output itself.
-  //
-  // SCOPED THROUGH THE RUN, not through `approvals.project_id`. That column is
-  // nullable and almost every row leaves it null, so filtering on it directly
-  // would empty the queue rather than isolate it. The repository already
-  // settled what a null-project approval means: the decision route resolves
-  // `project_id ?? runs.project_id` before it will act on one, and the
-  // operations graph includes such rows only when their run resolves to an
-  // allowed project, dropping them otherwise. `runs!inner` is that same rule.
-  //
-  // EDGE CASE, stated rather than hidden: an approval carrying a direct
-  // project_id but NO run would be excluded by the inner join. No such row
-  // exists today, and excluding it is the fail-closed direction.
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-  const { data: approvals, error: approvalsError } = await db
-    .from('approvals')
-    .select('id, output_key, content, status, reviewer_notes, created_at, reviewed_at, runs!inner(project_id)')
-    .in('runs.project_id', scopeProjectFilter(allowedProjectIds))
-    .order('created_at', { ascending: false })
-    .limit(50)
-
-  if (approvalsError) {
-    console.error('[approvals/page] Query error:', approvalsError.message)
-  }
-
-  // The `runs` embed exists only to authorise the read. Stripping it keeps the
-  // rendering contract exactly as it was — ApprovalCard still receives
-  // `runs: null` and its own fallbacks — so the scope changed what is
-  // returned, not what is displayed.
-  const all: ApprovalRow[] = (approvals ?? []).map((row) => {
-    const { runs: _scopeOnly, ...rest } = row as Record<string, unknown>
-    return { ...rest, runs: null } as ApprovalRow
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
   })
-  const counts = {
-    pending:  all.filter(a => a.status === 'pending').length,
-    approved: all.filter(a => a.status === 'approved').length,
-    rejected: all.filter(a => a.status === 'rejected').length,
-    revised:  all.filter(a => a.status === 'revised').length,
-  }
 
-  const reviewedToday = all.filter(a => {
-    if (!a.reviewed_at) return false
-    return new Date(a.reviewed_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
-  }).length
+  if (!isVNext(generation)) return <ApprovalsLegacy />
 
-  // Atlas view awareness — publish the approval rows on screen.
-  const visibleRefs = all.slice(0, 12).map(a => ({
-    domain: 'approvals', id: a.id, label: `${a.output_key} (${a.status})`,
-  }))
+  const raw = searchParams?.project
+  const projectSlug = Array.isArray(raw) ? raw[0] ?? null : raw ?? null
 
   return (
-    <OSPage>
-      <ViewVisibleSync refs={visibleRefs} />
-
-      {/* ── HERO LAYER ──────────────────────────────────────────────────── */}
-      <OSLayer layer="hero">
-      <header className="grid grid-cols-12 gap-5 lg:gap-7 items-end animate-fade-in-up">
-        <div className="col-span-12 lg:col-span-7 3xl:col-span-8">
-          <div className="flex items-center gap-2 mb-3">
-            <PulseDot tone="amber" size={6} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-300">
-              Exekutiv granskningskanal
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center chrome-edge shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(168,85,247,0.10))',
-                border: '1px solid rgba(251,191,36,0.35)',
-                boxShadow: '0 12px 32px -8px rgba(251,191,36,0.35)',
-              }}
-            >
-              <ShieldCheck className="w-6 h-6 text-amber-300" />
-            </div>
-            <div>
-              <h1 className="text-[36px] font-black tracking-tight leading-[1.05] text-gradient-aurora">
-                Granskningscenter
-              </h1>
-              <p className="text-[12.5px] text-muted-foreground mt-1.5 max-w-xl leading-relaxed">
-                AI-betygsatta utdata köade för exekutiv bedömning · godkänn, revidera eller avvisa autonoma beslut
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-span-12 lg:col-span-5 3xl:col-span-4 grid grid-cols-2 gap-3">
-          <HeroStat
-            label="Väntar på granskning"
-            value={counts.pending}
-            color="#fbbf24"
-            glow={counts.pending > 0}
-            caption={counts.pending > 0 ? 'Kräver operatörsbeslut' : 'Inkorg tom'}
-            delay={60}
-          />
-          <HeroStat
-            label="Beslutat idag"
-            value={reviewedToday}
-            color="#34d399"
-            caption={`${counts.approved} godkänd · ${counts.rejected} avvisad`}
-            delay={120}
-          />
-        </div>
-      </header>
-      </OSLayer>
-
-      {/* ── OPERATIONAL · stat tiles, full width ────────────────────────── */}
-      <OSLayer layer="operational">
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4 2xl:gap-5">
-        <StatTile label="Väntande"    value={counts.pending}  color="#fbbf24" icon={<Clock        className="w-3.5 h-3.5" />} live />
-        <StatTile label="Godkänd"    value={counts.approved} color="#34d399" icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
-        <StatTile label="Avvisad"    value={counts.rejected} color="#f87171" icon={<XCircle      className="w-3.5 h-3.5" />} />
-        <StatTile label="Revideringar" value={counts.revised} color="#60a5fa" icon={<RefreshCw   className="w-3.5 h-3.5" />} />
-      </section>
-      </OSLayer>
-
-      {/* ── INTELLIGENCE · the actual approval queue ───────────────────── */}
-      <OSLayer layer="intelligence">
-      {all.length === 0 ? (
-        <EmptyState
-          icon={<ShieldCheck className="w-6 h-6" style={{ color: 'var(--os-accent-soft)' }} />}
-          title="Inkorg tom"
-          body="Starta ett arbetsflöde — autonoma utdata som underkänns av AI-utvärderaren hamnar här för exekutiv granskning."
-        />
-      ) : (
-        <div className="space-y-10">
-          {counts.pending > 0 && (
-            <section>
-              <SectionHeader
-                eyebrow="Prioritetskö"
-                title="Inväntar beslut"
-                caption={`${counts.pending} utdata${counts.pending === 1 ? '' : ''} flaggad${counts.pending === 1 ? '' : 'e'} för mänsklig bedömning`}
-                right={
-                  <span className="inline-flex items-center gap-2 text-[10.5px] text-amber-300 font-semibold uppercase tracking-[0.2em]">
-                    <Sparkles className="w-3 h-3" /> AI-poängsatt
-                  </span>
-                }
-              />
-              <div className="space-y-3">
-                {all.filter(a => a.status === 'pending').map((a, i) => (
-                  <ApprovalCard key={a.id} approval={a} delay={i * 60} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {all.some(a => a.status !== 'pending') && (
-            <section>
-              <SectionHeader
-                eyebrow="Arkiv"
-                title="Beslutat"
-                caption="Utdata som operatören har granskat"
-              />
-              <div className="space-y-3">
-                {all.filter(a => a.status !== 'pending').map((a, i) => (
-                  <ApprovalCard key={a.id} approval={a} delay={i * 40} />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-      </OSLayer>
-    </OSPage>
+    <Suspense fallback={<ReviewQueueLoading />}>
+      <LoadedReviewQueue projectSlug={projectSlug} />
+    </Suspense>
   )
 }
 
-function StatTile({
-  label, value, color, icon, live = false,
-}: { label: string; value: number; color: string; icon: React.ReactNode; live?: boolean }) {
-  return (
-    <Panel className="px-5 py-4 relative overflow-hidden">
-      <div
-        className="absolute inset-x-0 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.5 }}
-      />
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-secondary">{label}</span>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center chrome-edge"
-          style={{ background: `${color}1a`, border: `1px solid ${color}33` }}
-        >
-          <span style={{ color }}>{icon}</span>
-        </div>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-[26px] font-black num tracking-tight" style={{ color }}>
-          {value}
-        </span>
-        {live && value > 0 && <PulseDot tone="amber" size={5} />}
-      </div>
-    </Panel>
-  )
+async function LoadedReviewQueue({ projectSlug }: { projectSlug: string | null }) {
+  const model = await loadReviewQueue({ projectSlug })
+  return <ReviewQueue model={model} />
 }

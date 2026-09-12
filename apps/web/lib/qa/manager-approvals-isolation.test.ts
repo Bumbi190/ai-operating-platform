@@ -37,7 +37,12 @@ const WEB_ROOT = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const MANAGER = read('app/(platform)/manager/page.tsx')
-const APPROVALS = read('app/(platform)/approvals/page.tsx')
+// Phase 11 moved this body verbatim into ApprovalsLegacy (reachable at
+// `?ui=legacy`); the route itself is now the generation branch, and the vNext
+// queue reads through `lib/os/review-queue.ts`. All three are pinned below.
+const APPROVALS = read('app/(platform)/approvals/ApprovalsLegacy.tsx')
+const APPROVALS_ROUTE = read('app/(platform)/approvals/page.tsx')
+const REVIEW_QUEUE = read('lib/os/review-queue.ts')
 const MANAGER_LIB = read('lib/ai/manager.ts')
 const MANAGER_API = read('app/api/manager/route.ts')
 
@@ -304,6 +309,22 @@ describe('9L · approvals page', () => {
   it('the authorization embed does not change what is rendered', () => {
     // ApprovalCard's contract is `runs: null`; the embed exists only to scope.
     expect(APPROVALS_CODE).toMatch(/runs: null/)
+  })
+
+  it('the vNext queue scopes the same way — through the run, on the RLS client', () => {
+    // Phase 11. The global queue reads every owned project at once, so its scope
+    // IS the boundary: RLS admits a row only when its run belongs to a project
+    // the session owns, and the project is read through that run — never from
+    // the nullable `approvals.project_id`, and never from a service-role read.
+    expect(REVIEW_QUEUE).toMatch(/from '@\/lib\/supabase\/server'/)
+    expect(REVIEW_QUEUE).not.toMatch(/createAdminClient|supabase\/admin/)
+    expect(REVIEW_QUEUE).toMatch(/runs!inner/)
+    expect(REVIEW_QUEUE).toMatch(/projects!inner/)
+    expect(REVIEW_QUEUE).not.toMatch(/allowedProjectIds\[0\]|projects\[0\]/)
+    // The optional project filter narrows inside that scope; it cannot name a
+    // project id, and there is no fallback when it matches nothing.
+    expect(REVIEW_QUEUE).toMatch(/\.eq\('runs\.projects\.slug', slug\)/)
+    expect(APPROVALS_ROUTE).not.toMatch(/createAdminClient|supabase\/admin/)
   })
 })
 

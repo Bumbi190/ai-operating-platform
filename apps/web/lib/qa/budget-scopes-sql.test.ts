@@ -393,6 +393,58 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('G2 budget scopes (real SQL)', () =
         .toEqual(['1', '30.0000'])
     })
 
+    // ── G3C-3C-B PRE-1 · THE UNKEYED CALLER IS STRUCTURALLY OUTSIDE REPLAY ──
+    //
+    // PRE-1 hardened replay refusals so advisory mode cannot downgrade them. The
+    // backward-compatibility claim that makes that safe is that no UNKEYED caller
+    // — which today is every generic provider retry — can observe a replay
+    // verdict at all. That is a property of the DATABASE, so it is proven here
+    // against the real function rather than by a faked RPC result.
+    it('an UNKEYED call can never receive a replay verdict, even beside a live keyed one', () => {
+      reset()
+      // A keyed reservation exists and is OPEN — the exact state that makes a
+      // keyed caller see `replay_in_flight`.
+      expect(reserve(projectId('alpha'), '30', 'k-live').slice(0, 2)).toEqual(['true', 'ok'])
+      expect(reserve(projectId('alpha'), '30', 'k-live').slice(0, 2)).toEqual(['false', 'replay_in_flight'])
+
+      // Same project, provider, operation and estimate — the only difference is
+      // that no key is supplied.
+      const [allowed, reason] = reserve(projectId('alpha'), '30')
+      expect(reason, 'an unkeyed call is not a replay of anything').not.toMatch(/^replay_/)
+      expect([allowed, reason], 'it follows ordinary fresh-reservation semantics')
+        .toEqual(['true', 'ok'])
+
+      // And it took its OWN reservation rather than joining the keyed one.
+      expect(query(dsn, `select count(*)::text from spend_reservations
+                           where idempotency_key is null`)[0][0]).toEqual('1')
+      expect(query(dsn, `select count(*)::text from spend_reservations
+                           where idempotency_key = 'k-live'`)[0][0]).toEqual('1')
+
+      // The shape that actually happens: a generic retry wrapper calling twice,
+      // unkeyed, with an unkeyed reservation ALREADY open from attempt 1. If the
+      // lookup ever escaped its non-null guard, this is where it would bite —
+      // the second attempt would match the first on `key IS NULL` and be refused
+      // as a replay, turning a retryable failure into a spend refusal.
+      const second = reserve(projectId('alpha'), '30')
+      expect(second[1], 'attempt 2 is not a replay of attempt 1').not.toMatch(/^replay_/)
+      expect(second.slice(0, 2)).toEqual(['true', 'ok'])
+      expect(query(dsn, `select count(*)::text from spend_reservations
+                           where idempotency_key is null`)[0][0],
+        'each unkeyed attempt holds its own reservation').toEqual('2')
+    })
+
+    it('an unkeyed call is unaffected by a SETTLED key', () => {
+      // A terminal replay state matches on key alone, so it is the one most
+      // likely to leak across if the non-null guard were ever loosened.
+      reset()
+      expect(reserve(projectId('alpha'), '10', 'k-terminal').slice(0, 2)).toEqual(['true', 'ok'])
+      run(dsn, ['-c', `update spend_reservations set status='settled', resolved_at=now()
+                        where idempotency_key='k-terminal'`])
+      expect(reserve(projectId('alpha'), '10', 'k-terminal').slice(0, 2))
+        .toEqual(['false', 'replay_settled'])
+      expect(reserve(projectId('alpha'), '10').slice(0, 2)).toEqual(['true', 'ok'])
+    })
+
     it('TWO CONCURRENT callers on one key: at most ONE is authorised', () => {
       reset()
       // Sequential here proves the verdict; the overlapping-transaction proof is

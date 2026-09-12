@@ -108,7 +108,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
       // it under the English label "Knowledge". One destination, one identity.
       { id: 'knowledge', label: 'Minne', href: '/memory', icon: Lightbulb, desktop: true, mobile: true },
       { id: 'intelligence_graph', label: 'Intelligence Graph', href: '/intelligence/graph', icon: Network, desktop: true, mobile: false },
-      { id: 'revenue', label: 'Revenue Center', href: '/revenue', icon: TrendingUp, desktop: true, mobile: false },
+      { id: 'revenue', label: 'Pengar', href: '/revenue', icon: TrendingUp, desktop: true, mobile: false },
     ],
   },
   {

@@ -40,7 +40,7 @@ describe('normalizeView — trusted view from untrusted envelope', () => {
   it('resolves destination + label from the route', () => {
     const v = normalizeView({ pathname: '/revenue' })!
     expect(v.destinationId).toBe('revenue')
-    expect(v.destinationLabel).toBe('Revenue')
+    expect(v.destinationLabel).toBe('Pengar')
     expect(v.project).toBeNull()
   })
 
@@ -149,7 +149,7 @@ describe('reverse resolution is canonical, not incidental', () => {
     // No new label is invented; normalizeView derives it from the destination id.
     const v = normalizeView({ pathname: '/revenue' })!
     expect(v.destinationId).toBe('revenue')
-    expect(v.destinationLabel).toBe('Revenue')
+    expect(v.destinationLabel).toBe('Pengar')
   })
 
   it('tells Atlas the right page for /revenue', () => {
@@ -158,7 +158,7 @@ describe('reverse resolution is canonical, not incidental', () => {
     // Revenue. The existing block test above uses /revenue but never asserted
     // the Page line, which is how this went unnoticed.
     const block = renderViewBlock(normalizeView({ pathname: '/revenue' })!)
-    expect(block).toContain('Page: Revenue')
+    expect(block).toContain('Page: Pengar')
     expect(block).not.toContain('Page: Money')
   })
 

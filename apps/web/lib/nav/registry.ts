@@ -115,7 +115,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
   },
   costs: { id: 'costs', label: 'Costs', keywords: ['costs', 'kostnader'], projectMode: 'query', hidden: true },
   revenue: {
-    id: 'revenue', label: 'Revenue',
+    id: 'revenue', label: 'Pengar',
     keywords: ['revenue', 'intäkt', 'leads', 'sales', 'mrr'],
     projectMode: 'query',
   },

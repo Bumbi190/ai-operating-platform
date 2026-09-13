@@ -107,7 +107,9 @@ describe('mobile chrome · M1 stayed in scope', () => {
   it('left the /chat route as it was', () => {
     // M1 is a global chrome fix and makes NO claim about /chat horizontal
     // overflow — that cause is still unidentified and belongs to later work.
-    const chat = read('app/(platform)/chat/page.tsx')
+    // vNext Chat moved that body verbatim into ChatLegacy (`?ui=legacy`), so the
+    // claim follows it there.
+    const chat = read('app/(platform)/chat/ChatLegacy.tsx')
     expect(chat).toContain('ExecutiveAssistant')
     expect(chat).toContain('ConversationList')
     expect(chat).toContain('max-w-2xl mx-auto w-full')

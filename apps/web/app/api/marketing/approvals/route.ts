@@ -61,8 +61,18 @@ export async function POST(request: Request) {
   const isCritical = Boolean(guard?.score_breakdown?.critical) || (Array.isArray(guard?.violations) && guard!.violations.some((v) => v.severity === 'CRITICAL'))
 
   const adb = db as any
+  // The decision ledger row. Every key must be a real `approvals` column:
+  // PostgREST rejects the WHOLE insert when one key names a column that does not
+  // exist, and this call used to carry `note` — never a column — so no marketing
+  // decision was ever recorded. The note belongs in `reviewer_notes`, where the
+  // same value was already being written.
+  //
+  // The draft status above is the queue's source of truth and has already been
+  // written, so a failed ledger insert is reported rather than turned into a
+  // failed request: the operator's decision stands either way. It must never be
+  // silent again — silence is how this went unnoticed.
   const logDecision = async (state: string, act: string, fixPatch: unknown = null, note: string | null = null) => {
-    await adb.from('approvals').insert({
+    const { error } = await adb.from('approvals').insert({
       kind: 'marketing_draft',
       project_id: draft.project_id,
       draft_id: draft.id,
@@ -72,11 +82,17 @@ export async function POST(request: Request) {
       status: state,
       action: act,
       operator,
-      note: note,
       reviewer_notes: note,
       fix_patch: fixPatch,
       decided_at: new Date().toISOString(),
     })
+    if (error) {
+      console.error(
+        '[marketing/approvals] decision not recorded in the approvals ledger; the draft decision stands:',
+        (error as { code?: string }).code ?? 'unknown',
+        (error as { message?: string }).message ?? String(error),
+      )
+    }
   }
 
   if (action === 'approve') {

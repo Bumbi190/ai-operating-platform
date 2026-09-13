@@ -57,7 +57,7 @@
   color: rgb(var(--omnira-cyan-rgb) / 0.8);
 }
 
-.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--foreground); }
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 .lede { margin: 0; max-width: 64ch; font-size: 0.8125rem; line-height: 1.55; color: rgb(var(--foreground-rgb) / 0.62); }
 
 /* ── what is known ───────────────────────────────────────────────────────── */
@@ -100,7 +100,7 @@
 .factValue {
   font-size: 1.125rem;
   font-weight: 650;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -142,7 +142,7 @@
 }
 
 .panelHead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); }
+.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); }
 
 .count {
   font-family: var(--font-geist-mono, ui-monospace), monospace;
@@ -243,7 +243,7 @@
 .figure { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.6875rem; }
 .figure dt { color: rgb(var(--foreground-rgb) / 0.5); }
 .figure dd { margin: 0; font-variant-numeric: tabular-nums; color: rgb(var(--foreground-rgb) / 0.82); text-align: right; }
-.figure[data-emphasis='true'] dd { color: var(--foreground); font-weight: 600; }
+.figure[data-emphasis='true'] dd { color: hsl(var(--foreground)); font-weight: 600; }
 .scope[data-exhausted='true'] .figure[data-emphasis='true'] dd { color: rgb(248 113 113); }
 
 /* ── ledger rows ─────────────────────────────────────────────────────────── */
@@ -264,7 +264,7 @@
 .row[data-flag='fallback'] { background: rgb(251 191 36 / 0.06); }
 
 .rowMain { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
-.rowLabel { font-size: 0.75rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.rowLabel { font-size: 0.75rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .rowMeta { display: flex; flex-wrap: wrap; gap: 0.25rem 0.625rem; font-size: 0.625rem; color: rgb(var(--foreground-rgb) / 0.5); }
 
 .rowValue {
@@ -318,7 +318,7 @@
 .attention[data-tone='exhausted']  { border-left-color: rgb(248 113 113 / 0.85); }
 .attention[data-tone='unreadable'] { border-left-color: rgb(var(--omnira-violet-rgb) / 0.8); }
 
-.attentionTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.attentionTitle { font-size: 0.8125rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .attentionDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
 
 /* ── diagnostics ─────────────────────────────────────────────────────────── */

@@ -64,7 +64,7 @@
   color: rgb(var(--omnira-cyan-rgb) / 0.8);
 }
 
-.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--foreground); }
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 .lede { margin: 0; max-width: 64ch; font-size: 0.8125rem; line-height: 1.55; color: rgb(var(--foreground-rgb) / 0.62); }
 
 /* ── the month window ────────────────────────────────────────────────────── */
@@ -99,7 +99,7 @@
   color: rgb(var(--foreground-rgb) / 0.45);
 }
 
-.monthValue { font-size: 0.9375rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.monthValue { font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .monthDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.58); overflow-wrap: anywhere; }
 
 /* ── counts ──────────────────────────────────────────────────────────────── */
@@ -137,7 +137,7 @@
   color: rgb(var(--foreground-rgb) / 0.45);
 }
 
-.factValue { font-size: 1.125rem; font-weight: 650; color: var(--foreground); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.factValue { font-size: 1.125rem; font-weight: 650; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 /* ── panels ──────────────────────────────────────────────────────────────── */
 
@@ -162,7 +162,7 @@
 }
 
 .panelHead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .panelNote { margin: 0; font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.55); overflow-wrap: anywhere; }
 
 .count {
@@ -211,7 +211,7 @@
 .attention[data-tone='neutral']    { border-left-color: rgb(var(--foreground-rgb) / 0.22); }
 .attention[data-tone='unreadable'] { border-left-color: rgb(var(--omnira-violet-rgb) / 0.8); }
 
-.attentionTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.attentionTitle { font-size: 0.8125rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .attentionDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
 
 /* ── cards ───────────────────────────────────────────────────────────────── */
@@ -247,7 +247,7 @@
   overflow-wrap: anywhere;
 }
 
-.cardTitle { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.5; color: var(--foreground); overflow-wrap: anywhere; }
+.cardTitle { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.5; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .cardTitle[data-empty='true'] { font-style: italic; color: rgb(var(--foreground-rgb) / 0.5); }
 
 .status {
@@ -338,7 +338,7 @@
   white-space: pre-wrap;
   font-size: 0.75rem;
   line-height: 1.55;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   overflow-wrap: anywhere;
 }
 
@@ -374,11 +374,10 @@
 
 /* ── decisions ───────────────────────────────────────────────────────────── */
 
-/* Controls take their outline from a DEFINED token. `--foreground-rgb` is not
-   defined anywhere yet — a shared vNext token defect — and a border built on an
-   undefined variable is dropped whole: a button would read as plain text and an
-   input would be invisible. Decoration elsewhere keeps the shared tokens so the
-   global fix reaches it. */
+/* Controls take their outline from the cyan accent token. The choice was made
+   while `--foreground-rgb` was still undefined and a border built on it was
+   dropped whole; the Global Design Foundation slice defined the token and kept
+   this outline as shipped, so restoring the token changed no control here. */
 
 .decide { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
 
@@ -389,7 +388,7 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.28);
   background: rgb(var(--foreground-rgb) / 0.04);
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   font: inherit;
   font-size: 0.75rem;
   font-weight: 600;
@@ -457,7 +456,7 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.3);
   background: rgb(var(--foreground-rgb) / 0.03);
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   font: inherit;
   font-size: 0.75rem;
   line-height: 1.5;
@@ -490,7 +489,7 @@
 
 .plan[data-undecided='true'] { border-left-color: rgb(251 191 36 / 0.8); }
 
-.planTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.planTitle { font-size: 0.8125rem; font-weight: 600; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .planDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
 
 /* ── diagnostics ─────────────────────────────────────────────────────────── */

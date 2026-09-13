@@ -68,7 +68,7 @@
   font-weight: 650;
   letter-spacing: -0.01em;
   margin: 0;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
 }
 
 .lede {
@@ -93,7 +93,7 @@
   font-size: 1.125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
 }
 .fact[data-filter='on'] dd { font-size: 0.8125rem; font-weight: 500; }
 
@@ -118,7 +118,7 @@
 .inspector { position: sticky; top: 1rem; }
 
 .sectionHead { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.75rem; }
-.sectionTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); }
+.sectionTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); }
 .count {
   font-family: var(--font-geist-mono, ui-monospace), monospace;
   font-size: 0.6875rem;
@@ -162,7 +162,7 @@
 .rowTitle {
   font-size: 0.8125rem;
   font-weight: 550;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   overflow-wrap: anywhere;
 }
 .rowMeta {
@@ -212,7 +212,7 @@
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   overflow-wrap: anywhere;
   flex: 1 1 auto;
   min-width: 0;
@@ -333,7 +333,7 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(var(--foreground-rgb) / 0.12);
   background: rgb(var(--foreground-rgb) / 0.03);
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   font: inherit;
   font-size: 0.75rem;
   line-height: 1.5;
@@ -351,7 +351,7 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(var(--foreground-rgb) / 0.16);
   background: rgb(var(--foreground-rgb) / 0.04);
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;

@@ -1095,9 +1095,9 @@ describe('marketing review · rendered surface and layout', () => {
   })
 
   it('the controls stay visible without the shared foreground token', () => {
-    // `--foreground-rgb` is defined nowhere yet, and a border built on an undefined
-    // variable is dropped whole. Buttons, the overflow toggle and the edit fields
-    // must not depend on it, or they read as plain text and blank space.
+    // These controls were given a cyan outline while `--foreground-rgb` was still
+    // undefined and a border built on it was dropped whole. The token is defined
+    // now; the outline stays as shipped, and this pins that it did not change.
     const block = (selector: string) => {
       const i = CSS.indexOf(`${selector} {`)
       expect(i, selector).toBeGreaterThan(-1)

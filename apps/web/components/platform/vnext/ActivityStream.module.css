@@ -56,7 +56,7 @@
   color: rgb(var(--omnira-cyan-rgb) / 0.8);
 }
 
-.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--foreground); }
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: hsl(var(--foreground)); }
 .lede { margin: 0; max-width: 60ch; font-size: 0.8125rem; line-height: 1.55; color: rgb(var(--foreground-rgb) / 0.62); }
 
 /* ── panels ──────────────────────────────────────────────────────────────── */
@@ -86,7 +86,7 @@
 }
 
 .panelHead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
-.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); }
+.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); }
 
 .count {
   font-family: var(--font-geist-mono, ui-monospace), monospace;
@@ -150,7 +150,7 @@
   margin: 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: hsl(var(--foreground));
   overflow-wrap: anywhere;
 }
 

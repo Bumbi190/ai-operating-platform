@@ -28,8 +28,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="sv" className="dark" suppressHydrationWarning>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+    // The font variables live on <html>: Tailwind's preflight sets
+    // `font-family: var(--font-geist-sans), …` on html, and a variable declared
+    // only on <body> is undefined there — the declaration was invalid, the UA
+    // serif won, and every surface without its own font inherited it.
+    <html lang="sv" className={`dark ${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <body className="antialiased">
         {children}
       </body>
     </html>

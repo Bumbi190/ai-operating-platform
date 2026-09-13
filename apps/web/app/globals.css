@@ -12,6 +12,7 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
+    --foreground-rgb: 9 9 11; /* channels of --foreground */
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
@@ -35,6 +36,7 @@
   .dark {
     --background: 230 50% 3%;
     --foreground: 0 0% 96%;
+    --foreground-rgb: 245 245 245; /* channels of --foreground */
     --card: 230 30% 5%;
     --card-foreground: 0 0% 96%;
     --popover: 230 30% 5%;
@@ -123,6 +125,7 @@
   --omnira-teal-rgb:       45 212 191;   /* --omnira-teal       #2dd4bf */
   --omnira-teal-soft-rgb:  94 234 212;   /* --omnira-teal-soft  #5eead4 */
   --omnira-aqua-rgb:      165 243 252;   /* --omnira-aqua       #a5f3fc */
+  --omnira-violet-rgb:    139 92 246;    /* --omnira-violet     #8b5cf6 */
 
   /* Text scale — tuned for WCAG AA on the OLED canvas (#050714).
      text-2 (secondary) and text-3 (meta) now clear 4.5:1 for normal text;
@@ -208,6 +211,7 @@
      muted-foreground 7.53:1 on card, both AAA and both above the legacy 5.45:1. */
   --background:          211 84% 5%;
   --foreground:          218 100% 98%;
+  --foreground-rgb:      245 249 255;  /* channels of --foreground — for rgb(var(--foreground-rgb) / a) */
   --card:                208 78% 7%;
   --card-foreground:     218 100% 98%;
   --popover:             208 78% 7%;

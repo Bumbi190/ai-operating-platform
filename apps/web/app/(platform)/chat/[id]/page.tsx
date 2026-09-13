@@ -1,48 +1,63 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { ChatClient } from '@/components/platform/ChatClient'
+import { loadChatConversation } from '@/lib/os/chat'
+import {
+  AtlasChatConversation,
+  AtlasChatConversationLoading,
+} from '@/components/platform/vnext/AtlasChatConversation'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
+import { ConversationLegacy } from './ConversationLegacy'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function ConversationPage({ params }: Props) {
+/**
+ * `/chat/[id]` — one Atlas conversation.
+ *
+ * vNext renders the conversation as the working surface; `?ui=legacy` renders
+ * the previous body, moved verbatim into `ConversationLegacy`. Both speak the
+ * same, unchanged `/api/chat`.
+ *
+ * The guard is the one this route always had: the conversation is read by id
+ * AND `user_id` from the session before a single message is read, and a
+ * conversation that is not the session's is the same neutral redirect to
+ * `/chat` as one that does not exist.
+ *
+ * `?send=` is only looked at here to know whether a launcher's question is
+ * about to be sent, so the empty state does not flash first. The question itself
+ * is read and sent by the conversation, once, exactly as before.
+ *
+ * The legacy branch returns before the vNext loader is reached. The boundary is
+ * keyed by conversation, so moving between conversations never carries one
+ * conversation's state into another.
+ */
+export const dynamic = 'force-dynamic'
+
+export default async function ConversationPage({ params, searchParams }: Props) {
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
+
+  if (!isVNext(generation)) return <ConversationLegacy params={params} />
+
   const { id } = await params
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const db = createAdminClient()
-
-  // Load conversation + messages
-  const { data: conv } = await db
-    .from('conversations')
-    .select('id, title, project_id, projects(name, slug)')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!conv) redirect('/chat')
-
-  const { data: messages } = await db
-    .from('conversation_messages')
-    .select('role, content, tool_data, created_at')
-    .eq('conversation_id', id)
-    .order('created_at', { ascending: true })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const convAny = conv as any
-  const projectRaw = convAny?.projects
-  const project = (Array.isArray(projectRaw) ? projectRaw[0] ?? null : projectRaw ?? null) as { name: string; slug: string } | null
+  const { send } = await searchParams
+  const asking = typeof send === 'string' && send.trim().length > 0
 
   return (
-    <ChatClient
-      conversationId={id}
-      conversationTitle={conv.title}
-      projectName={project?.name ?? null}
-      savedMessages={messages ?? []}
-    />
+    <Suspense key={id} fallback={<AtlasChatConversationLoading />}>
+      <LoadedConversation id={id} asking={asking} />
+    </Suspense>
   )
+}
+
+async function LoadedConversation({ id, asking }: { id: string; asking: boolean }) {
+  const model = await loadChatConversation(id)
+  if (!model) redirect('/login')
+  if (model === 'not_found') redirect('/chat')
+  return <AtlasChatConversation model={model} asking={asking} />
 }

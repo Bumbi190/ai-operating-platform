@@ -1,62 +1,46 @@
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { ConversationList } from './ConversationList'
-import { ExecutiveAssistant } from './ExecutiveAssistant'
-import { deriveOperatorName } from '@/lib/os/briefing'
+import { loadChatHome } from '@/lib/os/chat'
+import { AtlasChatHome, AtlasChatHomeLoading } from '@/components/platform/vnext/AtlasChatHome'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
+import { ChatLegacy } from './ChatLegacy'
+
+/**
+ * `/chat` — Atlas Chat.
+ *
+ * vNext puts the question first — a composer and the executive starters, which
+ * open a new conversation exactly as before — and lists the operator's own
+ * conversations beneath it. `?ui=legacy` renders the previous body, moved
+ * verbatim into `ChatLegacy`.
+ *
+ * Ownership is the one this route always had: a conversation is USER-owned and
+ * read by `user_id` from the session. The vNext home reads no project list —
+ * the replaced page read one for a picker that never reached a conversation —
+ * so there is no project scope to apply and none to widen.
+ *
+ * The legacy branch returns before the vNext loader is reached, so a rollback
+ * costs nothing and cannot fail on a read it does not use.
+ */
+export const dynamic = 'force-dynamic'
 
 export default async function ChatIndexPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
 
-  const db = createAdminClient()
-
-  // TWO DIFFERENT OWNERSHIP DIMENSIONS ON ONE PAGE, deliberately kept apart.
-  //
-  // A conversation is USER-owned: `conversations.user_id`. That contract is
-  // already correct and is left exactly as it was — it is stronger here than a
-  // project scope would be, and rewriting it into project semantics would
-  // weaken it, because a conversation may carry no project at all.
-  const { data: conversations } = await db
-    .from('conversations')
-    .select('id, title, project_id, updated_at, projects(name, slug)')
-    .eq('user_id', user.id)
-    .order('updated_at', { ascending: false })
-    .limit(50)
-
-  // A project is PROJECT-authorised. This picker was unscoped: it listed every
-  // project in the database — id, name and slug — to any signed-in operator,
-  // through a service-role client that bypasses RLS. The names and slugs alone
-  // disclose what other tenants are working on.
-  const { data: projects } = await db
-    .from('projects')
-    .select('id, name, slug')
-    .in('id', scopeProjectFilter(await getAllowedProjectIds(db, user.id)))
-    .order('name')
-
-  const operatorName = deriveOperatorName(
-    (user.user_metadata?.full_name as string | undefined) ?? (user.user_metadata?.name as string | undefined),
-    user.email,
-  )
+  if (!isVNext(generation)) return <ChatLegacy />
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-3rem)]">
-      {/* Executive Assistant — chattens centrum */}
-      <div className="px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 pt-10 pb-8">
-        <ExecutiveAssistant projects={projects ?? []} operatorName={operatorName} />
-      </div>
-
-      {/* Tidigare konversationer */}
-      {conversations && conversations.length > 0 && (
-        <div className="flex-1 overflow-y-auto px-6 md:px-8 lg:px-10 2xl:px-12 3xl:px-16 pb-8">
-          <div className="max-w-2xl mx-auto w-full">
-            <p className="eyebrow !text-[9px] mb-3">Tidigare konversationer</p>
-            <ConversationList conversations={conversations as any} />
-          </div>
-        </div>
-      )}
-    </div>
+    <Suspense fallback={<AtlasChatHomeLoading />}>
+      <LoadedChatHome />
+    </Suspense>
   )
+}
+
+async function LoadedChatHome() {
+  const model = await loadChatHome()
+  if (!model) redirect('/login')
+  return <AtlasChatHome model={model} />
 }

@@ -36,7 +36,9 @@ const WEB_ROOT = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const CONTENT_DETAIL = read('app/(platform)/atlas/content/[id]/page.tsx')
-const CHAT_DETAIL = read('app/(platform)/chat/[id]/page.tsx')
+// vNext Chat moved this body verbatim into ConversationLegacy (`?ui=legacy`);
+// the assertions below are about that read, so they follow it.
+const CHAT_DETAIL = read('app/(platform)/chat/[id]/ConversationLegacy.tsx')
 const HERO_ROUTE = read('app/api/content/articles/[id]/hero-image/route.ts')
 const SYNC_ROUTE = read('app/api/content/articles/[id]/sync/route.ts')
 const REVIEW_ROUTE = read('app/api/content/articles/[id]/review/route.ts')
@@ -291,5 +293,48 @@ describe('9D · chat/[id] — user ownership was already enforced', () => {
   it('discloses nothing on refusal — a neutral redirect, no diagnostic', () => {
     expect(CHAT_CODE).toMatch(/if \(!conv\) redirect\('\/chat'\)/)
     expect(CHAT_CODE).not.toMatch(/another project|not yours|forbidden|unauthorized/i)
+  })
+})
+
+// ═══ Chat detail — the vNext conversation keeps the same guard ═══════════════
+//
+// vNext renders `/chat/[id]` from `lib/os/chat.ts`. The rule is the one pinned
+// above: the conversation is read by id AND owner before any message, and a
+// foreign conversation is indistinguishable from a missing one.
+
+describe('9D · chat/[id] — the vNext conversation keeps user ownership', () => {
+  const LOADER_CODE = codeOnly(read('lib/os/chat.ts'))
+  const loader = LOADER_CODE.slice(LOADER_CODE.indexOf('export async function loadChatConversation'))
+  const PAGE_CODE = codeOnly(read('app/(platform)/chat/[id]/page.tsx'))
+  const BAIL = "if (!conv) return 'not_found'"
+
+  it('the loader under test is the one the page renders', () => {
+    expect(loader.length).toBeGreaterThan(0)
+    expect(PAGE_CODE).toMatch(/const model = await loadChatConversation\(id\)/)
+  })
+
+  it('messages are fetched ONLY after ownership resolves', () => {
+    const convAt = loader.indexOf("from('conversations')")
+    const bailAt = loader.indexOf(BAIL)
+    const msgAt = loader.indexOf("from('conversation_messages')")
+    expect(convAt).toBeGreaterThan(-1)
+    expect(bailAt).toBeGreaterThan(convAt)
+    expect(msgAt).toBeGreaterThan(bailAt)
+  })
+
+  it('the conversation query carries BOTH the id and the owner predicate', () => {
+    const stmt = loader.slice(loader.indexOf("from('conversations')"), loader.indexOf(BAIL))
+    expect(stmt).toMatch(/\.eq\('id', id\)/)
+    expect(stmt).toMatch(/\.eq\('user_id', user\.id\)/)
+  })
+
+  it('a foreign or missing conversation is the same neutral redirect as before', () => {
+    expect(PAGE_CODE).toMatch(/if \(model === 'not_found'\) redirect\('\/chat'\)/)
+    expect(PAGE_CODE + loader).not.toMatch(/another project|not yours|forbidden|unauthorized/i)
+  })
+
+  it('the legacy body is only reached behind the generation branch', () => {
+    expect(PAGE_CODE).toMatch(/if \(!isVNext\(generation\)\) return <ConversationLegacy params=\{params\} \/>/)
+    expect(PAGE_CODE.indexOf('<ConversationLegacy params={params} />')).toBeLessThan(PAGE_CODE.indexOf('loadChatConversation('))
   })
 })

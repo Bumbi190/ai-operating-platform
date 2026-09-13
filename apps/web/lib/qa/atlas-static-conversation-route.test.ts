@@ -339,6 +339,27 @@ describe('FULL → STATIC history transition', () => {
     expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'user', content: text \}\]/)
     expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'assistant', content: assistantText \}\]/)
   })
+
+  it('PINS THE SAME INVARIANT for the vNext conversation client', async () => {
+    // vNext renders /chat/[id] with its own client. It must keep the history
+    // exactly as text-only as ChatClient does, for exactly the same reason.
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const shared = readFileSync(resolve(__dirname, '../../lib/os/chat-shared.ts'), 'utf8')
+    const client = readFileSync(
+      resolve(__dirname, '../../components/platform/vnext/AtlasChatConversation.tsx'), 'utf8',
+    )
+    // Hydration filters persisted rows down to user/assistant with string content.
+    expect(shared).toMatch(/\(m\.role === 'user' \|\| m\.role === 'assistant'\) && !!m\.content/)
+    expect(shared).toMatch(/content: m\.content as string/)
+    // The history starts from that filter and nothing else.
+    expect(client).toMatch(/useRef<HistoryMessage\[\]>\(textHistory\(model\.saved\)\)/)
+    // Appends are plain strings on both sides of the exchange.
+    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'user', content: text \}\]/)
+    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'assistant', content: effect\.fullText \}\]/)
+    // And it is the only thing the request carries as messages.
+    expect(client).toMatch(/buildChatRequestBody\(\{\s*messages: history\.current,\s*conversation_id: model\.id,\s*\}\)/)
+  })
 })
 
 describe('the two paths are genuinely different', () => {

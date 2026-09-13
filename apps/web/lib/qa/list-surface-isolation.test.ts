@@ -35,7 +35,9 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 // Phase 15 moved this body verbatim into ContentLegacy (`?ui=legacy`); the
 // scoping assertions below are about that service-role read, so they follow it.
 const CONTENT_LIST = read('app/(platform)/atlas/content/ContentLegacy.tsx')
-const CHAT_LIST = read('app/(platform)/chat/page.tsx')
+// vNext Chat moved this body verbatim into ChatLegacy (`?ui=legacy`); the
+// assertions below are about that service-role read, so they follow it.
+const CHAT_LIST = read('app/(platform)/chat/ChatLegacy.tsx')
 
 const codeOnly = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
@@ -304,5 +306,45 @@ describe('9G · atlas/content — the vNext surface keeps both scopes', () => {
     const page = read('app/(platform)/atlas/content/page.tsx')
     expect(page).toMatch(/<ContentLegacy \/>/)
     expect(page).toMatch(/<ContentCenter model=/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// vNext Chat — the vNext home at the same route
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The body above is the legacy one, reached by `?ui=legacy`. vNext lists the
+// operator's conversations at the same path, through the same service-role
+// client, so the ownership dimension this suite pins has to hold there too —
+// and the project picker the legacy page scoped must not come back unscoped.
+
+describe('9G · chat — the vNext home keeps user ownership and reads no project list', () => {
+  const LOADER_CODE = codeOnly(read('lib/os/chat.ts'))
+  const PAGE_CODE = codeOnly(read('app/(platform)/chat/page.tsx'))
+  const home = () => between(LOADER_CODE, 'export async function loadChatHome', 'export async function loadChatConversation')
+
+  it('the vNext conversation list is scoped by user_id from the session', () => {
+    const conv = between(home(), "from('conversations')", '.limit(')
+    expect(conv).toMatch(/\.eq\('user_id', user\.id\)/)
+  })
+
+  it('the vNext list did not drift into project semantics', () => {
+    const conv = between(home(), "from('conversations')", '.limit(')
+    expect(conv).not.toMatch(/\.in\('project_id'|scopeProjectFilter|getAllowedProjectIds/)
+  })
+
+  it('the vNext home reads no project list at all — there is no picker left to scope', () => {
+    expect(home()).not.toMatch(/from\('projects'\)/)
+    expect(LOADER_CODE).not.toMatch(/from\('projects'\)/)
+  })
+
+  it('the session, not the request, supplies the owner', () => {
+    expect(home()).toMatch(/const \{ data: \{ user \} \} = await supabase\.auth\.getUser\(\)\s*if \(!user\) return null/)
+    expect(PAGE_CODE).toMatch(/if \(!model\) redirect\('\/login'\)/)
+  })
+
+  it('the legacy body is only reached behind the generation branch', () => {
+    expect(PAGE_CODE).toMatch(/if \(!isVNext\(generation\)\) return <ChatLegacy \/>/)
+    expect(PAGE_CODE.indexOf('<ChatLegacy />')).toBeLessThan(PAGE_CODE.indexOf('loadChatHome('))
   })
 })

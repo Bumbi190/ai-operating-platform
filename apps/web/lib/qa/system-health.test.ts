@@ -545,10 +545,18 @@ describe('phase 12 · authority is preserved, never re-created', () => {
   })
 
   it('adds no endpoint, migration or schema change', () => {
+    // Pinned to the change set Phase 12 SHIPPED: its merge commit against that
+    // commit's first parent. The previous branch-vs-origin/main diff answered a
+    // different question — whether the checked-out branch touched these paths —
+    // and failed the first later branch that legitimately fixed an existing API
+    // route. What Phase 12 changed, including the stop authority, is a fact about
+    // its merge.
     const { execSync } = require('node:child_process') as typeof import('node:child_process')
-    const changed = execSync('git diff --name-only origin/main HEAD; git status --porcelain --untracked-files=all | cut -c4-', {
+    const PHASE_12_MERGE = '9337100'
+    const changed = execSync(`git diff --name-only ${PHASE_12_MERGE}^1 ${PHASE_12_MERGE}`, {
       cwd: WEB_ROOT, encoding: 'utf8',
     }).split('\n').filter(Boolean)
+    expect(changed.length).toBeGreaterThan(0)
     expect(changed.filter((f) => /supabase\/migrations|\.sql$/.test(f))).toEqual([])
     expect(changed.filter((f) => /^apps\/web\/app\/api\//.test(f))).toEqual([])
     expect(changed.filter((f) => /database\.types|packages\/db/.test(f))).toEqual([])

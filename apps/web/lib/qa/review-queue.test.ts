@@ -565,10 +565,19 @@ describe('phase 11 · scope, authority and boundaries', () => {
   })
 
   it('adds no endpoint, no migration and no schema change', () => {
+    // Pinned to the change set Phase 11 SHIPPED: its merge commit against that
+    // commit's first parent. This used to diff whatever branch was checked out
+    // against origin/main, which does not answer the question in the test's name
+    // — it answered "does the current branch touch an API route", stayed
+    // trivially green on main, and failed the first later branch that
+    // legitimately fixed an existing route. The claim about Phase 11 is a fact
+    // about its merge, so that is what is diffed.
     const { execSync } = require('node:child_process') as typeof import('node:child_process')
-    const changed = execSync('git diff --name-only origin/main HEAD; git status --porcelain --untracked-files=all | cut -c4-', {
+    const PHASE_11_MERGE = 'fcf53fd'
+    const changed = execSync(`git diff --name-only ${PHASE_11_MERGE}^1 ${PHASE_11_MERGE}`, {
       cwd: WEB_ROOT, encoding: 'utf8',
     }).split('\n').filter(Boolean)
+    expect(changed.length).toBeGreaterThan(0)
     expect(changed.filter((f) => /supabase\/migrations|\.sql$/.test(f))).toEqual([])
     expect(changed.filter((f) => /^apps\/web\/app\/api\//.test(f))).toEqual([])
     expect(changed.filter((f) => /database\.types|packages\/db/.test(f))).toEqual([])

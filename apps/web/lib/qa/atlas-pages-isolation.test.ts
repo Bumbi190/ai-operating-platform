@@ -159,10 +159,10 @@ function collect(node: any, out: string[], depth = 0) {
   }
 }
 
-async function renderPage(mod: string, props?: any) {
+async function renderPage(mod: string, props?: any, exportName = 'default') {
   vi.resetModules()
   const m = await import(mod)
-  const el = await m.default(props)
+  const el = await m[exportName](props)
   const out: string[] = []
   collect(el, out)
   return { text: out.join(' | '), parts: out, seen: CURRENT.seen }
@@ -319,11 +319,14 @@ describe('9Q · Atlas Operations — the page now passes the allow-list it alway
 
 // ═══ Atlas Marketing ═════════════════════════════════════════════════════════
 
-const MKT = '@/app/(platform)/atlas/marketing/page'
+// Phase 16 moved this body verbatim into MarketingLegacy (`?ui=legacy`) and the
+// page now branches on the UI generation. These assertions are about that
+// service-role chain, so they drive the moved body directly.
+const MKT = '@/app/(platform)/atlas/marketing/MarketingLegacy'
 
 describe('9Q · Atlas Marketing — one root guard closes the whole derived chain', () => {
   it('the hard-coded slug lookup is authorized against the allow-list', async () => {
-    const { seen } = await renderPage(MKT)
+    const { seen } = await renderPage(MKT, undefined, 'MarketingLegacy')
     const root = q(seen, 'projects').find(r => r.ops.some(([op, c]) => op === 'eq' && c === 'slug'))
     expect(root, 'root slug lookup not found').toBeTruthy()
     expect(scopeArg(root, 'id')).toEqual([MINE])
@@ -332,7 +335,7 @@ describe('9Q · Atlas Marketing — one root guard closes the whole derived chai
   it('a project the operator does not own yields an empty review, not its pipeline', async () => {
     // The seed gives `familje-stunden` to the FOREIGN project, so this is the
     // real case: authenticated, but not entitled to that project.
-    const { text, seen } = await renderPage(MKT)
+    const { text, seen } = await renderPage(MKT, undefined, 'MarketingLegacy')
     expect(text).not.toContain('SECRET-THEME')
     expect(text).not.toContain('SECRET')
     // The chain is derived, so it must stop at the root: nothing downstream ran.
@@ -365,6 +368,75 @@ describe('9Q · Atlas Marketing — one root guard closes the whole derived chai
     expect(review.cards).toEqual([])
     expect(review.months).toEqual([])
     expect(scopeArg(find(CURRENT.seen, 'projects', 'eq:slug', 'in:id'), 'id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+  })
+})
+
+// ═══ Atlas Marketing — the vNext surface (Phase 16) ══════════════════════════
+
+describe('9Q · Atlas Marketing vNext — the same root guard closes both chains', () => {
+  const load = async () => {
+    vi.resetModules()
+    const { loadMarketingReview } = await import('@/lib/os/marketing-review')
+    return loadMarketingReview()
+  }
+  const roots = (seen: Seen[]) =>
+    q(seen, 'projects').filter(r => r.ops.some(([op, c]) => op === 'eq' && c === 'slug'))
+
+  it('both slug lookups — the review and the outside counts — are authorized against the allow-list', async () => {
+    await load()
+    const r = roots(CURRENT.seen)
+    expect(r).toHaveLength(2)
+    for (const root of r) expect(scopeArg(root, 'id')).toEqual([MINE])
+  })
+
+  it('a project the operator does not own yields no review and no read past the root', async () => {
+    // The seed gives `familje-stunden` to the FOREIGN project.
+    const model = await load()
+    expect(model!.state).toBe('unavailable')
+    expect(JSON.stringify(model)).not.toContain('SECRET')
+    for (const t of ['campaign_plans', 'campaign_briefs', 'draft_posts', 'guard_reports', 'runs']) {
+      expect(q(CURRENT.seen, t), t).toHaveLength(0)
+    }
+  })
+
+  it('when the operator DOES own the project, every read below the root is keyed off it', async () => {
+    const s = seed()
+    s.projects[1].owner_id = ME
+    CURRENT = fakeDb(s)
+    const model = await load()
+    expect(model!.state).toBe('ok')
+    for (const root of roots(CURRENT.seen)) expect(scopeArg(root, 'id')).toEqual([MINE, THEIRS])
+    // The outside counts are keyed on the authorised project id…
+    for (const t of ['campaign_plans', 'campaign_briefs', 'draft_posts']) {
+      expect(q(CURRENT.seen, t).some(r => r.ops.some(([op, c, v]) => op === 'eq' && c === 'project_id' && v === THEIRS)), t).toBe(true)
+    }
+    // …and the review keeps the helper's derived chain.
+    expect(find(CURRENT.seen, 'campaign_briefs', 'in:plan_id'), 'briefs not derived from plans').toBeTruthy()
+    expect(find(CURRENT.seen, 'draft_posts', 'in:brief_id'), 'drafts not derived from briefs').toBeTruthy()
+  })
+
+  it('an empty allow-list carries the impossible id into both root lookups', async () => {
+    CURRENT_USER = { id: 'nobody' }
+    const model = await load()
+    const r = roots(CURRENT.seen)
+    expect(r).toHaveLength(2)
+    for (const root of r) expect(scopeArg(root, 'id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+    expect(model!.state).toBe('unavailable')
+  })
+
+  it('an unauthenticated session gets no model and reads nothing', async () => {
+    CURRENT_USER = null
+    const model = await load()
+    expect(model).toBeNull()
+    expect(CURRENT.seen).toHaveLength(0)
+  })
+
+  it('both generations are mounted at the one route', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const page = readFileSync(resolve(__dirname, '../../app/(platform)/atlas/marketing/page.tsx'), 'utf8')
+    expect(page).toMatch(/<MarketingLegacy \/>/)
+    expect(page).toMatch(/<MarketingReview model=/)
   })
 })
 

@@ -1,36 +1,49 @@
-/**
- * Marketing Review — Action Center för Familje-Stundens Marketing Engine (Fas 4).
- *
- * En inbox för EN operatör: granska utkast (Väntar/Godkända/Avvisade), fatta
- * snabba beslut (Godkänn / Skicka tillbaka / Redigera). Fokus aktiv + nästa månad.
- * Read-only datahämtning här; beslut sker via /api/marketing/approvals.
- *
- * ⛔ Endast Familje-Stunden. Ingen publicering/Meta/scheduling/bildgenerering.
- */
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { getAllowedProjectIds } from '@/lib/atlas/isolation'
+import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { OSPage, OSLayer } from '@/components/platform/os'
-import { getMarketingReview } from '@/lib/marketing/review'
-import { MarketingReviewClient } from './MarketingReviewClient'
+import { loadMarketingReview } from '@/lib/os/marketing-review'
+import { MarketingReview, MarketingReviewLoading } from '@/components/platform/vnext/MarketingReview'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
+import { MarketingLegacy } from './MarketingLegacy'
 
+/**
+ * `/atlas/marketing` — Marknadsgranskning, the review of campaign drafts.
+ *
+ * vNext shows the month window as it is — including a month with no plan —
+ * gives every stored draft status its own lane, counts the drafts outside the
+ * window instead of calling the review done, and keeps the controls this page
+ * always had, posting to the same decision route. `?ui=legacy` renders the
+ * previous body, moved verbatim into `MarketingLegacy`.
+ *
+ * The legacy branch returns before the vNext loader is reached, so a rollback
+ * costs nothing and cannot fail on a read it does not use. The legacy body keeps
+ * its own session guard and its own scoped reads; the vNext loader resolves the
+ * session's scope through `resolveProjectAccess` and answers null when it
+ * cannot, and a scope that cannot be resolved is a redirect rather than an empty
+ * review that reads like nothing to decide.
+ *
+ * The registry declares this destination `projectMode: 'none'`, so there is no
+ * `?project=` narrowing here.
+ */
 export const dynamic = 'force-dynamic'
 
 export default async function MarketingReviewPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
 
-  const db = createAdminClient()
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-  const review = await getMarketingReview(db, allowedProjectIds)
+  if (!isVNext(generation)) return <MarketingLegacy />
 
   return (
-    <OSPage density="comfortable">
-      <OSLayer layer="hero">
-        <MarketingReviewClient initial={review} />
-      </OSLayer>
-    </OSPage>
+    <Suspense fallback={<MarketingReviewLoading />}>
+      <LoadedMarketingReview />
+    </Suspense>
   )
+}
+
+async function LoadedMarketingReview() {
+  const model = await loadMarketingReview()
+  if (!model) redirect('/login')
+  return <MarketingReview model={model} />
 }

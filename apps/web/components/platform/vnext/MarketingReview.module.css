@@ -1,0 +1,531 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   MARKNADSGRANSKNING · /atlas/marketing
+   ─────────────────────────────────────────────────────────────────────────
+   The marketing review. The month window first — a month without a plan says
+   so — then what needs a person, then every stored draft status in its own
+   lane, then what sits outside the window, then how the figures were produced.
+
+   A card is the latest stored version of a draft, not a verdict: status is the
+   draft's own column, the Guard's score is a rule engine's stored output, and
+   approving publishes nothing. The actions are the ones this page always had.
+
+   Everything is sized in rem so the display-scale preference reaches it, every
+   region is flow-based, and nothing scrolls sideways: captions, reasons and
+   keys wrap instead. Colour carries tone only — every state is a word.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.field {
+  position: relative;
+  /* Same declaration the other vNext surfaces make on their own roots: the
+     app's Inter variable is scoped to <body> while Tailwind's preflight reads
+     it on <html>, so a surface that declares nothing inherits the browser's
+     default serif. Local to THIS surface; the global font decision stays
+     deferred. */
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem 1.5rem 5rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.field::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 18rem;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 64% 26% at 14% 0%, rgb(var(--omnira-cyan-rgb) / 0.07), transparent 64%),
+    radial-gradient(ellipse 46% 24% at 94% 6%, rgb(var(--omnira-violet-rgb) / 0.04), transparent 70%);
+}
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.headerText { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-rgb) / 0.8);
+}
+
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--foreground); }
+.lede { margin: 0; max-width: 64ch; font-size: 0.8125rem; line-height: 1.55; color: rgb(var(--foreground-rgb) / 0.62); }
+
+/* ── the month window ────────────────────────────────────────────────────── */
+
+.window {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.625rem;
+}
+
+.month {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.09);
+  border-left-width: 2px;
+  border-radius: 0.75rem;
+  background: rgb(var(--foreground-rgb) / 0.02);
+  min-width: 0;
+}
+
+.month[data-plan='none']    { border-left-color: rgb(251 191 36 / 0.75); }
+.month[data-plan='present'] { border-left-color: rgb(var(--omnira-cyan-rgb) / 0.55); }
+
+.monthLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+
+.monthValue { font-size: 0.9375rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.monthDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.58); overflow-wrap: anywhere; }
+
+/* ── counts ──────────────────────────────────────────────────────────────── */
+
+.facts {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.625rem;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.09);
+  border-left-width: 2px;
+  border-radius: 0.75rem;
+  background: rgb(var(--foreground-rgb) / 0.02);
+  min-width: 0;
+}
+
+.fact[data-tone='attention'] { border-left-color: rgb(251 191 36 / 0.75); }
+.fact[data-tone='failure']   { border-left-color: rgb(248 113 113 / 0.75); }
+.fact[data-tone='settled']   { border-left-color: rgb(var(--foreground-rgb) / 0.22); }
+.fact[data-tone='neutral']   { border-left-color: rgb(var(--foreground-rgb) / 0.12); }
+.fact[data-tone='unreadable']{ border-left-color: rgb(var(--omnira-violet-rgb) / 0.8); }
+
+.factLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+
+.factValue { font-size: 1.125rem; font-weight: 650; color: var(--foreground); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* ── panels ──────────────────────────────────────────────────────────────── */
+
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.125rem 1.25rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.09);
+  border-radius: 0.875rem;
+  background: rgb(var(--foreground-rgb) / 0.02);
+  min-width: 0;
+}
+
+.panel[data-unreadable='true'] { border-color: rgb(var(--omnira-violet-rgb) / 0.32); }
+
+.panel[data-provenance='true'] {
+  border-style: dashed;
+  border-color: rgb(var(--foreground-rgb) / 0.16);
+  background: transparent;
+}
+
+.panelHead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.panelTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.panelNote { margin: 0; font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.55); overflow-wrap: anywhere; }
+
+.count {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.75rem;
+  color: rgb(var(--foreground-rgb) / 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  margin: 0;
+  max-width: 80ch;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: rgb(var(--foreground-rgb) / 0.6);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  border: 1px dashed rgb(var(--foreground-rgb) / 0.14);
+  border-radius: 0.625rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgb(var(--foreground-rgb) / 0.6);
+  overflow-wrap: anywhere;
+}
+
+/* ── attention ───────────────────────────────────────────────────────────── */
+
+.attentionList { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+
+.attention {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.625rem 0.75rem;
+  border-left: 2px solid rgb(251 191 36 / 0.8);
+  border-radius: 0.5rem;
+  background: rgb(var(--foreground-rgb) / 0.03);
+  min-width: 0;
+}
+
+.attention[data-tone='failure']    { border-left-color: rgb(248 113 113 / 0.85); }
+.attention[data-tone='neutral']    { border-left-color: rgb(var(--foreground-rgb) / 0.22); }
+.attention[data-tone='unreadable'] { border-left-color: rgb(var(--omnira-violet-rgb) / 0.8); }
+
+.attentionTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.attentionDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
+
+/* ── cards ───────────────────────────────────────────────────────────────── */
+
+.list { display: flex; flex-direction: column; gap: 0.625rem; margin: 0; padding: 0; list-style: none; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.08);
+  border-left-width: 2px;
+  border-radius: 0.75rem;
+  background: rgb(var(--foreground-rgb) / 0.018);
+  min-width: 0;
+}
+
+.card[data-tone='attention'] { border-left-color: rgb(251 191 36 / 0.75); }
+.card[data-tone='failure']   { border-left-color: rgb(248 113 113 / 0.75); }
+.card[data-tone='settled']   { border-left-color: rgb(var(--foreground-rgb) / 0.22); }
+.card[data-tone='neutral']   { border-left-color: rgb(var(--foreground-rgb) / 0.12); }
+
+.cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.cardIdentity { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 1 1 16rem; }
+
+.kind {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+  overflow-wrap: anywhere;
+}
+
+.cardTitle { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.5; color: var(--foreground); overflow-wrap: anywhere; }
+.cardTitle[data-empty='true'] { font-style: italic; color: rgb(var(--foreground-rgb) / 0.5); }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgb(var(--foreground-rgb) / 0.78);
+  white-space: nowrap;
+}
+
+.status[data-tone='attention'] { color: rgb(251 191 36); }
+.status[data-tone='failure']   { color: rgb(248 113 113); }
+
+/* The stored value, shown beside its label rather than instead of it. */
+.raw {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  font-weight: 400;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+  background: rgb(var(--foreground-rgb) / 0.06);
+  color: rgb(var(--foreground-rgb) / 0.55);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem 0.875rem;
+  flex-wrap: wrap;
+  font-size: 0.6875rem;
+  color: rgb(var(--foreground-rgb) / 0.55);
+}
+
+.metaItem { display: inline-flex; align-items: baseline; gap: 0.25rem; overflow-wrap: anywhere; }
+.metaLabel { flex: none; color: rgb(var(--foreground-rgb) / 0.42); }
+
+.tag {
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.3rem;
+  background: rgb(var(--foreground-rgb) / 0.05);
+  color: rgb(var(--foreground-rgb) / 0.58);
+  overflow-wrap: anywhere;
+}
+
+.tag[data-flag='critical'] { background: rgb(248 113 113 / 0.12); color: rgb(248 113 113); }
+
+/* The one reason that decides the card, lifted to its surface. */
+.reason {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: rgb(251 191 36);
+  overflow-wrap: anywhere;
+}
+
+.reason[data-tone='critical'] { color: rgb(248 113 113); }
+
+/* ── card details ────────────────────────────────────────────────────────── */
+
+.details {
+  border-top: 1px solid rgb(var(--foreground-rgb) / 0.06);
+  padding-top: 0.5rem;
+  min-width: 0;
+}
+
+.summary { cursor: pointer; font-size: 0.75rem; font-weight: 600; color: rgb(var(--foreground-rgb) / 0.6); }
+.summary:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.8); outline-offset: 3px; border-radius: 0.25rem; }
+
+.detailBody { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.625rem; min-width: 0; }
+.section { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+
+.bodyLabel {
+  display: block;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.4);
+}
+
+.caption {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.issues, .plain { display: flex; flex-direction: column; gap: 0.3rem; margin: 0; padding: 0; list-style: none; }
+
+.issue {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: rgb(var(--foreground-rgb) / 0.75);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.severity {
+  flex: none;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: rgb(var(--foreground-rgb) / 0.06);
+  color: rgb(var(--foreground-rgb) / 0.6);
+}
+
+.severity[data-severity='CRITICAL'] { background: rgb(248 113 113 / 0.12); color: rgb(248 113 113); }
+.severity[data-severity='HIGH']     { background: rgb(251 191 36 / 0.14); color: rgb(251 191 36); }
+
+.plain li { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.7); overflow-wrap: anywhere; }
+
+/* ── decisions ───────────────────────────────────────────────────────────── */
+
+/* Controls take their outline from a DEFINED token. `--foreground-rgb` is not
+   defined anywhere yet — a shared vNext token defect — and a border built on an
+   undefined variable is dropped whole: a button would read as plain text and an
+   input would be invisible. Decoration elsewhere keeps the shared tokens so the
+   global fix reaches it. */
+
+.decide { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.5rem; }
+
+.action {
+  padding: 0.45rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.28);
+  background: rgb(var(--foreground-rgb) / 0.04);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.action:hover:not(:disabled) { background: rgb(var(--foreground-rgb) / 0.08); }
+.action:disabled { opacity: 0.55; cursor: progress; }
+.action:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.65); outline-offset: 1px; }
+
+.action[data-emphasis='primary'] {
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.45);
+  background: rgb(var(--omnira-cyan-rgb) / 0.08);
+  color: rgb(var(--omnira-cyan-rgb));
+}
+
+/* The overflow opens inline, below its toggle, so nothing is clipped by the card.
+   The toggle keeps the native disclosure marker: it is the one sign that the
+   line opens something, whatever the theme resolves. */
+.more { min-width: 0; }
+
+.moreSummary {
+  display: list-item;
+  cursor: pointer;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.22);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgb(var(--foreground-rgb) / 0.7);
+}
+
+.moreSummary:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.65); outline-offset: 1px; }
+
+.moreList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.1);
+  border-radius: 0.625rem;
+  background: rgb(var(--foreground-rgb) / 0.025);
+  min-width: 0;
+}
+
+.option { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; min-width: 0; }
+
+.actionNote { margin: 0; max-width: 64ch; font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.55); overflow-wrap: anywhere; }
+
+.fieldLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.3);
+  background: rgb(var(--foreground-rgb) / 0.03);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.textarea { resize: vertical; }
+
+.input:focus-visible,
+.textarea:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.6); outline-offset: 1px; }
+
+.outcome { margin: 0; min-height: 1.1rem; font-size: 0.75rem; line-height: 1.45; overflow-wrap: anywhere; }
+.outcome[data-kind='done']    { color: rgb(var(--omnira-cyan-rgb)); }
+.outcome[data-kind='refused'] { color: rgb(var(--omnira-violet-rgb)); }
+.outcome[data-kind='error']   { color: rgb(248 113 113 / 0.95); }
+
+/* ── plans outside the window ────────────────────────────────────────────── */
+
+.plans { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.625rem 0.75rem;
+  border-left: 2px solid rgb(var(--foreground-rgb) / 0.18);
+  border-radius: 0.5rem;
+  background: rgb(var(--foreground-rgb) / 0.03);
+  min-width: 0;
+}
+
+.plan[data-undecided='true'] { border-left-color: rgb(251 191 36 / 0.8); }
+
+.planTitle { font-size: 0.8125rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.planDetail { font-size: 0.6875rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.6); overflow-wrap: anywhere; }
+
+/* ── diagnostics ─────────────────────────────────────────────────────────── */
+
+.diagnostics {
+  border: 1px solid rgb(var(--foreground-rgb) / 0.08);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgb(var(--foreground-rgb) / 0.015);
+  min-width: 0;
+}
+
+.diagList { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.75rem 0 0; }
+.diagRow { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.58); }
+.diagRow dt { color: rgb(var(--foreground-rgb) / 0.45); }
+.diagRow dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .field { padding: 1.125rem 1rem 5rem; gap: 1rem; }
+  .title { font-size: 1.3125rem; }
+  .window { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cardHead { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  /* Stacked, the row basis would become a reserved height. */
+  .cardIdentity { flex: 0 1 auto; }
+  .status { white-space: normal; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .action,
+  .moreSummary { min-height: 2.75rem; width: 100%; text-align: left; }
+  .diagRow { flex-direction: column; gap: 0.1rem; }
+  .diagRow dd { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action { transition: none; }
+}

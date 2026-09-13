@@ -140,7 +140,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     projectMode: 'none',
   },
   marketing_queue: {
-    id: 'marketing_queue', label: 'Marketing Queue',
+    id: 'marketing_queue', label: 'Marknadsgranskning',
     keywords: ['marketing', 'marknad', 'familje', 'drafts', 'utkast'],
     projectMode: 'none',
   },

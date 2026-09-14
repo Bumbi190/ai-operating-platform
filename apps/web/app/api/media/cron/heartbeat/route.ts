@@ -71,10 +71,17 @@ export async function GET(request: Request) {
 
   // Lager 2: domän-bevis
   const ev = async (p: Promise<{ data: any }>) => { try { const { data } = await p; return data?.[0]?.t ? new Date(data[0].t).getTime() : null } catch { return null } }
-  const [newsEv, tokenEv] = await Promise.all([
+  const [newsEv, credentialEv, legacyTokenEv] = await Promise.all([
     ev(db.from('media_news_items').select('t:fetched_at').order('fetched_at', { ascending: false }).limit(1) as any),
+    // The token-health job's work: per-project verification in social_credential_health.
+    ev((db as any).from('social_credential_health').select('t:checked_at').order('checked_at', { ascending: false }).limit(1)),
+    // TRANSITION ONLY (project-scoped social credentials, 2026-09-14): until the first
+    // per-project verification exists, the retired token_health table's last
+    // verification TIME still counts as evidence. It is a timestamp, never a credential
+    // or a message, and it ages out of the two-cycle window on its own.
     ev(db.from('token_health').select('t:last_verified_at').order('last_verified_at', { ascending: false }).limit(1) as any),
   ])
+  const tokenEv = credentialEv ?? legacyTokenEv
   const evidenceFor = (c: Check): number | null => c.evidence === 'news' ? newsEv : c.evidence === 'token' ? tokenEv : null
 
   const { data: prev } = await db.from('cron_heartbeat').select('jobname, last_warned_at, status')

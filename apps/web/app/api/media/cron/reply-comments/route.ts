@@ -9,22 +9,33 @@
  *  - Max 5 svar per körning (undvik rate-limits)
  *  - Hoppar automatiskt över spam / för korta kommentarer
  *  - Skyddat av Authorization: Bearer {CRON_SECRET}
+ *
+ * CREDENTIAL (project-scoped social credentials, 2026-09-14): ett svar skickas med
+ * den verifierade credentialn för kommentarens EGET projekt, på kommentarens
+ * plattform (lib/media/social-credentials.ts) — aldrig ett env-token, aldrig ett
+ * annat projekts konto. Credentialn löses innan något svar genereras, så ingen
+ * kostnad uppstår för en kommentar som inget verifierat konto får besvara.
  */
 
 import { NextResponse }  from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
-import { getToken } from '@/lib/media/token-store'
 import { logLlmCost } from '@/lib/cost/track'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
+import {
+  createCredentialResolver,
+  type FacebookCredential,
+  type InstagramCredential,
+} from '@/lib/media/social-credentials'
+import { redactSecrets } from '@/lib/media/meta-errors'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 60
 
-const IG_BASE = 'https://graph.facebook.com/v21.0'
+const FB_BASE = 'https://graph.facebook.com/v21.0'
 
 function log(msg: string) {
   console.log(`[cron/reply-comments] ${msg}`)
@@ -79,40 +90,34 @@ Reply (or null if spam):`,
 
 // ── Posta svar på Instagram ───────────────────────────────────────────────────
 
-async function replyInstagram(commentId: string, text: string): Promise<void> {
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN
-  if (!token) throw new Error('Missing INSTAGRAM_ACCESS_TOKEN')
+async function replyInstagram(credential: InstagramCredential, commentId: string, text: string): Promise<void> {
+  // Instagram-login credentials post via graph.instagram.com, Facebook-login via
+  // graph.facebook.com — the credential carries which. The token travels as a header.
+  const res  = await fetch(`${credential.apiBase}/${commentId}/replies`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${credential.token}` },
+    body:    new URLSearchParams({ message: text }),
+  })
+  const data = await res.json().catch(() => null) as { id?: string; error?: { message: string } } | null
 
-  // IGAA tokens (Instagram Login) post via graph.instagram.com; EAA via graph.facebook.com.
-  const base   = token.startsWith('IG') ? 'https://graph.instagram.com/v21.0' : IG_BASE
-  const params = new URLSearchParams({ message: text, access_token: token })
-  const res    = await fetch(`${base}/${commentId}/replies`, { method: 'POST', body: params })
-  const data   = await res.json() as { id?: string; error?: { message: string } }
-
-  if (!res.ok || !data.id) {
-    throw new Error(data.error?.message ?? `Instagram reply failed (${res.status})`)
+  if (!res.ok || !data?.id) {
+    throw new Error(redactSecrets(data?.error?.message ?? `Instagram reply failed (${res.status})`))
   }
 }
 
 // ── Posta svar på Facebook ────────────────────────────────────────────────────
 
-async function replyFacebook(commentId: string, text: string): Promise<void> {
-  const userToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-  const pageId    = process.env.FACEBOOK_PAGE_ID
-  if (!userToken || !pageId) throw new Error('Missing Facebook env vars')
+async function replyFacebook(credential: FacebookCredential, commentId: string, text: string): Promise<void> {
+  // The page token Meta confirmed IS the project's bound page.
+  const res  = await fetch(`${FB_BASE}/${commentId}/comments`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${credential.pageToken}` },
+    body:    new URLSearchParams({ message: text }),
+  })
+  const data = await res.json().catch(() => null) as { id?: string; error?: { message: string } } | null
 
-  // Hämta Page Access Token (återanvänder samma logik som facebook.ts)
-  const accountsRes  = await fetch(`${IG_BASE}/me/accounts?access_token=${userToken}`)
-  const accountsData = await accountsRes.json() as { data?: Array<{ id: string; access_token: string }> }
-  const page         = accountsData.data?.find(p => p.id === pageId)
-  const pageToken    = page?.access_token ?? userToken
-
-  const params = new URLSearchParams({ message: text, access_token: pageToken })
-  const res    = await fetch(`${IG_BASE}/${commentId}/comments`, { method: 'POST', body: params })
-  const data   = await res.json() as { id?: string; error?: { message: string } }
-
-  if (!res.ok || !data.id) {
-    throw new Error(data.error?.message ?? `Facebook reply failed (${res.status})`)
+  if (!res.ok || !data?.id) {
+    throw new Error(redactSecrets(data?.error?.message ?? `Facebook reply failed (${res.status})`))
   }
 }
 
@@ -131,22 +136,6 @@ export async function GET(request: Request) {
   // lästes en gång per körning, så ett stopp mitt i loopen hindrade inte nästa
   // svar. Ersatt av en färsk kanonisk kontroll omedelbart före varje svar.
 
-  // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
-  // Samma mönster som cron/publish: platform_tokens-tabellen är källan, env är fallback.
-  // Krävs för att svaren ska använda det färska, roterade token istället för ett
-  // gammalt värde i Vercels env.
-  const igStored = await getToken('instagram')
-  if (igStored?.source === 'supabase') {
-    process.env.INSTAGRAM_ACCESS_TOKEN = igStored.accessToken
-    log('Instagram token läst från Supabase.')
-  }
-
-  const fbStored = await getToken('facebook')
-  if (fbStored?.source === 'supabase') {
-    process.env.FACEBOOK_PAGE_ACCESS_TOKEN = fbStored.accessToken
-    log('Facebook token läst från Supabase.')
-  }
-
   // Hämta kommentarer vars fördröjning passerat
   const { data: pending } = await db
     .from('comment_replies')
@@ -163,6 +152,7 @@ export async function GET(request: Request) {
   log(`Found ${pending.length} comment(s) to reply to`)
 
   const results = []
+  const credentials = createCredentialResolver()
 
   for (const comment of pending) {
     try {
@@ -190,6 +180,30 @@ export async function GET(request: Request) {
         context: 'AUTONOMOUS', scope: projectScope({ projectId }),
       }
 
+      // The project's own verified account on the comment's platform.
+      let post: ((text: string) => Promise<void>) | null = null
+      let refusal: string | null = null
+      if (comment.platform === 'instagram') {
+        const instagram = await credentials.instagram(projectId)
+        if (instagram.ok) post = (text) => replyInstagram(instagram.credential, comment.comment_id, text)
+        else refusal = instagram.refusal
+      } else {
+        const facebook = await credentials.facebook(projectId)
+        if (facebook.ok) post = (text) => replyFacebook(facebook.credential, comment.comment_id, text)
+        else refusal = facebook.refusal
+      }
+      if (!post) {
+        const error = `credential_refused:${refusal}`
+        log(`Hoppar över ${comment.comment_id}: ingen verifierad ${comment.platform}-credential för projektet (${refusal})`)
+        await db.from('comment_replies').update({
+          reply_status: 'failed',
+          error,
+          replied_at:   new Date().toISOString(),
+        }).eq('id', comment.id)
+        results.push({ id: comment.id, status: 'failed', error })
+        continue
+      }
+
       const reply = await generateReply(comment.comment_text, script?.hook ?? null, execution)
 
       if (!reply) {
@@ -212,11 +226,7 @@ export async function GET(request: Request) {
       })
 
       // Posta svar
-      if (comment.platform === 'instagram') {
-        await replyInstagram(comment.comment_id, reply)
-      } else {
-        await replyFacebook(comment.comment_id, reply)
-      }
+      await post(reply)
 
       await db.from('comment_replies').update({
         reply_text:   reply,
@@ -236,7 +246,7 @@ export async function GET(request: Request) {
         results.push({ id: comment.id, status: 'deferred_by_stop', reason: err.reason })
         break
       }
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = redactSecrets(err instanceof Error ? err.message : String(err))
       log(`Error replying to ${comment.comment_id}: ${msg}`)
 
       await db.from('comment_replies').update({

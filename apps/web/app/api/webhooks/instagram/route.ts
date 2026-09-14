@@ -19,13 +19,29 @@
  *   META_APP_SECRET      — Meta-appens hemlighet; används för att verifiera
  *                          X-Hub-Signature-256 på inkommande POST. UTAN denna
  *                          är endpointen avstängd (fail-closed).
+ *
+ * KONTOIDENTITET (project-scoped social credentials, 2026-09-14). Vilket konto en
+ * kommentar kom in för — och därmed vilka kommentarer som är våra egna — avgörs av
+ * projektets verifierade kontobindning, aldrig av env-variabler eller ett hårdkodat
+ * användarnamn. Instagram: bindningen för kontot Meta anger i entryn, annars
+ * bindningen för projektet vars egna publicerade inlägg kommenterades. Facebook:
+ * bindningen för sidan Meta anger i entryn. En kommentar till ett konto utan
+ * verifierad bindning köas inte — inget verifierat konto skulle kunna besvara den.
  */
 
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  isProjectId,
+  readActiveBinding,
+  readActiveBindingForAccount,
+  type SocialAccountBinding,
+} from '@/lib/media/social-bindings'
 
 export const dynamic = 'force-dynamic'
+
+type AdminDb = ReturnType<typeof createAdminClient>
 
 // ── Signaturverifiering (Meta X-Hub-Signature-256) ────────────────────────────
 //
@@ -53,6 +69,27 @@ function verifyMetaSignature(rawBody: string, signatureHeader: string | null, se
   } catch {
     return false
   }
+}
+
+/**
+ * The verified Instagram binding a comment arrived for: the binding of the account
+ * Meta names in the entry, or else the binding of the project whose own published
+ * post was commented on. Null when neither can be proven.
+ */
+async function instagramBindingFor(db: AdminDb, entryAccountId: string, mediaId: string): Promise<SocialAccountBinding | null> {
+  if (entryAccountId) {
+    const byAccount = await readActiveBindingForAccount('instagram', entryAccountId, db)
+    if (byAccount.ok && byAccount.binding) return byAccount.binding
+  }
+  const { data: script } = await db
+    .from('media_scripts')
+    .select('project_id')
+    .eq('instagram_media_id', mediaId)
+    .maybeSingle()
+  const projectId = (script as { project_id?: unknown } | null)?.project_id
+  if (!isProjectId(projectId)) return null
+  const byProject = await readActiveBinding(projectId, 'instagram', db)
+  return byProject.ok ? byProject.binding : null
 }
 
 // ── GET: Meta webhook-verifiering ─────────────────────────────────────────────
@@ -103,6 +140,7 @@ export async function POST(request: Request) {
 
   for (const entry of entries) {
     const e       = entry as Record<string, unknown>
+    const entryId = typeof e.id === 'string' || typeof e.id === 'number' ? String(e.id) : ''
     const changes = Array.isArray(e.changes) ? e.changes as unknown[] : []
 
     for (const change of changes) {
@@ -121,11 +159,16 @@ export async function POST(request: Request) {
 
         if (!commentId || !commentText || !postId) continue
 
-        // Self-filter: hoppa över kommentarer från VÅRT eget konto — annars feedback-loop.
+        // Whose account is this? The verified binding says — and that account's own
+        // comments are skipped, or the reply cron would answer itself.
         // OBS: `from_self` finns INTE på IG comment-webhooks → jämför författaren i stället.
-        const SELF_USERNAME = (process.env.IG_SELF_USERNAME ?? 'theprompt.news').toLowerCase()
-        const SELF_ID       = process.env.IG_SELF_ACCOUNT_ID ?? '' // sätts efter account_id-backfill
-        if ((SELF_ID && fromId === SELF_ID) || username.toLowerCase() === SELF_USERNAME) continue
+        const account = await instagramBindingFor(db, entryId, postId)
+        if (!account) {
+          console.warn('[webhook/instagram] Instagram-kommentar för ett konto utan verifierad bindning — köas inte.')
+          continue
+        }
+        const selfName = account.accountLabel?.toLowerCase() ?? null
+        if (fromId === account.externalAccountId || (selfName !== null && username.toLowerCase() === selfName)) continue
 
         await db.from('comment_replies').upsert({
           platform:      'instagram',
@@ -154,8 +197,15 @@ export async function POST(request: Request) {
         // Hoppa över replies (kommentarer på kommentarer) och tomma
         if (!commentId || !commentText || !postId) continue
         if (value.parent_id && value.parent_id !== value.post_id) continue
-        // Self-filter: hoppa över sidans egna kommentarer (FACEBOOK_PAGE_ID).
-        if (process.env.FACEBOOK_PAGE_ID && fromId === process.env.FACEBOOK_PAGE_ID) continue
+
+        // The page Meta names in the entry, as a project's verified binding — and the
+        // page's own comments are skipped.
+        const page = entryId ? await readActiveBindingForAccount('facebook', entryId, db) : null
+        if (!page || !page.ok || !page.binding) {
+          console.warn('[webhook/instagram] Facebook-kommentar för en sida utan verifierad bindning — köas inte.')
+          continue
+        }
+        if (fromId === page.binding.externalAccountId) continue
 
         await db.from('comment_replies').upsert({
           platform:       'facebook',

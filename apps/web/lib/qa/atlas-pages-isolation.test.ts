@@ -88,7 +88,7 @@ function seed() {
     ],
     approvals: [{ id: 'ap-theirs', project_id: THEIRS, status: 'pending' }],
     memories: [], outputs: [], media_news_items: [], campaigns: [],
-    token_health: [], cron_heartbeat: [],
+    token_health: [], social_credential_health: [], cron_heartbeat: [],
     // Marketing chain — the foreign project owns the hard-coded slug.
     campaign_plans: [{ id: 'cp-theirs', project_id: THEIRS, plan_key: ACTIVE_PLAN_KEY, theme_name: 'SECRET-THEME', status: 'active', run_id: null, target_month: ACTIVE_PLAN_KEY }],
     campaign_briefs: [{ id: 'cb-theirs', plan_id: 'cp-theirs', project_id: THEIRS, brief_key: 'b', status: 'drafting' }],
@@ -264,7 +264,7 @@ describe('9Q · Atlas Operations — the page now passes the allow-list it alway
     // global: getOperations issues two reads against that table. Asserting per
     // table instead of per query is how a guard gets missed.
     const { seen } = await renderPage(OPS)
-    const PLATFORM = ['token_health', 'cron_heartbeat']   // no project_id at all
+    const PLATFORM = ['cron_heartbeat']   // no project_id at all
     const offenders: string[] = []
     for (const rec of seen) {
       if (PLATFORM.includes(rec.table)) continue
@@ -285,14 +285,19 @@ describe('9Q · Atlas Operations — the page now passes the allow-list it alway
     }
   })
 
-  it('platform infrastructure stays unscoped on purpose', async () => {
-    // Neither table has a project_id; scoping them would be wrong, not safer.
+  it('platform infrastructure stays unscoped on purpose — and credential health is not platform infrastructure', async () => {
+    // cron_heartbeat has no project_id; scoping it would be wrong, not safer.
+    // Social credential health is keyed by project since project-scoped credentials
+    // (2026-09-14), so it is scoped like every other project source, and the retired
+    // platform-keyed token_health is not read by the page at all.
     const { seen } = await renderPage(OPS)
-    for (const t of ['token_health', 'cron_heartbeat']) {
-      const rec = q(seen, t)[0]
-      expect(rec, `${t} not queried`).toBeTruthy()
-      expect(rec.ops.some(([op, c]) => op === 'in' && c === 'project_id')).toBe(false)
-    }
+    const heartbeat = q(seen, 'cron_heartbeat')[0]
+    expect(heartbeat, 'cron_heartbeat not queried').toBeTruthy()
+    expect(heartbeat.ops.some(([op, c]) => op === 'in' && c === 'project_id')).toBe(false)
+    const health = q(seen, 'social_credential_health')
+    expect(health.length, 'social_credential_health not queried').toBeGreaterThan(0)
+    for (const rec of health) expect(scopeArg(rec, 'project_id')).toEqual([MINE])
+    expect(q(seen, 'token_health')).toEqual([])
   })
 
   it('foreign runs, errors and workflow names never render', async () => {

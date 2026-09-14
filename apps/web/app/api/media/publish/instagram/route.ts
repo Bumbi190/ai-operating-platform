@@ -1,8 +1,13 @@
 /**
  * POST /api/media/publish/instagram
  *
- * Publishes a rendered video to Instagram as a Reel,
- * and simultaneously to Facebook Page if FACEBOOK_PAGE_ACCESS_TOKEN is set.
+ * Publishes a rendered video to Instagram as a Reel, and to Facebook when the
+ * script's project has a Facebook binding.
+ *
+ * Credentials (project-scoped social credentials, 2026-09-14): both channels use the
+ * verified credentials of the SCRIPT'S project (lib/media/social-credentials.ts) —
+ * never environment tokens. A script is published to its own project's accounts or
+ * not at all; no project's content can reach another project's account here.
  * Streams progress as Server-Sent Events.
  *
  * Authority: the PLATFORM operator (these are the platform's accounts), AND
@@ -23,6 +28,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
+import { createCredentialResolver } from '@/lib/media/social-credentials'
+import { readActiveBinding } from '@/lib/media/social-bindings'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
@@ -98,7 +105,12 @@ export async function POST(request: Request) {
   // "abandoned". The id columns are the stronger fact — they record what actually
   // happened on each channel.
   const igAlreadyDone = script.instagram_media_id != null
-  const facebookConfigured = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
+  // Facebook is part of this publication when the script's OWN project has a Facebook
+  // binding. An unreadable binding counts as configured, so a read error can never
+  // declare the script finished without Facebook.
+  const facebookBinding = await readActiveBinding(script.project_id as string, 'facebook')
+  const facebookConfigured = !facebookBinding.ok || facebookBinding.binding !== null
+  const credentials = createCredentialResolver()
   const fbAlreadyDone = !facebookConfigured || script.facebook_post_id != null
 
   if (igAlreadyDone && fbAlreadyDone) {
@@ -154,11 +166,21 @@ export async function POST(request: Request) {
         } else {
         emit({ step: 'uploading', label: 'Uploading to Instagram...', progress: 10 })
 
+        // The script's project → its verified Instagram account. No binding or no
+        // match: nothing is sent, and the operator is told why.
+        const instagram = await credentials.instagram(script.project_id)
+        if (!instagram.ok) {
+          emit({ step: 'error', refusal: instagram.refusal,
+                 message: `Ingen verifierad Instagram-credential för projektet (${instagram.refusal}) — inget publicerades.` })
+          return
+        }
+
         // ── GOVERNANCE BOUNDARY: Instagram publish ──
         await assertExecutionDispatchAllowed(
           execution, { system: 'instagram', operation: 'post_reel' })
 
         igResult = await postReelToInstagram(
+          instagram.credential,
           videoUrl,
           caption,
           (step, pct) => {
@@ -197,7 +219,10 @@ export async function POST(request: Request) {
             await assertExecutionDispatchAllowed(
               execution, { system: 'facebook', operation: 'post_reel' })
 
+            const facebook = await credentials.facebook(script.project_id)
+            if (!facebook.ok) throw new Error(`facebook_credential_${facebook.refusal}`)
             fbResult = await postReelToFacebook(
+              facebook.credential,
               videoUrl,
               caption,
               (step, pct) => {

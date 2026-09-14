@@ -80,13 +80,23 @@ describe('Settings S0 · credential-events writer — rows from named fields onl
       url: `https://graph.facebook.com/me?access_token=${TOKEN}`,
       occurred_at: '1999-01-01T00:00:00Z',
       event_id: 'forged',
+      event_version: 1,
+      externalAccountId: TOKEN,
+      bindingAction: 'matched',
     } as unknown as CredentialEventInput
     ;(hostile.detail as Record<string, unknown>).token = TOKEN
     ;(hostile.detail as Record<string, unknown>).message = `access_token=${TOKEN}`
     ;(hostile.detail as Record<string, unknown>).token_hash = 'sha256:abc'
     const row = credentialEventRow(hostile)
-    expect(Object.keys(row).sort()).toEqual(['actor', 'credential_type', 'detail', 'operation_id', 'outcome', 'platform', 'project_id'])
+    expect(Object.keys(row).sort()).toEqual([
+      'actor', 'binding_action', 'credential_type', 'detail', 'event_version', 'external_account_id',
+      'operation_id', 'outcome', 'platform', 'project_id',
+    ])
     expect(row.detail).toEqual({ exchanged: true, page_resolved: false, read_insights_ok: true })
+    // A token cannot pass as an account id, and the contract version is the writer's, never the caller's.
+    expect(row.external_account_id).toBeNull()
+    expect(row.event_version).toBe(2)
+    expect(row.binding_action).toBe('matched')
     const text = JSON.stringify(row)
     for (const needle of [TOKEN, 'Bearer', 'OAuth', 'graph.facebook.com', '1999-01-01', 'forged', 'sha256']) {
       expect(text).not.toContain(needle)
@@ -126,6 +136,31 @@ describe('Settings S0 · credential-events writer — rows from named fields onl
     expect(fb.detail).toEqual({})
   })
 
+  it('project- and account-aware: the account and binding action are kept exactly where the table allows them', () => {
+    const PAGE = '1138612202672850'
+    const attempted = credentialEventRow(base({ outcome: 'attempted', externalAccountId: PAGE, bindingAction: 'matched' }))
+    expect(attempted).toMatchObject({ external_account_id: null, binding_action: null, event_version: 2 })
+
+    const replaced = credentialEventRow(base({ outcome: 'replaced', externalAccountId: PAGE, bindingAction: 'rebound' }))
+    expect(replaced).toMatchObject({ external_account_id: PAGE, binding_action: 'rebound', project_id: PROJECT })
+
+    const failed = credentialEventRow(base({ outcome: 'failed', externalAccountId: PAGE, bindingAction: 'created',
+      detail: { failure_stage: 'account_mismatch' } }))
+    expect(failed).toMatchObject({ external_account_id: PAGE, binding_action: null, detail: { failure_stage: 'account_mismatch' } })
+
+    // An action outside the vocabulary, and an id that is not an identifier, are dropped.
+    const odd = credentialEventRow(base({ outcome: 'replaced', externalAccountId: 'page 1; drop', bindingAction: 'forced' as never }))
+    expect(odd).toMatchObject({ external_account_id: null, binding_action: null })
+  })
+
+  it('the account failure stages are recorded as themselves; anything else is unexpected', () => {
+    for (const stage of ['store', 'provider_verification', 'account_mismatch', 'account_bound_to_other_project', 'binding'] as const) {
+      expect(credentialEventRow(base({ outcome: 'failed', detail: { failure_stage: stage } })).detail).toEqual({ failure_stage: stage })
+    }
+    expect(credentialEventRow(base({ outcome: 'failed', detail: { failure_stage: 'whatever' as never } })).detail)
+      .toEqual({ failure_stage: 'unexpected' })
+  })
+
   it('the writer mirrors the table: the same five detail keys the migration allowlists', () => {
     const m = EXEC.match(/detail\s*-\s*array\[([^\]]+)\]\)\s*=\s*'\{\}'::jsonb/)
     expect(m, 'the allowlist constraint is missing').not.toBeNull()
@@ -143,6 +178,7 @@ describe('Settings S0 · credential-events writer — one insert, never a throw,
       row: {
         operation_id: OP, project_id: PROJECT, platform: 'facebook', credential_type: 'page',
         actor: ACTOR, outcome: 'attempted', detail: {},
+        event_version: 2, external_account_id: null, binding_action: null,
       },
     }])
   })

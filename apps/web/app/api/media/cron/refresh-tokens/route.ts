@@ -1,44 +1,85 @@
 /**
  * GET /api/media/cron/refresh-tokens
  *
- * Förnyar Instagram long-lived access token via Meta:s refresh-API.
- * Kör den 1:a varje månad kl 06:00 UTC (se vercel.json).
+ * Förnyar varje projekts lagrade Instagram-credential (måndagar 06:00 UTC,
+ * cron omnira_refresh_tokens).
  *
- * Flöde:
- *   1. Hämta nuvarande token (Supabase → env-var fallback)
- *   2. Anropa GET https://graph.instagram.com/refresh_access_token
- *   3. Spara nytt token + ny expires_at till Supabase via token-store
+ * Project-scoped social credentials (2026-09-14): körningen går över projektens
+ * aktiva Instagram-bindningar — aldrig ett standardprojekt och aldrig ett env-token.
+ * Ett förnyat token ersätter det lagrade först när Instagram har bekräftat att det
+ * fortfarande är bindningens konto; annars behålls det gamla och ett larm skickas.
+ * Inget token lämnar körningen: svar, loggar och larm bär bara projekt, konto-id och
+ * stängda felkoder.
  *
- * Facebook Page-token:
- *   Page access tokens som skapats från ett long-lived user token löper normalt
- *   inte ut. Om Facebook-posting slutar fungera — förnya manuellt via Meta Developer
- *   portal och uppdatera FACEBOOK_PAGE_ACCESS_TOKEN i Vercel.
+ * Flöden:
+ *   - Instagram-login (IG…): graph.instagram.com/refresh_access_token
+ *     (grant_type=ig_refresh_token) — kräver inga app-uppgifter.
+ *   - Facebook-login (EAA…): fb_exchange_token med META_APP_ID / META_APP_SECRET.
+ * Facebook-sidtoken från ett långlivat användartoken löper normalt inte ut och förnyas
+ * inte här. YouTube (Y1) förnyas inte här: refresh-tokenet ligger i Vercel.
  *
- * Nödvändiga env vars:
- *   CRON_SECRET — skyddar endpointen (sätts i Vercel)
- *   INSTAGRAM_ACCESS_TOKEN — nuvarande token (används på första körningen)
- *
- * Saknade env vars:
- *   META_APP_ID / META_APP_SECRET behövs INTE för ig_refresh_token-flödet.
- *   Instagram refreshar tokenet utan app credentials — tillräckligt med nuvarande token.
- *
- * Docs: https://developers.facebook.com/docs/instagram-basic-display-api/reference/refresh_access_token
+ * Skyddad med: Authorization: Bearer {CRON_SECRET}
  */
 
 import { NextResponse } from 'next/server'
-import { getToken, setToken } from '@/lib/media/token-store'
-import { sendPipelineAlert, sendTokenExpiryWarning } from '@/lib/media/alert'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { listActiveBindings } from '@/lib/media/social-bindings'
+import { readStoredCredential, storeCredential } from '@/lib/media/token-store'
+import { attestInstagramCredential } from '@/lib/media/social-identity'
+import { sendPipelineAlert } from '@/lib/media/alert'
 
 export const dynamic    = 'force-dynamic'
-export const maxDuration = 30
+export const maxDuration = 60
 
-// Instagram Graph API för Business använder Facebook User Tokens.
-// Dessa förnyas via graph.facebook.com med fb_exchange_token — INTE via
-// graph.instagram.com/refresh_access_token (det är för Basic Display API / personkonton).
-const FB_TOKEN_URL = 'https://graph.facebook.com/oauth/access_token'
+const IG_REFRESH_URL = 'https://graph.instagram.com/refresh_access_token'
+const FB_TOKEN_URL   = 'https://graph.facebook.com/oauth/access_token'
+const DAY = 86_400_000
 
 function log(msg: string) {
   console.log(`[cron/refresh-tokens] ${msg}`)
+}
+
+type Refreshed = { ok: true; accessToken: string; expiresAt: Date | null } | { ok: false; reason: string }
+
+function refreshedFrom(res: Response, data: { access_token?: unknown; expires_in?: unknown } | null, flow: string): Refreshed {
+  if (!res.ok || typeof data?.access_token !== 'string' || data.access_token.length === 0) {
+    return { ok: false, reason: `${flow}_http_${res.status}` }
+  }
+  const expiresIn = typeof data.expires_in === 'number' && data.expires_in > 0 ? data.expires_in : null
+  return { ok: true, accessToken: data.access_token, expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null }
+}
+
+/** Instagram-login token → a fresh 60-day token for the same account. */
+async function refreshInstagramLogin(token: string): Promise<Refreshed> {
+  try {
+    const url = new URL(IG_REFRESH_URL)
+    url.searchParams.set('grant_type', 'ig_refresh_token')
+    url.searchParams.set('access_token', token)
+    const res  = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(15_000) })
+    const data = await res.json().catch(() => null) as { access_token?: unknown; expires_in?: unknown } | null
+    return refreshedFrom(res, data, 'instagram_refresh')
+  } catch {
+    return { ok: false, reason: 'instagram_refresh_unreachable' }
+  }
+}
+
+/** Facebook-login token → a fresh long-lived token (needs the Meta app credentials). */
+async function refreshFacebookLogin(token: string): Promise<Refreshed> {
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) return { ok: false, reason: 'meta_app_credentials_missing' }
+  try {
+    const url = new URL(FB_TOKEN_URL)
+    url.searchParams.set('grant_type', 'fb_exchange_token')
+    url.searchParams.set('client_id', appId)
+    url.searchParams.set('client_secret', appSecret)
+    url.searchParams.set('fb_exchange_token', token)
+    const res  = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(15_000) })
+    const data = await res.json().catch(() => null) as { access_token?: unknown; expires_in?: unknown } | null
+    return refreshedFrom(res, data, 'facebook_exchange')
+  } catch {
+    return { ok: false, reason: 'facebook_exchange_unreachable' }
+  }
 }
 
 export async function GET(request: Request) {
@@ -49,157 +90,80 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const results: Record<string, unknown> = {}
+  const ranAt = new Date().toISOString()
+  const bindings = await listActiveBindings()
+  if (!bindings.ok) {
+    return NextResponse.json({ ranAt, ok: false, error: 'bindings_unreadable' }, { status: 500 })
+  }
 
-  // ── Instagram ─────────────────────────────────────────────────────────────────
-  log('Startar Instagram token-refresh...')
+  const db = createAdminClient()
+  const results: Array<Record<string, unknown>> = []
+  let failures = 0
 
-  const appId     = process.env.META_APP_ID
-  const appSecret = process.env.META_APP_SECRET
-  const currentIg = await getToken('instagram')
+  for (const binding of bindings.bindings) {
+    const projectId = binding.projectId
 
-  if (!currentIg) {
-    const msg = 'Inget Instagram-token hittat (varken i Supabase eller INSTAGRAM_ACCESS_TOKEN). Sätt env-variabeln i Vercel.'
-    log(`⚠️  ${msg}`)
-    results.instagram = { status: 'skipped', reason: msg }
-  } else if (currentIg.accessToken.startsWith('IG')) {
-    // ── IGAA (Instagram Login) — förnya via Instagrams egen ig_refresh_token ──
-    // Kräver INGA app-credentials och är fristående från Facebook-webbsessionen,
-    // så token dör inte när FB-sessionen loggar ut. Detta är den robusta vägen.
-    log('IGAA-token upptäckt. Förnyar via graph.instagram.com/refresh_access_token...')
-    try {
-      const url = new URL('https://graph.instagram.com/refresh_access_token')
-      url.searchParams.set('grant_type',  'ig_refresh_token')
-      url.searchParams.set('access_token', currentIg.accessToken)
+    if (binding.platform === 'facebook') {
+      // Page access tokens skapade från long-lived user tokens löper normalt inte ut.
+      results.push({ project_id: projectId, platform: 'facebook', status: 'no_refresh_needed' })
+      continue
+    }
+    if (binding.platform !== 'instagram') continue
 
-      const res  = await fetch(url.toString())
-      const data = await res.json() as { access_token?: string; expires_in?: number; error?: { message: string } }
-
-      if (!res.ok || data.error || !data.access_token) {
-        throw new Error(data.error?.message ?? `Instagram API ${res.status}`)
-      }
-
-      const expiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined
-      await setToken('instagram', data.access_token, expiresAt)
-
-      const daysUntilExpiry = expiresAt
-        ? Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-        : null
-      log(`✓ Instagram (IGAA) token förnyat. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
-      results.instagram = { status: 'refreshed', flow: 'ig_refresh_token', expiresAt: expiresAt?.toISOString() ?? null, daysUntilExpiry }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      log(`✗ Instagram (IGAA) refresh misslyckades: ${msg}`)
+    const fail = async (reason: string) => {
+      failures++
+      log(`✗ Instagram-förnyelse för projekt ${projectId} misslyckades: ${reason}`)
       await sendPipelineAlert({
         cronRoute: 'cron/refresh-tokens',
         step:      'instagram_token_refresh',
-        error:     msg,
-        context:   { flow: 'ig_refresh_token', tip: 'IGAA-token måste förnyas inom 60 dagar och vara minst 24h gammalt.' },
+        error:     reason,
+        context:   { projectId, accountId: binding.externalAccountId,
+                     tip: 'Det lagrade tokenet behölls. Ersätt det i Inställningar om det har gått ut.' },
       })
-      results.instagram = { status: 'failed', error: msg }
+      results.push({ project_id: projectId, platform: 'instagram', status: 'failed', reason })
     }
-  } else if (!appId || !appSecret) {
-    const msg = 'META_APP_ID eller META_APP_SECRET saknas i env. Sätt dem i Vercel → Environment Variables.'
-    log(`⚠️  ${msg}`)
-    results.instagram = { status: 'skipped', reason: msg }
-  } else {
-      log(`Nuvarande token hämtat från ${currentIg.source}. Förnyar via Meta fb_exchange_token...`)
 
-      try {
-        // Byt nuvarande long-lived token mot ett nytt (fungerar med både short- och long-lived tokens)
-        const url = new URL(FB_TOKEN_URL)
-        url.searchParams.set('grant_type',       'fb_exchange_token')
-        url.searchParams.set('client_id',        appId)
-        url.searchParams.set('client_secret',    appSecret)
-        url.searchParams.set('fb_exchange_token', currentIg.accessToken)
+    const stored = await readStoredCredential(projectId, 'instagram')
+    if (!stored.ok) { await fail('credential_unreadable'); continue }
+    if (!stored.credential) {
+      results.push({ project_id: projectId, platform: 'instagram', status: 'skipped', reason: 'credential_missing' })
+      continue
+    }
 
-        const res = await fetch(url.toString())
+    const refreshed = stored.credential.accessToken.startsWith('IG')
+      ? await refreshInstagramLogin(stored.credential.accessToken)
+      : await refreshFacebookLogin(stored.credential.accessToken)
+    if (!refreshed.ok) { await fail(refreshed.reason); continue }
 
-        if (!res.ok) {
-          const body = await res.text().catch(() => '(no body)')
-          throw new Error(`Meta API ${res.status}: ${body}`)
-        }
+    // The refreshed credential replaces the stored one only while Instagram still says
+    // it is the binding's account.
+    const identity = await attestInstagramCredential(refreshed.accessToken, binding.externalAccountId)
+    if (!identity.ok) { await fail(`refreshed_credential_${identity.failure}`); continue }
+    if (identity.accountId !== binding.externalAccountId) { await fail('refreshed_credential_account_mismatch'); continue }
 
-        const data = await res.json() as {
-          access_token?: string
-          token_type?:   string
-          expires_in?:   number
-          error?:        { message: string; type: string; code: number }
-        }
+    const saved = await storeCredential(projectId, 'instagram', {
+      accessToken: refreshed.accessToken,
+      accountId: identity.accountId,
+      expiresAt: refreshed.expiresAt,
+    })
+    if (!saved.ok) { await fail('store_failed'); continue }
 
-        if (data.error) {
-          throw new Error(`Meta API-fel: ${data.error.type} (${data.error.code}) — ${data.error.message}`)
-        }
+    // Spårbarhet: senaste lyckade förnyelse, per projekt.
+    await (db as any).from('social_credential_health')
+      .update({ last_refreshed_at: new Date().toISOString() })
+      .eq('project_id', projectId)
+      .eq('platform', 'instagram')
 
-        if (!data.access_token) {
-          throw new Error('Meta API returnerade inget access_token')
-        }
-
-        // expires_in är sekunder från nu
-        const expiresAt = data.expires_in
-          ? new Date(Date.now() + data.expires_in * 1000)
-          : undefined
-
-        await setToken('instagram', data.access_token, expiresAt)
-
-        const daysUntilExpiry = expiresAt
-          ? Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-          : null
-
-        log(`✓ Instagram token förnyat. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
-        results.instagram = {
-          status:         'refreshed',
-          expiresAt:      expiresAt?.toISOString() ?? null,
-          daysUntilExpiry,
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log(`✗ Instagram refresh misslyckades: ${msg}`)
-        await sendPipelineAlert({
-          cronRoute: 'cron/refresh-tokens',
-          step:      'instagram_token_refresh',
-          error:     msg,
-          context:   { tip: 'Kontrollera META_APP_ID, META_APP_SECRET och att INSTAGRAM_ACCESS_TOKEN är satt i Vercel' },
-        })
-        results.instagram = { status: 'failed', error: msg }
-      }
+    const daysUntilExpiry = refreshed.expiresAt ? Math.round((refreshed.expiresAt.getTime() - Date.now()) / DAY) : null
+    log(`✓ Instagram-credential förnyad för projekt ${projectId}. Löper ut om ${daysUntilExpiry ?? '?'} dagar.`)
+    results.push({
+      project_id: projectId,
+      platform: 'instagram',
+      status: 'refreshed',
+      expiresAt: refreshed.expiresAt?.toISOString() ?? null,
+      daysUntilExpiry,
+    })
   }
 
-  // ── Facebook ──────────────────────────────────────────────────────────────────
-  // Page access tokens skapade från long-lived user tokens löper normalt inte ut.
-  // Vi loggar bara nuvarande status utan att försöka refresha.
-  const currentFb = await getToken('facebook')
-  log(
-    currentFb
-      ? `Facebook token finns (source=${currentFb.source}). Page-tokens kräver inget automatiskt refresh.`
-      : 'Facebook token saknas — sätt FACEBOOK_PAGE_ACCESS_TOKEN i Vercel om Facebook-publicering används.'
-  )
-  results.facebook = {
-    status:   currentFb ? 'ok_no_refresh_needed' : 'missing',
-    source:   currentFb?.source ?? null,
-    expiresAt: currentFb?.expiresAt?.toISOString() ?? null,
-  }
-
-  // ── Spårbarhet: notera senaste lyckade IG-refresh i token_health ──────────────
-  if ((results.instagram as { status?: string } | undefined)?.status === 'refreshed') {
-    try {
-      const { createAdminClient } = await import('@/lib/supabase/admin')
-      await createAdminClient().from('token_health')
-        .update({ last_refreshed_at: new Date().toISOString() })
-        .eq('platform', 'instagram')
-    } catch { /* non-blocking */ }
-  }
-
-  // ── Sammanfattning ────────────────────────────────────────────────────────────
-  const overallOk = results.instagram !== undefined &&
-    (results.instagram as { status: string }).status !== 'failed'
-
-  return NextResponse.json(
-    {
-      ranAt:  new Date().toISOString(),
-      ok:     overallOk,
-      results,
-    },
-    { status: overallOk ? 200 : 500 }
-  )
+  return NextResponse.json({ ranAt, ok: failures === 0, results }, { status: failures === 0 ? 200 : 500 })
 }

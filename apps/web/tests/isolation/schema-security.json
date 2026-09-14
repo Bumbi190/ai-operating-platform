@@ -3,10 +3,12 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-10",
-    "total_tables": 71,
+    "total_tables": 73,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
+    "social_account_bindings_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914120000_social_account_bindings.sql (project-scoped social credentials): RLS on, no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE (bounded by the update guard) and EXECUTE on social_account_rebind. Applied to production before this row was merged.",
+    "social_credential_health_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914120200_social_credential_health.sql (project-scoped social credentials): RLS on, no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE. Applied to production before this row was merged.",
     "regenerate": "Introspect pg_class.relrowsecurity, pg_policies and information_schema.role_table_grants for schema 'public' and rewrite this file. lib/qa/schema-security-invariant.test.ts defines the exact contract each entry must satisfy.",
     "classes": {
       "SERVER_ONLY": "Service-role only. anon and authenticated hold NO grants at all. RLS must be enabled.",
@@ -623,6 +625,26 @@
       "service_role": true,
       "rls_declared_in_migration": null,
       "created_by_migration": false
+    },
+    "social_account_bindings": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_credential_health": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "spend_advisory_overrides": {
       "class": "INTERNAL_DENY_ALL",

@@ -174,7 +174,35 @@ vi.mock('@/lib/media/facebook', () => ({
   postReelToFacebook: (...a: unknown[]) => postReelToFacebook(...a),
 }))
 
-vi.mock('@/lib/media/token-store', () => ({ getToken: async () => null }))
+// Project-scoped social credentials: the route resolves each channel's credential for
+// the script's OWN project. The resolver is faked so every refusal can be forced; its
+// own behaviour is proven in social-credentials.test.ts.
+const credentialState = {
+  instagram: null as string | null,   // a refusal code, or null for a verified credential
+  facebook:  null as string | null,
+  resolved:  [] as [string, unknown][],
+}
+vi.mock('@/lib/media/social-credentials', () => {
+  const RETRYABLE = new Set(['binding_unreadable', 'credential_unreadable', 'provider_unavailable'])
+  const verified = (platform: 'instagram' | 'facebook', projectId: unknown) => platform === 'instagram'
+    ? { platform, projectId, bindingId: 'binding-ig', accountId: '17841400000000001', username: 'the.project',
+        token: 'IG-VERIFIED-CREDENTIAL', apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true, expiresAt: null }
+    : { platform, projectId, bindingId: 'binding-fb', pageId: '1000000000000001', pageName: 'The Page',
+        pageToken: 'FB-VERIFIED-PAGE-CREDENTIAL', expiresAt: null }
+  const resolve = (platform: 'instagram' | 'facebook') => async (projectId: unknown) => {
+    credentialState.resolved.push([platform, projectId])
+    const refusal = credentialState[platform]
+    return refusal ? { ok: false, refusal, binding: null } : { ok: true, binding: {}, credential: verified(platform, projectId) }
+  }
+  return {
+    refusalIsPermanent: (refusal: string) => !RETRYABLE.has(refusal),
+    createCredentialResolver: () => ({
+      instagram: resolve('instagram'),
+      facebook:  resolve('facebook'),
+      youtube:   async () => ({ ok: false, refusal: 'binding_missing', binding: null }),
+    }),
+  }
+})
 vi.mock('@/lib/media/lambda-render', () => ({ getLambdaRenderProgress: vi.fn() }))
 
 const sendPipelineAlert = vi.fn().mockResolvedValue(undefined)
@@ -193,6 +221,9 @@ const SCRIPT_ID = '800d2efc-726f-4735-b9f0-e722fea0d96b'
 /** The script's OWN project — the execution authority, never the billing slug. */
 const PROJECT_ID = '5f1d0f27-9a1e-4a26-9a2b-2c9f0f8a1b33'
 const TOKEN     = 'EAAWabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ'
+/** What the environment still holds. Publishing must never read or write it. */
+const ENV_SENTINEL = 'ENV-TOKEN-MUST-NEVER-BE-USED-0123456789ABCDEFGHIJ'
+const IG_CREDENTIAL = expect.objectContaining({ platform: 'instagram', projectId: '5f1d0f27-9a1e-4a26-9a2b-2c9f0f8a1b33' })
 
 function script(overrides: Record<string, unknown> = {}) {
   return {
@@ -248,9 +279,12 @@ beforeEach(() => {
   dbState.projectPaused = false
 
   process.env.CRON_SECRET                = 'test-secret'
-  process.env.FACEBOOK_PAGE_ID           = 'PAGE_1'
-  process.env.FACEBOOK_PAGE_ACCESS_TOKEN = TOKEN
-  process.env.INSTAGRAM_ACCESS_TOKEN     = TOKEN
+  process.env.FACEBOOK_PAGE_ID           = 'ENV-PAGE-MUST-NEVER-BE-USED'
+  process.env.FACEBOOK_PAGE_ACCESS_TOKEN = ENV_SENTINEL
+  process.env.INSTAGRAM_ACCESS_TOKEN     = ENV_SENTINEL
+  credentialState.instagram = null
+  credentialState.facebook  = null
+  credentialState.resolved  = []
 
   pollUntilReady.mockResolvedValue(undefined)
   logSpy  = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -281,7 +315,7 @@ describe('Instagram-container: validering före återanvändning', () => {
     const res = await call()
 
     expect(createReelContainer).toHaveBeenCalledTimes(1)
-    expect(publishContainer).toHaveBeenCalledWith('NEW_CONTAINER')
+    expect(publishContainer).toHaveBeenCalledWith(IG_CREDENTIAL, 'NEW_CONTAINER')
     expect(res.status).toBe(200)
   })
 
@@ -299,7 +333,7 @@ describe('Instagram-container: validering före återanvändning', () => {
 
     // Statusen MÅSTE läsas även när åldern är okänd — annars kan en redan
     // publicerad container få en efterföljare och videon publiceras två gånger.
-    expect(getContainerStatus).toHaveBeenCalledWith('18085720493234266')
+    expect(getContainerStatus).toHaveBeenCalledWith(IG_CREDENTIAL, '18085720493234266')
     expect(createReelContainer).toHaveBeenCalledTimes(1)
   })
 
@@ -350,9 +384,9 @@ describe('Instagram-container: validering före återanvändning', () => {
 
     await call()
 
-    expect(getContainerStatus).toHaveBeenCalledWith('OLD')
+    expect(getContainerStatus).toHaveBeenCalledWith(IG_CREDENTIAL, 'OLD')
     expect(createReelContainer).toHaveBeenCalledTimes(1)
-    expect(publishContainer).toHaveBeenCalledWith('FRESH')
+    expect(publishContainer).toHaveBeenCalledWith(IG_CREDENTIAL, 'FRESH')
   })
 
   it('D — status ERROR och NOT_FOUND ersätts också', async () => {
@@ -379,7 +413,7 @@ describe('Instagram-container: validering före återanvändning', () => {
     await call()
 
     expect(createReelContainer).not.toHaveBeenCalled()
-    expect(publishContainer).toHaveBeenCalledWith('GOOD')
+    expect(publishContainer).toHaveBeenCalledWith(IG_CREDENTIAL, 'GOOD')
   })
 
   it('F — PUBLISHED publiceras ALDRIG igen; media-id återhämtas i stället', async () => {
@@ -909,5 +943,94 @@ describe('G3C-2B · the publish queue finishes what a stopped run left behind', 
     expect(body.status).toBe('deferred_by_stop')
     expect(dbState.updates.some(u => u.status === 'pending_review'),
       'repeated deferral is not escalation').toBe(false)
+  })
+})
+
+// ─── Project-scoped social credentials ────────────────────────────────────────
+
+describe("project-scoped social credentials · every channel uses the script project's own verified account", () => {
+  it("Instagram and Facebook are resolved for the script's project, and each publisher is handed that credential", async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockResolvedValue({ mediaId: 'IG1', permalink: 'https://ig/1' })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    await call()
+
+    expect(credentialState.resolved).toEqual([['instagram', PROJECT_ID], ['facebook', PROJECT_ID]])
+    expect(createReelContainer.mock.calls[0][0]).toMatchObject({ platform: 'instagram', projectId: PROJECT_ID, accountId: '17841400000000001' })
+    expect(publishContainer.mock.calls[0][0]).toMatchObject({ platform: 'instagram', projectId: PROJECT_ID })
+    expect(postReelToFacebook.mock.calls[0][0]).toMatchObject({ platform: 'facebook', projectId: PROJECT_ID, pageId: '1000000000000001' })
+  })
+
+  it('no verified Instagram binding → nothing reaches Instagram, Facebook still goes, and the refusal is permanent', async () => {
+    dbState.script = script()
+    credentialState.instagram = 'binding_missing'
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    const res = await call()
+    const body = await res.json()
+
+    expect(createReelContainer).not.toHaveBeenCalled()
+    expect(getContainerStatus).not.toHaveBeenCalled()
+    expect(publishContainer).not.toHaveBeenCalled()
+    expect(postReelToFacebook).toHaveBeenCalledTimes(1)
+    expect(body.channels.instagram).toMatchObject({ ok: false, error: 'instagram_credential_binding_missing', permanent: true })
+    expect(res.status).toBe(207)
+  })
+
+  it('a project without a Facebook binding has no Facebook channel — skipped, never dispatched', async () => {
+    dbState.script = script()
+    credentialState.facebook = 'binding_missing'
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockResolvedValue({ mediaId: 'IG1', permalink: 'https://ig/1' })
+
+    const body = await (await call()).json()
+
+    expect(postReelToFacebook).not.toHaveBeenCalled()
+    expect(body.channels.facebook).toMatchObject({ ok: true, skipped: 'not_configured' })
+  })
+
+  it('a Facebook credential for another account is refused — no dispatch, a permanent channel failure', async () => {
+    dbState.script = script()
+    credentialState.facebook = 'account_mismatch'
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockResolvedValue({ mediaId: 'IG1', permalink: 'https://ig/1' })
+
+    const body = await (await call()).json()
+
+    expect(postReelToFacebook).not.toHaveBeenCalled()
+    expect(body.channels.facebook).toMatchObject({ ok: false, error: 'facebook_credential_account_mismatch', permanent: true })
+  })
+
+  it('a platform that cannot be asked right now is transient: nothing is sent and the script returns to the queue', async () => {
+    dbState.script = script()
+    credentialState.instagram = 'provider_unavailable'
+    credentialState.facebook = 'provider_unavailable'
+
+    const body = await (await call()).json()
+
+    expect(createReelContainer).not.toHaveBeenCalled()
+    expect(postReelToFacebook).not.toHaveBeenCalled()
+    expect(body.channels.instagram).toMatchObject({ ok: false, permanent: false })
+    expect(body.channels.facebook).toMatchObject({ ok: false, permanent: false })
+    expect(dbState.updates.some(u => u.status === 'approved')).toBe(true)
+  })
+
+  it('environment tokens are neither read nor written — publishing never falls back to them', async () => {
+    dbState.script = script()
+    createReelContainer.mockResolvedValue('C1')
+    publishContainer.mockResolvedValue({ mediaId: 'IG1', permalink: 'https://ig/1' })
+    postReelToFacebook.mockResolvedValue({ postId: 'FB1', url: 'https://fb/1' })
+
+    await call()
+
+    expect(process.env.INSTAGRAM_ACCESS_TOKEN).toBe(ENV_SENTINEL)
+    expect(process.env.FACEBOOK_PAGE_ACCESS_TOKEN).toBe(ENV_SENTINEL)
+    const dispatched = JSON.stringify([
+      ...createReelContainer.mock.calls, ...publishContainer.mock.calls, ...postReelToFacebook.mock.calls,
+    ])
+    expect(dispatched).not.toContain(ENV_SENTINEL)
+    expect(dispatched).not.toContain('ENV-PAGE-MUST-NEVER-BE-USED')
   })
 })

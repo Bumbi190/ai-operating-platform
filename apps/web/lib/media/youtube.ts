@@ -5,53 +5,39 @@
  * token mot access token vid varje uppladdning). YouTube tillåter inte service
  * accounts för uppladdning — det måste vara en riktig kanalägare.
  *
- * Krävda env vars (sätts i Vercel):
- *   YOUTUBE_CLIENT_ID      — OAuth client ID (Google Cloud)
- *   YOUTUBE_CLIENT_SECRET  — OAuth client secret
- *   YOUTUBE_REFRESH_TOKEN  — refresh token för The Prompt-kanalen (scope youtube.upload)
+ * CREDENTIAL (project-scoped social credentials, 2026-09-14). Uploads and analytics
+ * reads take a YouTubeCredential resolved by lib/media/social-credentials.ts for
+ * the project whose video it is. That resolver is the only caller of
+ * platformYouTubeGrant() below.
  */
 
-const TOKEN_URL  = 'https://oauth2.googleapis.com/token'
+import type { YouTubeGrant } from './social-identity'
+import { EXTERNAL_ACCOUNT_ID } from './social-identity'
+
 const UPLOAD_URL = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status'
 
-export function isYouTubeConfigured(): boolean {
-  return Boolean(
-    process.env.YOUTUBE_CLIENT_ID &&
-    process.env.YOUTUBE_CLIENT_SECRET &&
-    process.env.YOUTUBE_REFRESH_TOKEN,
-  )
-}
-
-async function getAccessToken(): Promise<string> {
-  const res = await fetch(TOKEN_URL, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     process.env.YOUTUBE_CLIENT_ID ?? '',
-      client_secret: process.env.YOUTUBE_CLIENT_SECRET ?? '',
-      refresh_token: process.env.YOUTUBE_REFRESH_TOKEN ?? '',
-      grant_type:    'refresh_token',
-    }),
-  })
-  const data = await res.json() as { access_token?: string; error_description?: string; error?: string }
-  if (!data.access_token) {
-    throw new Error(`YouTube token-refresh misslyckades: ${data.error_description ?? data.error ?? res.status}`)
-  }
-  return data.access_token
-}
-
 /**
- * Verifierar att YouTube-tokenet (refresh-token → access-token) fungerar.
- * Refresh-token är långlivat → vi rapporterar giltig/ogiltig, inte "dagar kvar".
+ * Y1 — TRANSITIONAL. The platform's YouTube OAuth credential, kept in Vercel.
+ *
+ * Owner decision 2026-09-14: until project-scoped YouTube credentials exist, this
+ * credential belongs to The Prompt and serves exactly one binding
+ * (social_account_bindings.credential_source = 'platform_env_transitional', unique
+ * per platform in the database). Only lib/media/social-credentials.ts may call this,
+ * and only for that binding; every other project's YouTube fails closed. This is NOT
+ * the end state: project-scoped YouTube credentials with a channel verified before
+ * every upload are (ATLAS_ROADMAP_SV.md).
  */
-export async function verifyYouTubeToken(): Promise<{ ok: boolean; error?: string }> {
-  if (!isYouTubeConfigured()) return { ok: false, error: 'YouTube ej konfigurerat (saknar env-vars)' }
-  try {
-    await getAccessToken()
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'okänt fel' }
-  }
+export function platformYouTubeGrant(): YouTubeGrant | null {
+  const clientId = process.env.YOUTUBE_CLIENT_ID
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN
+  if (!clientId || !clientSecret || !refreshToken) return null
+  return { clientId, clientSecret, refreshToken }
+}
+
+/** What an upload or an analytics read needs. A resolved YouTubeCredential satisfies it. */
+export interface YouTubeApiCredential {
+  accessToken: string
 }
 
 export interface YouTubeUploadOptions {
@@ -61,12 +47,20 @@ export interface YouTubeUploadOptions {
   tags?:       string[]
 }
 
+export interface YouTubeUploadResult {
+  videoId: string
+  url: string
+  /** The channel YouTube says the video landed on, or null when it did not say. */
+  channelId: string | null
+}
+
 /**
- * Laddar upp videon som en Short. Returnerar videoId + publik URL.
+ * Laddar upp videon som en Short. Returnerar videoId, publik URL och kanalen
+ * YouTube rapporterar för uppladdningen.
  * Lägger till #Shorts i titeln om det saknas (hjälper YouTube klassa den som Short).
  */
-export async function uploadShort(opts: YouTubeUploadOptions): Promise<{ videoId: string; url: string }> {
-  const token = await getAccessToken()
+export async function uploadShort(credential: YouTubeApiCredential, opts: YouTubeUploadOptions): Promise<YouTubeUploadResult> {
+  const token = credential.accessToken
 
   // Hämta videons bytes
   const vidRes = await fetch(opts.videoUrl)
@@ -115,26 +109,29 @@ export async function uploadShort(opts: YouTubeUploadOptions): Promise<{ videoId
     headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(buffer.length) },
     body:    buffer,
   })
-  const upData = await upRes.json() as { id?: string; error?: { message: string } }
+  const upData = await upRes.json() as { id?: string; snippet?: { channelId?: unknown }; error?: { message: string } }
   if (!upRes.ok || !upData.id) {
     throw new Error(upData.error?.message ?? `YouTube-uppladdning misslyckades (${upRes.status})`)
   }
 
-  return { videoId: upData.id, url: `https://www.youtube.com/shorts/${upData.id}` }
+  const channelId = typeof upData.snippet?.channelId === 'string' && EXTERNAL_ACCOUNT_ID.test(upData.snippet.channelId)
+    ? upData.snippet.channelId
+    : null
+
+  return { videoId: upData.id, url: `https://www.youtube.com/shorts/${upData.id}`, channelId }
 }
 
 /**
  * Hämtar genomtittnings-% (averageViewPercentage, 0–100) för en video via
- * YouTube Analytics API. Kräver att refresh-tokenet har scope
+ * YouTube Analytics API. Kräver att credentialn har scope
  * `yt-analytics.readonly` (utöver youtube.upload) — saknas det svarar API:t 403
  * och vi degraderar tyst till null (aldrig påhittade siffror).
  *
- * Returnerar null om: ej konfigurerat, saknad scope, eller ingen data ännu.
+ * `channel==MINE` betyder credentialns egen kanal: en video på en annan kanal ger
+ * inga rader, aldrig någon annans siffror.
  */
-export async function fetchVideoRetention(videoId: string): Promise<number | null> {
-  if (!isYouTubeConfigured()) return null
+export async function fetchVideoRetention(credential: YouTubeApiCredential, videoId: string): Promise<number | null> {
   try {
-    const token = await getAccessToken()
     // Analytics kräver ett datumintervall. Vi tar ett brett fönster (publicering täcks).
     const end   = new Date().toISOString().slice(0, 10)
     const start = '2020-01-01'
@@ -146,7 +143,7 @@ export async function fetchVideoRetention(videoId: string): Promise<number | nul
     url.searchParams.set('filters', `video==${videoId}`)
 
     const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${credential.accessToken}` },
       signal: AbortSignal.timeout(12_000),
       cache: 'no-store',
     })

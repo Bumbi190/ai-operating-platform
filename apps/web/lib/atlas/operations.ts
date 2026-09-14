@@ -66,13 +66,17 @@ export interface SystemHealth {
 }
 
 export interface TokenHealthRow {
+  projectId: string
+  projectName: string | null
   platform: string
-  status: string            // ok | warning | expired | error | unknown
+  /** ok | warning | expired | account_mismatch | binding_blocked | credential_missing | verification_failed | unknown */
+  status: string
   daysLeft: number | null
   expiresAt: string | null
   lastVerifiedAt: string | null
   lastRefreshedAt: string | null
-  lastError: string | null
+  /** Whether the platform confirmed the project's bound account at the last check. */
+  identityVerified: boolean
 }
 
 export interface HeartbeatRow {
@@ -114,9 +118,10 @@ function wfName(r: any): string | null {
 /**
  * `allowedProjectIds` is REQUIRED — same reason as `gatherAtlasContext`: every
  * project-owned source below is scoped through `applyProjectScope`, which does
- * nothing at all when the argument is `undefined`. `token_health` and
- * `cron_heartbeat` stay unscoped on purpose: neither has a project_id, they are
- * platform infrastructure.
+ * nothing at all when the argument is `undefined`. Social credential health is
+ * project-owned (social_credential_health, keyed by project and platform) and is
+ * scoped like every other project source. `cron_heartbeat` stays unscoped on
+ * purpose: it has no project_id, it is platform infrastructure.
  */
 export async function getOperations(db: AnyDb, allowedProjectIds: string[]): Promise<OperationsSnapshot> {
   const safe = async <T>(p: Promise<{ data: T | null }>, fb: T): Promise<T> => {
@@ -128,7 +133,7 @@ export async function getOperations(db: AnyDb, allowedProjectIds: string[]): Pro
   const todayStart = startOfTodayIso()
   const nowMs      = Date.now()
   // ISOLATION: scope project-native reads (undefined = no scope, legacy callers).
-  // token_health + cron_heartbeat are infra tables with no project_id → global.
+  // cron_heartbeat is an infra table with no project_id → global.
 
   const [projects, scripts, insights, runs24h, runningRuns, leads, costMonthRows, tokenRows, heartbeatRows] = await Promise.all([
     safe<any[]>(applyProjectScope(db.from('projects').select('id, name, slug, color'), allowedProjectIds, 'id'), []),
@@ -138,7 +143,7 @@ export async function getOperations(db: AnyDb, allowedProjectIds: string[]): Pro
     safe<any[]>(applyProjectScope(db.from('runs').select('project_id, status, started_at, lease_until').eq('status', 'running'), allowedProjectIds), []),
     safe<any[]>(applyProjectScope(db.from('leads').select('project_id, status'), allowedProjectIds), []),
     safe<any[]>(applyProjectScope(db.from('cost_events').select('cost_sek, created_at').gte('created_at', monthStart), allowedProjectIds), []),
-    safe<any[]>(db.from('token_health').select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at, last_error'), []),
+    safe<any[]>(applyProjectScope((db as AnyDb).from('social_credential_health').select('project_id, platform, status, days_left, expires_at, checked_at, last_refreshed_at, identity_verified'), allowedProjectIds), []),
     safe<any[]>(db.from('cron_heartbeat').select('jobname, label, cadence, status, detail, last_fired_at, checked_at'), []),
   ])
 
@@ -243,17 +248,21 @@ export async function getOperations(db: AnyDb, allowedProjectIds: string[]): Pro
 
   // ── INTEGRATIONER & TOKENS ──────────────────────────────────────────────────
   const order = ['instagram', 'facebook', 'youtube']
+  const projectNames = new Map<string, string>((projects as any[]).map(p => [p.id, p.name]))
   const tokens: TokenHealthRow[] = (tokenRows as any[])
     .map(t => ({
+      projectId: t.project_id,
+      projectName: projectNames.get(t.project_id) ?? null,
       platform: t.platform,
       status: t.status ?? 'unknown',
       daysLeft: t.days_left ?? null,
       expiresAt: t.expires_at ?? null,
-      lastVerifiedAt: t.last_verified_at ?? null,
+      lastVerifiedAt: t.checked_at ?? null,
       lastRefreshedAt: t.last_refreshed_at ?? null,
-      lastError: t.last_error ?? null,
+      identityVerified: t.identity_verified === true,
     }))
-    .sort((a, b) => order.indexOf(a.platform) - order.indexOf(b.platform))
+    .sort((a, b) => String(a.projectName ?? '').localeCompare(String(b.projectName ?? ''))
+      || order.indexOf(a.platform) - order.indexOf(b.platform))
 
   // ── AUTOMATION / HEARTBEAT ──────────────────────────────────────────────────
   const heartbeat: HeartbeatRow[] = (heartbeatRows as any[]).map(h => ({
@@ -292,7 +301,7 @@ export function operationsSummary(o: OperationsSnapshot): string {
   if (o.tokens.length) {
     const tok = o.tokens.map(t => {
       const d = t.daysLeft !== null ? `${t.daysLeft}d kvar` : (t.status === 'ok' ? 'giltigt' : t.status)
-      return `${t.platform}: ${t.status}${t.status === 'ok' || t.status === 'warning' ? ` (${d})` : ''}`
+      return `${t.projectName ?? 'okänt projekt'} ${t.platform}: ${t.status}${t.status === 'ok' || t.status === 'warning' ? ` (${d})` : ''}`
     }).join(', ')
     lines.push(`Tokens — ${tok}.`)
   }

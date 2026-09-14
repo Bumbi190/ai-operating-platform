@@ -1,54 +1,62 @@
 /**
- * vNext Settings S1 — Inställningar (`/settings`).
+ * vNext Settings — Inställningar (`/settings`), project-scoped.
  *
- * Four risks carry this surface, and the suite is organised around them:
+ * Five risks carry this surface, and the suite is organised around them:
  *
- *   1. READING A SECRET TO SHOW A STATUS. Settings reports on the platform's live
- *      publishing credentials. Every read must be metadata — never
- *      `platform_tokens.access_token`, never `token_health.last_error` (which can
- *      quote a provider's answer) — and environment variables are presence only.
+ *   1. READING A SECRET TO SHOW A STATUS. Every read is metadata — never
+ *      `platform_tokens.access_token`, never provider text — and environment variables
+ *      are presence only.
  *
- *   2. BECOMING AN AUTHORITY SOURCE. Replacement is the existing
- *      `POST /api/media/token`, which owns the operator gate, the ownership gate
- *      and the fail-closed audit. Settings may only mirror those checks to decide
- *      whether to offer the form, through the same canonical predicate, and the
- *      form may post nowhere else.
+ *   2. CROSS-PROJECT CREDENTIAL CONFUSION (project-scoped social credentials,
+ *      2026-09-14). The relation is Project → Platform → Verified External Account →
+ *      Credential. Each owned project is its own block; a binding, credential, check or
+ *      replacement of one project must never appear under — or be offered for —
+ *      another, and nothing is read for a project the session does not own. There is
+ *      no default project.
  *
- *   3. CLAIMING WHAT NOBODY STORES. The page this replaces printed a version, a
- *      stack, a model, a sign-in method and a roadmap from literals. An unreadable
- *      source must say so, an absent check is unchecked — not healthy — and no
- *      literal claim survives.
+ *   3. BECOMING AN AUTHORITY SOURCE. Replacement is `POST /api/media/token` and
+ *      verification `POST /api/media/social-accounts/verify`; each owns the operator
+ *      gate, ownership of the named project and the audit. Settings only mirrors the
+ *      operator predicate to decide whether to offer them, and the forms post nowhere
+ *      else.
  *
- *   4. LOSING THE ROLLBACK. `?ui=legacy` must render the previous body exactly —
- *      pinned by hash.
+ *   4. CLAIMING WHAT NOBODY STORES. An unreadable source says so, an absent check is
+ *      unchecked — not healthy — and a name no platform attested is said to be
+ *      unverified, never guessed.
+ *
+ *   5. LOSING THE ROLLBACK. `?ui=legacy` renders the previous body exactly — pinned by hash.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import {
   assembleSettings,
   envPresence,
-  ENV_FALLBACK,
   PLATFORM_CONFIG,
-  SOCIAL_PROJECT_SLUG,
   YOUTUBE_OAUTH_VARS,
   type AssembleSettingsInput,
   type SettingsModel,
 } from '@/lib/os/settings'
+import type { SocialAccountBinding } from '@/lib/media/social-bindings'
 import {
   ACCOUNT_PASSWORD_HREF,
   ACCOUNT_SIGN_IN_METHOD,
   CAPABILITY_NOTES,
   CREDENTIAL_ENDPOINT,
+  HEALTH_LABELS,
   MIN_TOKEN_LENGTH,
+  PROJECT_SCOPE_NOTE,
   SEND_FAILED_MESSAGE,
-  TOKEN_HEALTH_LABELS,
+  UNATTESTED_NAMES,
   UNREADABLE_LABEL,
+  VERIFY_ENDPOINT,
+  YOUTUBE_UNAVAILABLE_NOTE,
   replacementOutcome,
+  verificationOutcome,
 } from '@/lib/os/settings-shared'
 
 ;(globalThis as unknown as { React: typeof React }).React = React
@@ -73,47 +81,75 @@ const FILES = {
   shared: 'lib/os/settings-shared.ts',
   surface: 'components/platform/vnext/SettingsSurface.tsx',
   form: 'components/platform/vnext/SettingsCredentialForm.tsx',
+  verify: 'components/platform/vnext/SettingsVerifyButton.tsx',
   css: 'components/platform/vnext/SettingsSurface.module.css',
 } as const
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
-const NOW = '2026-09-14T08:00:00.000Z'
+const NOW = '2026-09-14T09:00:00.000Z'
 const USER_ID = '0f8a2c4e-6b1d-4e3f-9a5c-7d2e8b1f4a6c'
-const SOCIAL_ID = '33333333-3333-3333-3333-333333333333'
-const ALL_VARS = [...new Set([
-  ...Object.values(ENV_FALLBACK), ...YOUTUBE_OAUTH_VARS, ...PLATFORM_CONFIG.flatMap((item) => item.vars),
-])]
+const PROMPT_ID = '33333333-3333-4333-8333-333333333333'
+const FAMILY_ID = '44444444-4444-4444-8444-444444444444'
+const GAIN_ID = '55555555-5555-4555-8555-555555555555'
+const FOREIGN_ID = '66666666-6666-4666-8666-666666666666'
+const IG_ACCOUNT = '17841437027967629'
+const FB_PAGE = '1138612202672850'
+const YT_CHANNEL = 'UCUM9JDi75ziLssYcGLo8IPA'
+
+const ALL_VARS = [...new Set([...YOUTUBE_OAUTH_VARS, ...PLATFORM_CONFIG.flatMap((item) => item.vars)])]
 const ENV_ALL: Record<string, boolean> = Object.fromEntries(ALL_VARS.map((name) => [name, true]))
+
+let bindingSeq = 0
+function binding(over: Partial<SocialAccountBinding> & Pick<SocialAccountBinding, 'projectId' | 'platform' | 'externalAccountId'>): SocialAccountBinding {
+  bindingSeq += 1
+  return {
+    bindingId: `77777777-7777-4777-8777-${String(bindingSeq).padStart(12, '0')}`,
+    accountLabel: null,
+    credentialSource: over.platform === 'youtube' ? 'platform_env_transitional' : 'project_store',
+    verification: 'provider_attested',
+    verifiedAt: '2026-09-14T06:15:00.000Z',
+    boundBy: `user:${USER_ID}`,
+    boundAt: '2026-09-14T08:00:00.000Z',
+    blockedAt: null,
+    blockedReason: null,
+    ...over,
+  }
+}
 
 function input(over: Partial<AssembleSettingsInput> = {}): AssembleSettingsInput {
   return {
     now: NOW,
     account: { email: 'operator@omnira.test', userId: USER_ID },
     operatorOk: true,
-    socialProject: 'owned',
-    storedTokens: {
-      ok: true,
-      rows: [
-        { platform: 'instagram', token_type: 'user', expires_at: '2026-11-06T00:00:00.000Z', refreshed_at: '2026-09-07T03:00:00.000Z' },
-        { platform: 'facebook', token_type: 'page', expires_at: null, refreshed_at: '2026-06-05T10:00:00.000Z' },
-      ],
-    },
-    tokenHealth: {
-      ok: true,
-      rows: [
-        { platform: 'instagram', status: 'ok', days_left: 53, expires_at: '2026-11-06T00:00:00.000Z', last_verified_at: '2026-09-14T06:15:00.000Z', last_refreshed_at: '2026-09-07T03:00:00.000Z' },
-        { platform: 'facebook', status: 'ok', days_left: null, expires_at: null, last_verified_at: '2026-09-14T06:15:00.000Z', last_refreshed_at: null },
-        { platform: 'youtube', status: 'ok', days_left: null, expires_at: null, last_verified_at: '2026-09-14T06:15:00.000Z', last_refreshed_at: '2026-09-14T06:15:00.000Z' },
-      ],
-    },
+    projects: { ok: true, rows: [
+      { id: PROMPT_ID, name: 'The Prompt', slug: 'ai-media-automation' },
+      { id: FAMILY_ID, name: 'Familje-Stunden', slug: 'familje-stunden' },
+      { id: GAIN_ID, name: 'GainPilot', slug: 'gainpilot' },
+    ] },
+    bindings: { ok: true, bindings: [
+      binding({ projectId: PROMPT_ID, platform: 'instagram', externalAccountId: IG_ACCOUNT, accountLabel: 'theprompt.news' }),
+      binding({ projectId: PROMPT_ID, platform: 'facebook', externalAccountId: FB_PAGE, verification: 'runtime_evidence' }),
+      binding({ projectId: PROMPT_ID, platform: 'youtube', externalAccountId: YT_CHANNEL, verification: 'runtime_evidence' }),
+    ] },
+    storedTokens: { ok: true, rows: [
+      { project_id: PROMPT_ID, platform: 'instagram', token_type: 'user', account_id: null, expires_at: '2026-11-13T06:00:06.627Z', refreshed_at: '2026-09-14T06:00:06.753Z' },
+      { project_id: PROMPT_ID, platform: 'facebook', token_type: 'page', account_id: FB_PAGE, expires_at: null, refreshed_at: '2026-06-05T08:51:09.423Z' },
+    ] },
+    health: { ok: true, rows: [
+      { project_id: PROMPT_ID, platform: 'instagram', status: 'ok', identity_verified: true, verified_account_id: IG_ACCOUNT, checked_at: '2026-09-14T06:15:00.000Z', expires_at: '2026-11-13T06:00:06.627Z', days_left: 60, last_refreshed_at: '2026-09-14T06:00:07.000Z' },
+      { project_id: PROMPT_ID, platform: 'facebook', status: 'ok', identity_verified: true, verified_account_id: FB_PAGE, checked_at: '2026-09-14T06:15:00.000Z', expires_at: null, days_left: null, last_refreshed_at: null },
+      { project_id: PROMPT_ID, platform: 'youtube', status: 'ok', identity_verified: false, verified_account_id: null, checked_at: '2026-09-14T06:15:00.000Z', expires_at: null, days_left: null, last_refreshed_at: null },
+    ] },
     replacements: { ok: true, rows: [] },
     env: { ...ENV_ALL },
     ...over,
   }
 }
 const model = (over: Partial<AssembleSettingsInput> = {}) => assembleSettings(input(over))
-const channelOf = (m: SettingsModel, id: string) => m.channels.find((c) => c.id === id)!
+const projectsOf = (m: SettingsModel) => (m.projects.state === 'ok' ? m.projects.items : [])
+const projectOf = (m: SettingsModel, id: string) => projectsOf(m).find((p) => p.id === id)!
+const channelOf = (m: SettingsModel, projectId: string, platform: string) => projectOf(m, projectId).channels.find((c) => c.id === platform)!
 
 async function html(m: SettingsModel): Promise<string> {
   const { SettingsSurface } = await import('@/components/platform/vnext/SettingsSurface')
@@ -139,24 +175,31 @@ function deployedFiles(): string[] {
 
 // ── 1. Credential-blind ──────────────────────────────────────────────────────
 
-describe('settings S1 · credential-blind by construction', () => {
-  it('the loader selects metadata only — never access_token, never last_error, never *', () => {
+describe('settings · credential-blind by construction', () => {
+  it('the loader selects metadata only — never access_token, never provider text, never *', () => {
     const loader = codeOnly(read(FILES.loader))
-    expect(loader).toMatch(/from\('platform_tokens'\) as any\)\s*\.select\('platform, token_type, expires_at, refreshed_at'\)/)
-    expect(loader).toMatch(/from\('token_health'\) as any\)\s*\.select\('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at'\)/)
-    expect(loader).toMatch(/\(db as any\)\.from\('platform_credential_events'\)\s*\.select\('platform, outcome, occurred_at'\)/)
-    expect(loader).not.toMatch(/access_token|last_error|select\('\*'\)|getToken\(/)
+    expect(loader).toMatch(/from\('platform_tokens'\) as any\)\s*\.select\('project_id, platform, token_type, account_id, expires_at, refreshed_at'\)/)
+    expect(loader).toMatch(/\(db as any\)\.from\('social_credential_health'\)\s*\.select\('project_id, platform, status, identity_verified, verified_account_id, checked_at, expires_at, days_left, last_refreshed_at'\)/)
+    expect(loader).toMatch(/\(db as any\)\.from\('platform_credential_events'\)\s*\.select\('project_id, platform, outcome, occurred_at, binding_action'\)/)
+    expect(loader).toMatch(/listActiveBindings\(owned, db\)/)
+    expect(loader).not.toMatch(/access_token|last_error|token_health|select\('\*'\)|readStoredCredential|resolve(Instagram|Facebook|YouTube)Credential|createCredentialResolver/)
   })
 
-  it('no settings file names a credential column, reads the token store, or keeps anything in the browser', () => {
-    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form]) {
+  it('no settings file names a credential column, reads a credential, or keeps anything in the browser', () => {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
       const code = codeOnly(read(rel))
-      expect(code, rel).not.toMatch(/access_token|last_error|lib\/media\/token-store|localStorage|sessionStorage|document\.cookie/)
+      expect(code, rel).not.toMatch(/access_token|last_error|lib\/media\/token-store|lib\/media\/social-credentials|localStorage|sessionStorage|document\.cookie/)
     }
-    for (const rel of [FILES.shared, FILES.surface, FILES.form, FILES.page]) {
+    for (const rel of [FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/process\.env/)
     }
-    expect(codeOnly(read(FILES.form))).not.toMatch(/console\./)
+    for (const rel of [FILES.form, FILES.verify]) expect(codeOnly(read(rel)), rel).not.toMatch(/console\./)
+  })
+
+  it('the binding columns the loader reads hold no credential', () => {
+    const bindings = read('lib/media/social-bindings.ts')
+    const columns = bindings.match(/export const BINDING_COLUMNS =\s*'([^']+)'/)![1].split(',').map((c) => c.trim())
+    for (const column of columns) expect(column).not.toMatch(/token|secret|hash|key|password|credential_value/)
   })
 
   it('environment variables are reported as presence only — a value never leaves the loader', () => {
@@ -170,6 +213,9 @@ describe('settings S1 · credential-blind by construction', () => {
       expect(presence.ANTHROPIC_API_KEY).toBe(true)
       expect(presence.YOUTUBE_CLIENT_ID).toBe(false)
       expect(JSON.stringify(presence)).not.toContain('sk-ant-very-secret-value')
+      // The retired environment fallbacks are no longer reported — nothing reads them.
+      expect(Object.keys(presence)).not.toContain('INSTAGRAM_ACCESS_TOKEN')
+      expect(Object.keys(presence)).not.toContain('FACEBOOK_PAGE_ACCESS_TOKEN')
     } finally {
       if (saved.a === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.a
       if (saved.y === undefined) delete process.env.YOUTUBE_CLIENT_ID; else process.env.YOUTUBE_CLIENT_ID = saved.y
@@ -187,69 +233,168 @@ describe('settings S1 · credential-blind by construction', () => {
   })
 })
 
-// ── 2. Truthful status ───────────────────────────────────────────────────────
+// ── 2. Project-scoped ────────────────────────────────────────────────────────
 
-describe('settings S1 · status comes from stored metadata, never inferred', () => {
-  it('a stored row is "stored", with its metadata', () => {
-    const ig = channelOf(model(), 'instagram')
-    expect(ig.source).toBe('stored')
-    expect(ig.stored).toEqual({ tokenType: 'user', expiresAt: '2026-11-06T00:00:00.000Z', refreshedAt: '2026-09-07T03:00:00.000Z' })
+describe('settings · Project → Platform → Verified External Account → Credential', () => {
+  it('every owned project is its own block, with its own Instagram, Facebook and YouTube', () => {
+    const m = model()
+    expect(projectsOf(m).map((p) => p.name)).toEqual(['The Prompt', 'Familje-Stunden', 'GainPilot'])
+    for (const project of projectsOf(m)) expect(project.channels.map((c) => c.id)).toEqual(['instagram', 'facebook', 'youtube'])
   })
 
-  it('no stored row: the environment fallback when it is set, otherwise missing', () => {
-    const noRows = { storedTokens: { ok: true as const, rows: [] } }
-    expect(channelOf(model(noRows), 'facebook').source).toBe('environment')
-    expect(channelOf(model({ ...noRows, env: { ...ENV_ALL, FACEBOOK_PAGE_ACCESS_TOKEN: false } }), 'facebook').source).toBe('missing')
-  })
-
-  it('an unreadable stored-credential read is unreadable — never missing — and says so', () => {
-    const m = model({ storedTokens: { ok: false, reason: 'error' } })
-    expect(channelOf(m, 'instagram').source).toBe('unreadable')
-    expect(m.warnings.map((w) => w.id)).toContain('unreadable:instagram')
-  })
-
-  it('a social project outside the session scope is out of scope, not read and not missing', () => {
-    const m = model({ socialProject: 'foreign', storedTokens: { ok: false, reason: 'not_read' }, replacements: { ok: false, reason: 'not_read' } })
-    expect(channelOf(m, 'instagram').source).toBe('out_of_scope')
-    expect(channelOf(m, 'instagram').lastReplacement).toEqual({ state: 'not_read', at: null })
-  })
-
-  it('token health: an unreadable check is not healthy, no row is unchecked, an unknown status is unknown', () => {
-    const unreadable = model({ tokenHealth: { ok: false, reason: 'error' } })
-    expect(channelOf(unreadable, 'instagram').health.readable).toBe(false)
-    expect(unreadable.warnings.map((w) => w.id)).toContain('unreadable:token_health')
-    const noRow = model({ tokenHealth: { ok: true, rows: [] } })
-    expect(channelOf(noRow, 'youtube').health.status).toBe('unchecked')
-    const odd = model({ tokenHealth: { ok: true, rows: [{ platform: 'instagram', status: 'fine-probably' }] } })
-    expect(channelOf(odd, 'instagram').health.status).toBe('unknown')
-  })
-
-  it('expired and expiring tokens raise warnings that name their stored condition', () => {
-    const m = model({ tokenHealth: { ok: true, rows: [
-      { platform: 'instagram', status: 'expired', days_left: 0 },
-      { platform: 'facebook', status: 'warning', days_left: 6 },
+  it("one project's binding, credential, check and replacement never appear under another project", () => {
+    const m = model({ replacements: { ok: true, rows: [
+      { project_id: PROMPT_ID, platform: 'instagram', outcome: 'replaced', occurred_at: '2026-09-14T08:30:00.000Z', binding_action: 'matched' },
     ] } })
-    expect(m.warnings.find((w) => w.id === 'health:instagram')?.title).toMatch(/ogiltigt, utgånget eller saknas/)
-    expect(m.warnings.find((w) => w.id === 'health:facebook')?.detail).toBe('6 dagar kvar vid senaste kontroll.')
+    for (const id of [FAMILY_ID, GAIN_ID]) {
+      for (const channel of projectOf(m, id).channels) {
+        expect(channel.account, `${id} ${channel.id}`).toEqual({ state: 'none' })
+        expect(channel.health.status, `${id} ${channel.id}`).toBe('unchecked')
+        expect(channel.lastReplacement.at, `${id} ${channel.id}`).toBeNull()
+        if (channel.id !== 'youtube') expect(channel.credential.state).toBe('missing')
+      }
+      expect(channelOf(m, id, 'youtube').credential.state).toBe('not_available')
+    }
+    expect(channelOf(m, PROMPT_ID, 'instagram').lastReplacement).toEqual({ state: 'ok', at: '2026-09-14T08:30:00.000Z', bindingAction: 'matched' })
+  })
+
+  it('rows of a project the session does not own are ignored — never attached to a shown project', () => {
+    const base = input()
+    const m = assembleSettings({
+      ...base,
+      bindings: { ok: true, bindings: [
+        ...(base.bindings.ok ? base.bindings.bindings : []),
+        binding({ projectId: FOREIGN_ID, platform: 'facebook', externalAccountId: '999999999999' }),
+      ] },
+      storedTokens: { ok: true, rows: [
+        ...(base.storedTokens.ok ? base.storedTokens.rows : []),
+        { project_id: FOREIGN_ID, platform: 'instagram', token_type: 'user', account_id: '17840000000000000', expires_at: null, refreshed_at: NOW },
+      ] },
+    })
+    expect(projectsOf(m).map((p) => p.id)).not.toContain(FOREIGN_ID)
+    expect(JSON.stringify(m)).not.toContain('999999999999')
+    expect(JSON.stringify(m)).not.toContain('17840000000000000')
+  })
+
+  it('the rendered surface states the project on every form, and each form sends its own project id', async () => {
+    const out = await html(model())
+    for (const name of ['The Prompt', 'Familje-Stunden', 'GainPilot']) expect(out).toContain(`Spara för ${name}`)
+    for (const id of [PROMPT_ID, FAMILY_ID, GAIN_ID]) expect(out).toContain(`data-project="${id}"`)
+    expect(out).toContain(PROJECT_SCOPE_NOTE)
+    const form = codeOnly(read(FILES.form))
+    expect(form).toMatch(/const body: Record<string, unknown> = \{ project_id: projectId, platform, token: value \}/)
+  })
+
+  it('no settings file names a default, first or implicit project', () => {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
+      expect(codeOnly(read(rel)), rel).not.toMatch(/ai-media-automation|SOCIAL_PROJECT_SLUG|DEFAULT_SOCIAL_PROJECT|The Prompt/)
+    }
+  })
+
+  it('a session that owns no project sees no project and no form', async () => {
+    const m = model({ projects: { ok: true, rows: [] } })
+    expect(projectsOf(m)).toEqual([])
+    const out = await html(m)
+    expect(out).not.toContain('data-credential="true"')
+    expect(out).toContain('Du äger inga projekt ännu.')
+  })
+})
+
+// ── 3. Truthful status ───────────────────────────────────────────────────────
+
+describe('settings · the account and credential status are what the sources say', () => {
+  it('a bound account shows the provider id and only the name a platform attested', async () => {
+    const m = model()
+    expect(channelOf(m, PROMPT_ID, 'instagram').account).toMatchObject({
+      state: 'bound', bound: { externalAccountId: IG_ACCOUNT, label: 'theprompt.news', verification: 'provider_attested', blocked: false },
+    })
+    const out = await html(m)
+    expect(out).toContain('@theprompt.news')
+    expect(out).toContain(IG_ACCOUNT)
+    // Facebook's page name was never attested: said, not guessed — with the page id it is bound to.
+    expect(out).toContain(UNATTESTED_NAMES.facebook)
+    expect(out).toContain(FB_PAGE)
+    expect(out).toContain('Bundet från verifierad runtime-evidens')
+  })
+
+  it('Facebook shows the verified page by name once a platform has attested it', async () => {
+    const base = input()
+    const bindings = base.bindings.ok ? base.bindings.bindings : []
+    const m = assembleSettings({ ...base, bindings: { ok: true, bindings: bindings.map((b) =>
+      b.platform === 'facebook' ? { ...b, accountLabel: 'The Prompt Page', verification: 'provider_attested' as const } : b) } })
+    const out = await html(m)
+    expect(out).toContain('The Prompt Page')
+    expect(out).toContain('Verifierat av plattformen')
+    expect(out).not.toContain(UNATTESTED_NAMES.facebook)
+  })
+
+  it('no binding is "no account"; an unreadable binding read is unreadable and warned', () => {
+    expect(channelOf(model(), FAMILY_ID, 'instagram').account).toEqual({ state: 'none' })
+    const m = model({ bindings: { ok: false } })
+    expect(channelOf(m, PROMPT_ID, 'instagram').account).toEqual({ state: 'unreadable' })
+    expect(m.warnings.map((w) => w.id)).toContain('unreadable:bindings')
+  })
+
+  it('a stored credential carries its metadata and whether its recorded account is the bound one', () => {
+    expect(channelOf(model(), PROMPT_ID, 'facebook').credential).toEqual({
+      state: 'stored', expiresAt: null, refreshedAt: '2026-06-05T08:51:09.423Z', matchesBinding: true,
+    })
+    expect(channelOf(model(), PROMPT_ID, 'instagram').credential.matchesBinding).toBeNull()
+    const base = input()
+    const m = assembleSettings({ ...base, storedTokens: { ok: true, rows: [
+      { project_id: PROMPT_ID, platform: 'facebook', token_type: 'page', account_id: '5550000000000', expires_at: null, refreshed_at: NOW },
+    ] } })
+    expect(channelOf(m, PROMPT_ID, 'facebook').credential.matchesBinding).toBe(false)
+    expect(m.warnings.map((w) => w.id)).toContain(`mismatch:${PROMPT_ID}:facebook`)
+  })
+
+  it('an unreadable credential read is unreadable — never missing — and says so', () => {
+    const m = model({ storedTokens: { ok: false } })
+    expect(channelOf(m, PROMPT_ID, 'instagram').credential.state).toBe('unreadable')
+    expect(m.warnings.map((w) => w.id)).toContain('unreadable:credentials')
+  })
+
+  it('verification: unreadable is not healthy, no row is unchecked, an unknown status is unknown', () => {
+    const unreadable = model({ health: { ok: false } })
+    expect(channelOf(unreadable, PROMPT_ID, 'instagram').health.readable).toBe(false)
+    expect(unreadable.warnings.map((w) => w.id)).toContain('unreadable:health')
+    expect(channelOf(model({ health: { ok: true, rows: [] } }), PROMPT_ID, 'youtube').health.status).toBe('unchecked')
+    const odd = model({ health: { ok: true, rows: [{ project_id: PROMPT_ID, platform: 'instagram', status: 'fine-probably' }] } })
+    expect(channelOf(odd, PROMPT_ID, 'instagram').health.status).toBe('unknown')
+  })
+
+  it('every broken verification raises a warning naming the project and the channel', () => {
+    const rows = (status: string) => ({ ok: true as const, rows: [{ project_id: PROMPT_ID, platform: 'instagram', status, days_left: status === 'warning' ? 6 : null }] })
+    for (const [status, pattern] of [
+      ['expired', /ogiltig eller har gått ut/],
+      ['account_mismatch', /tillhör inte projektets konto/],
+      ['credential_missing', /credential saknas/],
+      ['verification_failed', /kunde inte verifieras/],
+      ['warning', /löper snart ut/],
+    ] as const) {
+      const warning = model({ health: rows(status) }).warnings.find((w) => w.id === `health:${PROMPT_ID}:instagram`)
+      expect(warning?.title, status).toMatch(pattern)
+      expect(warning?.title, status).toMatch(/^The Prompt · Instagram: /)
+    }
     expect(model().warnings).toEqual([])
   })
 
-  it('YouTube is managed in Vercel, reported by presence, and never replaceable here', () => {
-    expect(channelOf(model(), 'youtube')).toMatchObject({ source: 'vercel', replaceable: false, stored: null })
-    const partial = model({ env: { ...ENV_ALL, YOUTUBE_REFRESH_TOKEN: false } })
-    expect(channelOf(partial, 'youtube').source).toBe('vercel_incomplete')
-    const none = model({ env: { ...ENV_ALL, YOUTUBE_CLIENT_ID: false, YOUTUBE_CLIENT_SECRET: false, YOUTUBE_REFRESH_TOKEN: false } })
-    expect(channelOf(none, 'youtube').source).toBe('missing')
+  it('a blocked binding is warned and shown as blocked', async () => {
+    const base = input()
+    const bindings = base.bindings.ok ? base.bindings.bindings : []
+    const m = assembleSettings({ ...base, bindings: { ok: true, bindings: bindings.map((b) =>
+      b.platform === 'youtube' ? { ...b, blockedAt: NOW, blockedReason: 'account_mismatch' } : b) } })
+    expect(m.warnings.map((w) => w.id)).toContain(`blocked:${PROMPT_ID}:youtube`)
+    expect(await html(m)).toContain('Spärrad — plattformen rapporterade ett annat konto')
   })
 
-  it('the last replacement is the latest audited replaced event for that platform', () => {
-    const m = model({ replacements: { ok: true, rows: [
-      { platform: 'facebook', outcome: 'replaced', occurred_at: '2026-09-14T07:00:00.000Z' },
-      { platform: 'facebook', outcome: 'replaced', occurred_at: '2026-09-13T07:00:00.000Z' },
-    ] } })
-    expect(channelOf(m, 'facebook').lastReplacement).toEqual({ state: 'ok', at: '2026-09-14T07:00:00.000Z' })
-    expect(channelOf(m, 'instagram').lastReplacement).toEqual({ state: 'ok', at: null })
-    expect(channelOf(model({ replacements: { ok: false, reason: 'error' } }), 'instagram').lastReplacement.state).toBe('error')
+  it('YouTube (Y1): the bound transitional credential by presence, never replaceable; every other project cannot connect yet', async () => {
+    expect(channelOf(model(), PROMPT_ID, 'youtube')).toMatchObject({ replaceable: false, credential: { state: 'environment_transitional' } })
+    expect(channelOf(model({ env: { ...ENV_ALL, YOUTUBE_REFRESH_TOKEN: false } }), PROMPT_ID, 'youtube').credential.state).toBe('environment_incomplete')
+    expect(channelOf(model(), GAIN_ID, 'youtube').credential.state).toBe('not_available')
+    const out = await html(model())
+    expect(out).toContain(YOUTUBE_UNAVAILABLE_NOTE)
+    expect(out).not.toContain('name="token-youtube"')
   })
 
   it('platform configuration is presence per provider, and every provider listed is one deployed code reads', () => {
@@ -262,18 +407,12 @@ describe('settings S1 · status comes from stored metadata, never inferred', () 
     }
   })
 
-  it('the fallback names, the project slug and the YouTube variables match the code that uses them', () => {
-    const store = read('lib/media/token-store.ts')
-    expect(store).toMatch(/instagram:\s+'INSTAGRAM_ACCESS_TOKEN'/)
-    expect(store).toMatch(/facebook:\s+'FACEBOOK_PAGE_ACCESS_TOKEN'/)
-    expect(store).toContain(`const DEFAULT_SOCIAL_PROJECT_SLUG = '${SOCIAL_PROJECT_SLUG}'`)
-    expect(read('app/api/media/token/route.ts')).toContain(`const DEFAULT_SOCIAL_PROJECT_SLUG = '${SOCIAL_PROJECT_SLUG}'`)
-    expect(ENV_FALLBACK).toEqual({ instagram: 'INSTAGRAM_ACCESS_TOKEN', facebook: 'FACEBOOK_PAGE_ACCESS_TOKEN' })
+  it('the YouTube variables are exactly the Y1 grant the code reads', () => {
     const youtube = read('lib/media/youtube.ts')
     for (const name of YOUTUBE_OAUTH_VARS) expect(youtube).toContain(`process.env.${name}`)
   })
 
-  it('the account shows the stored identity and the owner\'s sign-in statement, through the existing password flow', async () => {
+  it("the account shows the stored identity and the owner's sign-in statement, through the existing password flow", async () => {
     const m = model()
     expect(m.account).toEqual({ email: 'operator@omnira.test', userId: USER_ID, signInMethod: ACCOUNT_SIGN_IN_METHOD })
     expect(ACCOUNT_SIGN_IN_METHOD).toBe('E-post och lösenord · magisk länk som reserv')
@@ -286,13 +425,13 @@ describe('settings S1 · status comes from stored metadata, never inferred', () 
   })
 })
 
-// ── 3. No literal claims ─────────────────────────────────────────────────────
+// ── 4. No literal claims ─────────────────────────────────────────────────────
 
-describe('settings S1 · nothing the replaced page asserted from literals survives', () => {
+describe('settings · nothing the replaced page asserted from literals survives', () => {
   const STALE = /0\.2\.0-MVP|DALL-E|claude-sonnet|Next\.js 14|Kommande funktioner|Magic link|\.env\.local|Schemalagda körningar|team-inbjudningar|SeedButton|Exempeldata|\/api\/seed/
 
   it('no vNext settings file carries a version, stack, model, roadmap or seed claim', () => {
-    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form]) {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(STALE)
     }
   })
@@ -301,14 +440,20 @@ describe('settings S1 · nothing the replaced page asserted from literals surviv
     const out = await html(model())
     expect(out).not.toMatch(STALE)
     expect(out).toContain('DISPLAY PREFERENCES')
-    for (const title of ['Konto', 'Visning', 'Kanaler', 'Plattformskonfiguration']) expect(out).toContain(title)
+    for (const title of ['Konto', 'Visning', 'Projekt och sociala konton', 'Plattformskonfiguration']) expect(out).toContain(title)
   })
 
   it('an unreadable source is stated, never rendered as calm', async () => {
-    const out = await html(model({ tokenHealth: { ok: false, reason: 'error' } }))
+    const out = await html(model({ health: { ok: false } }))
     expect(out).toContain(UNREADABLE_LABEL)
-    expect(out).toContain('Token-kontrollen kunde inte läsas')
-    expect(out).not.toContain(TOKEN_HEALTH_LABELS.ok)
+    expect(out).toContain('Verifieringarna kunde inte läsas')
+    expect(out).not.toContain(HEALTH_LABELS.ok)
+  })
+
+  it('unreadable projects are stated too — not "no projects"', async () => {
+    const out = await html(model({ projects: { ok: false } }))
+    expect(out).toContain('Dina projekt kunde inte läsas')
+    expect(out).not.toContain('Du äger inga projekt ännu.')
   })
 
   it('the loading state is distinct from empty and from unreadable', async () => {
@@ -319,39 +464,41 @@ describe('settings S1 · nothing the replaced page asserted from literals surviv
   })
 })
 
-// ── 4. Capability, not authority ─────────────────────────────────────────────
+// ── 5. Capability, not authority ─────────────────────────────────────────────
 
-describe('settings S1 · the form is offered only where the route would accept it', () => {
-  it('capability follows the route\'s order: operator first, then the project it writes to', () => {
-    expect(model({ operatorOk: false, socialProject: 'foreign' }).capability).toEqual({ allowed: false, reason: 'operator_required' })
-    expect(model({ socialProject: 'error' }).capability).toEqual({ allowed: false, reason: 'project_unreadable' })
-    expect(model({ socialProject: 'missing' }).capability).toEqual({ allowed: false, reason: 'project_missing' })
-    expect(model({ socialProject: 'foreign' }).capability).toEqual({ allowed: false, reason: 'ownership_required' })
+describe('settings · forms are offered only where the routes would accept them', () => {
+  it('capability is the canonical operator predicate; ownership is the project list itself', () => {
+    expect(model({ operatorOk: false }).capability).toEqual({ allowed: false, reason: 'operator_required' })
     expect(model().capability).toEqual({ allowed: true })
   })
 
-  it('allowed: one write-only form per replaceable channel, none for YouTube', async () => {
+  it('allowed: one write-only form per project per replaceable channel, a verify control per bound account, none for YouTube tokens', async () => {
     const out = await html(model())
-    expect(out).toContain('name="token-instagram"')
-    expect(out).toContain('name="token-facebook"')
+    expect(out.match(/data-credential="true"/g) ?? []).toHaveLength(6)
+    expect(out.match(/name="token-instagram"/g) ?? []).toHaveLength(3)
+    expect(out.match(/name="token-facebook"/g) ?? []).toHaveLength(3)
     expect(out).not.toContain('name="token-youtube"')
-    expect(out.match(/data-credential="true"/g) ?? []).toHaveLength(2)
+    expect(out.match(/>Verifiera nu</g) ?? []).toHaveLength(3)
     expect(out).toMatch(/autoComplete="off"|autocomplete="off"/)
   })
 
+  it('a bound account offers an explicit, audited account change; a first binding asks for the page on Facebook', async () => {
+    const out = await html(model())
+    expect(out).toContain('Byt konto för The Prompt.')
+    expect(out).toContain('Facebook-sidans id')
+    const form = codeOnly(read(FILES.form))
+    expect(form).toMatch(/if \(needsPageId\) body\.page_id = pageId\.trim\(\)/)
+    expect(form).toMatch(/if \(boundAccount && changeAccount\) body\.change_account = true/)
+    expect(form).toMatch(/platform === 'facebook' && \(!boundAccount \|\| changeAccount\)/)
+  })
+
   it('not allowed: read-only channels that say why, and no field that could take a token', async () => {
-    for (const reason of ['operator_required', 'ownership_required', 'project_missing', 'project_unreadable'] as const) {
-      const over: Partial<AssembleSettingsInput> =
-        reason === 'operator_required' ? { operatorOk: false }
-        : reason === 'ownership_required' ? { socialProject: 'foreign', storedTokens: { ok: false, reason: 'not_read' }, replacements: { ok: false, reason: 'not_read' } }
-        : reason === 'project_missing' ? { socialProject: 'missing', storedTokens: { ok: false, reason: 'not_read' }, replacements: { ok: false, reason: 'not_read' } }
-        : { socialProject: 'error', storedTokens: { ok: false, reason: 'not_read' }, replacements: { ok: false, reason: 'not_read' } }
-      const out = await html(model(over))
-      expect(out, reason).not.toContain('<textarea')
-      expect(out, reason).not.toContain('data-credential="true"')
-      expect(out, reason).toContain(CAPABILITY_NOTES[reason].replace(/"/g, '&quot;').replace(/'/g, '&#x27;'))
-      expect((out.match(/Endast läsning/g) ?? []).length, reason).toBe(2)
-    }
+    const out = await html(model({ operatorOk: false }))
+    expect(out).not.toContain('<textarea')
+    expect(out).not.toContain('data-credential="true"')
+    expect(out).not.toContain('Verifiera nu')
+    expect(out).toContain(CAPABILITY_NOTES.operator_required)
+    expect((out.match(/Endast läsning/g) ?? []).length).toBe(6)
   })
 
   it('the loader decides capability with the canonical predicate — never an allowlist of its own', () => {
@@ -359,21 +506,28 @@ describe('settings S1 · the form is offered only where the route would accept i
     expect(loader).toMatch(/import \{ resolvePlatformOperator \} from '@\/lib\/auth\/platform-operator'/)
     expect(loader).toMatch(/const operator = await resolvePlatformOperator\(\)/)
     expect(loader).not.toMatch(/isPlatformOperatorEmail|platformOperatorAllowlist|PLATFORM_OPERATOR_EMAILS|BREVO_ADMIN_EMAIL/)
-    expect(loader).toMatch(/assertProjectAllowed\(projectId, access\.allowedProjectIds\)/)
+    expect(loader).toMatch(/const owned = access\.allowedProjectIds/)
   })
 
-  it('the form posts to the existing route and nowhere else', () => {
+  it('the forms post to the existing routes and nowhere else', () => {
     const form = codeOnly(read(FILES.form))
+    const verify = codeOnly(read(FILES.verify))
     expect(CREDENTIAL_ENDPOINT).toBe('/api/media/token')
+    expect(VERIFY_ENDPOINT).toBe('/api/media/social-accounts/verify')
     expect(existsSync(resolve(WEB_ROOT, 'app/api/media/token/route.ts'))).toBe(true)
+    expect(existsSync(resolve(WEB_ROOT, 'app/api/media/social-accounts/verify/route.ts'))).toBe(true)
     expect(form.match(/fetch\(/g) ?? []).toHaveLength(1)
     expect(form).toMatch(/fetch\(CREDENTIAL_ENDPOINT, \{\s*method: 'POST'/)
-    expect(form).toMatch(/^'use client'/)
+    expect(verify.match(/fetch\(/g) ?? []).toHaveLength(1)
+    expect(verify).toMatch(/fetch\(VERIFY_ENDPOINT, \{\s*method: 'POST'/)
+    expect(verify).toMatch(/body: JSON\.stringify\(\{ project_id: projectId, platform \}\)/)
+    expect(verify).not.toMatch(/textarea|token/i)
+    for (const rel of [FILES.form, FILES.verify]) expect(read(rel), rel).toMatch(/^'use client'/)
   })
 
   it('the form is write-only: the field is emptied before the request leaves, and never pre-filled', () => {
     const form = codeOnly(read(FILES.form))
-    const submit = form.slice(form.indexOf('const submit'), form.indexOf('const fieldId'))
+    const submit = form.slice(form.indexOf('const submit'), form.indexOf('const idBase'))
     expect(submit.indexOf("setToken('')")).toBeGreaterThan(-1)
     expect(submit.indexOf("setToken('')")).toBeLessThan(submit.indexOf('await fetch('))
     expect(form).toMatch(/useState\(''\)/)
@@ -386,7 +540,7 @@ describe('settings S1 · the form is offered only where the route would accept i
     expect(read('app/api/media/token/route.ts')).toMatch(/token\.length < 50/)
   })
 
-  it('nothing but the form writes: the loader, surface, shared contract and page are read-only', () => {
+  it('nothing but the two client controls writes: the loader, surface, shared contract and page are read-only', () => {
     for (const rel of [FILES.loader, FILES.surface, FILES.shared, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/'use server'|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|rpc\(/)
     }
@@ -394,20 +548,26 @@ describe('settings S1 · the form is offered only where the route would accept i
   })
 
   it('writes no memory and triggers no Dream', () => {
-    for (const rel of [FILES.loader, FILES.surface, FILES.form, FILES.page]) {
+    for (const rel of [FILES.loader, FILES.surface, FILES.form, FILES.verify, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/recordMemoryEvent|atlas\/memory|runDreamCycleForProject|lib\/ai\/dream|recordAction/)
     }
   })
 })
 
-describe('settings S1 · the route\'s answer is shown as what it was', () => {
+describe("settings · the routes' answers are shown as what they were", () => {
   const OP = '5b0c1f7e-9d2a-4c61-8f3e-2a7d9b4c6e10'
 
-  it('a completed replacement is replaced, with its audit operation and Facebook\'s three answers', () => {
-    const answer = replacementOutcome(200, { ok: true, replaced: true, operation_id: OP, exchanged: true, pageResolved: false, readInsightsOk: true })
+  it('a completed replacement is replaced, with the attested account, the audit operation and Facebook\'s three answers', () => {
+    const answer = replacementOutcome(200, {
+      ok: true, replaced: true, operation_id: OP, exchanged: true, pageResolved: true, readInsightsOk: false,
+      account: { id: FB_PAGE, label: 'The Prompt Page', binding_action: 'matched' },
+    })
     expect(answer).toEqual({
-      kind: 'replaced', message: 'Tokenet är ersatt och ersättningen är revisionsloggad.', operationId: OP,
-      facebook: { exchanged: true, pageResolved: false, readInsightsOk: true },
+      kind: 'replaced',
+      message: 'Credentialn är sparad för projektets bekräftade konto och ersättningen är revisionsloggad.',
+      operationId: OP,
+      facebook: { exchanged: true, pageResolved: true, readInsightsOk: false },
+      account: { id: FB_PAGE, label: 'The Prompt Page', bindingAction: 'matched' },
     })
   })
 
@@ -416,17 +576,20 @@ describe('settings S1 · the route\'s answer is shown as what it was', () => {
     expect(answer.kind).toBe('incident')
     expect(answer.operationId).toBe(OP)
     expect(answer.facebook).toBeNull()
+    expect(answer.account).toBeNull()
   })
 
-  it('refusals are refusals, in the route\'s terms', () => {
+  it("refusals are refusals, in the route's terms — including an account that is not the project's", () => {
     expect(replacementOutcome(401, { error: 'Unauthorized' }).kind).toBe('refused')
     expect(replacementOutcome(403, { error: 'Forbidden', denied: 'platform_operator_required' }).message).toMatch(/plattformsoperatörens behörighet/)
     expect(replacementOutcome(403, { error: 'Forbidden' }).message).toMatch(/äger inte projektet/)
     expect(replacementOutcome(400, { error: 'Tokenet ser för kort ut — klistra in hela värdet' })).toMatchObject({ kind: 'refused', message: 'Tokenet ser för kort ut — klistra in hela värdet' })
+    expect(replacementOutcome(409, { refusal: 'account_mismatch', error: 'Credentialn tillhör ett annat Instagram-konto än projektets kopplade.' }))
+      .toMatchObject({ kind: 'refused', message: 'Credentialn tillhör ett annat Instagram-konto än projektets kopplade.' })
   })
 
-  it('an attempt that could not be audited did not happen, and says so', () => {
-    const answer = replacementOutcome(503, { ok: false, replaced: false, operation_id: OP, error: 'Ersättningen kunde inte revisionsloggas och har inte genomförts. Inget token har skickats till Meta eller sparats.' })
+  it('an attempt that could not be audited or verified did not happen, and says so', () => {
+    const answer = replacementOutcome(503, { ok: false, replaced: false, operation_id: OP, error: 'Ersättningen kunde inte revisionsloggas och har inte genomförts.' })
     expect(answer).toMatchObject({ kind: 'failed', operationId: OP })
     expect(answer.message).toMatch(/har inte genomförts/)
   })
@@ -435,11 +598,21 @@ describe('settings S1 · the route\'s answer is shown as what it was', () => {
     expect(replacementOutcome(502, null)).toMatchObject({ kind: 'failed', message: 'Tokenet kunde inte ersättas.' })
     expect(SEND_FAILED_MESSAGE).toMatch(/kan ha genomförts/)
   })
+
+  it('verification is confirmed only when the platform confirmed the account', () => {
+    expect(verificationOutcome(200, { ok: true, identity_verified: true, status: 'ok', account: { id: FB_PAGE, label: 'The Prompt Page' } }))
+      .toEqual({ kind: 'confirmed', message: 'Bekräftat av plattformen: The Prompt Page.' })
+    expect(verificationOutcome(200, { ok: true, identity_verified: false, status: 'ok', account: { id: YT_CHANNEL, label: null } }).kind).toBe('unconfirmed')
+    expect(verificationOutcome(200, { ok: false, identity_verified: false, status: 'account_mismatch' }))
+      .toEqual({ kind: 'refused', message: 'Tillhör inte projektets konto.' })
+    expect(verificationOutcome(403, { error: 'Forbidden' }).kind).toBe('refused')
+    expect(verificationOutcome(503, { error: 'Projektets kontobindning kunde inte läsas.' })).toEqual({ kind: 'failed', message: 'Projektets kontobindning kunde inte läsas.' })
+  })
 })
 
 // ── Generation ───────────────────────────────────────────────────────────────
 
-describe('settings S1 · generation', () => {
+describe('settings · generation', () => {
   const loadSpy = vi.fn(async () => model())
   let cookieValue: string | null = null
 
@@ -498,13 +671,13 @@ describe('settings S1 · generation', () => {
 
 // ── The loader, executed ─────────────────────────────────────────────────────
 
-describe('settings S1 · the loader reads inside the session boundary', () => {
+describe('settings · the loader reads inside the session boundary', () => {
   interface Recorded { table: string; select: string; filters: [string, unknown][] }
   let queries: Recorded[]
   let access: unknown
   let operatorOk: boolean
   let operatorCalls: number
-  let projectLookup: { data: unknown; error: unknown }
+  let failing: Set<string>
 
   function fakeQuery(table: string) {
     const rec: Recorded = { table, select: '', filters: [] }
@@ -513,11 +686,11 @@ describe('settings S1 · the loader reads inside the session boundary', () => {
       select(select: string) { rec.select = select; return api },
       eq(c: string, v: unknown) { rec.filters.push([`eq:${c}`, v]); return api },
       in(c: string, v: unknown) { rec.filters.push([`in:${c}`, v]); return api },
+      is(c: string, v: unknown) { rec.filters.push([`is:${c}`, v]); return api },
       order() { return api },
       limit() { return api },
-      maybeSingle() { return Promise.resolve(table === 'projects' ? projectLookup : { data: null, error: null }) },
       then(ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) {
-        return Promise.resolve({ data: [], error: null }).then(ok, err)
+        return Promise.resolve(failing.has(table) ? { data: null, error: { code: 'XX000' } } : { data: [], error: null }).then(ok, err)
       },
     }
     return api
@@ -531,8 +704,8 @@ describe('settings S1 · the loader reads inside the session boundary', () => {
     queries = []
     operatorCalls = 0
     operatorOk = true
-    access = { ok: true, userId: USER_ID, allowedProjectIds: [SOCIAL_ID, 'another-project'] }
-    projectLookup = { data: { id: SOCIAL_ID }, error: null }
+    failing = new Set()
+    access = { ok: true, userId: USER_ID, allowedProjectIds: [PROMPT_ID, FAMILY_ID] }
     vi.doMock('@/lib/auth/project-access', async (importOriginal) => ({
       ...(await importOriginal<typeof import('@/lib/auth/project-access')>()),
       resolveProjectAccess: async () => access,
@@ -559,33 +732,33 @@ describe('settings S1 · the loader reads inside the session boundary', () => {
     expect(operatorCalls).toBe(0)
   })
 
-  it('owned: project data is read only for the social project, and every select is metadata', async () => {
+  it('every read is filtered to the owned projects, and every select is metadata', async () => {
     const { loadSettings } = await import('@/lib/os/settings')
     const m = await loadSettings()
     expect(m?.capability).toEqual({ allowed: true })
     expect(operatorCalls).toBe(1)
-    expect(queries.find((q) => q.table === 'projects')?.filters).toContainEqual(['eq:slug', SOCIAL_PROJECT_SLUG])
-    const tokens = queries.find((q) => q.table === 'platform_tokens')!
-    expect(tokens.select).toBe('platform, token_type, expires_at, refreshed_at')
-    expect(tokens.filters).toContainEqual(['eq:project_id', SOCIAL_ID])
-    const events = queries.find((q) => q.table === 'platform_credential_events')!
-    expect(events.select).toBe('platform, outcome, occurred_at')
-    expect(events.filters).toContainEqual(['eq:project_id', SOCIAL_ID])
-    expect(events.filters).toContainEqual(['eq:outcome', 'replaced'])
-    expect(queries.find((q) => q.table === 'token_health')?.select).toBe('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at')
-    for (const q of queries) expect(q.select, q.table).not.toMatch(/access_token|last_error|\*/)
+    const owned = [PROMPT_ID, FAMILY_ID]
+    expect(queries.map((q) => q.table).sort()).toEqual(
+      ['platform_credential_events', 'platform_tokens', 'projects', 'social_account_bindings', 'social_credential_health'])
+    for (const q of queries) {
+      const scoped = q.filters.some(([f, v]) => (f === 'in:project_id' || f === 'in:id') && JSON.stringify(v) === JSON.stringify(owned))
+      expect(scoped, `${q.table} is not filtered to the owned projects`).toBe(true)
+      expect(q.select, q.table).not.toMatch(/access_token|last_error|\*/)
+    }
+    expect(queries.find((q) => q.table === 'social_account_bindings')?.filters).toContainEqual(['is:superseded_at', null])
+    expect(queries.find((q) => q.table === 'platform_credential_events')?.filters).toContainEqual(['eq:outcome', 'replaced'])
+    expect(queries.map((q) => q.table)).not.toContain('token_health')
   })
 
-  it('a social project outside the scope is never read: status only, no form', async () => {
-    access = { ok: true, userId: USER_ID, allowedProjectIds: ['another-project'] }
+  it('a session that owns no project makes no read at all', async () => {
+    access = { ok: true, userId: USER_ID, allowedProjectIds: [] }
     const { loadSettings } = await import('@/lib/os/settings')
     const m = await loadSettings()
-    expect(queries.map((q) => q.table).sort()).toEqual(['projects', 'token_health'])
-    expect(m?.capability).toEqual({ allowed: false, reason: 'ownership_required' })
-    expect(m?.channels.find((c) => c.id === 'instagram')?.source).toBe('out_of_scope')
+    expect(queries).toEqual([])
+    expect(m?.projects).toEqual({ state: 'ok', items: [] })
   })
 
-  it('failing the operator predicate removes the form and nothing else', async () => {
+  it('failing the operator predicate removes the forms and nothing else', async () => {
     operatorOk = false
     const { loadSettings } = await import('@/lib/os/settings')
     const m = await loadSettings()
@@ -593,27 +766,17 @@ describe('settings S1 · the loader reads inside the session boundary', () => {
     expect(queries.map((q) => q.table)).toContain('platform_tokens')
   })
 
-  it('an unreadable or missing social project reads no project data and offers no replacement', async () => {
-    projectLookup = { data: null, error: { code: 'XX000' } }
-    let { loadSettings } = await import('@/lib/os/settings')
-    let m = await loadSettings()
-    expect(m?.capability).toEqual({ allowed: false, reason: 'project_unreadable' })
-    expect(m?.channels.find((c) => c.id === 'facebook')?.source).toBe('unreadable')
-    expect(queries.map((q) => q.table).sort()).toEqual(['projects', 'token_health'])
-
-    queries = []
-    projectLookup = { data: null, error: null }
-    vi.resetModules()
-    ;({ loadSettings } = await import('@/lib/os/settings'))
-    m = await loadSettings()
-    expect(m?.capability).toEqual({ allowed: false, reason: 'project_missing' })
-    expect(queries.map((q) => q.table).sort()).toEqual(['projects', 'token_health'])
+  it('a failed read is unreadable, never empty', async () => {
+    failing = new Set(['platform_tokens', 'social_account_bindings'])
+    const { loadSettings } = await import('@/lib/os/settings')
+    const m = await loadSettings()
+    expect(m?.warnings.map((w) => w.id)).toEqual(expect.arrayContaining(['unreadable:credentials', 'unreadable:bindings']))
   })
 })
 
 // ── Rollback ─────────────────────────────────────────────────────────────────
 
-describe('settings S1 · the legacy rollback is the page that shipped', () => {
+describe('settings · the legacy rollback is the page that shipped', () => {
   it('the legacy body is the previous page verbatim — pinned by hash', () => {
     const legacy = read(FILES.legacy)
     const body = legacy.slice(legacy.indexOf('import '))
@@ -633,7 +796,7 @@ describe('settings S1 · the legacy rollback is the page that shipped', () => {
 
 // ── Layout contract (static) ─────────────────────────────────────────────────
 
-describe('settings S1 · layout, scale and motion', () => {
+describe('settings · layout, scale and motion', () => {
   const css = read(FILES.css)
 
   it('sizes in rem so the display-scale preference reaches it', () => {
@@ -648,6 +811,11 @@ describe('settings S1 · layout, scale and motion', () => {
   it('sets the credential form apart from the status it sits beside', () => {
     expect(css).toMatch(/\.replace \{[\s\S]*?border: 1px solid rgb\(248 113 113/)
     expect(read(FILES.form)).toMatch(/data-credential="true"/)
+  })
+
+  it('gives every project its own block', () => {
+    expect(css).toMatch(/\.project \{[\s\S]*?border: 1px solid/)
+    expect(read(FILES.surface)).toMatch(/className=\{styles\.project\}/)
   })
 
   it('collapses to one column when narrow and never scrolls sideways', () => {

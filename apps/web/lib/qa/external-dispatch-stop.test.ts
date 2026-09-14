@@ -133,8 +133,33 @@ vi.mock('@/lib/media/facebook', () => ({
 const uploadShort = vi.fn()
 vi.mock('@/lib/media/youtube', async () => {
   const actual = await vi.importActual<typeof import('@/lib/media/youtube')>('@/lib/media/youtube')
-  return { ...actual, isYouTubeConfigured: () => true, uploadShort: (...a: unknown[]) => uploadShort(...a) }
+  return { ...actual, uploadShort: (...a: unknown[]) => uploadShort(...a) }
 })
+
+// Project-scoped social credentials: every route resolves the credential of the row's
+// OWN project. Always verified here — these tests are about stops; the credential
+// matrix is proven in social-credentials.test.ts and the publish suites.
+vi.mock('@/lib/media/social-credentials', () => {
+  const credential = (platform: string, projectId: unknown) => ({
+    platform, projectId, bindingId: `binding-${platform}`,
+    accountId: '17841400000000001', username: 'acct', token: 'IG-VERIFIED', apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true,
+    pageId: '1000000000000001', pageName: 'Page', pageToken: 'FB-VERIFIED',
+    channelId: 'UC_PROJECT_CHANNEL', channelTitle: 'Channel', accessToken: 'YT-VERIFIED', channelVerifiedBeforeUpload: true,
+    expiresAt: null,
+  })
+  const ok = (platform: string) => async (projectId: unknown) => ({ ok: true, binding: {}, credential: credential(platform, projectId) })
+  return {
+    refusalIsPermanent: () => true,
+    resolveInstagramCredential: ok('instagram'),
+    createCredentialResolver: () => ({ instagram: ok('instagram'), facebook: ok('facebook'), youtube: ok('youtube') }),
+    confirmYouTubeUploadChannel: async () => ({ confirmed: true }),
+  }
+})
+vi.mock('@/lib/media/social-bindings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/media/social-bindings')>()),
+  readActiveBinding: async (projectId: string, platform: string) =>
+    ({ ok: true, binding: { bindingId: `binding-${platform}`, projectId, platform } }),
+}))
 
 vi.mock('@/lib/media/video-props', () => ({ buildVideoInputProps: async () => ({}) }))
 const generateNewsImages = vi.fn()
@@ -144,7 +169,6 @@ vi.mock('@/lib/media/ideogram', () => ({
 vi.mock('@/lib/media/storage', () => ({
   uploadSceneImage: async (_p: string, _s: string, i: number) => `https://cdn/img-${i}.jpg`,
 }))
-vi.mock('@/lib/media/token-store', () => ({ getToken: async () => null }))
 vi.mock('@/lib/media/channel-persistence', () => ({
   // Behaves like the real helper for the purposes of these tests: it writes the
   // channel id and stamps published_at on first success. Stubbing it to a no-op

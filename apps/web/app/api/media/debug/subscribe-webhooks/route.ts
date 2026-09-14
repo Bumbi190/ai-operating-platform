@@ -1,19 +1,21 @@
 /**
- * GET /api/media/debug/subscribe-webhooks
+ * GET /api/media/debug/subscribe-webhooks?project_id=<uuid>
  *
- * One-time setup: subscribes the Instagram Business Account and Facebook Page
- * to receive webhook events. Run this ONCE after deploying the webhook handler.
+ * One-time setup for ONE project: subscribes that project's verified Facebook page
+ * to feed webhooks and — when the Instagram account linked to that page is the
+ * project's own verified Instagram binding — that account to comment webhooks.
  *
- * Flow:
- *   1. Resolve Page Access Token from FACEBOOK_PAGE_ACCESS_TOKEN
- *   2. Get the Instagram Business Account ID linked to the Facebook Page
- *   3. Subscribe the IG Business Account to comment webhooks
- *   4. Subscribe the Facebook Page to feed webhooks
+ * Credentials (project-scoped social credentials, 2026-09-14): the page and its token
+ * come from the project's verified Facebook binding (lib/media/social-credentials.ts),
+ * never from environment variables. No project_id or no verified binding: nothing is
+ * called. The answer carries ids and HTTP statuses only — never a provider body.
  *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
 import { NextResponse } from 'next/server'
+import { isProjectId, readActiveBinding } from '@/lib/media/social-bindings'
+import { resolveFacebookCredential } from '@/lib/media/social-credentials'
 
 const BASE = 'https://graph.facebook.com/v21.0'
 
@@ -26,59 +28,46 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const fbToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN
-  const pageId  = process.env.FACEBOOK_PAGE_ID
-
-  if (!fbToken || !pageId) {
-    return NextResponse.json({
-      error: 'Missing FACEBOOK_PAGE_ACCESS_TOKEN or FACEBOOK_PAGE_ID',
-    }, { status: 500 })
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  if (!isProjectId(projectId)) {
+    return NextResponse.json({ error: 'project_id (uuid) krävs — webhooks sätts upp per projekt' }, { status: 400 })
   }
 
-  const results: Record<string, unknown> = {}
-
-  // ── 1. Resolve Page Access Token ─────────────────────────────────────────────
-  const accountsRes  = await fetch(`${BASE}/me/accounts?access_token=${fbToken}`)
-  const accountsData = await accountsRes.json() as {
-    data?: Array<{ id: string; name: string; access_token: string }>
+  const facebook = await resolveFacebookCredential(projectId)
+  if (!facebook.ok) {
+    return NextResponse.json({ error: 'no_verified_facebook_credential', refusal: facebook.refusal }, { status: 409 })
   }
-  const page      = accountsData.data?.find(p => p.id === pageId)
-  const pageToken = page?.access_token ?? fbToken
-  results.page    = { id: pageId, name: page?.name ?? 'unknown', token_resolved: !!page }
+  const { pageId, pageToken, pageName } = facebook.credential
+  const auth = { Authorization: `Bearer ${pageToken}` }
+  const results: Record<string, unknown> = { page: { id: pageId, name: pageName } }
 
-  // ── 2. Get Instagram Business Account ID via the Facebook Page ────────────────
-  // INSTAGRAM_ACCESS_TOKEN is actually a Facebook User token — not an IG Graph token.
-  // The correct way to get the IG Business Account ID is via the Page object.
-  const igPageRes  = await fetch(
-    `${BASE}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`
-  )
-  const igPageData = await igPageRes.json() as {
-    instagram_business_account?: { id: string }
-    error?: { message: string }
-  }
-  results.ig_lookup = igPageData
+  // ── Instagram: only the project's own verified account, linked to its page ──
+  const igBinding = await readActiveBinding(projectId, 'instagram')
+  let linkedId: string | null = null
+  try {
+    const linkedRes = await fetch(`${BASE}/${pageId}?fields=instagram_business_account`, { headers: auth })
+    const linked = await linkedRes.json().catch(() => null) as { instagram_business_account?: { id?: unknown } } | null
+    linkedId = typeof linked?.instagram_business_account?.id === 'string' ? linked.instagram_business_account.id : null
+  } catch { linkedId = null }
 
-  const igUserId = igPageData.instagram_business_account?.id ?? null
-
-  // ── 3. Subscribe Instagram Business Account to comment webhooks ───────────────
-  if (igUserId) {
-    const subRes  = await fetch(
-      `${BASE}/${igUserId}/subscribed_apps?subscribed_fields=comments,mentions&access_token=${pageToken}`,
-      { method: 'POST' }
-    )
-    const subData = await subRes.json()
-    results.ig_subscribe = { ig_user_id: igUserId, status: subRes.status, data: subData }
+  if (!igBinding.ok) {
+    results.ig_subscribe = { skipped: 'binding_unreadable' }
+  } else if (!igBinding.binding) {
+    results.ig_subscribe = { skipped: 'binding_missing' }
+  } else if (!linkedId || linkedId !== igBinding.binding.externalAccountId) {
+    results.ig_subscribe = { skipped: 'linked_account_is_not_the_project_binding' }
   } else {
-    results.ig_subscribe = 'Skipped — could not find Instagram Business Account linked to this Page'
+    const subRes = await fetch(`${BASE}/${linkedId}/subscribed_apps?subscribed_fields=comments,mentions`, {
+      method: 'POST', headers: auth,
+    })
+    results.ig_subscribe = { ig_user_id: linkedId, status: subRes.status }
   }
 
-  // ── 4. Subscribe Facebook Page to feed webhooks ───────────────────────────────
-  const fbSubRes  = await fetch(
-    `${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed&access_token=${pageToken}`,
-    { method: 'POST' }
-  )
-  const fbSubData = await fbSubRes.json()
-  results.fb_subscribe = { status: fbSubRes.status, data: fbSubData }
+  // ── Facebook page feed ──────────────────────────────────────────────────────
+  const fbSubRes = await fetch(`${BASE}/${pageId}/subscribed_apps?subscribed_fields=feed`, {
+    method: 'POST', headers: auth,
+  })
+  results.fb_subscribe = { page_id: pageId, status: fbSubRes.status }
 
-  return NextResponse.json({ status: 'done', results })
+  return NextResponse.json({ status: 'done', project_id: projectId, results })
 }

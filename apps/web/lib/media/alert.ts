@@ -178,21 +178,26 @@ export async function sendRunReport(opts: RunReportOptions): Promise<void> {
   }
 }
 
+const escapeHtml = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
 /**
- * Skickar en påminnelse om att ett token löper ut snart.
+ * Skickar en påminnelse om att ett projekts credential löper ut snart eller inte
+ * längre fungerar. Namnger alltid projektet — varje credential hör till ett projekt.
  */
-export async function sendTokenExpiryWarning(platform: string, daysLeft: number, expiresAt: string): Promise<void> {
-  const subject = `⏰ The Prompt: ${platform}-token löper ut om ${daysLeft} dagar`
+export async function sendTokenExpiryWarning(projectName: string, platform: string, daysLeft: number, expiresAt: string): Promise<void> {
+  const project = escapeHtml(projectName)
+  const subject = `⏰ ${projectName}: ${platform}-token löper ut om ${daysLeft} dagar`
 
   const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f9f9f9;padding:20px;margin:0">
   <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e5e5e5;overflow:hidden">
     <div style="background:#111;padding:16px 24px;border-bottom:3px solid #d97706">
-      <p style="margin:0;font-size:11px;color:#666;letter-spacing:1px;text-transform:uppercase">The Prompt — Token-varning</p>
+      <p style="margin:0;font-size:11px;color:#666;letter-spacing:1px;text-transform:uppercase">${project} — Token-varning</p>
       <h2 style="margin:4px 0 0;font-size:18px;color:#fff">⏰ ${platform}-token löper ut snart</h2>
     </div>
     <div style="padding:24px">
       <p style="font-size:14px;color:#444;line-height:1.6">
-        <strong>${platform}</strong>-tokenet löper ut om <strong style="color:#d97706">${daysLeft} dagar</strong> (${expiresAt}).
+        Projektet <strong>${project}</strong>: <strong>${platform}</strong>-tokenet löper ut om <strong style="color:#d97706">${daysLeft} dagar</strong> (${escapeHtml(expiresAt)}).
       </p>
       <p style="font-size:14px;color:#444;line-height:1.6">
         Den månatliga refresh-cronen borde ha förnyat det automatiskt. Kontrollera att <code>META_APP_ID</code> och <code>META_APP_SECRET</code> är satta i Vercel och att refresh-cronen körde utan fel.
@@ -207,6 +212,6 @@ export async function sendTokenExpiryWarning(platform: string, daysLeft: number,
 
   const result = await sendAdminNotification(subject, html)
   if (!result?.success) {
-    console.error(`[alert] Kunde inte skicka token-varning för ${platform}:`, result?.error)
+    console.error(`[alert] Kunde inte skicka token-varning för ${platform} (${projectName}):`, result?.error)
   }
 }

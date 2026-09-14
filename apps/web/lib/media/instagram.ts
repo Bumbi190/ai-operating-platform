@@ -1,19 +1,20 @@
 /**
- * instagram.ts — Instagram Graph API publishing for The Prompt.
+ * instagram.ts — Instagram Graph API publishing on behalf of one verified account.
  *
  * Flow for posting a Reel:
  *   1. createReelContainer()  — upload video URL + caption → returns creation_id
- *   2. getContainerStatus()   — validera containern INNAN den används (nytt)
+ *   2. getContainerStatus()   — validera containern INNAN den används
  *   3. pollUntilReady()       — wait for Instagram to process the video
  *   4. publishContainer()     — make it live on the profile
  *
- * Required env vars:
- *   INSTAGRAM_ACCESS_TOKEN   — long-lived token from Meta Developer portal
- *   INSTAGRAM_USER_ID        — numeric IG Business account ID (e.g. 17841437027967629)
+ * CREDENTIAL (project-scoped social credentials, 2026-09-14). Every call takes the
+ * credential it acts with as its first argument — an InstagramCredential resolved by
+ * lib/media/social-credentials.ts for the project whose content is being published,
+ * already confirmed by Instagram to be that project's bound account. This module
+ * reads no environment variable, keeps no account cache and has no default: it
+ * cannot choose an account, only use the one it is handed.
  *
  * Docs: https://developers.facebook.com/docs/instagram-api/reference/ig-user/media
- *
- * NOTE: Business/Creator accounts must use graph.facebook.com (not graph.instagram.com)
  *
  * SÄKERHET (ändrat 2026-07-19): access token skickas som Authorization-header,
  * ALDRIG som query-parameter. Tidigare låg token i URL:en, vilket innebar att
@@ -27,20 +28,16 @@ import {
   type MetaErrorPayload,
 } from './meta-errors'
 
-const FB_BASE = 'https://graph.facebook.com/v21.0'
-const IG_BASE = 'https://graph.instagram.com/v21.0'
-
-function requireEnv(key: string): string {
-  const val = process.env[key]
-  if (!val) throw new Error(`Missing env var: ${key}`)
-  return val
-}
-
-let cachedIgUserId: string | null = null
-
-/** Nollställer den modul-lokala user-id-cachen (används av tester). */
-export function __resetIgCache(): void {
-  cachedIgUserId = null
+/**
+ * What a Graph call for one verified Instagram account needs. A verified
+ * InstagramCredential from lib/media/social-credentials.ts satisfies it.
+ */
+export interface InstagramApiCredential {
+  /** The account's Instagram professional account id — the one its binding holds. */
+  accountId: string
+  token: string
+  /** graph.instagram.com for Instagram-login credentials, graph.facebook.com for Facebook-login. */
+  apiBase: string
 }
 
 /**
@@ -80,41 +77,6 @@ async function metaFetch<T>(
   return data
 }
 
-/**
- * Resolves the correct API base + IG user id for the current token.
- *
- * - IGAA token (Instagram Login, starts "IG") → graph.instagram.com, id from /me.
- *   These tokens are long-lived (60d) and decoupled from the Facebook web session,
- *   so they don't die when the FB session logs out.
- * - EAA token (Facebook Login) → graph.facebook.com with INSTAGRAM_USER_ID (legacy path).
- */
-async function resolveIgApi(): Promise<{ base: string; userId: string; token: string; isIgLogin: boolean }> {
-  const token = requireEnv('INSTAGRAM_ACCESS_TOKEN')
-  const isIgLogin = token.startsWith('IG')
-
-  if (!isIgLogin) {
-    return { base: FB_BASE, userId: requireEnv('INSTAGRAM_USER_ID'), token, isIgLogin }
-  }
-
-  let userId = cachedIgUserId
-  if (!userId) {
-    const data = await metaFetch<{ user_id?: string; id?: string }>(
-      `${IG_BASE}/me?fields=user_id`, token, 'me',
-    )
-    const resolved = data.user_id ?? data.id
-    if (!resolved) {
-      throw new MetaApiError({
-        message:    'Could not resolve Instagram user id',
-        httpStatus: 200,
-        endpoint:   'me',
-      })
-    }
-    userId = String(resolved)
-    cachedIgUserId = userId
-  }
-  return { base: IG_BASE, userId, token, isIgLogin }
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type MediaStatus =
@@ -135,13 +97,11 @@ export interface PublishResult {
 // ─── Step 1: Create media container ──────────────────────────────────────────
 
 export async function createReelContainer(
-  videoUrl: string,
-  caption: string,
+  credential:    InstagramApiCredential,
+  videoUrl:      string,
+  caption:       string,
   coverImageUrl?: string,
 ): Promise<string> {
-  const { base, userId, token, isIgLogin } = await resolveIgApi()
-  const fbPageId = process.env.FACEBOOK_PAGE_ID  // optional — FB cross-post (FB-login path only)
-
   const params = new URLSearchParams({
     media_type:    'REELS',
     video_url:     videoUrl,
@@ -149,18 +109,12 @@ export async function createReelContainer(
     share_to_feed: 'true',
   })
 
-  // Cross-post to Facebook Page automatically if FACEBOOK_PAGE_ID is set.
-  // Only supported on the Facebook-login path; graph.instagram.com rejects it.
-  if (fbPageId && !isIgLogin) {
-    params.set('cross_post_to_facebook_page_id', fbPageId)
-  }
-
   if (coverImageUrl) {
     params.set('thumb_offset', '0')
   }
 
   const data = await metaFetch<{ id?: string }>(
-    `${base}/${userId}/media`, token, 'media_create', { method: 'POST', body: params },
+    `${credential.apiBase}/${credential.accountId}/media`, credential.token, 'media_create', { method: 'POST', body: params },
   )
 
   if (!data.id) {
@@ -174,7 +128,7 @@ export async function createReelContainer(
   return data.id  // creation_id
 }
 
-// ─── Step 2a: Validera en befintlig container (NYTT) ─────────────────────────
+// ─── Step 2a: Validera en befintlig container ────────────────────────────────
 
 /**
  * Läser containerns aktuella status hos Meta. Rent GET-anrop — publicerar,
@@ -182,17 +136,16 @@ export async function createReelContainer(
  *
  * Detta är kärnan i fixen för incidenten 2026-07-19: tidigare återanvändes ett
  * sparat creation_id utan att någon någonsin frågade Meta om containern
- * fortfarande gick att publicera.
+ * fortfarande gick att publicera. Frågan ställs med kontots egen credential, så en
+ * container som skapats för ett annat konto svarar NOT_FOUND och återanvänds aldrig.
  *
  * Returnerar 'NOT_FOUND' om Meta inte känner till id:t (container städad bort),
  * och 'UNKNOWN' om svaret saknar status_code.
  */
-export async function getContainerStatus(creationId: string): Promise<ContainerStatus> {
-  const { base, token } = await resolveIgApi()
-
+export async function getContainerStatus(credential: InstagramApiCredential, creationId: string): Promise<ContainerStatus> {
   try {
     const data = await metaFetch<{ status_code?: MediaStatus; status?: string }>(
-      `${base}/${creationId}?fields=status_code,status`, token, 'container_status',
+      `${credential.apiBase}/${creationId}?fields=status_code,status`, credential.token, 'container_status',
     )
     return data.status_code ?? 'UNKNOWN'
   } catch (err) {
@@ -215,11 +168,10 @@ export async function getContainerStatus(creationId: string): Promise<ContainerS
  * Returnerar null om permalink inte kan resolvas — anroparen får då markera
  * posten som publicerad utan länk i stället för att publicera igen.
  */
-export async function resolvePublishedMedia(creationId: string): Promise<PublishResult | null> {
-  const { base, token } = await resolveIgApi()
+export async function resolvePublishedMedia(credential: InstagramApiCredential, creationId: string): Promise<PublishResult | null> {
   try {
     const data = await metaFetch<{ id?: string; permalink?: string }>(
-      `${base}/${creationId}?fields=id,permalink`, token, 'container_resolve',
+      `${credential.apiBase}/${creationId}?fields=id,permalink`, credential.token, 'container_resolve',
     )
     if (!data.id) return null
     return { mediaId: String(data.id), permalink: data.permalink }
@@ -231,18 +183,18 @@ export async function resolvePublishedMedia(creationId: string): Promise<Publish
 // ─── Step 2b: Poll until video is processed ──────────────────────────────────
 
 export async function pollUntilReady(
+  credential: InstagramApiCredential,
   creationId: string,
   timeoutMs  = 300_000,  // 5 minutes default; pass lower value for short-lived crons
   intervalMs = 5_000,
 ): Promise<void> {
-  const { base, token } = await resolveIgApi()
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, intervalMs))
 
     const data = await metaFetch<{ status_code?: MediaStatus; status?: string }>(
-      `${base}/${creationId}?fields=status_code,status`, token, 'container_poll',
+      `${credential.apiBase}/${creationId}?fields=status_code,status`, credential.token, 'container_poll',
     )
 
     const status = data.status_code
@@ -281,13 +233,11 @@ export async function pollUntilReady(
 
 // ─── Step 3: Publish container ────────────────────────────────────────────────
 
-export async function publishContainer(creationId: string): Promise<PublishResult> {
-  const { base, userId, token } = await resolveIgApi()
-
+export async function publishContainer(credential: InstagramApiCredential, creationId: string): Promise<PublishResult> {
   const params = new URLSearchParams({ creation_id: creationId })
 
   const data = await metaFetch<{ id?: string }>(
-    `${base}/${userId}/media_publish`, token, 'media_publish', { method: 'POST', body: params },
+    `${credential.apiBase}/${credential.accountId}/media_publish`, credential.token, 'media_publish', { method: 'POST', body: params },
   )
 
   if (!data.id) {
@@ -303,7 +253,7 @@ export async function publishContainer(creationId: string): Promise<PublishResul
   let permalink: string | undefined
   try {
     const mediaData = await metaFetch<{ permalink?: string }>(
-      `${base}/${data.id}?fields=permalink`, token, 'media_permalink',
+      `${credential.apiBase}/${data.id}?fields=permalink`, credential.token, 'media_permalink',
     )
     permalink = mediaData.permalink
   } catch {
@@ -316,19 +266,20 @@ export async function publishContainer(creationId: string): Promise<PublishResul
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 export async function postReelToInstagram(
+  credential:     InstagramApiCredential,
   videoUrl:       string,
   caption:        string,
   onProgress?:    (step: 'uploading' | 'processing' | 'publishing', pct: number) => void,
   pollTimeoutMs?: number,   // override poll timeout — use ~50000 for Vercel Hobby crons
 ): Promise<PublishResult> {
   onProgress?.('uploading', 10)
-  const creationId = await createReelContainer(videoUrl, caption)
+  const creationId = await createReelContainer(credential, videoUrl, caption)
 
   onProgress?.('processing', 30)
-  await pollUntilReady(creationId, pollTimeoutMs)
+  await pollUntilReady(credential, creationId, pollTimeoutMs)
 
   onProgress?.('publishing', 90)
-  const result = await publishContainer(creationId)
+  const result = await publishContainer(credential, creationId)
 
   onProgress?.('publishing', 100)
   return result

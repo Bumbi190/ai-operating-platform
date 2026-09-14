@@ -144,6 +144,36 @@ Slås på först när Cost Governance är verifierad. Ärver durability (Band 1)
 
 ---
 
+## Öppna åtaganden — beslutade slutmål som ännu inte är byggda
+
+### Projektspecifika YouTube-credentials med verifierad kanalbindning — slutmål (Y1 är en övergång)
+
+Beslut 2026-09-14 (projektbundna sociala credentials, 1A · 2Y1 · 3O1): relationen
+**Project → Platform → Verified External Account → Credential** gäller hela vägen, inte bara i
+Inställningar. Instagram och Facebook uppfyller den fullt ut. YouTube gör det bara under en
+uttrycklig övergång, **Y1**:
+
+- The Prompts YouTube-credential ligger kvar i Vercel (`YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`,
+  `YOUTUBE_REFRESH_TOKEN`) och får användas **endast** av The Prompts kanalbindning
+  (`social_account_bindings.credential_source = 'platform_env_transitional'`, unik per plattform i
+  databasen). Alla andra projekt får YouTube fail closed.
+- Med bara uppladdningsbehörighet kan kanalen inte läsas **före** en uppladdning. Kanalen
+  kontrolleras då mot uppladdningssvaret, och en avvikelse spärrar bindningen permanent.
+  Kvarvarande risk: en uppladdning om Vercel-tokenet byts mot en annan kanal.
+
+**Y1 får inte bli permanent arkitektur.** Slutmålet byggs som ett eget slice:
+
+1. YouTube-credentials lagrade **per projekt** — aldrig i plattformens miljövariabler.
+2. OAuth-anslutning per projekt i Inställningar (Google-samtycke, redirect-URI registrerad i
+   Google Cloud, scopes `youtube.upload` + `youtube.readonly`), där kanalen **verifieras hos YouTube
+   före varje uppladdning** och binds enligt samma regel som övriga plattformar: en kanal tillhör
+   ett projekt (O1).
+3. The Prompt flyttas till en egen projektcredential; `YOUTUBE_REFRESH_TOKEN` tas bort ur
+   plattformens miljö och credential-källan `platform_env_transitional` avvecklas.
+4. Revisionsloggen (`platform_credential_events`) utökas till YouTube.
+
+---
+
 ## Långsiktiga designprinciper (styrande)
 
 Dessa gäller framtida design och vägs in i varje band. De omordnar inte den låsta

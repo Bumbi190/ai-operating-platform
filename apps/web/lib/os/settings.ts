@@ -2,60 +2,51 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
+import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
+import { listActiveBindings, type BindingList } from '@/lib/media/social-bindings'
 import {
   ACCOUNT_SIGN_IN_METHOD,
   CHANNEL_LABELS,
+  type AccountVerification,
   type ChannelId,
-  type CredentialSource,
-  type ReplaceableChannelId,
+  type CredentialHealthStatus,
+  type CredentialState,
   type ReplacementCapability,
-  type TokenHealthStatus,
 } from './settings-shared'
 
 /**
  * Inställningar — the read model behind vNext `/settings`.
  *
- * AN OPERATOR SURFACE, NOT AN AUTHORITY SOURCE. Settings shows the account, each
- * publishing channel's credential status and which platform configuration is
- * present. The one write it offers is the existing `POST /api/media/token`, and
- * whether it is offered is `capability`: this session evaluated through the same
- * two checks the route makes — the canonical platform-operator predicate, then
- * ownership of the default social project. The route re-checks both every time.
+ * AN OPERATOR SURFACE, NOT AN AUTHORITY SOURCE. Settings shows the account, every
+ * project this session owns with its social accounts — Project → Platform → Verified
+ * External Account → Credential — and which platform configuration is present. Its
+ * writes are the existing `POST /api/media/token` and
+ * `POST /api/media/social-accounts/verify`, offered only when `capability` says this
+ * session passes the canonical platform-operator predicate; each route re-checks the
+ * operator and ownership of the project it is given, every time.
+ *
+ * PROJECT-SCOPED. Every read is filtered to the projects `resolveProjectAccess()` says
+ * this session owns, and nothing is read for any other project. No project is special:
+ * The Prompt, Familje-Stunden, GainPilot and every future project are shown the same way.
  *
  * CREDENTIAL-BLIND. Every read selects metadata only:
- *   platform_tokens            platform, token_type, expires_at, refreshed_at —
- *                              never access_token. The column is NOT NULL, so a
- *                              row existing is itself the proof a credential is
- *                              stored.
- *   token_health               platform, status, days_left, expires_at,
- *                              last_verified_at, last_refreshed_at — never
- *                              last_error, which can quote a provider's answer.
- *   platform_credential_events platform, outcome, occurred_at.
+ *   social_account_bindings    the bound account: id, attested name, verification,
+ *                              provenance and block — the table holds no credential.
+ *   platform_tokens            project_id, platform, token_type, account_id, expires_at,
+ *                              refreshed_at — never access_token. The column is NOT
+ *                              NULL, so a row is itself the proof a credential is stored.
+ *   social_credential_health   closed status codes and bounded ids — never text.
+ *   platform_credential_events project_id, platform, outcome, occurred_at, binding_action.
  * Environment variables are read as presence booleans. No value leaves this file.
  *
- * SCOPE. `resolveProjectAccess()` resolves the session's projects first. The two
- * project-dimensioned reads run only when the default social project is among
- * them, and are filtered to that project; otherwise they are not made at all.
- * `token_health` is platform-level and read as every attention surface reads it.
- *
  * UNREADABLE IS NOT MISSING, AND ABSENT IS NOT HEALTHY. A failed read renders as
- * unreadable; a platform with no token-check row renders as unchecked.
+ * unreadable; a channel with no verification row renders as unchecked.
  */
 
 // ── Contract ─────────────────────────────────────────────────────────────────
 
-/** `DEFAULT_SOCIAL_PROJECT_SLUG` in lib/media/token-store.ts — the project the route writes to. */
-export const SOCIAL_PROJECT_SLUG = 'ai-media-automation'
-
-/** `ENV_VAR_MAP` in lib/media/token-store.ts — the fallback getToken() reads. */
-export const ENV_FALLBACK: Record<ReplaceableChannelId, string> = {
-  instagram: 'INSTAGRAM_ACCESS_TOKEN',
-  facebook: 'FACEBOOK_PAGE_ACCESS_TOKEN',
-}
-
-/** The OAuth variables lib/media/youtube.ts publishes with. */
+/** The OAuth variables the YouTube Y1 transition publishes with. */
 export const YOUTUBE_OAUTH_VARS = ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET', 'YOUTUBE_REFRESH_TOKEN'] as const
 
 /**
@@ -68,32 +59,57 @@ export const PLATFORM_CONFIG: readonly { id: string; label: string; purpose: str
   { id: 'openai', label: 'OpenAI', purpose: 'Chattsvar, bildgenerering (gpt-image-1) och uppläsning', vars: ['OPENAI_API_KEY'] },
   { id: 'ideogram', label: 'Ideogram', purpose: 'Bildgenerering', vars: ['IDEOGRAM_API_KEY'] },
   { id: 'elevenlabs', label: 'ElevenLabs', purpose: 'Röst och musik i mediapipelinen', vars: ['ELEVENLABS_API_KEY'] },
-  { id: 'meta', label: 'Meta-app', purpose: 'Tokenväxling, token-kontroll och Instagram-webhooks', vars: ['META_APP_ID', 'META_APP_SECRET'] },
-  { id: 'youtube', label: 'YouTube', purpose: 'Publicering (OAuth) och statistik (API-nyckel)', vars: [...YOUTUBE_OAUTH_VARS, 'YOUTUBE_API_KEY'] },
+  { id: 'meta', label: 'Meta-app', purpose: 'Tokenväxling och Instagram-webhooks', vars: ['META_APP_ID', 'META_APP_SECRET'] },
+  { id: 'youtube', label: 'YouTube', purpose: 'Publicering under övergången (OAuth) och statistik (API-nyckel)', vars: [...YOUTUBE_OAUTH_VARS, 'YOUTUBE_API_KEY'] },
   { id: 'brevo', label: 'Brevo', purpose: 'E-postutskick', vars: ['BREVO_API_KEY'] },
   { id: 'stripe', label: 'Stripe', purpose: 'Intäktsmått (begränsad nyckel)', vars: ['STRIPE_RESTRICTED_KEY'] },
   { id: 'pixabay', label: 'Pixabay', purpose: 'Musik till videor', vars: ['PIXABAY_API_KEY'] },
   { id: 'cron', label: 'Schemaläggning', purpose: 'Autentiserar de schemalagda jobben', vars: ['CRON_SECRET'] },
 ]
 
+const CHANNEL_ORDER: readonly ChannelId[] = ['instagram', 'facebook', 'youtube']
+
+export interface SettingsBoundAccount {
+  externalAccountId: string
+  /** The name a platform attested. Null until one has — the surface says so instead of guessing. */
+  label: string | null
+  verification: AccountVerification
+  verifiedAt: string
+  blocked: boolean
+}
+
 export interface SettingsChannel {
   id: ChannelId
   label: string
-  /** Instagram and Facebook are replaced through the route; YouTube is not replaceable here. */
+  /** Instagram and Facebook credentials are stored per project and replaceable here; YouTube (Y1) is not. */
   replaceable: boolean
-  source: CredentialSource
-  /** platform_tokens metadata, when a credential is stored. */
-  stored: { tokenType: string | null; expiresAt: string | null; refreshedAt: string | null } | null
+  /** The project's verified external account on this platform. */
+  account: { state: 'bound'; bound: SettingsBoundAccount } | { state: 'none' } | { state: 'unreadable' }
+  credential: {
+    state: CredentialState
+    expiresAt: string | null
+    refreshedAt: string | null
+    /** Whether the stored credential's recorded account is the bound account; null when either is unknown. */
+    matchesBinding: boolean | null
+  }
   health: {
     readable: boolean
-    status: TokenHealthStatus
-    daysLeft: number | null
+    status: CredentialHealthStatus
+    identityVerified: boolean
+    checkedAt: string | null
     expiresAt: string | null
-    lastVerifiedAt: string | null
+    daysLeft: number | null
     lastRefreshedAt: string | null
   }
-  /** The latest `replaced` event. `not_read` when the project is not this session's to read. */
-  lastReplacement: { state: 'ok' | 'error' | 'not_read' | 'not_applicable'; at: string | null }
+  /** The latest audited replacement for this project and platform. */
+  lastReplacement: { state: 'ok' | 'error'; at: string | null; bindingAction: string | null }
+}
+
+export interface SettingsProject {
+  id: string
+  name: string
+  slug: string | null
+  channels: SettingsChannel[]
 }
 
 export interface SettingsConfigItem {
@@ -116,34 +132,36 @@ export interface SettingsModel {
   generatedAt: string
   account: { email: string | null; userId: string; signInMethod: string }
   capability: ReplacementCapability
-  channels: SettingsChannel[]
+  projects: { state: 'ok'; items: SettingsProject[] } | { state: 'error' }
   warnings: SettingsWarning[]
   config: SettingsConfigItem[]
 }
 
 // ── Raw shapes ───────────────────────────────────────────────────────────────
 
-export type Read<T> = { ok: true; rows: T[] } | { ok: false; reason: 'error' | 'not_read' }
+export type Read<T> = { ok: true; rows: T[] } | { ok: false }
 
+export interface RawProject { id?: unknown; name?: unknown; slug?: unknown }
 export interface RawStoredToken {
-  platform?: string | null; token_type?: string | null; expires_at?: string | null; refreshed_at?: string | null
+  project_id?: unknown; platform?: unknown; token_type?: unknown; account_id?: unknown
+  expires_at?: unknown; refreshed_at?: unknown
 }
-export interface RawTokenHealth {
-  platform?: string | null; status?: string | null; days_left?: number | null
-  expires_at?: string | null; last_verified_at?: string | null; last_refreshed_at?: string | null
+export interface RawHealth {
+  project_id?: unknown; platform?: unknown; status?: unknown; identity_verified?: unknown
+  verified_account_id?: unknown; checked_at?: unknown; expires_at?: unknown; days_left?: unknown; last_refreshed_at?: unknown
 }
-export interface RawReplacement { platform?: string | null; outcome?: string | null; occurred_at?: string | null }
-
-/** The default social project, from this session's point of view. */
-export type SocialProjectState = 'owned' | 'foreign' | 'missing' | 'error'
+export interface RawReplacement {
+  project_id?: unknown; platform?: unknown; outcome?: unknown; occurred_at?: unknown; binding_action?: unknown
+}
 
 export interface AssembleSettingsInput {
   now: string
   account: { email: string | null; userId: string }
   operatorOk: boolean
-  socialProject: SocialProjectState
+  projects: Read<RawProject>
+  bindings: BindingList
   storedTokens: Read<RawStoredToken>
-  tokenHealth: Read<RawTokenHealth>
+  health: Read<RawHealth>
   replacements: Read<RawReplacement>
   /** Presence only: variable name → whether it holds a non-empty value. */
   env: Record<string, boolean>
@@ -156,101 +174,154 @@ const text = (v: unknown): string | null => {
   const t = v.trim()
   return t === '' ? null : t
 }
-const KNOWN_HEALTH: readonly TokenHealthStatus[] = ['ok', 'warning', 'expired', 'error']
+
+const KNOWN_HEALTH: readonly CredentialHealthStatus[] =
+  ['ok', 'warning', 'expired', 'account_mismatch', 'binding_blocked', 'credential_missing', 'verification_failed']
+
+const HEALTH_ATTENTION: Partial<Record<CredentialHealthStatus, { title: string; detail: string }>> = {
+  expired: { title: 'credentialen är ogiltig eller har gått ut', detail: 'Enligt den senaste verifieringen. Inget publiceras på kanalen förrän den ersätts.' },
+  account_mismatch: { title: 'credentialen tillhör inte projektets konto', detail: 'Plattformen svarade med ett annat konto. Inget publiceras med den.' },
+  credential_missing: { title: 'credential saknas för det kopplade kontot', detail: 'Inget publiceras på kanalen förrän en credential läggs till.' },
+  verification_failed: { title: 'credentialen kunde inte verifieras vid senaste kontrollen', detail: 'Plattformen gick inte att fråga. Nästa kontroll försöker igen.' },
+}
 
 export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
-  // The route's order: the platform operator first, then the project it writes to.
+  // The operator predicate is what both credential routes check first; ownership is
+  // implied by the project list and re-checked by the routes per project.
   const capability: ReplacementCapability =
-    !input.operatorOk ? { allowed: false, reason: 'operator_required' }
-    : input.socialProject === 'error' ? { allowed: false, reason: 'project_unreadable' }
-    : input.socialProject === 'missing' ? { allowed: false, reason: 'project_missing' }
-    : input.socialProject === 'foreign' ? { allowed: false, reason: 'ownership_required' }
-    : { allowed: true }
+    input.operatorOk ? { allowed: true } : { allowed: false, reason: 'operator_required' }
 
-  const health = (id: ChannelId): SettingsChannel['health'] => {
-    const none = { daysLeft: null, expiresAt: null, lastVerifiedAt: null, lastRefreshedAt: null }
-    if (!input.tokenHealth.ok) return { readable: false, status: 'unchecked', ...none }
-    const row = input.tokenHealth.rows.find((r) => text(r.platform) === id)
-    if (!row) return { readable: true, status: 'unchecked', ...none }
-    const raw = text(row.status)
-    return {
-      readable: true,
-      status: raw && KNOWN_HEALTH.includes(raw as TokenHealthStatus) ? (raw as TokenHealthStatus) : 'unknown',
-      daysLeft: typeof row.days_left === 'number' && Number.isFinite(row.days_left) ? row.days_left : null,
-      expiresAt: text(row.expires_at),
-      lastVerifiedAt: text(row.last_verified_at),
-      lastRefreshedAt: text(row.last_refreshed_at),
-    }
-  }
+  const warnings: SettingsWarning[] = []
+  const youtubeVarsSet = YOUTUBE_OAUTH_VARS.filter((name) => input.env[name]).length
 
-  const replaceable = (id: ReplaceableChannelId): SettingsChannel => {
-    const row = input.storedTokens.ok ? input.storedTokens.rows.find((r) => text(r.platform) === id) ?? null : null
-    const storedUnreadable = !input.storedTokens.ok && input.storedTokens.reason === 'error'
-    const source: CredentialSource =
-      input.socialProject === 'error' || storedUnreadable ? 'unreadable'
-      : input.socialProject === 'foreign' ? 'out_of_scope'
-      : row ? 'stored'
-      : input.env[ENV_FALLBACK[id]] ? 'environment'
-      : 'missing'
-    const lastReplacement: SettingsChannel['lastReplacement'] = input.replacements.ok
-      ? {
-          state: 'ok',
-          at: text(input.replacements.rows.find((r) => text(r.platform) === id && text(r.outcome) === 'replaced')?.occurred_at),
+  const channelFor = (projectId: string, projectName: string, platform: ChannelId): SettingsChannel => {
+    const binding = input.bindings.ok
+      ? input.bindings.bindings.find((b) => b.projectId === projectId && b.platform === platform) ?? null
+      : null
+    const account: SettingsChannel['account'] = !input.bindings.ok
+      ? { state: 'unreadable' }
+      : binding
+        ? {
+            state: 'bound',
+            bound: {
+              externalAccountId: binding.externalAccountId,
+              label: binding.accountLabel,
+              verification: binding.verification,
+              verifiedAt: binding.verifiedAt,
+              blocked: binding.blockedAt !== null,
+            },
+          }
+        : { state: 'none' }
+
+    let credential: SettingsChannel['credential']
+    if (platform === 'youtube') {
+      const state: CredentialState = !input.bindings.ok ? 'unreadable'
+        : binding?.credentialSource === 'platform_env_transitional'
+          ? (youtubeVarsSet === YOUTUBE_OAUTH_VARS.length ? 'environment_transitional' : 'environment_incomplete')
+          : 'not_available'
+      credential = { state, expiresAt: null, refreshedAt: null, matchesBinding: null }
+    } else if (!input.storedTokens.ok) {
+      credential = { state: 'unreadable', expiresAt: null, refreshedAt: null, matchesBinding: null }
+    } else {
+      const row = input.storedTokens.rows.find((r) => text(r.project_id) === projectId && text(r.platform) === platform)
+      if (!row) {
+        credential = { state: 'missing', expiresAt: null, refreshedAt: null, matchesBinding: null }
+      } else {
+        const recorded = text(row.account_id)
+        credential = {
+          state: 'stored',
+          expiresAt: text(row.expires_at),
+          refreshedAt: text(row.refreshed_at),
+          matchesBinding: recorded && binding ? recorded === binding.externalAccountId : null,
         }
-      : { state: input.replacements.reason, at: null }
+      }
+    }
+
+    const healthRow = input.health.ok
+      ? input.health.rows.find((r) => text(r.project_id) === projectId && text(r.platform) === platform) ?? null
+      : null
+    const rawStatus = text(healthRow?.status)
+    const health: SettingsChannel['health'] = {
+      readable: input.health.ok,
+      status: !input.health.ok || !healthRow ? 'unchecked'
+        : rawStatus && KNOWN_HEALTH.includes(rawStatus as CredentialHealthStatus) ? rawStatus as CredentialHealthStatus
+        : 'unknown',
+      identityVerified: healthRow?.identity_verified === true,
+      checkedAt: text(healthRow?.checked_at),
+      expiresAt: text(healthRow?.expires_at),
+      daysLeft: typeof healthRow?.days_left === 'number' && Number.isFinite(healthRow.days_left) ? healthRow.days_left : null,
+      lastRefreshedAt: text(healthRow?.last_refreshed_at),
+    }
+
+    const replacement = input.replacements.ok
+      ? input.replacements.rows.find((r) =>
+          text(r.project_id) === projectId && text(r.platform) === platform && text(r.outcome) === 'replaced') ?? null
+      : null
+    const lastReplacement: SettingsChannel['lastReplacement'] = input.replacements.ok
+      ? { state: 'ok', at: text(replacement?.occurred_at), bindingAction: text(replacement?.binding_action) }
+      : { state: 'error', at: null, bindingAction: null }
+
+    // Every warning names the project, the channel and the stored condition that produced it.
+    const who = `${projectName} · ${CHANNEL_LABELS[platform]}`
+    if (binding?.blockedAt) {
+      warnings.push({ id: `blocked:${projectId}:${platform}`, tone: 'attention',
+        title: `${who}: kontobindningen är spärrad`,
+        detail: 'Plattformen rapporterade ett annat konto än det bundna. Inget publiceras på kanalen förrän den binds om.' })
+    }
+    if (credential.matchesBinding === false) {
+      warnings.push({ id: `mismatch:${projectId}:${platform}`, tone: 'attention',
+        title: `${who}: den sparade credentialn är registrerad för ett annat konto än projektets`,
+        detail: 'Inget publiceras med den. Ersätt den med en credential för projektets konto.' })
+    }
+    const attention = health.readable ? HEALTH_ATTENTION[health.status] : undefined
+    if (attention) {
+      warnings.push({ id: `health:${projectId}:${platform}`, tone: 'attention', title: `${who}: ${attention.title}`, detail: attention.detail })
+    } else if (health.status === 'warning') {
+      warnings.push({ id: `health:${projectId}:${platform}`, tone: 'attention',
+        title: `${who}: credentialen löper snart ut`,
+        detail: health.daysLeft != null ? `${health.daysLeft} dagar kvar vid senaste kontroll.` : null })
+    }
+
     return {
-      id,
-      label: CHANNEL_LABELS[id],
-      replaceable: true,
-      source,
-      stored: row ? { tokenType: text(row.token_type), expiresAt: text(row.expires_at), refreshedAt: text(row.refreshed_at) } : null,
-      health: health(id),
+      id: platform,
+      label: CHANNEL_LABELS[platform],
+      replaceable: platform !== 'youtube',
+      account,
+      credential,
+      health,
       lastReplacement,
     }
   }
 
-  const youtubeSet = YOUTUBE_OAUTH_VARS.filter((name) => input.env[name]).length
-  const channels: SettingsChannel[] = [
-    replaceable('instagram'),
-    replaceable('facebook'),
-    {
-      id: 'youtube',
-      label: CHANNEL_LABELS.youtube,
-      replaceable: false,
-      source: youtubeSet === YOUTUBE_OAUTH_VARS.length ? 'vercel' : youtubeSet === 0 ? 'missing' : 'vercel_incomplete',
-      stored: null,
-      health: health('youtube'),
-      lastReplacement: { state: 'not_applicable', at: null },
-    },
-  ]
+  let projects: SettingsModel['projects']
+  if (!input.projects.ok) {
+    projects = { state: 'error' }
+    warnings.push({ id: 'unreadable:projects', tone: 'unreadable',
+      title: 'Dina projekt kunde inte läsas', detail: 'Läsfel — inga konton eller credentials visas, vilket inte betyder att de saknas.' })
+  } else {
+    const items: SettingsProject[] = []
+    for (const raw of input.projects.rows) {
+      const id = text(raw.id)
+      if (!id) continue
+      const name = text(raw.name) ?? 'Namnlöst projekt'
+      items.push({ id, name, slug: text(raw.slug), channels: CHANNEL_ORDER.map((platform) => channelFor(id, name, platform)) })
+    }
+    projects = { state: 'ok', items }
+  }
 
-  // Every warning names the stored condition that produced it.
-  const warnings: SettingsWarning[] = []
-  for (const channel of channels) {
-    const h = channel.health
-    if (h.status === 'expired') {
-      warnings.push({ id: `health:${channel.id}`, tone: 'attention',
-        title: `${channel.label}: tokenet är ogiltigt, utgånget eller saknas`,
-        detail: 'Enligt den senaste token-kontrollen. Publicering till kanalen misslyckas tills det åtgärdas.' })
-    } else if (h.status === 'warning') {
-      warnings.push({ id: `health:${channel.id}`, tone: 'attention',
-        title: `${channel.label}: tokenet löper snart ut`,
-        detail: h.daysLeft != null ? `${h.daysLeft} dagar kvar vid senaste kontroll.` : null })
-    } else if (h.status === 'error') {
-      warnings.push({ id: `health:${channel.id}`, tone: 'attention',
-        title: `${channel.label}: token-kontrollen rapporterade fel`, detail: null })
-    }
-    if (channel.source === 'unreadable') {
-      warnings.push({ id: `unreadable:${channel.id}`, tone: 'unreadable',
-        title: `${channel.label}: lagrad metadata kunde inte läsas`,
-        detail: 'Läsfel — det betyder inte att tokenet saknas.' })
-    }
+  if (!input.bindings.ok) {
+    warnings.push({ id: 'unreadable:bindings', tone: 'unreadable',
+      title: 'Kontobindningarna kunde inte läsas', detail: 'Läsfel — det betyder inte att projekten saknar konton.' })
   }
-  if (!input.tokenHealth.ok) {
-    warnings.push({ id: 'unreadable:token_health', tone: 'unreadable',
-      title: 'Token-kontrollen kunde inte läsas', detail: 'Läsfel — inte ett friskt resultat.' })
+  if (!input.storedTokens.ok) {
+    warnings.push({ id: 'unreadable:credentials', tone: 'unreadable',
+      title: 'Lagrad credential-metadata kunde inte läsas', detail: 'Läsfel — det betyder inte att credentials saknas.' })
   }
-  if (!input.replacements.ok && input.replacements.reason === 'error') {
+  if (!input.health.ok) {
+    warnings.push({ id: 'unreadable:health', tone: 'unreadable',
+      title: 'Verifieringarna kunde inte läsas', detail: 'Läsfel — inte ett friskt resultat.' })
+  }
+  if (!input.replacements.ok) {
     warnings.push({ id: 'unreadable:replacements', tone: 'unreadable',
       title: 'Revisionsloggen för ersättningar kunde inte läsas', detail: null })
   }
@@ -267,7 +338,7 @@ export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
     generatedAt: input.now,
     account: { email: input.account.email, userId: input.account.userId, signInMethod: ACCOUNT_SIGN_IN_METHOD },
     capability,
-    channels,
+    projects,
     warnings,
     config,
   }
@@ -278,7 +349,6 @@ export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
 /** Every variable the model reports on, as presence only. The values never leave this function. */
 export function envPresence(): Record<string, boolean> {
   const names = new Set<string>([
-    ...Object.values(ENV_FALLBACK),
     ...YOUTUBE_OAUTH_VARS,
     ...PLATFORM_CONFIG.flatMap((item) => item.vars),
   ])
@@ -292,12 +362,15 @@ export function envPresence(): Record<string, boolean> {
 
 type QueryResult = { data: unknown; error: unknown }
 
-function toRead<T>(res: PromiseSettledResult<QueryResult>): Read<T> {
-  if (res.status !== 'fulfilled' || res.value.error) return { ok: false, reason: 'error' }
-  return { ok: true, rows: (res.value.data ?? []) as T[] }
+async function settle<T>(query: PromiseLike<QueryResult>): Promise<Read<T>> {
+  try {
+    const { data, error } = await query
+    if (error) return { ok: false }
+    return { ok: true, rows: (Array.isArray(data) ? data : []) as T[] }
+  } catch {
+    return { ok: false }
+  }
 }
-
-const NOT_READ = { ok: false, reason: 'not_read' } as const
 
 /**
  * Read the settings for this session. Returns `null` when the session or its
@@ -315,50 +388,42 @@ export async function loadSettings(): Promise<SettingsModel | null> {
   // The canonical predicate, evaluated for this session. Capability only.
   const operator = await resolvePlatformOperator()
   const db = createAdminClient()
+  const owned = access.allowedProjectIds
+  const nothing: PromiseLike<QueryResult> = Promise.resolve({ data: [], error: null })
 
-  let socialProject: SocialProjectState = 'error'
-  let projectId: string | null = null
-  try {
-    const { data, error } = await (db.from('projects') as any)
-      .select('id').eq('slug', SOCIAL_PROJECT_SLUG).maybeSingle()
-    if (!error) {
-      projectId = text((data as { id?: unknown } | null)?.id)
-      socialProject = !projectId ? 'missing'
-        : assertProjectAllowed(projectId, access.allowedProjectIds) ? 'owned'
-        : 'foreign'
-    }
-  } catch {
-    socialProject = 'error'
-  }
-
-  const owned = socialProject === 'owned' && projectId !== null
-  const skipped: Promise<QueryResult> = Promise.resolve({ data: [], error: null })
-
-  const [storedRes, healthRes, replacementsRes] = await Promise.allSettled([
-    owned
+  const [projects, storedTokens, health, replacements, bindings] = await Promise.all([
+    settle<RawProject>(owned.length
+      ? (db.from('projects') as any).select('id, name, slug').in('id', owned).order('created_at', { ascending: true })
+      : nothing),
+    settle<RawStoredToken>(owned.length
       ? (db.from('platform_tokens') as any)
-          .select('platform, token_type, expires_at, refreshed_at')
-          .eq('project_id', projectId).in('platform', ['instagram', 'facebook'])
-      : skipped,
-    (db.from('token_health') as any)
-      .select('platform, status, days_left, expires_at, last_verified_at, last_refreshed_at'),
-    owned
-      ? // The table is newer than the generated database types; cast the client, as its writer does.
-        (db as any).from('platform_credential_events')
-          .select('platform, outcome, occurred_at')
-          .eq('project_id', projectId).eq('outcome', 'replaced')
-          .order('occurred_at', { ascending: false }).limit(20)
-      : skipped,
+          .select('project_id, platform, token_type, account_id, expires_at, refreshed_at')
+          .in('project_id', owned).in('platform', ['instagram', 'facebook'])
+      : nothing),
+    // The tables are newer than the generated database types; cast the client, as their writers do.
+    settle<RawHealth>(owned.length
+      ? (db as any).from('social_credential_health')
+          .select('project_id, platform, status, identity_verified, verified_account_id, checked_at, expires_at, days_left, last_refreshed_at')
+          .in('project_id', owned)
+      : nothing),
+    settle<RawReplacement>(owned.length
+      ? (db as any).from('platform_credential_events')
+          .select('project_id, platform, outcome, occurred_at, binding_action')
+          .in('project_id', owned).eq('outcome', 'replaced')
+          .order('occurred_at', { ascending: false }).limit(200)
+      : nothing),
+    listActiveBindings(owned, db),
   ])
 
   return assembleSettings({
     now: new Date().toISOString(),
     account: { email: user.email ?? null, userId: user.id },
     operatorOk: operator.ok,
-    socialProject,
-    storedTokens: owned ? toRead<RawStoredToken>(storedRes) : NOT_READ,
-    tokenHealth: toRead<RawTokenHealth>(healthRes),
-    replacements: owned ? toRead<RawReplacement>(replacementsRes) : NOT_READ,
+    projects,
+    bindings,
+    storedTokens,
+    health,
+    replacements,
     env: envPresence(),
   })
 }

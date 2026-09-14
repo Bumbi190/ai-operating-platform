@@ -1,18 +1,17 @@
 /**
- * lib/media/social-destination.ts — which project the platform's social
- * channels belong to.
+ * lib/media/social-destination.ts — whose content the platform's machine
+ * publishers may post.
  *
- * The media publishers post with the PLATFORM's credentials, not the script's:
- * instagram.ts and facebook.ts read INSTAGRAM_ACCESS_TOKEN and
- * FACEBOOK_PAGE_ACCESS_TOKEN (which cron/publish refreshes from the default
- * social project's platform_tokens rows), and youtube.ts uses the platform's
- * YouTube OAuth client. token-store.ts binds those credentials to exactly one
- * project, The Prompt, and /api/media/token lets only that project's owner
- * replace them.
+ * CREDENTIALS BELONG TO THE CONTENT'S OWN PROJECT (project-scoped social
+ * credentials, 2026-09-14). Every publisher is handed a credential resolved through
+ * the script's own project's verified account binding (lib/media/social-credentials.ts:
+ * Project → Platform → Verified External Account → Credential). No publisher reads an
+ * environment token or falls back to a default project, so no project's content can
+ * reach another project's account, whatever this constant says.
  *
- * So a post's destination is not "wherever the script lives". It is this one
- * project's accounts, and posting there is platform destination authority
- * (9X; 9J: authorise the destination, not just the source):
+ * PUBLISHING AUTHORITY IS UNCHANGED. This constant still decides whose content is
+ * published at all, and posting is destination authority (9X; 9J: authorise the
+ * destination, not just the source):
  *
  *   • a person needs platform operator authority (publish/instagram, breaking);
  *   • a machine principal — the schedule, pipeline-retry, a bounded breaking hop —

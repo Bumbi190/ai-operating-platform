@@ -297,6 +297,96 @@
 .diagnosticsSummary { cursor: pointer; font-size: 0.6875rem; font-weight: 600; color: rgb(var(--foreground-rgb) / 0.7); }
 .varList { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; }
 
+/* ── Projects and their accounts ──────────────────────────────────────────────
+   One block per project, so a credential is never read or offered outside the
+   project it belongs to. The bound account leads each channel: who it is comes
+   before whether its credential works. */
+
+.projects { list-style: none; margin: 0.75rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
+.project {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.1);
+  background: rgb(var(--foreground-rgb) / 0.012);
+  min-width: 0;
+}
+.projectHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.projectTitle { margin: 0; font-size: 0.9375rem; font-weight: 650; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
+.project .channels { margin-top: 0.25rem; }
+
+.account { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.accountLine { margin: 0; font-size: 0.8125rem; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
+.accountNoun {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.accountName { font-weight: 600; }
+.accountMeta { margin: 0; font-size: 0.6875rem; color: rgb(var(--foreground-rgb) / 0.55); overflow-wrap: anywhere; }
+.account[data-verification='runtime_evidence'] .accountMeta { color: rgb(251 191 36 / 0.9); }
+.account[data-blocked='true'] .accountMeta { color: rgb(248 113 113); }
+
+.channel[data-health='account_mismatch'],
+.channel[data-health='binding_blocked'],
+.channel[data-health='credential_missing'] { border-left-color: rgb(248 113 113 / 0.75); }
+.channel[data-health='verification_failed'] { border-left-color: rgb(251 191 36 / 0.75); }
+.healthValue[data-status='account_mismatch'],
+.healthValue[data-status='binding_blocked'],
+.healthValue[data-status='credential_missing'] { color: rgb(248 113 113); }
+.healthValue[data-status='verification_failed'] { color: rgb(251 191 36); }
+
+.chip[data-credential='stored'],
+.chip[data-credential='environment_transitional'] { color: rgb(var(--omnira-cyan-rgb)); border-color: rgb(var(--omnira-cyan-rgb) / 0.32); }
+.chip[data-credential='environment_incomplete']   { color: rgb(251 191 36); border-color: rgb(251 191 36 / 0.35); }
+.chip[data-credential='missing']                  { color: rgb(248 113 113); border-color: rgb(248 113 113 / 0.35); }
+.chip[data-credential='unreadable']               { color: rgb(var(--omnira-violet-rgb)); border-color: rgb(var(--omnira-violet-rgb) / 0.35); }
+
+.formTitle { margin: 0; font-size: 0.75rem; font-weight: 650; color: hsl(var(--foreground)); }
+.target { margin: 0; font-size: 0.75rem; line-height: 1.45; color: rgb(var(--foreground-rgb) / 0.8); overflow-wrap: anywhere; }
+.pageInput {
+  width: 12rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.14);
+  background: rgb(var(--foreground-rgb) / 0.035);
+  color: hsl(var(--foreground));
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.75rem;
+}
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: rgb(var(--foreground-rgb) / 0.8);
+}
+.checkbox input { margin-top: 0.1rem; }
+
+.verify { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.secondary {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.18);
+  background: rgb(var(--foreground-rgb) / 0.04);
+  color: hsl(var(--foreground));
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+.pageInput:focus-visible,
+.secondary:focus-visible,
+.checkbox input:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.6); outline-offset: 2px; }
+.outcome[data-kind='confirmed']   { color: rgb(var(--omnira-cyan-rgb)); }
+.outcome[data-kind='unconfirmed'] { color: rgb(251 191 36); }
+
 /* ── Narrow desktop ───────────────────────────────────────────────────────── */
 
 @media (max-width: 1100px) {

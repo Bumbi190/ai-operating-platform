@@ -1,48 +1,86 @@
 /**
- * POST /api/media/token  — spara ett nytt plattforms-token (inloggad operatör)
+ * POST /api/media/token — store ONE project's Instagram or Facebook credential.
  *
- * Body: { platform: 'instagram' | 'facebook', token: string, expires_days?: number }
+ * Body: {
+ *   project_id:      uuid                      — the project the credential is for (required)
+ *   platform:        'instagram' | 'facebook'
+ *   token:           string
+ *   expires_days?:   number                    — Instagram: validity to record (absent/null/0 = none)
+ *   page_id?:        string                    — Facebook: the page, when the project has no Facebook
+ *                                                binding yet or the operator changes page
+ *   change_account?: boolean                   — an explicit operator account change
+ * }
  *
- * Används för att lägga in ett nytt token med rätt scopes (t.ex. efter att du
- * lagt till instagram_manage_insights) utan att röra SQL. Sparas i
- * platform_tokens, som har företräde framför env-variabler.
+ * THE RELATION (project-scoped social credentials, 2026-09-14):
+ *   Project → Platform → Verified External Account → Credential
+ * A credential is stored only for a project the operator owns, only after the
+ * platform itself has said which account it belongs to, and only when that account
+ * is — or explicitly becomes — the project's verified binding.
  *
- * Facebook: det inklistrade (kortlivade) USER-tokenet växlas automatiskt till ett
- * LÅNGLIVAT, icke-utgående SID-token, och read_insights verifieras — så att både
- * postning och insights funkar utan att man rör Vercel-env eller pillar med tokens.
+ * ORDER. Each step runs only when every step before it passed:
+ *   1. platform operator (Settings S0) — replacing a publishing credential is the same
+ *      authority as posting with it.
+ *   2. request shape, including an explicit project_id.
+ *   3. ownership of THAT project (C-1). The project id is a selector, never a
+ *      permission: a project the operator does not own is refused here.
+ *   4. the project's current binding on the platform, and what the request may do
+ *      with it (a page_id may only name the page of a first binding or of an
+ *      explicit change).
+ *   5. audit: an `attempted` event under a server-generated operation id. If that
+ *      write does not land, nothing below runs — no provider is contacted, no token
+ *      exchanged, nothing stored.
+ *   6. provider attestation: the platform, asked with the credential, names the
+ *      account (Instagram: /me; Facebook: the page's own /me with its page token).
+ *   7. binding (owner decision O1 — one project per external account):
+ *        matched — the attested account IS the project's binding;
+ *        created — the project had no binding, and the account belongs to no other
+ *                  project;
+ *        rebound — change_account was requested, and the new account belongs to no
+ *                  other project; the old binding is superseded in the same
+ *                  database transaction.
+ *      Anything else is refused BEFORE any store: account_mismatch (another account
+ *      and no change requested) or account_bound_to_other_project.
+ *   8. store — the attested account's credential, for this project.
+ *   9. audit: exactly one terminal event naming the account and the binding action.
  *
- * ORDER (Settings S0). Each step runs only when every step before it passed:
- *   1. platform operator — these are the PLATFORM's publishing credentials; every
- *      Instagram and Facebook post the pipeline makes uses them
- *      (lib/media/social-destination.ts). Replacing one is the same authority as
- *      posting with it, which 9X/9AC lock to the platform operator.
- *   2. ownership of the default social project — unchanged from C-1.
- *   3. request shape.
- *   4. audit: an `attempted` event in platform_credential_events, under an
- *      operation id the server generates. If that write does not land, nothing
- *      below runs — no provider is contacted, no token exchanged, nothing stored.
- *   5. exchange (Facebook) and store.
- *   6. audit: exactly one terminal event, `replaced` or `failed`, same operation id.
+ * A FAILED STORE AFTER A BINDING CHANGE fails closed on its own: the binding names the
+ * new account, the stored credential is still the old one, and every consumer refuses
+ * until a credential for the bound account is stored. The binding row records who
+ * changed it and when; the `failed` event records the attempt.
  *
- * AUDIT INTEGRITY. If the terminal event cannot be written after the credential
- * WAS replaced, the replacement stands — there is no canonical rollback for a
- * platform credential, and improvising one could take publishing down — but the
- * route does not pretend it did not happen: 500 with `replaced: true` and
- * `audit_incident`, and a server log line of redacted metadata only.
+ * AUDIT INTEGRITY. If the terminal event cannot be written after the credential WAS
+ * stored, the replacement stands — there is no canonical rollback for a credential,
+ * and improvising one could take publishing down — but the route does not pretend it
+ * did not happen: 500 with `replaced: true` and `audit_incident`, and a server log
+ * line of metadata only.
  *
- * WRITE-ONLY. No response, log line or audit event ever carries a token; every
- * provider message that reaches the response passes redactSecrets() first, and
- * the audit event is credential-blind (lib/media/credential-events.ts).
+ * WRITE-ONLY. No response, log line or audit event carries a token or provider text.
+ * The answer names the project's account (id and the name the platform gave), the
+ * binding action and the audit operation id.
  */
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { setToken, type Platform } from '@/lib/media/token-store'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
-import { redactSecrets } from '@/lib/media/meta-errors'
+import { storeCredential } from '@/lib/media/token-store'
+import {
+  createBinding,
+  isProjectId,
+  readActiveBinding,
+  rebindAccount,
+  recordProviderAttestation,
+  type BindingWriteFailure,
+} from '@/lib/media/social-bindings'
+import {
+  attestFacebookPage,
+  attestInstagramCredential,
+  EXTERNAL_ACCOUNT_ID,
+  type IdentityFailure,
+} from '@/lib/media/social-identity'
 import {
   recordCredentialEvent,
+  type CredentialBindingAction,
   type CredentialEventDetail,
   type CredentialFailureStage,
 } from '@/lib/media/credential-events'
@@ -51,85 +89,96 @@ export const dynamic = 'force-dynamic'
 
 const FB_GRAPH = 'https://graph.facebook.com/v21.0'
 
-// This route always writes to the default social project via setToken (no project
-// param is passed), so ownership is gated against that project's slug.
-const DEFAULT_SOCIAL_PROJECT_SLUG = 'ai-media-automation'
-
 // The longest validity a request may claim, so the computed expiry stays a real date.
 const MAX_EXPIRES_DAYS = 3650
+const DAY_MS = 24 * 60 * 60 * 1000
+
+const LABEL = { instagram: 'Instagram', facebook: 'Facebook' } as const
 
 /**
- * Växlar ett kortlivat FB user-token → långlivat user-token → icke-utgående page-token,
- * och verifierar read_insights. Degraderar steg för steg: misslyckas växlingen sparas
- * det inklistrade tokenet ändå (best-effort), med diagnostik i svaret.
- *
- * Sparar INTE själv: routen sparar, så att den vet om ersättningen faktiskt skedde
- * och kan skriva rätt revisionshändelse.
+ * A short-lived Facebook user token becomes a long-lived one when the Meta app is
+ * configured. Best effort: without the exchange the pasted token is attested as it is.
  */
-async function onboardFacebookToken(inputToken: string) {
-  const appId     = process.env.META_APP_ID
+async function exchangeLongLived(inputToken: string): Promise<{ token: string; exchanged: boolean }> {
+  const appId = process.env.META_APP_ID
   const appSecret = process.env.META_APP_SECRET
-  const pageId    = process.env.FACEBOOK_PAGE_ID
-
-  const diag = { exchanged: false, pageResolved: false, readInsightsOk: false, pageId: pageId ?? null, warnings: [] as string[] }
-
-  // 1) Kortlivat → långlivat user-token (fb_exchange_token).
-  let longUserToken = inputToken
-  if (appId && appSecret) {
-    try {
-      const r = await fetch(`${FB_GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${encodeURIComponent(inputToken)}`)
-      const j = await r.json() as { access_token?: string; error?: { message?: string } }
-      if (j.access_token) { longUserToken = j.access_token; diag.exchanged = true }
-      else diag.warnings.push(`Långlivad växling misslyckades: ${j.error?.message ?? r.status}`)
-    } catch (e) { diag.warnings.push(`Växlingsfel: ${e instanceof Error ? e.message : 'okänt'}`) }
-  } else {
-    diag.warnings.push('META_APP_ID/META_APP_SECRET saknas — kan inte göra långlivad växling.')
+  if (!appId || !appSecret) return { token: inputToken, exchanged: false }
+  try {
+    const url = new URL(`${FB_GRAPH}/oauth/access_token`)
+    url.searchParams.set('grant_type', 'fb_exchange_token')
+    url.searchParams.set('client_id', appId)
+    url.searchParams.set('client_secret', appSecret)
+    url.searchParams.set('fb_exchange_token', inputToken)
+    const res = await fetch(url.toString(), { cache: 'no-store', signal: AbortSignal.timeout(12_000) })
+    const data = await res.json().catch(() => null) as { access_token?: unknown } | null
+    return typeof data?.access_token === 'string' && data.access_token.length > 0
+      ? { token: data.access_token, exchanged: true }
+      : { token: inputToken, exchanged: false }
+  } catch {
+    return { token: inputToken, exchanged: false }
   }
+}
 
-  // 2) Hämta icke-utgående page-token från det långlivade user-tokenet.
-  let pageToken = longUserToken
-  if (pageId) {
-    try {
-      const r = await fetch(`${FB_GRAPH}/${pageId}?fields=access_token&access_token=${encodeURIComponent(longUserToken)}`)
-      const j = await r.json() as { access_token?: string; error?: { message?: string } }
-      if (j.access_token) { pageToken = j.access_token; diag.pageResolved = true }
-      else diag.warnings.push(`Kunde inte hämta page-token: ${j.error?.message ?? r.status}`)
-    } catch (e) { diag.warnings.push(`Page-token-fel: ${e instanceof Error ? e.message : 'okänt'}`) }
-  } else {
-    diag.warnings.push('FACEBOOK_PAGE_ID saknas — sparar tokenet som det är.')
-  }
-
-  // 3) Verifiera read_insights mot ett RIKTIGT inlägg (post-nivå) — samma anrop som
-  //    insights-cronen gör. Page-level page_impressions ger falska negativ för nya sidor.
+/** Can the page token read insights on THIS project's latest Facebook post? A diagnostic, never a gate. */
+async function probeReadInsights(projectId: string, pageId: string, pageToken: string): Promise<boolean> {
   try {
     const { data: lastFb } = await createAdminClient()
       .from('media_scripts')
       .select('facebook_post_id')
+      .eq('project_id', projectId)
       .not('facebook_post_id', 'is', null)
       .order('published_at', { ascending: false })
       .limit(1)
       .maybeSingle()
     const fbPostId = (lastFb as { facebook_post_id?: string } | null)?.facebook_post_id
-    if (fbPostId) {
-      // facebook_post_id är video-id:t → hämta post_id, prefixa till {sid-id}_{post-id}.
-      const vr = await fetch(`${FB_GRAPH}/${fbPostId}?fields=post_id&access_token=${encodeURIComponent(pageToken)}`)
-      const vj = await vr.json() as { post_id?: string }
-      const rawPostId = vj.post_id ?? fbPostId
-      const probeId = rawPostId.includes('_') || !pageId ? rawPostId : `${pageId}_${rawPostId}`
-      const r = await fetch(`${FB_GRAPH}/${probeId}/insights?metric=post_impressions&access_token=${encodeURIComponent(pageToken)}`)
-      const j = await r.json() as { data?: unknown[]; error?: { message?: string } }
-      diag.readInsightsOk = !j.error && Array.isArray(j.data)
-      if (j.error) diag.warnings.push(`read_insights-koll: ${j.error.message}`)
-    } else {
-      diag.warnings.push('Inget FB-inlägg att verifiera read_insights mot ännu.')
-    }
-  } catch (e) { diag.warnings.push(`Insights-koll fel: ${e instanceof Error ? e.message : 'okänt'}`) }
+    if (!fbPostId) return false
+    const auth = { Authorization: `Bearer ${pageToken}` }
+    const video = await fetch(`${FB_GRAPH}/${fbPostId}?fields=post_id`, { headers: auth, cache: 'no-store', signal: AbortSignal.timeout(12_000) })
+    const videoData = await video.json().catch(() => null) as { post_id?: unknown } | null
+    const rawPostId = typeof videoData?.post_id === 'string' ? videoData.post_id : fbPostId
+    const probeId = rawPostId.includes('_') ? rawPostId : `${pageId}_${rawPostId}`
+    const res = await fetch(`${FB_GRAPH}/${probeId}/insights?metric=post_impressions`, { headers: auth, cache: 'no-store', signal: AbortSignal.timeout(12_000) })
+    const data = await res.json().catch(() => null) as { data?: unknown; error?: unknown } | null
+    return !!data && !data.error && Array.isArray(data.data)
+  } catch {
+    return false
+  }
+}
 
-  // Provider messages go back to the operator as diagnostics, so they pass the
-  // same redaction as everything else Meta says: a message or an exception that
-  // quoted a URL cannot carry its access_token or a token literal to the browser.
-  diag.warnings = diag.warnings.map(redactSecrets)
-  return { diag, pageToken }
+/** What an attestation failure means for the operator, the audit stage and the HTTP answer. */
+function attestationRefusal(failure: IdentityFailure, platform: 'instagram' | 'facebook', againstBinding: boolean) {
+  if (failure === 'provider_unavailable') {
+    return { stage: 'provider_verification' as const, status: 503,
+      error: `${LABEL[platform]} kunde inte nås för att verifiera kontot. Inget har sparats — försök igen.` }
+  }
+  if (failure === 'credential_invalid') {
+    return { stage: 'provider_verification' as const, status: 400,
+      error: `${LABEL[platform]} godtog inte credentialn. Inget har sparats.` }
+  }
+  if (failure === 'account_ambiguous') {
+    return { stage: 'provider_verification' as const, status: 400,
+      error: 'Credentialn når flera Instagram-konton och inget kunde väljas. Inget har sparats.' }
+  }
+  return againstBinding
+    ? { stage: 'account_mismatch' as const, status: 409,
+        error: `Credentialn når inte projektets kopplade ${LABEL[platform]}-konto. Inget har sparats.` }
+    : { stage: 'provider_verification' as const, status: 400,
+        error: platform === 'facebook'
+          ? 'Credentialn når inte sidan med det angivna sid-id:t. Inget har sparats.'
+          : 'Credentialn når inget Instagram-konto. Inget har sparats.' }
+}
+
+function bindingRefusal(failure: BindingWriteFailure, platform: 'instagram' | 'facebook') {
+  if (failure === 'account_bound_to_other_project') {
+    return { stage: 'account_bound_to_other_project' as const, status: 409,
+      error: `Kontot är redan kopplat till ett annat projekt. Ett ${LABEL[platform]}-konto kan bara tillhöra ett projekt. Inget har sparats.` }
+  }
+  if (failure === 'project_already_bound' || failure === 'binding_changed') {
+    return { stage: 'binding' as const, status: 409,
+      error: 'Projektets kontobindning ändrades under tiden. Läs in sidan igen och försök på nytt. Inget har sparats.' }
+  }
+  return { stage: 'binding' as const, status: 500,
+    error: 'Kontobindningen kunde inte skrivas. Inget har sparats.' }
 }
 
 export async function POST(request: Request) {
@@ -144,33 +193,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden', denied: 'platform_operator_required' }, { status: 403 })
   }
 
-  // ── 2. OWNERSHIP (C-1) ────────────────────────────────────────────────────
-  // Storing a platform OAuth token is a high-value write. This route always
-  // targets the default social project (ai-media-automation) via setToken, so
-  // only that project's owner may replace its tokens.
-  const access = await resolveProjectAccess()
-  if (!access.ok) return access.response
-
-  const gateDb = createAdminClient()
-  const { data: proj } = await gateDb.from('projects').select('id').eq('slug', DEFAULT_SOCIAL_PROJECT_SLUG).maybeSingle()
-  const projectId = (proj as { id?: string } | null)?.id
-  if (!projectId) return NextResponse.json({ error: `Projekt ${DEFAULT_SOCIAL_PROJECT_SLUG} saknas` }, { status: 404 })
-  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
-
-  // ── 3. REQUEST SHAPE ──────────────────────────────────────────────────────
-  let body: { platform?: unknown; token?: unknown; expires_days?: unknown } | null
+  // ── 2. REQUEST SHAPE ──────────────────────────────────────────────────────
+  let body: Record<string, unknown> | null
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Ogiltig JSON' }, { status: 400 }) }
-  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Ogiltig JSON' }, { status: 400 })
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Ogiltig JSON' }, { status: 400 })
+  }
 
-  const platform = body.platform as Platform
-  const token = typeof body.token === 'string' ? body.token.trim() : ''
+  const projectId = body.project_id
+  if (!isProjectId(projectId)) {
+    return NextResponse.json({
+      error: 'Ange projektet (project_id). En credential sparas alltid för ett uttryckligt projekt — det finns inget standardprojekt.',
+    }, { status: 400 })
+  }
 
-  if (platform !== 'instagram' && platform !== 'facebook') {
+  const rawPlatform = body.platform
+  if (rawPlatform !== 'instagram' && rawPlatform !== 'facebook') {
     return NextResponse.json({ error: "platform måste vara 'instagram' eller 'facebook'" }, { status: 400 })
   }
+  const platform: 'instagram' | 'facebook' = rawPlatform === 'instagram' ? 'instagram' : 'facebook'
+
+  const token = typeof body.token === 'string' ? body.token.trim() : ''
   if (!token || token.length < 50) {
     return NextResponse.json({ error: 'Tokenet ser för kort ut — klistra in hela värdet' }, { status: 400 })
   }
+
   // Absent, null or 0 means no expiry, as before; anything else must be a real number of days.
   const rawDays = body.expires_days
   const expiresDays = typeof rawDays === 'number' && Number.isFinite(rawDays) ? rawDays : null
@@ -178,79 +225,195 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `expires_days måste vara ett antal dagar mellan 0 och ${MAX_EXPIRES_DAYS}` }, { status: 400 })
   }
 
-  // ── 4. AUDIT: attempted — before any provider contact or store ────────────
+  if (body.change_account !== undefined && typeof body.change_account !== 'boolean') {
+    return NextResponse.json({ error: 'change_account måste vara true eller false' }, { status: 400 })
+  }
+  const changeAccount = body.change_account === true
+
+  const rawPageId = body.page_id
+  const pageId = typeof rawPageId === 'string' ? rawPageId.trim() : null
+  if (rawPageId !== undefined && rawPageId !== null
+      && (platform !== 'facebook' || !pageId || !EXTERNAL_ACCOUNT_ID.test(pageId))) {
+    return NextResponse.json({ error: 'page_id måste vara ett Facebook-sid-id och gäller bara Facebook' }, { status: 400 })
+  }
+
+  // ── 3. OWNERSHIP OF THIS PROJECT (C-1) ────────────────────────────────────
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+
+  // ── 4. THE PROJECT'S BINDING, AND WHAT THIS REQUEST MAY DO WITH IT ───────
+  const bindingRead = await readActiveBinding(projectId, platform)
+  if (!bindingRead.ok) {
+    return NextResponse.json({
+      ok: false, replaced: false,
+      error: 'Projektets kontobindning kunde inte läsas. Inget har skickats eller sparats.',
+    }, { status: 503 })
+  }
+  const binding = bindingRead.binding
+
+  if (changeAccount && !binding) {
+    return NextResponse.json({
+      error: `Projektet har inget kopplat ${LABEL[platform]}-konto att byta. Lägg till kontot utan kontobyte.`,
+    }, { status: 400 })
+  }
+
+  let targetPageId: string | null = null
+  if (platform === 'facebook') {
+    if (binding && !changeAccount) {
+      if (pageId && pageId !== binding.externalAccountId) {
+        return NextResponse.json({
+          error: 'Sid-id:t avviker från projektets kopplade sida. Välj "Byt konto" om projektet ska få en annan sida.',
+        }, { status: 400 })
+      }
+      targetPageId = binding.externalAccountId
+    } else {
+      if (!pageId) {
+        return NextResponse.json({
+          error: binding ? 'Ange sid-id för den nya sidan (page_id).' : 'Ange sid-id (page_id) för projektets Facebook-sida.',
+        }, { status: 400 })
+      }
+      targetPageId = pageId
+    }
+  }
+
+  // ── 5. AUDIT: attempted — before any provider contact or store ────────────
   const operationId = randomUUID()
   const audit = { operationId, projectId, platform, actor: operator.actor }
   const attempted = await recordCredentialEvent({ ...audit, outcome: 'attempted' })
   if (!attempted.ok) {
-    console.error(`[media/token] audit: attempted event not recorded (operation ${operationId}, ${platform}, code ${attempted.code}) — nothing contacted, exchanged or stored`)
+    console.error(`[media/token] audit: attempted event not recorded (operation ${operationId}, project ${projectId}, ${platform}, code ${attempted.code}) — nothing contacted, exchanged or stored`)
     return NextResponse.json({
       ok: false,
       replaced: false,
       operation_id: operationId,
-      error: 'Ersättningen kunde inte revisionsloggas och har inte genomförts. Inget token har skickats till Meta eller sparats.',
+      error: 'Ersättningen kunde inte revisionsloggas och har inte genomförts. Inget token har skickats till plattformen eller sparats.',
     }, { status: 503 })
   }
 
-  // ── 5. EXCHANGE + STORE ───────────────────────────────────────────────────
-  let replaced = false
-  let failureStage: CredentialFailureStage = 'unexpected'
-  let failureMessage = 'Kunde inte spara token'
-  let detail: CredentialEventDetail = {}
-  let result: Record<string, unknown> = {}
-  try {
-    if (platform === 'facebook') {
-      const { diag, pageToken } = await onboardFacebookToken(token)
-      failureStage = 'store'
-      // Page-tokenet är icke-utgående → ingen expiresAt.
-      await setToken('facebook', pageToken, undefined, { accountId: diag.pageId ?? undefined })
-      replaced = true
-      detail = { exchanged: diag.exchanged, page_resolved: diag.pageResolved, read_insights_ok: diag.readInsightsOk }
-      result = { ok: true, platform, ...diag }
-    } else {
-      const expiresAt = expiresDays ? new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000) : undefined
-      failureStage = 'store'
-      await setToken(platform, token, expiresAt)
-      replaced = true
-      detail = expiresAt ? { expires_at: expiresAt.toISOString() } : {}
-      result = { ok: true, platform, expires_at: expiresAt?.toISOString() ?? null }
+  // Every refusal from here on is audited as the one terminal event of this operation.
+  const refuse = async (stage: CredentialFailureStage, status: number, error: string, attestedAccount: string | null = null) => {
+    const terminal = await recordCredentialEvent({
+      ...audit, outcome: 'failed', detail: { failure_stage: stage }, externalAccountId: attestedAccount,
+    })
+    if (!terminal.ok) {
+      console.error(`[media/token] audit: failed event not recorded (operation ${operationId}, ${platform}, project ${projectId}, code ${terminal.code}) — the credential was not replaced`)
+      return NextResponse.json({
+        ok: false, replaced: false, operation_id: operationId,
+        audit_incident: 'terminal_event_not_recorded', error,
+      }, { status: 500 })
     }
-  } catch (e) {
-    failureMessage = redactSecrets(e instanceof Error ? e.message : failureMessage)
+    return NextResponse.json({ ok: false, replaced: false, operation_id: operationId, refusal: stage, error }, { status })
   }
 
-  // ── 6. AUDIT: terminal — exactly one, same operation ──────────────────────
+  // ── 6. PROVIDER ATTESTATION ───────────────────────────────────────────────
+  let accountId: string
+  let accountLabel: string | null
+  let credentialToStore: string
+  let expiresAt: Date | null = null
+  let detail: CredentialEventDetail = {}
+  let facebookDiag: { exchanged: boolean; pageResolved: boolean; readInsightsOk: boolean } | null = null
+  const againstBinding = !!binding && !changeAccount
+
+  try {
+    if (platform === 'instagram') {
+      const identity = await attestInstagramCredential(token, againstBinding ? binding!.externalAccountId : null)
+      if (!identity.ok) {
+        const r = attestationRefusal(identity.failure, platform, againstBinding)
+        return await refuse(r.stage, r.status, r.error)
+      }
+      accountId = identity.accountId
+      accountLabel = identity.username
+      credentialToStore = token
+      expiresAt = expiresDays ? new Date(Date.now() + expiresDays * DAY_MS) : null
+      detail = expiresAt ? { expires_at: expiresAt.toISOString() } : {}
+    } else {
+      const exchange = await exchangeLongLived(token)
+      const page = await attestFacebookPage(exchange.token, targetPageId!)
+      if (!page.ok) {
+        const r = attestationRefusal(page.failure, platform, againstBinding)
+        return await refuse(r.stage, r.status, r.error)
+      }
+      accountId = page.pageId
+      accountLabel = page.pageName
+      credentialToStore = page.pageToken
+      const readInsightsOk = await probeReadInsights(projectId, page.pageId, page.pageToken)
+      facebookDiag = { exchanged: exchange.exchanged, pageResolved: true, readInsightsOk }
+      detail = { exchanged: exchange.exchanged, page_resolved: true, read_insights_ok: readInsightsOk }
+    }
+  } catch {
+    return await refuse('unexpected', 500, 'Credentialn kunde inte verifieras. Inget har sparats.')
+  }
+
+  // ── 7. BINDING (O1) — decided before anything is stored ───────────────────
+  let bindingAction: CredentialBindingAction
+  if (binding && !changeAccount) {
+    if (accountId !== binding.externalAccountId) {
+      return await refuse('account_mismatch', 409,
+        `Credentialn tillhör ett annat ${LABEL[platform]}-konto än projektets kopplade. Inget har sparats. Välj "Byt konto" om projektet ska byta konto.`,
+        accountId)
+    }
+    bindingAction = 'matched'
+  } else if (!binding) {
+    const created = await createBinding({ projectId, platform, externalAccountId: accountId, accountLabel, boundBy: operator.actor })
+    if (!created.ok) {
+      const r = bindingRefusal(created.failure, platform)
+      return await refuse(r.stage, r.status, r.error, accountId)
+    }
+    bindingAction = 'created'
+  } else {
+    if (accountId === binding.externalAccountId) {
+      return await refuse('binding', 400,
+        'Kontot är redan projektets kopplade konto. Ersätt credentialn utan kontobyte.', accountId)
+    }
+    const rebound = await rebindAccount({
+      projectId, platform, expectedBindingId: binding.bindingId,
+      externalAccountId: accountId, accountLabel, boundBy: operator.actor,
+    })
+    if (!rebound.ok) {
+      const r = bindingRefusal(rebound.failure, platform)
+      return await refuse(r.stage, r.status, r.error, accountId)
+    }
+    bindingAction = 'rebound'
+  }
+
+  // ── 8. STORE — the attested account's credential, for this project ────────
+  const stored = await storeCredential(projectId, platform, { accessToken: credentialToStore, accountId, expiresAt })
+  if (!stored.ok) {
+    return await refuse('store', 500, 'Credentialn kunde inte sparas. Den tidigare credentialn är kvar men matchar inte längre ett bytt konto.', accountId)
+  }
+
+  if (bindingAction === 'matched') {
+    // The platform just answered with the binding's own account: record it (never fatal).
+    await recordProviderAttestation(binding!, accountLabel)
+  }
+
+  // ── 9. AUDIT: terminal — exactly one, same operation ──────────────────────
   const terminal = await recordCredentialEvent({
-    ...audit,
-    outcome: replaced ? 'replaced' : 'failed',
-    detail: replaced ? detail : { failure_stage: failureStage },
+    ...audit, outcome: 'replaced', detail, externalAccountId: accountId, bindingAction,
   })
 
   if (!terminal.ok) {
-    if (replaced) {
-      // AUDIT INTEGRITY INCIDENT. The credential was replaced; the record of it was
-      // not completed. Not undone, not hidden.
-      console.error(`[media/token] AUDIT INTEGRITY INCIDENT: ${platform} credential replaced but the replaced event was not recorded (operation ${operationId}, project ${projectId}, code ${terminal.code})`)
-      return NextResponse.json({
-        ok: false,
-        replaced: true,
-        operation_id: operationId,
-        audit_incident: 'terminal_event_not_recorded',
-        error: 'Tokenet ersattes, men revisionsloggen kunde inte slutföras. Ersättningen är inte ångrad — detta är en revisionsincident.',
-      }, { status: 500 })
-    }
-    console.error(`[media/token] audit: failed event not recorded (operation ${operationId}, ${platform}, project ${projectId}, code ${terminal.code}) — the credential was not replaced`)
+    // AUDIT INTEGRITY INCIDENT. The credential was replaced; the record of it was
+    // not completed. Not undone, not hidden.
+    console.error(`[media/token] AUDIT INTEGRITY INCIDENT: ${platform} credential replaced for project ${projectId} (account ${accountId}, ${bindingAction}) but the replaced event was not recorded (operation ${operationId}, code ${terminal.code})`)
     return NextResponse.json({
       ok: false,
-      replaced: false,
+      replaced: true,
       operation_id: operationId,
       audit_incident: 'terminal_event_not_recorded',
-      error: failureMessage,
+      error: 'Tokenet ersattes, men revisionsloggen kunde inte slutföras. Ersättningen är inte ångrad — detta är en revisionsincident.',
     }, { status: 500 })
   }
 
-  if (!replaced) {
-    return NextResponse.json({ ok: false, replaced: false, operation_id: operationId, error: failureMessage }, { status: 500 })
-  }
-  return NextResponse.json({ ...result, replaced: true, operation_id: operationId })
+  return NextResponse.json({
+    ok: true,
+    platform,
+    project_id: projectId,
+    account: { id: accountId, label: accountLabel, binding_action: bindingAction },
+    expires_at: expiresAt?.toISOString() ?? null,
+    ...(facebookDiag ?? {}),
+    replaced: true,
+    operation_id: operationId,
+  })
 }

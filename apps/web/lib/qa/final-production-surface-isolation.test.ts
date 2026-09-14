@@ -15,7 +15,9 @@
  *     It picked the most recent published script from EVERY tenant and echoed
  *     `script.hook` back. One slot, ORDER BY published_at DESC LIMIT 1, so the
  *     scope has to precede the ordering or the wrong row wins. → project guard.
- *     Settings S0 stopped it returning the provider's raw error text.
+ *     Settings S0 stopped it returning the provider's raw error text. Project-scoped
+ *     social credentials (2026-09-14) made it name ONE project the caller owns and
+ *     use that project's own verified credential against that project's own post.
  *
  *   /api/fix-image-agent         — rewrites EVERY dall-e agent in the database,
  *     across all projects. That is deliberately platform-wide, so a project guard
@@ -84,8 +86,15 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({ auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) } }),
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
-vi.mock('@/lib/media/token-store', () => ({
-  getToken: async () => { CALLS.push('token'); return { accessToken: 'tok', accountId: 'acc' } },
+let CREDENTIAL_REFUSAL: string | null = null
+vi.mock('@/lib/media/social-credentials', () => ({
+  resolveInstagramCredential: async (projectId: string) => {
+    CALLS.push(`credential:${projectId}`)
+    return CREDENTIAL_REFUSAL
+      ? { ok: false, refusal: CREDENTIAL_REFUSAL, binding: null }
+      : { ok: true, binding: {}, credential: { platform: 'instagram', projectId, accountId: 'acc', token: 'tok',
+          apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true, expiresAt: null } }
+  },
 }))
 let INSIGHTS_RESULT: { ok: boolean; metrics?: Record<string, number>; error?: string } = { ok: true, metrics: { reach: 1 } }
 vi.mock('@/lib/media/insights', () => ({
@@ -97,7 +106,7 @@ const opsOn = (seen: Seen[], t: string) => seen.filter(s => s.table === t).flatM
 const scopeIn = (seen: Seen[], t: string, col: string) =>
   opsOn(seen, t).find(([op, c]) => op === 'in' && c === col)?.[2] as string[] | undefined
 
-beforeEach(() => { CURRENT_USER = { id: ME }; CALLS = []; INSIGHTS_RESULT = { ok: true, metrics: { reach: 1 } }; process.env.CRON_SECRET = SECRET })
+beforeEach(() => { CURRENT_USER = { id: ME }; CALLS = []; CREDENTIAL_REFUSAL = null; INSIGHTS_RESULT = { ok: true, metrics: { reach: 1 } }; process.env.CRON_SECRET = SECRET })
 
 // ═══ A · /api/seed and /api/migrate — removed from the deployed product ═══════
 //
@@ -165,20 +174,23 @@ describe('Settings S0 · seed and migrate — removed, not merely guarded', () =
   })
 })
 
-// ═══ B · /api/media/insights/check — one slot, so scope precedes ordering ════
+// ═══ B · /api/media/insights/check — one owned project, its credential, its post ═
 
-describe('9V-4 · insights/check — the probe row must be the caller own', () => {
+describe('9V-4 · insights/check — one project the caller owns, its own credential and post', () => {
   const script = (id: string, project: string, published: string) => ({
     id, project_id: project, status: 'published',
     instagram_media_id: `ig-${id}`, hook: `hook-${id}`, published_at: published,
   })
-  const call = async () => {
+  const call = async (projectId: string | null = MINE) => {
     vi.resetModules()
     const { GET } = await import('@/app/api/media/insights/check/route')
-    return GET()
+    const url = projectId === null
+      ? 'https://x.test/api/media/insights/check'
+      : `https://x.test/api/media/insights/check?project_id=${projectId}`
+    return GET(new Request(url))
   }
   beforeEach(() => {
-    // The FOREIGN post is newer, so it wins ORDER BY published_at DESC LIMIT 1.
+    // The FOREIGN post is newer, so it would win ORDER BY published_at DESC LIMIT 1.
     CURRENT = fakeDb({
       projects: [{ id: MINE, owner_id: ME }, { id: THEIRS, owner_id: 'user-other' }],
       media_scripts: [
@@ -196,27 +208,47 @@ describe('9V-4 · insights/check — the probe row must be the caller own', () =
     expect(JSON.stringify(body)).not.toContain('theirs-newer')
   })
 
-  it('the scope is applied BEFORE order and limit', async () => {
+  it('the project filter is applied BEFORE order and limit', async () => {
     await call()
     const ops = opsOn(CURRENT.seen, 'media_scripts')
     const i = (pred: (o: [string, string, unknown]) => boolean) => ops.findIndex(pred)
-    expect(i(o => o[0] === 'in' && o[1] === 'project_id')).toBeGreaterThanOrEqual(0)
-    expect(i(o => o[0] === 'in' && o[1] === 'project_id')).toBeLessThan(i(o => o[0] === 'order'))
+    const scoped = i(o => o[0] === 'eq' && o[1] === 'project_id' && o[2] === MINE)
+    expect(scoped).toBeGreaterThanOrEqual(0)
+    expect(scoped).toBeLessThan(i(o => o[0] === 'order'))
     expect(i(o => o[0] === 'order')).toBeLessThan(i(o => o[0] === 'limit'))
   })
 
-  it('an operator who owns nothing gets no_media and makes no Graph call', async () => {
-    CURRENT_USER = { id: NOBODY }
-    const res = await call()
-    const body = await res.json()
-    expect(body.reason).toBe('no_media')
-    expect(CALLS).not.toContain('graph-api')
+  it('a project the caller does not own is refused before any credential, query or Graph call', async () => {
+    const res = await call(THEIRS)
+    expect(res.status).toBe(403)
+    expect(CALLS).toEqual([])
+    expect(opsOn(CURRENT.seen, 'media_scripts')).toEqual([])
   })
 
-  it('an empty allow-list scopes to the impossible id', async () => {
+  it('an operator who owns nothing is refused for every project', async () => {
     CURRENT_USER = { id: NOBODY }
-    await call()
-    expect(scopeIn(CURRENT.seen, 'media_scripts', 'project_id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+    const res = await call(MINE)
+    expect(res.status).toBe(403)
+    expect(CALLS).toEqual([])
+  })
+
+  it('no project named, no check — there is no default project to fall back to', async () => {
+    const res = await call(null)
+    expect(res.status).toBe(400)
+    expect((await res.json()).reason).toBe('project_required')
+    expect(CALLS).toEqual([])
+  })
+
+  it('the credential is the named project\'s own — resolved for that project and no other', async () => {
+    await call(MINE)
+    expect(CALLS.filter(c => c.startsWith('credential:'))).toEqual([`credential:${MINE}`])
+  })
+
+  it('a project without a verified Instagram credential gets no_token and makes no Graph call', async () => {
+    CREDENTIAL_REFUSAL = 'binding_missing'
+    const body = await (await call()).json()
+    expect(body).toMatchObject({ ok: false, reason: 'no_token', refusal: 'binding_missing' })
+    expect(CALLS).not.toContain('graph-api')
   })
 
   it('an unauthenticated request never reaches a query or the Graph API', async () => {

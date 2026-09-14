@@ -118,6 +118,20 @@ vi.mock('@/lib/media/instagram', () => ({
 vi.mock('@/lib/media/facebook', () => ({
   postReelToFacebook: async () => { CALLS.push('facebook'); return { id: 'fb1', permalink: 'https://fb/1' } },
 }))
+// Project-scoped social credentials: the operator route publishes with the verified
+// credential of the script's OWN project. Always verified for an owned script here —
+// this matrix is about the ownership boundary in front of it.
+vi.mock('@/lib/media/social-credentials', () => ({
+  createCredentialResolver: () => ({
+    instagram: async (projectId: unknown) => ({ ok: true, binding: {}, credential: {
+      platform: 'instagram', projectId, accountId: 'acc', token: 'tok', apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true, expiresAt: null } }),
+    facebook: async () => ({ ok: false, refusal: 'binding_missing', binding: null }),
+  }),
+}))
+vi.mock('@/lib/media/social-bindings', () => ({
+  isProjectId: (v: unknown) => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v),
+  readActiveBinding: async () => ({ ok: true, binding: null }),
+}))
 // `getAnthropic` is SYNCHRONOUS in the route (`const claude = getAnthropic(...)`),
 // so an async mock would hand it a Promise and `.messages` would be undefined.
 vi.mock('@/lib/ai/anthropic', () => ({

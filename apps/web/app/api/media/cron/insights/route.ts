@@ -1,14 +1,15 @@
 /**
  * GET /api/media/cron/insights
  *
- * Uppdaterar Instagram-engagemang för alla publicerade inlägg.
+ * Uppdaterar engagemang för alla publicerade inlägg — varje projekt med sin egen
+ * verifierade credential (lib/media/insights.ts). Svaret innehåller aldrig någon del
+ * av en credential: den tidigare diagnostiken med tokenets prefix och längd är borta.
  * Skyddad med: Authorization: Bearer {CRON_SECRET}
  *
  * Schemalägg via Supabase pg_cron (se 20260601_insights_cron.sql) — dagligen räcker.
  */
 import { NextResponse } from 'next/server'
 import { refreshAllInsights } from '@/lib/media/insights'
-import { getToken } from '@/lib/media/token-store'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectAndStoreOpportunities } from '@/lib/atlas/opportunities'
 
@@ -20,14 +21,6 @@ export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // Diagnostik: vilket token läser cronen egentligen?
-  const tok = await getToken('instagram')
-  const debug = {
-    tokenSource: tok?.source ?? 'none',
-    tokenPrefix: tok ? tok.accessToken.slice(0, 4) : null,
-    tokenLen: tok?.accessToken.length ?? 0,
   }
 
   const result = await refreshAllInsights()
@@ -42,5 +35,5 @@ export async function GET(request: Request) {
     opportunities = { error: e instanceof Error ? e.message : 'okänt fel' }
   }
 
-  return NextResponse.json({ ok: true, ...result, opportunities, debug })
+  return NextResponse.json({ ok: true, ...result, opportunities })
 }

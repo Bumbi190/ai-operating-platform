@@ -44,6 +44,13 @@
  * kedjan, pipeline-retry) binder körningen till EXAKT det scriptet: det eller
  * inget, aldrig det äldsta i kön.
  *
+ * ── Credentials (project-scoped social credentials, 2026-09-14) ────────────────
+ * Varje kanal publicerar med den credential som hör till SCRIPTETS projekt, via
+ * projektets verifierade kontobindning, bekräftad hos plattformen före utskick
+ * (lib/media/social-credentials.ts). Ingen env-token, inget standardprojekt och
+ * ingen kopia i process.env: saknas eller avviker bindningen skickas inget på den
+ * kanalen.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -67,7 +74,12 @@ import {
   resolvePublishedMedia,
 } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
-import { getToken } from '@/lib/media/token-store'
+import {
+  createCredentialResolver,
+  refusalIsPermanent,
+  type CredentialRefusal,
+  type InstagramCredential,
+} from '@/lib/media/social-credentials'
 import { sendPipelineAlert, sendRunReport } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
 import { toJson } from '@/lib/supabase/json'
@@ -128,6 +140,19 @@ function isSettled(r: ChannelResult): boolean {
   return r.ok || r.permanent
 }
 
+/**
+ * No verified credential for the script's project on this channel. Nothing was sent.
+ * The code names why; it never carries provider text.
+ */
+function credentialRefused(channel: 'instagram' | 'facebook', refusal: CredentialRefusal): ChannelFail {
+  return {
+    ok: false,
+    error: `${channel}_credential_${refusal}`,
+    permanent: refusalIsPermanent(refusal),
+    detail: { refusal },
+  }
+}
+
 export async function GET(request: Request) {
   // ── Auth ─────────────────────────────────────────────────────────────────────
   const authHeader = request.headers.get('authorization')
@@ -153,21 +178,9 @@ export async function GET(request: Request) {
 
   if (dryRun) log('dryrun', 'DRY RUN — inga skrivande anrop, inga DB-uppdateringar')
 
-  // ── Läs tokens från Supabase (med env-var fallback) ───────────────────────────
-  // Prioritet: platform_tokens-tabellen → env-variabel
-  // instagram.ts och facebook.ts läser alltid från process.env, så vi sätter
-  // värdet här en gång per serverless-anrop om Supabase har ett färskare token.
-  const igStored = await getToken('instagram')
-  if (igStored?.source === 'supabase') {
-    process.env.INSTAGRAM_ACCESS_TOKEN = igStored.accessToken
-    log('token', `Instagram token läst från Supabase.`)
-  }
-
-  const fbStored = await getToken('facebook')
-  if (fbStored?.source === 'supabase') {
-    process.env.FACEBOOK_PAGE_ACCESS_TOKEN = fbStored.accessToken
-    log('token', `Facebook token läst från Supabase.`)
-  }
+  // Credentials are resolved per channel below, for the script's own project —
+  // never read from the environment and never copied into it.
+  const credentials = createCredentialResolver()
 
   // Scripts created in the last 24 hours — covers both cron windows (07:30 + 17:30 UTC)
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
@@ -523,8 +536,17 @@ export async function GET(request: Request) {
       return { ok: true, id: script.instagram_media_id as string, url: (script.instagram_url as string) ?? null, skipped: 'already_published' }
     }
 
+    // The script's project → its verified Instagram binding → the credential Instagram
+    // confirms is that account. No binding or no match: nothing is sent.
+    const resolved = await credentials.instagram(script.project_id)
+    if (!resolved.ok) {
+      log('instagram', `Ingen verifierad Instagram-credential för scriptets projekt (${resolved.refusal}) — inget skickas`)
+      return credentialRefused('instagram', resolved.refusal)
+    }
+    const ig = resolved.credential
+
     try {
-      const creationId = await resolveContainer()
+      const creationId = await resolveContainer(ig)
       if (creationId === null && recoveredResult) {
         // Containern var redan publicerad hos Meta — resultatet är satt av resolveContainer
         return recoveredResult
@@ -538,14 +560,14 @@ export async function GET(request: Request) {
         return { ok: true, id: null, url: null, skipped: 'dry_run' }
       }
 
-      await pollUntilReady(creationId, 90_000)
+      await pollUntilReady(ig, creationId, 90_000)
 
       // Faktiska, bundna retries med backoff — transienta fel försöks om DIREKT
       // i samma körning i stället för att vänta 10 timmar på nästa cron.
       const result = await withRetry(async () => {
         await assertExecutionDispatchAllowed(
           execution, { system: 'instagram', operation: 'media_publish' })
-        return publishContainer(creationId)
+        return publishContainer(ig, creationId)
       }, {
         attempts:    3,
         baseMs:      1_500,
@@ -577,17 +599,17 @@ export async function GET(request: Request) {
    * Returnerar ett publicerbart creation_id, eller null om containern redan var
    * publicerad (då är `recoveredResult` satt).
    */
-  async function resolveContainer(): Promise<string | null> {
+  async function resolveContainer(ig: InstagramCredential): Promise<string | null> {
     const existing  = script.instagram_creation_id as string | null | undefined
     const createdAt = script.instagram_creation_id_at as string | null | undefined
 
-    if (!existing) return await createFreshContainer()
+    if (!existing) return await createFreshContainer(ig)
 
     // Statusen läses ALLTID, även för en container med okänd eller hög ålder.
     // Att hoppa över statusläsningen och gå direkt på ålder vore en väg till
     // dubbelpublicering: en container som Meta redan publicerat, men vars svar
     // vi tappat, hade då fått en ny container och publicerats en gång till.
-    const status = await getContainerStatus(existing)
+    const status = await getContainerStatus(ig, existing)
     const ageH   = containerAgeHours(createdAt)
     const decision = decideContainerAction(status, ageH)
 
@@ -602,7 +624,7 @@ export async function GET(request: Request) {
       // Vi publicerar ALDRIG om. Media-id skrivs bara om det kan resolvas
       // deterministiskt; annars flaggas kanalen för manuell verifiering hellre
       // än att ett felaktigt id skrivs in i instagram_media_id.
-      const recovered = await resolvePublishedMedia(existing)
+      const recovered = await resolvePublishedMedia(ig, existing)
       if (recovered?.permalink) {
         log('instagram', `Container ${existing} var redan PUBLISHED — media återhämtat`)
         recoveredResult = { ok: true, id: recovered.mediaId, url: recovered.permalink, recovered: true }
@@ -614,10 +636,10 @@ export async function GET(request: Request) {
     }
 
     log('instagram', `Skapar ny container — ${decision.reason}`)
-    return await createFreshContainer()
+    return await createFreshContainer(ig)
   }
 
-  async function createFreshContainer(): Promise<string> {
+  async function createFreshContainer(ig: InstagramCredential): Promise<string> {
     if (dryRun) {
       log('instagram', 'dryRun — skulle skapat ny container')
       return 'dry-run-container'
@@ -627,7 +649,7 @@ export async function GET(request: Request) {
     const creationId = await withRetry(async () => {
       await assertExecutionDispatchAllowed(
         execution, { system: 'instagram', operation: 'create_container' })
-      return createReelContainer(script.video_url!, caption)
+      return createReelContainer(ig, script.video_url!, caption)
     }, {
       attempts:    3,
       baseMs:      1_500,
@@ -652,10 +674,18 @@ export async function GET(request: Request) {
       return { ok: true, id: script.facebook_post_id as string, url: (script.facebook_url as string) ?? null, skipped: 'already_published' }
     }
 
-    if (!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)) {
-      log('facebook', 'Facebook ej konfigurerat — hoppar över')
-      return { ok: true, id: null, url: null, skipped: 'not_configured' }
+    // The script's project → its verified Facebook page. A project without a Facebook
+    // binding has no Facebook channel; any other refusal sends nothing.
+    const resolved = await credentials.facebook(script.project_id)
+    if (!resolved.ok) {
+      if (resolved.refusal === 'binding_missing') {
+        log('facebook', 'Scriptets projekt har inget kopplat Facebook-konto — hoppar över')
+        return { ok: true, id: null, url: null, skipped: 'not_configured' }
+      }
+      log('facebook', `Ingen verifierad Facebook-credential för scriptets projekt (${resolved.refusal}) — inget skickas`)
+      return credentialRefused('facebook', resolved.refusal)
     }
+    const fb = resolved.credential
 
     if (dryRun) {
       log('facebook', 'dryRun — skulle publicerat till Facebook')
@@ -666,7 +696,7 @@ export async function GET(request: Request) {
       const result = await withRetry(async () => {
         await assertExecutionDispatchAllowed(
           execution, { system: 'facebook', operation: 'post_reel' })
-        return postReelToFacebook(script.video_url!, caption)
+        return postReelToFacebook(fb, script.video_url!, caption)
       }, {
         attempts:    3,
         baseMs:      1_500,

@@ -8,12 +8,16 @@
  * Kräver att Instagram-tokenet har behörigheten `instagram_manage_insights`.
  * Saknas den misslyckas Graph-anropet — vi sväljer felet tyst och lämnar
  * tabellen tom (ärligt) istället för att hitta på siffror.
+ *
+ * CREDENTIALS (project-scoped social credentials, 2026-09-14): varje projekt mäts med
+ * SIN verifierade credential (lib/media/social-credentials.ts). Ett projekt utan
+ * verifierad bindning mäts inte på den plattformen — aldrig med ett annat projekts
+ * credential. Credentials skickas som Authorization-header, aldrig i URL:en.
  */
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getToken } from './token-store'
-import { resolveFbPageToken } from './account-insights'
+import { createCredentialResolver } from './social-credentials'
 import { fetchVideoRetention } from './youtube'
 
 // Stödjer både nya Instagram API with Instagram Login (graph.instagram.com,
@@ -49,14 +53,16 @@ export interface InsightFetchResult {
   raw?: unknown
 }
 
+const bearer = (token: string) => ({ Authorization: `Bearer ${token}` })
+
 /** Hämtar insights för ett enskilt IG-media. Returnerar ok:false vid fel (t.ex. saknad behörighet). */
 export async function fetchMediaInsights(mediaId: string, token: string): Promise<InsightFetchResult> {
   let lastError = 'okänt fel'
   for (const host of hostsForToken(token)) {
     try {
       const res = await fetch(
-        `${host}/${mediaId}/insights?metric=${METRICS}&access_token=${token}`,
-        { signal: AbortSignal.timeout(12_000) },
+        `${host}/${mediaId}/insights?metric=${METRICS}`,
+        { headers: bearer(token), signal: AbortSignal.timeout(12_000) },
       )
       const json = await res.json() as { data?: { name: string; values?: { value: number }[] }[]; error?: { message: string } }
 
@@ -135,8 +141,8 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
   try {
     // Steg 1 — video-noden.
     const vRes = await fetch(
-      `${FB_GRAPH}/${facebookPostId}?fields=views,likes.summary(true),comments.summary(true),post_id&access_token=${pageToken}`,
-      { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+      `${FB_GRAPH}/${facebookPostId}?fields=views,likes.summary(true),comments.summary(true),post_id`,
+      { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
     )
     const v = await vRes.json() as {
       views?: number
@@ -164,8 +170,8 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       const metricVal = async (metric: string): Promise<{ value: number | null; error?: string }> => {
         try {
           const r = await fetch(
-            `${FB_GRAPH}/${fullPostId}/insights?metric=${metric}&access_token=${pageToken}`,
-            { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+            `${FB_GRAPH}/${fullPostId}/insights?metric=${metric}`,
+            { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
           )
           const j = await r.json() as { data?: { values?: { value?: number }[] }[]; error?: { message?: string } }
           if (j?.error) return { value: null, error: j.error.message }
@@ -185,8 +191,8 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       // shares via post-noden (rent fält, ingen insights-expansion).
       try {
         const r = await fetch(
-          `${FB_GRAPH}/${fullPostId}?fields=shares&access_token=${pageToken}`,
-          { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+          `${FB_GRAPH}/${fullPostId}?fields=shares`,
+          { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
         )
         const j = await r.json() as { shares?: { count?: number }; error?: unknown }
         if (!j?.error && typeof j.shares?.count === 'number') metrics.shares = j.shares.count
@@ -211,8 +217,9 @@ export interface RefreshSummary {
 
 /**
  * Uppdaterar per-inlägg-insights för alla publicerade inlägg, per plattform:
- *   • Instagram via Graph API (token).
- *   • YouTube via Data API v3 (YOUTUBE_API_KEY, publik data) — degraderar tyst om nyckel saknas.
+ *   • Instagram och Facebook per projekt, med projektets verifierade credential.
+ *   • YouTube via Data API v3 (YOUTUBE_API_KEY, publik data) — degraderar tyst om
+ *     nyckel saknas; genomtittning endast via videons eget projekts YouTube-credential.
  * Upsertar på (script_id, platform) så varje plattform får en egen rad per video.
  */
 export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
@@ -226,16 +233,17 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
     else    { byPlatform[platform].failed++;  failed++ }
   }
 
-  // Projekt-medvetet: mät varje projekt med SITT eget token. IG/FB per projekt,
-  // YouTube globalt (env-nyckel; bara The Prompt har youtube_video_id ännu).
+  // Projekt-medvetet: mät varje projekt med SIN egen verifierade credential. Ett
+  // projekt utan verifierad bindning på en plattform mäts inte där.
   const { data: projRows } = await (db.from('media_scripts') as any)
     .select('project_id').eq('status', 'published')
   const projectIds = [...new Set(((projRows ?? []) as any[]).map(r => r.project_id).filter(Boolean))] as string[]
+  const credentials = createCredentialResolver()
 
   for (const projectId of projectIds) {
-    // ─── Instagram (projektets eget token) ────────────────────────────────────
-    const ig = await getToken('instagram', projectId)
-    if (ig) {
+    // ─── Instagram (projektets verifierade credential) ────────────────────────
+    const ig = await credentials.instagram(projectId)
+    if (ig.ok) {
       const { data: scripts } = await (db.from('media_scripts') as any)
         .select('id, project_id, instagram_media_id, published_at')
         .eq('status', 'published').eq('project_id', projectId)
@@ -244,7 +252,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
         .limit(limit)
 
       for (const s of (scripts ?? []) as any[]) {
-        const result = await fetchMediaInsights(s.instagram_media_id, ig.accessToken)
+        const result = await fetchMediaInsights(s.instagram_media_id, ig.credential.token)
         if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('instagram', false); continue }
         const m = result.metrics
         const { error } = await (db.from('media_insights') as any).upsert({
@@ -267,10 +275,9 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       }
     }
 
-    // ─── Facebook (projektets eget token) ─────────────────────────────────────
-    const fb = await getToken('facebook', projectId)
-    if (fb?.accountId) {
-      const pageToken = await resolveFbPageToken(fb.accessToken, fb.accountId)
+    // ─── Facebook (projektets verifierade sida) ───────────────────────────────
+    const fb = await credentials.facebook(projectId)
+    if (fb.ok) {
       const { data: fbScripts } = await (db.from('media_scripts') as any)
         .select('id, project_id, facebook_post_id, published_at')
         .eq('status', 'published').eq('project_id', projectId)
@@ -279,7 +286,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
         .limit(limit)
 
       for (const s of (fbScripts ?? []) as any[]) {
-        const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, fb.accountId)
+        const result = await fetchFacebookInsights(s.facebook_post_id, fb.credential.pageToken, fb.credential.pageId)
         if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
         const m = result.metrics
         const { error } = await (db.from('media_insights') as any).upsert({
@@ -304,7 +311,7 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
     }
   }
 
-  // ─── YouTube — globalt (env-nyckel; gäller alla projekt med youtube_video_id) ─
+  // ─── YouTube — publik statistik med API-nyckel; genomtittning per projekt ────
   const ytKey = process.env.YOUTUBE_API_KEY
   if (ytKey) {
     const { data: ytScripts } = await (db.from('media_scripts') as any)
@@ -318,7 +325,9 @@ export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
       const result = await fetchYouTubeInsights(s.youtube_video_id, ytKey)
       if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('youtube', false); continue }
       const m = result.metrics
-      const retention = await fetchVideoRetention(s.youtube_video_id)   // genomtittnings-% (null utan analytics-scope)
+      // Genomtittning kräver en kanal-credential: bara videons EGET projekts, via dess bindning.
+      const yt = await credentials.youtube(s.project_id)
+      const retention = yt.ok ? await fetchVideoRetention(yt.credential, s.youtube_video_id) : null
       const { error } = await (db.from('media_insights') as any).upsert({
         script_id: s.id,
         project_id: s.project_id,

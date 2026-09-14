@@ -2,39 +2,57 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
-import type { SettingsChannel, SettingsConfigItem, SettingsModel, SettingsWarning } from '@/lib/os/settings'
+import type {
+  SettingsChannel,
+  SettingsConfigItem,
+  SettingsModel,
+  SettingsProject,
+  SettingsWarning,
+} from '@/lib/os/settings'
 import {
+  ACCOUNT_NOUNS,
   ACCOUNT_PASSWORD_HREF,
+  BINDING_ACTION_LABELS,
   CAPABILITY_NOTES,
   CHANNEL_STATUS_NOTE,
-  CREDENTIAL_SOURCE_LABELS,
+  CREDENTIAL_STATE_LABELS,
+  HEALTH_LABELS,
   PLATFORM_CONFIG_NOTE,
+  PROJECT_SCOPE_NOTE,
   REPLACEMENT_LOG_NOTE,
-  TOKEN_HEALTH_LABELS,
+  UNATTESTED_NAMES,
   UNKNOWN_LABEL,
   UNREADABLE_LABEL,
+  VERIFICATION_LABELS,
   YOUTUBE_NOTE,
+  YOUTUBE_UNAVAILABLE_NOTE,
   type ReplaceableChannelId,
 } from '@/lib/os/settings-shared'
 import { SettingsCredentialForm } from './SettingsCredentialForm'
+import { SettingsVerifyButton } from './SettingsVerifyButton'
 import styles from './SettingsSurface.module.css'
 
 /**
  * Inställningar — `/settings` in vNext.
  *
- * An operator surface: the account, the display preferences, each publishing
- * channel's credential status, and which platform configuration is present. It
- * reports what the sources say. An unreadable source says so, an absent check is
- * "unchecked" rather than healthy, and nothing here claims a version, a stack, a
- * model or a roadmap — the page this replaces printed all four from literals.
+ * An operator surface: the account, the display preferences, every project this
+ * session owns with its social accounts, and which platform configuration is present.
+ * Each project is its own block — Project → Platform → Verified External Account →
+ * Credential — so the operator always sees which project a credential belongs to
+ * before adding or replacing it, and one project's accounts are never shown, offered
+ * or implied for another.
  *
- * CREDENTIALS ARE WRITE-ONLY. A channel's status is metadata; no token is read
- * for it. Replacement is the existing route behind `SettingsCredentialForm`, which
- * is rendered only when the loader's capability allows it. Otherwise the channel
- * is read-only and says why, in the route's own terms.
+ * It reports what the sources say. An unreadable source says so, an absent
+ * verification is "unchecked" rather than healthy, and a name no platform has
+ * attested is said to be unverified rather than guessed.
  *
- * NOTHING HERE WRITES. The component is a server component; its one client child
- * posts to the existing endpoint and nowhere else.
+ * CREDENTIALS ARE WRITE-ONLY. A channel's status is metadata; no token is read for it.
+ * Adding or replacing a credential is the existing route behind
+ * `SettingsCredentialForm`, and "Verifiera nu" is `SettingsVerifyButton`; both are
+ * rendered only when the loader's capability allows it, and both name the project.
+ *
+ * NOTHING HERE WRITES. The component is a server component; its client children post
+ * to the two credential routes and nowhere else.
  */
 export function SettingsSurface({ model, displayPreferences }: { model: SettingsModel; displayPreferences: ReactNode }) {
   return (
@@ -46,7 +64,7 @@ export function SettingsSurface({ model, displayPreferences }: { model: Settings
           <p className={styles.eyebrow}>Operatörsyta</p>
           <h1 className={styles.title}>Inställningar</h1>
           <p className={styles.lede}>
-            Konto, visning, kanalernas publiceringsuppgifter och plattformens konfiguration — så som källorna
+            Konto, visning, varje projekts sociala konton och plattformens konfiguration — så som källorna
             faktiskt anger dem.
           </p>
         </div>
@@ -59,7 +77,7 @@ export function SettingsSurface({ model, displayPreferences }: { model: Settings
 
       <div className={styles.columns}>
         <div className={styles.column}>
-          <ChannelsPanel model={model} />
+          <ProjectsPanel model={model} />
         </div>
         <div className={styles.column}>
           <AccountPanel model={model} />
@@ -109,52 +127,91 @@ function WarningsLane({ warnings }: { warnings: SettingsWarning[] }) {
   )
 }
 
-// ── Kanaler ──────────────────────────────────────────────────────────────────
+// ── Projekt och sociala konton ───────────────────────────────────────────────
 
-function ChannelsPanel({ model }: { model: SettingsModel }) {
-  const { capability } = model
+function ProjectsPanel({ model }: { model: SettingsModel }) {
+  const { capability, projects } = model
   return (
-    <section className={styles.panel} aria-labelledby="settings-channels">
-      <SectionHead id="settings-channels" title="Kanaler" count={model.channels.length} />
+    <section className={styles.panel} aria-labelledby="settings-projects">
+      <SectionHead
+        id="settings-projects"
+        title="Projekt och sociala konton"
+        count={projects.state === 'ok' ? projects.items.length : null}
+      />
+      <p className={styles.meta}>{PROJECT_SCOPE_NOTE}</p>
       <p className={styles.meta}>{CHANNEL_STATUS_NOTE}</p>
       {!capability.allowed ? (
         <p className={styles.locked} role="note" data-reason={capability.reason}>
           {CAPABILITY_NOTES[capability.reason]}
         </p>
       ) : null}
-      <ul className={styles.channels}>
-        {model.channels.map((channel) => (
-          <ChannelCard key={channel.id} channel={channel} canReplace={capability.allowed} />
-        ))}
-      </ul>
+      {projects.state === 'error' ? (
+        <p className={styles.note}>{UNREADABLE_LABEL} — dina projekt kunde inte läsas, vilket inte betyder att de saknar konton.</p>
+      ) : projects.items.length === 0 ? (
+        <p className={styles.note}>Du äger inga projekt ännu.</p>
+      ) : (
+        <ul className={styles.projects}>
+          {projects.items.map((project) => (
+            <ProjectBlock key={project.id} project={project} canAct={capability.allowed} />
+          ))}
+        </ul>
+      )}
       <p className={styles.meta}>{REPLACEMENT_LOG_NOTE}</p>
     </section>
   )
 }
 
-function ChannelCard({ channel, canReplace }: { channel: SettingsChannel; canReplace: boolean }) {
-  const { health } = channel
-  const expiresAt = health.expiresAt ?? channel.stored?.expiresAt ?? null
+function ProjectBlock({ project, canAct }: { project: SettingsProject; canAct: boolean }) {
+  const headingId = `settings-project-${project.id}`
   return (
-    <li className={styles.channel} data-health={health.readable ? health.status : 'unreadable'}>
+    <li className={styles.project} data-project={project.slug ?? project.id}>
+      <div className={styles.projectHead}>
+        <h3 id={headingId} className={styles.projectTitle}>{project.name}</h3>
+        {project.slug ? <code className={styles.code}>{project.slug}</code> : null}
+      </div>
+      <ul className={styles.channels} aria-labelledby={headingId}>
+        {project.channels.map((channel) => (
+          <ChannelCard key={channel.id} project={project} channel={channel} canAct={canAct} />
+        ))}
+      </ul>
+    </li>
+  )
+}
+
+function ChannelCard({ project, channel, canAct }: { project: SettingsProject; channel: SettingsChannel; canAct: boolean }) {
+  const { account, credential, health } = channel
+  const bound = account.state === 'bound' ? account.bound : null
+  const expiresAt = health.expiresAt ?? credential.expiresAt ?? null
+
+  return (
+    <li className={styles.channel} data-health={health.readable ? health.status : 'unreadable'} data-account={account.state}>
       <div className={styles.channelHead}>
-        <h3 className={styles.channelTitle}>{channel.label}</h3>
-        <span className={styles.chip} data-source={channel.source}>{CREDENTIAL_SOURCE_LABELS[channel.source]}</span>
+        <h4 className={styles.channelTitle}>{channel.label}</h4>
+        <span className={styles.chip} data-credential={credential.state}>{CREDENTIAL_STATE_LABELS[credential.state]}</span>
       </div>
 
+      <AccountLine channel={channel} />
+
       <dl className={styles.facts}>
-        <Fact label="Token-kontroll">
+        <Fact label="Verifiering">
           {!health.readable ? (
             <span className={styles.absent}>{UNREADABLE_LABEL}</span>
           ) : (
             <span className={styles.healthValue} data-status={health.status}>
-              {TOKEN_HEALTH_LABELS[health.status]}
+              {HEALTH_LABELS[health.status]}
               {health.daysLeft != null ? ` · ${health.daysLeft} dagar kvar` : ''}
             </span>
           )}
         </Fact>
         <Fact label="Senast kontrollerad">
-          {health.lastVerifiedAt ? <Rel iso={health.lastVerifiedAt} /> : <span className={styles.absent}>ingen registrerad</span>}
+          {health.checkedAt ? (
+            <>
+              <Rel iso={health.checkedAt} />
+              {health.identityVerified ? ' · konto bekräftat' : ' · konto ej bekräftat'}
+            </>
+          ) : (
+            <span className={styles.absent}>ingen registrerad</span>
+          )}
         </Fact>
         <Fact label="Utgår">
           {expiresAt ? <Rel iso={expiresAt} /> : <span className={styles.absent}>ingen utgång registrerad</span>}
@@ -162,7 +219,7 @@ function ChannelCard({ channel, canReplace }: { channel: SettingsChannel; canRep
         {channel.replaceable ? (
           <>
             <Fact label="Senast sparad i Omnira">
-              {channel.stored?.refreshedAt ? <Rel iso={channel.stored.refreshedAt} /> : <span className={styles.absent}>—</span>}
+              {credential.refreshedAt ? <Rel iso={credential.refreshedAt} /> : <span className={styles.absent}>—</span>}
             </Fact>
             <Fact label="Senast ersatt här">
               <ReplacementValue channel={channel} />
@@ -175,10 +232,25 @@ function ChannelCard({ channel, canReplace }: { channel: SettingsChannel; canRep
         )}
       </dl>
 
-      {!channel.replaceable ? (
-        <p className={styles.meta}>{YOUTUBE_NOTE}</p>
-      ) : canReplace ? (
-        <SettingsCredentialForm platform={channel.id as ReplaceableChannelId} />
+      {channel.id === 'youtube' ? (
+        <>
+          <p className={styles.meta}>{credential.state === 'not_available' ? YOUTUBE_UNAVAILABLE_NOTE : YOUTUBE_NOTE}</p>
+          {canAct && bound ? (
+            <SettingsVerifyButton projectId={project.id} projectName={project.name} platform="youtube" />
+          ) : null}
+        </>
+      ) : canAct && account.state !== 'unreadable' ? (
+        <>
+          {bound ? (
+            <SettingsVerifyButton projectId={project.id} projectName={project.name} platform={channel.id} />
+          ) : null}
+          <SettingsCredentialForm
+            projectId={project.id}
+            projectName={project.name}
+            platform={channel.id as ReplaceableChannelId}
+            boundAccount={bound ? { id: bound.externalAccountId, label: bound.label } : null}
+          />
+        </>
       ) : (
         <p className={styles.readOnly}>Endast läsning</p>
       )}
@@ -186,11 +258,52 @@ function ChannelCard({ channel, canReplace }: { channel: SettingsChannel; canRep
   )
 }
 
+/** The project's account on the platform: who it is, and how that is known. */
+function AccountLine({ channel }: { channel: SettingsChannel }) {
+  const noun = ACCOUNT_NOUNS[channel.id]
+  if (channel.account.state === 'unreadable') {
+    return (
+      <p className={styles.accountLine}>
+        <span className={styles.accountNoun}>{noun}</span> <span className={styles.absent}>{UNREADABLE_LABEL}</span>
+      </p>
+    )
+  }
+  if (channel.account.state === 'none') {
+    return (
+      <p className={styles.accountLine} data-bound="false">
+        <span className={styles.accountNoun}>{noun}</span> <span className={styles.absent}>inget konto kopplat</span>
+      </p>
+    )
+  }
+  const { bound } = channel.account
+  const name = bound.label ? (channel.id === 'instagram' ? `@${bound.label}` : bound.label) : null
+  return (
+    <div className={styles.account} data-bound="true" data-verification={bound.verification} data-blocked={bound.blocked}>
+      <p className={styles.accountLine}>
+        <span className={styles.accountNoun}>{noun}</span>{' '}
+        {name ? <span className={styles.accountName}>{name}</span> : <span className={styles.absent}>{UNATTESTED_NAMES[channel.id]}</span>}{' '}
+        <code className={styles.code}>{bound.externalAccountId}</code>
+      </p>
+      <p className={styles.accountMeta}>
+        {bound.blocked ? 'Spärrad — plattformen rapporterade ett annat konto' : VERIFICATION_LABELS[bound.verification]}
+        {' · '}
+        <Rel iso={bound.verifiedAt} />
+      </p>
+    </div>
+  )
+}
+
 function ReplacementValue({ channel }: { channel: SettingsChannel }) {
-  const { state, at } = channel.lastReplacement
+  const { state, at, bindingAction } = channel.lastReplacement
   if (state === 'error') return <span className={styles.absent}>{UNREADABLE_LABEL}</span>
-  if (state === 'not_read') return <span className={styles.absent}>läses inte utan behörighet</span>
-  if (at) return <Rel iso={at} />
+  if (at) {
+    return (
+      <>
+        <Rel iso={at} />
+        {bindingAction && BINDING_ACTION_LABELS[bindingAction] ? ` · ${BINDING_ACTION_LABELS[bindingAction]}` : ''}
+      </>
+    )
+  }
   return <span className={styles.absent}>ingen registrerad</span>
 }
 

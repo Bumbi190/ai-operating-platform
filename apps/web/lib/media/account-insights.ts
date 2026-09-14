@@ -6,17 +6,18 @@
  * litet konto eller saknad scope) lämnas det null istället för att kasta — vi
  * hittar aldrig på siffror.
  *
- * IG: Instagram API with Instagram Login (graph.instagram.com, IGAA-token).
- *     followers_count kräver bara instagram_business_basic. reach/profile_views
+ * CREDENTIALS (project-scoped social credentials, 2026-09-14): Instagram och Facebook
+ * mäts med en VERIFIERAD credential för projektets bundna konto
+ * (lib/media/social-credentials.ts), skickad som Authorization-header — aldrig i
+ * URL:en. YouTube läses som publik data med plattformens API-nyckel, för en video som
+ * projektet självt har laddat upp.
+ *
+ * IG: followers_count kräver bara instagram_business_basic. reach/profile_views
  *     kräver instagram_manage_insights (kan saknas → null).
- * FB: Page-token → fan_count / followers_count. OBS: FACEBOOK_PAGE_ACCESS_TOKEN
- *     är ofta ett USER-token; vi växlar det till page-token via /me/accounts och
- *     frågar page-noden direkt ({pageId}) — annars pekar /me på användarnoden som
- *     saknar fan_count (= felet "(#100) nonexisting field fan_count").
+ * FB: sid-noden ({pageId}) med sidans eget token → fan_count / followers_count.
  * YT: YouTube Data API v3 med API-nyckel (publik kanaldata, ingen OAuth behövs).
  */
 
-const IG_HOST = 'https://graph.instagram.com/v22.0'
 const FB_HOST = 'https://graph.facebook.com/v21.0'
 const YT_HOST = 'https://www.googleapis.com/youtube/v3'
 
@@ -31,18 +32,37 @@ export interface AccountSnapshot {
 
 const num = (v: unknown): number | null => (v === undefined || v === null ? null : Number(v))
 
-async function getJson(url: string): Promise<any> {
-  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(12_000) })
+async function getJson(url: string, token?: string): Promise<any> {
+  const res = await fetch(url, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12_000),
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  })
   return res.json()
 }
 
-/** Instagram (IGAA). followers_count är robust; insights degraderar till null. */
-export async function igAccountSnapshot(token: string): Promise<AccountSnapshot> {
+/** What an Instagram account read needs. A verified InstagramCredential satisfies it. */
+export interface InstagramSnapshotCredential {
+  accountId: string
+  token: string
+  apiBase: string
+  isIgLogin: boolean
+}
+
+/** Instagram. followers_count är robust; insights degraderar till null. */
+export async function igAccountSnapshot(credential: InstagramSnapshotCredential): Promise<AccountSnapshot> {
   const snap: AccountSnapshot = { followers: null, following: null, mediaCount: null, reach: null, profileViews: null, raw: null }
+
+  // Instagram-login credentials read /me (which also answers user_id); Facebook-login
+  // credentials read the verified account's own node.
+  const node = credential.isIgLogin ? 'me' : credential.accountId
+  const fields = credential.isIgLogin
+    ? 'user_id,username,followers_count,follows_count,media_count'
+    : 'id,username,followers_count,follows_count,media_count'
 
   // 1) Basfält (instagram_business_basic)
   try {
-    const j = await getJson(`${IG_HOST}/me?fields=user_id,username,followers_count,follows_count,media_count&access_token=${token}`)
+    const j = await getJson(`${credential.apiBase}/${node}?fields=${fields}`, credential.token)
     snap.raw = j
     if (!j?.error) {
       snap.followers  = num(j.followers_count)
@@ -53,7 +73,7 @@ export async function igAccountSnapshot(token: string): Promise<AccountSnapshot>
 
   // 2) Konto-insights (kräver instagram_manage_insights — kan saknas)
   try {
-    const j = await getJson(`${IG_HOST}/me/insights?metric=reach,profile_views&period=day&access_token=${token}`)
+    const j = await getJson(`${credential.apiBase}/${node}/insights?metric=reach,profile_views&period=day`, credential.token)
     if (!j?.error && Array.isArray(j.data)) {
       for (const m of j.data) {
         const v = num(m?.values?.[0]?.value)
@@ -66,31 +86,17 @@ export async function igAccountSnapshot(token: string): Promise<AccountSnapshot>
   return snap
 }
 
-/**
- * Växlar ett user-token mot page-token via /me/accounts. Är tokenet redan ett
- * page-token (eller pageId saknas i listan) returneras inkommande token oförändrat.
- * Samma logik som publiceringen i facebook.ts använder.
- */
-export async function resolveFbPageToken(userOrPageToken: string, pageId: string): Promise<string> {
-  try {
-    const j = await getJson(`${FB_HOST}/me/accounts?fields=id,access_token&limit=200&access_token=${userOrPageToken}`)
-    const page = (j?.data as Array<{ id: string; access_token: string }> | undefined)?.find(p => p.id === pageId)
-    return page?.access_token ?? userOrPageToken
-  } catch {
-    return userOrPageToken
-  }
+/** What a Facebook page read needs. A verified FacebookCredential satisfies it. */
+export interface FacebookSnapshotCredential {
+  pageId: string
+  pageToken: string
 }
 
-/**
- * Facebook Page. Kräver page-id för att fråga page-noden direkt.
- * Utan page-id kan vi inte säkert nå fan_count (/me kan peka på användaren) → degraderar.
- */
-export async function fbAccountSnapshot(token: string, pageId: string | null): Promise<AccountSnapshot> {
+/** Facebook Page — the verified page's own node, read with the page's own token. */
+export async function fbAccountSnapshot(credential: FacebookSnapshotCredential): Promise<AccountSnapshot> {
   const snap: AccountSnapshot = { followers: null, following: null, mediaCount: null, reach: null, profileViews: null, raw: null }
-  if (!pageId) { snap.raw = { error: 'no_page_id', note: 'FACEBOOK_PAGE_ID saknas — kan inte fråga page-noden.' }; return snap }
   try {
-    const pageToken = await resolveFbPageToken(token, pageId)
-    const j = await getJson(`${FB_HOST}/${pageId}?fields=followers_count,fan_count&access_token=${pageToken}`)
+    const j = await getJson(`${FB_HOST}/${credential.pageId}?fields=followers_count,fan_count`, credential.pageToken)
     snap.raw = j
     if (!j?.error) {
       // followers_count = sidföljare (modernt); fan_count = sidgillningar (äldre, fallback).

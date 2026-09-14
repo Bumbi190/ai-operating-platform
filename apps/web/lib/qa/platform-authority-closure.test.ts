@@ -150,6 +150,27 @@ function tenantWorld(): Record<string, Row[]> {
       repro: 'A-SECRET-REPRO', fix_prompt: 'A-SECRET-REPORT-FIX', status: 'open',
       dedupe_key: 'a-1', emailed_at: null, created_at: minutesAgo(60), resolved_at: null,
     }],
+    // Project-scoped social credentials (2026-09-14): only the platform social project
+    // has verified accounts. Tenants A and B have none, so no credential can be
+    // resolved for their content even if a guard above it failed.
+    social_account_bindings: [
+      socialBinding(SOCIAL, 'instagram', '17841400000000001'),
+      socialBinding(SOCIAL, 'facebook', '1000000000000001'),
+      socialBinding(SOCIAL, 'youtube', 'UCsocial0000000000000001'),
+    ],
+    platform_credential_events: [],
+  }
+}
+
+/** A verified, active account binding row as social_account_bindings stores it. */
+function socialBinding(projectId: string, platform: string, externalAccountId: string): Row {
+  const seq = { instagram: 1, facebook: 2, youtube: 3 }[platform] ?? 9
+  return {
+    binding_id: `77777777-7777-4777-8777-00000000000${seq}`, project_id: projectId, platform,
+    external_account_id: externalAccountId, account_label: null,
+    credential_source: platform === 'youtube' ? 'platform_env_transitional' : 'project_store',
+    verification: 'provider_attested', verified_at: minutesAgo(600), bound_by: `user:${OPERATOR}`,
+    bound_at: minutesAgo(900), superseded_at: null, blocked_at: null, blocked_reason: null,
   }
 }
 
@@ -485,16 +506,16 @@ vi.mock('@/lib/media/instagram', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/media/instagram')>()
   return {
     ...actual,
-    postReelToInstagram: async (videoUrl: string) => {
+    postReelToInstagram: async (_credential: unknown, videoUrl: string) => {
       EXTERNAL.push(`instagram.publish:${videoUrl}`)
       return { mediaId: `ig:${videoUrl}`, permalink: `https://instagram.test/${encodeURIComponent(videoUrl)}` }
     },
-    createReelContainer: async (videoUrl: string) => {
+    createReelContainer: async (_credential: unknown, videoUrl: string) => {
       EXTERNAL.push(`instagram.container:${videoUrl}`)
       return `container:${videoUrl}`
     },
     pollUntilReady: async () => {},
-    publishContainer: async (creationId: string) => {
+    publishContainer: async (_credential: unknown, creationId: string) => {
       EXTERNAL.push(`instagram.publish:${creationId.replace(/^container:/, '')}`)
       return { mediaId: `ig:${creationId}`, permalink: `https://instagram.test/p/${encodeURIComponent(creationId)}` }
     },
@@ -503,7 +524,7 @@ vi.mock('@/lib/media/instagram', async (importOriginal) => {
   }
 })
 vi.mock('@/lib/media/facebook', () => ({
-  postReelToFacebook: async (videoUrl: string) => {
+  postReelToFacebook: async (_credential: unknown, videoUrl: string) => {
     EXTERNAL.push(`facebook.publish:${videoUrl}`)
     return { postId: `fb:${videoUrl}`, url: `https://facebook.test/${encodeURIComponent(videoUrl)}` }
   },
@@ -512,19 +533,59 @@ vi.mock('@/lib/media/youtube', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/media/youtube')>()
   return {
     ...actual,
-    isYouTubeConfigured: () => true,
-    uploadShort: async (o: { videoUrl: string }) => {
+    uploadShort: async (credential: { channelId: string }, o: { videoUrl: string }) => {
       EXTERNAL.push(`youtube.upload:${o.videoUrl}`)
-      return { videoId: `yt:${o.videoUrl}`, url: `https://youtube.test/${encodeURIComponent(o.videoUrl)}` }
+      return { videoId: `yt:${o.videoUrl}`, url: `https://youtube.test/${encodeURIComponent(o.videoUrl)}`, channelId: credential.channelId }
     },
   }
 })
+/**
+ * Credential resolution as lib/media/social-credentials.ts does it: only an active,
+ * unblocked binding of THAT project yields a credential — there is no platform token
+ * to fall back to. Every resolution is recorded in TOKEN_READS as platform:project.
+ */
+vi.mock('@/lib/media/social-credentials', () => {
+  const resolveFor = (platform: 'instagram' | 'facebook' | 'youtube') => async (projectId: unknown) => {
+    TOKEN_READS.push(`${platform}:${String(projectId)}`)
+    const row = (DB.tables.social_account_bindings ?? []).find(b =>
+      b.project_id === projectId && b.platform === platform && b.superseded_at == null && b.blocked_at == null)
+    if (!row) return { ok: false, refusal: 'binding_missing', binding: null }
+    const binding = { bindingId: row.binding_id, projectId: row.project_id, platform, externalAccountId: row.external_account_id }
+    const base = { platform, projectId: row.project_id, bindingId: row.binding_id }
+    const credential = platform === 'instagram'
+      ? { ...base, accountId: row.external_account_id, username: null, token: 'PROJECT-IG-TOKEN', apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true, expiresAt: null }
+      : platform === 'facebook'
+        ? { ...base, pageId: row.external_account_id, pageName: null, pageToken: 'PROJECT-FB-TOKEN', expiresAt: null }
+        : { ...base, channelId: row.external_account_id, channelTitle: null, accessToken: 'PROJECT-YT-TOKEN', channelVerifiedBeforeUpload: true }
+    return { ok: true, credential, binding }
+  }
+  const instagram = resolveFor('instagram')
+  const facebook = resolveFor('facebook')
+  const youtube = resolveFor('youtube')
+  return {
+    resolveInstagramCredential: instagram,
+    resolveFacebookCredential: facebook,
+    resolveYouTubeCredential: youtube,
+    createCredentialResolver: () => ({ instagram, facebook, youtube }),
+    confirmYouTubeUploadChannel: async (credential: { channelId: string }, uploaded: string | null) =>
+      uploaded === credential.channelId ? { confirmed: true } : { confirmed: false, blocked: true },
+    refusalIsPermanent: (refusal: string) => !['binding_unreadable', 'credential_unreadable', 'provider_unavailable'].includes(refusal),
+  }
+})
+/** The token route's attestation: the platform answers with the account the project is bound to. */
+vi.mock('@/lib/media/social-identity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/media/social-identity')>()),
+  attestInstagramCredential: async (_credential: string, expected: string | null) => expected
+    ? { ok: true, accountId: expected, username: null, apiBase: 'https://graph.instagram.com/v21.0', isIgLogin: true }
+    : { ok: false, failure: 'account_not_found' },
+  attestFacebookPage: async () => ({ ok: false, failure: 'provider_unavailable' }),
+}))
 vi.mock('@/lib/media/token-store', () => ({
-  getToken: async (platform: string) => {
-    TOKEN_READS.push(platform)
-    return { accessToken: 'PLATFORM-TOKEN', accountId: null, expiresAt: null, source: 'env' }
+  readStoredCredential: async () => ({ ok: false }),
+  storeCredential: async (_projectId: string, platform: string) => {
+    EXTERNAL.push(`token.set:${platform}`)
+    return { ok: true }
   },
-  setToken: async (platform: string) => { EXTERNAL.push(`token.set:${platform}`) },
 }))
 vi.mock('@/lib/media/lambda-render', () => ({
   getLambdaRenderProgress: async (renderId: string) =>
@@ -1108,6 +1169,8 @@ describe('A6-3 · direct publish is platform destination authority, not project 
       'instagram.publish:https://cdn.test/script-social.mp4',
       'facebook.publish:https://cdn.test/script-social.mp4',
     ])
+    // Each channel's credential is the script's own project's — resolved for it and no other.
+    expect(TOKEN_READS).toEqual([`instagram:${SOCIAL}`, `facebook:${SOCIAL}`])
     expect(DB.tables.media_scripts.find(r => r.id === 'script-social')?.status).toBe('published')
   })
 
@@ -1154,17 +1217,26 @@ describe('A6-3 · project content stays the owner’s to manage', () => {
     expect(EXTERNAL).toEqual([])
   })
 
-  it('9 · the channel-token endpoint stays the social project owner’s alone', async () => {
+  it('9 · the channel-token endpoint is the platform operator’s, for a project they own — and only that project', async () => {
     const { POST } = await import('@/app/api/media/token/route')
-    const body = { platform: 'instagram', token: 'x'.repeat(64) }
+    const body = { project_id: SOCIAL, platform: 'instagram', token: 'x'.repeat(64) }
     as(USER_A)
     const denied = await POST(jsonRequest('https://omnira.test/api/media/token', body))
     expect(denied.status).toBe(403)
+    const ownProject = await POST(jsonRequest('https://omnira.test/api/media/token', { ...body, project_id: PROJECT_A }))
+    expect(ownProject.status, 'owning a project is not the operator authority').toBe(403)
     expect(EXTERNAL).toEqual([])
     as(OPERATOR)
+    const foreign = await POST(jsonRequest('https://omnira.test/api/media/token', { ...body, project_id: PROJECT_A }))
+    expect(foreign.status, 'the operator stored a credential for a tenant’s project').toBe(403)
+    const unnamed = await POST(jsonRequest('https://omnira.test/api/media/token', { platform: 'instagram', token: 'x'.repeat(64) }))
+    expect(unnamed.status, 'a request without a project fell back to one').toBe(400)
+    expect(EXTERNAL).toEqual([])
+    expect(DB.tables.platform_credential_events).toEqual([])
     const allowed = await POST(jsonRequest('https://omnira.test/api/media/token', body))
     expect(allowed.status).toBe(200)
     expect(EXTERNAL).toEqual(['token.set:instagram'])
+    expect(DB.tables.platform_credential_events.map(e => [e.project_id, e.outcome])).toEqual([[SOCIAL, 'attempted'], [SOCIAL, 'replaced']])
   })
 })
 

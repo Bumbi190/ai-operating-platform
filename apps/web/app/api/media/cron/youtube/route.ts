@@ -29,18 +29,31 @@
  * YouTube-konto, så bara plattformens sociala projekts videor laddas upp —
  * i den schemalagda kön OCH för ett namngivet ?scriptId.
  *
+ * CREDENTIAL (project-scoped social credentials, 2026-09-14): varje video laddas upp
+ * med YouTube-credentialn för SCRIPTETS projekt, via projektets kanalbindning
+ * (lib/media/social-credentials.ts). Under Y1 är det plattformens Vercel-credential,
+ * som bara den enda bindning den är kopplad till får använda — alla andra projekt får
+ * ingen uppladdning alls. Kan kanalen läsas före uppladdning kontrolleras den där;
+ * annars kontrolleras kanalen YouTube rapporterar för uppladdningen, och en avvikelse
+ * spärrar bindningen permanent så att ingen senare uppladdning når fel kanal.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isYouTubeConfigured, uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
+import { uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/governance/execution-dispatch'
 import { logRun } from '@/lib/media/run-log'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
+import {
+  confirmYouTubeUploadChannel,
+  createCredentialResolver,
+  type YouTubeCredential,
+} from '@/lib/media/social-credentials'
 
 export const dynamic    = 'force-dynamic'
 export const maxDuration = 60
@@ -63,7 +76,10 @@ function log(msg: string) {
   console.log(`[cron/youtube] ${msg}`)
 }
 
-async function uploadOne(db: ReturnType<typeof createAdminClient>, script: ScriptRow) {
+type UploadOutcome = { url: string; videoId: string; channelConfirmed: true }
+  | { url: string; videoId: string; channelConfirmed: false; bindingBlocked: boolean }
+
+async function uploadOne(db: ReturnType<typeof createAdminClient>, script: ScriptRow, credential: YouTubeCredential): Promise<UploadOutcome> {
   const newsItem = Array.isArray(script.media_news_items)
     ? script.media_news_items[0]
     : script.media_news_items
@@ -83,9 +99,12 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     { system: 'youtube', operation: 'upload_short' },
   )
 
-  const { videoId, url } = await uploadShort({ videoUrl: script.video_url!, title, description, tags })
+  const { videoId, url, channelId } = await uploadShort(credential, { videoUrl: script.video_url!, title, description, tags })
   const channelPublishedAt = new Date().toISOString()
 
+  // The upload happened, whatever channel it landed on: record it, so the video is
+  // never uploaded a second time. Whether it landed on the BOUND channel is decided
+  // next, and a mismatch blocks the binding.
   await persistChannelSuccess(
     db,
     script.id,
@@ -93,8 +112,11 @@ async function uploadOne(db: ReturnType<typeof createAdminClient>, script: Scrip
     channelPublishedAt,
   )
 
+  const channel = await confirmYouTubeUploadChannel(credential, channelId)
+  if (!channel.confirmed) return { url, videoId, channelConfirmed: false, bindingBlocked: channel.blocked }
+
   await logRun({ workflow: 'Publish to YouTube', context: { scriptId: script.id, youtubeUrl: url } })
-  return url
+  return { url, videoId, channelConfirmed: true }
 }
 
 export async function GET(request: Request) {
@@ -102,11 +124,6 @@ export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (!isYouTubeConfigured()) {
-    log('YouTube ej konfigurerat (saknar OAuth-env) — hoppar över')
-    return NextResponse.json({ status: 'youtube_not_configured' })
   }
 
   const db = createAdminClient()
@@ -161,6 +178,10 @@ export async function GET(request: Request) {
   // Uppskjutna av stopp — varken lyckade eller misslyckade. De ska tas om vid
   // nästa körning efter resume, utan larm och utan felräkning.
   const deferred: { scriptId: string; reason: string }[] = []
+  // Inget projektkonto att ladda upp till — ingen kanal, inget larm.
+  const skipped:  { scriptId: string; refusal: string }[] = []
+
+  const credentials = createCredentialResolver()
 
   for (const script of scripts as ScriptRow[]) {
     if (!script.video_url) continue
@@ -169,11 +190,56 @@ export async function GET(request: Request) {
       log(`Script ${script.id} har redan youtube_video_id — hoppar över`)
       continue
     }
+
+    // The script's project → its YouTube channel binding → the credential that binding
+    // may use. No binding or no credential: this video is not uploaded anywhere.
+    const resolved = await credentials.youtube(script.project_id)
+    if (!resolved.ok) {
+      if (resolved.refusal === 'binding_missing' || resolved.refusal === 'credential_missing') {
+        log(`Script ${script.id}: ingen YouTube-credential för projektet (${resolved.refusal}) — hoppar över`)
+        skipped.push({ scriptId: script.id, refusal: resolved.refusal })
+        continue
+      }
+      const error = `youtube_credential_${resolved.refusal}`
+      log(`Script ${script.id}: projektets YouTube-credential kunde inte verifieras (${resolved.refusal}) — laddar inte upp`)
+      failed.push({ scriptId: script.id, error })
+      await sendPipelineAlert({
+        cronRoute: 'cron/youtube',
+        step:      'youtube_credential',
+        error,
+        severity:  'warning',
+        context:   { scriptId: script.id, projectId: script.project_id },
+      })
+      continue
+    }
+
     log(`Laddar upp script ${script.id} till YouTube...`)
     try {
-      const url = await uploadOne(db, script)
-      log(`YouTube OK: ${url}`)
-      uploaded.push({ scriptId: script.id, youtubeUrl: url })
+      const outcome = await uploadOne(db, script, resolved.credential)
+      if (!outcome.channelConfirmed) {
+        const error = 'youtube_upload_channel_not_confirmed'
+        log(`YouTube bekräftade inte projektets kanal för ${script.id} (video ${outcome.videoId}) — `
+          + `bindningen ${outcome.bindingBlocked ? 'är spärrad' : 'KUNDE INTE spärras'}, avbryter kön`)
+        failed.push({ scriptId: script.id, error })
+        await logRun({ workflow: 'Publish to YouTube', status: 'failed', context: { scriptId: script.id, videoId: outcome.videoId }, error })
+        await sendPipelineAlert({
+          cronRoute: 'cron/youtube',
+          step:      'youtube_channel_mismatch',
+          error,
+          severity:  'error',
+          context:   {
+            scriptId: script.id,
+            projectId: script.project_id,
+            videoId: outcome.videoId,
+            expectedChannelId: resolved.credential.channelId,
+            bindingBlocked: outcome.bindingBlocked,
+            note: 'Uppladdningen landade inte på projektets bundna kanal. Bindningen spärras; inga fler uppladdningar görs förrän kanalen binds om.',
+          },
+        })
+        break
+      }
+      log(`YouTube OK: ${outcome.url}`)
+      uploaded.push({ scriptId: script.id, youtubeUrl: outcome.url })
     } catch (err) {
       if (isExecutionStopped(err)) {
         // Inte ett YouTube-fel: ingenting skickades. Inget larm, ingen
@@ -202,10 +268,13 @@ export async function GET(request: Request) {
 
   const status = deferred.length > 0 && uploaded.length === 0 && failed.length === 0
     ? 'deferred_by_stop'
-    : failed.length === 0 ? 'uploaded' : (uploaded.length === 0 ? 'youtube_failed' : 'partial')
+    : skipped.length > 0 && uploaded.length === 0 && failed.length === 0
+      ? 'youtube_not_configured'
+      : failed.length === 0 ? 'uploaded' : (uploaded.length === 0 ? 'youtube_failed' : 'partial')
   return NextResponse.json(
     { status, uploadedCount: uploaded.length, failedCount: failed.length,
-      deferredCount: deferred.length, uploaded, failed, deferred, ranAt: new Date().toISOString() },
+      deferredCount: deferred.length, skippedCount: skipped.length,
+      uploaded, failed, deferred, skipped, ranAt: new Date().toISOString() },
     { status: failed.length > 0 && uploaded.length === 0 ? 500 : 200 },
   )
 }

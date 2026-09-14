@@ -16,6 +16,11 @@
  * (the breaking chain) is still render-polled for its own project, but is
  * checked before any container is made.
  *
+ * Credential (project-scoped social credentials, 2026-09-14): the container is
+ * created with the verified Instagram credential of the SCRIPT'S project
+ * (lib/media/social-credentials.ts) — never an environment token. No verified
+ * binding, no container; the publish cron re-decides with its own resolution.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -23,6 +28,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress, startLambdaRender } from '@/lib/media/lambda-render'
 import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagram'
+import { resolveInstagramCredential } from '@/lib/media/social-credentials'
 import { buildVideoInputProps } from '@/lib/media/video-props'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { logRun } from '@/lib/media/run-log'
@@ -276,6 +282,14 @@ export async function GET(request: Request) {
     sourceName: (newsItem as { source_name?: string } | null)?.source_name ?? undefined,
   })
 
+  // ── CREDENTIAL: the script's project → its verified Instagram account ─────────
+  // Resolved before the governance boundary below: these are reads, not writes.
+  const instagram = await resolveInstagramCredential(script.project_id)
+  if (!instagram.ok) {
+    log(`No verified Instagram credential for the script's project (${instagram.refusal}) — no container`)
+    return NextResponse.json({ status: 'ig_credential_refused', refusal: instagram.refusal, scriptId: script.id })
+  }
+
   // ── GOVERNANCE BOUNDARY: creating a container is a write to Meta ──
   // Also before the try: that catch answers 500 `ig_container_failed`, which
   // would report the operator's own pause as a Meta fault.
@@ -293,7 +307,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const creationId = await createReelContainer(videoUrl, caption)
+    const creationId = await createReelContainer(instagram.credential, videoUrl, caption)
     // Tidsstämpeln krävs för att publish-cronen ska kunna avgöra om containern
     // hunnit bli för gammal (Meta håller den i ~24h) innan den återanvänds.
     await db.from('media_scripts')

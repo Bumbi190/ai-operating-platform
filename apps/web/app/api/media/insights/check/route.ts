@@ -1,52 +1,63 @@
 /**
- * GET /api/media/insights/check
+ * GET /api/media/insights/check?project_id=<uuid>
  *
- * Verifierar att Instagram-tokenet har behörighet att läsa insights.
- * Öppna i webbläsaren medan du är inloggad — den gör ETT riktigt Graph-anrop
- * mot ett av dina publicerade inlägg och rapporterar resultatet.
+ * Verifierar att ett projekts VERIFIERADE Instagram-credential har behörighet att
+ * läsa insights. Gör ETT riktigt Graph-anrop mot projektets senast publicerade
+ * inlägg och rapporterar resultatet.
  *
  * Svar:
  *   { ok: true,  sample: {...} }                      → insights fungerar
- *   { ok: false, reason: 'permission' | 'error' | 'no_media' | 'no_token', message }  → åtgärd krävs
+ *   { ok: false, reason: 'permission' | 'error' | 'no_media' | 'no_token' | 'project_required', message }  → åtgärd krävs
+ *
+ * PROJECT-SCOPED (2026-09-14). The check always concerns ONE project the caller owns,
+ * named explicitly, and uses that project's verified credential
+ * (lib/media/social-credentials.ts) against that project's own post. There is no
+ * default project and no platform-wide token.
  *
  * REDACTION (Settings S0). The provider's own error text used to be returned
  * verbatim as `error`. It is classified here instead: only the class and a fixed
  * sentence reach the browser, and the provider text — passed through
- * redactSecrets() — stays in the server log. Whatever Graph says, and any
- * exception message that quoted a URL with its access_token, cannot reach the
- * client from this route.
+ * redactSecrets() — stays in the server log.
  */
-import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getToken } from '@/lib/media/token-store'
+import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
+import { isProjectId } from '@/lib/media/social-bindings'
+import { resolveInstagramCredential } from '@/lib/media/social-credentials'
 import { fetchMediaInsights } from '@/lib/media/insights'
 import { redactSecrets } from '@/lib/media/meta-errors'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET(request: Request) {
+  const access = await resolveProjectAccess()
+  if (!access.ok) return access.response
 
-  const stored = await getToken('instagram')
-  if (!stored) return NextResponse.json({ ok: false, reason: 'no_token', message: 'Inget Instagram-token hittat.' })
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  if (!isProjectId(projectId)) {
+    return NextResponse.json({
+      ok: false,
+      reason: 'project_required',
+      message: 'Ange projektet (project_id). Kontrollen gäller alltid ett projekts egen credential.',
+    }, { status: 400 })
+  }
+  // ISOLATION. The caller must own the project whose credential and post are used.
+  if (!assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+
+  const instagram = await resolveInstagramCredential(projectId)
+  if (!instagram.ok) {
+    return NextResponse.json({
+      ok: false,
+      reason: 'no_token',
+      refusal: instagram.refusal,
+      message: 'Projektet har ingen verifierad Instagram-credential.',
+    })
+  }
 
   const db = createAdminClient()
-
-  // ISOLATION. A live Settings diagnostic (`TokenUpdater.tsx`), so the caller is
-  // an operator — but the probe row was chosen from EVERY tenant's published
-  // scripts and the response echoes `script.hook`, which is content. Scope
-  // precedes `.order()`/`.limit(1)`: with one slot to fill, an unscoped read
-  // lets a newer foreign post take it outright, so filtering afterwards would
-  // not merely be untidy, it would return the wrong row every time.
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-
   const { data: script } = await (db.from('media_scripts') as any)
     .select('id, instagram_media_id, hook')
-    .in('project_id', scopeProjectFilter(allowedProjectIds))
+    .eq('project_id', projectId)
     .eq('status', 'published')
     .not('instagram_media_id', 'is', null)
     .order('published_at', { ascending: false })
@@ -61,7 +72,7 @@ export async function GET() {
     })
   }
 
-  const result = await fetchMediaInsights(script.instagram_media_id, stored.accessToken)
+  const result = await fetchMediaInsights(script.instagram_media_id, instagram.credential.token)
   if (result.ok) {
     return NextResponse.json({ ok: true, sample: result.metrics, testedPost: script.hook ?? script.instagram_media_id })
   }

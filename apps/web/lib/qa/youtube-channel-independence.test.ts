@@ -128,9 +128,29 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 const uploadShort = vi.fn()
 vi.mock('@/lib/media/youtube', () => ({
-  isYouTubeConfigured: () => true,
   uploadShort:         (...a: unknown[]) => uploadShort(...a),
   buildYouTubeMeta:    () => ({ title: 't', description: 'd', tags: [] }),
+}))
+
+// Project-scoped social credentials: the upload uses the YouTube credential of the
+// row's OWN project, through its channel binding. Faked so refusals and a channel that
+// does not match can be forced; the resolver itself is proven in social-credentials.test.ts.
+const youtubeCredentials = {
+  refusal: null as string | null,
+  confirmed: true,
+  confirmCalls: [] as unknown[][],
+}
+vi.mock('@/lib/media/social-credentials', () => ({
+  createCredentialResolver: () => ({
+    youtube: async (projectId: unknown) => youtubeCredentials.refusal
+      ? { ok: false, refusal: youtubeCredentials.refusal, binding: null }
+      : { ok: true, binding: {}, credential: { platform: 'youtube', projectId, bindingId: 'binding-yt',
+          channelId: 'UC_TEST_CHANNEL', channelTitle: null, accessToken: 'YT-VERIFIED', channelVerifiedBeforeUpload: false } },
+  }),
+  confirmYouTubeUploadChannel: async (credential: unknown, channelId: unknown) => {
+    youtubeCredentials.confirmCalls.push([credential, channelId])
+    return youtubeCredentials.confirmed ? { confirmed: true } : { confirmed: false, blocked: true }
+  },
 }))
 const sendPipelineAlert = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/lib/media/alert', () => ({
@@ -159,6 +179,9 @@ beforeEach(() => {
   dbState.forceConditionalNoMatch = false
   dbState.conditionalUpdateError = null
   dbState.fallbackAttempts = 0
+  youtubeCredentials.refusal = null
+  youtubeCredentials.confirmed = true
+  youtubeCredentials.confirmCalls = []
   process.env.CRON_SECRET = 'test-secret'
   vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -334,5 +357,60 @@ describe('YouTube — oberoende av Instagram', () => {
     const alert = sendPipelineAlert.mock.calls[0][0] as { context: { note: string } }
     expect(alert.context.note).toContain('övriga kanalers status verifierades inte')
     expect(alert.context.note).not.toMatch(/IG|Facebook/)
+  })
+})
+
+describe("YouTube — the channel is the project's own binding, never a platform default", () => {
+  const row = (id: string) => ({
+    id, project_id: TEST_PROJECT, hook: 'h', cta: null, hashtags: [], video_url: `https://cdn/${id}.mp4`,
+    youtube_video_id: null, media_news_items: null, status: 'approved', video_status: 'ready',
+  })
+
+  it('a project without a YouTube channel binding uploads nothing and raises no alert', async () => {
+    dbState.rows = [row('a')]
+    youtubeCredentials.refusal = 'binding_missing'
+
+    const body = await (await call()).json()
+
+    expect(uploadShort).not.toHaveBeenCalled()
+    expect(body.skippedCount).toBe(1)
+    expect(body.status).toBe('youtube_not_configured')
+    expect(sendPipelineAlert).not.toHaveBeenCalled()
+  })
+
+  it('a credential that cannot be verified uploads nothing and alerts', async () => {
+    dbState.rows = [row('a')]
+    youtubeCredentials.refusal = 'provider_unavailable'
+
+    const body = await (await call()).json()
+
+    expect(uploadShort).not.toHaveBeenCalled()
+    expect(body.failedCount).toBe(1)
+    expect(body.failed[0].error).toBe('youtube_credential_provider_unavailable')
+    expect(sendPipelineAlert.mock.calls[0][0]).toMatchObject({ step: 'youtube_credential' })
+  })
+
+  it("the upload is handed the project's credential, and the channel YouTube reports is checked against the binding", async () => {
+    dbState.rows = [row('a')]
+    uploadShort.mockResolvedValue({ videoId: 'YT1', url: 'https://youtu.be/YT1', channelId: 'UC_TEST_CHANNEL' })
+
+    const body = await (await call()).json()
+
+    expect(uploadShort.mock.calls[0][0]).toMatchObject({ platform: 'youtube', projectId: TEST_PROJECT })
+    expect(youtubeCredentials.confirmCalls[0][1]).toBe('UC_TEST_CHANNEL')
+    expect(body.uploadedCount).toBe(1)
+  })
+
+  it('an upload that landed on another channel stops the queue, alerts as an error and is not reported as uploaded', async () => {
+    dbState.rows = [row('a'), row('b')]
+    youtubeCredentials.confirmed = false
+    uploadShort.mockResolvedValue({ videoId: 'YT-WRONG', url: 'https://youtu.be/YT-WRONG', channelId: 'UC_SOMEONE_ELSE' })
+
+    const body = await (await call()).json()
+
+    expect(uploadShort, 'no second upload after a channel mismatch').toHaveBeenCalledTimes(1)
+    expect(body.uploadedCount).toBe(0)
+    expect(body.failed[0].error).toBe('youtube_upload_channel_not_confirmed')
+    expect(sendPipelineAlert.mock.calls.at(-1)?.[0]).toMatchObject({ step: 'youtube_channel_mismatch', severity: 'error' })
   })
 })

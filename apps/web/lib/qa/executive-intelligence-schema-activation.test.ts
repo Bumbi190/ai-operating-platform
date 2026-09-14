@@ -178,7 +178,7 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 73', () => {
+  it('enforces exactly the expected number of migrations — currently 78', () => {
     // 66: `workflow_manual_privileged_provenance` (65) and Phase 2B-3C's
     // `spend_advisory_overrides` (66) landed in parallel branches, and BOTH bumped
     // this line to 65 independently. The merge conflict is the tripwire working:
@@ -217,8 +217,17 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 73: Settings S0's `platform_credential_events_search_path` — the Supabase advisor
     // flagged the table's append-only trigger function for a mutable search_path once
     // it was live; function configuration only.
+    //
+    // 74–78: project-scoped social credentials (owner decisions 1A · 2Y1 · 3O1) —
+    // `social_account_bindings` (Project → Platform → Verified External Account, one
+    // project per account), `platform_credential_events_account_binding` (the audit
+    // names the attested account; event_version 2 makes a pre-v2 writer refuse),
+    // `social_credential_health` (per-project verification, closed codes only),
+    // `platform_tokens_project_binding` (no credential without a project) and
+    // `social_account_bindings_the_prompt_evidence` (The Prompt's accounts bound from
+    // evidence re-checked at apply time; no credential touched).
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(73)
+    expect(enforced).toBe(78)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

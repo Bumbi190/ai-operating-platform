@@ -1,173 +1,102 @@
 /**
- * token-store.ts — Supabase-backed token storage för sociala medieplattformar.
+ * token-store.ts — the stored social credential of one project on one platform.
  *
- * G1 (multi-tenant): tokens är nu PROJEKT-medvetna. Samma pipeline kan därmed
- * posta för The Prompt, Familje-Stunden, GainPilot m.fl. UTAN specialfall —
- * anropa bara med ett projekt (uuid eller slug). Utelämnas projekt används
- * The Prompt (ai-media-automation) som bakåtkompatibel default, så alla
- * befintliga anrop fungerar oförändrat.
+ * PROJECT-EXPLICIT, NOTHING IMPLICIT (project-scoped social credentials,
+ * 2026-09-14). Every read and write names a project UUID the caller derived
+ * server-side from the resource it acts on. There is no default project, no slug
+ * lookup, no environment fallback and no read across projects: a missing or
+ * malformed project id reads nothing and writes nothing. The database agrees —
+ * platform_tokens.project_id is NOT NULL.
  *
- * Prioritetsordning för att hämta ett token:
- *   1. platform_tokens-raden för (projekt, plattform)
- *   2. Env-variabel som fallback — ENDAST för default-projektet (The Prompt),
- *      eftersom env-tokens hör till just det kontot.
+ * NOT THE WAY IN. A stored credential says nothing about which account it reaches.
+ * Consumers get a VERIFIED credential from lib/media/social-credentials.ts, which
+ * requires the project's verified account binding and asks the provider before
+ * anything is dispatched. This module is the storage underneath that resolver,
+ * /api/media/token and the refresh cron — and those two store only a credential
+ * whose account the provider has just attested.
  *
- * Env-variabel-mappning:
- *   instagram → INSTAGRAM_ACCESS_TOKEN
- *   facebook  → FACEBOOK_PAGE_ACCESS_TOKEN (+ FACEBOOK_PAGE_ID som account_id)
+ * NEVER THROWS, NEVER ECHOES. Failures come back as { ok: false }. A database
+ * message, which can quote the row being written, is neither returned nor logged.
  */
-
+import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Database } from '@/lib/supabase/types'
+import { isProjectId, type StoredSocialPlatform } from './social-bindings'
+import { EXTERNAL_ACCOUNT_ID } from './social-identity'
 
-const WARN_DAYS_BEFORE_EXPIRY = 10
+/** The credential type platform_tokens stores for each platform — pinned by a CHECK constraint. */
+export const STORED_TOKEN_TYPE: Record<StoredSocialPlatform, 'user' | 'page'> = { instagram: 'user', facebook: 'page' }
 
-const ENV_VAR_MAP: Record<string, string> = {
-  instagram: 'INSTAGRAM_ACCESS_TOKEN',
-  facebook:  'FACEBOOK_PAGE_ACCESS_TOKEN',
-}
-
-// The Prompt äger de tokens som env-variablerna/legacy-raderna pekar på.
-const DEFAULT_SOCIAL_PROJECT_SLUG = 'ai-media-automation'
-const UUID_RE = /^[0-9a-fA-F-]{36}$/
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type Platform = 'instagram' | 'facebook'
-
-export interface StoredToken {
+export interface StoredCredential {
   accessToken: string
-  accountId:   string | null   // IG business id / FB page id (per projekt)
-  expiresAt:   Date | null
-  source:      'supabase' | 'env'
+  /** The provider-attested account the credential was stored for, when recorded. */
+  accountId: string | null
+  expiresAt: Date | null
+  refreshedAt: Date | null
 }
 
-export interface SetTokenOptions {
-  /** Projekt (uuid eller slug). Default: The Prompt. */
-  project?:   string
-  /** Plattformens konto-id (IG business id / FB page id). Bevaras om utelämnat. */
-  accountId?: string
+export type StoredCredentialRead = { ok: true; credential: StoredCredential | null } | { ok: false }
+
+const date = (value: unknown): Date | null => {
+  if (typeof value !== 'string') return null
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 
-// ─── Projektupplösning ──────────────────────────────────────────────────────
-
-type AnyDb = ReturnType<typeof createAdminClient>
-
-async function resolveProjectId(db: AnyDb, project?: string): Promise<string | null> {
-  const ref = project ?? DEFAULT_SOCIAL_PROJECT_SLUG
-  if (UUID_RE.test(ref)) return ref
-  const { data } = await db.from('projects').select('id').eq('slug', ref).maybeSingle()
-  return (data as { id?: string } | null)?.id ?? null
-}
-
-async function defaultProjectId(db: AnyDb): Promise<string | null> {
-  const { data } = await db.from('projects').select('id').eq('slug', DEFAULT_SOCIAL_PROJECT_SLUG).maybeSingle()
-  return (data as { id?: string } | null)?.id ?? null
-}
-
-function envAccountId(platform: Platform): string | null {
-  if (platform === 'facebook') return process.env.FACEBOOK_PAGE_ID ?? null
-  return null   // IG-konto härleds ur token via /me
-}
-
-// ─── Read ─────────────────────────────────────────────────────────────────────
-
-/**
- * Hämtar access token (+ account_id) för en plattform och ett projekt.
- * @param project uuid eller slug. Utelämnas → The Prompt (default).
- */
-export async function getToken(platform: Platform, project?: string): Promise<StoredToken | null> {
-  const db = createAdminClient()
-  const [projectId, defId] = await Promise.all([resolveProjectId(db, project), defaultProjectId(db)])
-  const isDefault = !!projectId && projectId === defId
-
-  if (projectId) {
-    const { data, error } = await db
+/** The project's stored credential on a platform. `ok: false` is unreadable — never "missing". */
+export async function readStoredCredential(projectId: string, platform: StoredSocialPlatform): Promise<StoredCredentialRead> {
+  if (!isProjectId(projectId) || (platform !== 'instagram' && platform !== 'facebook')) return { ok: false }
+  try {
+    const { data, error } = await createAdminClient()
       .from('platform_tokens')
-      .select('access_token, account_id, expires_at')
-      .eq('platform', platform)
+      .select('access_token, account_id, expires_at, refreshed_at')
       .eq('project_id', projectId)
+      .eq('platform', platform)
+      .eq('token_type', STORED_TOKEN_TYPE[platform])
       .maybeSingle()
-
-    if (error) console.warn(`[token-store] Supabase-fel vid läsning av ${platform}-token:`, error.message)
-
-    if (data?.access_token) {
-      const expiresAt = data.expires_at ? new Date(data.expires_at) : null
-      if (expiresAt) {
-        const daysLeft = (expiresAt.getTime() - Date.now()) / 86_400_000
-        if (daysLeft < WARN_DAYS_BEFORE_EXPIRY) {
-          // Maila ALDRIG härifrån (getToken körs på varje pipeline-tick). Bara logg.
-          console.warn(`[token-store] ⚠️  ${platform}-token (projekt ${projectId}) löper ut om ${Math.round(daysLeft)} dagar.`)
-        }
-      }
-      return {
+    if (error) return { ok: false }
+    if (!data || typeof data.access_token !== 'string' || data.access_token.length === 0) return { ok: true, credential: null }
+    return {
+      ok: true,
+      credential: {
         accessToken: data.access_token,
-        accountId:   data.account_id ?? envAccountId(platform),
-        expiresAt,
-        source: 'supabase',
-      }
+        accountId: typeof data.account_id === 'string' && EXTERNAL_ACCOUNT_ID.test(data.account_id) ? data.account_id : null,
+        expiresAt: date(data.expires_at),
+        refreshedAt: date(data.refreshed_at),
+      },
     }
+  } catch {
+    return { ok: false }
   }
-
-  // Env-fallback — ENDAST för default-projektet (env-tokens hör till The Prompt).
-  if (isDefault || project === undefined) {
-    const envKey = ENV_VAR_MAP[platform]
-    const envToken = envKey ? process.env[envKey] : undefined
-    if (envToken) {
-      console.log(`[token-store] ${platform}: Supabase tom — env-fallback (The Prompt).`)
-      return { accessToken: envToken, accountId: envAccountId(platform), expiresAt: null, source: 'env' }
-    }
-  }
-
-  return null
 }
 
-/** Returnerar enbart access token-strängen (eller kastar). */
-export async function requireToken(platform: Platform, project?: string): Promise<string> {
-  const stored = await getToken(platform, project)
-  if (!stored) {
-    throw new Error(
-      `[token-store] Inget ${platform}-token för projekt "${project ?? DEFAULT_SOCIAL_PROJECT_SLUG}". ` +
-      `Lägg in det via /api/media/token eller refresh-tokens-cronen.`,
-    )
-  }
-  return stored.accessToken
+export interface CredentialToStore {
+  accessToken: string
+  /** The account the provider attested for this credential just now. Required. */
+  accountId: string
+  expiresAt: Date | null
 }
 
-// ─── Write ────────────────────────────────────────────────────────────────────
-
-/**
- * Sparar/uppdaterar ett token för (projekt, plattform).
- * Bakåtkompatibel signatur: setToken(platform, token, expiresAt?) fungerar som
- * förr (→ The Prompt). Ange opts.project för andra verksamheter.
- */
-export async function setToken(
-  platform:    Platform,
-  accessToken: string,
-  expiresAt?:  Date,
-  opts:        SetTokenOptions = {},
-): Promise<void> {
-  const db = createAdminClient()
-  const projectId = await resolveProjectId(db, opts.project)
-  if (!projectId) throw new Error(`[token-store] Okänt projekt "${opts.project}" — kan inte spara ${platform}-token.`)
-
-  const tokenType = platform === 'facebook' ? 'page' : 'user'
-  const row: Database['public']['Tables']['platform_tokens']['Insert'] = {
-    project_id:   projectId,
-    platform,
-    token_type:   tokenType,
-    access_token: accessToken,
-    expires_at:   expiresAt?.toISOString() ?? null,
-    refreshed_at: new Date().toISOString(),
+/** Stores (or replaces) the project's credential for an account the provider has just attested. */
+export async function storeCredential(
+  projectId: string, platform: StoredSocialPlatform, input: CredentialToStore,
+): Promise<{ ok: true } | { ok: false }> {
+  if (!isProjectId(projectId) || (platform !== 'instagram' && platform !== 'facebook')) return { ok: false }
+  if (typeof input.accessToken !== 'string' || input.accessToken.length === 0) return { ok: false }
+  if (!EXTERNAL_ACCOUNT_ID.test(input.accountId)) return { ok: false }
+  try {
+    const { error } = await createAdminClient()
+      .from('platform_tokens')
+      .upsert({
+        project_id: projectId,
+        platform,
+        token_type: STORED_TOKEN_TYPE[platform],
+        access_token: input.accessToken,
+        account_id: input.accountId,
+        expires_at: input.expiresAt?.toISOString() ?? null,
+        refreshed_at: new Date().toISOString(),
+      }, { onConflict: 'project_id,platform,token_type' })
+    return error ? { ok: false } : { ok: true }
+  } catch {
+    return { ok: false }
   }
-  if (opts.accountId !== undefined) row.account_id = opts.accountId   // bevara befintligt om utelämnat
-
-  const { error } = await db
-    .from('platform_tokens')
-    .upsert(row, { onConflict: 'project_id,platform,token_type' })
-
-  if (error) throw new Error(`[token-store] Kunde inte spara ${platform}-token: ${error.message}`)
-
-  console.log(`[token-store] ✓ ${platform}-token sparat för projekt ${projectId}.` +
-    (expiresAt ? ` Löper ut: ${expiresAt.toISOString()}` : ''))
 }

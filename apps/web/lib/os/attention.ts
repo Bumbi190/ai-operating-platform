@@ -7,7 +7,7 @@
  *
  * Källor:
  *   1. buildAttentionItems  — business-snapshots (fel, godkännanden, vilande, publicerat)
- *   2. token_health         — utgångna/döende plattformstokens
+ *   2. social_credential_health — projektens utgångna, döende eller ej verifierade credentials
  *   3. media_scripts        — pipeline-steg som nått max försök
  *   4. cron_heartbeat       — döda/sena cron-jobb
  */
@@ -18,6 +18,14 @@ import { fetchBusinessSnapshots } from './business'
 import { buildAttentionItems, type AttentionItem } from './priority'
 
 type AnyDb = any
+
+/** Credential health a person has to act on, and how each is named. */
+const URGENT_CREDENTIAL_TITLES: Record<string, string> = {
+  expired: 'credentialen är ogiltig eller har gått ut',
+  account_mismatch: 'credentialen tillhör inte projektets verifierade konto',
+  binding_blocked: 'kontobindningen är spärrad',
+  credential_missing: 'credential saknas för det kopplade kontot',
+}
 
 export interface AttentionResult {
   items: AttentionItem[]
@@ -34,8 +42,9 @@ export interface AttentionResult {
  * global, so another tenant's published-script count could raise an alarm here
  * and a foreign video's `hook` could be printed verbatim in an item title.
  *
- * `token_health` and `cron_heartbeat` are deliberately left unscoped — neither
- * has a project_id; they describe platform infrastructure, not tenant data.
+ * Social credential health is project-owned and read for the caller's projects
+ * only. `cron_heartbeat` is deliberately left unscoped — it has no project_id; it
+ * describes platform infrastructure, not tenant data.
  */
 export async function collectAttentionItems(
   db: AnyDb,
@@ -57,28 +66,40 @@ export async function collectAttentionItems(
 
   const items = buildAttentionItems(businesses, { instagramInsightsMissing })
 
-  // Token-larm direkt från token_health (samma sanningskälla som Operations Center).
+  // Credential-larm från social_credential_health (samma sanningskälla som Operations
+  // Center) — per projekt, och bara för operatörens egna projekt.
   try {
-    const { data: tokens } = await (db.from('token_health') as any)
-      .select('platform, status, days_left')
-    for (const t of (tokens ?? []) as Array<{ platform: string; status: string; days_left: number | null }>) {
-      if (t.status === 'expired' || t.status === 'error') {
+    const { data: tokens } = await (db.from('social_credential_health') as any)
+      .select('project_id, platform, status, days_left')
+      .in('project_id', scopedIds)
+    const projectName = new Map(projects.map(p => [p.id, p.name]))
+    for (const t of (tokens ?? []) as Array<{ project_id: string; platform: string; status: string; days_left: number | null }>) {
+      const who = `${projectName.get(t.project_id) ?? 'Okänt projekt'} · ${t.platform}`
+      const urgentTitle = URGENT_CREDENTIAL_TITLES[t.status]
+      if (urgentTitle) {
         items.unshift({
-          id: `token-${t.platform}`, score: 95, severity: 'urgent',
-          title: `${t.platform}-token ${t.status === 'expired' ? 'har gått ut' : 'svarar med fel'}`,
-          reason: 'Publicering till den här kanalen kommer att misslyckas tills tokenet förnyas.',
+          id: `token-${t.project_id}-${t.platform}`, score: 95, severity: 'urgent',
+          title: `${who}: ${urgentTitle}`,
+          reason: 'Publicering till den här kanalen stoppas tills projektets credential åtgärdas.',
           action: { href: '/atlas/operations', label: 'Visa' },
         } as AttentionItem)
       } else if (t.status === 'warning') {
         items.unshift({
-          id: `token-${t.platform}`, score: 70, severity: 'important',
-          title: `${t.platform}-token löper ut${t.days_left != null ? ` om ${t.days_left} dagar` : ' snart'}`,
+          id: `token-${t.project_id}-${t.platform}`, score: 70, severity: 'important',
+          title: `${who}: token löper ut${t.days_left != null ? ` om ${t.days_left} dagar` : ' snart'}`,
           reason: 'Förnya innan utgång så att publiceringen inte stoppas.',
+          action: { href: '/atlas/operations', label: 'Visa' },
+        } as AttentionItem)
+      } else if (t.status === 'verification_failed') {
+        items.unshift({
+          id: `token-${t.project_id}-${t.platform}`, score: 60, severity: 'important',
+          title: `${who}: credentialn kunde inte verifieras vid senaste kontrollen`,
+          reason: 'Plattformen gick inte att fråga. Nästa kontroll försöker igen.',
           action: { href: '/atlas/operations', label: 'Visa' },
         } as AttentionItem)
       }
     }
-  } catch { /* token_health saknas ännu — icke-kritiskt */ }
+  } catch { /* social_credential_health saknas ännu — icke-kritiskt */ }
 
   // Pipeline-steg som nått max försök (kräver operatör) → brådskande.
   try {

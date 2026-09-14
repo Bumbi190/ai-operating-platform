@@ -20,6 +20,12 @@
  *   13. Poll render (up to 220 s) — if done in time, auto-publish immediately
  *   14. If render still in progress → Phase-2 cron at 08:00 / 18:00 publishes it
  *
+ * Project and credentials (project-scoped social credentials, 2026-09-14): a run
+ * names its project (?project_id=<uuid>) or does not run — there is no first-project
+ * fallback. It publishes that project's content only with that project's verified
+ * Instagram and Facebook bindings (lib/media/social-credentials.ts), checked before
+ * any spend and confirmed with the platform before any dispatch.
+ *
  * Protected by: Authorization: Bearer {CRON_SECRET}
  */
 
@@ -39,6 +45,8 @@ import { buildVideoInputProps } from '@/lib/media/video-props'
 import { startLambdaRender, getLambdaRenderProgress } from '@/lib/media/lambda-render'
 import { postReelToInstagram, buildInstagramCaption } from '@/lib/media/instagram'
 import { postReelToFacebook } from '@/lib/media/facebook'
+import { createCredentialResolver } from '@/lib/media/social-credentials'
+import { isProjectId } from '@/lib/media/social-bindings'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
@@ -193,11 +201,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectIdParam = searchParams.get('project_id')
 
-  let projectQuery = db.from('projects').select('id, name, slug')
-  if (projectIdParam) {
-    projectQuery = projectQuery.eq('id', projectIdParam)
+  // EXPLICIT PROJECT ONLY. This route used to take whichever project the database
+  // returned first when no project_id was given, and post that project's content
+  // with the platform's accounts. A run now names its project, or it does not run.
+  if (!isProjectId(projectIdParam)) {
+    return NextResponse.json(
+      { error: 'project_id (uuid) krävs — ingen standard- eller första-projekt-fallback' }, { status: 400 })
   }
-  const { data: project } = await (projectQuery as ReturnType<typeof db.from>).limit(1).single()
+  const { data: project } = await db.from('projects').select('id, name, slug').eq('id', projectIdParam).maybeSingle()
 
   if (!project) {
     return NextResponse.json({ error: 'No project found' }, { status: 404 })
@@ -216,6 +227,18 @@ export async function GET(request: Request) {
   if (!eligibility.allowed) {
     log('safeguard', `STOPPAD — ${eligibility.reason}`)
     return NextResponse.json({ status: 'paused', reason: eligibility.reason })
+  }
+
+  // ── 1c. Credential preflight — BEFORE any spend ───────────────────────────────
+  // The run publishes this project's content with this project's accounts only.
+  // Without a verified Instagram binding and credential it would pay for a video no
+  // verified account may post, so it stops here, before a single provider is paid.
+  const credentials = createCredentialResolver()
+  const instagram = await credentials.instagram(project.id)
+  if (!instagram.ok) {
+    log('safeguard', `Ingen verifierad Instagram-credential för projektet (${instagram.refusal}) — avbryter före kostnad`)
+    return NextResponse.json(
+      { status: 'instagram_credential_refused', refusal: instagram.refusal, projectId: project.id }, { status: 409 })
   }
 
   // Billing stays on the pipeline project; execution answers to the row's own.
@@ -531,7 +554,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
       { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
       { system: 'instagram', operation: 'post_reel' },
     )
-    igResult = await postReelToInstagram(videoUrl, caption)
+    igResult = await postReelToInstagram(instagram.credential, videoUrl, caption)
     log('publish', `Instagram OK: ${igResult.permalink}`)
     // Persisted BEFORE Facebook is even authorised. This is the idempotency fact
     // "Instagram already happened", and it is what lets the canonical publish
@@ -561,17 +584,21 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
 
   let fbResult: { postId: string; url?: string } | null = null
   let fbDeferredReason: string | null = null
-  const hasFacebook = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID)
+  // Facebook goes to this project's own verified page or nowhere. A project without a
+  // Facebook binding has no Facebook channel; any other refusal is a Facebook failure.
+  const facebook = await credentials.facebook(project.id)
+  const hasFacebook = facebook.ok || facebook.refusal !== 'binding_missing'
 
   if (hasFacebook) {
     try {
+      if (!facebook.ok) throw new Error(`facebook_credential_${facebook.refusal}`)
       // ── GOVERNANCE BOUNDARY: Facebook is a SEPARATE authorization ──
       // A pause committing after Instagram went out must stop this one.
       await assertExecutionDispatchAllowed(
         { context: 'AUTONOMOUS', scope: projectScope({ projectId: project.id }) },
         { system: 'facebook', operation: 'post_reel' },
       )
-      fbResult = await postReelToFacebook(videoUrl, caption)
+      fbResult = await postReelToFacebook(facebook.credential, videoUrl, caption)
       log('publish', `Facebook OK: ${fbResult.url}`)
     } catch (fbErr) {
       if (isExecutionStopped(fbErr)) {

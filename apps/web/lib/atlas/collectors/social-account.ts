@@ -6,14 +6,21 @@
  * account_snapshots and emits one "social.account_snapshot" Atlas signal per
  * project containing all platform data.
  *
- * Each project is processed independently. A project with no tokens for any
- * platform returns status = 'skipped'. A project with tokens for ≥1 platform
- * emits a signal even if some platforms returned no data.
+ * Each project is processed independently. A project with no verified account on
+ * any platform returns status = 'skipped'. A project with a verified account on ≥1
+ * platform emits a signal even if some platforms returned no data.
+ *
+ * Credentials (project-scoped social credentials, 2026-09-14): Instagram and
+ * Facebook are read only with the project's OWN verified credential
+ * (lib/media/social-credentials.ts); YouTube only for a project with a channel
+ * binding, as public data for a video the project uploaded. A project without a
+ * verified binding on a platform is not measured there — never with another
+ * project's credential.
  *
  * Signal kind:  social.account_snapshot
  * Version:      social-collector-1.0.0
  * Cadence:      daily 06:50 UTC (pg_cron: omnira_social_account)
- * Projects:     observer + active with platform_tokens
+ * Projects:     observer + active with verified social account bindings
  *
  * Historical note: account_snapshots was the original storage layer but was
  * never scheduled in pg_cron — social account history collection had not
@@ -21,7 +28,8 @@
  */
 
 import { BaseCollector, type CollectorContext } from './types'
-import { getToken } from '@/lib/media/token-store'
+import { readActiveBinding } from '@/lib/media/social-bindings'
+import { createCredentialResolver } from '@/lib/media/social-credentials'
 import {
   igAccountSnapshot,
   fbAccountSnapshot,
@@ -58,15 +66,19 @@ export class SocialAccountCollector extends BaseCollector {
     const { db, projectId } = ctx
     if (!projectId) return _empty()
 
-    const [igToken, fbToken] = await Promise.all([
-      getToken('instagram', projectId),
-      getToken('facebook',  projectId),
+    const credentials = createCredentialResolver()
+    const [instagram, facebook, youtubeBinding] = await Promise.all([
+      credentials.instagram(projectId),
+      credentials.facebook(projectId),
+      readActiveBinding(projectId, 'youtube'),
     ])
 
-    // YouTube: env-based API key + most recent video for channel stats
+    // YouTube: only a project with its own channel binding, measured as public data
+    // for the project's most recent upload (API key, no account credential).
     const ytKey = process.env.YOUTUBE_API_KEY ?? null
+    const hasYouTube = youtubeBinding.ok && youtubeBinding.binding !== null
     let ytVideoId: string | null = null
-    if (ytKey) {
+    if (ytKey && hasYouTube) {
       const { data: lastYt } = await db
         .from('media_scripts')
         .select('youtube_video_id')
@@ -79,18 +91,18 @@ export class SocialAccountCollector extends BaseCollector {
     }
 
     const [igResult, fbResult, ytResult] = await Promise.allSettled([
-      igToken ? igAccountSnapshot(igToken.accessToken) : Promise.resolve(null),
-      fbToken ? fbAccountSnapshot(fbToken.accessToken, fbToken.accountId) : Promise.resolve(null),
+      instagram.ok ? igAccountSnapshot(instagram.credential) : Promise.resolve(null),
+      facebook.ok  ? fbAccountSnapshot(facebook.credential)  : Promise.resolve(null),
       // Guard on ytVideoId as well as ytKey: ytAccountSnapshot(key, null) returns a
       // non-null AccountSnapshot with all-null metrics and an error note in .raw —
       // not null. Without the ytVideoId guard, validate() would pass that object as
       // valid YouTube data (false positive) and store() would upsert a null-metric row.
-      ytKey && ytVideoId ? ytAccountSnapshot(ytKey, ytVideoId)            : Promise.resolve(null),
+      ytKey && hasYouTube && ytVideoId ? ytAccountSnapshot(ytKey, ytVideoId) : Promise.resolve(null),
     ])
 
     return {
-      instagram: settledToResult(igResult),
-      facebook:  settledToResult(fbResult),
+      instagram: withRefusal(settledToResult(igResult), instagram),
+      facebook:  withRefusal(settledToResult(fbResult), facebook),
       youtube:   settledToResult(ytResult),
       ytVideoId,
     }
@@ -173,6 +185,15 @@ function _empty(): SocialFetchResult {
 function settledToResult(settled: PromiseSettledResult<AccountSnapshot | null>): PlatformResult {
   if (settled.status === 'fulfilled') return { snapshot: settled.value, error: null }
   return { snapshot: null, error: settled.reason instanceof Error ? settled.reason.message : String(settled.reason) }
+}
+
+/**
+ * A platform the project has a binding on, but whose credential could not be
+ * verified, reports why — as a closed code. No binding is simply no account.
+ */
+function withRefusal(result: PlatformResult, resolution: { ok: true } | { ok: false; refusal: string }): PlatformResult {
+  if (resolution.ok || resolution.refusal === 'binding_missing') return result
+  return { snapshot: null, error: `credential_refused:${resolution.refusal}` }
 }
 
 function snapshotToPayload(s: AccountSnapshot): Record<string, unknown> {

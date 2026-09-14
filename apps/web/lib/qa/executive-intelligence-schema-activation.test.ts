@@ -178,7 +178,7 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('enforces exactly the expected number of migrations — currently 70', () => {
+  it('enforces exactly the expected number of migrations — currently 73', () => {
     // 66: `workflow_manual_privileged_provenance` (65) and Phase 2B-3C's
     // `spend_advisory_overrides` (66) landed in parallel branches, and BOTH bumped
     // this line to 65 independently. The merge conflict is the tripwire working:
@@ -205,8 +205,20 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // owner over agents, runs and run_logs. It changes nothing in production,
     // where the view never existed, but it is enforced like any other: the
     // guard will block the deploy until it is recorded in the ledger.
+    //
+    // 71: Settings S0's `platform_tokens_client_revoke` — the platform's publishing
+    // credentials were denied to clients by RLS alone while anon and authenticated
+    // still held the table grants. Privilege only; no row or token is touched.
+    //
+    // 72: Settings S0's `platform_credential_events` — the append-only, credential-blind
+    // audit of platform credential replacement: `attempted` before any provider call or
+    // store, then `replaced` or `failed` under the same server-generated operation id.
+    //
+    // 73: Settings S0's `platform_credential_events_search_path` — the Supabase advisor
+    // flagged the table's append-only trigger function for a mutable search_path once
+    // it was live; function configuration only.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(70)
+    expect(enforced).toBe(73)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

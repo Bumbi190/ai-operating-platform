@@ -1,0 +1,31 @@
+-- Settings S0 — platform_tokens: service-role only, by privilege as well as by RLS.
+--
+-- WHAT IS BEING CLOSED. public.platform_tokens holds the platform's live
+-- Instagram and Facebook publishing credentials (`access_token text`). RLS has
+-- been enabled since 20260527_platform_tokens with zero policies, so anon and
+-- authenticated read no row and write none today. But both roles still hold
+-- Supabase's default table grants (tests/isolation/schema-security.json classed
+-- the table INTERNAL_DENY_ALL with anon_grants and authenticated_grants true).
+-- The boundary was therefore one statement away from gone: a permissive policy
+-- added later, or RLS switched off, would hand the credentials to any client
+-- holding the public key.
+--
+-- WHY SERVER-ONLY. Every reader and writer of this table is server-side and uses
+-- the service-role client: lib/media/token-store.ts (getToken / setToken), the
+-- account-snapshot cron's project list, and the media dashboard's metadata read
+-- (platform, expires_at, refreshed_at). No browser code and no user-bound client
+-- touches it, so revoking the client grants changes nothing any caller does.
+--
+-- WHY THE REVOKE IS NOT REDUNDANT. RLS with no policy already denies anon and
+-- authenticated every row they could read or write through the Data API. It does
+-- not govern TRUNCATE, REFERENCES or TRIGGER at all, and a permissive policy added
+-- by mistake would open the rows too. Removing the privileges means neither path
+-- reaches anything — the same pairing as Phase 9Y and 9AB.
+--
+-- PRIVILEGE ONLY. No row is read, written, moved or deleted; no token is touched,
+-- rotated, re-encrypted or migrated. RLS stays enabled; no policy is added or
+-- dropped. The service role keeps full access and bypasses RLS, so every
+-- existing pipeline, cron and Settings write works exactly as before.
+
+revoke all on public.platform_tokens from anon, authenticated;
+grant  all on public.platform_tokens to service_role;

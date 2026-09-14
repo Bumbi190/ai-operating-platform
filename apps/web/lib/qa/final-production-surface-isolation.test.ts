@@ -8,11 +8,14 @@
  *     every project in the database, picked one by name and fell back to
  *     `projects[0]` ACROSS ALL TENANTS, then wrote agents and workflows into it.
  *     GET delegates to POST, so a page load was enough. → project guard.
+ *     Settings S0 then REMOVED it (owner decision), together with /api/migrate;
+ *     block A pins the removal.
  *
  *   /api/media/insights/check    — a LIVE Settings diagnostic (TokenUpdater.tsx).
  *     It picked the most recent published script from EVERY tenant and echoed
  *     `script.hook` back. One slot, ORDER BY published_at DESC LIMIT 1, so the
  *     scope has to precede the ordering or the wrong row wins. → project guard.
+ *     Settings S0 stopped it returning the provider's raw error text.
  *
  *   /api/fix-image-agent         — rewrites EVERY dall-e agent in the database,
  *     across all projects. That is deliberately platform-wide, so a project guard
@@ -29,6 +32,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 
 const ME = 'user-me'
@@ -82,8 +87,9 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => CURRENT.db }))
 vi.mock('@/lib/media/token-store', () => ({
   getToken: async () => { CALLS.push('token'); return { accessToken: 'tok', accountId: 'acc' } },
 }))
+let INSIGHTS_RESULT: { ok: boolean; metrics?: Record<string, number>; error?: string } = { ok: true, metrics: { reach: 1 } }
 vi.mock('@/lib/media/insights', () => ({
-  fetchMediaInsights: async () => { CALLS.push('graph-api'); return { ok: true, metrics: { reach: 1 } } },
+  fetchMediaInsights: async () => { CALLS.push('graph-api'); return INSIGHTS_RESULT },
 }))
 
 const writesFor = (seen: Seen[]) => seen.flatMap(s => s.writes)
@@ -91,65 +97,61 @@ const opsOn = (seen: Seen[], t: string) => seen.filter(s => s.table === t).flatM
 const scopeIn = (seen: Seen[], t: string, col: string) =>
   opsOn(seen, t).find(([op, c]) => op === 'in' && c === col)?.[2] as string[] | undefined
 
-beforeEach(() => { CURRENT_USER = { id: ME }; CALLS = []; process.env.CRON_SECRET = SECRET })
+beforeEach(() => { CURRENT_USER = { id: ME }; CALLS = []; INSIGHTS_RESULT = { ok: true, metrics: { reach: 1 } }; process.env.CRON_SECRET = SECRET })
 
-// ═══ A · /api/seed — a live operator button, not dev tooling ═════════════════
+// ═══ A · /api/seed and /api/migrate — removed from the deployed product ═══════
+//
+// Phase 9V-4 scoped /api/seed to the caller's own projects. Settings S0 removed it
+// (owner decision): production already held exactly what it wrote, nothing — no
+// cron, CI path or code — called it, and its only live effects were risks: a GET
+// that wrote, a reset by agent name, an oldest-project fallback and no audit. The
+// development path survives as scripts/seed-familje-stunden.ts, outside the
+// deployed app. /api/migrate went with it: its POST reported migrations it never
+// ran and its GET handed schema DDL to any session. These tests keep both from
+// returning unnoticed.
 
-describe('9V-4 · seed — the project it writes into must be one the caller owns', () => {
-  const seedTables = () => ({
-    projects: [
-      { id: MINE,   owner_id: ME,           name: 'Familje-Stunden', created_at: '2026-01-02' },
-      { id: THEIRS, owner_id: 'user-other', name: 'Familje-Stunden AB', created_at: '2026-01-01' },
-    ],
-    agents: [], workflows: [],
+describe('Settings S0 · seed and migrate — removed, not merely guarded', () => {
+  const APP = resolve(__dirname, '../..')
+  const appSources = (dir: string): string[] => readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry)
+    if (entry === 'node_modules' || entry === '.next' || entry === 'qa') return []
+    if (statSync(full).isDirectory()) return appSources(full)
+    return /\.(ts|tsx)$/.test(entry) ? [full] : []
   })
-  const call = async (method: 'GET' | 'POST') => {
-    vi.resetModules()
-    const mod = await import('@/app/api/seed/route')
-    return method === 'GET' ? mod.GET() : mod.POST()
-  }
-  beforeEach(() => { CURRENT = fakeDb(seedTables()) })
+  const deployed = () => ['app', 'components', 'lib'].flatMap((d) => appSources(resolve(APP, d)))
 
-  it('the project read is scoped to the caller allow-list', async () => {
-    await call('POST')
-    expect(scopeIn(CURRENT.seen, 'projects', 'id')).toEqual([MINE])
-  })
-
-  it('a foreign project is never written to, even though it sorts FIRST by created_at', async () => {
-    // THEIRS is older, so an unscoped `.order('created_at')` would put it at
-    // projects[0] — and its name matches 'familje' too.
-    await call('POST')
-    const written = [...opsOn(CURRENT.seen, 'agents'), ...opsOn(CURRENT.seen, 'workflows')]
-      .filter(([op]) => op === 'insert').map(o => o[2] as any)
-    expect(written.length).toBeGreaterThan(0)
-    for (const row of written) expect(row.project_id).toBe(MINE)
+  it('the /api/seed route no longer exists', () => {
+    expect(existsSync(resolve(APP, 'app/api/seed/route.ts'))).toBe(false)
+    expect(existsSync(resolve(APP, 'app/api/seed'))).toBe(false)
   })
 
-  it('an operator who owns nothing writes nothing', async () => {
-    CURRENT_USER = { id: NOBODY }
-    const res = await call('POST')
-    expect(res.status).toBe(400)
-    expect(writesFor(CURRENT.seen)).toEqual([])
+  it('the /api/migrate route no longer exists', () => {
+    expect(existsSync(resolve(APP, 'app/api/migrate/route.ts'))).toBe(false)
+    expect(existsSync(resolve(APP, 'app/api/migrate'))).toBe(false)
   })
 
-  it('an empty allow-list scopes to the impossible id, never to every project', async () => {
-    CURRENT_USER = { id: NOBODY }
-    await call('POST')
-    expect(scopeIn(CURRENT.seen, 'projects', 'id')).toEqual([IMPOSSIBLE_PROJECT_ID])
+  it('Settings no longer offers a seed control', () => {
+    const page = readFileSync(resolve(APP, 'app/(platform)/settings/page.tsx'), 'utf8')
+    expect(page).not.toMatch(/SeedButton|Exempeldata|\/api\/seed/)
+    expect(existsSync(resolve(APP, 'app/(platform)/settings/SeedButton.tsx'))).toBe(false)
   })
 
-  it('GET delegation carries the same guard — a page load cannot write foreign rows', async () => {
-    CURRENT_USER = { id: NOBODY }
-    const res = await call('GET')
-    expect(res.status).toBe(400)
-    expect(writesFor(CURRENT.seen)).toEqual([])
+  it('no deployed code calls either route', () => {
+    const callers = deployed().filter((f) => /\/api\/(seed|migrate)\b/.test(readFileSync(f, 'utf8')))
+    expect(callers).toEqual([])
   })
 
-  it('an unauthenticated request never reaches a query', async () => {
-    CURRENT_USER = null
-    const res = await call('POST')
-    expect(res.status).toBe(401)
-    expect(CURRENT.seen).toHaveLength(0)
+  it('the development-only seed script remains, and nothing deployed imports it', () => {
+    expect(existsSync(resolve(APP, 'scripts/seed-familje-stunden.ts'))).toBe(true)
+    const importers = deployed().filter((f) => /seed-familje-stunden/.test(readFileSync(f, 'utf8')))
+    expect(importers).toEqual([])
+  })
+
+  it('the removal carries no data statement — existing agents and workflows stay exactly as they are', () => {
+    const sql = readFileSync(resolve(APP, 'supabase/migrations/20260914090000_platform_tokens_client_revoke.sql'), 'utf8')
+      .replace(/--.*$/gm, '')
+    expect(sql).not.toMatch(/\b(agents|workflows)\b/i)
+    expect(sql).not.toMatch(/\b(insert|update|delete|truncate|drop)\b/i)
   })
 })
 
@@ -213,6 +215,28 @@ describe('9V-4 · insights/check — the probe row must be the caller own', () =
     expect(res.status).toBe(401)
     expect(CURRENT.seen).toHaveLength(0)
     expect(CALLS).toEqual([])
+  })
+
+  it('S0 · a provider refusal reaches the browser only as a class and a fixed sentence — never its text or a token', async () => {
+    const token = `EAAB${'q'.repeat(40)}`
+    INSIGHTS_RESULT = { ok: false, error: `(#10) Application does not have permission — https://graph.facebook.com/v21.0/ig-1/insights?access_token=${token}` }
+    const res = await call()
+    const body = await res.json()
+    expect(body).toEqual({
+      ok: false,
+      reason: 'permission',
+      message: 'Graph API nekade insights-anropet. Tokenet saknar troligen instagram_manage_insights.',
+    })
+    const text = JSON.stringify(body)
+    for (const leak of [token, 'access_token', 'graph.facebook.com', 'Application does not have']) expect(text).not.toContain(leak)
+  })
+
+  it('S0 · any other provider failure is classified as an error, with no provider detail', async () => {
+    INSIGHTS_RESULT = { ok: false, error: `fetch failed while sending EAAB${'r'.repeat(40)}` }
+    const res = await call()
+    const body = await res.json()
+    expect(body).toEqual({ ok: false, reason: 'error', message: 'Insights kunde inte läsas från Graph API.' })
+    expect(JSON.stringify(body)).not.toMatch(/EAAB|fetch failed/)
   })
 })
 

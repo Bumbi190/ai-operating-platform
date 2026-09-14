@@ -179,6 +179,27 @@ describe('Phase 9Y — schema-security invariant: effective state', () => {
     expect(ws.authenticated_grants).toBe(false)
     expect(ws.service_role).toBe(true)
   })
+
+  it('platform_tokens specifically is locked — the platform publishing credentials (Settings S0)', () => {
+    // Before S0 this row was INTERNAL_DENY_ALL: RLS with no policy denied every
+    // client, but anon and authenticated still held the table grants, so one
+    // permissive policy would have exposed live Instagram and Facebook tokens.
+    const pt = REGISTRY.tables['platform_tokens']
+    expect(pt, 'platform_tokens vanished from the registry').toBeDefined()
+    expect(pt.class).toBe('SERVER_ONLY')
+    expect(pt.rls).toBe(true)
+    expect(pt.policies).toBe(0)
+    expect(pt.anon_grants).toBe(false)
+    expect(pt.authenticated_grants).toBe(false)
+    expect(pt.service_role).toBe(true)
+    // …and the registry row is backed by a migration that establishes it.
+    const sql = readFileSync(
+      resolve(__dirname, '../../supabase/migrations/20260914090000_platform_tokens_client_revoke.sql'), 'utf8',
+    ).replace(/--.*$/gm, '')
+    expect(sql).toMatch(/revoke\s+all\s+on\s+public\.platform_tokens\s+from\s+anon,\s*authenticated/i)
+    expect(sql).toMatch(/grant\s+all\s+on\s+public\.platform_tokens\s+to\s+service_role/i)
+    expect(sql).not.toMatch(/create\s+policy|disable\s+row\s+level\s+security/i)
+  })
 })
 
 describe('Phase 9Y — schema-security invariant: migration text, forward-looking', () => {

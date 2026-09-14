@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { User, Key, Info, Zap, Database, Instagram, MonitorCog } from 'lucide-react'
-import { SeedButton } from './SeedButton'
+import { User, Key, Info, Zap, Instagram, MonitorCog } from 'lucide-react'
 import { TokenUpdater } from './TokenUpdater'
 import { DisplayPreferences } from './DisplayPreferences'
 import { OSPage, OSLayer, Panel, PanelHeader, StatusChip } from '@/components/platform/os'
@@ -71,17 +70,6 @@ export default async function SettingsPage() {
           <p className="text-xs text-muted-foreground pt-1">
             API-nycklar konfigureras via <code className="font-mono bg-muted px-1 rounded">.env.local</code>
           </p>
-        </div>
-      </Panel>
-
-      {/* Seed data */}
-      <Panel className="p-5">
-        <PanelHeader icon={<Database className="w-4 h-4 text-muted-foreground" />} title="Exempeldata" />
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Installera Familje-Stunden agenter och månadspaket-workflow. Kör detta en gång för att komma igång.
-          </p>
-          <SeedButton />
         </div>
       </Panel>
 

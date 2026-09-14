@@ -12,7 +12,7 @@
     "note_middleware": "middleware.ts lets ALL /api routes pass — every route must self-auth; the auth field is the only gate.",
     "generated_from": "apps/web/app/api/**/route.ts (95 of 110 routes on disk declared; the previous \"93 routes\" was stale \u2014 corrected EI-S1.6B-R5. 15 pre-existing routes remain unclassified; run tests/isolation/route-drift.ts)",
     "status": "pending build of leak-test + route-drift; manifest content approved by operator",
-    "removed": "2026-08-21: /v1/runs, /v1/runs/[id] and /v1/workflows deleted. They were class-X external routes on the shared global AIOPS_API_KEY with service-role and NO project scoping — cross-project read plus cross-project workflow execution. Audit found zero internal callers, zero Vercel runtime hits in 30 days, and the only consumer (Hermes skill ai-ops-platform) was configured against localhost and never reached production. AIOPS_API_KEY itself is retained: /api/business/leads still serves Familje-Stunden send-pyssel-lead."
+    "removed": "2026-08-21: /v1/runs, /v1/runs/[id] and /v1/workflows deleted. They were class-X external routes on the shared global AIOPS_API_KEY with service-role and NO project scoping — cross-project read plus cross-project workflow execution. Audit found zero internal callers, zero Vercel runtime hits in 30 days, and the only consumer (Hermes skill ai-ops-platform) was configured against localhost and never reached production. AIOPS_API_KEY itself is retained: /api/business/leads still serves Familje-Stunden send-pyssel-lead. 2026-09-14 (Settings S0, owner decision): /seed and /migrate deleted. /seed wrote agents and a workflow into an owned project from GET as well as POST; /migrate POST reported ok while doing nothing and GET returned DDL blocks to any session. Neither had a cron, CI or code caller besides the Settings seed button, which is removed with them. The development-only CLI apps/web/scripts/seed-familje-stunden.ts is kept. Locked by lib/qa/final-production-surface-isolation.test.ts."
   },
 
   "routes": [
@@ -107,8 +107,6 @@
     { "path": "/webhooks/stripe", "class": "W", "auth": "Signature", "serviceRole": false, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
     { "path": "/webhooks/instagram", "class": "W", "auth": "verify_token(GET)/none(POST)", "serviceRole": true, "scope": "none", "killSwitch": "yes", "risk": "High", "verified": true, "P0": true, "finding": "CONFIRMED: GET checks hub.verify_token (L34) only. POST (L44-120) has NO signature verification → forgeable. comment_replies upsert (L78,L105) has NO project_id → no project attribution. P0: add HMAC signature verify + project scoping on comment_replies." },
 
-    { "path": "/migrate", "class": "A", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "must-be-locked" },
-    { "path": "/seed", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "Low", "verified": true },
     { "path": "/media/debug/subscribe-webhooks", "class": "A", "auth": "Cron-secret", "serviceRole": false, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "debug-endpoint" },
 
 

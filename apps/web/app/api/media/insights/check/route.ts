@@ -20,6 +20,7 @@
  * redactSecrets() — stays in the server log.
  */
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess, assertProjectAllowed, projectForbidden } from '@/lib/auth/project-access'
 import { isProjectId } from '@/lib/media/social-bindings'
@@ -30,6 +31,12 @@ import { redactSecrets } from '@/lib/media/meta-errors'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
+  // A human session first, checked here: G3C records this route as session-only
+  // operator execution (lib/qa/stop-authority-authorization.test.ts).
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const access = await resolveProjectAccess()
   if (!access.ok) return access.response
 

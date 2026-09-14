@@ -131,8 +131,18 @@ describe('Settings S0 · seed and migrate — removed, not merely guarded', () =
   })
 
   it('Settings no longer offers a seed control', () => {
-    const page = readFileSync(resolve(APP, 'app/(platform)/settings/page.tsx'), 'utf8')
-    expect(page).not.toMatch(/SeedButton|Exempeldata|\/api\/seed/)
+    // Settings S1 moved the legacy body into SettingsLegacy.tsx and added the vNext
+    // surface: the seed control stays gone from every file that renders /settings.
+    for (const rel of [
+      'app/(platform)/settings/page.tsx',
+      'app/(platform)/settings/SettingsLegacy.tsx',
+      'components/platform/vnext/SettingsSurface.tsx',
+      'components/platform/vnext/SettingsCredentialForm.tsx',
+      'lib/os/settings.ts',
+      'lib/os/settings-shared.ts',
+    ]) {
+      expect(readFileSync(resolve(APP, rel), 'utf8'), rel).not.toMatch(/SeedButton|Exempeldata|\/api\/seed/)
+    }
     expect(existsSync(resolve(APP, 'app/(platform)/settings/SeedButton.tsx'))).toBe(false)
   })
 

@@ -110,6 +110,7 @@ jobs:
             lib/qa/platform-authority-closure.test.ts \
             lib/qa/media-token-authority.test.ts \
             lib/qa/platform-credential-events.test.ts \
+            lib/qa/vnext-settings.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -305,6 +306,12 @@ jobs:
             // real-Postgres twin, platform-credential-events-sql.test.ts, needs a
             // database and runs locally.
             'platform-credential-events.test.ts': 22,
+            // Settings S1 — vNext Inställningar reads credential status as metadata
+            // only (never access_token or last_error), reports environment variables
+            // as presence, offers the write-only form only where the canonical
+            // operator predicate and project ownership both pass, and posts to the
+            // existing /api/media/token alone. The legacy body is pinned by hash.
+            'vnext-settings.test.ts': 49,
           }
 
           let failed = false

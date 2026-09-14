@@ -7,7 +7,14 @@
  *
  * Svar:
  *   { ok: true,  sample: {...} }                      → insights fungerar
- *   { ok: false, reason: 'permission' | 'no_media', error }  → åtgärd krävs
+ *   { ok: false, reason: 'permission' | 'error' | 'no_media' | 'no_token', message }  → åtgärd krävs
+ *
+ * REDACTION (Settings S0). The provider's own error text used to be returned
+ * verbatim as `error`. It is classified here instead: only the class and a fixed
+ * sentence reach the browser, and the provider text — passed through
+ * redactSecrets() — stays in the server log. Whatever Graph says, and any
+ * exception message that quoted a URL with its access_token, cannot reach the
+ * client from this route.
  */
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
@@ -15,6 +22,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getToken } from '@/lib/media/token-store'
 import { fetchMediaInsights } from '@/lib/media/insights'
+import { redactSecrets } from '@/lib/media/meta-errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,10 +65,13 @@ export async function GET() {
   if (result.ok) {
     return NextResponse.json({ ok: true, sample: result.metrics, testedPost: script.hook ?? script.instagram_media_id })
   }
+  const reason = /permission|insights|oauth|scope/i.test(result.error ?? '') ? 'permission' : 'error'
+  console.warn(`[insights/check] Graph API refused insights (${reason}): ${redactSecrets(result.error ?? 'okänt fel')}`)
   return NextResponse.json({
     ok: false,
-    reason: /permission|insights|oauth|scope/i.test(result.error ?? '') ? 'permission' : 'error',
-    message: 'Graph API nekade insights-anropet. Tokenet saknar troligen instagram_manage_insights.',
-    error: result.error,
+    reason,
+    message: reason === 'permission'
+      ? 'Graph API nekade insights-anropet. Tokenet saknar troligen instagram_manage_insights.'
+      : 'Insights kunde inte läsas från Graph API.',
   })
 }

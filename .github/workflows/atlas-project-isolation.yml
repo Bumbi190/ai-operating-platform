@@ -108,6 +108,8 @@ jobs:
             lib/qa/migration-security-gate.test.ts \
             lib/qa/bugscanner-run-authorization.test.ts \
             lib/qa/platform-authority-closure.test.ts \
+            lib/qa/media-token-authority.test.ts \
+            lib/qa/platform-credential-events.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -289,6 +291,20 @@ jobs:
             // platform social project's own content for a machine. Denial must
             // cost zero service-role clients, reads, model calls, tokens and posts.
             'platform-authority-closure.test.ts': 53,
+            // Settings S0 — replacing the platform's Instagram/Facebook publishing
+            // credentials takes the platform operator (the authority posting with
+            // them already takes) AND ownership of the default social project, and
+            // the route is write-only. A denial must reach zero project reads, zero
+            // provider calls, zero stored tokens and zero audit events; no response
+            // may carry a token. Every accepted attempt is audited BEFORE any provider
+            // call or store (fail-closed), then gets exactly one terminal event.
+            'media-token-authority.test.ts': 25,
+            // Settings S0 — platform_credential_events: the writer builds rows from
+            // named fields and allowlisted detail keys only and never throws; the
+            // migration is credential-blind, append-only and server-only. Its
+            // real-Postgres twin, platform-credential-events-sql.test.ts, needs a
+            // database and runs locally.
+            'platform-credential-events.test.ts': 22,
           }
 
           let failed = false

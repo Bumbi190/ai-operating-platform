@@ -116,6 +116,7 @@ jobs:
             lib/qa/credential-health.test.ts \
             lib/qa/social-credential-crons.test.ts \
             lib/qa/instagram-webhook-self-filter.test.ts \
+            lib/qa/insights-bounded-run.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -342,6 +343,12 @@ jobs:
             // The webhook's "our own account" comes from verified bindings only — never
             // environment variables — and a comment for an unbound account is not queued.
             'instagram-webhook-self-filter.test.ts': 11,
+            // The daily insights run is bounded and says what it did: each project measured
+            // with its own verified credential, at most INSIGHTS_LIMIT posts per platform per
+            // project and INSIGHTS_CONCURRENCY in flight, no post started after the deadline,
+            // every provider request under a timeout, and `complete` only when every selected
+            // post was fetched and written — the route answers 200 for nothing less.
+            'insights-bounded-run.test.ts': 16,
           }
 
           let failed = false

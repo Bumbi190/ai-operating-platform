@@ -13,12 +13,45 @@
  * SIN verifierade credential (lib/media/social-credentials.ts). Ett projekt utan
  * verifierad bindning mäts inte på den plattformen — aldrig med ett annat projekts
  * credential. Credentials skickas som Authorization-header, aldrig i URL:en.
+ *
+ * BOUNDED RUN (insights recovery, 2026-09-15). The daily refresh used to fetch every
+ * post one at a time inside a 60 s function. Vercel stopped it at 60 s before Facebook
+ * finished — on every observed day, and since mid-June at the latest — so YouTube
+ * insights and the opportunity pass never ran, and nothing said so. A run now has a
+ * fixed, bounded shape:
+ *   · projects come from their active account bindings, each measured with its own
+ *     verified credential;
+ *   · at most INSIGHTS_LIMIT posts per platform per project (YouTube: across projects),
+ *     newest first — as before;
+ *   · at most INSIGHTS_CONCURRENCY posts in flight per section;
+ *   · no credential resolution or post starts at or after the caller's deadline, and
+ *     every provider request times out after INSIGHTS_REQUEST_TIMEOUT_MS;
+ *   · the summary is `complete` only when every selected post was fetched and written,
+ *     and each section says how far it got.
  */
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createCredentialResolver } from './social-credentials'
+import { listActiveBindings } from './social-bindings'
+import { createCredentialResolver, type CredentialRefusal } from './social-credentials'
 import { fetchVideoRetention } from './youtube'
+
+/** Posts refreshed per platform per project (YouTube: across projects), newest first. */
+export const INSIGHTS_LIMIT = 80
+/** Posts fetched in parallel within one section. */
+export const INSIGHTS_CONCURRENCY = 4
+/** Timeout of every provider request this module makes. */
+export const INSIGHTS_REQUEST_TIMEOUT_MS = 12_000
+/**
+ * The most provider requests one post can wait on: Facebook's video node, two post
+ * metrics and shares; YouTube's statistics, the first video's credential exchange and
+ * channel check, and retention; Instagram's two hosts.
+ */
+export const INSIGHTS_MAX_CALLS_PER_POST = 4
+/** The daily route starts no post after this much of its run. */
+export const INSIGHTS_WORK_BUDGET_MS = 200_000
+/** The daily route skips the opportunity pass once this much of its run has gone. */
+export const INSIGHTS_OPPORTUNITIES_BUDGET_MS = 240_000
 
 // Stödjer både nya Instagram API with Instagram Login (graph.instagram.com,
 // token börjar på "IGAA") och klassiska Instagram Graph API (graph.facebook.com,
@@ -62,7 +95,7 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
     try {
       const res = await fetch(
         `${host}/${mediaId}/insights?metric=${METRICS}`,
-        { headers: bearer(token), signal: AbortSignal.timeout(12_000) },
+        { headers: bearer(token), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS) },
       )
       const json = await res.json() as { data?: { name: string; values?: { value: number }[] }[]; error?: { message: string } }
 
@@ -105,7 +138,7 @@ export async function fetchYouTubeInsights(videoId: string, apiKey: string): Pro
   try {
     const res = await fetch(
       `${YT_HOST}/videos?part=statistics&id=${videoId}&key=${apiKey}`,
-      { signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+      { signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS), cache: 'no-store' },
     )
     const json = await res.json() as {
       items?: { statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[]
@@ -142,7 +175,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
     // Steg 1 — video-noden.
     const vRes = await fetch(
       `${FB_GRAPH}/${facebookPostId}?fields=views,likes.summary(true),comments.summary(true),post_id`,
-      { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+      { headers: bearer(pageToken), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS), cache: 'no-store' },
     )
     const v = await vRes.json() as {
       views?: number
@@ -171,7 +204,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
         try {
           const r = await fetch(
             `${FB_GRAPH}/${fullPostId}/insights?metric=${metric}`,
-            { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+            { headers: bearer(pageToken), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS), cache: 'no-store' },
           )
           const j = await r.json() as { data?: { values?: { value?: number }[] }[]; error?: { message?: string } }
           if (j?.error) return { value: null, error: j.error.message }
@@ -192,7 +225,7 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
       try {
         const r = await fetch(
           `${FB_GRAPH}/${fullPostId}?fields=shares`,
-          { headers: bearer(pageToken), signal: AbortSignal.timeout(12_000), cache: 'no-store' },
+          { headers: bearer(pageToken), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS), cache: 'no-store' },
         )
         const j = await r.json() as { shares?: { count?: number }; error?: unknown }
         if (!j?.error && typeof j.shares?.count === 'number') metrics.shares = j.shares.count
@@ -208,146 +241,285 @@ export async function fetchFacebookInsights(facebookPostId: string, pageToken: s
   }
 }
 
+export type InsightPlatform = 'instagram' | 'facebook' | 'youtube'
+
+export type InsightSectionStatus =
+  /** Every selected post was fetched and written. */
+  | 'complete'
+  /** Every selected post was attempted, but some could not be fetched or written. */
+  | 'partial'
+  /** The project has no binding on the platform: there is nothing to measure. */
+  | 'not_bound'
+  /** YouTube without YOUTUBE_API_KEY — degrades quietly, as it always has. */
+  | 'not_configured'
+  /** Bound, but the project's credential could not be verified. */
+  | 'credential_refused'
+  /** The posts to measure could not be read. */
+  | 'read_failed'
+  /** The deadline came before every selected post was attempted. */
+  | 'time_budget_exhausted'
+
+export interface InsightSection {
+  platform: InsightPlatform
+  /** The measured project; null for the cross-project YouTube section. */
+  projectId: string | null
+  status: InsightSectionStatus
+  refusal?: CredentialRefusal
+  /** Posts selected for the section; null when the section ended before reading them. */
+  planned: number | null
+  attempted: number
+  /** Posts whose insights were fetched and written. */
+  written: number
+  skipped: number
+}
+
+/** Section outcomes that leave nothing undone. */
+export const INSIGHTS_DONE_STATUSES: ReadonlySet<InsightSectionStatus> = new Set(['complete', 'not_bound', 'not_configured'])
+
 export interface RefreshSummary {
   updated: number
   failed: number
   firstError?: string
   byPlatform: Record<string, { updated: number; failed: number }>
+  /** True only when every planned section wrote every selected post. A partial run is never reported complete. */
+  complete: boolean
+  /** The active bindings could not be read, so no project was measured on Instagram or Facebook. */
+  bindingsUnreadable: boolean
+  sections: InsightSection[]
+}
+
+export interface RefreshOptions {
+  limit?: number
+  concurrency?: number
+  /** Epoch ms. No credential resolution or post starts at or after it. */
+  deadlineAt?: number
+  now?: () => number
 }
 
 /**
- * Uppdaterar per-inlägg-insights för alla publicerade inlägg, per plattform:
- *   • Instagram och Facebook per projekt, med projektets verifierade credential.
+ * Runs `work` over `items` with at most `concurrency` in flight, starting nothing once
+ * `expired()`. `work` resolves true when the item was written.
+ */
+async function eachBounded<T>(
+  items: readonly T[],
+  concurrency: number,
+  expired: () => boolean,
+  work: (item: T) => Promise<boolean>,
+): Promise<{ attempted: number; written: number; skipped: number }> {
+  let next = 0
+  let attempted = 0
+  let written = 0
+  const lane = async () => {
+    while (next < items.length && !expired()) {
+      const item = items[next++]
+      attempted++
+      if (await work(item)) written++
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, lane))
+  return { attempted, written, skipped: items.length - attempted }
+}
+
+/**
+ * Uppdaterar per-inlägg-insights för publicerade inlägg, per plattform:
+ *   • Instagram och Facebook per projekt med aktiv bindning, med projektets verifierade credential.
  *   • YouTube via Data API v3 (YOUTUBE_API_KEY, publik data) — degraderar tyst om
  *     nyckel saknas; genomtittning endast via videons eget projekts YouTube-credential.
  * Upsertar på (script_id, platform) så varje plattform får en egen rad per video.
  */
-export async function refreshAllInsights(limit = 80): Promise<RefreshSummary> {
+export async function refreshAllInsights(options: RefreshOptions = {}): Promise<RefreshSummary> {
+  const limit = options.limit ?? INSIGHTS_LIMIT
+  const concurrency = Math.max(1, options.concurrency ?? INSIGHTS_CONCURRENCY)
+  const now = options.now ?? Date.now
+  const expired = () => options.deadlineAt !== undefined && now() >= options.deadlineAt
+
   const db = createAdminClient()
   const byPlatform: Record<string, { updated: number; failed: number }> = {}
+  const sections: InsightSection[] = []
   let updated = 0, failed = 0, firstError: string | undefined
 
-  const bump = (platform: string, ok: boolean) => {
+  /** Counts one post's outcome and returns whether it was written. */
+  const bump = (platform: InsightPlatform, ok: boolean, error?: string): boolean => {
     byPlatform[platform] ??= { updated: 0, failed: 0 }
-    if (ok) { byPlatform[platform].updated++; updated++ }
-    else    { byPlatform[platform].failed++;  failed++ }
+    if (ok) { byPlatform[platform].updated++; updated++; return true }
+    byPlatform[platform].failed++
+    failed++
+    if (!firstError) firstError = error ?? 'okänt fel'
+    return false
+  }
+  const ended = (platform: InsightPlatform, projectId: string | null, status: InsightSectionStatus, extra: Partial<InsightSection> = {}) => {
+    sections.push({ platform, projectId, status, planned: null, attempted: 0, written: 0, skipped: 0, ...extra })
+  }
+  const settle = (platform: InsightPlatform, projectId: string | null, planned: number, run: { attempted: number; written: number; skipped: number }) => {
+    const status: InsightSectionStatus = run.skipped > 0 ? 'time_budget_exhausted' : run.written < planned ? 'partial' : 'complete'
+    sections.push({ platform, projectId, status, planned, ...run })
+  }
+  const refused = (platform: InsightPlatform, projectId: string, refusal: CredentialRefusal) => {
+    if (refusal === 'binding_missing') ended(platform, projectId, 'not_bound', { planned: 0 })
+    else ended(platform, projectId, 'credential_refused', { refusal })
   }
 
-  // Projekt-medvetet: mät varje projekt med SIN egen verifierade credential. Ett
-  // projekt utan verifierad bindning på en plattform mäts inte där.
-  const { data: projRows } = await (db.from('media_scripts') as any)
-    .select('project_id').eq('status', 'published')
-  const projectIds = [...new Set(((projRows ?? []) as any[]).map(r => r.project_id).filter(Boolean))] as string[]
+  // Vem mäts var: ett projekt, på en plattform där det har en aktiv bindning, med sitt
+  // eget verifierade konto. Aldrig ett annat projekts credential, aldrig ett standardprojekt.
+  const bindings = await listActiveBindings(undefined, db)
+  const bindingsUnreadable = !bindings.ok
+  const boundOn = { instagram: new Set<string>(), facebook: new Set<string>() }
+  if (bindings.ok) {
+    for (const b of bindings.bindings) {
+      if (b.platform === 'instagram' || b.platform === 'facebook') boundOn[b.platform].add(b.projectId)
+    }
+  }
+  const projectIds = [...new Set([...boundOn.instagram, ...boundOn.facebook])]
   const credentials = createCredentialResolver()
 
   for (const projectId of projectIds) {
     // ─── Instagram (projektets verifierade credential) ────────────────────────
-    const ig = await credentials.instagram(projectId)
-    if (ig.ok) {
-      const { data: scripts } = await (db.from('media_scripts') as any)
-        .select('id, project_id, instagram_media_id, published_at')
-        .eq('status', 'published').eq('project_id', projectId)
-        .not('instagram_media_id', 'is', null)
-        .order('published_at', { ascending: false })
-        .limit(limit)
-
-      for (const s of (scripts ?? []) as any[]) {
-        const result = await fetchMediaInsights(s.instagram_media_id, ig.credential.token)
-        if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('instagram', false); continue }
-        const m = result.metrics
-        const { error } = await (db.from('media_insights') as any).upsert({
-          script_id: s.id,
-          project_id: s.project_id,
-          platform: 'instagram',
-          instagram_media_id: s.instagram_media_id,
-          reach: m.reach ?? null,
-          views: m.views ?? null,
-          likes: m.likes ?? null,
-          comments: m.comments ?? null,
-          saved: m.saved ?? null,
-          shares: m.shares ?? null,
-          total_interactions: m.total_interactions ?? null,
-          published_at: s.published_at,
-          fetched_at: new Date().toISOString(),
-        }, { onConflict: 'script_id,platform' })
-        if (error) { if (!firstError) firstError = error.message; bump('instagram', false) }
-        else bump('instagram', true)
+    if (!boundOn.instagram.has(projectId)) ended('instagram', projectId, 'not_bound', { planned: 0 })
+    else if (expired()) ended('instagram', projectId, 'time_budget_exhausted')
+    else {
+      const ig = await credentials.instagram(projectId)
+      if (!ig.ok) refused('instagram', projectId, ig.refusal)
+      else {
+        const token = ig.credential.token
+        const { data: scripts, error: readError } = await (db.from('media_scripts') as any)
+          .select('id, project_id, instagram_media_id, published_at')
+          .eq('status', 'published').eq('project_id', projectId)
+          .not('instagram_media_id', 'is', null)
+          .order('published_at', { ascending: false })
+          .limit(limit)
+        if (readError || !Array.isArray(scripts)) ended('instagram', projectId, 'read_failed')
+        else {
+          const run = await eachBounded(scripts as any[], concurrency, expired, async (s) => {
+            try {
+              const result = await fetchMediaInsights(s.instagram_media_id, token)
+              if (!result.ok || !result.metrics) return bump('instagram', false, result.error)
+              const m = result.metrics
+              const { error } = await (db.from('media_insights') as any).upsert({
+                script_id: s.id,
+                project_id: s.project_id,
+                platform: 'instagram',
+                instagram_media_id: s.instagram_media_id,
+                reach: m.reach ?? null,
+                views: m.views ?? null,
+                likes: m.likes ?? null,
+                comments: m.comments ?? null,
+                saved: m.saved ?? null,
+                shares: m.shares ?? null,
+                total_interactions: m.total_interactions ?? null,
+                published_at: s.published_at,
+                fetched_at: new Date().toISOString(),
+              }, { onConflict: 'script_id,platform' })
+              return bump('instagram', !error, error?.message)
+            } catch (e) {
+              return bump('instagram', false, e instanceof Error ? e.message : 'okänt fel')
+            }
+          })
+          settle('instagram', projectId, scripts.length, run)
+        }
       }
     }
 
     // ─── Facebook (projektets verifierade sida) ───────────────────────────────
-    const fb = await credentials.facebook(projectId)
-    if (fb.ok) {
-      const { data: fbScripts } = await (db.from('media_scripts') as any)
-        .select('id, project_id, facebook_post_id, published_at')
-        .eq('status', 'published').eq('project_id', projectId)
-        .not('facebook_post_id', 'is', null)
-        .order('published_at', { ascending: false })
-        .limit(limit)
-
-      for (const s of (fbScripts ?? []) as any[]) {
-        const result = await fetchFacebookInsights(s.facebook_post_id, fb.credential.pageToken, fb.credential.pageId)
-        if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('facebook', false); continue }
-        const m = result.metrics
-        const { error } = await (db.from('media_insights') as any).upsert({
-          script_id: s.id,
-          project_id: s.project_id,
-          platform: 'facebook',
-          facebook_post_id: s.facebook_post_id,
-          reach: m.reach ?? null,
-          impressions: m.impressions ?? null,
-          views: m.views ?? null,
-          likes: m.likes ?? null,
-          comments: m.comments ?? null,
-          saved: null,
-          shares: m.shares ?? null,
-          total_interactions: m.total_interactions ?? null,
-          published_at: s.published_at,
-          fetched_at: new Date().toISOString(),
-        }, { onConflict: 'script_id,platform' })
-        if (error) { if (!firstError) firstError = error.message; bump('facebook', false) }
-        else bump('facebook', true)
+    if (!boundOn.facebook.has(projectId)) ended('facebook', projectId, 'not_bound', { planned: 0 })
+    else if (expired()) ended('facebook', projectId, 'time_budget_exhausted')
+    else {
+      const fb = await credentials.facebook(projectId)
+      if (!fb.ok) refused('facebook', projectId, fb.refusal)
+      else {
+        const { pageToken, pageId } = fb.credential
+        const { data: fbScripts, error: readError } = await (db.from('media_scripts') as any)
+          .select('id, project_id, facebook_post_id, published_at')
+          .eq('status', 'published').eq('project_id', projectId)
+          .not('facebook_post_id', 'is', null)
+          .order('published_at', { ascending: false })
+          .limit(limit)
+        if (readError || !Array.isArray(fbScripts)) ended('facebook', projectId, 'read_failed')
+        else {
+          const run = await eachBounded(fbScripts as any[], concurrency, expired, async (s) => {
+            try {
+              const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, pageId)
+              if (!result.ok || !result.metrics) return bump('facebook', false, result.error)
+              const m = result.metrics
+              const { error } = await (db.from('media_insights') as any).upsert({
+                script_id: s.id,
+                project_id: s.project_id,
+                platform: 'facebook',
+                facebook_post_id: s.facebook_post_id,
+                reach: m.reach ?? null,
+                impressions: m.impressions ?? null,
+                views: m.views ?? null,
+                likes: m.likes ?? null,
+                comments: m.comments ?? null,
+                saved: null,
+                shares: m.shares ?? null,
+                total_interactions: m.total_interactions ?? null,
+                published_at: s.published_at,
+                fetched_at: new Date().toISOString(),
+              }, { onConflict: 'script_id,platform' })
+              return bump('facebook', !error, error?.message)
+            } catch (e) {
+              return bump('facebook', false, e instanceof Error ? e.message : 'okänt fel')
+            }
+          })
+          settle('facebook', projectId, fbScripts.length, run)
+        }
       }
     }
   }
 
   // ─── YouTube — publik statistik med API-nyckel; genomtittning per projekt ────
   const ytKey = process.env.YOUTUBE_API_KEY
-  if (ytKey) {
-    const { data: ytScripts } = await (db.from('media_scripts') as any)
+  if (!ytKey) ended('youtube', null, 'not_configured', { planned: 0 })
+  else if (expired()) ended('youtube', null, 'time_budget_exhausted')
+  else {
+    const { data: ytScripts, error: readError } = await (db.from('media_scripts') as any)
       .select('id, project_id, youtube_video_id, published_at')
       .eq('status', 'published')
       .not('youtube_video_id', 'is', null)
       .order('published_at', { ascending: false })
       .limit(limit)
-
-    for (const s of (ytScripts ?? []) as any[]) {
-      const result = await fetchYouTubeInsights(s.youtube_video_id, ytKey)
-      if (!result.ok || !result.metrics) { if (!firstError) firstError = result.error; bump('youtube', false); continue }
-      const m = result.metrics
-      // Genomtittning kräver en kanal-credential: bara videons EGET projekts, via dess bindning.
-      const yt = await credentials.youtube(s.project_id)
-      const retention = yt.ok ? await fetchVideoRetention(yt.credential, s.youtube_video_id) : null
-      const { error } = await (db.from('media_insights') as any).upsert({
-        script_id: s.id,
-        project_id: s.project_id,
-        platform: 'youtube',
-        youtube_video_id: s.youtube_video_id,
-        reach: null,           // YouTube exponerar inte räckvidd publikt
-        views: m.views ?? null,
-        likes: m.likes ?? null,
-        comments: m.comments ?? null,
-        saved: null,
-        shares: null,
-        total_interactions: m.total_interactions ?? null,
-        avg_view_pct: retention,
-        published_at: s.published_at,
-        fetched_at: new Date().toISOString(),
-      }, { onConflict: 'script_id,platform' })
-      if (error) { if (!firstError) firstError = error.message; bump('youtube', false) }
-      else bump('youtube', true)
+    if (readError || !Array.isArray(ytScripts)) ended('youtube', null, 'read_failed')
+    else {
+      const run = await eachBounded(ytScripts as any[], concurrency, expired, async (s) => {
+        try {
+          const result = await fetchYouTubeInsights(s.youtube_video_id, ytKey)
+          if (!result.ok || !result.metrics) return bump('youtube', false, result.error)
+          const m = result.metrics
+          // Genomtittning kräver en kanal-credential: bara videons EGET projekts, via dess bindning.
+          const yt = await credentials.youtube(s.project_id)
+          const retention = yt.ok ? await fetchVideoRetention(yt.credential, s.youtube_video_id) : null
+          const { error } = await (db.from('media_insights') as any).upsert({
+            script_id: s.id,
+            project_id: s.project_id,
+            platform: 'youtube',
+            youtube_video_id: s.youtube_video_id,
+            reach: null,           // YouTube exponerar inte räckvidd publikt
+            views: m.views ?? null,
+            likes: m.likes ?? null,
+            comments: m.comments ?? null,
+            saved: null,
+            shares: null,
+            total_interactions: m.total_interactions ?? null,
+            avg_view_pct: retention,
+            published_at: s.published_at,
+            fetched_at: new Date().toISOString(),
+          }, { onConflict: 'script_id,platform' })
+          return bump('youtube', !error, error?.message)
+        } catch (e) {
+          return bump('youtube', false, e instanceof Error ? e.message : 'okänt fel')
+        }
+      })
+      settle('youtube', null, ytScripts.length, run)
     }
   }
 
-  return { updated, failed, firstError, byPlatform }
+  return {
+    updated,
+    failed,
+    firstError,
+    byPlatform,
+    complete: !bindingsUnreadable && sections.every(s => INSIGHTS_DONE_STATUSES.has(s.status)),
+    bindingsUnreadable,
+    sections,
+  }
 }

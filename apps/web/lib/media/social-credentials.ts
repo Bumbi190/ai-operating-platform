@@ -9,22 +9,31 @@
  * when every link holds:
  *   1. the project id is a UUID (no slug, no default, no "first project");
  *   2. the project has an ACTIVE, UNBLOCKED binding on the platform;
- *   3. the binding's credential exists: Instagram and Facebook stored for that
- *      project; YouTube, during Y1, the platform's Vercel OAuth credential, which only
- *      the one binding marked platform_env_transitional may use;
+ *   3. the binding's credential exists: Instagram, Facebook and a connected YouTube
+ *      channel stored for that project; for the one YouTube binding marked
+ *      platform_env_transitional (Y1), the platform's Vercel OAuth credential;
  *   4. the provider, asked with that credential right now, answers with the binding's
  *      account.
  * Anything else is a refusal with a closed code. There is no fallback of any kind —
  * not to another project's credential, not to an environment token, not to The
  * Prompt — and every caller treats a refusal as a stop.
  *
+ * YOUTUBE, PROJECT STORE (Y2a). A binding with credential_source 'project_store' uses
+ * the refresh token the project's own connection stored
+ * (app/api/media/youtube/oauth/callback), exchanged with the platform's OAuth client.
+ * A connection always carries a channel-read scope, so the channel is verified with
+ * YouTube before every upload; a stored grant that cannot read its channel is refused.
+ *
  * YOUTUBE Y1 (transitional, not the end state). With only upload scope the channel
  * cannot be read before an upload. The credential then comes back with
  * channelVerifiedBeforeUpload = false, and confirmYouTubeUploadChannel() checks the
  * channel YouTube reports for the upload against the binding: a mismatch blocks the
- * binding permanently, stopping every later upload. The end state is project-scoped
- * YouTube credentials with the channel verified before every upload
+ * binding permanently, stopping every later upload. Y2b retires it
  * (ATLAS_ROADMAP_SV.md).
+ *
+ * NO FALLBACK BETWEEN THE TWO. The binding's credential source decides: a project-store
+ * binding never touches the Vercel credential, and the transitional binding never reads
+ * a stored one.
  *
  * SECRETS. A resolved credential lives only in the caller's memory for its run. It
  * is never returned by a route, logged, audited or written anywhere; refusal codes
@@ -48,7 +57,7 @@ import {
   EXTERNAL_ACCOUNT_ID,
   type IdentityFailure,
 } from './social-identity'
-import { platformYouTubeGrant } from './youtube'
+import { platformYouTubeGrant, platformYouTubeOAuthClient } from './youtube'
 
 export type CredentialRefusal =
   /** No server-derived project id — nothing to resolve a credential for. */
@@ -201,11 +210,16 @@ export async function resolveFacebookCredential(projectId: unknown): Promise<Cre
   }
 }
 
-/** The project's YouTube credential (Y1: only the binding the platform credential is attached to), or a refusal. */
+/**
+ * The project's YouTube credential, or a refusal: the project's own connection for a
+ * project-store binding; the platform's Vercel credential only for the one transitional
+ * binding attached to it (Y1).
+ */
 export async function resolveYouTubeCredential(projectId: unknown): Promise<CredentialResolution<YouTubeCredential>> {
   const active = await activeBinding(projectId, 'youtube')
   if (!active.ok) return active
   const { binding } = active
+  if (binding.credentialSource === 'project_store') return resolveProjectYouTubeCredential(binding)
   // Y1: the platform's Vercel credential serves exactly the binding marked for it.
   if (binding.credentialSource !== 'platform_env_transitional') return refuse('credential_missing', binding)
 
@@ -237,6 +251,41 @@ export async function resolveYouTubeCredential(projectId: unknown): Promise<Cred
       channelTitle,
       accessToken: access.accessToken,
       channelVerifiedBeforeUpload,
+    },
+  }
+}
+
+/** YouTube, project store: the project's own connection, its channel verified with YouTube before anything is dispatched. */
+async function resolveProjectYouTubeCredential(binding: SocialAccountBinding): Promise<CredentialResolution<YouTubeCredential>> {
+  const stored = await readStoredCredential(binding.projectId, 'youtube')
+  if (!stored.ok) return refuse('credential_unreadable', binding)
+  if (!stored.credential) return refuse('credential_missing', binding)
+
+  const client = platformYouTubeOAuthClient()
+  if (!client) return refuse('credential_missing', binding)
+
+  const access = await exchangeYouTubeGrant({ ...client, refreshToken: stored.credential.accessToken })
+  if (!access.ok) return refuse(identityRefusal(access.failure), binding)
+  // A connection is stored only with a channel-read scope. A grant that cannot read its
+  // channel cannot have it verified before an upload, so it is not usable.
+  if (!canReadOwnChannel(access.scopes)) return refuse('credential_invalid', binding)
+
+  const channels = await attestYouTubeChannels(access.accessToken)
+  if (!channels.ok) return refuse(identityRefusal(channels.failure), binding)
+  const own = channels.channels.find(channel => channel.channelId === binding.externalAccountId)
+  if (!own) return refuse('account_mismatch', binding)
+
+  return {
+    ok: true,
+    binding,
+    credential: {
+      platform: 'youtube',
+      projectId: binding.projectId,
+      bindingId: binding.bindingId,
+      channelId: binding.externalAccountId,
+      channelTitle: own.title,
+      accessToken: access.accessToken,
+      channelVerifiedBeforeUpload: true,
     },
   }
 }

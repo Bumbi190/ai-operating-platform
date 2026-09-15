@@ -92,6 +92,8 @@ const EVENTS_V2 = '20260914120100_platform_credential_events_account_binding.sql
 const HEALTH = '20260914120200_social_credential_health.sql'
 const TOKENS = '20260914120300_platform_tokens_project_binding.sql'
 const EVIDENCE = '20260914120400_social_account_bindings_the_prompt_evidence.sql'
+/** Project-scoped YouTube (Y2a): YouTube in the project store, its audit, and the OAuth state. */
+const YOUTUBE_OAUTH = '20260915170000_youtube_project_oauth.sql'
 const EVIDENCE_SQL = readFileSync(join(MIGRATIONS, EVIDENCE), 'utf8')
 
 const PROMPT = '33333333-3333-4333-8333-333333333333'
@@ -219,7 +221,7 @@ const newOp = () => `00000000-0000-4000-8000-${String(++opCounter).padStart(12, 
 function event(e: { op: string; outcome: string; platform?: string; detail?: string; account?: string | null; action?: string | null; version?: number | null }): string {
   const platform = e.platform ?? 'facebook'
   const cols = ['operation_id', 'project_id', 'platform', 'credential_type', 'actor', 'outcome', 'detail']
-  const vals = [`'${e.op}'`, `'${PROMPT}'`, `'${platform}'`, `'${platform === 'instagram' ? 'user' : 'page'}'`, `'${ACTOR}'`,
+  const vals = [`'${e.op}'`, `'${PROMPT}'`, `'${platform}'`, `'${platform === 'instagram' ? 'user' : platform === 'youtube' ? 'oauth_refresh' : 'page'}'`, `'${ACTOR}'`,
     `'${e.outcome}'`, `'${e.detail ?? '{}'}'::jsonb`]
   if (e.version !== null) { cols.push('event_version'); vals.push(String(e.version ?? 2)) }
   if (e.account !== undefined) { cols.push('external_account_id'); vals.push(e.account === null ? 'null' : `'${e.account}'`) }
@@ -235,7 +237,7 @@ beforeAll(() => {
   run(ADMIN_URL, ['-c', `create database "${DB_MAIN}"`])
   dsn = dsnFor(DB_MAIN)
   run(dsn, ['-c', FIXTURE + EVIDENCE_SEED])
-  for (const file of [...S0, BINDINGS, EVENTS_V2, HEALTH, TOKENS, EVIDENCE]) applyFile(dsn, file)
+  for (const file of [...S0, BINDINGS, EVENTS_V2, HEALTH, TOKENS, EVIDENCE, YOUTUBE_OAUTH]) applyFile(dsn, file)
 
   // The evidence migration not yet applied, so each scenario can run it inside a rolled-back transaction.
   run(ADMIN_URL, ['-c', `create database "${DB_EVIDENCE}"`])
@@ -247,7 +249,7 @@ beforeAll(() => {
   run(ADMIN_URL, ['-c', `create database "${DB_FRESH}"`])
   freshDsn = dsnFor(DB_FRESH)
   run(freshDsn, ['-c', FIXTURE])
-  for (const file of [...S0, BINDINGS, EVENTS_V2, HEALTH, TOKENS, EVIDENCE]) applyFile(freshDsn, file)
+  for (const file of [...S0, BINDINGS, EVENTS_V2, HEALTH, TOKENS, EVIDENCE, YOUTUBE_OAUTH]) applyFile(freshDsn, file)
 }, 180_000)
 
 afterAll(() => {
@@ -366,11 +368,16 @@ d('project-scoped credentials in Postgres · one account, one project (O1)', () 
       .toMatch(/social_account_bindings_one_platform_env_credential/)
   })
 
-  it('Instagram and Facebook live in the project’s own store; YouTube is transitional only', () => {
+  it('Instagram and Facebook live in the project’s own store; YouTube too (Y2a), or in the one transitional binding (Y1)', () => {
     expect(refused(txn(dsn, SVC, newBinding({ project: FAMILY, platform: 'facebook', account: '2000000000000002', source: 'platform_env_transitional' }))))
       .toMatch(/credential_source_matches_platform/)
-    expect(refused(txn(dsn, SVC, newBinding({ project: FAMILY, platform: 'youtube', account: 'UCfamily000000000000000', source: 'project_store' }))))
-      .toMatch(/credential_source_matches_platform/)
+    expect(accepted(txn(dsn, SVC, `${newBinding({ project: FAMILY, platform: 'youtube', account: 'UCfamily000000000000000', source: 'project_store' })}
+      select credential_source from public.social_account_bindings where project_id = '${FAMILY}' and platform = 'youtube';`))).toBe('project_store')
+    // …while a second transitional binding is still refused, and The Prompt's channel belongs to The Prompt alone (O1).
+    expect(refused(txn(dsn, SVC, newBinding({ project: FAMILY, platform: 'youtube', account: 'UCfamily000000000000000', source: 'platform_env_transitional' }))))
+      .toMatch(/social_account_bindings_one_platform_env_credential/)
+    expect(refused(txn(dsn, SVC, newBinding({ project: FAMILY, platform: 'youtube', account: CHANNEL_PROMPT, source: 'project_store' }))))
+      .toMatch(/social_account_bindings_account_single_project/)
   })
 
   it('shapes: a bounded account id, a clean bounded label, a real actor, closed vocabularies', () => {
@@ -477,8 +484,13 @@ d('project-scoped credentials in Postgres · social_account_rebind — an explic
       .toBe(`${PROMPT}:${IG_PROMPT},${FAMILY}:${IG_OTHER}`)
   })
 
-  it('YouTube cannot be rebound through it during Y1, and the actor must be the server-authenticated operator', () => {
-    expect(refused(txn(dsn, SVC, rebind('youtube', bindingId('youtube'), 'UCsomeoneElse0000000000')))).toMatch(/credential_source_matches_platform/)
+  it('YouTube moves to the project’s own store through it — the same channel, in one transaction — and the actor must be the server-authenticated operator', () => {
+    const out = accepted(txn(dsn, SVC, `${rebind('youtube', bindingId('youtube'), CHANNEL_PROMPT)}
+      select (select string_agg(concat_ws('|', project_id, external_account_id, credential_source, verification), ',')
+                from public.social_account_bindings where platform = 'youtube' and superseded_at is null)
+          || '#' || (select count(*) from public.social_account_bindings where platform = 'youtube' and superseded_at is not null
+                       and credential_source = 'platform_env_transitional');`))
+    expect(out.split('\n').pop()).toBe(`${PROMPT}|${CHANNEL_PROMPT}|project_store|provider_attested#1`)
     expect(refused(txn(dsn, SVC, rebind('instagram', bindingId('instagram'), IG_OTHER, 'operator@omnira.test')))).toMatch(/bound_by_shape/)
   })
 })
@@ -530,6 +542,26 @@ d('project-scoped credentials in Postgres · platform_credential_events v2', () 
     const op2 = newOp()
     expect(refused(txn(dsn, SVC, `${event({ op: op2, outcome: 'attempted' })} ${event({ op: op2, outcome: 'replaced', account: PAGE_PROMPT, action: 'moved' })}`)))
       .toMatch(/binding_action_valid/)
+  })
+
+  it('YouTube connections: oauth_refresh, the OAuth stages and `migrated` — each for YouTube only', () => {
+    const op = newOp()
+    expect(accepted(txn(dsn, SVC, `${event({ op, outcome: 'attempted', platform: 'youtube' })}
+      ${event({ op, outcome: 'replaced', platform: 'youtube', account: CHANNEL_PROMPT, action: 'migrated' })}
+      select credential_type || ':' || binding_action from public.platform_credential_events where operation_id = '${op}' and outcome = 'replaced';`)))
+      .toBe('oauth_refresh:migrated')
+    for (const stage of ['authorization_denied', 'code_exchange', 'scope_missing', 'refresh_token_missing', 'account_ambiguous']) {
+      const yt = newOp()
+      expect(accepted(txn(dsn, SVC, `${event({ op: yt, outcome: 'attempted', platform: 'youtube' })} ${event({ op: yt, outcome: 'failed', platform: 'youtube', detail: `{"failure_stage": "${stage}"}` })}`)), stage).toBe('')
+      const fb = newOp()
+      expect(refused(txn(dsn, SVC, `${event({ op: fb, outcome: 'attempted' })} ${event({ op: fb, outcome: 'failed', detail: `{"failure_stage": "${stage}"}` })}`)), stage)
+        .toMatch(/oauth_stages_are_youtube/)
+    }
+    const moved = newOp()
+    expect(refused(txn(dsn, SVC, `${event({ op: moved, outcome: 'attempted' })} ${event({ op: moved, outcome: 'replaced', account: PAGE_PROMPT, action: 'migrated' })}`)))
+      .toMatch(/migrated_is_youtube/)
+    expect(refused(txn(dsn, SVC, `insert into public.platform_credential_events (operation_id, project_id, platform, credential_type, actor, outcome, detail, event_version)
+      values ('${newOp()}', '${PROMPT}', 'youtube', 'page', '${ACTOR}', 'attempted', '{}'::jsonb, 2);`))).toMatch(/credential_type_matches_platform/)
   })
 
   it('S0 still holds: append-only for everyone, nothing for client roles', () => {
@@ -590,13 +622,103 @@ d('project-scoped credentials in Postgres · platform_tokens holds only a projec
 
   it('platform and credential type are pinned, and the account id is bounded', () => {
     expect(refused(txn(dsn, SVC, token({ platform: `'youtube'` })))).toMatch(/platform_tokens_platform_valid|token_type_matches_platform/)
+    expect(refused(txn(dsn, SVC, token({ platform: `'tiktok'`, token_type: `'user'` })))).toMatch(/platform_tokens_platform_valid/)
     expect(refused(txn(dsn, SVC, token({ token_type: `'page'` })))).toMatch(/token_type_matches_platform/)
     expect(refused(txn(dsn, SVC, token({ account_id: `'not an id'` })))).toMatch(/platform_tokens_account_id_shape/)
     expect(accepted(txn(dsn, SVC, `${token({})} select count(*) from public.platform_tokens where project_id = '${FAMILY}';`))).toBe('1')
   })
 
+  it('a YouTube connection is the project’s refresh grant for its confirmed channel — never without the channel, never with an expiry', () => {
+    const youtube = (over: Record<string, string>) => token({
+      platform: `'youtube'`, token_type: `'oauth_refresh'`, account_id: `'UCfamily000000000000000'`, expires_at: 'null', ...over,
+    })
+    expect(accepted(txn(dsn, SVC, `${youtube({})}
+      select token_type || '|' || account_id from public.platform_tokens where project_id = '${FAMILY}' and platform = 'youtube';`)))
+      .toBe('oauth_refresh|UCfamily000000000000000')
+    expect(refused(txn(dsn, SVC, youtube({ account_id: 'null' })))).toMatch(/platform_tokens_youtube_names_its_channel/)
+    expect(refused(txn(dsn, SVC, youtube({ expires_at: 'now()' })))).toMatch(/platform_tokens_youtube_names_its_channel/)
+    expect(refused(txn(dsn, SVC, youtube({ token_type: `'user'` })))).toMatch(/token_type_matches_platform/)
+  })
+
   it('the rows production holds satisfy every new constraint — both The Prompt’s, untouched', () => {
     expect(one(dsn, `select count(*) || '|' || bool_and(project_id = '${PROMPT}') from public.platform_tokens`)).toBe('2|true')
+  })
+})
+
+d('project-scoped YouTube in Postgres · social_oauth_states — one operator, one project, ten minutes, one use', () => {
+  const hash = (n: number) => `${'a'.repeat(63)}${n}`
+  const VERIFIER = 'V'.repeat(43)
+  const state = (n: number, over: Record<string, string> = {}) => {
+    const row: Record<string, string> = {
+      state_hash: `'${hash(n)}'`, project_id: `'${PROMPT}'`, platform: `'youtube'`, actor: `'${ACTOR}'`,
+      change_account: 'false', code_verifier: `'${VERIFIER}'`, ...over,
+    }
+    return `insert into public.social_oauth_states (${Object.keys(row).join(', ')}) values (${Object.values(row).join(', ')});`
+  }
+  const consume = (n: number) =>
+    `select coalesce((select string_agg(concat_ws('|', project_id, platform, actor, change_account::text, code_verifier), ',') from public.social_oauth_state_consume('${hash(n)}')), 'none');`
+
+  it('a state is born live on the database’s clock — ten minutes, unconsumed, with its verifier — whatever the writer sent', () => {
+    expect(accepted(txn(dsn, SVC, `${state(1, { created_at: `'1999-01-01T00:00:00Z'`, expires_at: `'2999-01-01T00:00:00Z'`, consumed_at: 'now()' })}
+      select concat_ws('|', (created_at = now())::text, (expires_at = now() + interval '10 minutes')::text, (consumed_at is null)::text, code_verifier)
+        from public.social_oauth_states where state_hash = '${hash(1)}';`))).toBe(`true|true|true|${VERIFIER}`)
+    expect(refused(txn(dsn, SVC, state(2, { code_verifier: 'null' })))).toMatch(/created with its PKCE verifier/)
+  })
+
+  it('consuming hands back what the state was issued for exactly once, and clears the verifier', () => {
+    expect(accepted(txn(dsn, SVC, `${state(3, { change_account: 'true' })}
+      ${consume(3)}
+      ${consume(3)}
+      select concat_ws('|', (consumed_at is not null)::text, coalesce(code_verifier, 'cleared')) from public.social_oauth_states where state_hash = '${hash(3)}';`)))
+      .toBe(`${PROMPT}|youtube|${ACTOR}|true|${VERIFIER}\nnone\ntrue|cleared`)
+  })
+
+  it('an unknown or expired state hands back nothing', () => {
+    expect(accepted(txn(dsn, SVC, consume(9)))).toBe('none')
+    expect(accepted(txn(dsn, null, `${state(4)}
+      alter table public.social_oauth_states disable trigger social_oauth_states_guard_update;
+      update public.social_oauth_states set created_at = now() - interval '20 minutes', expires_at = now() - interval '10 minutes' where state_hash = '${hash(4)}';
+      alter table public.social_oauth_states enable trigger social_oauth_states_guard_update;
+      ${consume(4)}`))).toBe('none')
+  })
+
+  it('nothing but consuming a live state changes it — not its identity, not twice, not back', () => {
+    for (const change of [`project_id = '${FAMILY}'`, `actor = 'user:9d3b7a51-2c4e-4f6a-8b1d-3e5f7a9c1b2d'`, `change_account = true`, `expires_at = now() + interval '5 minutes'`]) {
+      expect(refused(txn(dsn, null, `${state(5)} update public.social_oauth_states set ${change}, consumed_at = now(), code_verifier = null where state_hash = '${hash(5)}';`)), change)
+        .toMatch(/identity of a state is immutable/)
+    }
+    expect(refused(txn(dsn, SVC, `${state(6)} update public.social_oauth_states set consumed_at = now() where state_hash = '${hash(6)}';`)))
+      .toMatch(/may only consume a state and clear its verifier/)
+    expect(refused(txn(dsn, SVC, `${state(7)} ${consume(7)} update public.social_oauth_states set consumed_at = null, code_verifier = '${VERIFIER}' where state_hash = '${hash(7)}';`)))
+      .toMatch(/already consumed/)
+  })
+
+  it('shapes: a SHA-256 key, YouTube only, a real operator, a PKCE verifier, an existing project', () => {
+    const cases: [Record<string, string>, RegExp][] = [
+      [{ state_hash: `'not-a-hash'` }, /state_hash_shape/],
+      [{ platform: `'instagram'` }, /social_oauth_states_platform_valid/],
+      [{ actor: `'operator@omnira.test'` }, /actor_is_a_user/],
+      [{ code_verifier: `'short'` }, /code_verifier_shape/],
+      [{ project_id: `'00000000-0000-4000-8000-000000000000'` }, /violates foreign key constraint/],
+    ]
+    for (const [over, pattern] of cases) expect(refused(txn(dsn, SVC, state(8, over))), JSON.stringify(over)).toMatch(pattern)
+  })
+
+  it('server-only: RLS on, no policy, nothing for client roles; the service role may insert, read and consume — never delete — on a pinned search_path', () => {
+    expect(one(dsn, `select relrowsecurity from pg_class where oid = 'public.social_oauth_states'::regclass`)).toBe('t')
+    expect(one(dsn, `select count(*) from pg_policies where schemaname = 'public' and tablename = 'social_oauth_states'`)).toBe('0')
+    for (const role of ['anon', 'authenticated']) {
+      for (const p of PRIVILEGES) expect(one(dsn, `select has_table_privilege('${role}', 'public.social_oauth_states', '${p}')`), `${role} ${p}`).toBe('f')
+      expect(one(dsn, `select has_function_privilege('${role}', 'public.social_oauth_state_consume(text)', 'EXECUTE')`), role).toBe('f')
+    }
+    expect(PRIVILEGES.filter((p) => one(dsn, `select has_table_privilege('service_role', 'public.social_oauth_states', '${p}')`) === 't'))
+      .toEqual(['SELECT', 'INSERT', 'UPDATE'])
+    expect(one(dsn, `select has_function_privilege('service_role', 'public.social_oauth_state_consume(text)', 'EXECUTE')`)).toBe('t')
+    expect(refused(txn(dsn, 'anon', consume(1)))).toMatch(/permission denied/)
+    expect(one(dsn, `select string_agg(p.proname || '=' || coalesce(array_to_string(p.proconfig, ','), '-'), ' ' order by p.proname)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname like 'social_oauth_state%'`))
+      .toBe('social_oauth_state_consume=search_path="" social_oauth_states_guard_insert=search_path="" social_oauth_states_guard_update=search_path=""')
   })
 })
 

@@ -12,8 +12,8 @@
  * Consumers get a VERIFIED credential from lib/media/social-credentials.ts, which
  * requires the project's verified account binding and asks the provider before
  * anything is dispatched. This module is the storage underneath that resolver,
- * /api/media/token and the refresh cron — and those two store only a credential
- * whose account the provider has just attested.
+ * /api/media/token, the YouTube connection callback and the refresh cron — and those
+ * store only a credential whose account the provider has just attested.
  *
  * NEVER THROWS, NEVER ECHOES. Failures come back as { ok: false }. A database
  * message, which can quote the row being written, is neither returned nor logged.
@@ -24,9 +24,13 @@ import { isProjectId, type StoredSocialPlatform } from './social-bindings'
 import { EXTERNAL_ACCOUNT_ID } from './social-identity'
 
 /** The credential type platform_tokens stores for each platform — pinned by a CHECK constraint. */
-export const STORED_TOKEN_TYPE: Record<StoredSocialPlatform, 'user' | 'page'> = { instagram: 'user', facebook: 'page' }
+export const STORED_TOKEN_TYPE: Record<StoredSocialPlatform, 'user' | 'page' | 'oauth_refresh'> =
+  { instagram: 'user', facebook: 'page', youtube: 'oauth_refresh' }
+
+const STORED_PLATFORMS: ReadonlySet<string> = new Set(Object.keys(STORED_TOKEN_TYPE))
 
 export interface StoredCredential {
+  /** The stored credential: an access token (Instagram, Facebook) or an OAuth refresh token (YouTube). */
   accessToken: string
   /** The provider-attested account the credential was stored for, when recorded. */
   accountId: string | null
@@ -44,7 +48,7 @@ const date = (value: unknown): Date | null => {
 
 /** The project's stored credential on a platform. `ok: false` is unreadable — never "missing". */
 export async function readStoredCredential(projectId: string, platform: StoredSocialPlatform): Promise<StoredCredentialRead> {
-  if (!isProjectId(projectId) || (platform !== 'instagram' && platform !== 'facebook')) return { ok: false }
+  if (!isProjectId(projectId) || !STORED_PLATFORMS.has(platform)) return { ok: false }
   try {
     const { data, error } = await createAdminClient()
       .from('platform_tokens')
@@ -80,8 +84,10 @@ export interface CredentialToStore {
 export async function storeCredential(
   projectId: string, platform: StoredSocialPlatform, input: CredentialToStore,
 ): Promise<{ ok: true } | { ok: false }> {
-  if (!isProjectId(projectId) || (platform !== 'instagram' && platform !== 'facebook')) return { ok: false }
+  if (!isProjectId(projectId) || !STORED_PLATFORMS.has(platform)) return { ok: false }
   if (typeof input.accessToken !== 'string' || input.accessToken.length === 0) return { ok: false }
+  // A YouTube connection's refresh token has no expiry to record — the table agrees.
+  if (platform === 'youtube' && input.expiresAt !== null) return { ok: false }
   if (!EXTERNAL_ACCOUNT_ID.test(input.accountId)) return { ok: false }
   try {
     const { error } = await createAdminClient()

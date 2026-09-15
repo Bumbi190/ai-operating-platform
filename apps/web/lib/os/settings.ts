@@ -21,8 +21,9 @@ import {
  * AN OPERATOR SURFACE, NOT AN AUTHORITY SOURCE. Settings shows the account, every
  * project this session owns with its social accounts — Project → Platform → Verified
  * External Account → Credential — and which platform configuration is present. Its
- * writes are the existing `POST /api/media/token` and
- * `POST /api/media/social-accounts/verify`, offered only when `capability` says this
+ * writes are the existing `POST /api/media/token`,
+ * `POST /api/media/social-accounts/verify` and `POST /api/media/youtube/oauth/start`
+ * (Google's consent for one project's YouTube channel), offered only when `capability` says this
  * session passes the canonical platform-operator predicate; each route re-checks the
  * operator and ownership of the project it is given, every time.
  *
@@ -49,6 +50,9 @@ import {
 /** The OAuth variables the YouTube Y1 transition publishes with. */
 export const YOUTUBE_OAUTH_VARS = ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET', 'YOUTUBE_REFRESH_TOKEN'] as const
 
+/** The platform's OAuth client — what a project's YouTube connection needs. Never an account credential. */
+export const YOUTUBE_OAUTH_CLIENT_VARS = ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET'] as const
+
 /**
  * The platform configuration reported, by provider. Each entry names providers
  * deployed code actually reads, and each purpose is what that code uses it for.
@@ -60,7 +64,7 @@ export const PLATFORM_CONFIG: readonly { id: string; label: string; purpose: str
   { id: 'ideogram', label: 'Ideogram', purpose: 'Bildgenerering', vars: ['IDEOGRAM_API_KEY'] },
   { id: 'elevenlabs', label: 'ElevenLabs', purpose: 'Röst och musik i mediapipelinen', vars: ['ELEVENLABS_API_KEY'] },
   { id: 'meta', label: 'Meta-app', purpose: 'Tokenväxling och Instagram-webhooks', vars: ['META_APP_ID', 'META_APP_SECRET'] },
-  { id: 'youtube', label: 'YouTube', purpose: 'Publicering under övergången (OAuth) och statistik (API-nyckel)', vars: [...YOUTUBE_OAUTH_VARS, 'YOUTUBE_API_KEY'] },
+  { id: 'youtube', label: 'YouTube', purpose: 'Kanalanslutning per projekt och publicering under övergången (OAuth) samt statistik (API-nyckel)', vars: [...YOUTUBE_OAUTH_VARS, 'YOUTUBE_API_KEY'] },
   { id: 'brevo', label: 'Brevo', purpose: 'E-postutskick', vars: ['BREVO_API_KEY'] },
   { id: 'stripe', label: 'Stripe', purpose: 'Intäktsmått (begränsad nyckel)', vars: ['STRIPE_RESTRICTED_KEY'] },
   { id: 'pixabay', label: 'Pixabay', purpose: 'Musik till videor', vars: ['PIXABAY_API_KEY'] },
@@ -81,8 +85,13 @@ export interface SettingsBoundAccount {
 export interface SettingsChannel {
   id: ChannelId
   label: string
-  /** Instagram and Facebook credentials are stored per project and replaceable here; YouTube (Y1) is not. */
+  /** Instagram and Facebook credentials are stored per project and replaceable here with a token. */
   replaceable: boolean
+  /**
+   * YouTube is connected per project with Google's consent here, when the platform's OAuth
+   * client is configured. Never true for Instagram or Facebook.
+   */
+  connectable: boolean
   /** The project's verified external account on this platform. */
   account: { state: 'bound'; bound: SettingsBoundAccount } | { state: 'none' } | { state: 'unreadable' }
   credential: {
@@ -193,6 +202,7 @@ export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
 
   const warnings: SettingsWarning[] = []
   const youtubeVarsSet = YOUTUBE_OAUTH_VARS.filter((name) => input.env[name]).length
+  const youtubeClientConfigured = YOUTUBE_OAUTH_CLIENT_VARS.every((name) => input.env[name])
 
   const channelFor = (projectId: string, projectName: string, platform: ChannelId): SettingsChannel => {
     const binding = input.bindings.ok
@@ -214,11 +224,10 @@ export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
         : { state: 'none' }
 
     let credential: SettingsChannel['credential']
-    if (platform === 'youtube') {
+    if (platform === 'youtube' && (!input.bindings.ok || binding?.credentialSource === 'platform_env_transitional')) {
+      // Y1: the transitional binding publishes with the platform's Vercel credential.
       const state: CredentialState = !input.bindings.ok ? 'unreadable'
-        : binding?.credentialSource === 'platform_env_transitional'
-          ? (youtubeVarsSet === YOUTUBE_OAUTH_VARS.length ? 'environment_transitional' : 'environment_incomplete')
-          : 'not_available'
+        : youtubeVarsSet === YOUTUBE_OAUTH_VARS.length ? 'environment_transitional' : 'environment_incomplete'
       credential = { state, expiresAt: null, refreshedAt: null, matchesBinding: null }
     } else if (!input.storedTokens.ok) {
       credential = { state: 'unreadable', expiresAt: null, refreshedAt: null, matchesBinding: null }
@@ -286,6 +295,7 @@ export function assembleSettings(input: AssembleSettingsInput): SettingsModel {
       id: platform,
       label: CHANNEL_LABELS[platform],
       replaceable: platform !== 'youtube',
+      connectable: platform === 'youtube' && youtubeClientConfigured,
       account,
       credential,
       health,
@@ -398,7 +408,7 @@ export async function loadSettings(): Promise<SettingsModel | null> {
     settle<RawStoredToken>(owned.length
       ? (db.from('platform_tokens') as any)
           .select('project_id, platform, token_type, account_id, expires_at, refreshed_at')
-          .in('project_id', owned).in('platform', ['instagram', 'facebook'])
+          .in('project_id', owned).in('platform', ['instagram', 'facebook', 'youtube'])
       : nothing),
     // The tables are newer than the generated database types; cast the client, as their writers do.
     settle<RawHealth>(owned.length

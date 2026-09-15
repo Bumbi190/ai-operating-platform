@@ -72,6 +72,8 @@
     { "path": "/media/render/start", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "Medium", "verified": false },
     { "path": "/media/token", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "secrets-scope" },
     { "path": "/media/social-accounts/verify", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "secrets-scope" },
+    { "path": "/media/youtube/oauth/start", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "secrets-scope" },
+    { "path": "/media/youtube/oauth/callback", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "infra", "risk": "High", "verified": false, "flag": "secrets-scope" },
     { "path": "/media/publish/instagram", "class": "U", "auth": "User", "serviceRole": true, "scope": "none", "killSwitch": "yes", "risk": "High", "verified": false, "flag": "external-publish-scope" },
     { "path": "/media/pipeline/daily", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "High", "verified": false },
     { "path": "/media/pipeline/full", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "yes", "risk": "High", "verified": false },

@@ -247,6 +247,7 @@
 .outcome { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; min-width: 0; }
 .outcome[data-kind='none']     { color: rgb(var(--foreground-rgb) / 0.6); }
 .outcome[data-kind='replaced'] { color: rgb(var(--omnira-cyan-rgb)); }
+.outcome[data-kind='connected'] { color: rgb(var(--omnira-cyan-rgb)); }
 .outcome[data-kind='refused']  { color: rgb(251 191 36); }
 .outcome[data-kind='failed']   { color: rgb(248 113 113); }
 .outcome[data-kind='incident'] {

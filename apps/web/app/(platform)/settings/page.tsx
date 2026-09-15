@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { loadSettings } from '@/lib/os/settings'
+import { youtubeConnectOutcome, type YouTubeConnectOutcome } from '@/lib/os/settings-shared'
 import { SettingsSurface, SettingsSurfaceLoading } from '@/components/platform/vnext/SettingsSurface'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 import { DisplayPreferences } from './DisplayPreferences'
@@ -27,7 +28,7 @@ import { SettingsLegacy } from './SettingsLegacy'
  */
 export const dynamic = 'force-dynamic'
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const cookieStore = await cookies()
   const generation = resolveUiGeneration({
     cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
@@ -35,15 +36,18 @@ export default async function SettingsPage() {
 
   if (!isVNext(generation)) return <SettingsLegacy />
 
+  // The YouTube connection callback's answer, as one of its closed codes — anything else is ignored.
+  const youtubeOutcome = youtubeConnectOutcome(searchParams?.youtube)
+
   return (
     <Suspense fallback={<SettingsSurfaceLoading />}>
-      <LoadedSettings />
+      <LoadedSettings youtubeOutcome={youtubeOutcome} />
     </Suspense>
   )
 }
 
-async function LoadedSettings() {
+async function LoadedSettings({ youtubeOutcome }: { youtubeOutcome: YouTubeConnectOutcome | null }) {
   const model = await loadSettings()
   if (!model) redirect('/login')
-  return <SettingsSurface model={model} displayPreferences={<DisplayPreferences />} />
+  return <SettingsSurface model={model} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
 }

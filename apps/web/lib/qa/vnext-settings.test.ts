@@ -14,8 +14,9 @@
  *      another, and nothing is read for a project the session does not own. There is
  *      no default project.
  *
- *   3. BECOMING AN AUTHORITY SOURCE. Replacement is `POST /api/media/token` and
- *      verification `POST /api/media/social-accounts/verify`; each owns the operator
+ *   3. BECOMING AN AUTHORITY SOURCE. Replacement is `POST /api/media/token`,
+ *      verification `POST /api/media/social-accounts/verify` and a YouTube connection
+ *      `POST /api/media/youtube/oauth/start`; each owns the operator
  *      gate, ownership of the named project and the audit. Settings only mirrors the
  *      operator predicate to decide whether to offer them, and the forms post nowhere
  *      else.
@@ -54,9 +55,16 @@ import {
   UNATTESTED_NAMES,
   UNREADABLE_LABEL,
   VERIFY_ENDPOINT,
-  YOUTUBE_UNAVAILABLE_NOTE,
+  YOUTUBE_CLIENT_MISSING_NOTE,
+  YOUTUBE_CONNECT_NOTE,
+  YOUTUBE_CONNECT_OUTCOMES,
+  YOUTUBE_CONSENT_ORIGIN,
+  YOUTUBE_NOTE,
+  YOUTUBE_OAUTH_START_ENDPOINT,
   replacementOutcome,
   verificationOutcome,
+  youtubeConnectOutcome,
+  youtubeStartOutcome,
 } from '@/lib/os/settings-shared'
 
 ;(globalThis as unknown as { React: typeof React }).React = React
@@ -82,6 +90,7 @@ const FILES = {
   surface: 'components/platform/vnext/SettingsSurface.tsx',
   form: 'components/platform/vnext/SettingsCredentialForm.tsx',
   verify: 'components/platform/vnext/SettingsVerifyButton.tsx',
+  connect: 'components/platform/vnext/SettingsYouTubeConnect.tsx',
   css: 'components/platform/vnext/SettingsSurface.module.css',
 } as const
 
@@ -186,14 +195,14 @@ describe('settings · credential-blind by construction', () => {
   })
 
   it('no settings file names a credential column, reads a credential, or keeps anything in the browser', () => {
-    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.connect]) {
       const code = codeOnly(read(rel))
       expect(code, rel).not.toMatch(/access_token|last_error|lib\/media\/token-store|lib\/media\/social-credentials|localStorage|sessionStorage|document\.cookie/)
     }
-    for (const rel of [FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.page]) {
+    for (const rel of [FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.connect, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/process\.env/)
     }
-    for (const rel of [FILES.form, FILES.verify]) expect(codeOnly(read(rel)), rel).not.toMatch(/console\./)
+    for (const rel of [FILES.form, FILES.verify, FILES.connect]) expect(codeOnly(read(rel)), rel).not.toMatch(/console\./)
   })
 
   it('the binding columns the loader reads hold no credential', () => {
@@ -251,9 +260,8 @@ describe('settings · Project → Platform → Verified External Account → Cre
         expect(channel.account, `${id} ${channel.id}`).toEqual({ state: 'none' })
         expect(channel.health.status, `${id} ${channel.id}`).toBe('unchecked')
         expect(channel.lastReplacement.at, `${id} ${channel.id}`).toBeNull()
-        if (channel.id !== 'youtube') expect(channel.credential.state).toBe('missing')
+        expect(channel.credential.state, `${id} ${channel.id}`).toBe('missing')
       }
-      expect(channelOf(m, id, 'youtube').credential.state).toBe('not_available')
     }
     expect(channelOf(m, PROMPT_ID, 'instagram').lastReplacement).toEqual({ state: 'ok', at: '2026-09-14T08:30:00.000Z', bindingAction: 'matched' })
   })
@@ -286,7 +294,7 @@ describe('settings · Project → Platform → Verified External Account → Cre
   })
 
   it('no settings file names a default, first or implicit project', () => {
-    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.connect]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/ai-media-automation|SOCIAL_PROJECT_SLUG|DEFAULT_SOCIAL_PROJECT|The Prompt/)
     }
   })
@@ -388,13 +396,51 @@ describe('settings · the account and credential status are what the sources say
     expect(await html(m)).toContain('Spärrad — plattformen rapporterade ett annat konto')
   })
 
-  it('YouTube (Y1): the bound transitional credential by presence, never replaceable; every other project cannot connect yet', async () => {
-    expect(channelOf(model(), PROMPT_ID, 'youtube')).toMatchObject({ replaceable: false, credential: { state: 'environment_transitional' } })
+  it('YouTube (Y1): the bound transitional credential by presence, never token-replaceable — and connectable to the project’s own connection', async () => {
+    expect(channelOf(model(), PROMPT_ID, 'youtube')).toMatchObject({ replaceable: false, connectable: true, credential: { state: 'environment_transitional' } })
     expect(channelOf(model({ env: { ...ENV_ALL, YOUTUBE_REFRESH_TOKEN: false } }), PROMPT_ID, 'youtube').credential.state).toBe('environment_incomplete')
-    expect(channelOf(model(), GAIN_ID, 'youtube').credential.state).toBe('not_available')
     const out = await html(model())
-    expect(out).toContain(YOUTUBE_UNAVAILABLE_NOTE)
+    expect(out).toContain(YOUTUBE_NOTE)
     expect(out).not.toContain('name="token-youtube"')
+    expect(out.match(/data-youtube-connect="migrate"/g) ?? []).toHaveLength(1)
+  })
+
+  it('YouTube (Y2a): every other project connects its own channel; a stored connection is the project’s own and reconnects', async () => {
+    expect(channelOf(model(), GAIN_ID, 'youtube')).toMatchObject({
+      replaceable: false, connectable: true, account: { state: 'none' }, credential: { state: 'missing' },
+    })
+    for (const platform of ['instagram', 'facebook']) expect(channelOf(model(), PROMPT_ID, platform).connectable, platform).toBe(false)
+    const out = await html(model())
+    expect(out).toContain(YOUTUBE_CONNECT_NOTE)
+    expect(out.match(/data-youtube-connect="connect"/g) ?? []).toHaveLength(2)
+
+    const base = input()
+    const connected = assembleSettings({
+      ...base,
+      bindings: { ok: true, bindings: [
+        ...(base.bindings.ok ? base.bindings.bindings : []),
+        binding({ projectId: FAMILY_ID, platform: 'youtube', externalAccountId: 'UCfamily000000000000000', credentialSource: 'project_store', accountLabel: 'Familje-Stunden' }),
+      ] },
+      storedTokens: { ok: true, rows: [
+        ...(base.storedTokens.ok ? base.storedTokens.rows : []),
+        { project_id: FAMILY_ID, platform: 'youtube', token_type: 'oauth_refresh', account_id: 'UCfamily000000000000000', expires_at: null, refreshed_at: NOW },
+      ] },
+    })
+    expect(channelOf(connected, FAMILY_ID, 'youtube')).toMatchObject({
+      connectable: true, credential: { state: 'stored', refreshedAt: NOW, matchesBinding: true },
+    })
+    expect(channelOf(connected, PROMPT_ID, 'youtube').credential.state).toBe('environment_transitional')
+    const rendered = await html(connected)
+    expect(rendered.match(/data-youtube-connect="reconnect"/g) ?? []).toHaveLength(1)
+    expect(rendered.match(/data-youtube-connect="connect"/g) ?? []).toHaveLength(1)
+  })
+
+  it('YouTube without the platform’s OAuth client connects nothing, and says why', async () => {
+    const m = model({ env: { ...ENV_ALL, YOUTUBE_CLIENT_SECRET: false } })
+    for (const id of [PROMPT_ID, FAMILY_ID, GAIN_ID]) expect(channelOf(m, id, 'youtube').connectable, id).toBe(false)
+    const out = await html(m)
+    expect(out).not.toContain('data-youtube-connect=')
+    expect(out).toContain(YOUTUBE_CLIENT_MISSING_NOTE)
   })
 
   it('platform configuration is presence per provider, and every provider listed is one deployed code reads', () => {
@@ -431,7 +477,7 @@ describe('settings · nothing the replaced page asserted from literals survives'
   const STALE = /0\.2\.0-MVP|DALL-E|claude-sonnet|Next\.js 14|Kommande funktioner|Magic link|\.env\.local|Schemalagda körningar|team-inbjudningar|SeedButton|Exempeldata|\/api\/seed/
 
   it('no vNext settings file carries a version, stack, model, roadmap or seed claim', () => {
-    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify]) {
+    for (const rel of [FILES.page, FILES.loader, FILES.shared, FILES.surface, FILES.form, FILES.verify, FILES.connect]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(STALE)
     }
   })
@@ -479,6 +525,7 @@ describe('settings · forms are offered only where the routes would accept them'
     expect(out.match(/name="token-facebook"/g) ?? []).toHaveLength(3)
     expect(out).not.toContain('name="token-youtube"')
     expect(out.match(/>Verifiera nu</g) ?? []).toHaveLength(3)
+    expect(out.match(/data-youtube-connect=/g) ?? []).toHaveLength(3)
     expect(out).toMatch(/autoComplete="off"|autocomplete="off"/)
   })
 
@@ -497,8 +544,9 @@ describe('settings · forms are offered only where the routes would accept them'
     expect(out).not.toContain('<textarea')
     expect(out).not.toContain('data-credential="true"')
     expect(out).not.toContain('Verifiera nu')
+    expect(out).not.toContain('data-youtube-connect=')
     expect(out).toContain(CAPABILITY_NOTES.operator_required)
-    expect((out.match(/Endast läsning/g) ?? []).length).toBe(6)
+    expect((out.match(/Endast läsning/g) ?? []).length).toBe(9)
   })
 
   it('the loader decides capability with the canonical predicate — never an allowlist of its own', () => {
@@ -522,7 +570,18 @@ describe('settings · forms are offered only where the routes would accept them'
     expect(verify).toMatch(/fetch\(VERIFY_ENDPOINT, \{\s*method: 'POST'/)
     expect(verify).toMatch(/body: JSON\.stringify\(\{ project_id: projectId, platform \}\)/)
     expect(verify).not.toMatch(/textarea|token/i)
-    for (const rel of [FILES.form, FILES.verify]) expect(read(rel), rel).toMatch(/^'use client'/)
+    const connect = codeOnly(read(FILES.connect))
+    expect(YOUTUBE_OAUTH_START_ENDPOINT).toBe('/api/media/youtube/oauth/start')
+    expect(existsSync(resolve(WEB_ROOT, 'app/api/media/youtube/oauth/start/route.ts'))).toBe(true)
+    expect(connect.match(/fetch\(/g) ?? []).toHaveLength(1)
+    expect(connect).toMatch(/fetch\(YOUTUBE_OAUTH_START_ENDPOINT, \{\s*method: 'POST'/)
+    expect(connect).toMatch(/const body: Record<string, unknown> = \{ project_id: projectId \}/)
+    expect(connect).not.toMatch(/textarea|token|secret|refresh/i)
+    // The browser is only ever sent to Google's own origin.
+    expect(YOUTUBE_CONSENT_ORIGIN).toBe('https://accounts.google.com')
+    expect(connect).toMatch(/new URL\(consent\)\.origin === YOUTUBE_CONSENT_ORIGIN/)
+    expect(connect.match(/window\.location\.assign\(/g) ?? []).toHaveLength(1)
+    for (const rel of [FILES.form, FILES.verify, FILES.connect]) expect(read(rel), rel).toMatch(/^'use client'/)
   })
 
   it('the form is write-only: the field is emptied before the request leaves, and never pre-filled', () => {
@@ -540,7 +599,7 @@ describe('settings · forms are offered only where the routes would accept them'
     expect(read('app/api/media/token/route.ts')).toMatch(/token\.length < 50/)
   })
 
-  it('nothing but the two client controls writes: the loader, surface, shared contract and page are read-only', () => {
+  it('nothing but the three client controls writes: the loader, surface, shared contract and page are read-only', () => {
     for (const rel of [FILES.loader, FILES.surface, FILES.shared, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/'use server'|fetch\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|rpc\(/)
     }
@@ -548,7 +607,7 @@ describe('settings · forms are offered only where the routes would accept them'
   })
 
   it('writes no memory and triggers no Dream', () => {
-    for (const rel of [FILES.loader, FILES.surface, FILES.form, FILES.verify, FILES.page]) {
+    for (const rel of [FILES.loader, FILES.surface, FILES.form, FILES.verify, FILES.connect, FILES.page]) {
       expect(codeOnly(read(rel)), rel).not.toMatch(/recordMemoryEvent|atlas\/memory|runDreamCycleForProject|lib\/ai\/dream|recordAction/)
     }
   })
@@ -608,6 +667,37 @@ describe("settings · the routes' answers are shown as what they were", () => {
     expect(verificationOutcome(403, { error: 'Forbidden' }).kind).toBe('refused')
     expect(verificationOutcome(503, { error: 'Projektets kontobindning kunde inte läsas.' })).toEqual({ kind: 'failed', message: 'Projektets kontobindning kunde inte läsas.' })
   })
+
+  it('the YouTube connection’s answer is one of the callback’s closed codes, shown as what it was — anything else is ignored', async () => {
+    expect(youtubeConnectOutcome('migrated')).toEqual({ code: 'migrated', ...YOUTUBE_CONNECT_OUTCOMES.migrated })
+    expect(youtubeConnectOutcome(['connected', 'x'])).toMatchObject({ code: 'connected', kind: 'connected' })
+    for (const odd of [undefined, null, '', 'toString', '__proto__', '<script>', 'Connected', 42]) {
+      expect(youtubeConnectOutcome(odd), String(odd)).toBeNull()
+    }
+    expect(YOUTUBE_CONNECT_OUTCOMES.connected_audit_incident.kind).toBe('incident')
+    expect(YOUTUBE_CONNECT_OUTCOMES.audit_incomplete.kind).toBe('incident')
+    for (const code of ['state_invalid', 'channel_bound_to_other_project', 'scope_missing', 'channel_mismatch'] as const) {
+      expect(YOUTUBE_CONNECT_OUTCOMES[code].kind, code).toBe('refused')
+    }
+    for (const { message } of Object.values(YOUTUBE_CONNECT_OUTCOMES)) expect(message).not.toMatch(/token|secret|refresh|http/i)
+    expect(await html(model())).not.toContain('data-youtube-outcome')
+    const { SettingsSurface } = await import('@/components/platform/vnext/SettingsSurface')
+    const shown = renderToStaticMarkup(createElement(SettingsSurface, {
+      model: model(), displayPreferences: createElement('div'), youtubeOutcome: youtubeConnectOutcome('channel_bound_to_other_project'),
+    }))
+    expect(shown).toContain('data-youtube-outcome="channel_bound_to_other_project"')
+    expect(shown).toContain(YOUTUBE_CONNECT_OUTCOMES.channel_bound_to_other_project.message)
+  })
+
+  it('the start route’s refusals are refusals, and an unreadable answer is a failure', () => {
+    expect(youtubeStartOutcome(401, { error: 'Unauthorized' }).kind).toBe('refused')
+    expect(youtubeStartOutcome(403, { error: 'Forbidden', denied: 'platform_operator_required' }).message).toMatch(/plattformsoperatörens behörighet/)
+    expect(youtubeStartOutcome(403, { error: 'Forbidden' }).message).toMatch(/äger inte projektet/)
+    expect(youtubeStartOutcome(400, { error: 'Projektet har ingen kopplad YouTube-kanal att byta.' }))
+      .toEqual({ kind: 'refused', message: 'Projektet har ingen kopplad YouTube-kanal att byta.' })
+    expect(youtubeStartOutcome(503, { refusal: 'oauth_client_not_configured', error: 'YouTube-anslutning är inte konfigurerad för plattformen.' }).kind).toBe('failed')
+    expect(youtubeStartOutcome(500, null)).toEqual({ kind: 'failed', message: 'Anslutningen kunde inte påbörjas.' })
+  })
 })
 
 // ── Generation ───────────────────────────────────────────────────────────────
@@ -634,7 +724,7 @@ describe('settings · generation', () => {
 
   it('renders vNext by default', async () => {
     const { default: Page } = await import('@/app/(platform)/settings/page')
-    const element = await Page() as React.ReactElement
+    const element = await Page({}) as React.ReactElement
     expect(element.type).toBe(React.Suspense)
     const inner = (element.props as { children: React.ReactElement }).children
     expect((inner.type as { name?: string }).name).toBe('LoadedSettings')
@@ -643,22 +733,31 @@ describe('settings · generation', () => {
   it('`?ui=legacy` renders the legacy body', async () => {
     cookieValue = 'legacy'
     const { default: Page } = await import('@/app/(platform)/settings/page')
-    expect(renderToStaticMarkup(await Page() as React.ReactElement)).toContain('legacy-body')
+    expect(renderToStaticMarkup(await Page({}) as React.ReactElement)).toContain('legacy-body')
   })
 
   it('the legacy branch never runs the vNext loader', async () => {
     cookieValue = 'legacy'
     const { default: Page } = await import('@/app/(platform)/settings/page')
-    renderToStaticMarkup(await Page() as React.ReactElement)
+    renderToStaticMarkup(await Page({}) as React.ReactElement)
     expect(loadSpy).not.toHaveBeenCalled()
   })
 
   it('an unresolvable session or scope is a redirect, never a page', async () => {
     loadSpy.mockResolvedValueOnce(null as unknown as SettingsModel)
     const { default: Page } = await import('@/app/(platform)/settings/page')
-    const element = await Page() as React.ReactElement
+    const element = await Page({}) as React.ReactElement
     const inner = (element.props as { children: React.ReactElement }).children
     await expect((inner.type as (p: unknown) => Promise<unknown>)(inner.props)).rejects.toThrow(/NEXT_REDIRECT/)
+  })
+
+  it('hands the YouTube connection’s closed answer to the surface — and ignores anything that is not one', async () => {
+    const { default: Page } = await import('@/app/(platform)/settings/page')
+    const known = await Page({ searchParams: { youtube: 'migrated' } }) as React.ReactElement
+    expect(((known.props as { children: React.ReactElement }).children.props as { youtubeOutcome: unknown }).youtubeOutcome)
+      .toMatchObject({ code: 'migrated', kind: 'connected' })
+    const odd = await Page({ searchParams: { youtube: 'access_token=abc' } }) as React.ReactElement
+    expect(((odd.props as { children: React.ReactElement }).children.props as { youtubeOutcome: unknown }).youtubeOutcome).toBeNull()
   })
 
   it('hands the existing display preferences in as the Visning slot', () => {

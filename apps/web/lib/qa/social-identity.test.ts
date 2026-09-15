@@ -23,6 +23,7 @@ import {
   attestYouTubeChannels,
   canReadOwnChannel,
   displayLabel,
+  exchangeYouTubeAuthorizationCode,
   exchangeYouTubeGrant,
   EXTERNAL_ACCOUNT_ID,
 } from '@/lib/media/social-identity'
@@ -311,6 +312,57 @@ describe('social identity · YouTube', () => {
   })
 })
 
+describe('social identity · YouTube connection — the authorization code', () => {
+  const INPUT = {
+    clientId: GRANT.clientId,
+    clientSecret: GRANT.clientSecret,
+    code: `4/0A${'c'.repeat(60)}`,
+    codeVerifier: 'v'.repeat(43),
+    redirectUri: 'https://ai-operating-platform-web.vercel.app/api/media/youtube/oauth/callback',
+  }
+  const ALL_SCOPES = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly'
+
+  it('the code is exchanged with its PKCE verifier and the redirect URI, as a form body — and the refresh token and scopes come back', async () => {
+    on('https://oauth2.googleapis.com/token', json({
+      access_token: YT_ACCESS, refresh_token: GRANT.refreshToken, expires_in: 3599, token_type: 'Bearer', scope: ALL_SCOPES,
+    }))
+    expect(await exchangeYouTubeAuthorizationCode(INPUT)).toEqual({
+      ok: true, accessToken: YT_ACCESS, refreshToken: GRANT.refreshToken, scopes: ALL_SCOPES.split(' '),
+    })
+    expect(CALLS).toHaveLength(1)
+    const [call] = CALLS
+    expect(call.url).toBe('https://oauth2.googleapis.com/token')
+    expect(call.method).toBe('POST')
+    expect(call.headers).toEqual({ 'Content-Type': 'application/x-www-form-urlencoded' })
+    expect(Object.fromEntries(new URLSearchParams(call.body ?? ''))).toEqual({
+      client_id: INPUT.clientId, client_secret: INPUT.clientSecret, code: INPUT.code, code_verifier: INPUT.codeVerifier,
+      redirect_uri: INPUT.redirectUri, grant_type: 'authorization_code',
+    })
+  })
+
+  it('no refresh token is said as such; a refused code is credential_invalid; trouble is provider_unavailable — and nothing comes back', async () => {
+    on('https://oauth2.googleapis.com/token', json({ access_token: YT_ACCESS, scope: ALL_SCOPES }))
+    expect(await exchangeYouTubeAuthorizationCode(INPUT)).toEqual({
+      ok: true, accessToken: YT_ACCESS, refreshToken: null, scopes: ALL_SCOPES.split(' '),
+    })
+    const cases: [Reply, string][] = [
+      [json({ error: 'invalid_grant', error_description: `${PROVIDER_TEXT} ${INPUT.code}` }, 400), 'credential_invalid'],
+      [json({ token_type: 'Bearer' }), 'credential_invalid'],
+      [json({ error: 'backendError' }, 503), 'provider_unavailable'],
+      [json({ error: 'rate_limit_exceeded' }, 429), 'provider_unavailable'],
+      [new Error(`ETIMEDOUT ${INPUT.code}`), 'provider_unavailable'],
+      ['not-json', 'provider_unavailable'],
+    ]
+    for (const [reply, failure] of cases) {
+      ROUTES = []
+      on('https://oauth2.googleapis.com/token', reply)
+      const result = await exchangeYouTubeAuthorizationCode(INPUT)
+      expect(result).toEqual({ ok: false, failure })
+      expect(JSON.stringify(result)).not.toContain(INPUT.code)
+    }
+  })
+})
+
 describe('social identity · nothing a provider says comes back', () => {
   it('every failure is exactly { ok: false, failure } — no message, body, status or credential', async () => {
     const results: unknown[] = []
@@ -332,14 +384,14 @@ describe('social identity · nothing a provider says comes back', () => {
     }
   })
 
-  it('in the source: no credential in a URL, no log line, no environment read, two fetch sites', () => {
+  it('in the source: no credential in a URL, no log line, no environment read, three fetch sites', () => {
     const code = readFileSync(resolve(__dirname, '../media/social-identity.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '')
     expect(code).not.toMatch(/access_token=|[?&](token|client_secret|refresh_token)=/)
     expect(code).not.toMatch(/console\./)
     expect(code).not.toMatch(/process\.env/)
-    expect(code.match(/\bfetch\(/g) ?? []).toHaveLength(2)
+    expect(code.match(/\bfetch\(/g) ?? []).toHaveLength(3)
     expect(code).toMatch(/headers: \{ Authorization: `Bearer \$\{credential\}` \}/)
   })
 })

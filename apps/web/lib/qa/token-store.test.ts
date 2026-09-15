@@ -8,8 +8,8 @@
  * pins for the platform. Failures come back as { ok: false } — never a throw, never a
  * database message, which can quote the row being written.
  *
- * Callers are pinned elsewhere: storeCredential is used only by /api/media/token and
- * the refresh cron, readStoredCredential only by the resolver and the refresh cron
+ * Callers are pinned elsewhere: storeCredential is used only by /api/media/token, the
+ * YouTube connection callback and the refresh cron, readStoredCredential only by the resolver and the refresh cron
  * (media-token-authority.test.ts), and every consumer goes through the resolver
  * (social-credentials.test.ts).
  */
@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const PROMPT = '33333333-3333-4333-8333-333333333333'
 const PAGE = '1138612202672850'
 const TOKEN = `EAAP${'p'.repeat(60)}`
+const CHANNEL = 'UCUM9JDi75ziLssYcGLo8IPA'
+const REFRESH = `1//${'r'.repeat(60)}`
 
 let OPS: unknown[][] = []
 let RESULT: { data: unknown; error: unknown } = { data: null, error: null }
@@ -65,7 +67,7 @@ describe('token store · reads name the project, the platform and its credential
 
   it('no project id, a slug, or a platform it does not store reads nothing at all', async () => {
     for (const [projectId, platform] of [
-      [undefined, 'instagram'], ['', 'instagram'], ['ai-media-automation', 'instagram'], [PROMPT.replace(/-/g, ''), 'facebook'], [PROMPT, 'youtube'],
+      [undefined, 'instagram'], ['', 'instagram'], ['ai-media-automation', 'instagram'], [PROMPT.replace(/-/g, ''), 'facebook'], [PROMPT, 'tiktok'],
     ] as [string, 'instagram'][]) {
       expect(await readStoredCredential(projectId, platform), `${projectId} ${platform}`).toEqual({ ok: false })
     }
@@ -88,6 +90,21 @@ describe('token store · reads name the project, the platform and its credential
       ok: true, credential: { accessToken: TOKEN, accountId: null, expiresAt: null, refreshedAt: null },
     })
   })
+
+  it('a YouTube connection is read as the project’s own refresh grant, under its pinned type', async () => {
+    RESULT = { data: { access_token: REFRESH, account_id: CHANNEL, expires_at: null, refreshed_at: '2026-09-15T18:30:00.000Z' }, error: null }
+    expect(await readStoredCredential(PROMPT, 'youtube')).toEqual({
+      ok: true,
+      credential: { accessToken: REFRESH, accountId: CHANNEL, expiresAt: null, refreshedAt: new Date('2026-09-15T18:30:00.000Z') },
+    })
+    expect(OPS).toEqual([
+      ['from', 'platform_tokens'],
+      ['select', 'access_token, account_id, expires_at, refreshed_at'],
+      ['eq', 'project_id', PROMPT],
+      ['eq', 'platform', 'youtube'],
+      ['eq', 'token_type', 'oauth_refresh'],
+    ])
+  })
 })
 
 describe('token store · a store is one project’s credential for its attested account', () => {
@@ -103,12 +120,24 @@ describe('token store · a store is one project’s credential for its attested 
     ])
   })
 
-  it('without a project, for another platform, without an attested account or without a credential, nothing is written', async () => {
+  it('a YouTube connection is stored as the project’s refresh grant for its confirmed channel, with no expiry', async () => {
+    expect(await storeCredential(PROMPT, 'youtube', { accessToken: REFRESH, accountId: CHANNEL, expiresAt: null })).toEqual({ ok: true })
+    expect(OPS).toEqual([
+      ['from', 'platform_tokens'],
+      ['upsert', {
+        project_id: PROMPT, platform: 'youtube', token_type: 'oauth_refresh', access_token: REFRESH, account_id: CHANNEL,
+        expires_at: null, refreshed_at: expect.stringMatching(/Z$/),
+      }, { onConflict: 'project_id,platform,token_type' }],
+    ])
+  })
+
+  it('without a project, for another platform, without an attested account, without a credential — or a YouTube grant with an expiry — nothing is written', async () => {
     const good = { accessToken: TOKEN, accountId: PAGE, expiresAt: null }
-    const cases: [string, string, typeof good][] = [
+    const cases: [string, string, { accessToken: string; accountId: string; expiresAt: Date | null }][] = [
       ['', 'facebook', good],
       ['ai-media-automation', 'facebook', good],
-      [PROMPT, 'youtube', good],
+      [PROMPT, 'tiktok', good],
+      [PROMPT, 'youtube', { ...good, accountId: CHANNEL, expiresAt: new Date('2026-12-01T00:00:00.000Z') }],
       [PROMPT, 'facebook', { ...good, accountId: '' }],
       [PROMPT, 'facebook', { ...good, accountId: 'not an id' }],
       [PROMPT, 'facebook', { ...good, accessToken: '' }],
@@ -128,6 +157,6 @@ describe('token store · a store is one project’s credential for its attested 
   })
 
   it('the credential type per platform is the one the database pins', () => {
-    expect(STORED_TOKEN_TYPE).toEqual({ instagram: 'user', facebook: 'page' })
+    expect(STORED_TOKEN_TYPE).toEqual({ instagram: 'user', facebook: 'page', youtube: 'oauth_refresh' })
   })
 })

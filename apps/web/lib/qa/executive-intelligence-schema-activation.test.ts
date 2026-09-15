@@ -226,8 +226,13 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // `platform_tokens_project_binding` (no credential without a project) and
     // `social_account_bindings_the_prompt_evidence` (The Prompt's accounts bound from
     // evidence re-checked at apply time; no credential touched).
+    //
+    // 79: project-scoped YouTube (Y2a) — `youtube_project_oauth`: platform_tokens, the
+    // bindings and the credential audit accept a project's own YouTube connection, and
+    // `social_oauth_states` holds the single-use state of one Google consent. The Y1
+    // binding, every existing row and every Instagram and Facebook rule are unchanged.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(78)
+    expect(enforced).toBe(79)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

@@ -17,7 +17,8 @@
  *
  * HOW THE CREDENTIAL TRAVELS. As an Authorization header on every Graph and
  * YouTube call — never as a query parameter a URL log could print. Google's token
- * endpoint is the one exception: OAuth requires the refresh grant as a form body.
+ * endpoint is the one exception: OAuth requires the refresh grant and the authorization
+ * code as a form body.
  */
 import 'server-only'
 
@@ -196,6 +197,53 @@ export async function exchangeYouTubeGrant(grant: YouTubeGrant): Promise<Atteste
   }
   const scopes = typeof body.scope === 'string' ? body.scope.split(/\s+/).filter(Boolean) : []
   return { ok: true, accessToken: body.access_token, scopes }
+}
+
+export interface YouTubeAuthorizationCode {
+  clientId: string
+  clientSecret: string
+  code: string
+  /** The PKCE verifier the consent URL's challenge was derived from. */
+  codeVerifier: string
+  /** The redirect URI the consent was requested with — Google requires the same one here. */
+  redirectUri: string
+}
+
+export interface YouTubeAuthorization extends YouTubeAccess {
+  /** Issued for offline access; a project connection needs one. */
+  refreshToken: string | null
+}
+
+/** Exchanges an authorization code, with its PKCE verifier, for tokens and the scopes the operator granted. */
+export async function exchangeYouTubeAuthorizationCode(input: YouTubeAuthorizationCode): Promise<Attested<YouTubeAuthorization>> {
+  let res: Response
+  try {
+    res = await fetch(GOOGLE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     input.clientId,
+        client_secret: input.clientSecret,
+        code:          input.code,
+        code_verifier: input.codeVerifier,
+        redirect_uri:  input.redirectUri,
+        grant_type:    'authorization_code',
+      }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+  } catch {
+    return fail('provider_unavailable')
+  }
+  let body: any = null
+  try { body = await res.json() } catch { body = null }
+  if (body === null || res.status === 429 || res.status >= 500) return fail('provider_unavailable')
+  if (res.status !== 200 || typeof body.access_token !== 'string' || body.access_token.length === 0) {
+    return fail('credential_invalid')
+  }
+  const refreshToken = typeof body.refresh_token === 'string' && body.refresh_token.length > 0 ? body.refresh_token : null
+  const scopes = typeof body.scope === 'string' ? body.scope.split(/\s+/).filter(Boolean) : []
+  return { ok: true, accessToken: body.access_token, refreshToken, scopes }
 }
 
 const OWN_CHANNEL_READ_SCOPES = new Set([

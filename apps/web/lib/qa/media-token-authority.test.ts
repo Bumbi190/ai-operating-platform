@@ -962,34 +962,36 @@ describe('/api/media/token · the one place a project’s account is chosen and 
     .map(rel)
     .sort()
 
-  it('platform_tokens is written, and its credential read, only by the token store; storing is this route and the refresh cron', () => {
+  it('platform_tokens is written, and its credential read, only by the token store; storing is this route, the YouTube connection callback and the refresh cron', () => {
     const files = FILES()
     expect(files.filter((f) => /from\(\s*'platform_tokens'\s*\)[\s\S]{0,200}?\.(insert|upsert|update|delete)\(/.test(source(f))).map(rel))
       .toEqual(['lib/media/token-store.ts'])
     expect(files.filter((f) => /from\(\s*'platform_tokens'\s*\)[\s\S]{0,200}?\.select\(\s*'[^']*access_token/.test(source(f))).map(rel))
       .toEqual(['lib/media/token-store.ts'])
     expect(callers('storeCredential', 'lib/media/token-store.ts'))
-      .toEqual(['app/api/media/cron/refresh-tokens/route.ts', 'app/api/media/token/route.ts'])
+      .toEqual(['app/api/media/cron/refresh-tokens/route.ts', 'app/api/media/token/route.ts', 'app/api/media/youtube/oauth/callback/route.ts'])
     expect(callers('readStoredCredential', 'lib/media/token-store.ts'))
       .toEqual(['app/api/media/cron/refresh-tokens/route.ts', 'lib/media/social-credentials.ts'])
   })
 
-  it('platform_credential_events is written only by its writer, and the writer is called only by this route', () => {
+  it('platform_credential_events is written only by its writer, and the writer is called only by this route and the YouTube connection callback', () => {
     const files = FILES()
     expect(files.filter((f) => /from\(\s*'platform_credential_events'\s*\)[\s\S]{0,200}?\.(insert|upsert|update|delete)\(/.test(source(f))).map(rel))
       .toEqual(['lib/media/credential-events.ts'])
-    expect(callers('recordCredentialEvent', 'lib/media/credential-events.ts')).toEqual(['app/api/media/token/route.ts'])
+    expect(callers('recordCredentialEvent', 'lib/media/credential-events.ts'))
+      .toEqual(['app/api/media/token/route.ts', 'app/api/media/youtube/oauth/callback/route.ts'])
   })
 
-  it('social_account_bindings is written only by its module; bindings are created or changed only here; only the YouTube upload confirmation blocks one', () => {
+  it('social_account_bindings is written only by its module; bindings are created or changed only here and in the YouTube connection callback; only the YouTube upload confirmation blocks one', () => {
     const files = FILES()
     expect(files.filter((f) => /from\(\s*'social_account_bindings'\s*\)[\s\S]{0,300}?\.(insert|upsert|update|delete)\(/.test(source(f))).map(rel))
       .toEqual(['lib/media/social-bindings.ts'])
     expect(files.filter((f) => /rpc\(\s*'social_account_rebind'/.test(source(f))).map(rel)).toEqual(['lib/media/social-bindings.ts'])
-    expect(callers('createBinding', 'lib/media/social-bindings.ts')).toEqual(['app/api/media/token/route.ts'])
-    expect(callers('rebindAccount', 'lib/media/social-bindings.ts')).toEqual(['app/api/media/token/route.ts'])
+    const connection = 'app/api/media/youtube/oauth/callback/route.ts'
+    expect(callers('createBinding', 'lib/media/social-bindings.ts')).toEqual(['app/api/media/token/route.ts', connection])
+    expect(callers('rebindAccount', 'lib/media/social-bindings.ts')).toEqual(['app/api/media/token/route.ts', connection])
     expect(callers('recordProviderAttestation', 'lib/media/social-bindings.ts'))
-      .toEqual(['app/api/media/token/route.ts', 'lib/media/credential-health.ts'])
+      .toEqual(['app/api/media/token/route.ts', connection, 'lib/media/credential-health.ts'])
     expect(callers('blockBinding', 'lib/media/social-bindings.ts')).toEqual(['lib/media/social-credentials.ts'])
   })
 })

@@ -117,6 +117,7 @@ jobs:
             lib/qa/social-credential-crons.test.ts \
             lib/qa/instagram-webhook-self-filter.test.ts \
             lib/qa/insights-bounded-run.test.ts \
+            lib/qa/youtube-project-oauth.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
@@ -314,23 +315,23 @@ jobs:
             // credential-blind, append-only and server-only. Their real-Postgres
             // twins, platform-credential-events-sql.test.ts and
             // social-account-bindings-sql.test.ts, need a database and run locally.
-            'platform-credential-events.test.ts': 24,
+            'platform-credential-events.test.ts': 25,
             // Settings S1, made project-scoped — vNext Inställningar shows each owned
             // project as its own block (Project → Platform → Verified External Account
             // → Credential), reads metadata only, names the verified Facebook page, and
             // offers per-project forms that post to /api/media/token and
             // /api/media/social-accounts/verify alone. The legacy body is pinned by hash.
-            'vnext-settings.test.ts': 61,
+            'vnext-settings.test.ts': 66,
             // Project-scoped social credentials — what a platform says a credential
             // belongs to: the credential travels as a header, never in a URL; the
             // failure vocabulary is closed; no provider text comes back.
-            'social-identity.test.ts': 20,
+            'social-identity.test.ts': 22,
             // The only way to a usable social credential: a server-derived project id,
             // that project's active unblocked binding, its own credential, and the
             // platform confirming the binding's account. No default or first project,
             // platform-only choice, environment token or The Prompt fallback — pinned
             // across the codebase as well as in the resolver.
-            'social-credentials.test.ts': 26,
+            'social-credentials.test.ts': 31,
             // Credential health and "Verifiera nu": verified with the project's own
             // credential, recorded per (project, platform) as closed codes, behind the
             // platform operator and ownership of the named project.
@@ -349,6 +350,13 @@ jobs:
             // every provider request under a timeout, and `complete` only when every selected
             // post was fetched and written — the route answers 200 for nothing less.
             'insights-bounded-run.test.ts': 16,
+            // Project-scoped YouTube connections (Y2a): a Google consent begins only for a project
+            // the platform operator owns, its state is consumed once and only by that operator, the
+            // attempt is audited before any provider call, a grant needs all three scopes and one
+            // channel, and O1 decides the binding before anything is stored — a channel another
+            // project holds is never stored or bound, and the Y1 move stores first. No token, code,
+            // state or secret reaches a redirect, an audit event or a log line.
+            'youtube-project-oauth.test.ts': 30,
           }
 
           let failed = false

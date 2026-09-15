@@ -161,6 +161,22 @@ describe('Settings S0 · credential-events writer — rows from named fields onl
       .toEqual({ failure_stage: 'unexpected' })
   })
 
+  it('YouTube connections: oauth_refresh, no Meta flags or expiry, and the OAuth stages and `migrated` for YouTube only', () => {
+    const youtube = (over: Partial<CredentialEventInput>) => credentialEventRow(base({ platform: 'youtube', ...over }))
+    expect(youtube({ outcome: 'attempted' })).toMatchObject({ platform: 'youtube', credential_type: 'oauth_refresh', detail: {} })
+    expect(youtube({
+      outcome: 'replaced', externalAccountId: 'UCUM9JDi75ziLssYcGLo8IPA', bindingAction: 'migrated',
+      detail: { exchanged: true, page_resolved: true, read_insights_ok: true, expires_at: '2026-11-13T06:00:06.627Z' },
+    })).toMatchObject({ detail: {}, external_account_id: 'UCUM9JDi75ziLssYcGLo8IPA', binding_action: 'migrated' })
+    for (const stage of ['authorization_denied', 'code_exchange', 'scope_missing', 'refresh_token_missing', 'account_ambiguous'] as const) {
+      expect(youtube({ outcome: 'failed', detail: { failure_stage: stage } }).detail, stage).toEqual({ failure_stage: stage })
+      expect(credentialEventRow(base({ platform: 'facebook', outcome: 'failed', detail: { failure_stage: stage } })).detail, stage)
+        .toEqual({ failure_stage: 'unexpected' })
+    }
+    expect(credentialEventRow(base({ platform: 'instagram', outcome: 'replaced', externalAccountId: '17841437027967629', bindingAction: 'migrated' })))
+      .toMatchObject({ binding_action: null })
+  })
+
   it('the writer mirrors the table: the same five detail keys the migration allowlists', () => {
     const m = EXEC.match(/detail\s*-\s*array\[([^\]]+)\]\)\s*=\s*'\{\}'::jsonb/)
     expect(m, 'the allowlist constraint is missing').not.toBeNull()

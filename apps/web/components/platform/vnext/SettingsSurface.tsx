@@ -24,12 +24,15 @@ import {
   UNKNOWN_LABEL,
   UNREADABLE_LABEL,
   VERIFICATION_LABELS,
+  YOUTUBE_CLIENT_MISSING_NOTE,
+  YOUTUBE_CONNECT_NOTE,
   YOUTUBE_NOTE,
-  YOUTUBE_UNAVAILABLE_NOTE,
   type ReplaceableChannelId,
+  type YouTubeConnectOutcome,
 } from '@/lib/os/settings-shared'
 import { SettingsCredentialForm } from './SettingsCredentialForm'
 import { SettingsVerifyButton } from './SettingsVerifyButton'
+import { SettingsYouTubeConnect } from './SettingsYouTubeConnect'
 import styles from './SettingsSurface.module.css'
 
 /**
@@ -51,10 +54,17 @@ import styles from './SettingsSurface.module.css'
  * `SettingsCredentialForm`, and "Verifiera nu" is `SettingsVerifyButton`; both are
  * rendered only when the loader's capability allows it, and both name the project.
  *
+ * `SettingsYouTubeConnect` starts Google's consent for one project's YouTube channel;
+ * the callback's closed answer comes back as `youtubeOutcome`.
+ *
  * NOTHING HERE WRITES. The component is a server component; its client children post
- * to the two credential routes and nowhere else.
+ * to the credential, verification and YouTube connection routes and nowhere else.
  */
-export function SettingsSurface({ model, displayPreferences }: { model: SettingsModel; displayPreferences: ReactNode }) {
+export function SettingsSurface({ model, displayPreferences, youtubeOutcome = null }: {
+  model: SettingsModel
+  displayPreferences: ReactNode
+  youtubeOutcome?: YouTubeConnectOutcome | null
+}) {
   return (
     <div className={styles.field}>
       <div className={styles.ambient} aria-hidden />
@@ -77,7 +87,7 @@ export function SettingsSurface({ model, displayPreferences }: { model: Settings
 
       <div className={styles.columns}>
         <div className={styles.column}>
-          <ProjectsPanel model={model} />
+          <ProjectsPanel model={model} youtubeOutcome={youtubeOutcome} />
         </div>
         <div className={styles.column}>
           <AccountPanel model={model} />
@@ -129,7 +139,7 @@ function WarningsLane({ warnings }: { warnings: SettingsWarning[] }) {
 
 // ── Projekt och sociala konton ───────────────────────────────────────────────
 
-function ProjectsPanel({ model }: { model: SettingsModel }) {
+function ProjectsPanel({ model, youtubeOutcome }: { model: SettingsModel; youtubeOutcome: YouTubeConnectOutcome | null }) {
   const { capability, projects } = model
   return (
     <section className={styles.panel} aria-labelledby="settings-projects">
@@ -140,6 +150,11 @@ function ProjectsPanel({ model }: { model: SettingsModel }) {
       />
       <p className={styles.meta}>{PROJECT_SCOPE_NOTE}</p>
       <p className={styles.meta}>{CHANNEL_STATUS_NOTE}</p>
+      {youtubeOutcome ? (
+        <p className={styles.outcome} role="status" data-kind={youtubeOutcome.kind} data-youtube-outcome={youtubeOutcome.code}>
+          <span className={styles.outcomeMessage}>YouTube: {youtubeOutcome.message}</span>
+        </p>
+      ) : null}
       {!capability.allowed ? (
         <p className={styles.locked} role="note" data-reason={capability.reason}>
           {CAPABILITY_NOTES[capability.reason]}
@@ -182,6 +197,8 @@ function ChannelCard({ project, channel, canAct }: { project: SettingsProject; c
   const { account, credential, health } = channel
   const bound = account.state === 'bound' ? account.bound : null
   const expiresAt = health.expiresAt ?? credential.expiresAt ?? null
+  // YouTube's Y1 binding publishes with the platform's Vercel credential until it is connected to the project.
+  const transitional = credential.state === 'environment_transitional' || credential.state === 'environment_incomplete'
 
   return (
     <li className={styles.channel} data-health={health.readable ? health.status : 'unreadable'} data-account={account.state}>
@@ -216,7 +233,7 @@ function ChannelCard({ project, channel, canAct }: { project: SettingsProject; c
         <Fact label="Utgår">
           {expiresAt ? <Rel iso={expiresAt} /> : <span className={styles.absent}>ingen utgång registrerad</span>}
         </Fact>
-        {channel.replaceable ? (
+        {channel.replaceable || (channel.id === 'youtube' && !transitional) ? (
           <>
             <Fact label="Senast sparad i Omnira">
               {credential.refreshedAt ? <Rel iso={credential.refreshedAt} /> : <span className={styles.absent}>—</span>}
@@ -234,10 +251,25 @@ function ChannelCard({ project, channel, canAct }: { project: SettingsProject; c
 
       {channel.id === 'youtube' ? (
         <>
-          <p className={styles.meta}>{credential.state === 'not_available' ? YOUTUBE_UNAVAILABLE_NOTE : YOUTUBE_NOTE}</p>
-          {canAct && bound ? (
-            <SettingsVerifyButton projectId={project.id} projectName={project.name} platform="youtube" />
-          ) : null}
+          <p className={styles.meta}>{transitional ? YOUTUBE_NOTE : YOUTUBE_CONNECT_NOTE}</p>
+          {canAct && account.state !== 'unreadable' ? (
+            <>
+              {bound ? (
+                <SettingsVerifyButton projectId={project.id} projectName={project.name} platform="youtube" />
+              ) : null}
+              {channel.connectable ? (
+                <SettingsYouTubeConnect
+                  projectId={project.id}
+                  projectName={project.name}
+                  mode={!bound ? 'connect' : transitional ? 'migrate' : 'reconnect'}
+                />
+              ) : (
+                <p className={styles.meta}>{YOUTUBE_CLIENT_MISSING_NOTE}</p>
+              )}
+            </>
+          ) : (
+            <p className={styles.readOnly}>Endast läsning</p>
+          )}
         </>
       ) : canAct && account.state !== 'unreadable' ? (
         <>

@@ -8,7 +8,8 @@
  * CREDENTIAL (project-scoped social credentials, 2026-09-14). Uploads and analytics
  * reads take a YouTubeCredential resolved by lib/media/social-credentials.ts for
  * the project whose video it is. That resolver is the only caller of
- * platformYouTubeGrant() below.
+ * platformYouTubeGrant() below. platformYouTubeOAuthClient() is the platform's app
+ * identity at Google, read by that resolver and the project connection routes.
  */
 
 import type { YouTubeGrant } from './social-identity'
@@ -33,6 +34,20 @@ export function platformYouTubeGrant(): YouTubeGrant | null {
   const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN
   if (!clientId || !clientSecret || !refreshToken) return null
   return { clientId, clientSecret, refreshToken }
+}
+
+/**
+ * The platform's YouTube OAuth client — Omnira's app identity at Google, NOT an account
+ * credential. A project's own connection (lib/media/youtube-oauth.ts) is exchanged with
+ * it; which channel a token acts as is decided only by that project's stored grant and
+ * its binding. Read by lib/media/social-credentials.ts and the connection routes
+ * (app/api/media/youtube/oauth) — never to reach a channel without a project's grant.
+ */
+export function platformYouTubeOAuthClient(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.YOUTUBE_CLIENT_ID
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET
+  if (!clientId || !clientSecret) return null
+  return { clientId, clientSecret }
 }
 
 /** What an upload or an analytics read needs. A resolved YouTubeCredential satisfies it. */

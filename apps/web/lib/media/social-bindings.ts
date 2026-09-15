@@ -19,8 +19,12 @@ import { EXTERNAL_ACCOUNT_ID } from './social-identity'
 type AnyDb = any
 
 export type SocialPlatform = 'instagram' | 'facebook' | 'youtube'
-/** The platforms whose credential each project stores itself. */
-export type StoredSocialPlatform = 'instagram' | 'facebook'
+/**
+ * The platforms whose credential each project stores itself. YouTube joined with project
+ * connections (Y2a); its one transitional binding (Y1) still uses the platform's
+ * credential until Y2b.
+ */
+export type StoredSocialPlatform = 'instagram' | 'facebook' | 'youtube'
 export const SOCIAL_PLATFORMS: readonly SocialPlatform[] = ['instagram', 'facebook', 'youtube']
 
 export type CredentialSource = 'project_store' | 'platform_env_transitional'
@@ -175,7 +179,7 @@ export interface NewBinding {
 
 function validNewBinding(input: NewBinding): boolean {
   return isProjectId(input.projectId)
-    && (input.platform === 'instagram' || input.platform === 'facebook')
+    && (input.platform === 'instagram' || input.platform === 'facebook' || input.platform === 'youtube')
     && EXTERNAL_ACCOUNT_ID.test(input.externalAccountId)
     && (input.accountLabel === null || (input.accountLabel.length >= 1 && input.accountLabel.length <= 200))
     && OPERATOR_ACTOR.test(input.boundBy)

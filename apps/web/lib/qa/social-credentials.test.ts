@@ -73,6 +73,9 @@ let GRANT: { clientId: string; clientSecret: string; refreshToken: string } | nu
 let GRANT_READS = 0
 let YT_EXCHANGE: unknown = null
 let YT_CHANNELS: unknown = null
+let OAUTH_CLIENT: { clientId: string; clientSecret: string } | null = null
+let OAUTH_CLIENT_READS = 0
+let EXCHANGED_GRANTS: unknown[] = []
 let bindingSeq = 0
 
 vi.mock('@/lib/media/social-bindings', async (importOriginal) => ({
@@ -111,6 +114,7 @@ vi.mock('@/lib/media/social-identity', async (importOriginal) => ({
   },
   exchangeYouTubeGrant: async (grant: { clientId: string }) => {
     ATTESTATIONS.push(`youtube:exchange:${grant.clientId}`)
+    EXCHANGED_GRANTS.push({ ...grant })
     return YT_EXCHANGE
   },
   attestYouTubeChannels: async (accessToken: string) => {
@@ -123,6 +127,10 @@ vi.mock('@/lib/media/youtube', () => ({
   platformYouTubeGrant: () => {
     GRANT_READS += 1
     return GRANT
+  },
+  platformYouTubeOAuthClient: () => {
+    OAUTH_CLIENT_READS += 1
+    return OAUTH_CLIENT
   },
 }))
 
@@ -332,7 +340,7 @@ describe('social credentials · YouTube Y1 — the platform’s transitional cre
     expect(await resolveYouTubeCredential(PROMPT)).toMatchObject({ ok: false, refusal: 'provider_unavailable' })
   })
 
-  it('the Vercel credential is never borrowed: a binding not attached to it, or a missing grant, is credential_missing', async () => {
+  it('the Vercel credential is never borrowed: a project-store binding without its own connection, or a missing grant, is credential_missing', async () => {
     BINDINGS.push(binding(FAMILY, 'youtube', 'UCfamily000000000000000', { credentialSource: 'project_store' }))
     expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_missing' })
     expect(GRANT_READS).toBe(0)
@@ -342,6 +350,75 @@ describe('social credentials · YouTube Y1 — the platform’s transitional cre
     GRANT = { clientId: 'platform-client', clientSecret: 'platform-secret', refreshToken: 'platform-refresh' }
     YT_EXCHANGE = { ok: false, failure: 'credential_invalid' }
     expect(await resolveYouTubeCredential(PROMPT)).toMatchObject({ ok: false, refusal: 'credential_invalid' })
+  })
+})
+
+describe('social credentials · YouTube project store (Y2a) — the project’s own connection, its channel verified before upload', () => {
+  const CHANNEL_FAMILY = 'UCfamily000000000000000'
+  const REFRESH_FAMILY = `1//${'f'.repeat(60)}`
+  const REFRESH_PROMPT = `1//${'p'.repeat(60)}`
+  const ANALYTICS_SCOPE = 'https://www.googleapis.com/auth/yt-analytics.readonly'
+  const connect = () => {
+    BINDINGS.push(binding(FAMILY, 'youtube', CHANNEL_FAMILY, { credentialSource: 'project_store', verification: 'provider_attested' }))
+    STORED[`youtube:${FAMILY}`] = { accessToken: REFRESH_FAMILY, accountId: CHANNEL_FAMILY, expiresAt: null, refreshedAt: null }
+    OAUTH_CLIENT = { clientId: 'platform-client', clientSecret: 'platform-secret' }
+    OAUTH_CLIENT_READS = 0
+    EXCHANGED_GRANTS = []
+    YT_EXCHANGE = { ok: true, accessToken: YT_ACCESS, scopes: [UPLOAD_SCOPE, READ_SCOPE, ANALYTICS_SCOPE] }
+    YT_CHANNELS = { ok: true, channels: [{ channelId: CHANNEL_FAMILY, title: 'Familje-Stunden' }] }
+  }
+
+  it('the project’s own stored connection is exchanged with the platform’s OAuth client, and its channel is confirmed before any upload', async () => {
+    connect()
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({
+      ok: true,
+      credential: {
+        platform: 'youtube', projectId: FAMILY, channelId: CHANNEL_FAMILY, channelTitle: 'Familje-Stunden',
+        accessToken: YT_ACCESS, channelVerifiedBeforeUpload: true,
+      },
+    })
+    expect(EXCHANGED_GRANTS).toEqual([{ clientId: 'platform-client', clientSecret: 'platform-secret', refreshToken: REFRESH_FAMILY }])
+    expect(STORE_READS).toContain(`youtube:${FAMILY}`)
+    expect(ATTESTATIONS).toEqual(['youtube:exchange:platform-client', `youtube:channels:${YT_ACCESS}`])
+    expect(GRANT_READS).toBe(0)
+  })
+
+  it('no fallback: without its own connection a project gets nothing — never the Vercel credential, never another project’s connection', async () => {
+    connect()
+    delete STORED[`youtube:${FAMILY}`]
+    STORED[`youtube:${PROMPT}`] = { accessToken: REFRESH_PROMPT, accountId: CHANNEL, expiresAt: null, refreshedAt: null }
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_missing' })
+    expect(STORE_READS).toEqual([`youtube:${FAMILY}`])
+    expect({ GRANT_READS, EXCHANGED_GRANTS, ATTESTATIONS }).toEqual({ GRANT_READS: 0, EXCHANGED_GRANTS: [], ATTESTATIONS: [] })
+  })
+
+  it('the transitional binding never reads a stored connection, even when one is stored for its project', async () => {
+    connect()
+    YT_EXCHANGE = { ok: true, accessToken: YT_ACCESS, scopes: [UPLOAD_SCOPE] }
+    STORED[`youtube:${PROMPT}`] = { accessToken: REFRESH_PROMPT, accountId: CHANNEL, expiresAt: null, refreshedAt: null }
+    expect(await resolveYouTubeCredential(PROMPT)).toMatchObject({ ok: true, credential: { projectId: PROMPT, channelId: CHANNEL } })
+    expect(STORE_READS).toEqual([])
+    expect(OAUTH_CLIENT_READS).toBe(0)
+    expect(EXCHANGED_GRANTS).toEqual([GRANT])
+  })
+
+  it('a connection that cannot read its channel, answers as another channel, is refused or unreadable is not usable', async () => {
+    connect()
+    YT_EXCHANGE = { ok: true, accessToken: YT_ACCESS, scopes: [UPLOAD_SCOPE] }
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_invalid' })
+    YT_EXCHANGE = { ok: true, accessToken: YT_ACCESS, scopes: [UPLOAD_SCOPE, READ_SCOPE, ANALYTICS_SCOPE] }
+    YT_CHANNELS = { ok: true, channels: [{ channelId: CHANNEL, title: 'The Prompt' }] }
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'account_mismatch' })
+    YT_CHANNELS = { ok: false, failure: 'provider_unavailable' }
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'provider_unavailable' })
+    YT_EXCHANGE = { ok: false, failure: 'credential_invalid' }
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_invalid' })
+    STORED[`youtube:${FAMILY}`] = 'unreadable'
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_unreadable' })
+    STORED[`youtube:${FAMILY}`] = { accessToken: REFRESH_FAMILY, accountId: CHANNEL_FAMILY, expiresAt: null, refreshedAt: null }
+    OAUTH_CLIENT = null
+    expect(await resolveYouTubeCredential(FAMILY)).toMatchObject({ ok: false, refusal: 'credential_missing' })
+    expect(GRANT_READS).toBe(0)
   })
 })
 
@@ -453,5 +530,14 @@ describe('social credentials · no consumer reaches a credential any other way',
   it('token_health — keyed by platform alone — is written by nothing, and read only for the heartbeat’s transitional timestamp', () => {
     expect(FILES().filter((f) => /from\(\s*'token_health'\s*\)[\s\S]{0,200}?\.(insert|upsert|update|delete)\(/.test(code(f))).map(rel)).toEqual([])
     expect(FILES().filter((f) => /from\(\s*'token_health'\s*\)/.test(code(f))).map(rel)).toEqual(['app/api/media/cron/heartbeat/route.ts'])
+  })
+
+  it('the platform’s YouTube OAuth client is read only by the resolver and the connection routes — and carries no refresh token', () => {
+    expect(FILES().filter((f) => rel(f) !== 'lib/media/youtube.ts' && /\bplatformYouTubeOAuthClient\s*\(/.test(code(f))).map(rel).sort()).toEqual([
+      'app/api/media/youtube/oauth/callback/route.ts', 'app/api/media/youtube/oauth/start/route.ts', 'lib/media/social-credentials.ts',
+    ])
+    const youtube = code(resolve(APP, 'lib/media/youtube.ts'))
+    const client = youtube.slice(youtube.indexOf('export function platformYouTubeOAuthClient'))
+    expect(client.slice(0, client.indexOf('\n}') + 2)).not.toMatch(/REFRESH_TOKEN|refreshToken/)
   })
 })

@@ -39,6 +39,7 @@ import {
   projectAccent,
   stableGroupId,
   type GraphAppearance,
+  type GraphEdgeVisual,
   type GraphNodeShape,
   type GraphNodeVisual,
   type GraphStatusVisual,
@@ -68,18 +69,36 @@ export interface GraphCanvasProps {
   onIsolate?: (node: IntelligenceGraphNode) => void
   onEscape?: () => void
   appearance?: GraphAppearance
+  /**
+   * Optional restyling of an edge on top of its relation visual. Absent, every
+   * edge renders exactly as `getEdgeVisual` describes it. The vNext surface uses
+   * it to draw how certain a relation is; the canvas itself knows nothing of that.
+   */
+  edgeVisual?: (edge: IntelligenceGraphEdge, visual: GraphEdgeVisual) => GraphEdgeVisual
   className?: string
 }
 
 export interface GraphCameraCommand {
   nonce: number
-  type: 'fit-graph' | 'fit-node' | 'fit-scope' | 'restore'
+  /**
+   * `zoom-in` / `zoom-out` are one step each, the same step as the `+` and `-`
+   * keys, around the centre of the view.
+   */
+  type: 'fit-graph' | 'fit-node' | 'fit-scope' | 'restore' | 'zoom-in' | 'zoom-out'
   nodeIds?: readonly string[]
   view?: GraphViewBox
 }
 
 const WORLD_W = 1200
 const WORLD_H = 800
+/** One zoom step — shared by the keys and the zoom commands. */
+const ZOOM_STEP = 1.16
+
+function zoomAroundCenter(current: GraphViewBox, factor: number): GraphViewBox {
+  const w = Math.min(WORLD_W * 3, Math.max(80, current.w * factor))
+  const h = Math.min(WORLD_H * 3, Math.max(53, current.h * factor))
+  return { x: current.x + (current.w - w) / 2, y: current.y + (current.h - h) / 2, w, h }
+}
 
 export function GraphCanvas({
   nodes,
@@ -102,6 +121,7 @@ export function GraphCanvas({
   onIsolate,
   onEscape,
   appearance = 'dark',
+  edgeVisual,
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -115,6 +135,11 @@ export function GraphCanvas({
   const autoFitRef = useRef(true)
   const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
   const handledCameraContextRef = useRef(`${WORLD_W}x${WORLD_H}:closed::`)
+  // A zoom command already in state when this canvas mounts was issued to an
+  // earlier instance; it is treated as handled rather than replayed.
+  const handledZoomNonceRef = useRef<number | null>(
+    cameraCommand && (cameraCommand.type === 'zoom-in' || cameraCommand.type === 'zoom-out') ? cameraCommand.nonce : null,
+  )
 
   const layout = useMemo(() => {
     const positioned = computeLayout(
@@ -273,6 +298,16 @@ export function GraphCanvas({
 
   useEffect(() => {
     if (!cameraCommand) return
+    if (cameraCommand.type === 'zoom-in' || cameraCommand.type === 'zoom-out') {
+      // A step, not a target: this effect re-runs when the layout or viewport
+      // changes, and replaying the step then would zoom again on every resize.
+      if (handledZoomNonceRef.current === cameraCommand.nonce) return
+      handledZoomNonceRef.current = cameraCommand.nonce
+      autoFitRef.current = false
+      const factor = cameraCommand.type === 'zoom-in' ? 1 / ZOOM_STEP : ZOOM_STEP
+      setView(current => zoomAroundCenter(current, factor))
+      return
+    }
     if (cameraCommand.type === 'restore' && cameraCommand.view) {
       autoFitRef.current = false
       setView(cameraCommand.view)
@@ -360,11 +395,7 @@ export function GraphCanvas({
 
   const changeZoom = useCallback((factor: number) => {
     autoFitRef.current = false
-    setView(current => {
-      const w = Math.min(WORLD_W * 3, Math.max(80, current.w * factor))
-      const h = Math.min(WORLD_H * 3, Math.max(53, current.h * factor))
-      return { x: current.x + (current.w - w) / 2, y: current.y + (current.h - h) / 2, w, h }
-    })
+    setView(current => zoomAroundCenter(current, factor))
   }, [])
 
   const focusDirectionalNode = useCallback((fromId: string, key: string) => {
@@ -391,8 +422,8 @@ export function GraphCanvas({
   }, [layout, nodes, structurallyVisibleIds])
 
   const handleCanvasKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
-    if (event.key === '+' || event.key === '=') { event.preventDefault(); changeZoom(1 / 1.16) }
-    else if (event.key === '-') { event.preventDefault(); changeZoom(1.16) }
+    if (event.key === '+' || event.key === '=') { event.preventDefault(); changeZoom(1 / ZOOM_STEP) }
+    else if (event.key === '-') { event.preventDefault(); changeZoom(ZOOM_STEP) }
     else if (event.key === '0') { event.preventDefault(); fit() }
     else if (event.key === '/') { event.preventDefault(); onSearchRequest?.() }
     else if (event.key === 'Escape') {
@@ -424,6 +455,7 @@ export function GraphCanvas({
       viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       className={cn(styles.canvas, 'h-full w-full touch-none select-none cursor-grab active:cursor-grabbing', className)}
       style={cssVariables}
+      data-appearance={appearance === 'dark' ? undefined : appearance}
       onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -496,7 +528,7 @@ export function GraphCanvas({
           const source = layout.get(edgeValue.source)
           const target = layout.get(edgeValue.target)
           if (!source || !target || !structurallyVisibleIds.has(edgeValue.source) || !structurallyVisibleIds.has(edgeValue.target)) return null
-          const visual = getEdgeVisual(edgeValue)
+          const visual = edgeVisual ? edgeVisual(edgeValue, getEdgeVisual(edgeValue)) : getEdgeVisual(edgeValue)
           const isHot = highlighted?.edgeIds.has(edgeValue.id) ?? false
           const readability = getEdgeReadability({
             edge: edgeValue,

@@ -6,7 +6,7 @@ import type {
 } from '@/lib/intelligence/graph-contract'
 import type { PositionedNode } from './force-layout'
 
-export type GraphAppearance = 'dark' | 'light'
+export type GraphAppearance = 'dark' | 'light' | 'vnext'
 export type GraphNodeShape =
   | 'circle'
   | 'community'
@@ -117,6 +117,18 @@ export const GRAPH_VISUAL_TOKENS = {
       labelStrong: '#0f172a',
       labelMuted: '#64748b',
       territoryLabel: '#334155',
+    },
+    /**
+     * The vNext ground. Deliberately no cyan: `status.running` is cyan, and a
+     * cyan canvas or hover glow would read as "running" where nothing runs.
+     */
+    vnext: {
+      canvas: '#050816',
+      canvasDepth: 'rgba(139, 92, 246, 0.075)',
+      label: '#d6deea',
+      labelStrong: '#f5f9ff',
+      labelMuted: '#8d9ab0',
+      territoryLabel: '#c3cddc',
     },
   },
 } as const

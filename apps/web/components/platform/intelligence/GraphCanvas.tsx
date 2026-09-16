@@ -23,8 +23,10 @@ import {
   getSemanticZoomPolicy,
   graphCameraPreservationKey,
   preserveSelectedNeighborhoodCamera,
+  reservedCanvasBoxes,
   selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
+  type GraphOverlayInsets,
   type GraphViewBox,
   type GraphZoomLevel,
 } from './graph-readability'
@@ -75,6 +77,13 @@ export interface GraphCanvasProps {
    * it to draw how certain a relation is; the canvas itself knows nothing of that.
    */
   edgeVisual?: (edge: IntelligenceGraphEdge, visual: GraphEdgeVisual) => GraphEdgeVisual
+  /**
+   * Optional px bands at the top and bottom of the canvas that the page covers
+   * with its own controls. Fitting keeps nodes out of them and labels avoid
+   * them; a change of insets never moves the camera by itself. Absent, the
+   * whole canvas is usable, exactly as before.
+   */
+  overlayInsets?: GraphOverlayInsets
   className?: string
 }
 
@@ -122,6 +131,7 @@ export function GraphCanvas({
   onEscape,
   appearance = 'dark',
   edgeVisual,
+  overlayInsets,
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -220,12 +230,15 @@ export function GraphCanvas({
   )
   const summaryByParent = useMemo(() => new Map(summaries.map(summary => [summary.parentId, summary])), [summaries])
   const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
-  const reservedBoxes = useMemo(() => inspectorBottomInset > 0 ? [{
-    minX: view.x,
-    minY: view.y + view.h - inspectorBottomInset,
-    maxX: view.x + view.w,
-    maxY: view.y + view.h,
-  }] : [], [inspectorBottomInset, view])
+  const overlayTopPx = Math.max(0, overlayInsets?.top ?? 0)
+  const overlayBottomPx = Math.max(0, overlayInsets?.bottom ?? 0)
+  // Read by the camera when it next fits; a new value alone moves nothing.
+  const overlayRef = useRef<GraphOverlayInsets | undefined>(undefined)
+  overlayRef.current = overlayTopPx > 0 || overlayBottomPx > 0 ? { top: overlayTopPx, bottom: overlayBottomPx } : undefined
+  const reservedBoxes = useMemo(
+    () => reservedCanvasBoxes(view, viewport.height, inspectorBottomInset, { top: overlayTopPx, bottom: overlayBottomPx }),
+    [inspectorBottomInset, view, viewport.height, overlayTopPx, overlayBottomPx],
+  )
   const visibleTerritories = useMemo(
     () => territories.filter(territory => !isolatedIds
       || nodes.some(node => node.projectId === territory.id && isolatedIds.has(node.id))),
@@ -268,7 +281,7 @@ export function GraphCanvas({
   ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes])
 
   const fit = useCallback(() => {
-    setView(fitGraphBounds(graphBounds, viewport))
+    setView(fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current))
   }, [graphBounds, viewport])
 
   useEffect(() => {
@@ -319,7 +332,7 @@ export function GraphCanvas({
       return
     }
     const ids = new Set(cameraCommand.nodeIds ?? [])
-    const next = fitNodeIds(layout, ids, viewport)
+    const next = fitNodeIds(layout, ids, viewport, overlayRef.current)
     if (next) {
       autoFitRef.current = false
       setView(next)
@@ -344,6 +357,7 @@ export function GraphCanvas({
         selectedId,
         viewport,
         inspectorOpen,
+        overlayRef.current,
       ))
     } else if (selectedNeighborhood.size === 0 && viewportChanged && autoFitRef.current) {
       fit()
@@ -433,7 +447,7 @@ export function GraphCanvas({
     }
     else if (event.key.toLowerCase() === 'f' && selectedNeighborhood.size > 0) {
       event.preventDefault()
-      const next = fitNodeIds(layout, selectedNeighborhood, viewport)
+      const next = fitNodeIds(layout, selectedNeighborhood, viewport, overlayRef.current)
       if (next) setView(next)
     }
   }, [changeZoom, fit, layout, onEscape, onSearchRequest, onSelect, selectedNeighborhood, viewport])

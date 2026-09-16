@@ -505,7 +505,58 @@ export function calculateGraphBounds(
   return bounds
 }
 
-export function fitGraphBounds(bounds: GraphBounds, viewport: { width: number; height: number }, padding = 64): GraphViewBox {
+/**
+ * Screen space, in px from the top and bottom of the canvas, that a page lays
+ * controls over. Fitting keeps the graph out of it; everything else about the
+ * camera is unchanged. Absent or zero, the whole canvas is usable.
+ */
+export interface GraphOverlayInsets {
+  top?: number
+  bottom?: number
+}
+
+/**
+ * The canvas regions labels must avoid, in world units: the mobile sheet's
+ * reserve, and any bands a page covers with its own controls. With neither,
+ * there are none — the canvas exactly as it always was.
+ */
+export function reservedCanvasBoxes(
+  view: GraphViewBox,
+  viewportHeight: number,
+  sheetInset: number,
+  overlay?: GraphOverlayInsets,
+): GraphBounds[] {
+  const boxes: GraphBounds[] = sheetInset > 0 ? [{
+    minX: view.x,
+    minY: view.y + view.h - sheetInset,
+    maxX: view.x + view.w,
+    maxY: view.y + view.h,
+  }] : []
+  const top = Math.max(0, overlay?.top ?? 0)
+  const bottom = Math.max(0, overlay?.bottom ?? 0)
+  if (top === 0 && bottom === 0) return boxes
+  const unitsPerPx = view.h / Math.max(1, viewportHeight)
+  if (top > 0) boxes.push({ minX: view.x, minY: view.y, maxX: view.x + view.w, maxY: view.y + top * unitsPerPx })
+  if (bottom > 0) boxes.push({ minX: view.x, minY: view.y + view.h - bottom * unitsPerPx, maxX: view.x + view.w, maxY: view.y + view.h })
+  return boxes
+}
+
+export function fitGraphBounds(
+  bounds: GraphBounds,
+  viewport: { width: number; height: number },
+  padding = 64,
+  overlay?: GraphOverlayInsets,
+): GraphViewBox {
+  const top = Math.max(0, overlay?.top ?? 0)
+  const bottom = Math.max(0, overlay?.bottom ?? 0)
+  if (top > 0 || bottom > 0) {
+    // Fit into the band between the overlays, then extend the view over them
+    // at the same scale, so the aspect ratio stays the canvas's own.
+    const usableHeight = Math.max(1, viewport.height - top - bottom)
+    const inner = fitGraphBounds(bounds, { width: viewport.width, height: usableHeight }, padding)
+    const unitsPerPx = inner.h / usableHeight
+    return { x: inner.x, y: inner.y - top * unitsPerPx, w: inner.w, h: inner.h + (top + bottom) * unitsPerPx }
+  }
   const viewportWidth = Math.max(1, viewport.width)
   const viewportHeight = Math.max(1, viewport.height)
   const aspect = viewportWidth / viewportHeight
@@ -522,6 +573,7 @@ export function fitNodeIds(
   layout: ReadonlyMap<string, PositionedNode>,
   nodeIds: ReadonlySet<string>,
   viewport: { width: number; height: number },
+  overlay?: GraphOverlayInsets,
 ): GraphViewBox | null {
   const positions = [...nodeIds].flatMap(id => layout.get(id) ? [layout.get(id)!] : [])
   if (positions.length === 0) return null
@@ -530,7 +582,7 @@ export function fitNodeIds(
     minY: Math.min(...positions.map(position => position.y - position.r)),
     maxX: Math.max(...positions.map(position => position.x + position.r)),
     maxY: Math.max(...positions.map(position => position.y + position.r)),
-  }, viewport, 72)
+  }, viewport, 72, overlay)
 }
 
 export function keepNodesVisible(
@@ -585,10 +637,16 @@ export function preserveSelectedNeighborhoodCamera(
   selectedId: string | null,
   viewport: { width: number; height: number },
   inspectorOpen: boolean,
+  overlay?: GraphOverlayInsets,
 ): GraphViewBox {
-  const insets = {
-    bottom: inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0,
-  }
+  const sheet = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
+  const unitsPerPx = view.h / Math.max(1, viewport.height)
+  const insets = overlay
+    ? {
+      top: Math.max(0, overlay.top ?? 0) * unitsPerPx,
+      bottom: Math.max(sheet, Math.max(0, overlay.bottom ?? 0) * unitsPerPx),
+    }
+    : { bottom: sheet }
   const neighborhoodView = keepNodesVisible(view, layout, nodeIds, insets)
   return selectedId
     ? keepNodesVisible(neighborhoodView, layout, new Set([selectedId]), insets)

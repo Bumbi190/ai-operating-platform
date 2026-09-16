@@ -29,9 +29,12 @@ import { GraphCanvas } from '@/components/platform/intelligence/GraphCanvas'
 import { NodeInspector } from '@/components/platform/intelligence/NodeInspector'
 import { getEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
 import { buildGraphBreadcrumbs, computeGraphFilterState } from '@/components/platform/intelligence/graph-navigation'
+import { fitGraphBounds, fitNodeIds, preserveSelectedNeighborhoodCamera, reservedCanvasBoxes } from '@/components/platform/intelligence/graph-readability'
 import type { useIntelligenceGraph } from '@/components/platform/intelligence/useIntelligenceGraph'
 import { DEFAULT_WINDOW } from '@/lib/intelligence/operations-graph'
 import {
+  INSPECTOR_WIDTH,
+  INSPECTOR_WIDTH_STORAGE_KEY,
   KIND_ORDER,
   OPERATIONS_RUN_CAP,
   RELATION_TRUTH_COPY,
@@ -47,8 +50,12 @@ import {
   relationLegend,
   relationTruth,
   relationWording,
+  clampInspectorWidth,
+  inspectorMaxWidth,
+  parseStoredInspectorWidth,
   runtimeDestination,
   snapshotCounts,
+  snapshotFigures,
   snapshotStamp,
 } from '@/lib/os/intelligence-graph-shared'
 import {
@@ -97,6 +104,8 @@ const VNEXT = read('components/platform/vnext/IntelligenceGraphVNext.tsx')
 const INSPECTOR = read('components/platform/vnext/IntelligenceGraphInspector.tsx')
 const SHARED = read('lib/os/intelligence-graph-shared.ts')
 const CSS = read('components/platform/vnext/IntelligenceGraphVNext.module.css')
+const CONTROLS = read('components/platform/vnext/IntelligenceGraphControls.tsx')
+const HUD = read('components/platform/vnext/IntelligenceGraphHud.tsx')
 const CANVAS = read('components/platform/intelligence/GraphCanvas.tsx')
 const BUILDER = read('lib/intelligence/operations-graph.ts')
 
@@ -494,10 +503,10 @@ describe('phase 18 · no polling, no realtime claim', () => {
   it('reaches only the two authenticated GET routes', () => {
     const urls = [...codeOnly(HOOK).matchAll(/['`](\/api\/[^'`?$]+)/g)].map((match) => match[1])
     expect(new Set(urls)).toEqual(new Set(['/api/intelligence/graph/system', '/api/intelligence/graph/operations']))
-    for (const src of [HOOK, VNEXT, INSPECTOR, SHARED]) {
+    for (const src of [HOOK, VNEXT, INSPECTOR, SHARED, CONTROLS, HUD]) {
       expect(codeOnly(src)).not.toMatch(/method:\s*['"](POST|PUT|PATCH|DELETE)/)
     }
-    for (const src of [VNEXT, INSPECTOR, SHARED]) expect(codeOnly(src)).not.toMatch(/\bfetch\(/)
+    for (const src of [VNEXT, INSPECTOR, SHARED, CONTROLS, HUD]) expect(codeOnly(src)).not.toMatch(/\bfetch\(/)
   })
 
   it('keeps refreshed selections only when the new payload still has them', () => {
@@ -532,7 +541,8 @@ describe('phase 18 · vNext surface', () => {
     expect(words).toMatch(/Ögonblicksbild · hämtad \d{2}:\d{2}/)
     expect(html).toContain('data-testid="graph-refresh"')
     expect(html).not.toMatch(/data-testid="graph-refresh"[^>]*disabled/)
-    expect(words).toContain('I denna ögonblicksbild')
+    // T2a: the counts sit beside the stamp, named for assistive tech rather than titled.
+    expect(html).toContain('aria-label="Antal i denna ögonblicksbild"')
     expect(words).toContain('4 körningar')
     expect(words).toContain('1 misslyckades')
     expect(words).toContain(`högst ${OPERATIONS_RUN_CAP} per hämtning`)
@@ -631,7 +641,7 @@ describe('phase 18 · vNext surface', () => {
   it('stamps a static artifact as a code map', async () => {
     const html = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
     expect(text(html)).toMatch(/Statisk kodkarta · commit 430259e6be · genererad \d+ sep\. 2026/)
-    expect(text(html)).toContain('I den här vyn')
+    expect(html).toContain('aria-label="Antal i den här vyn"')
     expect(text(html)).toContain('Härledd')
   })
 
@@ -706,9 +716,16 @@ describe('phase 18 · canvas additions', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('phase 18 · layout, scale and motion', () => {
-  it('fills the height the vNext shell leaves, not the legacy CommandBar height', () => {
-    expect(CSS).toContain('min-height: calc(100dvh - var(--ig-shell-chrome));')
-    expect(CSS).toContain('--ig-shell-chrome: calc(14px + 1.00625rem + 2.25rem);')
+  it('is exactly as tall as the vNext shell leaves it, not the legacy CommandBar height', () => {
+    // T2a: a height, not a minimum — the canvas absorbs what the chrome does not use.
+    expect(CSS).toMatch(/\.field \{[^}]*\n  height: calc\(100dvh - var\(--ig-shell-chrome\)\);\n  min-height: 28rem;/)
+    expect(CSS).not.toContain('min-height: calc(100dvh - var(--ig-shell-chrome));')
+    expect(CSS).toContain('--ig-shell-chrome: calc(var(--ig-mobile-header) + var(--ig-crumbs) + var(--ig-hints));')
+    expect(CSS).toContain('--ig-crumbs: calc(14px + 1.00625rem);')
+    expect(CSS).toContain('--ig-hints: 2.25rem;')
+    expect(CSS).toMatch(/@media \(max-width: 1023px\) \{\s*\.field \{ --ig-mobile-header: 62px; \}/)
+    expect(CSS).toMatch(/@media \(max-width: 900px\) \{\s*\.field \{ --ig-hints: 2\.125rem; \}/)
+    expect(CSS).toMatch(/@media \(max-width: 640px\) \{\s*\.field \{\s*--ig-crumbs: calc\(12px \+ 1\.00625rem\);\s*--ig-hints: 2\.0625rem;/)
     expect(CSS).not.toMatch(/100vh\s*-\s*4rem/)
     // The chrome it subtracts is the chrome those components declare.
     expect(read('components/platform/os/Breadcrumbs.module.css')).toMatch(/\.nav \{\s*\/\*[^*]*\*\/\s*padding: 14px 28px 0;\s*font-size: 0\.71875rem;[^}]*line-height: 1\.4;/)
@@ -719,9 +736,11 @@ describe('phase 18 · layout, scale and motion', () => {
   })
 
   it('docks the inspector at the breakpoint and share the canvas reserves for it', () => {
-    expect(CSS).toMatch(/@media \(max-width: 767px\) \{\s*\.inspectorDock \{[^}]*height: min\(48%, 24rem\);/)
+    // T2a: the sheet's top stays on the canvas reserve; its bottom stops above the activity peek.
+    expect(CSS).toMatch(/@media \(max-width: 767px\) \{\s*\.inspectorDock \{[^}]*height: calc\(min\(48%, 24rem\) - var\(--ig-sheet-clear\)\);\s*bottom: var\(--ig-sheet-clear\);/)
     expect(CANVAS).toContain('const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0')
-    expect(CSS).toMatch(/\.inspectorDock \{\s*position: relative;\s*flex: none;\s*width: 20rem;/)
+    // T2a: the docked width is the operator's, inside the limits in INSPECTOR_WIDTH.
+    expect(CSS).toMatch(/\.inspectorDock \{\s*position: relative;\s*flex: none;[^}]*width: clamp\(18rem, var\(--ig-inspector-width, 22rem\), max\(18rem, 100% - 24\.75rem\)\);/)
   })
 
   it('sizes type in rem so the display-scale preference reaches it', () => {
@@ -745,8 +764,448 @@ describe('phase 18 · layout, scale and motion', () => {
   })
 
   it('never imports the design references', () => {
-    for (const src of [VNEXT, INSPECTOR, SHARED, CSS, HOOK]) {
+    for (const src of [VNEXT, INSPECTOR, SHARED, CSS, HOOK, CONTROLS, HUD]) {
       expect(src).not.toMatch(/design\/references|refs\/|Omnira OS\.dc/)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 18 T2a — canvas first
+//
+// T2a does not move a node. It frees the canvas: a fixed-height page, one
+// control row, the view's description laid over the canvas, and an inspector
+// the operator can resize or put away — all while keeping every T1 statement
+// (stamp, counts, cap, truth classes, provenance) on screen or one click away,
+// and keeping the shell's floating Atlas launcher and activity peek clear.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The markup between an element's opening tag (found by `marker`) and the next sibling marker. */
+function section(html: string, marker: string, until?: string): string {
+  const start = html.indexOf(marker)
+  expect(start, marker).toBeGreaterThanOrEqual(0)
+  const end = until ? html.indexOf(until, start + marker.length) : -1
+  // End before the tag that carries `until`, so no half-open tag leaks into text().
+  return html.slice(start, end > start ? html.lastIndexOf('<', end) : undefined)
+}
+
+describe('phase 18 T2a · one control row', () => {
+  beforeEach(() => { mocks.graph.current = graphState() })
+
+  it('puts modes, search, Filter and the view menu in one row, and nothing else above the canvas', async () => {
+    const html = await renderVNext(graphState())
+    const controls = section(html, 'data-testid="graph-controls"', 'data-testid="graph-canvas-frame"')
+    expect(controls).toContain('aria-label="Grafläge"')
+    expect(controls).toContain('aria-label="Sök i aktuell graf"')
+    expect(controls).toContain('data-testid="graph-filter-toggle"')
+    expect(controls).toContain('data-testid="graph-view-toggle"')
+    // The header box, then the control row, then the stage — no second filter row, no counts strip.
+    const order = ['data-testid="graph-snapshot"', 'data-testid="graph-controls"', 'data-testid="graph-canvas-frame"'].map((marker) => html.indexOf(marker))
+    expect(order.every((value, index) => value >= 0 && (index === 0 || value > order[index - 1]))).toBe(true)
+    for (const gone of ['styles.toolbar', 'styles.filters}', 'styles.filterGroups', 'styles.relationMenu', 'styles.counts}']) {
+      expect(VNEXT + CONTROLS + HUD, gone).not.toContain(gone)
+    }
+    expect(CSS).not.toMatch(/^\.(toolbar|filters|filterGroups|filterToggle|relationMenu|counts) /m)
+  })
+
+  it('folds project, time window, status, kinds and relations into the Filter menu, closed', async () => {
+    const html = await renderVNext(graphState())
+    const toggle = html.match(/<button[^>]*data-testid="graph-filter-toggle"[^>]*>/)![0]
+    expect(toggle).toContain('aria-expanded="false"')
+    const panelId = toggle.match(/aria-controls="([^"]+)"/)![1]
+    const panel = section(html, `id="${panelId}"`, 'data-testid="graph-view-toggle"')
+    expect(panel).toMatch(/^id="[^"]+" class="[^"]+" data-columns="two" hidden=""/)
+    const words = text(`<div ${panel}`)
+    for (const group of ['Projekt', 'Alla projekt', 'Tidsfönster för körningar', '24 h', '7 d', '30 d', 'Körningsstatus', 'Nodtyper', 'Relationer', 'Rensa filter']) {
+      expect(words, group).toContain(group)
+    }
+    // It says what the groups do: two change what is fetched, the rest only dim.
+    expect(words).toContain('Projekt och tidsfönster styr vad som hämtas.')
+    expect(HOOK).toContain("const params = new URLSearchParams({ hours: String(hours) })")
+    expect(HOOK).toContain("if (projectFilter !== 'all') params.set('project', projectFilter)")
+    // Two columns keep the menu short enough to stay above the floating corner; a phone stacks it.
+    expect(CSS).toMatch(/\.filterPanel\[data-columns='two'\] \{\s*display: grid;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+    expect(CSS).toMatch(/@media \(max-width: 640px\) \{\s*\.filterPanel\[data-columns='two'\] \{ display: flex; \}/)
+  })
+
+  it('counts the dimming filters on the Filter button', async () => {
+    const quiet = await renderVNext(graphState())
+    expect(quiet).not.toMatch(/aria-label="\d+ aktiva"/)
+    const html = await renderVNext(graphState({ kindFilter: new Set(['run']), statusFilter: new Set(['failed']), filtersActive: true }))
+    expect(html).toMatch(/<span[^>]*aria-label="2 aktiva"[^>]*>2<\/span>/)
+  })
+
+  it('keeps the resets and fullscreen in the view menu, each saying what it does', async () => {
+    const html = await renderVNext(graphState())
+    const toggle = html.match(/<button[^>]*data-testid="graph-view-toggle"[^>]*>/)![0]
+    expect(toggle).toContain('aria-expanded="false"')
+    expect(toggle).toContain('aria-label="Vy: återställ och helskärm"')
+    const words = text(section(html, 'data-testid="graph-view-panel"', 'data-testid="graph-canvas-frame"'))
+    expect(words).toContain('Återställ vy Rensar val och fördjupning och anpassar vyn')
+    expect(words).toContain('Återställ allt Rensar även filter, sökning, isolering och historik')
+    expect(words).toContain('Helskärm')
+    expect(CONTROLS).toMatch(/onClick=\{run\(graph\.resetView\)\}/)
+    expect(CONTROLS).toMatch(/onClick=\{run\(graph\.resetAll\)\}/)
+  })
+
+  it('closes a menu on Escape only from inside it, and on a press outside it', () => {
+    const hook = CONTROLS.slice(CONTROLS.indexOf('export function usePopover'), CONTROLS.indexOf('export interface IntelligenceGraphControlsProps'))
+    expect(hook).toContain("if (!rootRef.current?.contains(document.activeElement)) return")
+    expect(hook).toContain('triggerRef.current?.focus()')
+    expect(hook).toMatch(/if \(rootRef\.current && !rootRef\.current\.contains\(event\.target as Node\)\) setOpen\(false\)/)
+    expect(hook).toContain("document.removeEventListener('pointerdown', onPointerDown)")
+  })
+
+  it('keeps Execution Replay disabled in the row', async () => {
+    const controls = section(await renderVNext(graphState()), 'data-testid="graph-controls"', 'aria-label="Sök i aktuell graf"')
+    expect(controls).toMatch(/<button[^>]*disabled=""[^>]*title="Kräver händelsedata per steg, som Omnira inte registrerar ännu\."[^>]*>Execution Replay<\/button>/)
+  })
+})
+
+describe('phase 18 T2a · the snapshot box', () => {
+  it('stamps, counts and refreshes in one box beside the title', async () => {
+    const html = await renderVNext(graphState())
+    const box = section(html, 'data-testid="graph-snapshot"', 'data-testid="graph-controls"')
+    const words = text(`<div ${box}`)
+    expect(words).toMatch(/^Ögonblicksbild · hämtad \d{2}:\d{2} Uppdateras inte automatiskt\. /)
+    expect(words).toContain('2 projekt 3 agenter 2 workflows 4 körningar · senaste 24 h 1 kör 1 misslyckades 1 inväntar granskning')
+    expect(words).toMatch(/Uppdatera$/)
+  })
+
+  it('names the run window at the run figure, and says a window with no runs', async () => {
+    const week = text(await renderVNext(graphState({ hours: 24 * 7 })))
+    expect(week).toContain('4 körningar · senaste 7 d')
+    const nodes = OPERATIONS_FIXTURE_NODES.filter((value) => ['project', 'agent', 'workflow'].includes(value.kind))
+    const empty = text(await renderVNext(graphState({ data: { ...OPERATIONS_FIXTURE_PAYLOAD, nodes, edges: [] } as GraphState['data'] })))
+    expect(empty).toContain('0 körningar · senaste 24 h')
+  })
+
+  it('adds a zero-run figure only in Live Operations, in kind order', () => {
+    const projectsOnly = snapshotCounts(OPERATIONS_FIXTURE_NODES.filter((value) => value.kind !== 'run'))
+    const figures = snapshotFigures('operations', projectsOnly)
+    expect(figures.map((item) => `${item.value} ${item.noun}`)).toEqual([
+      '2 projekt', '3 agenter', '2 workflows', '0 körningar', '2 granskningar', '1 utdata', '1 uppgift',
+    ])
+    expect(figures.map((item) => item.kind)).toEqual([...figures.map((item) => item.kind)].sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b)))
+    expect(snapshotFigures('system', projectsOnly)).toBe(projectsOnly.items)
+    const withRuns = snapshotCounts(OPERATIONS_FIXTURE_NODES)
+    expect(snapshotFigures('operations', withRuns)).toBe(withRuns.items)
+  })
+
+  it('warns about the run cap inside the box when it is reached', async () => {
+    const runs = Array.from({ length: OPERATIONS_RUN_CAP }, (_, index) => ({ ...node('run:r1'), id: `run:cap-${index}` }))
+    const data = { ...OPERATIONS_FIXTURE_PAYLOAD, nodes: [...OPERATIONS_FIXTURE_NODES, ...runs] }
+    const html = await renderVNext(graphState({ data: data as GraphState['data'] }))
+    expect(section(html, 'data-testid="graph-snapshot"', 'data-testid="graph-controls"')).toContain('data-testid="graph-run-cap"')
+  })
+})
+
+describe('phase 18 T2a · on the canvas', () => {
+  const workflowScope = { kind: 'workflow' as const, rootId: 'workflow:w1', label: 'Daglig artikel', nodeIds: new Set(['workflow:w1', 'agent:a1', 'agent:a2', 'run:r1', 'run:r2', 'run:r4']) }
+
+  it('lays place, scope and filter state over the canvas, ahead of it in reading order', async () => {
+    const html = await renderVNext(graphState({
+      drillScope: workflowScope,
+      isolateScope: workflowScope,
+      projectFilter: '11111111-1111-4111-8111-111111111111',
+      kindFilter: new Set(['run']),
+      filtersActive: true,
+      filterState: { matchingIds: new Set(['run:r1']), dimmedIds: new Set(), matchCount: 4, criticalOutsideFilters: 2 },
+    }))
+    const frame = section(html, 'data-testid="graph-canvas-frame"')
+    const place = section(frame, 'data-testid="graph-place"', 'role="group" aria-label="Live Operations snapshot graph"')
+    const words = text(`<div ${place}`)
+    expect(words).toContain('Tillbaka')
+    // The isolation is said once, by its own chip — not again as a crumb.
+    expect(words).toContain('Översikt / Daglig artikel')
+    expect(words).not.toContain('/ Isolerad:')
+    expect(words.match(/Isolerad: Daglig artikel/g) ?? []).toHaveLength(1)
+    expect(words).toMatch(/Projekt: \S.* Visa alla/)
+    expect(words).toContain('Isolerad: Daglig artikel Lämna isolering Anpassa till urvalet')
+    expect(words).toContain('4 matchar · övriga dimmade Rensa filter')
+    expect(words).toContain('2 kritiska objekt bevarade utanför filtermatch')
+    // Tab reaches Tillbaka before the canvas.
+    expect(frame.indexOf('Tillbaka')).toBeLessThan(frame.indexOf('aria-label="Live Operations snapshot graph"'))
+  })
+
+  it('names a project scope, since a scoped snapshot counts only that project', async () => {
+    const all = await renderVNext(graphState())
+    expect(all).not.toContain('data-testid="graph-project-scope"')
+    const scoped = text(await renderVNext(graphState({ projectFilter: '11111111-1111-4111-8111-111111111111' })))
+    const name = OPERATIONS_FIXTURE_PAYLOAD.projects?.find((project) => project.id === '11111111-1111-4111-8111-111111111111')?.name ?? 'valt projekt'
+    expect(scoped).toContain(`Projekt: ${name} Visa alla`)
+  })
+
+  it('keeps the legend key and its folded explanation on the canvas', async () => {
+    const html = await renderVNext(graphState())
+    const legend = section(section(html, 'data-testid="graph-canvas-frame"'), 'data-testid="graph-legend"')
+    const toggle = legend.match(/<button[^>]*aria-controls="graph-legend-panel"[^>]*>/)![0]
+    expect(toggle).toContain('aria-expanded="false"')
+    expect(legend).toMatch(/id="graph-legend-panel" class="[^"]+" hidden=""/)
+    const words = text(`<section ${legend}`)
+    expect(words).toContain('Om ögonblicksbilden')
+    expect(words).toContain(`Körningar skapade de senaste 24 h, högst ${OPERATIONS_RUN_CAP} per hämtning.`)
+    expect(words).toContain('Granskningar, utdata och uppgifter visas bara när de hör till en av körningarna.')
+    expect(words).toMatch(/Direkt Definition Förklaring$/)
+  })
+
+  it('keeps the zoom controls on the canvas', async () => {
+    const frame = section(await renderVNext(graphState()), 'data-testid="graph-canvas-frame"')
+    expect(frame).toContain('aria-label="Zooma ut"')
+    expect(frame).toContain('data-testid="graph-zoom-level"')
+  })
+})
+
+describe('phase 18 T2a · inspector', () => {
+  it('puts the actions under the name, above three tabs', async () => {
+    const html = await renderVNext(graphState({ selected: node('run:r2') }))
+    const inspector = section(html, 'data-testid="graph-inspector"')
+    const at = (marker: string) => inspector.indexOf(marker)
+    expect(at('data-testid="inspector-actions"')).toBeGreaterThan(at('Stäng inspektören'))
+    expect(at('role="tablist"')).toBeGreaterThan(at('data-testid="inspector-actions"'))
+    expect(at('data-testid="inspector-panel-overview"')).toBeGreaterThan(at('role="tablist"'))
+    const tabs = [...inspector.matchAll(/<button[^>]*role="tab"[^>]*>([\s\S]*?)<\/button>/g)]
+    expect(tabs.map((match) => text(match[1]))).toEqual(['Översikt', 'Kopplingar 2', 'Källa'])
+    expect(tabs.map((match) => /aria-selected="true"/.test(match[0]))).toEqual([true, false, false])
+    expect(tabs.map((match) => /tabindex="0"/.test(match[0]))).toEqual([true, false, false])
+  })
+
+  it('pairs every tab with its panel and shows only the selected one', async () => {
+    const html = await renderVNext(graphState({ selected: node('run:r2') }))
+    const inspector = section(html, 'data-testid="graph-inspector"')
+    for (const value of ['overview', 'relations', 'source']) {
+      const panel = inspector.match(new RegExp(`<div[^>]*role="tabpanel"[^>]*data-testid="inspector-panel-${value}"[^>]*>`))![0]
+      const panelId = panel.match(/ id="([^"]+)"/)![1]
+      const labelledBy = panel.match(/aria-labelledby="([^"]+)"/)![1]
+      expect(inspector).toContain(`aria-controls="${panelId}"`)
+      expect(inspector).toContain(`id="${labelledBy}"`)
+      expect(/hidden=""/.test(panel), value).toBe(value !== 'overview')
+    }
+    const overview = text(section(inspector, 'data-testid="inspector-panel-overview"', 'data-testid="inspector-panel-relations"'))
+    expect(overview).toContain('Status vid hämtning Misslyckades')
+    expect(overview).toContain('Lagrat fel Provider timeout')
+    const relations = text(section(inspector, 'data-testid="inspector-panel-relations"', 'data-testid="inspector-panel-source"'))
+    expect(relations).toContain('körning av Daglig artikel Direkt')
+    const source = text(section(inspector, 'data-testid="inspector-panel-source"'))
+    expect(source).toMatch(/Källa Omnira-databasen · tabellen runs Ögonblicksbild · hämtad \d{2}:\d{2}/)
+  })
+
+  it('moves between tabs with the arrow keys, Home and End', () => {
+    expect(INSPECTOR).toContain("if (event.key === 'ArrowRight') next = INSPECTOR_TABS[(index + 1) % INSPECTOR_TABS.length]")
+    expect(INSPECTOR).toContain("else if (event.key === 'ArrowLeft') next = INSPECTOR_TABS[(index - 1 + INSPECTOR_TABS.length) % INSPECTOR_TABS.length]")
+    expect(INSPECTOR).toContain("else if (event.key === 'Home') next = INSPECTOR_TABS[0]")
+    expect(INSPECTOR).toContain("else if (event.key === 'End') next = INSPECTOR_TABS[INSPECTOR_TABS.length - 1]")
+    expect(INSPECTOR).toContain('document.getElementById(tabId(next))?.focus()')
+  })
+
+  it('says so when a node has nothing more to show, instead of an empty panel', async () => {
+    const project = node('project:11111111-1111-4111-8111-111111111111')
+    const html = await renderVNext(graphState({ selected: project }))
+    expect(text(section(html, 'data-testid="inspector-panel-overview"', 'data-testid="inspector-panel-relations"')))
+      .toContain('Ögonblicksbilden har inga fler fält för det här objektet.')
+  })
+
+  it('can be put away without dropping the selection, and brought back', async () => {
+    const html = await renderVNext(graphState({ selected: node('run:r2') }))
+    expect(html).toContain('aria-label="Dölj inspektören"')
+    expect(html).toContain('aria-label="Stäng inspektören"')
+    expect(html).not.toContain('data-testid="graph-show-inspector"')
+    // Hidden is per selection: selecting anything else opens the panel again.
+    expect(VNEXT).toContain('const inspectorVisible = Boolean(selected) && hiddenFor !== selected?.id')
+    expect(VNEXT).toContain('inspectorOpen={inspectorVisible}')
+    expect(VNEXT).toMatch(/hiddenInspector=\{selected && !inspectorVisible\s*\? \{ label: selected\.label, onShow: showInspector, buttonRef: showInspectorRef \}/)
+    expect(VNEXT).toMatch(/setHiddenFor\(selected\.id\)\s*\/\/[^\n]*\n\s*requestAnimationFrame\(\(\) => showInspectorRef\.current\?\.focus\(\)\)/)
+    // Closing still deselects, as in T1.
+    expect(VNEXT).toContain('onClose={() => setSelected(null)}')
+    const { GraphPlace } = await import('@/components/platform/vnext/IntelligenceGraphHud')
+    const place = renderToStaticMarkup(createElement(GraphPlace, {
+      location: ['Översikt'], onBack: null, projectScope: null, isolate: null, filters: null, criticalOutsideFilters: 0,
+      truncatedAt: null, noMatch: false, hiddenInspector: { label: 'Daglig artikel · r2000002', onShow: noop, buttonRef: { current: null } },
+    }))
+    expect(place).toMatch(/<button[^>]*title="Visa inspektören för Daglig artikel · r2000002"[^>]*data-testid="graph-show-inspector"/)
+  })
+})
+
+describe('phase 18 T2a · inspector width', () => {
+  it('keeps the width inside the limits and the canvas beside it', () => {
+    expect(INSPECTOR_WIDTH).toMatchObject({ min: 18, default: 22, max: 36, canvasMin: 24, gap: 0.75 })
+    // A wide stage: the preference stands, up to the maximum.
+    expect(clampInspectorWidth(22, 90)).toBe(22)
+    expect(clampInspectorWidth(50, 90)).toBe(36)
+    expect(clampInspectorWidth(10, 90)).toBe(18)
+    // 1280 px with the sidebar: 60.25 rem of stage leaves 35.5 rem for the panel at most.
+    expect(inspectorMaxWidth(60.25)).toBe(35.5)
+    expect(clampInspectorWidth(36, 60.25)).toBe(35.5)
+    // 1024 px with the sidebar: the canvas keeps 24 rem, the panel gives way.
+    expect(inspectorMaxWidth(44.25)).toBe(19.5)
+    expect(clampInspectorWidth(22, 44.25)).toBe(19.5)
+    // Too narrow for both: the panel keeps its minimum, never less.
+    expect(inspectorMaxWidth(30)).toBe(18)
+    expect(clampInspectorWidth(22, 30)).toBe(18)
+    // Not yet measured: only the absolute limits apply.
+    expect(inspectorMaxWidth(0)).toBe(36)
+    expect(clampInspectorWidth(Number.NaN, 90)).toBe(22)
+    // Quarter-rem steps, so a drag and the arrow keys land on the same values.
+    expect(clampInspectorWidth(22.3, 90)).toBe(22.25)
+  })
+
+  it('reads a stored width only when it is a number, clamped to the limits', () => {
+    expect(parseStoredInspectorWidth(null)).toBeNull()
+    expect(parseStoredInspectorWidth('')).toBeNull()
+    expect(parseStoredInspectorWidth('wide')).toBeNull()
+    expect(parseStoredInspectorWidth('Infinity')).toBeNull()
+    expect(parseStoredInspectorWidth('26.5')).toBe(26.5)
+    expect(parseStoredInspectorWidth('90')).toBe(36)
+    expect(parseStoredInspectorWidth('4')).toBe(18)
+    expect(INSPECTOR_WIDTH_STORAGE_KEY).toBe('omnira:intelligence-graph-inspector-width')
+  })
+
+  it('renders a keyboard-operable splitter with the limits it enforces', async () => {
+    const html = await renderVNext(graphState({ selected: node('run:r2') }))
+    const separator = html.match(/<div[^>]*role="separator"[^>]*>/)![0]
+    expect(separator).toContain('aria-orientation="vertical"')
+    expect(separator).toContain('aria-label="Inspektörens bredd"')
+    expect(separator).toContain(`aria-valuemin="${INSPECTOR_WIDTH.min}"`)
+    expect(separator).toContain(`aria-valuenow="${INSPECTOR_WIDTH.default}"`)
+    expect(separator).toContain(`aria-valuemax="${INSPECTOR_WIDTH.max}"`)
+    expect(separator).toContain('tabindex="0"')
+    const dock = html.match(/<div[^>]*data-testid="graph-inspector-dock"[^>]*>/)![0]
+    expect(dock).toContain(`--ig-inspector-width:${INSPECTOR_WIDTH.default}rem`)
+    // The panel is on the right: left widens, right narrows.
+    expect(VNEXT).toContain("if (event.key === 'ArrowLeft') next = renderedWidth + step")
+    expect(VNEXT).toContain("else if (event.key === 'ArrowRight') next = renderedWidth - step")
+    expect(VNEXT).toContain("else if (event.key === 'Home') next = INSPECTOR_WIDTH.min")
+    expect(VNEXT).toContain("else if (event.key === 'End') next = widthMax")
+    expect(VNEXT).toContain('const next = clampInspectorWidth(drag.startRem + (drag.startX - event.clientX) / drag.rootPx, drag.stageRem)')
+  })
+
+  it('applies the same limits in the stylesheet, so a stale width still renders sanely', () => {
+    const cssMax = `100% - ${INSPECTOR_WIDTH.canvasMin + INSPECTOR_WIDTH.gap}rem`
+    expect(CSS).toContain(`width: clamp(${INSPECTOR_WIDTH.min}rem, var(--ig-inspector-width, ${INSPECTOR_WIDTH.default}rem), max(${INSPECTOR_WIDTH.min}rem, ${cssMax}));`)
+    expect(CSS).toMatch(/\.stage \{[^}]*gap: 0\.75rem;/)
+    // The sheet below 768 px is not resizable.
+    expect(CSS).toMatch(/@media \(max-width: 767px\) \{[^@]*\.resizeHandle \{ display: none; \}/)
+  })
+
+  it('remembers the width per viewer and survives storage that throws', () => {
+    expect(VNEXT).toMatch(/try \{\s*const stored = parseStoredInspectorWidth\(window\.localStorage\.getItem\(INSPECTOR_WIDTH_STORAGE_KEY\)\)/)
+    expect(VNEXT).toMatch(/try \{\s*window\.localStorage\.setItem\(INSPECTOR_WIDTH_STORAGE_KEY, String\(rem\)\)\s*\} catch/)
+  })
+})
+
+describe('phase 18 T2a · shell geometry', () => {
+  const PEEK = read('components/platform/os/MobileRailToggle.tsx')
+  const LAUNCHER = read('components/platform/os/AtlasMiniOrb.tsx')
+
+  it('measures the floating corner from the activity peek and the Atlas launcher', () => {
+    // The peek: right-5 (1.25rem) + px-4 twice (2rem) + w-3.5 icon (0.875rem) + gap-2 (0.5rem) + a 12px label,
+    // and with live events gap-2 (0.5rem) + a 4px dot + gap-1 (0.25rem) + 10px digits.
+    expect(PEEK).toContain('fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2')
+    expect(PEEK).toContain('<Activity className="w-3.5 h-3.5" />')
+    expect(PEEK).toContain('<span className="text-[12px] font-semibold tracking-tight">Activity</span>')
+    expect(PEEK).toContain('<span className="inline-flex items-center gap-1 caption-mono text-[10px] text-white/90">')
+    expect(PEEK).toContain('<PulseDot tone="emerald" size={4} />')
+    const remParts = 1.25 + 2 + 0.875 + 0.5 + 0.5 + 0.25 + 0.5 // … + 0.5rem of air
+    expect(CSS).toContain(`--ig-float-right: calc(${remParts}rem + 63px);`)
+    // Up from the bottom: the peek alone is bottom-5 + h-11 (4rem); from lg the launcher sits on top of it.
+    expect(LAUNCHER).toContain('const MINI_SIZE = 52')
+    expect(LAUNCHER).toContain('const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP  // 76')
+    expect(LAUNCHER).toMatch(/className="hidden lg:block fixed z-50"\s*style=\{\{ bottom: `\$\{LAUNCHER_BOTTOM\}px`, right: `\$\{STACK_RIGHT\}px` \}\}/)
+    expect(CSS).toContain('--ig-float-top: 4.5rem;')
+    expect(CSS).toMatch(/@media \(min-width: 1024px\) \{\s*\.field \{ --ig-float-top: calc\(max\(4rem, 128px\) \+ 0\.5rem\); \}/)
+    // The peek is on this route at every width: it only stands down on Atlas Home.
+    expect(read('lib/nav/activity-peek-visibility.ts')).toContain('return pathname === ATLAS_HOME_PATH && isVNext(generation)')
+  })
+
+  it('keeps the panel above the floating corner and the legend beside it', () => {
+    expect(CSS).toContain('margin-bottom: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));')
+    expect(CSS).toMatch(/@media \(min-width: 768px\) \{[^@]*\.stage\[data-inspector='closed'\] \.legend \{\s*right: max\(0\.625rem, calc\(var\(--ig-float-right\) - var\(--ig-pad-x\)\)\);/)
+    // Below 768 the sheet ends above the peek, and the legend keeps left of it.
+    expect(CSS).toContain('--ig-sheet-clear: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));')
+    expect(CSS).toContain('max-width: calc(100% - 1.25rem - max(0px, calc(var(--ig-float-right) - var(--ig-pad-x))));')
+  })
+
+  it('goes fullscreen with the header, where the shell chrome is gone', () => {
+    expect(VNEXT).toContain('ref={fieldRef}')
+    expect(VNEXT).toMatch(/const element = fieldRef\.current\n/)
+    expect(VNEXT).toContain('else await element.requestFullscreen()')
+    expect(CSS).toMatch(/\.field:fullscreen \{\s*--ig-float-right: 0px;\s*--ig-float-top: 0px;\s*--ig-hints: 0px;\s*height: 100dvh;/)
+  })
+
+  it('lets the canvas corners answer to the canvas width, not the viewport', () => {
+    expect(CSS).toMatch(/\.canvasFrame \{[^}]*container-type: inline-size;\s*container-name: ig-canvas;/)
+    expect(CSS).toMatch(/@container ig-canvas \(max-width: 40rem\) \{\s*\.legendKey \{ display: none; \}/)
+  })
+})
+
+describe('phase 18 T2a · the canvas keeps nodes out from under its own controls', () => {
+  const bounds = { minX: 100, minY: 100, maxX: 1100, maxY: 700 }
+  const viewport = { width: 964, height: 471 }
+
+  it('fits into the band between the overlays at the canvas aspect ratio', () => {
+    const plain = fitGraphBounds(bounds, viewport)
+    const banded = fitGraphBounds(bounds, viewport, undefined, { top: 50, bottom: 50 })
+    expect(banded.w / banded.h).toBeCloseTo(viewport.width / viewport.height, 6)
+    // The graph (with its padding) lies inside the band: 50 px from each edge, in world units.
+    const unitsPerPx = banded.h / viewport.height
+    expect(bounds.minY - 64).toBeGreaterThanOrEqual(banded.y + 50 * unitsPerPx - 1e-6)
+    expect(bounds.maxY + 64).toBeLessThanOrEqual(banded.y + banded.h - 50 * unitsPerPx + 1e-6)
+    expect(banded.h).toBeGreaterThan(plain.h)
+  })
+
+  it('is exactly the old camera when no overlay is given', () => {
+    const plain = fitGraphBounds(bounds, viewport)
+    expect(fitGraphBounds(bounds, viewport, undefined, undefined)).toEqual(plain)
+    expect(fitGraphBounds(bounds, viewport, undefined, { top: 0, bottom: 0 })).toEqual(plain)
+    const layout = new Map([['a', { id: 'a', x: 200, y: 200, r: 20 }], ['b', { id: 'b', x: 800, y: 500, r: 20 }]])
+    expect(fitNodeIds(layout, new Set(['a', 'b']), viewport, undefined)).toEqual(fitNodeIds(layout, new Set(['a', 'b']), viewport))
+    const camera = { x: 0, y: 0, w: 900, h: 600 }
+    expect(preserveSelectedNeighborhoodCamera(camera, layout, new Set(['a']), 'a', viewport, false, undefined))
+      .toEqual(preserveSelectedNeighborhoodCamera(camera, layout, new Set(['a']), 'a', viewport, false))
+  })
+
+  it('pans a selection out from under the top row without zooming', () => {
+    const camera = { x: 0, y: 0, w: 900, h: 600 }
+    const layout = new Map([['top', { id: 'top', x: 450, y: 60, r: 20 }]])
+    const plain = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['top']), 'top', { width: 900, height: 600 }, false)
+    const banded = preserveSelectedNeighborhoodCamera(camera, layout, new Set(['top']), 'top', { width: 900, height: 600 }, false, { top: 48 })
+    expect(banded.w).toBe(camera.w)
+    expect(banded.h).toBe(camera.h)
+    expect(banded.y).toBeLessThan(plain.y)
+  })
+
+  it('reserves label space only for the sheet and the overlays actually given', () => {
+    const camera = { x: 100, y: 50, w: 900, h: 600 }
+    // Legacy: no sheet, no overlay — nothing reserved, exactly as before.
+    expect(reservedCanvasBoxes(camera, 471, 0)).toEqual([])
+    expect(reservedCanvasBoxes(camera, 471, 0, { top: 0, bottom: 0 })).toEqual([])
+    // The mobile sheet alone: the same single box the canvas always reserved.
+    expect(reservedCanvasBoxes(camera, 471, 288)).toEqual([{ minX: 100, minY: 362, maxX: 1000, maxY: 650 }])
+    // Overlays: full-width bands, converted from px to world units.
+    const banded = reservedCanvasBoxes(camera, 600, 0, { top: 48, bottom: 50 })
+    expect(banded).toEqual([
+      { minX: 100, minY: 50, maxX: 1000, maxY: 98 },
+      { minX: 100, minY: 600, maxX: 1000, maxY: 650 },
+    ])
+    expect(CANVAS).toContain('() => reservedCanvasBoxes(view, viewport.height, inspectorBottomInset, { top: overlayTopPx, bottom: overlayBottomPx }),')
+  })
+
+  it('passes the page overlay to the camera and the labels, and legacy passes none', () => {
+    expect(CANVAS).toContain('overlayInsets?: GraphOverlayInsets')
+    expect(CANVAS).toContain('setView(fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current))')
+    expect(CANVAS).toContain('const next = fitNodeIds(layout, ids, viewport, overlayRef.current)')
+    expect(CANVAS).toContain('const next = fitNodeIds(layout, selectedNeighborhood, viewport, overlayRef.current)')
+    expect(CANVAS).toMatch(/viewport,\s*inspectorOpen,\s*overlayRef\.current,\s*\)\)/)
+    // A new inset alone never moves the camera: it is read from a ref, not a dependency.
+    expect(CANVAS).toMatch(/const fit = useCallback\(\(\) => \{\s*setView\(fitGraphBounds\(graphBounds, viewport, undefined, overlayRef\.current\)\)\s*\}, \[graphBounds, viewport\]\)/)
+    expect(VNEXT).toContain('overlayInsets={overlayInsets}')
+    expect(read('components/platform/intelligence/IntelligenceGraphClient.tsx')).not.toContain('overlayInsets')
+  })
+
+  it('stays quiet in the top corner at the top of an unfiltered graph', async () => {
+    const html = await renderVNext(graphState())
+    expect(html).not.toContain('data-testid="graph-place"')
+    expect(VNEXT).toMatch(/top: \(narrow \|\| placeShown \? HUD_ROW_REM : 0\) \* rootPx,/)
+    expect(VNEXT).toContain('const HUD_ROW_REM = 3.125')
   })
 })

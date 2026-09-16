@@ -374,6 +374,17 @@ export function snapshotCounts(nodes: readonly IntelligenceGraphNode[]): Snapsho
   return { items, runCapReached: (byKind.get('run')?.length ?? 0) >= OPERATIONS_RUN_CAP }
 }
 
+/**
+ * The figures the snapshot box shows. In Live Operations a window with no runs
+ * is a fact about that window, so its zero is said rather than left out; every
+ * other kind appears only when the payload contains it.
+ */
+export function snapshotFigures(mode: 'system' | 'operations', counts: SnapshotCounts): SnapshotCount[] {
+  if (mode !== 'operations' || counts.items.some((item) => item.kind === 'run')) return counts.items
+  const noRuns: SnapshotCount = { kind: 'run', value: 0, noun: KIND_WORDS.run.many, breakdown: [] }
+  return [...counts.items, noRuns].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind))
+}
+
 // ── Location and zoom ───────────────────────────────────────────────────────
 
 /** Where the operator is in the graph — the same steps `buildGraphBreadcrumbs` tracks. */
@@ -466,3 +477,53 @@ export function runtimeDestination(node: IntelligenceGraphNode): { href: string;
 
 /** Kinds the navigation layer can scope — the legacy inspector's own list. */
 export const SCOPEABLE_KINDS: ReadonlySet<string> = new Set(['community', 'project', 'workflow', 'agent', 'run'])
+
+// ── Workspace layout ────────────────────────────────────────────────────────
+
+/**
+ * The docked inspector's width, in rem so the display-scale preference reaches
+ * it. The book's desktop inspector is a right panel whose width changes "inom
+ * definierade gränser" (¶595, ¶873); these are those limits. The canvas keeps
+ * `canvasMin` beside it — past that the panel stops growing, never the canvas
+ * shrinking. The stylesheet applies the same bounds with `clamp()`, so a width
+ * stored at one window size still renders sanely at another.
+ */
+export const INSPECTOR_WIDTH = {
+  min: 18,
+  default: 22,
+  max: 36,
+  /** What the canvas keeps beside the panel. */
+  canvasMin: 24,
+  /** The stage gap between canvas and panel. */
+  gap: 0.75,
+  /** Arrow keys on the separator; Shift takes the large step. */
+  step: 1,
+  largeStep: 4,
+} as const
+
+/** Per-viewer convenience only — nothing reads it but this surface. */
+export const INSPECTOR_WIDTH_STORAGE_KEY = 'omnira:intelligence-graph-inspector-width'
+
+/** The widest the panel may be on a stage `stageRem` wide. Never below `min`. */
+export function inspectorMaxWidth(stageRem: number): number {
+  if (!Number.isFinite(stageRem) || stageRem <= 0) return INSPECTOR_WIDTH.max
+  return Math.max(
+    INSPECTOR_WIDTH.min,
+    Math.min(INSPECTOR_WIDTH.max, stageRem - INSPECTOR_WIDTH.canvasMin - INSPECTOR_WIDTH.gap),
+  )
+}
+
+/** A width inside the limits, rounded to a quarter rem so keyboard steps land on the same values. */
+export function clampInspectorWidth(rem: number, stageRem: number): number {
+  const value = Number.isFinite(rem) ? rem : INSPECTOR_WIDTH.default
+  const clamped = Math.min(inspectorMaxWidth(stageRem), Math.max(INSPECTOR_WIDTH.min, value))
+  return Math.round(clamped * 4) / 4
+}
+
+/** A stored width, or null when there is none or it is not a usable number. */
+export function parseStoredInspectorWidth(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw.trim() === '') return null
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return null
+  return Math.min(INSPECTOR_WIDTH.max, Math.max(INSPECTOR_WIDTH.min, value))
+}

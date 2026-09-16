@@ -12,6 +12,12 @@ import type { TradingMarketViewSnapshot } from '@/lib/trading/market-view'
 import { MarketChart } from './MarketChart'
 import { BoxPrimitive, MarkerPrimitive, type BoxStyle } from './chart-overlays'
 import {
+  fairValueGapStyle,
+  readChartPalette,
+  type ChartPalette,
+  type TokenSource,
+} from './chart-palette'
+import {
   chartCandlesOf,
   chartGapsOf,
   chartLevelsOf,
@@ -62,43 +68,21 @@ import styles from './AtlasMarketView.module.css'
  * fullscreen reflow is automatic because the shell's box is what changes.
  */
 
-/** Resolve an Omnira design token to a concrete colour for the canvas. */
-function token(name: string, fallback: string): string {
-  if (typeof window === 'undefined') return fallback
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value.length > 0 ? value : fallback
-}
-
-interface Palette {
-  readonly aqua: string
-  readonly rose: string
-  readonly emerald: string
-  readonly gold: string
-  readonly goldSoft: string
-  readonly violet: string
-  readonly accent: string
-  readonly text2: string
-  readonly text3: string
-  readonly edge: string
-}
-
-function readPalette(): Palette {
-  return {
-    aqua: token('--omnira-aqua', '#a5f3fc'),
-    rose: token('--omnira-rose', '#f87171'),
-    emerald: token('--omnira-emerald', '#34d399'),
-    gold: token('--omnira-gold', '#d4a574'),
-    goldSoft: token('--omnira-gold-soft', '#e8c89a'),
-    violet: token('--omnira-violet', '#8b5cf6'),
-    accent: token('--os-accent', '#22d3ee'),
-    text2: token('--omnira-text-2', 'rgba(255,255,255,0.72)'),
-    text3: token('--omnira-text-3', 'rgba(255,255,255,0.60)'),
-    edge: token('--omnira-edge', 'rgba(255,255,255,0.10)'),
-  }
+/**
+ * The computed style the palette is read from: the chart's OWN element.
+ *
+ * Not `document.documentElement`. The generation tokens (`--os-accent` among
+ * them) are scoped to the shell's `<main data-ui-generation>`, so reading the
+ * root painted legacy indigo into the vNext workspace. The element inherits
+ * exactly what the CSS around the chart resolves.
+ */
+function tokenSourceOf(element: Element): TokenSource | null {
+  if (typeof window === 'undefined') return null
+  return getComputedStyle(element)
 }
 
 /** Atlas level styling. One place, so a level cannot acquire a colour by accident. */
-function levelStyle(kind: ChartLevelKind, palette: Palette): {
+function levelStyle(kind: ChartLevelKind, palette: ChartPalette): {
   color: string
   lineStyle: number
 } {
@@ -117,19 +101,14 @@ function levelStyle(kind: ChartLevelKind, palette: Palette): {
   }
 }
 
-/** Zones are gold; gaps are violet. The model's own state decides the emphasis. */
-function zoneStyle(palette: Palette) {
+/**
+ * Zones are gold, and the model's own state decides the emphasis. Gaps have
+ * their own resolver, `fairValueGapStyle`, which follows the FVG lifecycle.
+ */
+function zoneStyle(palette: ChartPalette) {
   return (box: { state: string; label: string }): BoxStyle => ({
     fill: box.state === 'SWEPT' ? 'rgba(212,165,116,0.06)' : 'rgba(212,165,116,0.13)',
     stroke: box.state === 'SWEPT' ? 'rgba(212,165,116,0.35)' : palette.gold,
-    label: box.label,
-  })
-}
-
-function gapStyle(palette: Palette) {
-  return (box: { state: string; variant: string; label: string }): BoxStyle => ({
-    fill: box.state === 'FILLED' ? 'rgba(139,92,246,0.05)' : 'rgba(139,92,246,0.12)',
-    stroke: box.state === 'FILLED' ? 'rgba(139,92,246,0.32)' : palette.violet,
     label: box.label,
   })
 }
@@ -165,7 +144,7 @@ export function InteractiveMarketChart({
   const zonesRef = useRef<BoxPrimitive | null>(null)
   const gapsRef = useRef<BoxPrimitive | null>(null)
   const markersRef = useRef<MarkerPrimitive | null>(null)
-  const paletteRef = useRef<Palette | null>(null)
+  const paletteRef = useRef<ChartPalette | null>(null)
   /** What the current viewport was fitted for, and whether data existed. */
   const viewportRef = useRef<ViewportState | null>(null)
   const [ready, setReady] = useState(false)
@@ -204,7 +183,7 @@ export function InteractiveMarketChart({
       const lib = await import('lightweight-charts')
       if (disposed) return
 
-      const palette = readPalette()
+      const palette = readChartPalette(tokenSourceOf(container))
       paletteRef.current = palette
 
       chart = lib.createChart(container, {
@@ -276,7 +255,7 @@ export function InteractiveMarketChart({
       })
 
       const zones = new BoxPrimitive([], zoneStyle(palette))
-      const gaps = new BoxPrimitive([], gapStyle(palette))
+      const gaps = new BoxPrimitive([], (box) => fairValueGapStyle(box, palette))
       const markers = new MarkerPrimitive([], { fill: palette.violet, text: palette.text2 })
       series.attachPrimitive(zones)
       series.attachPrimitive(gaps)

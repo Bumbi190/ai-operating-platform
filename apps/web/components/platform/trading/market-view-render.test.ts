@@ -122,6 +122,9 @@ const COMPONENT_FILES = [
   './PositionPanels.tsx',
   './panels.tsx',
   './primitives.tsx',
+  // Phase 17: the chart's grade chip and the Stage 1 performance section.
+  './ChartSetupGrade.tsx',
+  './PerformanceSection.tsx',
 ]
 
 // ─── The route renders ────────────────────────────────────────────────────────
@@ -480,5 +483,263 @@ describe('chart annotations', () => {
 
   it('produces byte-identical markup across two renders', () => {
     expect(renderChart('a-plus-confirmed')).toBe(renderChart('a-plus-confirmed'))
+  })
+})
+
+// ─── Chart-first composition (Phase 17) ───────────────────────────────────────
+
+/** Visible text of a markup fragment: tags stripped, whitespace collapsed. */
+function textOf(markup: string): string {
+  return markup.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The markup of the element carrying `data-testid`, through its MATCHING closing
+ * tag — nested elements of the same tag are counted, so a span inside a span
+ * does not end the slice early.
+ */
+function elementByTestId(markup: string, testId: string, tag: string): string {
+  const marker = markup.indexOf(`data-testid="${testId}"`)
+  expect(marker, `no element with data-testid="${testId}"`).toBeGreaterThan(-1)
+  const start = markup.lastIndexOf(`<${tag}`, marker)
+  expect(start, `no <${tag}> with data-testid="${testId}"`).toBeGreaterThan(-1)
+  const pattern = new RegExp(`<${tag}[\\s>]|</${tag}>`, 'g')
+  pattern.lastIndex = start
+  let depth = 0
+  for (let match = pattern.exec(markup); match !== null; match = pattern.exec(markup)) {
+    depth += match[0].startsWith('</') ? -1 : 1
+    if (depth === 0) return markup.slice(start, match.index + match[0].length)
+  }
+  throw new Error(`unclosed <${tag}> for data-testid="${testId}"`)
+}
+
+/*
+ * The workspace accepts a seed only for its DEFAULT selection (a mismatched seed
+ * is refused and loads through the source instead), so per-scenario assertions
+ * render the header and the chart shell directly with that scenario's snapshot.
+ */
+let MarketViewHeader: (props: Record<string, unknown>) => JSX.Element
+let ChartShell: (props: Record<string, unknown>) => JSX.Element
+
+beforeAll(async () => {
+  MarketViewHeader = (await import('./MarketViewHeader')).MarketViewHeader as never
+  ChartShell = (await import('./ChartShell')).ChartShell as never
+})
+
+function renderHeader(snapshot: TradingMarketViewSnapshot | null, loadStatus = 'READY'): string {
+  return renderToStaticMarkup(createElement(MarketViewHeader, {
+    snapshot,
+    loadStatus,
+    sourceLabel: 'Fixtur',
+    sourceOrigin: 'FIXTURE',
+    instrument: 'NQ',
+    timeframe: '5m',
+    onInstrumentChange: () => {},
+    onTimeframeChange: () => {},
+  }))
+}
+
+function renderShell(snapshot: TradingMarketViewSnapshot): string {
+  return renderToStaticMarkup(createElement(ChartShell, { snapshot, instrument: 'NQ', timeframe: '5m' }))
+}
+
+describe('chart-first composition', () => {
+  it('puts the chart directly after the header strip', () => {
+    const markup = renderView()
+    const headerEnd = markup.indexOf('</header>', markup.indexOf('data-testid="market-view-header"'))
+    const chart = markup.indexOf('data-testid="chart-shell"')
+    expect(headerEnd).toBeGreaterThan(-1)
+    expect(chart).toBeGreaterThan(headerEnd)
+    // Nothing that used to stand between them does any more.
+    const between = markup.slice(headerEnd, chart)
+    expect(between).not.toContain('Fixturscenario')
+    expect(between).not.toContain('data-testid="replay-controls"')
+    expect(between).not.toContain('<button')
+  })
+
+  it('orders the secondary sections under the chart', () => {
+    const markup = renderView()
+    const order = [
+      'data-testid="market-view-header"',
+      'data-testid="chart-shell"',
+      'aria-label="Marknadsanalys"',
+      'aria-label="Atlas förklaring"',
+      'data-testid="market-view-performance"',
+      'data-testid="market-view-devtools"',
+      '← → byt instrument',
+    ].map((needle) => markup.indexOf(needle))
+    for (const index of order) expect(index).toBeGreaterThan(-1)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  it('keeps the whole rail: planned, observed and the five analysis panels', () => {
+    const markup = renderView()
+    const rail = markup.slice(markup.indexOf('aria-label="Marknadsanalys"'))
+    for (const title of [
+      'Planerade trades', 'Observerade positioner', 'Marknadstes', 'Setup', 'Riskläge', 'Prop Mode', 'Trade proposal',
+    ]) {
+      expect(rail, `rail lost ${title}`).toContain(title)
+    }
+  })
+
+  it('keeps every chart annotation layer on the static frame', () => {
+    const markup = renderShell(buildFixtureSnapshot('a-plus-confirmed', 'NQ', '5m'))
+    for (const layer of [
+      'candles', 'liquidity-zones', 'fair-value-gaps', 'liquidity-levels', 'four-hour-open', 'proposal-levels', 'manipulation',
+    ]) {
+      expect(markup, `missing layer ${layer}`).toContain(`data-layer="${layer}"`)
+    }
+  })
+})
+
+describe('development instruments are secondary', () => {
+  it('lives in a collapsed, labelled Utvecklarverktyg · FIXTURE section', () => {
+    const devtools = elementByTestId(renderView(), 'market-view-devtools', 'details')
+    const opening = devtools.slice(0, devtools.indexOf('>') + 1)
+    expect(opening).not.toMatch(/\sopen(=|>|\s)/)
+    const summary = devtools.slice(devtools.indexOf('<summary'), devtools.indexOf('</summary>'))
+    expect(textOf(summary)).toContain('Utvecklarverktyg · FIXTURE')
+  })
+
+  it('still holds the scenario picker and the replay transport, unchanged', () => {
+    const devtools = elementByTestId(renderView(), 'market-view-devtools', 'details')
+    expect(devtools).toContain('aria-label="Fixturscenario"')
+    expect(devtools).toContain('data-testid="replay-controls"')
+    for (const label of ['Long utvecklas', 'Short utvecklas', 'A+ bekräftad', 'Risk blockerad', 'Ingen setup', 'Okänd / inaktuell']) {
+      expect(devtools).toContain(`>${label}</button>`)
+    }
+  })
+
+  it('renders the instruments in every load state, so a failed timeline can be left', () => {
+    const markup = renderViewUnseeded()
+    expect(markup).toContain('data-testid="market-view-devtools"')
+    expect(markup).toContain('aria-label="Fixturscenario"')
+  })
+})
+
+describe('the header strip', () => {
+  it('carries instrument, timeframe, bias, session and the fixture statement', () => {
+    const header = elementByTestId(renderView(), 'market-view-header', 'header')
+    expect(header).toContain('data-testid="instrument-switch"')
+    expect(header).toContain('data-testid="timeframe-switch"')
+    expect(header).toContain('aria-label="Sessionsfönster"')
+    expect(textOf(elementByTestId(header, 'market-view-bias', 'span'))).toContain('Bias LONG')
+    expect(textOf(elementByTestId(header, 'safety-banner', 'div'))).toMatch(/FIXTURDATA · Observationsläge/)
+    expect(header).toContain('data-testid="provenance-chip"')
+  })
+
+  it('reports the thesis bias of each scenario', () => {
+    for (const scenario of MARKET_VIEW_SCENARIO_IDS) {
+      const snapshot = buildFixtureSnapshot(scenario, 'NQ', '5m')
+      const bias = elementByTestId(renderHeader(snapshot), 'market-view-bias', 'span')
+      expect(bias, scenario).toContain(`data-bias="${snapshot.thesis.bias}"`)
+      expect(textOf(bias), scenario).toContain(`Bias ${snapshot.thesis.bias}`)
+    }
+  })
+
+  it('takes bias from the thesis, not from the setup direction', () => {
+    const base = buildFixtureSnapshot('long-developing', 'NQ', '5m')
+    const markup = renderHeader({
+      ...base,
+      thesis: { ...base.thesis, bias: 'SHORT' },
+      setup: { ...base.setup, direction: 'LONG' },
+    })
+    const bias = elementByTestId(markup, 'market-view-bias', 'span')
+    // Every fixture has thesis bias equal to setup direction, so only this
+    // constructed disagreement can tell the two sources apart.
+    expect(bias).toContain('data-bias="SHORT"')
+    expect(textOf(bias)).toContain('Bias SHORT')
+  })
+
+  it('names the origin first and any outranking safety state beside it', () => {
+    const stale = textOf(elementByTestId(
+      renderHeader(buildFixtureSnapshot('unknown-stale', 'NQ', '5m')), 'safety-banner', 'div',
+    ))
+    expect(stale).toMatch(/FIXTURDATA · INAKTUELL · Observationsläge/)
+    const blocked = textOf(elementByTestId(
+      renderHeader(buildFixtureSnapshot('risk-blocked', 'NQ', '5m')), 'safety-banner', 'div',
+    ))
+    expect(blocked).toMatch(/FIXTURDATA · BLOCKERAD · Observationsläge/)
+  })
+
+  it('names the origin even before a timeline has loaded, and claims no bias', () => {
+    const markup = renderHeader(null, 'LOADING')
+    expect(textOf(elementByTestId(markup, 'safety-banner', 'div'))).toMatch(/FIXTURDATA · LADDAR · Observationsläge/)
+    expect(markup).not.toContain('data-testid="market-view-bias"')
+  })
+
+  it('stops claiming observation mode if a proposal ever reports itself executable', () => {
+    const base = buildFixtureSnapshot('long-developing', 'NQ', '5m')
+    // No fixture can produce this; the header must still not reassure.
+    const markup = renderHeader({
+      ...base,
+      tradeProposal: { ...base.tradeProposal, status: 'APPROVED' as never },
+    })
+    const safety = elementByTestId(markup, 'safety-banner', 'div')
+    expect(safety).toContain('data-executable="true"')
+    expect(textOf(safety)).not.toContain('Observationsläge')
+  })
+})
+
+describe('the setup grade sits on the chart', () => {
+  it('renders the reported grade and stage inside the chart overlay, in every scenario', () => {
+    for (const scenario of MARKET_VIEW_SCENARIO_IDS) {
+      const snapshot = buildFixtureSnapshot(scenario, 'NQ', '5m')
+      const overlay = elementByTestId(renderShell(snapshot), 'chart-overlay', 'div')
+      const chip = elementByTestId(overlay, 'chart-setup-grade', 'span')
+      // The chip's OWN attributes: the grade badge inside it carries a
+      // data-grade of its own, which would otherwise satisfy this for the chip.
+      const opening = chip.slice(0, chip.indexOf('>') + 1)
+      expect(opening, scenario).toContain(`data-grade="${snapshot.setup.grade}"`)
+      expect(opening, scenario).toContain(`data-stage="${snapshot.setup.stage}"`)
+      const gradeText = snapshot.setup.grade === 'NONE' ? 'INGEN' : snapshot.setup.grade
+      expect(textOf(chip), scenario).toContain(gradeText)
+      expect(textOf(chip), scenario).toContain('Setup')
+    }
+  })
+
+  it('names the stage beside the grade when there is a setup', () => {
+    const snapshot = buildFixtureSnapshot('a-plus-confirmed', 'NQ', '5m')
+    const chip = textOf(elementByTestId(renderShell(snapshot), 'chart-setup-grade', 'span'))
+    expect(chip).toMatch(/A\+ Setup · BEKRÄFTAD/)
+  })
+
+  it('reads "INGEN Setup" rather than repeating the absence', () => {
+    const snapshot = buildFixtureSnapshot('neutral-no-setup', 'NQ', '5m')
+    expect(snapshot.setup.stage).toBe('NONE')
+    const chip = textOf(elementByTestId(renderShell(snapshot), 'chart-setup-grade', 'span'))
+    expect(chip).toBe('INGEN Setup')
+  })
+
+  it('keeps the provenance and proposal badges in the same overlay', () => {
+    const overlay = elementByTestId(renderView(), 'chart-overlay', 'div')
+    expect(overlay).toContain('data-testid="chart-origin-badge"')
+    expect(overlay).toContain('data-testid="chart-proposal-badge"')
+  })
+})
+
+describe('performance is declared unavailable, without numbers', () => {
+  it('states "Ej tillgänglig i Stage 1" in the collapsed summary', () => {
+    const section = elementByTestId(renderView(), 'market-view-performance', 'details')
+    const opening = section.slice(0, section.indexOf('>') + 1)
+    expect(opening).not.toMatch(/\sopen(=|>|\s)/)
+    const summary = textOf(section.slice(section.indexOf('<summary'), section.indexOf('</summary>')))
+    expect(summary).toContain('Prestanda')
+    expect(summary).toContain('Ej tillgänglig i Stage 1')
+  })
+
+  it('draws every slot as an explicit unknown', async () => {
+    const { PERFORMANCE_SLOTS } = await import('./PerformanceSection')
+    const section = elementByTestId(renderView(), 'market-view-performance', 'details')
+    for (const slot of PERFORMANCE_SLOTS) expect(section).toContain(`>${slot}</dt>`)
+    expect((section.match(/>—</g) ?? []).length).toBe(PERFORMANCE_SLOTS.length)
+  })
+
+  it('renders no figure at all', () => {
+    const text = textOf(elementByTestId(renderView(), 'market-view-performance', 'details'))
+    // "Stage 1" is the only digit allowed: a name, not a measurement.
+    expect(text.replace(/Stage 1/g, '')).not.toMatch(/\d/)
+    // Currency and percentage marks as standalone tokens ("kräver" is not "kr").
+    expect(text).not.toMatch(/%|\$|(^|\s)(kr|SEK|USD)(?=\s|[.,]|$)/)
   })
 })

@@ -42,6 +42,10 @@ export interface BoxStyle {
   readonly fill: string
   readonly stroke: string
   readonly label: string
+  /** Stroke dash pattern in pixels. Absent means a solid edge. */
+  readonly dash?: readonly number[]
+  /** Label colour when it should not follow the stroke. Absent means the stroke colour. */
+  readonly labelColor?: string
 }
 
 export type BoxStyleResolver = (box: ChartBox) => BoxStyle
@@ -100,10 +104,14 @@ class BoxRenderer implements IPrimitivePaneRenderer {
 
         context.strokeStyle = style.stroke
         context.lineWidth = 1
+        // The dash is reset after every box: canvas state outlives this call,
+        // and a dashed iFVG must not leak its pattern into the next solid edge.
+        context.setLineDash(style.dash === undefined ? [] : [...style.dash])
         context.strokeRect(crisp(left), crisp(top), width, height)
+        context.setLineDash([])
 
         if (style.label.length > 0 && width > 42) {
-          context.fillStyle = style.stroke
+          context.fillStyle = style.labelColor ?? style.stroke
           context.font = '10px ui-sans-serif, system-ui, sans-serif'
           context.textBaseline = 'top'
           context.fillText(style.label, left + 5, top + 3)

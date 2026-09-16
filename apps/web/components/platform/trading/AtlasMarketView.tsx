@@ -39,6 +39,7 @@ import { TRADING_WORKSPACE_ID } from '@/lib/atlas/first-party-workspaces'
 import { ChartShell, fullscreenOwnsEscape } from './ChartShell'
 import { MarketViewHeader } from './MarketViewHeader'
 import { ExplanationSurface } from './ExplanationSurface'
+import { PerformanceSection } from './PerformanceSection'
 import { ReplayControls } from './ReplayControls'
 import { SourceStatus } from './SourceStatus'
 import { ObservedPositionsPanel, PlannedTradesPanel } from './PositionPanels'
@@ -85,6 +86,15 @@ import styles from './AtlasMarketView.module.css'
  *
  * The cursor starts at the END of the timeline, so the workspace opens on the
  * same state Stage 1 showed. Reset walks it back to the beginning.
+ *
+ * CHART-FIRST COMPOSITION
+ * ───────────────────────
+ * Header strip, then the chart and its analysis rail, then the secondary
+ * sections. The fixture scenario picker and the replay transport are
+ * development instruments, not market surface, so they live in a collapsed
+ * "Utvecklarverktyg · FIXTURE" section under the chart instead of between the
+ * header and the chart. They are the same controls driving the same cursor;
+ * only where they sit changed.
  */
 
 const DEFAULT_SCENARIO: MarketViewScenarioId = 'long-developing'
@@ -289,40 +299,6 @@ export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) 
         onTimeframeChange={setTimeframe}
       />
 
-      <div className={styles.scenarioBar} role="group" aria-label="Fixturscenario">
-        <span className={styles.scenarioLabel}>Fixturscenario</span>
-        {MARKET_VIEW_SCENARIOS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            className={styles.scenarioButton}
-            aria-pressed={entry.id === scenario}
-            data-active={entry.id === scenario || undefined}
-            title={entry.summary}
-            onClick={() => setScenario(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      <ReplayControls
-        cursor={cursor}
-        events={timeline?.events ?? []}
-        marketTimeLabel={snapshot?.sessionState.canonicalTime ?? '—'}
-        marketZoneLabel={
-          snapshot === null
-            ? 'ingen tidslinje'
-            : `${snapshot.sessionState.timezone} ${snapshot.sessionState.utcOffset}`
-        }
-        onPlayPause={() => setCursor((c) => (c.playing ? pause(c) : play(c, timeline?.events ?? [])))}
-        onStepBackward={() => setCursor((c) => stepBackward(c, timeline?.events ?? []))}
-        onStepForward={() => setCursor((c) => stepForward(c, timeline?.events ?? []))}
-        onReset={() => setCursor(resetCursor)}
-        onSeek={(position) => setCursor((c) => seekTo(c, timeline?.events ?? [], position))}
-        onSpeed={(speed: PlaybackSpeed) => setCursor((c) => setSpeed(c, speed))}
-      />
-
       {projection === null || snapshot === null ? (
         <SourceStatus state={loadState} />
       ) : (
@@ -351,6 +327,59 @@ export function AtlasMarketView({ initialTimeline }: AtlasMarketViewProps = {}) 
           <ExplanationSurface explanation={snapshot.explanation} snapshot={snapshot} />
         </>
       )}
+
+      <PerformanceSection />
+
+      {/*
+        Development instruments, collapsed by default and rendered in every load
+        state — changing scenario is also how an operator leaves an unavailable
+        or failed timeline, so the controls must not depend on one existing.
+      */}
+      <details className={styles.secondarySection} data-testid="market-view-devtools">
+        <summary className={styles.secondarySummary}>
+          <span className={styles.secondaryTitle}>
+            Utvecklarverktyg
+            <span className={styles.secondarySeparator} aria-hidden="true">·</span>
+            <span className={styles.devtoolsBadge}>FIXTURE</span>
+          </span>
+          <span className={styles.secondaryHint}>Fixturscenario och replay-transport</span>
+        </summary>
+        <div className={styles.secondaryBody}>
+          <div className={styles.scenarioBar} role="group" aria-label="Fixturscenario">
+            <span className={styles.scenarioLabel}>Fixturscenario</span>
+            {MARKET_VIEW_SCENARIOS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={styles.scenarioButton}
+                aria-pressed={entry.id === scenario}
+                data-active={entry.id === scenario || undefined}
+                title={entry.summary}
+                onClick={() => setScenario(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+
+          <ReplayControls
+            cursor={cursor}
+            events={timeline?.events ?? []}
+            marketTimeLabel={snapshot?.sessionState.canonicalTime ?? '—'}
+            marketZoneLabel={
+              snapshot === null
+                ? 'ingen tidslinje'
+                : `${snapshot.sessionState.timezone} ${snapshot.sessionState.utcOffset}`
+            }
+            onPlayPause={() => setCursor((c) => (c.playing ? pause(c) : play(c, timeline?.events ?? [])))}
+            onStepBackward={() => setCursor((c) => stepBackward(c, timeline?.events ?? []))}
+            onStepForward={() => setCursor((c) => stepForward(c, timeline?.events ?? []))}
+            onReset={() => setCursor(resetCursor)}
+            onSeek={(position) => setCursor((c) => seekTo(c, timeline?.events ?? [], position))}
+            onSpeed={(speed: PlaybackSpeed) => setCursor((c) => setSpeed(c, speed))}
+          />
+        </div>
+      </details>
 
       <p className={styles.keyboardHint}>← → byt instrument · Esc eller Backspace tillbaka till Atlas</p>
     </div>

@@ -127,15 +127,32 @@ const ROUTE_HINTS: readonly RouteHints[] = [
   {
     // components/platform/intelligence/GraphCanvas.tsx — handleCanvasKeyDown
     // and the per-node handler. These need canvas focus, which Tab reaches.
+    //
+    // Traced key by key, because the previous set had drifted:
+    //   arrows   per-node handler → focusDirectionalNode
+    //   Enter    per-node handler → selects; on the selected node, drills in
+    //   Space    per-node handler → selects
+    //   I        per-node handler → onIsolate (both generations pass it)
+    //   /        canvas → onSearchRequest
+    //   F        canvas → fits the selected neighbourhood (needs a selection)
+    //   + −      canvas → '+' or '=' zooms in, '-' zooms out
+    //   0        canvas → fit
+    //   Esc      canvas → onEscape: leaves isolate, steps back out of a
+    //            drilldown, or clears the selection — not only the last
+    //
+    // I and Space are the lowest priority on purpose: ⌘K keeps its place in the
+    // bar at 1440px, and Space repeats what Enter already does.
     base: '/intelligence/graph',
     hints: [
       { keys: ['←', '→', '↑', '↓'], label: 'navigera noder', priority: 0 },
-      { keys: ['Enter'], label: 'inspektera', priority: 1 },
+      { keys: ['Enter'], label: 'välj · fördjupa', priority: 1 },
       { keys: ['/'], label: 'sök', priority: 1 },
       { keys: ['F'], label: 'fokusera urval', priority: 2 },
       { keys: ['+', '−'], label: 'zooma', priority: 2 },
       { keys: ['0'], label: 'anpassa', priority: 2 },
-      { keys: ['Esc'], label: 'rensa urval', priority: 1 },
+      { keys: ['Esc'], label: 'tillbaka · rensa urval', priority: 1 },
+      { keys: ['I'], label: 'isolera', priority: 4 },
+      { keys: ['Space'], label: 'välj', priority: 4 },
     ],
   },
 ]

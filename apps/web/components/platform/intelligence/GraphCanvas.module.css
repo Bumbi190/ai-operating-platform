@@ -16,6 +16,11 @@
   filter: brightness(1.12) drop-shadow(0 0 5px rgb(129 140 248 / 30%));
 }
 
+/* vNext: a neutral glow. Cyan is the running status and must not appear on hover. */
+.canvas[data-appearance='vnext'] .node:hover .identity {
+  filter: brightness(1.12) drop-shadow(0 0 5px rgb(245 249 255 / 26%));
+}
+
 .statusRing {
   transition: opacity 140ms ease;
 }

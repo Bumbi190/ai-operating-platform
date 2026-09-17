@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import { LogStream } from '@/components/platform/LogStream'
@@ -11,8 +12,37 @@ import { WorkflowStepGraph } from '@/components/platform/WorkflowStepGraph'
 import { ResumeRunButton } from '@/components/platform/ResumeRunButton'
 import { OSPage, OSLayer, ViewSelectionSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { loadRunDetail } from '@/lib/os/project-workspace'
+import { RunDetail, WorkspaceReadError } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function RunDetailPage({
+  params,
+}: {
+  params: { slug: string; id: string }
+}) {
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({ cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null })
+  if (!isVNext(generation)) return <RunDetailLegacy params={params} />
+
+  const result = await loadRunDetail(params.id, project)
+  if (result.kind === 'not_found') notFound()
+  if (result.kind === 'error') {
+    return <WorkspaceReadError project={{ id: project.id, name: project.name, slug: project.slug, color: project.color, href: `/projects/${project.slug}` }} section="Körning" />
+  }
+
+  return (
+    <>
+      <ViewSelectionSync refs={[{ domain: 'runs', id: result.model.run.id, label: result.model.run.workflowName ?? 'Körning' }]} />
+      <RunDetail model={result.model} />
+    </>
+  )
+}
+
+async function RunDetailLegacy({
   params,
 }: {
   params: { slug: string; id: string }

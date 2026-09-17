@@ -1,12 +1,36 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { FileOutput } from 'lucide-react'
 import Link from 'next/link'
 import { OutputCard } from './OutputCard'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { loadWorkspaceOutputs } from '@/lib/os/project-workspace'
+import { ProjectOutputs } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function OutputsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ all?: string }>
+}) {
+  const { slug } = await params
+  const project = await getProjectBySlug(slug)
+  if (!project) notFound()
+
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({ cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null })
+  if (!isVNext(generation)) return <OutputsLegacy params={params} searchParams={searchParams} />
+
+  const { all } = await searchParams
+  const model = await loadWorkspaceOutputs(project, all === 'today' ? 'today' : 'all')
+  return <ProjectOutputs model={model} />
+}
+
+async function OutputsLegacy({
   params,
   searchParams,
 }: {

@@ -1,42 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { cookies } from 'next/headers'
-import EditWorkflowClient from './EditWorkflowClient'
+import EditWorkflowClient from '../EditWorkflowClient'
 import type { Agent } from '@/lib/supabase/types'
 import { parseWorkflowSteps } from '@/lib/supabase/json'
 import { ViewSelectionSync } from '@/components/platform/os'
-import { getProjectBySlug } from '@/lib/project/get-project'
-import { loadWorkflowDetail } from '@/lib/os/project-workspace'
-import { WorkflowDetail, WorkspaceReadError } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
-import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
-export default async function WorkflowPage({
-  params,
-}: {
-  params: { slug: string; id: string }
-}) {
-  const project = await getProjectBySlug(params.slug)
-  if (!project) notFound()
-
-  const cookieStore = await cookies()
-  const generation = resolveUiGeneration({ cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null })
-  if (!isVNext(generation)) return <WorkflowLegacy params={params} />
-
-  const result = await loadWorkflowDetail(params.id, project)
-  if (result.kind === 'not_found') notFound()
-  if (result.kind === 'error') {
-    return <WorkspaceReadError project={{ ...project, href: `/projects/${project.slug}` }} section="Workflow" />
-  }
-
-  return (
-    <>
-      <ViewSelectionSync refs={[{ domain: 'workflows', id: result.model.workflow.id, label: result.model.workflow.name }]} />
-      <WorkflowDetail model={result.model} />
-    </>
-  )
-}
-
-async function WorkflowLegacy({
+/**
+ * Explicit vNext edit destination. The editor component and its scoped reads
+ * are intentionally identical to the pre-B1 workflow detail implementation.
+ */
+export default async function EditWorkflowPage({
   params,
 }: {
   params: { slug: string; id: string }

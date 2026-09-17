@@ -20,38 +20,58 @@
  *    a stored reference, a current definition or a derivation — through
  *    `lib/os/intelligence-graph-shared.ts`, which can lower a class but never
  *    raise one. The API keys are untouched.
- *  - WHAT A COUNT COVERS. The strip counts this payload, names the run window
- *    and the builder's cap, and says which rows only appear through a run.
+ *  - WHAT A COUNT COVERS. The snapshot box counts this payload and names the
+ *    run window; the legend's explanation names the builder's cap and which
+ *    rows only appear through a run.
+ *
+ * CANVAS FIRST (Phase 18 T2a). The page is exactly as tall as the shell leaves
+ * it, and the canvas takes everything the header and the one control row do
+ * not. What describes the view — place, scope, filters, zoom, legend — lives on
+ * the canvas; the inspector is a right panel whose width the operator sets, and
+ * which can be put away without losing the selection. The shell's floating
+ * Atlas launcher and activity peek own the bottom-right corner of the viewport,
+ * so nothing interactive here is placed under them (see the stylesheet).
  *
  * No Atlas node and no Atlas edge: Atlas is this page's identity, not a datum
  * the graph has a source for.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, Maximize2, Minimize2, RotateCcw, RotateCw, Search, X } from 'lucide-react'
-import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
-import { GraphCanvas, nodeColor } from '@/components/platform/intelligence/GraphCanvas'
-import type { GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
 import {
-  RUN_STATUS_FILTERS,
-  TIME_FILTERS,
-  toggle,
-  useIntelligenceGraph,
-} from '@/components/platform/intelligence/useIntelligenceGraph'
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import type { IntelligenceGraphEdge } from '@/lib/intelligence/graph-contract'
+import { GraphCanvas, type GraphChromeRect, type GraphSpatialOptions } from '@/components/platform/intelligence/GraphCanvas'
+import { classifySpatialAspect, projectMonogram, type SpatialAnchor } from '@/components/platform/intelligence/spatial-layout'
+import { nodeColor, projectAccent, type GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
+import { TIME_FILTERS, useIntelligenceGraph } from '@/components/platform/intelligence/useIntelligenceGraph'
 import {
+  INSPECTOR_WIDTH,
+  INSPECTOR_WIDTH_STORAGE_KEY,
   OPERATIONS_RUN_CAP,
+  RELATION_TRUTH_COPY,
   RELATION_TRUTH_STROKE,
   ZOOM_LEVEL_LABELS,
+  clampInspectorWidth,
   graphLocation,
-  kindFilterLabel,
-  kindLabel,
   nodeStatus,
+  inspectorMaxWidth,
+  parseStoredInspectorWidth,
   relationLegend,
   relationTruth,
   relationWording,
   snapshotCounts,
+  snapshotFigures,
   snapshotStamp,
 } from '@/lib/os/intelligence-graph-shared'
+import { IntelligenceGraphControls } from './IntelligenceGraphControls'
+import { GraphLegend, GraphPlace, SnapshotSummary } from './IntelligenceGraphHud'
 import { IntelligenceGraphInspector } from './IntelligenceGraphInspector'
 import styles from './IntelligenceGraphVNext.module.css'
 
@@ -63,10 +83,69 @@ export function truthEdgeVisual(edge: IntelligenceGraphEdge, visual: GraphEdgeVi
 
 const REPLAY_UNAVAILABLE = 'Kräver händelsedata per steg, som Omnira inte registrerar ännu.'
 
+const GRAPH_ABOUT = 'Hur Omnira hänger ihop — ritat enbart ur data som finns, med källan synlig för varje koppling.'
+
+/** What the spatial Live Operations view adds to the explanation — its two rules, in the product's words. */
+const SPATIAL_ABOUT = `${GRAPH_ABOUT} Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger. Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan. Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats, när du väljer den, eller när du fördjupar dig i dess workflow. På en bredare skärm visar översikten ett urval av högst tre workflows per projekt, med antalet körningar under namnet: först de vars körningar visas för sig, sedan de med flest körningar i fönstret och aktiva före inaktiva; lika viktiga sprids runt projektet. Antalen under projektet räknar alla — zooma in eller fördjupa dig i projektet för resten.`
+
+/** The legend line for Atlas's links: derived from the caller owning the project, never stored. */
+const ATLAS_LINK_RELATION = 'Atlas → projekt du äger (ägarskap)'
+
+function runStatusWords(status: string): string {
+  return nodeStatus({ kind: 'run', status })?.label.toLowerCase() ?? status
+}
+
+const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
+  atlasLabel: 'Atlas',
+  atlasSubtitle: 'Omniras identitet',
+  atlasDescription: 'Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten.',
+  clusterCount: cluster => (cluster.kind === 'older' ? `+${cluster.count}` : String(cluster.count)),
+  clusterCaption: cluster => (cluster.kind === 'older'
+    ? 'äldre'
+    : cluster.kind === 'no-workflow'
+      ? 'utan workflow'
+      : cluster.count === 1 ? 'körning' : 'körningar'),
+  unlinkedAgents: count => [`${count} ${count === 1 ? 'agent' : 'agenter'}`, 'som inget workflow nämner'] as const,
+  hubDescription: hub => (hub.orbit === 'calm'
+    ? `${hub.subtext} · inga körningar i fönstret och inget aktivt workflow`
+    : hub.subtext),
+  previewCaption: (shown, total) => `Visar ${shown} av ${total} ${total === 1 ? 'workflow' : 'workflows'}`,
+  clusterDescription: (cluster, parentLabel) => {
+    const distribution = cluster.distribution.map(entry => `${entry.count} ${runStatusWords(entry.status)}`).join(', ')
+    if (cluster.kind === 'older') return `${parentLabel}: ${cluster.count} äldre körningar i fönstret (${distribution})`
+    if (cluster.kind === 'no-workflow') return `${cluster.count} körningar utan workflow-referens (${distribution})`
+    return `${parentLabel}: ${cluster.count} ${cluster.count === 1 ? 'körning' : 'körningar'} i fönstret (${distribution})`
+  },
+  statusWord: node => nodeStatus(node)?.label.toLowerCase() ?? null,
+}
+
+/**
+ * One row of controls on the canvas, edge inset included: 0.625rem from the
+ * edge, a 2rem control, 0.5rem of air. The stylesheet places `.hudTop`,
+ * `.zoomDock` and `.legend` on the same measures.
+ */
+const HUD_ROW_REM = 3.125
+
+/** The root font size in px — rem is what the display-scale preference changes. */
+function rootFontPx(): number {
+  if (typeof window === 'undefined') return 16
+  const value = parseFloat(window.getComputedStyle(document.documentElement).fontSize)
+  return Number.isFinite(value) && value > 0 ? value : 16
+}
+
 export function IntelligenceGraphVNext() {
-  const workspaceRef = useRef<HTMLDivElement>(null)
+  // The fullscreen target is the whole page body — header included — so the
+  // snapshot's time and Uppdatera stay on screen in fullscreen too (book ¶751).
+  const fieldRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const canvasFrameRef = useRef<HTMLDivElement>(null)
+  const floatProbeRef = useRef<HTMLSpanElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
+  const inspectorRef = useRef<HTMLElement>(null)
+  const showInspectorRef = useRef<HTMLButtonElement>(null)
   const zoomSequence = useRef(0)
+  const graph = useIntelligenceGraph()
   const {
     cameraRef,
     navigationHistory,
@@ -75,9 +154,6 @@ export function IntelligenceGraphVNext() {
     projectFilter,
     setProjectFilter,
     hours,
-    setHours,
-    statusFilter,
-    setStatusFilter,
     data,
     loading,
     error,
@@ -85,10 +161,6 @@ export function IntelligenceGraphVNext() {
     setSelected,
     fitSignal,
     setFitSignal,
-    kindFilter,
-    setKindFilter,
-    relationFilter,
-    setRelationFilter,
     drillScope,
     isolateScope,
     cameraCommand,
@@ -97,45 +169,33 @@ export function IntelligenceGraphVNext() {
     setZoomLevel,
     searchResultId,
     setSearchResultId,
-    query,
-    setQuery,
-    searchPending,
     nodes,
     edges,
     filterState,
     dimmedIds,
     dimmedEdgeIds,
     filtersActive,
-    visibleHits,
-    presentKinds,
-    presentRelations,
     selectedEdges,
     neighborNodes,
     drillIn,
     isolateNode,
     exitIsolate,
     goBack,
-    openSearchHit,
     clearFilters,
-    resetView,
-    resetAll,
     handleEscape,
-    switchMode,
     refresh,
     unavailable,
-  } = useIntelligenceGraph()
+  } = graph
   const [fullscreen, setFullscreen] = useState(false)
-  // Narrow screens fold the filter chips behind one button; wide screens ignore it.
-  const [filtersOpen, setFiltersOpen] = useState(false)
 
   useEffect(() => {
-    const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === workspaceRef.current)
+    const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === fieldRef.current)
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
   const toggleFullscreen = useCallback(async () => {
-    const element = workspaceRef.current
+    const element = fieldRef.current
     if (!element || typeof document === 'undefined') return
     try {
       if (document.fullscreenElement === element) await document.exitFullscreen()
@@ -150,6 +210,144 @@ export function IntelligenceGraphVNext() {
     setCameraCommand({ nonce: zoomSequence.current, type })
   }, [setCameraCommand])
 
+  // ── Inspector panel: width and visibility ──────────────────────────────────
+  // `inspectorWidth` is the operator's preference; what renders is that
+  // preference clamped to the stage on screen, so a narrow window never
+  // squeezes the canvas and a wide one gives the preference back.
+  const [inspectorWidth, setInspectorWidth] = useState<number>(INSPECTOR_WIDTH.default)
+  const [stageRem, setStageRem] = useState(0)
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
+  const [rootPx, setRootPx] = useState(16)
+  // Below 768px the zoom controls move to the canvas's top edge (see the stylesheet).
+  const [narrow, setNarrow] = useState(false)
+  const [resizing, setResizing] = useState(false)
+  // The selection whose panel was put away. Selecting anything else opens it again.
+  const [hiddenFor, setHiddenFor] = useState<string | null>(null)
+  const dragRef = useRef<{ pointerId: number; startX: number; startRem: number; rootPx: number; stageRem: number; latest: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      const stored = parseStoredInspectorWidth(window.localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY))
+      if (stored !== null) setInspectorWidth(stored)
+    } catch {
+      // Storage unavailable: the default width stands.
+    }
+  }, [])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const measure = () => {
+      const px = rootFontPx()
+      setRootPx(px)
+      setStageRem(stage.clientWidth / px)
+      setStageSize(current => current.width === stage.clientWidth && current.height === stage.clientHeight
+        ? current
+        : { width: stage.clientWidth, height: stage.clientHeight })
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!selected) setHiddenFor(null)
+  }, [selected])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(max-width: 767px)')
+    const update = () => setNarrow(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  const renderedWidth = clampInspectorWidth(inspectorWidth, stageRem)
+  const widthMax = inspectorMaxWidth(stageRem)
+  const inspectorVisible = Boolean(selected) && hiddenFor !== selected?.id
+
+  // On a phone, a drilled level opens with its own inspector put away: the sheet would cover the
+  // level just opened. The selection stays, and "Visa inspektören" brings the panel back.
+  const drillRootId = drillScope?.rootId ?? null
+  useEffect(() => {
+    if (narrow && drillRootId && selected?.id === drillRootId) setHiddenFor(drillRootId)
+    // Only a new drill-down (or becoming narrow) puts it away — never the operator's own choice to show it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrow, drillRootId])
+
+  const commitInspectorWidth = useCallback((rem: number) => {
+    setInspectorWidth(rem)
+    try {
+      window.localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(rem))
+    } catch {
+      // A width that cannot be remembered still applies to this visit.
+    }
+  }, [])
+
+  const onResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !dockRef.current || !stageRef.current) return
+    const rootPx = rootFontPx()
+    const startRem = dockRef.current.getBoundingClientRect().width / rootPx
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startRem,
+      rootPx,
+      stageRem: stageRef.current.clientWidth / rootPx,
+      latest: startRem,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.preventDefault()
+    setResizing(true)
+  }, [])
+
+  const onResizePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    // The panel is on the right: moving the handle left widens it.
+    const next = clampInspectorWidth(drag.startRem + (drag.startX - event.clientX) / drag.rootPx, drag.stageRem)
+    if (next === drag.latest) return
+    drag.latest = next
+    // Straight to the element while dragging; React hears about it once, on release.
+    dockRef.current?.style.setProperty('--ig-inspector-width', `${next}rem`)
+  }, [])
+
+  const onResizePointerEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setResizing(false)
+    commitInspectorWidth(drag.latest)
+  }, [commitInspectorWidth])
+
+  const onResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? INSPECTOR_WIDTH.largeStep : INSPECTOR_WIDTH.step
+    let next: number | null = null
+    if (event.key === 'ArrowLeft') next = renderedWidth + step
+    else if (event.key === 'ArrowRight') next = renderedWidth - step
+    else if (event.key === 'Home') next = INSPECTOR_WIDTH.min
+    else if (event.key === 'End') next = widthMax
+    if (next === null) return
+    event.preventDefault()
+    commitInspectorWidth(clampInspectorWidth(next, stageRem))
+  }, [commitInspectorWidth, renderedWidth, stageRem, widthMax])
+
+  const hideInspector = useCallback(() => {
+    if (!selected) return
+    setHiddenFor(selected.id)
+    // The panel's buttons are gone; focus goes to the control that brings it back.
+    requestAnimationFrame(() => showInspectorRef.current?.focus())
+  }, [selected])
+
+  const showInspector = useCallback(() => {
+    setHiddenFor(null)
+    requestAnimationFrame(() => inspectorRef.current?.focus())
+  }, [])
+
+  // ── What is on screen ──────────────────────────────────────────────────────
   const canvasMode = mode === 'operations' ? 'operations' : 'system'
   // While a new mode loads, the previous payload is still in state. Nothing is
   // stamped, counted or explained from a payload that is not this mode's.
@@ -166,315 +364,182 @@ export function IntelligenceGraphVNext() {
   }, [canvasMode, data, error, loading, mode, payloadIsCurrent, unavailable])
 
   const counts = useMemo(() => snapshotCounts(nodes), [nodes])
-  const legend = useMemo(() => relationLegend(edges), [edges])
-  const location = graphLocation(canvasMode, communityId, drillScope?.label ?? null, isolateScope?.label ?? null)
+  // ── Spatial Live Operations ──────────────────────────────────────────────────
+  // The drill-down decides the level; an agent opens its project. The aspect class
+  // comes from the stage — which the inspector does not resize — less the constant
+  // HUD bands, so opening a panel or a filter never re-lays the graph.
+  const spatialAnchor = useMemo<SpatialAnchor>(() => {
+    if (!drillScope) return { level: 'portfolio' }
+    if (drillScope.kind === 'project' && drillScope.projectId) return { level: 'project', projectId: drillScope.projectId }
+    if (drillScope.kind === 'workflow') return { level: 'workflow', workflowId: drillScope.rootId }
+    if (drillScope.kind === 'run') return { level: 'run', runId: drillScope.rootId }
+    const root = nodes.find(node => node.id === drillScope.rootId)
+    return root?.projectId ? { level: 'project', projectId: root.projectId } : { level: 'portfolio' }
+  }, [drillScope, nodes])
+  const spatialAspect = classifySpatialAspect(stageSize.width, stageSize.height - 2 * HUD_ROW_REM * rootPx)
+  const atlasLinked = spatialAnchor.level === 'portfolio' || spatialAnchor.level === 'project'
+
+  const legend = useMemo(() => {
+    const entries = relationLegend(edges)
+    if (canvasMode !== 'operations' || !atlasLinked) return entries
+    // The Atlas links are drawn in the derived style, so the legend names them as derived.
+    const derived = entries.find(entry => entry.truth === 'derived')
+    if (derived) return entries.map(entry => (entry === derived ? { ...entry, relations: [...entry.relations, ATLAS_LINK_RELATION] } : entry))
+    return [...entries, { truth: 'derived' as const, ...RELATION_TRUTH_COPY.derived, relations: [ATLAS_LINK_RELATION] }]
+  }, [edges, canvasMode, atlasLinked])
+  // The isolation has its own chip beside the place, so the place does not repeat it.
+  const location = graphLocation(canvasMode, communityId, drillScope?.label ?? null, null)
   const windowLabel = TIME_FILTERS.find(filter => filter.hours === hours)?.label ?? `${hours} h`
   const runCount = counts.items.find(item => item.kind === 'run')?.value ?? 0
   const showBack = communityId !== null || Boolean(drillScope) || Boolean(isolateScope) || navigationHistory.current.length > 0
+  const figures = payloadIsCurrent && !unavailable && !error ? snapshotFigures(canvasMode, counts) : null
+  const scopedProject = canvasMode === 'operations' && projectFilter !== 'all'
+    ? data?.projects?.find(project => project.id === projectFilter)?.name ?? 'valt projekt'
+    : null
 
-  const activeFilterCount = kindFilter.size + relationFilter.size + statusFilter.size
-  const hasFilterGroups = mode === 'operations' || presentKinds.length > 1 || presentRelations.length > 1
-  const hasFilterRow = hasFilterGroups || filtersActive || filterState.criticalOutsideFilters > 0 || Boolean(data?.truncated && mode === 'system')
+  // What the canvas's own corners cover. The place row shows only when it has
+  // something to say; zoom and the legend sit along the bottom (zoom moves to
+  // the top on a narrow screen). The canvas keeps nodes out of these bands.
+  const placeShown = showBack
+    || location.length > 1
+    || Boolean(isolateScope)
+    || Boolean(scopedProject)
+    || filtersActive
+    || filterState.criticalOutsideFilters > 0
+    || Boolean(data?.truncated && mode === 'system')
+    || Boolean(selected && !inspectorVisible)
+  const spatial = useMemo<GraphSpatialOptions | undefined>(() => (canvasMode === 'operations'
+    ? {
+      anchor: spatialAnchor,
+      aspect: spatialAspect,
+      onAtlasActivate: () => {
+        if (drillScope || isolateScope) graph.resetView()
+        else setFitSignal(value => value + 1)
+      },
+      atlasLinkVisual: { stroke: '#a5b4fc', opacity: 0.34, dash: RELATION_TRUTH_STROKE.derived.dash, width: 1.2 },
+      copy: SPATIAL_COPY,
+    }
+    : undefined), [canvasMode, spatialAnchor, spatialAspect, drillScope, isolateScope, graph.resetView, setFitSignal])
+
+  // What lies over the canvas, in canvas px: its own controls (the place row item by item, the zoom
+  // dock, the legend bar) and the shell's floating corner. Texts keep out of it and receded context
+  // gives way to it; the camera does not move for it. Measured, because a phone wraps the place row.
+  const [chromeRects, setChromeRects] = useState<ReadonlyArray<GraphChromeRect>>([])
+  const measureChrome = useCallback(() => {
+    const frame = canvasFrameRef.current
+    const probe = floatProbeRef.current
+    if (!frame || !probe || typeof window === 'undefined') return
+    // In the canvas's own px: the drawing surface sits inside the frame's border.
+    const canvas = (frame.querySelector('svg[role="group"]') ?? frame).getBoundingClientRect()
+    const clipped = (left: number, top: number, right: number, bottom: number): GraphChromeRect | null => {
+      const x1 = Math.max(left, canvas.left)
+      const y1 = Math.max(top, canvas.top)
+      const x2 = Math.min(right, canvas.right)
+      const y2 = Math.min(bottom, canvas.bottom)
+      return x2 > x1 && y2 > y1
+        ? { x: Math.floor(x1 - canvas.left), y: Math.floor(y1 - canvas.top), width: Math.ceil(x2 - x1), height: Math.ceil(y2 - y1) }
+        : null
+    }
+    const next = [
+      ...frame.querySelectorAll<HTMLElement>('[data-graph-chrome-items] > *, [data-graph-chrome]'),
+    ].flatMap(element => {
+      if (element.closest('[hidden]')) return []
+      const box = element.getBoundingClientRect()
+      const rect = box.width > 0 && box.height > 0 ? clipped(box.left, box.top, box.right, box.bottom) : null
+      return rect ? [rect] : []
+    })
+    const corner = clipped(window.innerWidth - probe.offsetWidth, window.innerHeight - probe.offsetHeight, window.innerWidth, window.innerHeight)
+    if (corner) next.push(corner)
+    setChromeRects(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+  }, [])
+  // After every render — the controls change with the place, the selection and the filters — and on resize.
+  useEffect(() => { measureChrome() })
+  useEffect(() => {
+    const frame = canvasFrameRef.current
+    if (!frame || typeof window === 'undefined') return
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureChrome)
+    observer?.observe(frame)
+    window.addEventListener('resize', measureChrome)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measureChrome)
+    }
+  }, [measureChrome, graphVisible])
+
+  // The selection's identity as the canvas draws it: its project's colour, and a hub's monogram.
+  const selectedIdentity = useMemo(() => {
+    if (!selected) return null
+    const hub = selected.kind === 'project'
+      ? selected
+      : nodes.find(node => node.kind === 'project' && node.projectId === selected.projectId)
+    return {
+      accent: hub ? projectAccent(hub) : nodeColor(selected),
+      monogram: selected.kind === 'project' ? projectMonogram(selected.label) : undefined,
+    }
+  }, [selected, nodes])
+
+  const overlayInsets = {
+    // A phone wraps the place row under the zoom controls: two rows.
+    top: (narrow ? (placeShown ? 2 : 1) : placeShown ? 1 : 0) * HUD_ROW_REM * rootPx,
+    bottom: HUD_ROW_REM * rootPx,
+  }
+
   const relationName = (relation: string) => relationWording(
     edges.find(edge => edge.relation === relation) ?? { relation: relation as IntelligenceGraphEdge['relation'], metadata: {} },
   ).name
 
+  const snapshotNote = canvasMode === 'operations'
+    ? `${runCount === 0
+      ? `Inga körningar skapade de senaste ${windowLabel}. `
+      : `Körningar skapade de senaste ${windowLabel}, högst ${OPERATIONS_RUN_CAP} per hämtning. `}Granskningar, utdata och uppgifter visas bara när de hör till en av körningarna.`
+    : null
+
   return (
-    <div className={styles.field} data-testid="intelligence-graph-vnext" data-mode={canvasMode}>
+    <div
+      ref={fieldRef}
+      className={styles.field}
+      data-testid="intelligence-graph-vnext"
+      data-mode={canvasMode}
+      data-resizing={resizing ? 'true' : undefined}
+    >
       <div className={styles.ambient} aria-hidden />
+      {/* Measures the shell's floating corner (--ig-float-right × --ig-float-top) for the canvas's chrome. */}
+      <span ref={floatProbeRef} className={styles.floatProbe} aria-hidden />
 
       <header className={styles.header}>
+        {/* T1's lede — how the graph is drawn — now opens the canvas's Förklaring,
+            so the title and the snapshot box share one row from 1280px. */}
         <div className={styles.headline}>
           <p className={styles.eyebrow}>Atlas Intelligence</p>
           <h1 className={styles.title}>Intelligence Graph</h1>
-          <p className={styles.lede}>
-            Hur Omnira hänger ihop — ritat enbart ur data som finns, med källan synlig för varje koppling.
-          </p>
         </div>
 
-        {mode === 'operations' && (
-          <div className={styles.snapshot} data-testid="graph-snapshot">
-            <div className={styles.snapshotText}>
-              {stamp && (
-                <p className={styles.stamp} title={stamp.detail ?? undefined} aria-live="polite" data-testid="graph-stamp">
-                  {stamp.label}
-                </p>
-              )}
-              <p className={styles.stampNote}>Uppdateras inte automatiskt.</p>
-            </div>
-            <button
-              type="button"
-              className={styles.refresh}
-              onClick={refresh}
-              disabled={loading}
-              data-testid="graph-refresh"
-            >
-              <RotateCw className={styles.buttonIcon} aria-hidden />
-              {loading ? 'Uppdaterar…' : 'Uppdatera'}
-            </button>
-          </div>
-        )}
-        {mode === 'system' && stamp && (
-          <div className={styles.snapshot} data-testid="graph-snapshot">
-            <p className={styles.stamp} title={stamp.detail ?? undefined} data-testid="graph-stamp">{stamp.label}</p>
-          </div>
+        {mode !== 'replay' && (
+          <SnapshotSummary
+            mode={canvasMode}
+            stamp={stamp}
+            loading={loading}
+            onRefresh={refresh}
+            figures={figures}
+            windowLabel={windowLabel}
+            runCapReached={counts.runCapReached}
+          />
         )}
       </header>
 
-      <div ref={workspaceRef} className={styles.workspace}>
-        {/* ── Mode, place and search ── */}
-        <div className={styles.toolbar}>
-          <div className={styles.modes} role="group" aria-label="Grafläge">
-            <ModeButton active={mode === 'system'} onClick={() => switchMode('system')}>System Map</ModeButton>
-            <ModeButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Live Operations</ModeButton>
-            <ModeButton active={false} disabled title={REPLAY_UNAVAILABLE}>Execution Replay</ModeButton>
-          </div>
-
-          {showBack && (
-            <button type="button" onClick={goBack} className={styles.quietButton}>
-              <ArrowLeft className={styles.buttonIcon} aria-hidden /> Tillbaka
-            </button>
-          )}
-
-          <nav aria-label="Plats i grafen" className={styles.location}>
-            {location.map((crumb, index) => (
-              <span key={`${crumb}:${index}`} data-current={index === location.length - 1 ? 'true' : undefined}>
-                {index > 0 ? <span className={styles.locationSeparator} aria-hidden>/</span> : null}{crumb}
-              </span>
-            ))}
-          </nav>
-
-          <div className={styles.toolbarEnd}>
-            <div className={styles.search}>
-              <Search className={styles.searchIcon} aria-hidden />
-              <input
-                ref={searchInputRef}
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="Sök nod…"
-                aria-label="Sök i aktuell graf"
-                aria-controls="graph-search-results"
-                className={styles.searchInput}
-              />
-              {query.trim().length >= 2 && !searchPending && (
-                <ul id="graph-search-results" className={styles.searchResults}>
-                  {visibleHits.map(hit => {
-                    const status = hit.status ? nodeStatus({ kind: hit.kind as IntelligenceGraphNode['kind'], status: hit.status }) : null
-                    const details = [
-                      kindLabel(hit.kind),
-                      status ? (status.unknown ? `${status.label} (${status.raw})` : status.label) : null,
-                      typeof hit.community === 'number' ? `subsystem ${hit.community}` : null,
-                      hit.sourceFile ?? null,
-                    ].filter(Boolean).join(' · ')
-                    return (
-                      <li key={hit.id}>
-                        <button type="button" onClick={() => openSearchHit(hit)} className={styles.searchHit}>
-                          <span className={styles.searchHitLabel}>{hit.label}</span>
-                          <span className={styles.searchHitMeta}>{details}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                  {visibleHits.length === 0 && (
-                    <li className={styles.searchEmpty} role="status">Inga noder matchar i aktuell behörig scope.</li>
-                  )}
-                </ul>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={resetView}
-              className={styles.quietButton}
-              aria-label="Återställ vy"
-              title="Rensar val och fördjupning och anpassar vyn"
-            >
-              <RotateCcw className={styles.buttonIcon} aria-hidden /><span className={styles.buttonLabel}>Återställ vy</span>
-            </button>
-            <button
-              type="button"
-              onClick={resetAll}
-              className={styles.quietButton}
-              aria-label="Återställ allt"
-              title="Rensar även filter, sökning, isolering och historik"
-            >
-              <X className={styles.buttonIcon} aria-hidden /><span className={styles.buttonLabel}>Återställ allt</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { void toggleFullscreen() }}
-              className={styles.quietButton}
-              aria-label={fullscreen ? 'Avsluta helskärm' : 'Helskärm'}
-              title={fullscreen ? 'Avsluta helskärm' : 'Helskärm'}
-            >
-              {fullscreen ? <Minimize2 className={styles.buttonIcon} aria-hidden /> : <Maximize2 className={styles.buttonIcon} aria-hidden />}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Filters ── */}
-        {hasFilterRow && (
-          <div className={styles.filters}>
-            {mode === 'operations' && (
-              <>
-                <select
-                  value={projectFilter}
-                  onChange={event => setProjectFilter(event.target.value)}
-                  className={styles.select}
-                  aria-label="Projektfilter"
-                >
-                  <option value="all">Alla projekt</option>
-                  {(data?.projects ?? []).map(project => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
-                  ))}
-                </select>
-
-                <div className={styles.segmented} role="group" aria-label="Tidsfönster för körningar">
-                  {TIME_FILTERS.map(filter => (
-                    <button
-                      key={filter.hours}
-                      type="button"
-                      aria-pressed={hours === filter.hours}
-                      onClick={() => setHours(filter.hours)}
-                      className={styles.segment}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {hasFilterGroups && (
-              <button
-                type="button"
-                className={styles.filterToggle}
-                aria-expanded={filtersOpen}
-                aria-controls="graph-filter-groups"
-                onClick={() => setFiltersOpen(open => !open)}
-              >
-                Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-              </button>
-            )}
-
-            <div id="graph-filter-groups" className={styles.filterGroups} data-open={filtersOpen ? 'true' : 'false'}>
-              {mode === 'operations' && (
-                <div className={styles.chips} role="group" aria-label="Körningsstatus">
-                  {RUN_STATUS_FILTERS.map(filter => (
-                    <Chip key={filter.id} active={statusFilter.has(filter.id)} onClick={() => toggle(statusFilter, filter.id, setStatusFilter)}>
-                      {filter.label}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-
-              {presentKinds.length > 1 && (
-                <div className={styles.chips} role="group" aria-label="Nodtyper">
-                  {presentKinds.map(kind => (
-                    <Chip
-                      key={kind}
-                      active={kindFilter.has(kind)}
-                      onClick={() => toggle(kindFilter, kind, setKindFilter)}
-                      dotColor={nodeColor({ kind, id: '', label: '', source: 'graphify', metadata: {} } as IntelligenceGraphNode)}
-                    >
-                      {kindFilterLabel(kind)}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-
-              {presentRelations.length > 1 && (
-                <details className={styles.relationMenu}>
-                  <summary className={styles.relationSummary}>
-                    Relationer{relationFilter.size > 0 ? ` (${relationFilter.size})` : ''}
-                  </summary>
-                  <div className={styles.relationPanel}>
-                    {presentRelations.map(relation => (
-                      <Chip key={relation} active={relationFilter.has(relation)} onClick={() => toggle(relationFilter, relation, setRelationFilter)}>
-                        {relationName(relation)}
-                      </Chip>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-
-            {filtersActive && (
-              <span className={styles.filterState}>
-                {filterState.matchCount} matchar · övriga dimmade
-                <button type="button" onClick={clearFilters} className={styles.inlineAction}>Rensa filter</button>
-              </span>
-            )}
-            {filterState.criticalOutsideFilters > 0 && (
-              <span className={styles.filterNote} data-tone="waiting">
-                {filterState.criticalOutsideFilters} kritiska objekt bevarade utanför filtermatch
-              </span>
-            )}
-            {data?.truncated && mode === 'system' && (
-              <span className={styles.filterNote} data-tone="waiting">
-                Vyn är trunkerad — högst {nodes.length} noder visas
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ── What this snapshot contains ── */}
-        {payloadIsCurrent && !unavailable && !error && (
-          <section
-            className={styles.counts}
-            aria-label={mode === 'operations' ? 'Antal i denna ögonblicksbild' : 'Antal i den här vyn'}
-            data-testid="graph-counts"
-          >
-            <p className={styles.countsTitle}>{mode === 'operations' ? 'I denna ögonblicksbild' : 'I den här vyn'}</p>
-            <ul className={styles.countList}>
-              {counts.items.map(item => (
-                <li key={item.kind} className={styles.count} data-kind={item.kind}>
-                  <span><strong className={styles.countValue}>{item.value}</strong> {item.noun}</span>
-                  {item.breakdown.length > 0 && (
-                    <span className={styles.countBreakdown}>
-                      {item.breakdown.map(entry => (
-                        <span key={entry.status} className={styles.countStatus} data-tone={entry.tone}>
-                          {entry.value} {entry.label}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {mode === 'operations' && (
-              <p className={styles.countsNote}>
-                {runCount === 0
-                  ? `Inga körningar skapade de senaste ${windowLabel}. `
-                  : `Körningar skapade de senaste ${windowLabel}, högst ${OPERATIONS_RUN_CAP} per hämtning. `}
-                Granskningar, utdata och uppgifter visas bara när de hör till en av körningarna.
-              </p>
-            )}
-            {mode === 'operations' && counts.runCapReached && (
-              <p className={styles.capNote} role="note" data-testid="graph-run-cap">
-                Taket på {OPERATIONS_RUN_CAP} körningar nåddes — äldre körningar i fönstret kan saknas.
-              </p>
-            )}
-          </section>
-        )}
-
-        {isolateScope && (
-          <div className={styles.scopeBar} role="status">
-            <span>Isolerad: <strong>{isolateScope.label}</strong></span>
-            <button type="button" onClick={exitIsolate} className={styles.inlineAction}>Lämna isolering</button>
-            <button
-              type="button"
-              onClick={() => setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...isolateScope.nodeIds] })}
-              className={styles.inlineAction}
-            >
-              Anpassa till urvalet
-            </button>
-          </div>
-        )}
+      <div className={styles.workspace}>
+        <IntelligenceGraphControls
+          graph={graph}
+          searchInputRef={searchInputRef}
+          replayUnavailable={REPLAY_UNAVAILABLE}
+          relationName={relationName}
+          fullscreen={fullscreen}
+          onToggleFullscreen={() => { void toggleFullscreen() }}
+        />
 
         {/* ── Canvas + inspector ── */}
-        <div className={styles.stage}>
-          <div className={styles.canvasFrame} data-testid="graph-canvas-frame">
+        <div ref={stageRef} className={styles.stage} data-inspector={inspectorVisible ? 'open' : 'closed'}>
+          <div ref={canvasFrameRef} className={styles.canvasFrame} data-testid="graph-canvas-frame">
             {loading && (
               <div className={styles.loading} role="status">
                 {canvasMode === 'operations' ? 'Hämtar ögonblicksbild…' : 'Laddar kodkartan…'}
@@ -503,139 +568,127 @@ export function IntelligenceGraphVNext() {
               />
             )}
 
-            {!loading && graphVisible && filtersActive && filterState.matchCount === 0 && (
-              <div className={styles.noMatch} role="status">
-                Inga noder matchar filtren. Grafens struktur ligger kvar dimmad.
+            {/* Before the canvas in the document, so Tab reaches Tillbaka first. */}
+            <GraphPlace
+              location={location}
+              onBack={showBack ? goBack : null}
+              projectScope={scopedProject ? { name: scopedProject, onClear: () => setProjectFilter('all') } : null}
+              isolate={isolateScope ? {
+                label: isolateScope.label,
+                onExit: exitIsolate,
+                onFit: () => setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...isolateScope.nodeIds] }),
+              } : null}
+              filters={filtersActive ? { matchCount: filterState.matchCount, onClear: clearFilters } : null}
+              criticalOutsideFilters={filterState.criticalOutsideFilters}
+              truncatedAt={data?.truncated && mode === 'system' ? nodes.length : null}
+              noMatch={!loading && graphVisible && filtersActive && filterState.matchCount === 0}
+              hiddenInspector={selected && !inspectorVisible
+                ? { label: selected.label, onShow: showInspector, buttonRef: showInspectorRef }
+                : null}
+            />
+
+            {graphVisible && (
+              <div className={styles.canvas}>
+                <GraphCanvas
+                  nodes={nodes}
+                  edges={edges}
+                  selectedId={selected?.id ?? null}
+                  onSelect={node => { setSelected(node); if (!node) setSearchResultId(null) }}
+                  onOpen={drillIn}
+                  fitSignal={fitSignal}
+                  mode={canvasMode}
+                  semanticContext={drillScope?.kind === 'run' ? 'execution' : communityId !== null || drillScope ? 'detail' : 'auto'}
+                  dimmedIds={dimmedIds}
+                  dimmedEdgeIds={dimmedEdgeIds}
+                  isolatedIds={isolateScope?.nodeIds ?? (drillScope?.kind === 'run' ? drillScope.nodeIds : null)}
+                  inspectorOpen={inspectorVisible}
+                  inspectorSheet={narrow}
+                  searchResultId={searchResultId}
+                  cameraCommand={cameraCommand}
+                  onCameraChange={view => { cameraRef.current = view }}
+                  onZoomLevelChange={setZoomLevel}
+                  onSearchRequest={() => searchInputRef.current?.focus()}
+                  onIsolate={isolateNode}
+                  onEscape={handleEscape}
+                  appearance="vnext"
+                  edgeVisual={truthEdgeVisual}
+                  overlayInsets={overlayInsets}
+                  spatial={spatial}
+                  chromeRects={canvasMode === 'operations' ? chromeRects : undefined}
+                />
               </div>
             )}
 
-            {graphVisible && (
-              <>
-                <div className={styles.canvas}>
-                  <GraphCanvas
-                    nodes={nodes}
-                    edges={edges}
-                    selectedId={selected?.id ?? null}
-                    onSelect={node => { setSelected(node); if (!node) setSearchResultId(null) }}
-                    onOpen={drillIn}
-                    fitSignal={fitSignal}
-                    mode={canvasMode}
-                    semanticContext={drillScope?.kind === 'run' ? 'execution' : communityId !== null || drillScope ? 'detail' : 'auto'}
-                    dimmedIds={dimmedIds}
-                    dimmedEdgeIds={dimmedEdgeIds}
-                    isolatedIds={isolateScope?.nodeIds ?? (drillScope?.kind === 'run' ? drillScope.nodeIds : null)}
-                    inspectorOpen={Boolean(selected)}
-                    searchResultId={searchResultId}
-                    cameraCommand={cameraCommand}
-                    onCameraChange={view => { cameraRef.current = view }}
-                    onZoomLevelChange={setZoomLevel}
-                    onSearchRequest={() => searchInputRef.current?.focus()}
-                    onIsolate={isolateNode}
-                    onEscape={handleEscape}
-                    appearance="vnext"
-                    edgeVisual={truthEdgeVisual}
-                  />
-                </div>
 
-                <div className={styles.zoomDock}>
-                  <div className={styles.zoomGroup} role="group" aria-label="Zoom">
-                    <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-out')} aria-label="Zooma ut">−</button>
-                    <button type="button" className={styles.zoomFit} onClick={() => setFitSignal(x => x + 1)}>Anpassa</button>
-                    <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-in')} aria-label="Zooma in">+</button>
-                  </div>
-                  <span className={styles.zoomLevel} data-testid="graph-zoom-level">
-                    Nivå: {ZOOM_LEVEL_LABELS[zoomLevel] ?? zoomLevel}
-                  </span>
+            {graphVisible && (
+              <div className={styles.zoomDock} data-graph-chrome>
+                <div className={styles.zoomGroup} role="group" aria-label="Zoom">
+                  <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-out')} aria-label="Zooma ut">−</button>
+                  <button type="button" className={styles.zoomFit} onClick={() => setFitSignal(x => x + 1)}>Anpassa</button>
+                  <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-in')} aria-label="Zooma in">+</button>
                 </div>
-              </>
+                <span className={styles.zoomLevel} data-testid="graph-zoom-level">
+                  Nivå: {ZOOM_LEVEL_LABELS[zoomLevel] ?? zoomLevel}
+                </span>
+              </div>
+            )}
+
+            {/* ── How to read the lines, and what the snapshot covers ── */}
+            {payloadIsCurrent && graphVisible && (
+              <GraphLegend entries={legend} snapshotNote={snapshotNote} about={canvasMode === 'operations' ? SPATIAL_ABOUT : GRAPH_ABOUT} />
             )}
           </div>
 
-          {selected && (
-            <div className={styles.inspectorDock} data-testid="graph-inspector-dock">
+          {selected && inspectorVisible && (
+            <div
+              ref={dockRef}
+              className={styles.inspectorDock}
+              data-testid="graph-inspector-dock"
+              style={{ '--ig-inspector-width': `${renderedWidth}rem` } as CSSProperties}
+            >
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Inspektörens bredd"
+                aria-valuemin={INSPECTOR_WIDTH.min}
+                aria-valuemax={widthMax}
+                aria-valuenow={renderedWidth}
+                aria-valuetext={`${renderedWidth} rem`}
+                tabIndex={0}
+                className={styles.resizeHandle}
+                title="Dra för att ändra bredd · dubbelklicka för standardbredd"
+                onPointerDown={onResizePointerDown}
+                onPointerMove={onResizePointerMove}
+                onPointerUp={onResizePointerEnd}
+                onPointerCancel={onResizePointerEnd}
+                onKeyDown={onResizeKeyDown}
+                onDoubleClick={() => commitInspectorWidth(clampInspectorWidth(INSPECTOR_WIDTH.default, stageRem))}
+                data-testid="graph-inspector-resize"
+              />
               <IntelligenceGraphInspector
+                ref={inspectorRef}
                 node={selected}
                 edges={selectedEdges}
                 neighbors={neighborNodes}
                 meta={payloadIsCurrent ? data?.meta : undefined}
                 mode={canvasMode}
                 onClose={() => setSelected(null)}
+                onHide={hideInspector}
                 onSelectNeighbor={setSelected}
                 onDrillIn={drillIn}
                 onIsolate={isolateNode}
                 onFocus={node => setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [node.id] })}
+                identity={canvasMode === 'operations' ? selectedIdentity ?? undefined : undefined}
               />
             </div>
           )}
         </div>
-
-        {/* ── How to read the lines ── */}
-        {payloadIsCurrent && graphVisible && legend.length > 0 && (
-          <section className={styles.legend} aria-label="Förklaring till kopplingarna" data-testid="graph-legend">
-            <p className={styles.legendTitle}>Kopplingar</p>
-            <ul className={styles.legendList}>
-              {legend.map(entry => (
-                <li
-                  key={entry.truth}
-                  className={styles.legendItem}
-                  data-truth={entry.truth}
-                  title={`${entry.label}: ${entry.relations.join(', ')}`}
-                >
-                  <svg className={styles.legendSwatch} viewBox="0 0 30 6" aria-hidden="true">
-                    <line x1="1" y1="3" x2="29" y2="3" strokeDasharray={RELATION_TRUTH_STROKE[entry.truth].dash} />
-                  </svg>
-                  <strong className={styles.legendLabel}>{entry.label}</strong>
-                  <span className={styles.legendDescription}>{entry.description}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
       </div>
     </div>
   )
 }
 
 // ─── Small atoms ─────────────────────────────────────────────────────────────
-
-function ModeButton({
-  active, disabled, title, onClick, children,
-}: {
-  active: boolean
-  disabled?: boolean
-  title?: string
-  onClick?: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      className={styles.mode}
-      aria-pressed={disabled ? undefined : active}
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
-
-function Chip({
-  active, dotColor, onClick, children,
-}: {
-  active: boolean
-  dotColor?: string
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button type="button" className={styles.chip} aria-pressed={active} onClick={onClick}>
-      {dotColor && <span className={styles.chipDot} style={{ backgroundColor: dotColor }} aria-hidden />}
-      {children}
-    </button>
-  )
-}
 
 function StateMessage({ title, body, tone = 'default' }: { title: string; body: string; tone?: 'default' | 'error' }) {
   return (

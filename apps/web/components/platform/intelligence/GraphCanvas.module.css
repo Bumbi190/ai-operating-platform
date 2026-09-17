@@ -16,6 +16,11 @@
   filter: brightness(1.12) drop-shadow(0 0 5px rgb(129 140 248 / 30%));
 }
 
+/* vNext: a neutral glow. Cyan is the running status and must not appear on hover. */
+.canvas[data-appearance='vnext'] .node:hover .identity {
+  filter: brightness(1.12) drop-shadow(0 0 5px rgb(245 249 255 / 26%));
+}
+
 .statusRing {
   transition: opacity 140ms ease;
 }
@@ -65,6 +70,126 @@
   :where(html:not([data-motion='full'])) .node,
   :where(html:not([data-motion='full'])) .identity,
   :where(html:not([data-motion='full'])) .statusRing {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ── Spatial view (vNext Live Operations only) ───────────────────────────────
+   Presentation motion: nodes glide to a new level's places and fade in when
+   they first appear (book ¶207); a selection brightens and dims softly.
+   Identity motion: Atlas breathes slowly (¶208). None of it says anything
+   operational, and all of it stands down with reduced motion. */
+
+/* Ambient depth: a still field of faint stars and a violet depth under the
+   level. Static, and free of cyan — cyan is the running status. */
+.canvas[data-layout='spatial'] {
+  background:
+    radial-gradient(ellipse 56% 50% at 50% 47%, rgb(99 102 241 / 0.1), transparent 70%),
+    radial-gradient(ellipse 92% 82% at 50% 50%, rgb(139 92 246 / 0.055), transparent 78%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cg fill='%23dbe4ff'%3E%3Ccircle cx='18' cy='32' r='0.8' opacity='0.35'/%3E%3Ccircle cx='64' cy='12' r='0.6' opacity='0.25'/%3E%3Ccircle cx='121' cy='48' r='1.0' opacity='0.3'/%3E%3Ccircle cx='190' cy='20' r='0.7' opacity='0.22'/%3E%3Ccircle cx='236' cy='74' r='0.9' opacity='0.28'/%3E%3Ccircle cx='42' cy='108' r='0.6' opacity='0.2'/%3E%3Ccircle cx='98' cy='142' r='1.1' opacity='0.26'/%3E%3Ccircle cx='160' cy='118' r='0.7' opacity='0.3'/%3E%3Ccircle cx='214' cy='160' r='0.8' opacity='0.24'/%3E%3Ccircle cx='28' cy='196' r='1.0' opacity='0.22'/%3E%3Ccircle cx='80' cy='232' r='0.7' opacity='0.3'/%3E%3Ccircle cx='138' cy='206' r='0.6' opacity='0.2'/%3E%3Ccircle cx='182' cy='246' r='0.9' opacity='0.26'/%3E%3Ccircle cx='248' cy='214' r='0.6' opacity='0.22'/%3E%3Ccircle cx='112' cy='86' r='0.5' opacity='0.34'/%3E%3Ccircle cx='8' cy='150' r='0.5' opacity='0.28'/%3E%3C/g%3E%3C/svg%3E"),
+    #050816;
+  background-size: auto, auto, 260px 260px, auto;
+}
+
+.spatialNode {
+  transition: transform 460ms cubic-bezier(0.22, 0.8, 0.26, 1), opacity 220ms ease;
+}
+
+.spatialAppear {
+  animation: igSpatialAppear 320ms ease-out both;
+}
+
+@keyframes igSpatialAppear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.spatialGlyph {
+  transition: opacity 200ms ease;
+}
+
+.selectionRing {
+  transition: stroke-opacity 180ms ease, stroke-width 180ms ease;
+}
+
+.spatialEdge {
+  transition: stroke-opacity 220ms ease, stroke-width 220ms ease, stroke 220ms ease;
+}
+
+.canvas[data-layout='spatial'] .node:hover .identity {
+  filter: brightness(1.18);
+}
+
+.atlas {
+  cursor: pointer;
+  outline: none;
+}
+
+.atlasBreath {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: igAtlasBreath 9s ease-in-out infinite;
+}
+
+@keyframes igAtlasBreath {
+  0%, 100% { opacity: 0.82; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.025); }
+}
+
+.atlasFocus {
+  opacity: 0;
+}
+
+.atlas:focus-visible .atlasFocus {
+  opacity: 1;
+}
+
+.hubMonogram {
+  fill: var(--ig-label-strong);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.cluster {
+  cursor: pointer;
+}
+
+.clusterCount {
+  fill: var(--ig-label-strong);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Every spatial text is placed by the label plan; the halo keeps it readable over lines. */
+.spatialLabel {
+  paint-order: stroke fill;
+  stroke: #050816;
+  stroke-opacity: 0.92;
+  stroke-width: 3.2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  letter-spacing: 0.005em;
+}
+
+.labelStrong { fill: #f5f9ff; }
+.labelNormal { fill: #d6deea; }
+.labelMuted { fill: #8d9ab0; }
+
+.spatialLabelGroup {
+  transition: opacity 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .spatialNode,
+  :where(html:not([data-motion='full'])) .spatialAppear,
+  :where(html:not([data-motion='full'])) .atlasBreath,
+  :where(html:not([data-motion='full'])) .spatialGlyph,
+  :where(html:not([data-motion='full'])) .selectionRing,
+  :where(html:not([data-motion='full'])) .spatialEdge,
+  :where(html:not([data-motion='full'])) .spatialLabelGroup {
     animation: none !important;
     transition: none !important;
   }

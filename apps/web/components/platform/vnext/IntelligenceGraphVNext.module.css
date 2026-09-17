@@ -1,0 +1,1221 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   INTELLIGENCE GRAPH · /intelligence/graph · vNext
+   ─────────────────────────────────────────────────────────────────────────
+   Canvas first (Phase 18 T2a). The page is exactly as tall as the shell
+   leaves it; a compact header and ONE control row sit above the canvas, and
+   everything that describes the view — place, scope, filters, zoom, legend —
+   is laid over the canvas instead of stacked above or below it. The inspector
+   is a right panel the operator can resize or put away.
+
+   It still says only what the data is — a snapshot with a time, counts that
+   cover this payload, lines whose style says how certain a relation is.
+   Nothing here moves to suggest activity; the only transitions are colour
+   responses to hover and focus, and they stand down with reduced motion.
+
+   NO CYAN NEAR THE GRAPH. The canvas encodes "running" in cyan
+   (GRAPH_VISUAL_TOKENS.status.running). Active controls, focus rings and hover
+   glows here are neutral or violet so nothing reads as a running state that is
+   not one. The eyebrow keeps the vNext typographic accent.
+
+   Sized in rem so the display-scale preference reaches it. Shell geometry the
+   page has to clear is measured from those components' own code — see the
+   variables on .field.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.field {
+  /* ── Shell chrome in the page's flow ──
+     Breadcrumbs above (.nav: 14px top padding + 0.71875rem × 1.4 line) and the
+     sticky KeyboardHints bar below (0.5rem + 1.125rem cap + 0.625rem). Below
+     1024px the shell adds the mobile header (min-height 62px); the hint bar
+     tightens at 900px and 640px, and the breadcrumbs at 640px. */
+  --ig-crumbs: calc(14px + 1.00625rem);
+  --ig-hints: 2.25rem;
+  --ig-mobile-header: 0px;
+  --ig-shell-chrome: calc(var(--ig-mobile-header) + var(--ig-crumbs) + var(--ig-hints));
+  --ig-pad-top: 1rem;
+  --ig-pad-x: 1.75rem;
+  --ig-pad-bottom: 0.875rem;
+
+  /* ── Shell chrome fixed to the viewport ──
+     Two controls float over the bottom-right corner of every route but /atlas:
+     the activity peek (MobileRailToggle: `fixed bottom-5 right-5 h-11 px-4`, a
+     0.875rem icon, a 0.5rem gap and a 12px label, plus — with live events — a
+     0.5rem gap, a 4px dot, a 0.25rem gap and 10px digits) and, from 1024px, the
+     Atlas launcher stacked above it (AtlasMiniOrb: 52px at bottom 76px, right
+     20px). Measured from the viewport edges, with 0.5rem of air:
+       --ig-float-right  how far in from the right edge the widest peek reaches
+       --ig-float-top    how far up from the bottom edge the stack reaches
+     Nothing interactive on this page is placed inside that corner. */
+  --ig-float-right: calc(5.875rem + 63px);
+  --ig-float-top: 4.5rem;
+
+  --ig-edge: rgb(255 255 255 / 0.08);
+  --ig-edge-strong: rgb(255 255 255 / 0.14);
+  --ig-surface: rgb(255 255 255 / 0.025);
+  --ig-surface-raised: rgb(8 11 28 / 0.86);
+  --ig-hud: rgb(6 9 26 / 0.82);
+  --ig-text: hsl(var(--foreground));
+  --ig-text-2: rgb(var(--foreground-rgb) / 0.66);
+  --ig-text-3: rgb(var(--foreground-rgb) / 0.46);
+  --ig-focus: rgb(167 139 250 / 0.8);
+  /* The canvas status tokens, restated for text. Keep in step with graph-visuals.ts. */
+  --ig-tone-running: #22d3ee;
+  --ig-tone-failed: #f87171;
+  --ig-tone-waiting: #fbbf24;
+  --ig-tone-approval: #d4a574;
+  --ig-tone-settled: #34d399;
+
+  position: relative;
+  /* The same declaration the other vNext surfaces make on their own roots:
+     the app's Inter variable is scoped to <body>, so a surface that declares
+     nothing inherits the browser's default serif. */
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* A height, not a minimum: the canvas absorbs whatever the header and the
+     control row do not use, so nothing on this page can push the shell into
+     scrolling. The floor keeps the canvas usable in a very short window. */
+  height: calc(100dvh - var(--ig-shell-chrome));
+  min-height: 28rem;
+  padding: var(--ig-pad-top) var(--ig-pad-x) var(--ig-pad-bottom);
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  /* clip, not hidden: hidden would make this a scroll container and cut off
+     the menus. */
+  overflow-x: clip;
+  color: var(--ig-text);
+}
+
+@media (min-width: 1024px) {
+  .field { --ig-float-top: calc(max(4rem, 128px) + 0.5rem); }
+}
+@media (max-width: 1023px) {
+  .field { --ig-mobile-header: 62px; }
+}
+@media (max-width: 900px) {
+  .field { --ig-hints: 2.125rem; }
+}
+@media (max-width: 640px) {
+  .field {
+    --ig-crumbs: calc(12px + 1.00625rem);
+    --ig-hints: 2.0625rem;
+    --ig-pad-top: 0.75rem;
+    --ig-pad-x: 1.125rem;
+    --ig-pad-bottom: 0.625rem;
+    gap: 0.625rem;
+  }
+}
+
+/* Fullscreen: the page body alone, so the shell chrome is gone — including the
+   floating corner. */
+.field:fullscreen {
+  --ig-float-right: 0px;
+  --ig-float-top: 0px;
+  --ig-hints: 0px;
+  height: 100dvh;
+  width: 100vw;
+  padding: 1rem 1.25rem;
+  background: var(--omnira-bg);
+}
+
+.field[data-resizing='true'] {
+  cursor: col-resize;
+  user-select: none;
+}
+.field[data-resizing='true'] .canvas { pointer-events: none; }
+
+.ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 24% at 12% 0%, rgb(var(--omnira-violet-rgb) / 0.06), transparent 66%),
+    radial-gradient(ellipse 42% 22% at 92% 4%, rgb(var(--omnira-violet-rgb) / 0.04), transparent 70%);
+}
+
+.buttonIcon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem 1rem;
+  flex: none;
+}
+.headline { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 1 1 auto; }
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-rgb) / 0.8);
+}
+.title { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.15; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .title { font-size: 1.25rem; }
+}
+
+/* The snapshot box: when, what, and the one button that reads it again. */
+.snapshot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.4375rem 0.4375rem 0.4375rem 0.75rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--ig-edge);
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.035), rgb(8 11 28 / 0.5));
+  box-sizing: border-box;
+}
+.snapshotStamp { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.stamp { margin: 0; font-size: 0.8125rem; font-weight: 550; color: var(--ig-text); }
+.stampNote { margin: 0; font-size: 0.6875rem; color: var(--ig-text-3); }
+
+.figures { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.figureList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.875rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.figure {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'value breakdown' 'noun noun';
+  justify-content: start;
+  align-items: baseline;
+  column-gap: 0.375rem;
+  min-width: 0;
+}
+.figureValue { grid-area: value; font-size: 1rem; font-weight: 650; line-height: 1.2; color: var(--ig-text); font-variant-numeric: tabular-nums; }
+.figureNoun { grid-area: noun; font-size: 0.6875rem; color: var(--ig-text-3); white-space: nowrap; }
+.figureBreakdown { grid-area: breakdown; display: inline-flex; flex-wrap: wrap; gap: 0 0.375rem; min-width: 0; }
+.figureStatus { font-size: 0.625rem; white-space: nowrap; }
+.figureStatus[data-tone='running'] { color: var(--ig-tone-running); }
+.figureStatus[data-tone='failed'] { color: var(--ig-tone-failed); }
+.figureStatus[data-tone='waiting'] { color: var(--ig-tone-waiting); }
+.figureStatus[data-tone='approval'] { color: var(--ig-tone-approval); }
+.figureStatus[data-tone='settled'] { color: var(--ig-tone-settled); }
+.capNote { margin: 0; max-width: 34rem; font-size: 0.6875rem; line-height: 1.45; color: var(--ig-tone-waiting); }
+
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  height: 2rem;
+  padding: 0 0.8125rem;
+  margin-left: auto;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: rgb(255 255 255 / 0.05);
+  color: var(--ig-text);
+  font-size: 0.75rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+.refresh:hover:not(:disabled) { background: rgb(255 255 255 / 0.09); border-color: rgb(255 255 255 / 0.2); }
+.refresh:disabled { cursor: progress; color: var(--ig-text-3); }
+
+@media (max-width: 640px) {
+  /* The phone: the stamp and Uppdatera share the top row, the figures the next. */
+  .snapshot { width: 100%; gap: 0.375rem 0.75rem; }
+  .figures { order: 2; flex-basis: 100%; }
+  .figureList { gap: 0.25rem 0.875rem; }
+  .figureValue { font-size: 0.875rem; }
+}
+
+/* ── Workspace ────────────────────────────────────────────────────────────── */
+
+.workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── Control row ──────────────────────────────────────────────────────────── */
+
+.controls {
+  position: relative;
+  /* Above the stage, so a menu opened here lies over the canvas. */
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: none;
+}
+
+.controlsEnd {
+  margin-left: auto;
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.modes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+}
+.mode {
+  height: 1.875rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: none;
+  color: var(--ig-text-2);
+  font-size: 0.75rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.mode:hover:not(:disabled) { color: var(--ig-text); }
+.mode[aria-pressed='true'] { background: rgb(255 255 255 / 0.1); color: var(--ig-text); }
+.mode:disabled { cursor: not-allowed; color: rgb(var(--foreground-rgb) / 0.3); }
+
+.controlButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2.125rem;
+  padding: 0 0.6875rem;
+  border-radius: 0.5625rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+  color: var(--ig-text-2);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.controlButton:hover { background: rgb(255 255 255 / 0.06); color: var(--ig-text); }
+.controlButton[aria-expanded='true'] { background: rgb(255 255 255 / 0.08); border-color: var(--ig-edge-strong); color: var(--ig-text); }
+.iconButton { width: 2.125rem; padding: 0; justify-content: center; }
+.controlBadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 0.3125rem;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: rgb(var(--omnira-violet-rgb) / 0.32);
+  color: var(--ig-text);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.search { position: relative; flex: 0 1 auto; width: 15rem; min-width: 8rem; }
+.searchIcon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  transform: translateY(-50%);
+  color: var(--ig-text-3);
+  pointer-events: none;
+}
+.searchInput {
+  width: 100%;
+  height: 2.125rem;
+  box-sizing: border-box;
+  padding: 0 0.625rem 0 1.875rem;
+  border-radius: 0.5625rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+  color: var(--ig-text);
+  font-size: 0.75rem;
+  font-family: inherit;
+}
+.searchInput::placeholder { color: var(--ig-text-3); }
+.searchInput:focus { outline: none; border-color: var(--ig-focus); }
+.searchResults {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  width: min(20rem, calc(100vw - 2.5rem));
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: rgb(8 11 28 / 0.97);
+  box-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 0.5);
+}
+.searchHit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  width: 100%;
+  padding: 0.4375rem 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.searchHit:hover { background: rgb(255 255 255 / 0.06); }
+.searchHitLabel { font-size: 0.75rem; color: var(--ig-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.searchHitMeta { font-size: 0.625rem; color: var(--ig-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.searchEmpty { padding: 0.5rem 0.625rem; font-size: 0.75rem; color: var(--ig-text-3); }
+
+@media (max-width: 1279px) {
+  /* A definite width, not a flex-basis: the row wraps on max-content sizes. */
+  .search { width: 11rem; }
+}
+
+@media (max-width: 640px) {
+  .controls { gap: 0.375rem; }
+  .controlsEnd { margin-left: 0; width: 100%; flex: 1 1 100%; justify-content: flex-start; }
+  .search { flex: 1 1 auto; width: auto; }
+  .mode { padding: 0 0.5rem; font-size: 0.6875rem; }
+}
+
+/* ── Menus ────────────────────────────────────────────────────────────────── */
+
+.popoverAnchor { position: relative; flex: none; }
+
+.popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.375rem);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  width: min(22rem, calc(100vw - 2.5rem));
+  max-height: min(30rem, calc(100dvh - 12rem));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.875rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: rgb(8 11 28 / 0.97);
+  box-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 0.5);
+}
+.popover[hidden] { display: none; }
+
+/* Filter: two columns where there is room, so the menu stays short and clear
+   of the shell's floating corner below it. */
+.filterPanel[data-columns='two'] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 1.25rem;
+  width: min(36rem, calc(100vw - 2.5rem));
+}
+.filterPanel[data-columns='two'][hidden] { display: none; }
+.popoverWide { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .filterPanel[data-columns='two'] { display: flex; }
+  .filterPanel[data-columns='two'][hidden] { display: none; }
+  /* A phone keeps the menu above the activity peek; the rest scrolls. */
+  .popover { max-height: max(12rem, calc(100dvh - 30rem)); }
+}
+
+.popoverGroup { display: flex; flex-direction: column; align-items: flex-start; gap: 0.375rem; min-width: 0; }
+.popoverLabel {
+  font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ig-text-3);
+}
+.popoverNote { margin: 0; font-size: 0.6875rem; line-height: 1.5; color: var(--ig-text-3); }
+.popoverFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--ig-edge);
+  font-size: 0.75rem;
+  color: var(--ig-text-2);
+}
+
+.menu { width: min(17rem, calc(100vw - 2.5rem)); gap: 0.125rem; padding: 0.3125rem; }
+.menuItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1875rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--ig-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.menuItem:hover { background: rgb(255 255 255 / 0.06); }
+.menuItemLabel { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 550; }
+.menuItemHint { padding-left: 1.375rem; font-size: 0.625rem; line-height: 1.4; color: var(--ig-text-3); }
+
+.select {
+  height: 2rem;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 0.5rem;
+  border-radius: 0.5625rem;
+  border: 1px solid var(--ig-edge);
+  background: rgb(8 11 28 / 0.9);
+  color: var(--ig-text);
+  font-size: 0.75rem;
+  font-family: inherit;
+  color-scheme: dark;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  border-radius: 0.5625rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+}
+.segment {
+  height: 1.625rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  color: var(--ig-text-2);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+.segment[aria-pressed='true'] { background: rgb(255 255 255 / 0.1); color: var(--ig-text); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 1.625rem;
+  padding: 0 0.5625rem;
+  border-radius: 999px;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+  color: var(--ig-text-2);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.chip:hover { background: rgb(255 255 255 / 0.06); }
+.chip[aria-pressed='true'] {
+  border-color: rgb(var(--omnira-violet-rgb) / 0.5);
+  background: rgb(var(--omnira-violet-rgb) / 0.16);
+  color: var(--ig-text);
+}
+.chipDot { width: 0.375rem; height: 0.375rem; border-radius: 999px; flex: none; }
+
+.inlineAction {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--foreground-rgb) / 0.35);
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.inlineAction:disabled { cursor: default; text-decoration: none; color: var(--ig-text-3); }
+
+/* ── Stage: canvas + inspector ────────────────────────────────────────────── */
+
+.stage {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  flex: 1 1 0;
+  min-height: 14rem;
+  min-width: 0;
+}
+
+.floatProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--ig-float-right);
+  height: var(--ig-float-top);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.canvasFrame {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--ig-edge);
+  background: #050816;
+  /* The corners below answer to the canvas's own width — the inspector's
+     width is the operator's choice, so the viewport cannot say how much room
+     the canvas has. */
+  container-type: inline-size;
+  container-name: ig-canvas;
+}
+
+/* Absolute, so the SVG always has the frame's used size to fill. */
+.canvas { position: absolute; inset: 0; }
+
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(3 5 22 / 0.45);
+  color: var(--ig-text-2);
+  font-size: 0.8125rem;
+}
+
+.state {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+.stateTitle { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--ig-text); }
+.state[data-tone='error'] .stateTitle { color: var(--ig-tone-failed); }
+.stateBody { margin: 0; max-width: 26rem; font-size: 0.75rem; line-height: 1.55; color: var(--ig-text-3); }
+
+/* ── On the canvas ────────────────────────────────────────────────────────── */
+
+/* A layer that lets the canvas keep its pointer between the controls on it. */
+.hud {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  gap: 0.375rem;
+  pointer-events: none;
+}
+.hud > * { pointer-events: auto; }
+
+/* Top left: where the operator is, and how the view is narrowed. */
+.hudTop {
+  top: 0.625rem;
+  left: 0.625rem;
+  right: 0.625rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hudButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.875rem;
+  padding: 0 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--ig-edge-strong);
+  background: var(--ig-hud);
+  color: var(--ig-text);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.hudButton:hover { background: rgb(22 26 48 / 0.92); }
+
+.location {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 1.875rem;
+  box-sizing: border-box;
+  padding: 0 0.6875rem;
+  border-radius: 999px;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-hud);
+  font-size: 0.6875rem;
+  color: var(--ig-text-3);
+}
+.location > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+.location > span[data-current='true'] { color: var(--ig-text); }
+.locationSeparator { margin-right: 0.25rem; color: rgb(var(--foreground-rgb) / 0.22); }
+
+.hudChip,
+.filterState,
+.scopeBar,
+.filterNote,
+.noMatch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.625rem;
+  min-height: 1.875rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.25rem 0.6875rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+}
+.hudChip { border: 1px solid var(--ig-edge-strong); background: var(--ig-hud); color: var(--ig-text-2); }
+.hudChip strong { color: var(--ig-text); font-weight: 600; }
+.filterState {
+  border: 1px solid rgb(var(--omnira-violet-rgb) / 0.35);
+  background: rgb(26 20 56 / 0.9);
+  color: var(--ig-text);
+}
+.scopeBar {
+  border: 1px solid rgb(251 191 36 / 0.3);
+  background: rgb(40 30 8 / 0.9);
+  color: #fde68a;
+}
+.filterNote {
+  border: 1px solid rgb(251 191 36 / 0.28);
+  background: rgb(40 30 8 / 0.9);
+  color: var(--ig-tone-waiting);
+  font-size: 0.625rem;
+}
+.noMatch {
+  border: 1px solid var(--ig-edge-strong);
+  background: rgb(8 11 28 / 0.92);
+  color: var(--ig-text-2);
+}
+
+/* Bottom left: zoom. */
+.zoomDock {
+  position: absolute;
+  left: 0.625rem;
+  bottom: 0.625rem;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.zoomGroup {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: var(--ig-surface-raised);
+}
+.zoomStep,
+.zoomFit {
+  height: 2rem;
+  border: 0;
+  background: none;
+  color: var(--ig-text);
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+.zoomStep {
+  width: 2rem;
+  font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace;
+  font-size: 0.9375rem;
+}
+.zoomFit {
+  padding: 0 0.625rem;
+  border-left: 1px solid var(--ig-edge);
+  border-right: 1px solid var(--ig-edge);
+  font-size: 0.6875rem;
+}
+.zoomStep:hover,
+.zoomFit:hover { background: rgb(255 255 255 / 0.08); }
+.zoomLevel {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  background: rgb(8 11 28 / 0.72);
+  color: var(--ig-text-3);
+  font-size: 0.625rem;
+  white-space: nowrap;
+}
+
+/* Bottom right: how to read the lines, and what the snapshot covers. */
+.legend {
+  position: absolute;
+  right: 0.625rem;
+  bottom: 0.625rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
+  max-width: calc(100% - 1.25rem);
+  pointer-events: none;
+}
+.legend > * { pointer-events: auto; }
+
+.legendBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-hud);
+}
+.legendKey { display: flex; align-items: center; gap: 0.875rem; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.legendKeyItem { display: inline-flex; align-items: center; gap: 0.4375rem; font-size: 0.6875rem; color: var(--ig-text-2); white-space: nowrap; }
+.legendToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ig-edge);
+  background: rgb(255 255 255 / 0.03);
+  color: var(--ig-text-2);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.legendToggle:hover,
+.legendToggle[aria-expanded='true'] { background: rgb(255 255 255 / 0.08); color: var(--ig-text); }
+
+.legendPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  width: min(24rem, calc(100cqw - 1.25rem));
+  max-height: 20rem;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.875rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: rgb(8 11 28 / 0.97);
+  box-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 0.5);
+}
+.legendPanel[hidden] { display: none; }
+.legendSection { display: flex; flex-direction: column; gap: 0.5rem; }
+.legendTitle {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ig-text-3);
+}
+.legendList { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.legendItem { display: flex; align-items: flex-start; gap: 0.625rem; font-size: 0.6875rem; line-height: 1.45; }
+.legendItem .legendSwatch { margin-top: 0.3125rem; }
+.legendText { display: flex; flex-direction: column; min-width: 0; }
+.legendSwatch { width: 1.625rem; height: 0.375rem; flex: none; overflow: visible; }
+.legendSwatch line { stroke: rgb(var(--foreground-rgb) / 0.72); stroke-width: 1.6; stroke-linecap: round; }
+.legendLabel { font-weight: 600; color: var(--ig-text); }
+.legendDescription { color: var(--ig-text-2); }
+.legendRelations { color: var(--ig-text-3); font-size: 0.625rem; }
+.legendNote { margin: 0; font-size: 0.6875rem; line-height: 1.5; color: var(--ig-text-2); }
+
+/* A narrow canvas keeps the explanation and drops the one-row key. */
+@container ig-canvas (max-width: 40rem) {
+  .legendKey { display: none; }
+  .legendBar { padding-left: 0.25rem; }
+}
+@container ig-canvas (max-width: 26rem) {
+  .zoomLevel { display: none; }
+}
+/* A three-class key (Live Operations adds Atlas's derived link) is wider: it
+   steps aside earlier, before it can reach the zoom controls and level. */
+@container ig-canvas (max-width: 48rem) {
+  .legendKey:has(> li:nth-child(3)) { display: none; }
+  .legendBar:has(> .legendKey > li:nth-child(3)) { padding-left: 0.25rem; }
+}
+
+@media (min-width: 768px) {
+  /* With the panel closed the canvas reaches the viewport's right edge, and
+     its bottom-right corner lies under the shell's floating chrome. */
+  .stage[data-inspector='closed'] .legend {
+    right: max(0.625rem, calc(var(--ig-float-right) - var(--ig-pad-x)));
+    max-width: calc(100% - 0.625rem - max(0.625rem, calc(var(--ig-float-right) - var(--ig-pad-x))));
+  }
+}
+
+/* ── Inspector panel ──────────────────────────────────────────────────────── */
+
+.inspectorDock {
+  position: relative;
+  flex: none;
+  /* The operator's width, inside the book's limits: never under 18rem, and
+     never so wide that the canvas keeps less than 24rem beside it. The same
+     limits are INSPECTOR_WIDTH in lib/os/intelligence-graph-shared.ts. */
+  width: clamp(18rem, var(--ig-inspector-width, 22rem), max(18rem, 100% - 24.75rem));
+  /* The panel ends above the floating chrome instead of running under it. */
+  margin-bottom: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.6875rem;
+  z-index: 2;
+  width: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 999px;
+}
+.resizeHandle::before {
+  content: '';
+  width: 0.25rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.16);
+  transition: background-color 0.16s ease, height 0.16s ease;
+}
+.resizeHandle:hover::before,
+.field[data-resizing='true'] .resizeHandle::before {
+  height: 4rem;
+  background: rgb(var(--omnira-violet-rgb) / 0.7);
+}
+
+/* Below 768px the inspector is a bottom sheet over the stage — the same
+   breakpoint and the same 48% the canvas reserves for it (GraphCanvas). */
+@media (max-width: 767px) {
+  .inspectorDock {
+    --ig-sheet-clear: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    width: auto;
+    /* The top stays where the canvas's reserve ends; the bottom stops above
+       the activity peek, so no row of the sheet lies under it. */
+    height: calc(min(48%, 24rem) - var(--ig-sheet-clear));
+    bottom: var(--ig-sheet-clear);
+    margin-bottom: 0;
+  }
+  .resizeHandle { display: none; }
+  /* The sheet scrolls as one piece. */
+  .inspector { overflow-y: auto; }
+  .inspectorBody { flex: none; overflow: visible; }
+  /* The sheet covers the bottom of the stage, so zoom moves to the top right
+     and the place row leaves it room; the legend steps aside for the sheet. */
+  .zoomDock { top: 0.625rem; right: 0.625rem; left: auto; bottom: auto; }
+  .zoomLevel { display: none; }
+  .hudTop { right: 8.5rem; }
+  .legend {
+    right: auto;
+    left: 0.625rem;
+    align-items: flex-start;
+    max-width: calc(100% - 1.25rem - max(0px, calc(var(--ig-float-right) - var(--ig-pad-x))));
+  }
+  .legendKey { display: none; }
+  .legendBar { padding-left: 0.25rem; }
+  .stage[data-inspector='open'] .legend { display: none; }
+}
+
+.inspector {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--ig-edge-strong);
+  background: linear-gradient(160deg, rgb(var(--omnira-violet-rgb) / 0.06), rgb(8 11 28 / 0.94) 55%);
+  box-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 0.45);
+}
+.inspector:focus { outline: none; }
+.inspector:focus-visible { box-shadow: 0 0 0 2px var(--ig-focus), 0 1.5rem 3.5rem rgb(0 0 0 / 0.45); }
+
+.inspectorHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.8125rem 0.75rem 0.625rem 0.875rem;
+}
+.inspectorGlyph { width: 0.75rem; height: 0.75rem; margin-top: 0.25rem; border-radius: 999px; flex: none; }
+/* Live Operations: the node's canvas glyph and colour, so panel and selection read as one. */
+.inspectorIdentity { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; margin: -0.125rem 0 0 -0.125rem; flex: none; }
+.inspectorIdentity svg { width: 1.75rem; height: 1.75rem; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ig-inspector-accent, #a5b4fc) 45%, transparent)); }
+.inspector[data-identity='spatial']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ig-inspector-accent, #a5b4fc), transparent);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.inspectorHeading { min-width: 0; flex: 1 1 auto; margin-left: 0.125rem; }
+.inspectorTitle {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ig-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspectorKind { margin: 0.125rem 0 0; font-size: 0.6875rem; color: var(--ig-text-3); }
+.inspectorClose {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ig-edge);
+  background: none;
+  color: var(--ig-text-2);
+  cursor: pointer;
+}
+.inspectorClose:hover { background: rgb(255 255 255 / 0.06); color: var(--ig-text); }
+
+.inspectorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0 0.875rem 0.75rem;
+}
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  flex: 1 1 auto;
+  height: 1.875rem;
+  padding: 0 0.625rem;
+  border-radius: 0.5625rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+.primaryAction {
+  border: 1px solid rgb(var(--omnira-violet-rgb) / 0.45);
+  background: rgb(var(--omnira-violet-rgb) / 0.16);
+  color: var(--ig-text);
+  font-weight: 550;
+}
+.primaryAction:hover { background: rgb(var(--omnira-violet-rgb) / 0.24); }
+.secondaryAction {
+  border: 1px solid var(--ig-edge-strong);
+  background: none;
+  color: var(--ig-text-2);
+}
+.secondaryAction:hover { background: rgb(255 255 255 / 0.06); color: var(--ig-text); }
+
+.tabs {
+  display: flex;
+  gap: 0.125rem;
+  padding: 0 0.625rem;
+  border-bottom: 1px solid var(--ig-edge);
+}
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 2.125rem;
+  padding: 0 0.5625rem;
+  border: 0;
+  background: none;
+  color: var(--ig-text-3);
+  font-size: 0.75rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+.tab:hover { color: var(--ig-text-2); }
+.tab[aria-selected='true'] { color: var(--ig-text); }
+/* The selected tab is marked by shape as well as colour. */
+.tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(var(--omnira-violet-rgb) / 0.9);
+}
+.tabCount { font-size: 0.625rem; color: var(--ig-text-3); font-variant-numeric: tabular-nums; }
+
+.inspectorBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.875rem;
+}
+.tabPanel { display: flex; flex-direction: column; gap: 0.875rem; }
+.tabPanel[hidden] { display: none; }
+.inspectorEmpty { margin: 0; font-size: 0.75rem; line-height: 1.5; color: var(--ig-text-3); }
+
+.inspectorSection {
+  display: block;
+  margin-bottom: 0.3125rem;
+  font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ig-text-3);
+}
+.inspectorRaw { color: var(--ig-text-3); font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace; letter-spacing: 0; text-transform: none; }
+
+.inspectorStatusValue { display: inline-flex; align-items: center; gap: 0.4375rem; font-size: 0.8125rem; color: var(--ig-text); }
+.statusDot { width: 0.4375rem; height: 0.4375rem; border-radius: 999px; background: var(--ig-text-3); flex: none; }
+.inspectorStatus[data-tone='running'] .statusDot { background: var(--ig-tone-running); }
+.inspectorStatus[data-tone='failed'] .statusDot { background: var(--ig-tone-failed); }
+.inspectorStatus[data-tone='waiting'] .statusDot { background: var(--ig-tone-waiting); }
+.inspectorStatus[data-tone='approval'] .statusDot { background: var(--ig-tone-approval); }
+.inspectorStatus[data-tone='settled'] .statusDot { background: var(--ig-tone-settled); }
+
+.facts { display: flex; flex-direction: column; gap: 0.375rem; margin: 0; }
+.fact { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; min-width: 0; }
+.fact dt { flex: none; font-size: 0.6875rem; color: var(--ig-text-3); }
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--ig-text);
+}
+.fact dd[data-mono='true'] { font-family: var(--font-geist-mono, ui-monospace), 'SF Mono', Menlo, monospace; font-size: 0.6875rem; }
+
+.inspectorError {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(248 113 113 / 0.22);
+  background: rgb(248 113 113 / 0.07);
+}
+.inspectorError .inspectorSection { color: rgb(248 113 113 / 0.85); }
+.inspectorError p { margin: 0; font-size: 0.75rem; line-height: 1.5; color: #fecaca; overflow-wrap: anywhere; }
+
+.provenance p { margin: 0; font-size: 0.75rem; line-height: 1.5; color: var(--ig-text); overflow-wrap: anywhere; }
+.provenance p + p { margin-top: 0.375rem; }
+.provenanceDetail { color: var(--ig-text-3); }
+
+.relationList { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.relation {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: rgb(255 255 255 / 0.025);
+  text-align: left;
+  cursor: pointer;
+}
+.relation:hover { background: rgb(255 255 255 / 0.06); border-color: var(--ig-edge); }
+.relationDot { width: 0.375rem; height: 0.375rem; border-radius: 999px; flex: none; }
+.relationText { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.relationPhrase { font-size: 0.625rem; color: var(--ig-text-3); }
+.relationOther { font-size: 0.75rem; color: var(--ig-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relationStep { font-size: 0.625rem; color: var(--ig-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relationTruth {
+  flex: none;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 999px;
+  border: 1px solid var(--ig-edge-strong);
+  font-size: 0.5625rem;
+  color: var(--ig-text-2);
+}
+.relationTruth[data-truth='definition'] { border-style: dashed; }
+.relationTruth[data-truth='derived'] { border-style: dotted; color: var(--ig-text-3); }
+
+/* ── Focus ────────────────────────────────────────────────────────────────── */
+
+.refresh:focus-visible,
+.mode:focus-visible,
+.controlButton:focus-visible,
+.menuItem:focus-visible,
+.segment:focus-visible,
+.chip:focus-visible,
+.inlineAction:focus-visible,
+.searchHit:focus-visible,
+.hudButton:focus-visible,
+.zoomStep:focus-visible,
+.zoomFit:focus-visible,
+.legendToggle:focus-visible,
+.resizeHandle:focus-visible,
+.inspectorClose:focus-visible,
+.tab:focus-visible,
+.tabPanel:focus-visible,
+.relation:focus-visible,
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--ig-focus);
+  outline-offset: 2px;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────────
+   Colour transitions only; nothing here animates to suggest activity. An
+   operator who chose reduced motion in Omnira is covered by the global
+   `html[data-motion='reduce'] *` rule; this block covers the OS preference and
+   stands down when the operator explicitly asked for full motion. */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .refresh,
+  :where(html:not([data-motion='full'])) .mode,
+  :where(html:not([data-motion='full'])) .controlButton,
+  :where(html:not([data-motion='full'])) .menuItem,
+  :where(html:not([data-motion='full'])) .chip,
+  :where(html:not([data-motion='full'])) .hudButton,
+  :where(html:not([data-motion='full'])) .zoomStep,
+  :where(html:not([data-motion='full'])) .zoomFit,
+  :where(html:not([data-motion='full'])) .legendToggle,
+  :where(html:not([data-motion='full'])) .resizeHandle::before,
+  :where(html:not([data-motion='full'])) .tab {
+    transition: none !important;
+  }
+}

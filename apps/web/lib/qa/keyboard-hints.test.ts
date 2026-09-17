@@ -73,6 +73,28 @@ describe('keyboard hints · route mapping', () => {
     expect(keys).toContain('Enter')
   })
 
+  it('describes every graph binding, each traced to the canvas that owns it', () => {
+    // vNext Phase 18: the set had drifted — Space and I were bound but not
+    // listed, and Esc does more than clear the selection.
+    const hints = keyboardHintsFor('/intelligence/graph')
+    const label = (cap: string) => hints.find((h) => h.keys.join('+') === cap)?.label
+    expect(label('I')).toBe('isolera')
+    expect(label('Space')).toBe('välj')
+    expect(label('Enter')).toBe('välj · fördjupa')
+    expect(label('Esc')).toBe('tillbaka · rensa urval')
+    const canvas = read('components/platform/intelligence/GraphCanvas.tsx')
+    expect(canvas).toContain("event.key.toLowerCase() === 'i' && onIsolate")
+    expect(canvas).toContain("event.key === ' '")
+    expect(canvas).toMatch(/event\.key === 'Enter'[\s\S]{0,160}if \(isSelected\) onOpen\?\.\(node\)\s*else onSelect\(node\)/)
+    expect(canvas).toMatch(/event\.key === 'Escape'[\s\S]{0,80}if \(onEscape\) onEscape\(\)/)
+  })
+
+  it('keeps ⌘K in the graph bar at the default desktop capacity', () => {
+    const kept = visibleKeyboardHints(keyboardHintsFor('/intelligence/graph'), 8)
+    expect(caps(kept)).toContain('⌘+K')
+    expect(caps(kept)).not.toContain('Space')
+  })
+
   it('does not leak one view\'s keys onto another', () => {
     // The graph's zoom keys exist only on the graph; trading's instrument keys
     // only in the market view.

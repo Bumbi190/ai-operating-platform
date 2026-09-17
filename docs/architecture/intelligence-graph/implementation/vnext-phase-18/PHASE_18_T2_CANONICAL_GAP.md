@@ -1,7 +1,7 @@
 # Omnira vNext Phase 18 T2 — Remaining Canonical Gap
 
 Status: **living document**. It is updated at every T2 sub-step.
-Last updated: 2026-09-17, at T2c (Visual Language, Labels & Spatial Polish). T2a was approved by the owner at local commit `c068e7b` and T2b at `eedfc03`. T2c is built on top of T2b locally, is not pushed, and is waiting for owner QA.
+Last updated: 2026-09-17, at the T2c fix (a hub's counts crossed their own hub). T2a was approved by the owner at local commit `c068e7b` and T2b at `eedfc03`. T2c (`6c0b6a1`) and its fix are built on top of T2b locally, are not pushed, and are waiting for owner QA.
 Branch: `feat/omnira-vnext-phase18-t2-live-operations`, from `origin/main` `faf34f7` (Phase 18 T1, PR #254).
 
 ## No canonical-complete claim
@@ -99,6 +99,7 @@ T2c changes presentation only. T2b's layout model, run aggregation, relation tru
 **Labels** (`spatial-labels.ts`)
 - One deterministic plan places every text the spatial view draws: selection and search first, then Atlas and hub names, attention (with the stored status in words), hover/running/what a selection touches, workflows, captions and counts, agents and runs, and run-count captions last.
 - A text is placed only inside the canvas, clear of the page's measured chrome (the controls on the canvas, the phone sheet and the shell's floating corner), clear of every circle that is not its own and clear of every text placed before it. Otherwise it is left out. What is left out is still in the node's accessible name and title, the cluster's title, and the inspector.
+- A hub's name and counts are also kept clear of the hub itself (T2c fix). The counts go with the name, on its side away from the hub: under a name below the hub, over a name above it, either side of a name beside it. With no such place the counts are left out and the name stays.
 - A project names its agents from its first view when it has eight or fewer (The Prompt's two). A larger project (Familje-Stunden's 33) names them as the operator zooms in.
 - Widths are measured from Inter's real advance widths (the app's font), so a text that fits by the plan fits on screen.
 
@@ -107,7 +108,16 @@ T2c changes presentation only. T2b's layout model, run aggregation, relation tru
 - A search or focus frames the node among what it touches and never dives past the depth at which its level already shows everything.
 
 **Verification**
-- Label invariants are tested over the production-shaped snapshot and a synthetic stress snapshot (`labelStressOperations`), at six canvas sizes and five zoom depths. The browser harness (Inter loaded) checks label/label, label/node, label/chrome and node/chrome collisions geometrically in 99 cases at 1920, 1440, 1280, 1024, 768 and 375 px.
+- Label invariants are tested over the production-shaped snapshot and a synthetic stress snapshot (`labelStressOperations`), at six canvas sizes and five zoom depths. The browser harness (Inter loaded) checks geometrically, in 99 cases at 1920, 1440, 1280, 1024, 768 and 375 px: text against text, text against node circles, text against the page's chrome, text against the canvas edge, and node circles against the chrome.
+
+**Correction: what "no text over a node" covered**
+- *At `6c0b6a1`.* The earlier report said the matrix found 0 texts over nodes. That was true only of *other* nodes. The label plan, the unit-test checker and the browser check all exempted a text from its own node. With that exemption a hub's counts could be drawn across their own hub whenever the hub's name had to go above it:
+  - the browser matrix had 3 such cases of 99: 375 px portfolio with Familje-Stunden selected, 1024 px stress portfolio, 1440 px portfolio after a manual zoom;
+  - the unit-test scenes had 19 such plans of 352.
+- *Since the fix.* Every text of the label layer is checked against every node circle, its own included, in the unit checker and in the browser check. Text drawn inside a glyph (a hub's monogram, a run count's number) is not a label and is not checked.
+  - The three browser cases are replayed exactly from recordings of that build, and their regression tests fail on `6c0b6a1`.
+  - Rerun of the 99-case matrix with this check: 988 label texts checked, and none lies over any node circle (its own included), over another text, under the chrome or past the canvas edge. 559 texts drawn inside glyphs are not checked.
+  - The five cases where the operator's own zoom moves nodes under the controls are unchanged; they are a separate behaviour (G-27).
 
 ## Remaining canonical gap
 
@@ -130,7 +140,7 @@ T2c changes presentation only. T2b's layout model, run aggregation, relation tru
 | G-15 | Builder truth: FK edges labelled `DERIVED`, definition references named `DELEGATED_TO`, `runs.workflow_id` named `STARTED`, no `truncated`/`no-store`/envelope on operations | T1 findings | Worded truthfully in the UI. API keys are unchanged under the owner rule | Backend change, separately approved |
 | G-16 | Run status `pending` has no shared label, so the graph shows it as unknown | T1 finding (`RUN_STATE_LABELS`) | Unchanged | T2 cleanup candidate, if approved |
 | G-17 | A secure, reproducible System Map (Graphify) artifact in production | R-001, R-016 | The honest empty state is kept. Generation and delivery are out of scope | Separate workstream |
-| G-18 | Label placement under pressure | ¶579, ¶633 | **Closed in T2c** for overlap: no text is drawn over another text, a foreign circle, the page's chrome or the canvas edge. Under pressure a text is left out instead, so a crowded phone view (for example a seven-project stress portfolio) names only some hubs; the rest keep their monograms, accessible names and the inspector | — |
+| G-18 | Label placement under pressure | ¶579, ¶633 | **Closed with the T2c fix** for overlap: no text is drawn over another text, over any node circle (its own included), under the page's chrome or past the canvas edge. At `6c0b6a1` a hub's own circle was exempt, see the correction above. Under pressure a text is left out instead. A crowded phone view (for example a seven-project stress portfolio) therefore names only some hubs; the rest keep their monograms, accessible names and the inspector. A hub's counts give way before its name | — |
 | G-19 | Volume signal: a bounded intensity from the real run count (decision 3) | Decision 3 | Counts are shown as numbers only. Not built in T2c (owner rule) | Not scheduled |
 | G-20 | A run-level layout (execution chain) distinct from its workflow's time arc | ¶401, ¶545 | A run drill-down opens its workflow with the run placed. Not built in T2c (owner rule) | With G-11 (Replay) |
 | G-21 | The reference's insight chips on relations ("Insikter", "Strategi", "Kreativitet", "Effektivitet", "Minneskopplingar") | Visual target | Absent. No insight source is attached to graph relations | Needs a source contract |

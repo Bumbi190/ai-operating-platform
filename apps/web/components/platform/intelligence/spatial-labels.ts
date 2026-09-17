@@ -10,7 +10,7 @@
  *   1  Atlas's name; hub names
  *   2  nodes whose stored status needs attention (failed, waiting, pending approval)
  *   3  the hovered or keyboard-focused node; running runs; what the selection touches;
- *      then a drilled project's counts, which have one place while node labels have many
+ *      then a drilled project's counts, which keep to their name while node labels have many places
  *   4  workflows
  *   5  band captions; portfolio hub counts; Atlas's subtitle
  *   6  agents (see AGENT_NAMES_AT_OVERVIEW); runs on a workflow's time arc; satellites
@@ -19,7 +19,9 @@
  * "Free" means inside the canvas less its edge, clear of every band the page
  * covers (controls, the mobile sheet, the floating corner), clear of every
  * visible circle that is not the text's own, and clear of every text placed
- * before it. Lines are not obstacles: text has a halo.
+ * before it. A hub's name and counts are placed outside the hub, so they must
+ * also keep clear of the hub itself; only its monogram, drawn by the hub's glyph,
+ * sits inside it. Lines are not obstacles: text has a halo.
  *
  * What is left out is still said elsewhere: every node's accessible name and
  * title carry its label and status, a hub's carry its counts, a run count's
@@ -240,7 +242,7 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
     })
   }
 
-  // ── Hubs: name, then counts under it ──
+  // ── Hubs: name, then counts with it ──
   for (const hub of layout.hubs) {
     if (hub.orbit === 'receded' || !visibleIds.has(hub.nodeId)) continue
     const size = hubNameSize(hub)
@@ -251,7 +253,8 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
     add({
       key: `hub-name:${hub.nodeId}`, kind: 'hub-name', ownerId: hub.nodeId, tier: 1, rank: hub.orbit === 'focus' ? 0 : 1, order: hub.label,
       variants: wrapped ? [[hub.label], wrapped] : [[hub.label]], size, weight: SPATIAL_TYPE.hubName.weight, tone: 'strong',
-      exempt: new Set([hub.nodeId]), placeFirst: true,
+      // Outside the hub, like every place below: the hub is an obstacle to its own name.
+      exempt: new Set(), placeFirst: true,
       // Under the hub; where another name or circle is there, above it, beside it, then off its lower corners.
       options: height => [
         { x: hub.x, top: nameTop, anchor: 'middle' },
@@ -268,9 +271,19 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
       key: `hub-subtext:${hub.nodeId}`, kind: 'hub-subtext', ownerId: hub.nodeId,
       tier: hub.orbit === 'focus' ? 3 : 5, rank: hub.orbit === 'focus' ? 9 : 1, order: hub.label,
       variants: [[hub.subtext]], size: SPATIAL_TYPE.hubSubtext.size, weight: SPATIAL_TYPE.hubSubtext.weight, tone: 'muted',
-      exempt: new Set([hub.nodeId]), after: `hub-name:${hub.nodeId}`,
-      // Under the name as it was placed — one line or two, under the hub or beside it.
-      options: (_height, name) => name ? [{ x: name.x, top: name.box.maxY + px(TEXT_GAP.subtext), anchor: name.anchor }] : [],
+      // Never across the hub: its counts are not exempt from it. Without a free place they are left out,
+      // the name stays, and the counts remain in the hub's accessible name and the inspector.
+      exempt: new Set(), after: `hub-name:${hub.nodeId}`,
+      // With the name as it was placed, on its side away from the hub: under a name below the hub's centre,
+      // over a name above it, and either side of a name beside the hub. Never between the hub and its name.
+      options: (height, name) => {
+        if (!name) return []
+        const under: Option = { x: name.x, top: name.box.maxY + px(TEXT_GAP.subtext), anchor: name.anchor }
+        const over: Option = { x: name.x, top: name.box.minY - px(TEXT_GAP.subtext) - height, anchor: name.anchor }
+        if (name.box.minY >= hub.y) return [under]
+        if (name.box.maxY <= hub.y) return [over]
+        return [under, over]
+      },
     })
   }
 

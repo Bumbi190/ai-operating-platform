@@ -176,8 +176,10 @@ function problems(scene: Composed): string[] {
         found.push(`${label.key} lies on ${earlier.key}`)
       }
     }
+    // Every circle, the text's own included: the plan draws texts outside what they name (a hub's monogram,
+    // drawn inside the hub by its glyph, is not a text of the plan).
     for (const circle of circles) {
-      if (circle.owner !== label.ownerId && distanceToBox(circle.x, circle.y, box) < circle.r - 1e-6) found.push(`${label.key} lies on ${circle.owner}`)
+      if (distanceToBox(circle.x, circle.y, box) < circle.r - 1e-6) found.push(`${label.key} lies on ${circle.owner === label.ownerId ? 'its own circle' : circle.owner}`)
     }
   })
   return found
@@ -186,7 +188,7 @@ function problems(scene: Composed): string[] {
 const placed = (plan: SpatialLabelPlan, key: string) => plan.placements.find((label) => label.key === key)
 
 describe('phase 18 T2c · the spatial label plan', () => {
-  it('draws no text over another, over a circle not its own, under the page’s chrome or past the canvas edge', () => {
+  it('draws no text over another, over any circle — its own included — under the page’s chrome or past the canvas edge', () => {
     let plans = 0
     for (const { name, payload, anchor } of SCENES) {
       for (const frame of FRAMES) {
@@ -339,17 +341,34 @@ describe('phase 18 T2c · the spatial label plan', () => {
     }
   })
 
-  it('puts a hub’s counts under its own name, or leaves them out with it', () => {
+  it('keeps a hub’s counts with its name, outside the hub, or leaves them out with it', () => {
+    let under = 0
     for (const { name, payload, anchor } of SCENES) {
       for (const frame of FRAMES) {
-        const scene = compose({ payload, anchor, frame })
-        for (const subtext of scene.plan.placements.filter((label) => label.kind === 'hub-subtext')) {
-          const hubName = placed(scene.plan, `hub-name:${subtext.ownerId}`)
-          expect(hubName, `${name} · ${frame.width} · ${subtext.key}`).toBeDefined()
-          expect(subtext.box.minY).toBeCloseTo(hubName!.box.maxY + TEXT_GAP.subtext * scene.scale, 6)
+        for (const zoom of ZOOMS) {
+          const scene = compose({ payload, anchor, frame, zoom })
+          for (const subtext of scene.plan.placements.filter((label) => label.kind === 'hub-subtext')) {
+            const where = `${name} · ${frame.width} · zoom ${zoom} · ${subtext.key}`
+            const hubName = placed(scene.plan, `hub-name:${subtext.ownerId}`)
+            expect(hubName, where).toBeDefined()
+            const hub = scene.layout.hubs.find((entry) => entry.nodeId === subtext.ownerId)!
+            const gap = TEXT_GAP.subtext * scene.scale
+            // Directly under or directly over the name, aligned with it.
+            const isUnder = Math.abs(subtext.box.minY - (hubName!.box.maxY + gap)) < 1e-6
+            const isOver = Math.abs(subtext.box.maxY - (hubName!.box.minY - gap)) < 1e-6
+            expect(isUnder || isOver, where).toBe(true)
+            expect([subtext.x, subtext.anchor], where).toEqual([hubName!.x, hubName!.anchor])
+            // On the name's side away from the hub — never between the hub and its name, never across the hub.
+            if (hubName!.box.minY >= hub.y) expect(isUnder, `${where}: under a name below the hub`).toBe(true)
+            if (hubName!.box.maxY <= hub.y) expect(isOver, `${where}: over a name above the hub`).toBe(true)
+            expect(distanceToBox(hub.x, hub.y, subtext.box), where).toBeGreaterThanOrEqual(hub.r)
+            // A name under its hub keeps its counts under it, as before.
+            if (hubName!.box.minY > hub.y + hub.r) under++
+          }
         }
       }
     }
+    expect(under).toBeGreaterThan(100)
   })
 
   it('never writes a word the node does not carry', () => {
@@ -405,7 +424,7 @@ describe('phase 18 T2c · the spatial label plan', () => {
     expect(attention).toBeGreaterThan(10)
   })
 
-  it('moves a hub’s name above it when the room under it is taken, before trying its corners', () => {
+  it('moves a hub’s name above it when the room under it is taken, before trying its corners, and its counts with it', () => {
     const scene = compose({ payload: prod, anchor: { level: 'project', projectId: P.prompt }, frame: FRAMES[1] })
     const hub = scene.layout.hubs.find((entry) => entry.orbit === 'focus')!
     const under = placed(scene.plan, `hub-name:${hub.nodeId}`)!
@@ -418,6 +437,23 @@ describe('phase 18 T2c · the spatial label plan', () => {
     const above = placed(blocked, `hub-name:${hub.nodeId}`)!
     expect(above.anchor).toBe('middle')
     expect(above.box.maxY).toBeLessThan(hub.y - hub.r)
+    // Its counts go with it, over the name — never under it, where the hub is.
+    const counts = placed(blocked, `hub-subtext:${hub.nodeId}`)!
+    expect(counts.box.maxY).toBeCloseTo(above.box.minY - TEXT_GAP.subtext * scene.scale, 6)
+    expect(distanceToBox(hub.x, hub.y, counts.box)).toBeGreaterThanOrEqual(hub.r)
+    // With the room over the name taken too, the name stays and the counts are left out rather than cross the hub.
+    const crowded = planSpatialLabels({
+      layout: scene.layout, nodeById: scene.nodeById, visibleIds: scene.visibleIds, copy: COPY, view: scene.view, viewport: scene.frame,
+      reserved: [
+        ...scene.reserved,
+        { minX: hub.x - hub.r * 4, maxX: hub.x + hub.r * 4, minY: hub.y + hub.r, maxY: hub.y + hub.r * 5 },
+        { minX: counts.box.minX, maxX: counts.box.maxX, minY: counts.box.minY, maxY: counts.box.maxY },
+      ],
+      depth: 1,
+    })
+    expect(placed(crowded, `hub-name:${hub.nodeId}`)!.box).toEqual(above.box)
+    expect(placed(crowded, `hub-subtext:${hub.nodeId}`)).toBeUndefined()
+    expect(crowded.hidden).toContain(`hub-subtext:${hub.nodeId}`)
   })
 
   it('stresses what it claims: long names with and without a place to break, and more agents than a first view names', () => {

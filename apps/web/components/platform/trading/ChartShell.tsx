@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { TradingMarketViewSnapshot } from '@/lib/trading/market-view'
 import { InteractiveMarketChart } from './InteractiveMarketChart'
 import { ChartStatusBadges } from './ChartStatusBadges'
+import { ChartSetupGrade } from './ChartSetupGrade'
 import styles from './AtlasMarketView.module.css'
 
 /**
@@ -134,7 +135,16 @@ export function ChartShell({
         height={box?.height}
       />
 
-      <ChartStatusBadges snapshot={snapshot} />
+      {/*
+        One overlay row, top-left: the setup grade leads, and the provenance
+        and proposal badges follow it. The row stops short of the reset and
+        fullscreen controls, so a narrow chart wraps it instead of sliding it
+        underneath them.
+      */}
+      <div className={styles.chartOverlayTopLeft} data-testid="chart-overlay">
+        <ChartSetupGrade setup={snapshot.setup} />
+        <ChartStatusBadges snapshot={snapshot} />
+      </div>
 
       <div className={styles.chartShellControls}>
         {/*

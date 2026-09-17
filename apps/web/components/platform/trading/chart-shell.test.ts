@@ -194,8 +194,14 @@ describe('the analysis rail keeps its place', () => {
   it('scrolls internally instead of stretching the chart to match it', () => {
     const s = read('./AtlasMarketView.module.css')
     expect(s).toMatch(/\.rail \{[\s\S]*?overflow-y: auto/)
-    // And nothing is hidden to achieve it.
-    expect(s).not.toMatch(/\.rail \{[\s\S]*?display: none/)
+    // And nothing is hidden to achieve it. Scoped to the rail's own rule blocks:
+    // `[\s\S]*?` ran on past the rule's closing brace, so an unrelated
+    // `display: none` anywhere later in the stylesheet read as a hidden rail.
+    const railRules = s.match(/\.rail \{[^}]*\}/g) ?? []
+    expect(railRules.length).toBeGreaterThan(0)
+    for (const rule of railRules) {
+      expect(rule).not.toMatch(/display: none/)
+    }
   })
 
   it('gives wide displays width rather than an ever-wider rail', () => {
@@ -206,5 +212,87 @@ describe('the analysis rail keeps its place', () => {
     for (const rule of columns) {
       expect(rule, `rail column not clamped: ${rule}`).toMatch(/clamp\(/)
     }
+  })
+})
+
+// ─── Chart-first proportions (Phase 17) ───────────────────────────────────────
+
+describe('the chart dominates the workspace', () => {
+  const css = () => read('./AtlasMarketView.module.css').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('gives the chart the taller clamp, and the rail exactly the same height', () => {
+    const s = css()
+    const chart = s.match(/\.chartShell \{[^}]*height: (clamp\([^)]*\))/)?.[1]
+    expect(chart).toBe('clamp(380px, 60dvh, 760px)')
+    // The rail scrolls inside the chart's height rather than outgrowing it.
+    const railHeights = [...s.matchAll(/\.rail \{[^}]*max-height: (clamp\([^)]*\))/g)].map((m) => m[1])
+    expect(railHeights.length).toBeGreaterThan(0)
+    for (const height of railHeights) expect(height).toBe(chart)
+  })
+
+  it('sizes the rail against the canvas, never against the viewport', () => {
+    const columns = css().match(/grid-template-columns: minmax\(0, 1fr\) [^;]+;/g) ?? []
+    expect(columns.length).toBeGreaterThanOrEqual(3)
+    for (const rule of columns) {
+      // `vw` counted the sidebar and the page padding into the rail's share.
+      expect(rule, rule).not.toMatch(/vw/)
+      expect(rule, rule).toMatch(/clamp\([^)]*%/)
+    }
+  })
+
+  it('keeps the narrowest rail no wider than before at 1440px', () => {
+    const first = css().match(/grid-template-columns: minmax\(0, 1fr\) clamp\((\d+)px, (\d+)%, (\d+)px\)/)
+    expect(first).not.toBeNull()
+    const [, min, , max] = first!.map(Number)
+    // The previous rail was clamp(280px, 22vw, 340px); the chart-first rail is narrower at both ends.
+    expect(min).toBeLessThan(280)
+    expect(max).toBeLessThan(340)
+  })
+
+  it('starts two columns where the chart can still hold the row, with no gap in coverage', () => {
+    const s = css()
+    expect(s).toMatch(/@media \(min-width: 1200px\) \{\s*\.canvas \{ grid-template-columns: minmax\(0, 1fr\) clamp\(/)
+    // Below two columns the rail is a two-up grid; the ranges meet at 1199/1200.
+    expect(s).toMatch(/@media \(min-width: 640px\) and \(max-width: 1199px\)/)
+    expect(s).not.toMatch(/@media \(min-width: 1024px\) \{\s*\.canvas/)
+  })
+})
+
+describe('the plot overlay', () => {
+  const css = () => read('./AtlasMarketView.module.css').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('renders the setup grade and the safety badges in one overlay row', () => {
+    const markup = render()
+    const overlay = markup.indexOf('data-testid="chart-overlay"')
+    expect(overlay).toBeGreaterThan(-1)
+    expect(markup.indexOf('data-testid="chart-setup-grade"')).toBeGreaterThan(overlay)
+    expect(markup.indexOf('data-testid="chart-origin-badge"')).toBeGreaterThan(overlay)
+  })
+
+  it('stops the overlay row short of the reset and fullscreen controls', () => {
+    const rule = css().match(/\.chartOverlayTopLeft \{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toMatch(/right: calc\(var\(--rhythm-3\) \+ 30px \+ var\(--rhythm-2\) \+ 30px \+ var\(--rhythm-2\)\)/)
+    expect(rule).toMatch(/flex-wrap: wrap/)
+    expect(rule).toMatch(/pointer-events: none/)
+  })
+
+  it('lets the badges wrap one by one beside the grade', () => {
+    expect(css()).toMatch(/\.chartBadges \{\s*display: contents;\s*\}/)
+  })
+
+  it('responds to the chart\'s own width, and only hides the word "Setup" visually', () => {
+    const s = css()
+    expect(s).toMatch(/\.chartShell \{[^}]*container-type: inline-size/)
+    const query = s.match(/@container \(max-width: 520px\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(query).toMatch(/\.chartSetupPrefix \{/)
+    // Visually hidden, still in the accessible name — never removed.
+    expect(query).toMatch(/clip: rect\(0 0 0 0\)/)
+    expect(query).not.toMatch(/display: none|visibility: hidden/)
+  })
+
+  it('moves the history status off the overlay row, to the bottom edge', () => {
+    const rule = css().match(/\.chartHistoryStatus \{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toMatch(/bottom: calc\(/)
+    expect(rule).not.toMatch(/\btop:/)
   })
 })

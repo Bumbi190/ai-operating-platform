@@ -95,7 +95,8 @@ const SMT_TONES: Readonly<Record<SmtState, StateTone>> = {
   UNKNOWN: 'unknown',
 }
 
-const STAGE_LABELS: Readonly<Record<SetupState['stage'], string>> = {
+/** One setup-stage vocabulary for the panel and the chart's grade chip. */
+export const STAGE_LABELS: Readonly<Record<SetupState['stage'], string>> = {
   NONE: 'INGEN',
   DEVELOPING: 'UTVECKLAS',
   CONFIRMED: 'BEKRÄFTAD',

@@ -1,11 +1,32 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { GitBranch, Plus, Play } from 'lucide-react'
 import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { loadWorkspaceWorkflows } from '@/lib/os/project-workspace'
+import { ProjectWorkflows } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function WorkflowsPage({ params }: { params: { slug: string } }) {
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({ cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null })
+  if (!isVNext(generation)) return <WorkflowsLegacy params={params} />
+
+  const model = await loadWorkspaceWorkflows(project)
+  return (
+    <>
+      <ViewVisibleSync refs={model.items.slice(0, 12).map((workflow) => ({ domain: 'workflows', id: workflow.id, label: workflow.name }))} />
+      <ProjectWorkflows model={model} />
+    </>
+  )
+}
+
+async function WorkflowsLegacy({ params }: { params: { slug: string } }) {
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

@@ -235,7 +235,9 @@ function Workflows({ model }: { model: AgentDetailModel }) {
           {model.workflows.map((workflow) => (
             <li key={workflow.workflowId} className={styles.workflow}>
               <span className={styles.workflowHead}>
-                <span className={styles.workflowName}>{workflow.workflowName}</span>
+                {workflow.href
+                  ? <Link href={workflow.href} className={styles.workflowName}>{workflow.workflowName}</Link>
+                  : <span className={styles.workflowName}>{workflow.workflowName}</span>}
                 {workflow.running ? (
                   <span className={styles.workflowRunning}>kör nu</span>
                 ) : null}

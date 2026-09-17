@@ -45,6 +45,8 @@ import type { AgentDetailTabId, TabAvailability } from '@/lib/os/agent-detail-sh
 export interface AgentWorkflowMembership {
   workflowId: string
   workflowName: string
+  /** Canonical project-scoped workflow inspection destination, when registered. */
+  href: string | null
   /** Step names in this workflow that name this agent. */
   steps: string[]
   /** True when a run of this workflow is running right now. */
@@ -117,6 +119,7 @@ const DEFAULT_PROJECT_COLOR = '#6366f1'
  */
 export function assembleAgentDetail(input: AssembleAgentDetailInput): AgentDetailModel {
   const { agent, project } = input
+  const projectHref = resolveDestination('project_home', { project: project.slug })?.href ?? null
 
   const skillIds = Array.isArray(agent.skill_ids)
     ? agent.skill_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
@@ -131,6 +134,7 @@ export function assembleAgentDetail(input: AssembleAgentDetailInput): AgentDetai
       workflows.push({
         workflowId: workflow.id,
         workflowName: workflow.name,
+        href: projectHref ? `${projectHref}/workflows/${workflow.id}` : null,
         steps: mine.map((step, index) => step?.name ?? `Steg ${index + 1}`),
         running: input.runningWorkflowIds?.has(workflow.id) ?? false,
       })
@@ -142,8 +146,6 @@ export function assembleAgentDetail(input: AssembleAgentDetailInput): AgentDetai
   const working = input.runningWorkflowIds === null || input.workflows === null
     ? null
     : workflows.some((workflow) => workflow.running)
-
-  const projectHref = resolveDestination('project_home', { project: project.slug })?.href ?? null
 
   return {
     agent: {

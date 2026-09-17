@@ -1,11 +1,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { Bot, Plus, Cpu } from 'lucide-react'
 import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { loadWorkspaceAgents } from '@/lib/os/project-workspace'
+import { ProjectAgents } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function AgentsPage({ params }: { params: { slug: string } }) {
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({
+    cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
+  })
+
+  if (!isVNext(generation)) return <AgentsLegacy params={params} />
+
+  const model = await loadWorkspaceAgents(project)
+  return (
+    <>
+      <ViewVisibleSync refs={model.items.slice(0, 12).map((agent) => ({ domain: 'agents', id: agent.id, label: agent.name }))} />
+      <ProjectAgents model={model} />
+    </>
+  )
+}
+
+async function AgentsLegacy({ params }: { params: { slug: string } }) {
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

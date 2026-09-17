@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { RunStatusBadge } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
@@ -8,8 +9,28 @@ import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { OSPage, OSLayer, ViewVisibleSync } from '@/components/platform/os'
 import { getProjectBySlug } from '@/lib/project/get-project'
+import { loadWorkspaceRuns } from '@/lib/os/project-workspace'
+import { ProjectRuns } from '@/components/platform/vnext/project-workspace/ProjectWorkspaceViews'
+import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 
 export default async function RunsPage({ params }: { params: { slug: string } }) {
+  const project = await getProjectBySlug(params.slug)
+  if (!project) notFound()
+
+  const cookieStore = await cookies()
+  const generation = resolveUiGeneration({ cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null })
+  if (!isVNext(generation)) return <RunsLegacy params={params} />
+
+  const model = await loadWorkspaceRuns(project)
+  return (
+    <>
+      <ViewVisibleSync refs={model.items.slice(0, 12).map((run) => ({ domain: 'runs', id: run.id, label: run.workflowName ?? run.status ?? 'Körning' }))} />
+      <ProjectRuns model={model} />
+    </>
+  )
+}
+
+async function RunsLegacy({ params }: { params: { slug: string } }) {
   const project = await getProjectBySlug(params.slug)
   if (!project) notFound()
 

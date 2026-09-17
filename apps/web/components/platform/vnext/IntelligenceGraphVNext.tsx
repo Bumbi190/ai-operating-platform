@@ -24,11 +24,11 @@
  *    run window; the legend's explanation names the builder's cap and which
  *    rows only appear through a run.
  *
- * CANVAS FIRST (Phase 18 T2a). The page is exactly as tall as the shell leaves
- * it, and the canvas takes everything the header and the one control row do
- * not. What describes the view — place, scope, filters, zoom, legend — lives on
- * the canvas; the inspector is a right panel whose width the operator sets, and
- * which can be put away without losing the selection. The shell's floating
+ * SYNCHRONIZED PRESENTATIONS (Phase 18 T3a). One graph snapshot backs both the
+ * canvas and list. Desktop opens on canvas; phones open list-first. The page is
+ * exactly as tall as the shell leaves it, and its presentation takes everything
+ * the header and control rows do not. The inspector is a right panel whose width
+ * the operator sets, and a full-stage list detail on phones. The shell's floating
  * Atlas launcher and activity peek own the bottom-right corner of the viewport,
  * so nothing interactive here is placed under them (see the stylesheet).
  *
@@ -46,7 +46,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import type { IntelligenceGraphEdge } from '@/lib/intelligence/graph-contract'
+import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas, type GraphChromeRect, type GraphSpatialOptions } from '@/components/platform/intelligence/GraphCanvas'
 import { classifySpatialAspect, projectMonogram, type SpatialAnchor } from '@/components/platform/intelligence/spatial-layout'
 import { nodeColor, projectAccent, type GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
@@ -73,6 +73,7 @@ import {
 import { IntelligenceGraphControls } from './IntelligenceGraphControls'
 import { GraphLegend, GraphPlace, SnapshotSummary } from './IntelligenceGraphHud'
 import { IntelligenceGraphInspector } from './IntelligenceGraphInspector'
+import { IntelligenceGraphList, type IntelligenceGraphListHandle } from './IntelligenceGraphList'
 import styles from './IntelligenceGraphVNext.module.css'
 
 /** Line style carries how certain a relation is; colour and width stay the relation's own. */
@@ -143,6 +144,7 @@ export function IntelligenceGraphVNext() {
   const floatProbeRef = useRef<HTMLSpanElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
+  const listRef = useRef<IntelligenceGraphListHandle>(null)
   const showInspectorRef = useRef<HTMLButtonElement>(null)
   const zoomSequence = useRef(0)
   const graph = useIntelligenceGraph()
@@ -175,6 +177,8 @@ export function IntelligenceGraphVNext() {
     dimmedIds,
     dimmedEdgeIds,
     filtersActive,
+    query,
+    visibleHits,
     selectedEdges,
     neighborNodes,
     drillIn,
@@ -187,6 +191,9 @@ export function IntelligenceGraphVNext() {
     unavailable,
   } = graph
   const [fullscreen, setFullscreen] = useState(false)
+  const [presentationOverride, setPresentationOverride] = useState<'canvas' | 'list' | null>(null)
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
+  const [mobileListDetail, setMobileListDetail] = useState(false)
 
   useEffect(() => {
     const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === fieldRef.current)
@@ -265,9 +272,54 @@ export function IntelligenceGraphVNext() {
     return () => query.removeEventListener('change', update)
   }, [])
 
+  const presentation: 'canvas' | 'list' = mode === 'operations'
+    ? presentationOverride ?? (narrow ? 'list' : 'canvas')
+    : 'canvas'
+
+  useEffect(() => {
+    if (!selected) setMobileListDetail(false)
+  }, [selected])
+
+  useEffect(() => {
+    if (!narrow || presentation !== 'list') setMobileListDetail(false)
+  }, [narrow, presentation])
+
+  useEffect(() => {
+    if (!searchResultId || selected?.id !== searchResultId) return
+    setActiveNodeId(searchResultId)
+    if (narrow && presentation === 'list') setMobileListDetail(true)
+  }, [narrow, presentation, searchResultId, selected])
+
+  const changePresentation = useCallback((next: 'canvas' | 'list') => {
+    setPresentationOverride(next)
+    setMobileListDetail(false)
+    const nodeId = activeNodeId ?? selected?.id ?? null
+    if (!nodeId) return
+    if (next === 'canvas') {
+      setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [nodeId] })
+    } else {
+      requestAnimationFrame(() => listRef.current?.focusNode(nodeId))
+    }
+  }, [activeNodeId, selected, setCameraCommand])
+
+  const selectFromList = useCallback((node: IntelligenceGraphNode) => {
+    setActiveNodeId(node.id)
+    setHiddenFor(null)
+    setSelected(node)
+    setSearchResultId(null)
+    if (narrow) setMobileListDetail(true)
+  }, [narrow, setSearchResultId, setSelected])
+
+  const backToList = useCallback(() => {
+    const nodeId = selected?.id ?? activeNodeId
+    setMobileListDetail(false)
+    if (nodeId) requestAnimationFrame(() => listRef.current?.focusNode(nodeId, { scroll: false }))
+  }, [activeNodeId, selected])
+
   const renderedWidth = clampInspectorWidth(inspectorWidth, stageRem)
   const widthMax = inspectorMaxWidth(stageRem)
   const inspectorVisible = Boolean(selected) && hiddenFor !== selected?.id
+  const inspectorRendered = inspectorVisible && (presentation !== 'list' || !narrow || mobileListDetail)
 
   // On a phone, a drilled level opens with its own inspector put away: the sheet would cover the
   // level just opened. The selection stays, and "Visa inspektören" brings the panel back.
@@ -364,6 +416,8 @@ export function IntelligenceGraphVNext() {
   }, [canvasMode, data, error, loading, mode, payloadIsCurrent, unavailable])
 
   const counts = useMemo(() => snapshotCounts(nodes), [nodes])
+  const searchHitIds = useMemo(() => new Set(visibleHits.map(hit => hit.id)), [visibleHits])
+  const listScopeNodeIds = isolateScope?.nodeIds ?? drillScope?.nodeIds ?? null
   // ── Spatial Live Operations ──────────────────────────────────────────────────
   // The drill-down decides the level; an agent opens its project. The aspect class
   // comes from the stage — which the inspector does not resize — less the constant
@@ -500,6 +554,7 @@ export function IntelligenceGraphVNext() {
       className={styles.field}
       data-testid="intelligence-graph-vnext"
       data-mode={canvasMode}
+      data-presentation={presentation}
       data-resizing={resizing ? 'true' : undefined}
     >
       <div className={styles.ambient} aria-hidden />
@@ -535,11 +590,19 @@ export function IntelligenceGraphVNext() {
           relationName={relationName}
           fullscreen={fullscreen}
           onToggleFullscreen={() => { void toggleFullscreen() }}
+          presentation={presentation}
+          onPresentationChange={changePresentation}
         />
 
         {/* ── Canvas + inspector ── */}
-        <div ref={stageRef} className={styles.stage} data-inspector={inspectorVisible ? 'open' : 'closed'}>
-          <div ref={canvasFrameRef} className={styles.canvasFrame} data-testid="graph-canvas-frame">
+        <div
+          ref={stageRef}
+          className={styles.stage}
+          data-inspector={inspectorRendered ? 'open' : 'closed'}
+          data-presentation={presentation}
+          data-mobile-detail={narrow && presentation === 'list' && mobileListDetail ? 'open' : undefined}
+        >
+          <div ref={canvasFrameRef} className={styles.canvasFrame} data-testid="graph-canvas-frame" data-presentation={presentation}>
             {loading && (
               <div className={styles.loading} role="status">
                 {canvasMode === 'operations' ? 'Hämtar ögonblicksbild…' : 'Laddar kodkartan…'}
@@ -569,31 +632,39 @@ export function IntelligenceGraphVNext() {
             )}
 
             {/* Before the canvas in the document, so Tab reaches Tillbaka first. */}
-            <GraphPlace
-              location={location}
-              onBack={showBack ? goBack : null}
-              projectScope={scopedProject ? { name: scopedProject, onClear: () => setProjectFilter('all') } : null}
-              isolate={isolateScope ? {
-                label: isolateScope.label,
-                onExit: exitIsolate,
-                onFit: () => setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...isolateScope.nodeIds] }),
-              } : null}
-              filters={filtersActive ? { matchCount: filterState.matchCount, onClear: clearFilters } : null}
-              criticalOutsideFilters={filterState.criticalOutsideFilters}
-              truncatedAt={data?.truncated && mode === 'system' ? nodes.length : null}
-              noMatch={!loading && graphVisible && filtersActive && filterState.matchCount === 0}
-              hiddenInspector={selected && !inspectorVisible
-                ? { label: selected.label, onShow: showInspector, buttonRef: showInspectorRef }
-                : null}
-            />
+            {presentation === 'canvas' && (
+              <GraphPlace
+                location={location}
+                onBack={showBack ? goBack : null}
+                projectScope={scopedProject ? { name: scopedProject, onClear: () => setProjectFilter('all') } : null}
+                isolate={isolateScope ? {
+                  label: isolateScope.label,
+                  onExit: exitIsolate,
+                  onFit: () => setCameraCommand({ nonce: Date.now(), type: 'fit-scope', nodeIds: [...isolateScope.nodeIds] }),
+                } : null}
+                filters={filtersActive ? { matchCount: filterState.matchCount, onClear: clearFilters } : null}
+                criticalOutsideFilters={filterState.criticalOutsideFilters}
+                truncatedAt={data?.truncated && mode === 'system' ? nodes.length : null}
+                noMatch={!loading && graphVisible && filtersActive && filterState.matchCount === 0}
+                hiddenInspector={selected && !inspectorVisible
+                  ? { label: selected.label, onShow: showInspector, buttonRef: showInspectorRef }
+                  : null}
+              />
+            )}
 
-            {graphVisible && (
+            {graphVisible && presentation === 'canvas' && (
               <div className={styles.canvas}>
                 <GraphCanvas
                   nodes={nodes}
                   edges={edges}
                   selectedId={selected?.id ?? null}
-                  onSelect={node => { setSelected(node); if (!node) setSearchResultId(null) }}
+                  onSelect={node => {
+                    setSelected(node)
+                    if (node) setActiveNodeId(node.id)
+                    else setSearchResultId(null)
+                  }}
+                  activeNodeId={activeNodeId}
+                  onFocusNode={node => setActiveNodeId(node.id)}
                   onOpen={drillIn}
                   fitSignal={fitSignal}
                   mode={canvasMode}
@@ -619,8 +690,27 @@ export function IntelligenceGraphVNext() {
               </div>
             )}
 
+            {graphVisible && presentation === 'list' && (
+              <IntelligenceGraphList
+                ref={listRef}
+                nodes={nodes}
+                edges={edges}
+                projects={data?.projects ?? []}
+                selectedId={selected?.id ?? null}
+                activeNodeId={activeNodeId}
+                dimmedIds={dimmedIds}
+                dimmedEdgeIds={dimmedEdgeIds}
+                searchHitIds={searchHitIds}
+                scopeNodeIds={listScopeNodeIds}
+                filtersActive={filtersActive}
+                matchCount={filterState.matchCount}
+                query={query}
+                onSelect={selectFromList}
+                onFocusNode={node => setActiveNodeId(node.id)}
+              />
+            )}
 
-            {graphVisible && (
+            {graphVisible && presentation === 'canvas' && (
               <div className={styles.zoomDock} data-graph-chrome>
                 <div className={styles.zoomGroup} role="group" aria-label="Zoom">
                   <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-out')} aria-label="Zooma ut">−</button>
@@ -634,12 +724,12 @@ export function IntelligenceGraphVNext() {
             )}
 
             {/* ── How to read the lines, and what the snapshot covers ── */}
-            {payloadIsCurrent && graphVisible && (
+            {payloadIsCurrent && graphVisible && presentation === 'canvas' && (
               <GraphLegend entries={legend} snapshotNote={snapshotNote} about={canvasMode === 'operations' ? SPATIAL_ABOUT : GRAPH_ABOUT} />
             )}
           </div>
 
-          {selected && inspectorVisible && (
+          {selected && inspectorRendered && (
             <div
               ref={dockRef}
               className={styles.inspectorDock}
@@ -674,11 +764,17 @@ export function IntelligenceGraphVNext() {
                 mode={canvasMode}
                 onClose={() => setSelected(null)}
                 onHide={hideInspector}
-                onSelectNeighbor={setSelected}
+                onSelectNeighbor={node => { setActiveNodeId(node.id); setSelected(node) }}
                 onDrillIn={drillIn}
                 onIsolate={isolateNode}
-                onFocus={node => setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [node.id] })}
+                onFocus={node => {
+                  setActiveNodeId(node.id)
+                  setPresentationOverride('canvas')
+                  setMobileListDetail(false)
+                  setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [node.id] })
+                }}
                 identity={canvasMode === 'operations' ? selectedIdentity ?? undefined : undefined}
+                listBack={narrow && presentation === 'list' ? { label: 'Tillbaka till listan', onBack: backToList } : undefined}
               />
             </div>
           )}

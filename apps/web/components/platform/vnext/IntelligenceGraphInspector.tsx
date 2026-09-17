@@ -27,7 +27,7 @@
 
 import { forwardRef, useId, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import Link from 'next/link'
-import { Crosshair, PanelRightClose, X } from 'lucide-react'
+import { ArrowLeft, Crosshair, PanelRightClose, X } from 'lucide-react'
 import { NodeIdentityGlyph } from '@/components/platform/intelligence/spatial-scene'
 import type {
   IntelligenceGraphEdge,
@@ -80,10 +80,12 @@ export interface IntelligenceGraphInspectorProps {
    * monogram, so the panel shows the same identity as the selection on the canvas.
    */
   identity?: { accent: string; monogram?: string }
+  /** Phone list detail: returns to the still-mounted list and restores its focused row. */
+  listBack?: { label: string; onBack: () => void }
 }
 
 export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGraphInspectorProps>(function IntelligenceGraphInspector({
-  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus, identity,
+  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus, identity, listBack,
 }, ref) {
   // Kept across selections: following a connection stays on Kopplingar.
   const [tab, setTab] = useState<InspectorTab>('overview')
@@ -124,6 +126,17 @@ export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGr
       style={identity ? ({ '--ig-inspector-accent': identity.accent } as CSSProperties) : undefined}
     >
       <div className={styles.inspectorHeader}>
+        {listBack && (
+          <button
+            type="button"
+            onClick={listBack.onBack}
+            className={styles.mobileDetailBack}
+            aria-label={listBack.label}
+          >
+            <ArrowLeft className={styles.buttonIcon} aria-hidden />
+            Lista
+          </button>
+        )}
         {identity ? (
           <span className={styles.inspectorIdentity}>
             <NodeIdentityGlyph node={node} colour={identity.accent} monogram={identity.monogram} />
@@ -135,19 +148,23 @@ export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGr
           <p className={styles.inspectorTitle} title={node.label}>{node.label}</p>
           <p className={styles.inspectorKind}>{kindLabel(node.kind)}</p>
         </div>
-        <button
-          type="button"
-          onClick={onHide}
-          className={styles.inspectorClose}
-          aria-label="Dölj inspektören"
-          title="Dölj panelen — valet ligger kvar"
-          data-testid="graph-hide-inspector"
-        >
-          <PanelRightClose className={styles.buttonIcon} aria-hidden />
-        </button>
-        <button type="button" onClick={onClose} className={styles.inspectorClose} aria-label="Stäng inspektören" title="Stäng och avmarkera">
-          <X className={styles.buttonIcon} aria-hidden />
-        </button>
+        {!listBack && (
+          <>
+            <button
+              type="button"
+              onClick={onHide}
+              className={styles.inspectorClose}
+              aria-label="Dölj inspektören"
+              title="Dölj panelen — valet ligger kvar"
+              data-testid="graph-hide-inspector"
+            >
+              <PanelRightClose className={styles.buttonIcon} aria-hidden />
+            </button>
+            <button type="button" onClick={onClose} className={styles.inspectorClose} aria-label="Stäng inspektören" title="Stäng och avmarkera">
+              <X className={styles.buttonIcon} aria-hidden />
+            </button>
+          </>
+        )}
       </div>
 
       <div className={styles.inspectorActions} data-testid="inspector-actions">

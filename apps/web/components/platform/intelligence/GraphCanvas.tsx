@@ -94,6 +94,10 @@ export interface GraphCanvasProps {
   edges: IntelligenceGraphEdge[]
   selectedId: string | null
   onSelect: (node: IntelligenceGraphNode | null) => void
+  /** Optional presentation bridge: focus this exact existing node when the canvas mounts. */
+  activeNodeId?: string | null
+  /** Reports keyboard focus without changing graph selection. */
+  onFocusNode?: (node: IntelligenceGraphNode) => void
   onOpen?: (node: IntelligenceGraphNode) => void
   fitSignal?: number
   mode?: 'system' | 'operations'
@@ -189,6 +193,8 @@ export function GraphCanvas({
   edges,
   selectedId,
   onSelect,
+  activeNodeId = null,
+  onFocusNode,
   onOpen,
   fitSignal = 0,
   mode = 'system',
@@ -233,6 +239,11 @@ export function GraphCanvas({
   const handledZoomNonceRef = useRef<number | null>(
     cameraCommand && (cameraCommand.type === 'zoom-in' || cameraCommand.type === 'zoom-out') ? cameraCommand.nonce : null,
   )
+
+  useEffect(() => {
+    if (!activeNodeId) return
+    nodeRefs.current.get(activeNodeId)?.focus()
+  }, [activeNodeId])
 
   const spatialAnchorKey = spatial ? JSON.stringify(spatial.anchor) : null
   const spatialAspect = spatial?.aspect ?? null
@@ -977,7 +988,7 @@ export function GraphCanvas({
                   onIsolate(node)
                 }
               }}
-              onFocus={() => setFocusId(node.id)}
+              onFocus={() => { setFocusId(node.id); onFocusNode?.(node) }}
               onBlur={() => setFocusId(current => current === node.id ? null : current)}
               onClick={event => { event.stopPropagation(); if (!movedRef.current) onSelect(node) }}
               onDoubleClick={event => { event.stopPropagation(); onOpen?.(node) }}

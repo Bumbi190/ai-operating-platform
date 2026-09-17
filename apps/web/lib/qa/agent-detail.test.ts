@@ -295,8 +295,14 @@ describe('agent detail · claims no capability Omnira does not model', () => {
     expect(model.workflows).toHaveLength(1)
     expect(model.workflows[0]).toMatchObject({
       workflowId: 'w1', workflowName: 'Morgonbriefing', running: true,
+      href: '/projects/trading/workflows/w1',
     })
     expect(VIEW.replace(/\s+/g, ' ')).toMatch(/Historik per agent finns inte/)
+  })
+
+  it('links workflow membership to the project-scoped inspection surface', () => {
+    expect(VIEW).toContain('href={workflow.href}')
+    expect(build().workflows[0].href).toBe('/projects/trading/workflows/w1')
   })
 })
 

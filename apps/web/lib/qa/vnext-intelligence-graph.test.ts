@@ -27,8 +27,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas } from '@/components/platform/intelligence/GraphCanvas'
 import { NodeInspector } from '@/components/platform/intelligence/NodeInspector'
-import { getEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
-import { buildGraphBreadcrumbs, computeGraphFilterState } from '@/components/platform/intelligence/graph-navigation'
+import { GRAPH_VISUAL_TOKENS, getEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
+import { buildDrilldownScope, buildGraphBreadcrumbs, computeGraphFilterState } from '@/components/platform/intelligence/graph-navigation'
 import { fitGraphBounds, fitNodeIds, preserveSelectedNeighborhoodCamera, reservedCanvasBoxes } from '@/components/platform/intelligence/graph-readability'
 import type { useIntelligenceGraph } from '@/components/platform/intelligence/useIntelligenceGraph'
 import { DEFAULT_WINDOW } from '@/lib/intelligence/operations-graph'
@@ -62,10 +62,12 @@ import {
   OPERATIONS_FIXTURE_EDGES,
   OPERATIONS_FIXTURE_NODES,
   OPERATIONS_FIXTURE_PAYLOAD,
+  PROD_SHAPED_PROJECTS,
   SYSTEM_FIXTURE_EDGES,
   SYSTEM_FIXTURE_NODES,
   SYSTEM_FIXTURE_PAYLOAD,
   SYSTEM_UNAVAILABLE_PAYLOAD,
+  productionShapedOperations,
 } from './intelligence-graph-fixture'
 
 // The app compiles JSX with the automatic runtime; vitest's transform uses the
@@ -550,7 +552,9 @@ describe('phase 18 · vNext surface', () => {
     expect(html).not.toContain('data-testid="graph-run-cap"')
     expect(words).toContain('Direkt lagrad referens i databasen eller i koden')
     expect(words).toContain('Definition namngiven i en nuvarande definition')
-    expect(words).not.toContain('Härledd')
+    // T2b: "Härledd" names one relation only — Atlas's ownership link — never a payload edge.
+    expect(words).toContain('Härledd beräknad eller sammanräknad — kan vara ofullständig Atlas → projekt du äger (ägarskap)')
+    expect(relationLegend(OPERATIONS_FIXTURE_EDGES).map((entry) => entry.truth)).not.toContain('derived')
     expect(html).toContain('data-appearance="vnext"')
     expect(html).toContain('aria-label="Zooma ut"')
     expect(html).toContain('aria-label="Zooma in"')
@@ -581,10 +585,16 @@ describe('phase 18 · vNext surface', () => {
     }
   })
 
-  it('keeps Execution Replay disabled and draws no Atlas node', async () => {
+  it('keeps Execution Replay disabled, and Atlas is an identity orb — never a node of the snapshot', async () => {
     const html = await renderVNext(graphState())
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Execution Replay<\/button>/)
-    expect(text(html).match(/Atlas/g) ?? []).toHaveLength(1) // the eyebrow only
+    // T2b (owner decision 1): Atlas is drawn once, as identity, with no status and no node behind it.
+    const orbs = html.match(/<g[^>]*data-atlas="(core|receded)"[^>]*>/g) ?? []
+    expect(orbs).toHaveLength(1)
+    expect(orbs[0]).toContain('role="button"')
+    expect(orbs[0]).toContain('aria-label="Atlas. Omniras identitet, inte en datanod.')
+    expect(html).not.toMatch(/aria-label="atlas:|data-spatial-role="[^"]*"[^>]*aria-label="Atlas/)
+    expect(text(html)).not.toMatch(/Atlas · (Aktiv|Väntar|Kör)/)
     expect(VNEXT).toContain('nodes={nodes}')
     expect(VNEXT).toContain('edges={edges}')
     expect(codeOnly(VNEXT + INSPECTOR + SHARED)).not.toMatch(/kind: ['"]atlas|atlas:|SUPERVISES|DIRECTS|READ_MEMORY|USES_SKILL/)
@@ -738,7 +748,11 @@ describe('phase 18 · layout, scale and motion', () => {
   it('docks the inspector at the breakpoint and share the canvas reserves for it', () => {
     // T2a: the sheet's top stays on the canvas reserve; its bottom stops above the activity peek.
     expect(CSS).toMatch(/@media \(max-width: 767px\) \{\s*\.inspectorDock \{[^}]*height: calc\(min\(48%, 24rem\) - var\(--ig-sheet-clear\)\);\s*bottom: var\(--ig-sheet-clear\);/)
-    expect(CANVAS).toContain('const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0')
+    // T2b: the page says when the inspector is a sheet; the canvas width alone misread a docked desktop panel.
+    expect(CANVAS).toContain('const sheetPresentation = inspectorSheet ?? viewport.width < 768')
+    expect(CANVAS).toContain('const inspectorBottomInset = inspectorOpen && sheetPresentation ? view.h * 0.48 : 0')
+    expect(VNEXT).toContain('inspectorSheet={narrow}')
+    expect(read('components/platform/intelligence/IntelligenceGraphClient.tsx')).not.toContain('inspectorSheet')
     // T2a: the docked width is the operator's, inside the limits in INSPECTOR_WIDTH.
     expect(CSS).toMatch(/\.inspectorDock \{\s*position: relative;\s*flex: none;[^}]*width: clamp\(18rem, var\(--ig-inspector-width, 22rem\), max\(18rem, 100% - 24\.75rem\)\);/)
   })
@@ -946,7 +960,7 @@ describe('phase 18 T2a · on the canvas', () => {
     expect(words).toContain('Om ögonblicksbilden')
     expect(words).toContain(`Körningar skapade de senaste 24 h, högst ${OPERATIONS_RUN_CAP} per hämtning.`)
     expect(words).toContain('Granskningar, utdata och uppgifter visas bara när de hör till en av körningarna.')
-    expect(words).toMatch(/Direkt Definition Förklaring$/)
+    expect(words).toMatch(/Direkt Definition Härledd Förklaring$/)
   })
 
   it('keeps the zoom controls on the canvas', async () => {
@@ -1135,6 +1149,8 @@ describe('phase 18 T2a · shell geometry', () => {
   it('lets the canvas corners answer to the canvas width, not the viewport', () => {
     expect(CSS).toMatch(/\.canvasFrame \{[^}]*container-type: inline-size;\s*container-name: ig-canvas;/)
     expect(CSS).toMatch(/@container ig-canvas \(max-width: 40rem\) \{\s*\.legendKey \{ display: none; \}/)
+    // T2b: Live Operations' key has a third class (Atlas's derived link), so it steps aside at a wider canvas.
+    expect(CSS).toMatch(/@container ig-canvas \(max-width: 48rem\) \{\s*\.legendKey:has\(> li:nth-child\(3\)\) \{ display: none; \}/)
   })
 })
 
@@ -1195,7 +1211,7 @@ describe('phase 18 T2a · the canvas keeps nodes out from under its own controls
     expect(CANVAS).toContain('setView(fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current))')
     expect(CANVAS).toContain('const next = fitNodeIds(layout, ids, viewport, overlayRef.current)')
     expect(CANVAS).toContain('const next = fitNodeIds(layout, selectedNeighborhood, viewport, overlayRef.current)')
-    expect(CANVAS).toMatch(/viewport,\s*inspectorOpen,\s*overlayRef\.current,\s*\)\)/)
+    expect(CANVAS).toMatch(/viewport,\s*inspectorOpen,\s*overlayRef\.current,\s*inspectorSheet,\s*\)\)/)
     // A new inset alone never moves the camera: it is read from a ref, not a dependency.
     expect(CANVAS).toMatch(/const fit = useCallback\(\(\) => \{\s*setView\(fitGraphBounds\(graphBounds, viewport, undefined, overlayRef\.current\)\)\s*\}, \[graphBounds, viewport\]\)/)
     expect(VNEXT).toContain('overlayInsets={overlayInsets}')
@@ -1205,7 +1221,184 @@ describe('phase 18 T2a · the canvas keeps nodes out from under its own controls
   it('stays quiet in the top corner at the top of an unfiltered graph', async () => {
     const html = await renderVNext(graphState())
     expect(html).not.toContain('data-testid="graph-place"')
-    expect(VNEXT).toMatch(/top: \(narrow \|\| placeShown \? HUD_ROW_REM : 0\) \* rootPx,/)
+    // T2b: a phone wraps the place row under the zoom controls, so it reserves two rows.
+    expect(VNEXT).toMatch(/top: \(narrow \? \(placeShown \? 2 : 1\) : placeShown \? 1 : 0\) \* HUD_ROW_REM \* rootPx,/)
     expect(VNEXT).toContain('const HUD_ROW_REM = 3.125')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2b — the spatial Live Operations view, on the production-shaped snapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase 18 T2b · spatial Live Operations', () => {
+  const P = PROD_SHAPED_PROJECTS
+  const day = productionShapedOperations(24)
+  const week = productionShapedOperations(24 * 7, { attention: true })
+  type Payload = ReturnType<typeof productionShapedOperations>
+  const at = (payload: Payload, over: Partial<GraphState> = {}) => graphState({ data: payload as GraphState['data'], ...over })
+  const drill = (payload: Payload, id: string) => buildDrilldownScope(payload.nodes.find((candidate) => candidate.id === id)!, payload.nodes, payload.edges)!
+  /** The canvas markup alone: the SVG that carries the layout attribute. */
+  const canvas = (html: string) => {
+    const marker = html.indexOf('data-layout="spatial"')
+    expect(marker, 'spatial canvas').toBeGreaterThanOrEqual(0)
+    const start = html.lastIndexOf('<svg', marker)
+    return html.slice(start, html.indexOf('</svg>', start) + '</svg>'.length)
+  }
+  const values = (markup: string, name: string) => [...markup.matchAll(new RegExp(`${name}="([^"]*)"`, 'g'))].map((match) => match[1])
+  const dashes = (markup: string) => (markup.match(/<line[^>]*>/g) ?? []).filter((line) => !line.includes('class=')).map((line) => line.match(/stroke-dasharray="([^"]+)"/)?.[1] ?? 'solid')
+
+  it('lays out Live Operations spatially, while System Map and legacy keep the force layout', async () => {
+    const html = await renderVNext(at(day))
+    expect(html).toContain('data-spatial-level="portfolio"')
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
+    expect(system).toContain('data-appearance="vnext"')
+    expect(system).not.toContain('data-layout=')
+    expect(system).not.toContain('data-atlas=')
+    for (const [name, { props }] of Object.entries(LEGACY_CANVAS_RENDERS)) expect(legacyCanvas(props), name).not.toContain('data-layout=')
+    expect(read('components/platform/intelligence/IntelligenceGraphClient.tsx')).not.toContain('spatial')
+    expect(VNEXT).toContain("const spatial = useMemo<GraphSpatialOptions | undefined>(() => (canvasMode === 'operations'")
+  })
+
+  it('computes places from the snapshot, the drill-down and the stage aspect — never from selection, camera or inspector', () => {
+    expect(CANVAS).toContain('() => spatial ? computeSpatialLayout({ nodes, edges, anchor: spatial.anchor, aspect: spatial.aspect }) : null,')
+    expect(CANVAS).toContain('[nodes, edges, spatialAnchorKey, spatialAspect],')
+    expect(VNEXT).toContain('const spatialAspect = classifySpatialAspect(stageSize.width, stageSize.height - 2 * HUD_ROW_REM * rootPx)')
+    // A counted run that is selected appears at its slot; nothing is re-laid for it.
+    expect(read('components/platform/intelligence/spatial-layout.ts')).not.toContain('pinnedIds')
+    // A new canvas size re-fits a view nobody has moved, keeping a selection clear of sheet and overlays.
+    expect(CANVAS).toContain('if (spatialLayout && viewportChanged && autoFitRef.current) {')
+    // A fit frames the level's names and counts at their screen size; the portfolio frames its hubs and Atlas.
+    expect(CANVAS).toContain('return boundsWithScreenText(spatialLayout.fitBounds, framed, viewport, undefined, overlayRef.current)')
+    expect(CANVAS).toContain("? spatialTexts.filter(text => text.kind === 'atlas' || text.kind === 'hub-name' || text.kind === 'hub-subtext')")
+    expect(CANVAS).toContain('const graphBounds = spatialBounds ?? forceBounds!')
+    // The complete fit that resets a moved camera runs for a new layout only — the text-aware bounds change with the canvas.
+    expect(CANVAS).toContain('}, [fitSignal, layoutBounds])')
+    expect(CANVAS).toContain('const layoutBounds = spatialLayout ? spatialLayout.fitBounds : graphBounds')
+  })
+
+  it('puts Atlas at the centre as identity, linked only to owned projects, and names that link as derived', async () => {
+    const html = await renderVNext(at(day))
+    const svg = canvas(html)
+    expect(values(svg, 'data-atlas')).toEqual(['core'])
+    expect(values(svg, 'data-atlas-links')).toEqual(['4'])
+    // At the overview the only lines are Atlas's four, all in the derived style.
+    expect(dashes(svg)).toEqual(Array(4).fill(RELATION_TRUTH_STROKE.derived.dash))
+    expect(text(section(html, 'data-testid="graph-legend"'))).toContain('Härledd beräknad eller sammanräknad — kan vara ofullständig Atlas → projekt du äger (ägarskap)')
+    // The link rests on the payload holding owned projects only.
+    expect(BUILDER).toContain("scopeToProjects(db.from('projects').select('id, name, slug, color'), allowed, 'id')")
+    expect(read('lib/atlas/isolation.ts')).toContain(".from('projects').select('id').eq('owner_id', userId)")
+    // Identity carries no status colour.
+    const orbStart = svg.lastIndexOf('<g', svg.indexOf('data-atlas="core"'))
+    const orb = svg.slice(orbStart, svg.indexOf('</text></g>', orbStart))
+    expect(text(orb)).toBe('Atlas — Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten. Atlas')
+    for (const status of ['running', 'failed', 'waiting', 'approval', 'completed', 'cancelled'] as const) {
+      expect(orb).not.toContain(`"${GRAPH_VISUAL_TOKENS.status[status]}"`)
+    }
+  })
+
+  it('gives each owned project a hub with its monogram and true counts; quiet ones orbit further out, never hidden', async () => {
+    const svg = canvas(await renderVNext(at(day)))
+    expect(values(svg, 'data-hub-orbit').sort()).toEqual(['active', 'active', 'calm', 'calm'])
+    const words = text(svg)
+    expect(words).toContain('TP The Prompt 2 agenter · 6 workflows · 13 körningar')
+    expect(words).toContain('FS Familje-Stunden 33 agenter · 5 workflows')
+    expect(words).toContain('GP GainPilot Inga agenter eller workflows')
+    expect(words).toContain('A0 AUDIT 0b 2 inaktiva workflows')
+    expect(svg).toContain('aria-label="project: GainPilot · Inga agenter eller workflows · inga körningar i fönstret och inget aktivt workflow"')
+    expect(svg).toContain('aria-label="project: AUDIT 0b · 2 inaktiva workflows · inga körningar i fönstret och inget aktivt workflow"')
+    // The children stay folded into those counts: no agent, workflow or run is drawn at the overview.
+    expect(values(svg, 'data-spatial-role')).toEqual(['hub', 'hub', 'hub', 'hub'])
+    expect(values(svg, 'data-cluster-count')).toEqual([])
+  })
+
+  it('opens a project as the new centre: workflows inside, agents outside, other projects and Atlas receded', async () => {
+    const svg = canvas(await renderVNext(at(day, { drillScope: drill(day, `project:${P.familjeStunden}`) })))
+    expect(svg).toContain('data-spatial-level="project"')
+    expect(values(svg, 'data-hub-orbit').sort()).toEqual(['focus', 'receded', 'receded', 'receded'])
+    expect(values(svg, 'data-spatial-role').filter((role) => role === 'structure')).toHaveLength(5 + 33)
+    expect(values(svg, 'data-spatial-role').filter((role) => role === 'context')).toHaveLength(3)
+    expect(values(svg, 'data-atlas')).toEqual(['receded'])
+    expect(values(svg, 'data-atlas-links')).toEqual(['1'])
+    // Receded context carries no name of its own — a receded hub shows its monogram, Atlas nothing.
+    const orbStart = svg.lastIndexOf('<g', svg.indexOf('data-atlas="receded"'))
+    expect(text(svg.slice(orbStart, svg.indexOf('</g>', svg.indexOf('</title>', orbStart))))).not.toMatch(/Atlas$/)
+    expect(svg.slice(orbStart)).not.toMatch(/<text[^>]*>Atlas<\/text>/)
+    // The drilled hub keeps its name and counts.
+    expect(text(svg)).toContain('FS Familje-Stunden 33 agenter · 5 workflows')
+  })
+
+  it('captions the agents no workflow names, and draws only relations the snapshot holds', async () => {
+    const svg = canvas(await renderVNext(at(day, { drillScope: drill(day, `project:${P.familjeStunden}`) })))
+    expect(values(svg, 'data-band-count')).toEqual(['8'])
+    expect(text(svg)).toContain('8 agenter som inget workflow nämner')
+    // Below the hub the caption is centred; on a side it reads away from the project.
+    expect(svg).toMatch(/<text[^>]*text-anchor="middle"[^>]*data-band-count="8"/)
+    expect(read('components/platform/intelligence/spatial-text.ts')).toContain("return horizontal < -0.55 ? 'end' : horizontal > 0.55 ? 'start' : 'middle'")
+    const definitions = day.edges.filter((edge) => edge.relation === 'DELEGATED_TO' && edge.source.startsWith('workflow:fs-')).length
+    const count = (dash: string | undefined) => dashes(svg).filter((value) => value === dash).length
+    expect(count(RELATION_TRUTH_STROKE.definition.dash)).toBe(definitions)
+    // The hub's own CONTAINS lines to its workflows, and Atlas's one ownership link — nothing else.
+    expect(count('solid')).toBe(5)
+    expect(count(RELATION_TRUTH_STROKE.derived.dash)).toBe(1)
+    expect(dashes(svg)).toHaveLength(definitions + 5 + 1)
+  })
+
+  it('counts a workflow’s runs instead of drawing them: 13, 86 and 120 runs become three numbers', async () => {
+    for (const [hours, counts] of [[24, ['4', '4', '5']], [24 * 7, ['28', '29', '29']], [24 * 30, ['40', '40', '40']]] as const) {
+      const payload = productionShapedOperations(hours)
+      const svg = canvas(await renderVNext(at(payload, { hours, drillScope: drill(payload, `project:${P.prompt}`) })))
+      expect(values(svg, 'data-cluster-count').sort(), `${hours} h`).toEqual(counts)
+      expect(values(svg, 'data-cluster-kind'), `${hours} h`).toEqual(['workflow', 'workflow', 'workflow'])
+      expect(values(svg, 'data-spatial-role'), `${hours} h`).not.toContain('run')
+    }
+    const svg = canvas(await renderVNext(at(productionShapedOperations(24 * 7), { hours: 168, drillScope: drill(productionShapedOperations(24 * 7), `project:${P.prompt}`) })))
+    expect(text(svg)).toContain('Daglig short: 29 körningar i fönstret (29 klar)')
+  })
+
+  it('places a run on its own only when it runs, waits or failed — and counts runs without a workflow apart', async () => {
+    const svg = canvas(await renderVNext(at(week, { hours: 168, drillScope: drill(week, `project:${P.prompt}`) })))
+    expect(values(svg, 'data-cluster-kind').sort()).toEqual(['no-workflow', 'workflow', 'workflow', 'workflow'])
+    const shown = [...svg.matchAll(/aria-label="run: [^"]*\((\w+)\)"/g)].map((match) => match[1]).sort()
+    expect(shown).toEqual(['awaiting_approval', 'failed', 'failed', 'running'])
+    expect(text(svg)).toContain('2 körningar utan workflow-referens (1 klar, 1 misslyckades)')
+    expect(svg).toContain('aria-label="approval: Approval · story_draft (pending)"')
+  })
+
+  it('opens a workflow with its runs on a time arc, counting the older ones', async () => {
+    const html = await renderVNext(at(week, { hours: 168, drillScope: drill(week, 'workflow:tp-1') }))
+    const svg = canvas(html)
+    expect(svg).toContain('data-spatial-level="workflow"')
+    expect(values(svg, 'data-cluster-kind')).toEqual(['older'])
+    const shown = (svg.match(/aria-label="run: /g) ?? []).length
+    expect(shown + Number(values(svg, 'data-cluster-count')[0])).toBe(29)
+    // No ownership line is drawn at this level, so the legend does not name one.
+    expect(values(svg, 'data-atlas-links')).toEqual(['0'])
+    expect(text(html)).not.toContain('Atlas → projekt du äger')
+  })
+
+  it('names a workflow’s runs in the inspector by the same rule as its cluster', async () => {
+    const workflow = (id: string) => week.nodes.find((candidate) => candidate.id === id)!
+    expect(text(await renderVNext(at(week, { hours: 168, selected: workflow('workflow:tp-1') })))).toContain('Körningar i ögonblicksbilden 29')
+    // A workflow with no runs in the window says nothing, rather than a zero it cannot vouch for.
+    expect(text(await renderVNext(at(week, { hours: 168, selected: workflow('workflow:tp-5') })))).not.toContain('Körningar i ögonblicksbilden')
+  })
+
+  it('explains the view’s rules in the legend, only in Live Operations', async () => {
+    const legend = text(section(await renderVNext(at(day)), 'data-testid="graph-legend"'))
+    expect(legend).toContain('Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger.')
+    expect(legend).toContain('Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan.')
+    expect(legend).toContain('Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats')
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
+    expect(text(system)).not.toContain('Atlas i mitten')
+  })
+
+  it('moves only as identity and presentation, and stands down for reduced motion', () => {
+    const css = read('components/platform/intelligence/GraphCanvas.module.css')
+    expect([...css.matchAll(/@keyframes (\w+)/g)].map((match) => match[1])).toEqual(['igSpatialAppear', 'igAtlasBreath'])
+    expect(css).toMatch(/\.atlasBreath \{[^}]*animation: igAtlasBreath 9s ease-in-out infinite;/)
+    const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    for (const name of ['spatialNode', 'spatialAppear', 'atlasBreath']) expect(reduced).toContain(`:where(html:not([data-motion='full'])) .${name}`)
+    expect(reduced).toMatch(/animation: none !important;\s*transition: none !important;/)
   })
 })

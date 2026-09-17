@@ -47,17 +47,20 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import type { IntelligenceGraphEdge } from '@/lib/intelligence/graph-contract'
-import { GraphCanvas } from '@/components/platform/intelligence/GraphCanvas'
+import { GraphCanvas, type GraphSpatialOptions } from '@/components/platform/intelligence/GraphCanvas'
+import { classifySpatialAspect, type SpatialAnchor } from '@/components/platform/intelligence/spatial-layout'
 import type { GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
 import { TIME_FILTERS, useIntelligenceGraph } from '@/components/platform/intelligence/useIntelligenceGraph'
 import {
   INSPECTOR_WIDTH,
   INSPECTOR_WIDTH_STORAGE_KEY,
   OPERATIONS_RUN_CAP,
+  RELATION_TRUTH_COPY,
   RELATION_TRUTH_STROKE,
   ZOOM_LEVEL_LABELS,
   clampInspectorWidth,
   graphLocation,
+  nodeStatus,
   inspectorMaxWidth,
   parseStoredInspectorWidth,
   relationLegend,
@@ -81,6 +84,37 @@ export function truthEdgeVisual(edge: IntelligenceGraphEdge, visual: GraphEdgeVi
 const REPLAY_UNAVAILABLE = 'Kräver händelsedata per steg, som Omnira inte registrerar ännu.'
 
 const GRAPH_ABOUT = 'Hur Omnira hänger ihop — ritat enbart ur data som finns, med källan synlig för varje koppling.'
+
+/** What the spatial Live Operations view adds to the explanation — its two rules, in the product's words. */
+const SPATIAL_ABOUT = `${GRAPH_ABOUT} Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger. Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan. Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats, när du väljer den, eller när du fördjupar dig i dess workflow.`
+
+/** The legend line for Atlas's links: derived from the caller owning the project, never stored. */
+const ATLAS_LINK_RELATION = 'Atlas → projekt du äger (ägarskap)'
+
+function runStatusWords(status: string): string {
+  return nodeStatus({ kind: 'run', status })?.label.toLowerCase() ?? status
+}
+
+const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
+  atlasLabel: 'Atlas',
+  atlasDescription: 'Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten.',
+  clusterCount: cluster => (cluster.kind === 'older' ? `+${cluster.count}` : String(cluster.count)),
+  clusterCaption: cluster => (cluster.kind === 'older'
+    ? 'äldre'
+    : cluster.kind === 'no-workflow'
+      ? 'utan workflow'
+      : cluster.count === 1 ? 'körning' : 'körningar'),
+  unlinkedAgents: count => [`${count} ${count === 1 ? 'agent' : 'agenter'}`, 'som inget workflow nämner'] as const,
+  hubDescription: hub => (hub.orbit === 'calm'
+    ? `${hub.subtext} · inga körningar i fönstret och inget aktivt workflow`
+    : hub.subtext),
+  clusterDescription: (cluster, parentLabel) => {
+    const distribution = cluster.distribution.map(entry => `${entry.count} ${runStatusWords(entry.status)}`).join(', ')
+    if (cluster.kind === 'older') return `${parentLabel}: ${cluster.count} äldre körningar i fönstret (${distribution})`
+    if (cluster.kind === 'no-workflow') return `${cluster.count} körningar utan workflow-referens (${distribution})`
+    return `${parentLabel}: ${cluster.count} ${cluster.count === 1 ? 'körning' : 'körningar'} i fönstret (${distribution})`
+  },
+}
 
 /**
  * One row of controls on the canvas, edge inset included: 0.625rem from the
@@ -177,6 +211,7 @@ export function IntelligenceGraphVNext() {
   // squeezes the canvas and a wide one gives the preference back.
   const [inspectorWidth, setInspectorWidth] = useState<number>(INSPECTOR_WIDTH.default)
   const [stageRem, setStageRem] = useState(0)
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [rootPx, setRootPx] = useState(16)
   // Below 768px the zoom controls move to the canvas's top edge (see the stylesheet).
   const [narrow, setNarrow] = useState(false)
@@ -201,6 +236,9 @@ export function IntelligenceGraphVNext() {
       const px = rootFontPx()
       setRootPx(px)
       setStageRem(stage.clientWidth / px)
+      setStageSize(current => current.width === stage.clientWidth && current.height === stage.clientHeight
+        ? current
+        : { width: stage.clientWidth, height: stage.clientHeight })
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
@@ -312,7 +350,29 @@ export function IntelligenceGraphVNext() {
   }, [canvasMode, data, error, loading, mode, payloadIsCurrent, unavailable])
 
   const counts = useMemo(() => snapshotCounts(nodes), [nodes])
-  const legend = useMemo(() => relationLegend(edges), [edges])
+  // ── Spatial Live Operations ──────────────────────────────────────────────────
+  // The drill-down decides the level; an agent opens its project. The aspect class
+  // comes from the stage — which the inspector does not resize — less the constant
+  // HUD bands, so opening a panel or a filter never re-lays the graph.
+  const spatialAnchor = useMemo<SpatialAnchor>(() => {
+    if (!drillScope) return { level: 'portfolio' }
+    if (drillScope.kind === 'project' && drillScope.projectId) return { level: 'project', projectId: drillScope.projectId }
+    if (drillScope.kind === 'workflow') return { level: 'workflow', workflowId: drillScope.rootId }
+    if (drillScope.kind === 'run') return { level: 'run', runId: drillScope.rootId }
+    const root = nodes.find(node => node.id === drillScope.rootId)
+    return root?.projectId ? { level: 'project', projectId: root.projectId } : { level: 'portfolio' }
+  }, [drillScope, nodes])
+  const spatialAspect = classifySpatialAspect(stageSize.width, stageSize.height - 2 * HUD_ROW_REM * rootPx)
+  const atlasLinked = spatialAnchor.level === 'portfolio' || spatialAnchor.level === 'project'
+
+  const legend = useMemo(() => {
+    const entries = relationLegend(edges)
+    if (canvasMode !== 'operations' || !atlasLinked) return entries
+    // The Atlas links are drawn in the derived style, so the legend names them as derived.
+    const derived = entries.find(entry => entry.truth === 'derived')
+    if (derived) return entries.map(entry => (entry === derived ? { ...entry, relations: [...entry.relations, ATLAS_LINK_RELATION] } : entry))
+    return [...entries, { truth: 'derived' as const, ...RELATION_TRUTH_COPY.derived, relations: [ATLAS_LINK_RELATION] }]
+  }, [edges, canvasMode, atlasLinked])
   // The isolation has its own chip beside the place, so the place does not repeat it.
   const location = graphLocation(canvasMode, communityId, drillScope?.label ?? null, null)
   const windowLabel = TIME_FILTERS.find(filter => filter.hours === hours)?.label ?? `${hours} h`
@@ -334,8 +394,22 @@ export function IntelligenceGraphVNext() {
     || filterState.criticalOutsideFilters > 0
     || Boolean(data?.truncated && mode === 'system')
     || Boolean(selected && !inspectorVisible)
+  const spatial = useMemo<GraphSpatialOptions | undefined>(() => (canvasMode === 'operations'
+    ? {
+      anchor: spatialAnchor,
+      aspect: spatialAspect,
+      onAtlasActivate: () => {
+        if (drillScope || isolateScope) graph.resetView()
+        else setFitSignal(value => value + 1)
+      },
+      atlasLinkVisual: { stroke: '#a5b4fc', opacity: 0.34, dash: RELATION_TRUTH_STROKE.derived.dash, width: 1.2 },
+      copy: SPATIAL_COPY,
+    }
+    : undefined), [canvasMode, spatialAnchor, spatialAspect, drillScope, isolateScope, graph.resetView, setFitSignal])
+
   const overlayInsets = {
-    top: (narrow || placeShown ? HUD_ROW_REM : 0) * rootPx,
+    // A phone wraps the place row under the zoom controls: two rows.
+    top: (narrow ? (placeShown ? 2 : 1) : placeShown ? 1 : 0) * HUD_ROW_REM * rootPx,
     bottom: HUD_ROW_REM * rootPx,
   }
 
@@ -455,6 +529,7 @@ export function IntelligenceGraphVNext() {
                   dimmedEdgeIds={dimmedEdgeIds}
                   isolatedIds={isolateScope?.nodeIds ?? (drillScope?.kind === 'run' ? drillScope.nodeIds : null)}
                   inspectorOpen={inspectorVisible}
+                  inspectorSheet={narrow}
                   searchResultId={searchResultId}
                   cameraCommand={cameraCommand}
                   onCameraChange={view => { cameraRef.current = view }}
@@ -465,6 +540,7 @@ export function IntelligenceGraphVNext() {
                   appearance="vnext"
                   edgeVisual={truthEdgeVisual}
                   overlayInsets={overlayInsets}
+                  spatial={spatial}
                 />
               </div>
             )}
@@ -485,7 +561,7 @@ export function IntelligenceGraphVNext() {
 
             {/* ── How to read the lines, and what the snapshot covers ── */}
             {payloadIsCurrent && graphVisible && (
-              <GraphLegend entries={legend} snapshotNote={snapshotNote} about={GRAPH_ABOUT} />
+              <GraphLegend entries={legend} snapshotNote={snapshotNote} about={canvasMode === 'operations' ? SPATIAL_ABOUT : GRAPH_ABOUT} />
             )}
           </div>
 

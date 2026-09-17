@@ -850,6 +850,12 @@
 @container ig-canvas (max-width: 26rem) {
   .zoomLevel { display: none; }
 }
+/* A three-class key (Live Operations adds Atlas's derived link) is wider: it
+   steps aside earlier, before it can reach the zoom controls and level. */
+@container ig-canvas (max-width: 48rem) {
+  .legendKey:has(> li:nth-child(3)) { display: none; }
+  .legendBar:has(> .legendKey > li:nth-child(3)) { padding-left: 0.25rem; }
+}
 
 @media (min-width: 768px) {
   /* With the panel closed the canvas reaches the viewport's right edge, and

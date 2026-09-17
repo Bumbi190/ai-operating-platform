@@ -569,6 +569,50 @@ export function fitGraphBounds(
   return { x: centerX - width / 2, y: centerY - height / 2, w: width, h: height }
 }
 
+/** Text drawn at screen size beside a world point: its box in px, measured from the point. */
+export interface GraphScreenText {
+  x: number
+  y: number
+  leftPx: number
+  rightPx: number
+  topPx: number
+  bottomPx: number
+}
+
+/**
+ * World bounds holding `core` and every screen-sized text at the scale that a
+ * fit of those same bounds gives — so a fitted camera never cuts a name or a
+ * count off a small canvas. Found as a fixed point in a few steps; text too
+ * wide for the canvas stops growing the bounds at three times the plain fit.
+ */
+export function boundsWithScreenText(
+  core: GraphBounds,
+  texts: readonly GraphScreenText[],
+  viewport: { width: number; height: number },
+  padding = 64,
+  overlay?: GraphOverlayInsets,
+): GraphBounds {
+  if (texts.length === 0) return core
+  const limit = fitGraphBounds(core, viewport, padding, overlay).w * 3
+  let bounds = core
+  for (let step = 0; step < 24; step++) {
+    const view = fitGraphBounds(bounds, viewport, padding, overlay)
+    if (view.w > limit) break
+    const scale = view.w / Math.max(1, viewport.width)
+    const next = { ...core }
+    for (const text of texts) {
+      next.minX = Math.min(next.minX, text.x - text.leftPx * scale)
+      next.maxX = Math.max(next.maxX, text.x + text.rightPx * scale)
+      next.minY = Math.min(next.minY, text.y + text.topPx * scale)
+      next.maxY = Math.max(next.maxY, text.y + text.bottomPx * scale)
+    }
+    const moved = Math.abs(next.minX - bounds.minX) + Math.abs(next.maxX - bounds.maxX) + Math.abs(next.minY - bounds.minY) + Math.abs(next.maxY - bounds.maxY)
+    bounds = next
+    if (moved < 0.5) break
+  }
+  return bounds
+}
+
 export function fitNodeIds(
   layout: ReadonlyMap<string, PositionedNode>,
   nodeIds: ReadonlySet<string>,
@@ -638,15 +682,17 @@ export function preserveSelectedNeighborhoodCamera(
   viewport: { width: number; height: number },
   inspectorOpen: boolean,
   overlay?: GraphOverlayInsets,
+  /** Whether the open inspector is a bottom sheet. Absent: inferred from the canvas width, as before. */
+  sheet?: boolean,
 ): GraphViewBox {
-  const sheet = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
+  const sheetInset = inspectorOpen && (sheet ?? viewport.width < 768) ? view.h * 0.48 : 0
   const unitsPerPx = view.h / Math.max(1, viewport.height)
   const insets = overlay
     ? {
       top: Math.max(0, overlay.top ?? 0) * unitsPerPx,
-      bottom: Math.max(sheet, Math.max(0, overlay.bottom ?? 0) * unitsPerPx),
+      bottom: Math.max(sheetInset, Math.max(0, overlay.bottom ?? 0) * unitsPerPx),
     }
-    : { bottom: sheet }
+    : { bottom: sheetInset }
   const neighborhoodView = keepNodesVisible(view, layout, nodeIds, insets)
   return selectedId
     ? keepNodesVisible(neighborhoodView, layout, new Set([selectedId]), insets)

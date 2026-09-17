@@ -102,3 +102,129 @@ export const SYSTEM_UNAVAILABLE_PAYLOAD = {
   reason: 'missing',
   hint: 'No system-graph.json artifact is available.',
 }
+
+// ─── Production-shaped runtime payload (Phase 18 T2b) ────────────────────────
+//
+// The shape of production on 2026-09-16, with synthetic names:
+//  - four owned projects:
+//    - The Prompt: 2 agents, 6 workflows, and every run in the window
+//    - Familje-Stunden: 33 agents with long "[Preview]" names, 5 active workflows naming 25 of them
+//    - GainPilot: no agents and no workflows
+//    - AUDIT 0b: 2 inactive manual workflows
+//  - 13, 86 or 120 done runs for 24 h, 7 d or 30 d
+//
+// `attention` adds a running, a failed and an awaiting run (with its pending
+// approval) plus two runs without a workflow. It is used only to prove how
+// those are placed; production has none today. Test-only.
+
+export const PROD_SHAPED_PROJECTS = {
+  prompt: 'bbbbbbbb-0000-4000-8000-000000000001',
+  familjeStunden: 'bbbbbbbb-0000-4000-8000-000000000002',
+  gainPilot: 'bbbbbbbb-0000-4000-8000-000000000003',
+  audit: 'bbbbbbbb-0000-4000-8000-000000000004',
+} as const
+
+const PROD_SHAPED_PROJECT_ROWS = [
+  { id: PROD_SHAPED_PROJECTS.prompt, name: 'The Prompt', slug: 'ai-media-automation', color: '#8b5cf6' },
+  { id: PROD_SHAPED_PROJECTS.familjeStunden, name: 'Familje-Stunden', slug: 'familje-stunden', color: '#34d399' },
+  { id: PROD_SHAPED_PROJECTS.gainPilot, name: 'GainPilot', slug: 'gainpilot', color: '#d4a574' },
+  { id: PROD_SHAPED_PROJECTS.audit, name: 'AUDIT 0b', slug: 'omnira-selftest', color: '#6b7280' },
+]
+
+const FAMILY_ROLES = [
+  'Veckoplanerare för familjeaktiviteter', 'Receptförslag och inköpslistor', 'Läxhjälp och studieplanering',
+  'Barnens sömnrutiner', 'Helgutflykter i närområdet', 'Familjebudget och sparmål', 'Kalendersamordning',
+  'Födelsedagsplanering', 'Skärmtidsöverenskommelser', 'Hushållssysslor och scheman', 'Fritidsaktiviteter',
+  'Semesterplanering', 'Måltidsplanering vardag', 'Samtalsstöd syskon', 'Lästips för barn och unga',
+  'Pysselidéer regniga dagar', 'Motion och utevistelse', 'Föräldrastöd tonår', 'Traditioner och högtider',
+  'Kompisträffar och kalas', 'Digital trygghet för barn', 'Morgonrutiner utan stress', 'Kvällsrutiner och läggning',
+  'Familjeråd och beslut', 'Månadsbrev till familjen', 'Minnesalbum och foton', 'Trädgård och odling med barn',
+  'Husdjur och ansvar', 'Hälsa och vårdkontakter', 'Städschema storstädning', 'Resor med små barn',
+  'Kultur och museibesök', 'Förberedelser inför skolstart',
+]
+
+const PROMPT_WORKFLOWS = ['Daglig short', 'Veckosammanfattning', 'Nyhetsbrev', 'Trendbevakning', 'Publiceringskö', 'Arkivering']
+const FAMILY_WORKFLOWS = ['Veckans familjeplan', 'Måltider och inköp', 'Skola och läxor', 'Helg och fritid', 'Månadsbrev']
+
+export function productionShapedOperations(hours = 24, options: { attention?: boolean } = {}) {
+  const P = PROD_SHAPED_PROJECTS
+  const base = Date.parse('2026-09-16T19:07:00.000Z')
+  const nodes: IntelligenceGraphNode[] = []
+  const edges: IntelligenceGraphEdge[] = []
+  const contains = (projectId: string, target: string) => edges.push({
+    id: `project:${projectId}→${target}`, source: `project:${projectId}`, target, relation: 'CONTAINS', confidence: 'DERIVED', metadata: {},
+  })
+
+  for (const row of PROD_SHAPED_PROJECT_ROWS) {
+    nodes.push({ id: `project:${row.id}`, kind: 'project', label: row.name, source: 'runtime', projectId: row.id, metadata: { slug: row.slug, color: row.color } })
+  }
+  FAMILY_ROLES.forEach((role, index) => {
+    const id = `agent:fs-${String(index + 1).padStart(2, '0')}`
+    nodes.push({ id, kind: 'agent', label: `[Preview] ${role}`, source: 'runtime', projectId: P.familjeStunden, metadata: { model: 'claude-sonnet-4-6', description: null } })
+    contains(P.familjeStunden, id)
+  })
+  for (const [id, label] of [['agent:tp-writer', 'Manusförfattare'], ['agent:tp-editor', 'Redaktör']]) {
+    nodes.push({ id, kind: 'agent', label, source: 'runtime', projectId: P.prompt, metadata: { model: 'claude-sonnet-4-6', description: null } })
+    contains(P.prompt, id)
+  }
+  FAMILY_WORKFLOWS.forEach((name, workflowIndex) => {
+    const id = `workflow:fs-${workflowIndex + 1}`
+    nodes.push({ id, kind: 'workflow', label: name, source: 'runtime', projectId: P.familjeStunden, status: 'active', metadata: { trigger: workflowIndex === 4 ? 'cron' : 'manual' } })
+    contains(P.familjeStunden, id)
+    for (let step = 0; step < 5; step++) {
+      const agent = `agent:fs-${String(workflowIndex * 6 + step + 1).padStart(2, '0')}`
+      edges.push({ id: `${id}→${agent}`, source: id, target: agent, relation: 'DELEGATED_TO', confidence: 'DERIVED', metadata: { step: `Steg ${step + 1}`, order: step + 1 } })
+    }
+  })
+  PROMPT_WORKFLOWS.forEach((name, workflowIndex) => {
+    const id = `workflow:tp-${workflowIndex + 1}`
+    nodes.push({ id, kind: 'workflow', label: name, source: 'runtime', projectId: P.prompt, status: workflowIndex < 4 ? 'active' : 'inactive', metadata: { trigger: workflowIndex === 0 ? 'cron' : 'manual' } })
+    contains(P.prompt, id)
+    if (workflowIndex < 3) {
+      edges.push({ id: `${id}→agent:tp-writer`, source: id, target: 'agent:tp-writer', relation: 'DELEGATED_TO', confidence: 'DERIVED', metadata: { step: 'Skriv', order: 1 } })
+    }
+    if (workflowIndex < 2) {
+      edges.push({ id: `${id}→agent:tp-editor`, source: id, target: 'agent:tp-editor', relation: 'DELEGATED_TO', confidence: 'DERIVED', metadata: { step: 'Granska', order: 2 } })
+    }
+  })
+  for (const [id, label] of [['workflow:audit-a', 'AUDIT 0b — TEST A (non_destructive)'], ['workflow:audit-b', 'AUDIT 0b — TEST B (approval_required)']]) {
+    nodes.push({ id, kind: 'workflow', label, source: 'runtime', projectId: P.audit, status: 'inactive', metadata: { trigger: 'manual' } })
+    contains(P.audit, id)
+  }
+
+  const runCount = hours <= 24 ? 13 : hours <= 24 * 7 ? 86 : 120
+  for (let index = 0; index < runCount; index++) {
+    const workflowIndex = index % 3
+    const workflowId = `workflow:tp-${workflowIndex + 1}`
+    const createdAt = new Date(base - (index + 1) * Math.floor((hours * 3_600_000) / (runCount + 2))).toISOString()
+    const id = `run:tp-${String(index).padStart(3, '0')}`
+    const status = options.attention && index === 0 ? 'running' : options.attention && index === 1 ? 'failed' : options.attention && index === 2 ? 'awaiting_approval' : 'done'
+    nodes.push({
+      id, kind: 'run', label: `${PROMPT_WORKFLOWS[workflowIndex]} · r${String(7000000 + index)}`, source: 'runtime', projectId: P.prompt, status,
+      metadata: { createdAt, startedAt: createdAt, finishedAt: status === 'done' ? createdAt : null, error: status === 'failed' ? 'Provider timeout' : null, attempts: 1, kind: 'workflow', projectName: 'The Prompt' },
+    })
+    edges.push({ id: `${workflowId}→${id}`, source: workflowId, target: id, relation: 'STARTED', confidence: 'DERIVED', timestamp: createdAt, metadata: {} })
+    if (status === 'awaiting_approval') {
+      const approval = `approval:tp-${index}`
+      nodes.push({ id: approval, kind: 'approval', label: 'Approval · story_draft', source: 'runtime', projectId: P.prompt, status: 'pending', metadata: { kind: 'workflow', createdAt, reviewedAt: null, operator: null } })
+      edges.push({ id: `${id}→${approval}`, source: id, target: approval, relation: 'REQUESTED_APPROVAL', confidence: 'DERIVED', timestamp: createdAt, metadata: {} })
+    }
+  }
+  if (options.attention) {
+    for (const index of [0, 1]) {
+      const createdAt = new Date(base - (index + 1) * 900_000).toISOString()
+      nodes.push({
+        id: `run:tp-orphan-${index}`, kind: 'run', label: `run tporph${index}`, source: 'runtime', projectId: P.prompt, status: index === 0 ? 'failed' : 'done',
+        metadata: { createdAt, startedAt: createdAt, finishedAt: createdAt, error: index === 0 ? 'Saknar workflow' : null, attempts: 1, kind: 'adhoc', projectName: 'The Prompt' },
+      })
+    }
+  }
+
+  return {
+    available: true,
+    projects: PROD_SHAPED_PROJECT_ROWS,
+    meta: { source: 'runtime' as const, generatedAt: new Date(base).toISOString(), nodeCount: nodes.length, edgeCount: edges.length },
+    nodes,
+    edges,
+  }
+}

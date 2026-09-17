@@ -10,11 +10,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
+import type { GraphBounds } from './graph-readability'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { computeLayout } from './force-layout'
 import {
   calculateGraphBounds,
   canonicalKindOrder,
+  boundsWithScreenText,
   fitGraphBounds,
   fitNodeIds,
   getEdgeReadability,
@@ -31,6 +33,22 @@ import {
   type GraphZoomLevel,
 } from './graph-readability'
 import { buildDenseViewSummaries } from './graph-navigation'
+import type { PositionedNode } from './force-layout'
+import {
+  computeSpatialLayout,
+  spatialDensityLevel,
+  spatialEdgeLevel,
+  spatialNodeVisibility,
+  spatialReportedLevel,
+  type SpatialAnchor,
+  type SpatialAspect,
+  type SpatialAtlasOrb,
+  type SpatialHub,
+  type SpatialLayout,
+  type SpatialRunCluster,
+  type SpatialUnlinkedBand,
+} from './spatial-layout'
+import { bandAnchor, planSpatialTexts, spatialScreenTexts, type SpatialCopy } from './spatial-text'
 import {
   GRAPH_VISUAL_TOKENS,
   buildProjectTerritories,
@@ -63,6 +81,12 @@ export interface GraphCanvasProps {
   dimmedEdgeIds?: ReadonlySet<string>
   isolatedIds?: ReadonlySet<string> | null
   inspectorOpen?: boolean
+  /**
+   * Whether the open inspector covers the canvas bottom as a sheet. Absent, the
+   * canvas infers it from its own width (< 768 px), as it always has — which
+   * misreads a desktop canvas narrowed by a docked panel as a phone.
+   */
+  inspectorSheet?: boolean
   searchResultId?: string | null
   cameraCommand?: GraphCameraCommand | null
   onCameraChange?: (view: GraphViewBox) => void
@@ -84,7 +108,26 @@ export interface GraphCanvasProps {
    * whole canvas is usable, exactly as before.
    */
   overlayInsets?: GraphOverlayInsets
+  /**
+   * vNext Live Operations only: place the graph with the deterministic spatial
+   * layout (`spatial-layout.ts`) — the Atlas identity orb at the centre, project
+   * hubs around it, runs counted per workflow — instead of the force layout.
+   * Absent, the canvas renders exactly what legacy and System Map always have.
+   */
+  spatial?: GraphSpatialOptions
   className?: string
+}
+
+export interface GraphSpatialOptions {
+  anchor: SpatialAnchor
+  /** The stage's aspect class — not the canvas's, so opening the inspector moves nothing. */
+  aspect: SpatialAspect
+  /** Activating the Atlas orb: the page decides (fit the overview, or return to it). */
+  onAtlasActivate?: () => void
+  /** How the page draws Atlas's derived links to hubs. */
+  atlasLinkVisual?: Pick<GraphEdgeVisual, 'stroke' | 'opacity' | 'dash' | 'width'>
+  /** Every word the spatial canvas shows, supplied in the page's language. */
+  copy: SpatialCopy
 }
 
 export interface GraphCameraCommand {
@@ -122,6 +165,7 @@ export function GraphCanvas({
   dimmedEdgeIds = new Set<string>(),
   isolatedIds = null,
   inspectorOpen = false,
+  inspectorSheet,
   searchResultId = null,
   cameraCommand = null,
   onCameraChange,
@@ -132,6 +176,7 @@ export function GraphCanvas({
   appearance = 'dark',
   edgeVisual,
   overlayInsets,
+  spatial,
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -151,7 +196,17 @@ export function GraphCanvas({
     cameraCommand && (cameraCommand.type === 'zoom-in' || cameraCommand.type === 'zoom-out') ? cameraCommand.nonce : null,
   )
 
-  const layout = useMemo(() => {
+  const spatialAnchorKey = spatial ? JSON.stringify(spatial.anchor) : null
+  const spatialAspect = spatial?.aspect ?? null
+  const spatialLayout = useMemo<SpatialLayout | null>(
+    () => spatial ? computeSpatialLayout({ nodes, edges, anchor: spatial.anchor, aspect: spatial.aspect }) : null,
+    // The anchor arrives as a new object each render; its content is the dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, edges, spatialAnchorKey, spatialAspect],
+  )
+
+  const layout = useMemo<ReadonlyMap<string, PositionedNode>>(() => {
+    if (spatialLayout) return spatialLayout.positions
     const positioned = computeLayout(
       nodes.map(node => ({
         id: node.id,
@@ -166,13 +221,39 @@ export function GraphCanvas({
       { width: WORLD_W, height: WORLD_H },
     )
     return new Map(positioned.map(node => [node.id, node]))
-  }, [nodes, edges])
+  }, [nodes, edges, spatialLayout])
 
-  const territories = useMemo(() => buildProjectTerritories(nodes, layout), [nodes, layout])
-  const graphBounds = useMemo(() => calculateGraphBounds(layout, territories), [layout, territories])
+  // The spatial view separates projects by space and a soft field, not dashed territories.
+  const territories = useMemo(() => spatialLayout ? [] : buildProjectTerritories(nodes, layout), [nodes, layout, spatialLayout])
+  const overlayTopPx = Math.max(0, overlayInsets?.top ?? 0)
+  const overlayBottomPx = Math.max(0, overlayInsets?.bottom ?? 0)
+  // Read by the camera when it next fits; a new value alone moves nothing.
+  const overlayRef = useRef<GraphOverlayInsets | undefined>(undefined)
+  overlayRef.current = overlayTopPx > 0 || overlayBottomPx > 0 ? { top: overlayTopPx, bottom: overlayBottomPx } : undefined
+  const forceBounds = useMemo(
+    () => spatialLayout ? null : calculateGraphBounds(layout, territories),
+    [layout, territories, spatialLayout],
+  )
+  // A spatial fit also holds the level's own names and counts, which are drawn at screen size.
+  const spatialTexts = useMemo(() => spatialLayout && spatial ? spatialScreenTexts(spatialLayout, spatial.copy) : [], [spatialLayout, spatial])
+  const spatialBounds = useMemo(() => {
+    if (!spatialLayout) return null
+    // The portfolio frames its hubs; the run counts and bands inside them unfold only with zoom.
+    const framed = spatialLayout.level === 'portfolio'
+      ? spatialTexts.filter(text => text.kind === 'atlas' || text.kind === 'hub-name' || text.kind === 'hub-subtext')
+      : spatialTexts
+    return boundsWithScreenText(spatialLayout.fitBounds, framed, viewport, undefined, overlayRef.current)
+  }, [spatialLayout, spatialTexts, viewport])
+  const graphBounds = spatialBounds ?? forceBounds!
+  // Changes only with the layout itself; a new canvas size re-fits through the camera context instead.
+  const layoutBounds = spatialLayout ? spatialLayout.fitBounds : graphBounds
+  const nodeById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes])
 
   const highlighted = useMemo(() => {
-    const focus = selectedId ?? hoverId ?? focusId
+    // In a drilled spatial view the selected anchor is the view itself; its selection
+    // highlights nothing, so the level's own structure stays readable.
+    const selectedIsAnchor = spatialLayout !== null && selectedId !== null && selectedId === spatialLayout.anchorId
+    const focus = selectedIsAnchor ? (hoverId ?? focusId) : (selectedId ?? hoverId ?? focusId)
     if (!focus) return null
     const ids = new Set<string>([focus])
     const edgeIds = new Set<string>()
@@ -184,7 +265,7 @@ export function GraphCanvas({
       }
     }
     return { ids, edgeIds }
-  }, [selectedId, hoverId, focusId, edges])
+  }, [selectedId, hoverId, focusId, edges, spatialLayout])
 
   const selectedNeighborhood = useMemo(() => {
     if (!selectedId) return new Set<string>()
@@ -203,38 +284,57 @@ export function GraphCanvas({
   ), [nodes])
 
   const semanticNeighborIds = isolatedIds ?? selectedNeighborhood
-  const zoomLevel = semanticContext === 'execution'
-    ? getGraphZoomLevel(view.w, true)
-    : semanticContext === 'detail'
-      ? 'detail'
-      : getGraphZoomLevel(view.w)
+  // Spatial zoom depth: how far the camera is inside the level's own fit. It is
+  // a ratio of widths, so the same framing reads the same at any canvas size.
+  const spatialFitWidth = useMemo(
+    () => spatialLayout ? fitGraphBounds(graphBounds, viewport, undefined, { top: overlayTopPx, bottom: overlayBottomPx }).w : 0,
+    [spatialLayout, graphBounds, viewport, overlayTopPx, overlayBottomPx],
+  )
+  const spatialDepth = spatialLayout ? spatialFitWidth / Math.max(1, view.w) : 1
+  const executionContext = semanticContext === 'execution'
+  const zoomLevel = spatialLayout
+    ? spatialDensityLevel(spatialLayout.level, spatialDepth, executionContext)
+    : semanticContext === 'execution'
+      ? getGraphZoomLevel(view.w, true)
+      : semanticContext === 'detail'
+        ? 'detail'
+        : getGraphZoomLevel(view.w)
+  const reportedZoomLevel = spatialLayout
+    ? spatialReportedLevel(spatialLayout.level, spatialDepth, executionContext)
+    : zoomLevel
+  const edgeZoomLevel = spatialLayout ? spatialEdgeLevel(spatialLayout.level, spatialDepth, executionContext) : zoomLevel
   const semanticPolicy = getSemanticZoomPolicy(zoomLevel)
   const semanticVisibility = useMemo(() => new Map(nodes.map(node => [
     node.id,
-    getNodeSemanticVisibility(node, {
-      level: zoomLevel,
-      mode,
-      selectedId,
-      focusId,
-      searchResultId,
-      neighborIds: semanticNeighborIds,
-    }),
-  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds])
+    spatialLayout
+      ? spatialNodeVisibility(node, spatialLayout, {
+        depth: spatialDepth,
+        selectedId,
+        focusId,
+        searchResultId,
+        neighborIds: semanticNeighborIds,
+        executionContext,
+      })
+      : getNodeSemanticVisibility(node, {
+        level: zoomLevel,
+        mode,
+        selectedId,
+        focusId,
+        searchResultId,
+        neighborIds: semanticNeighborIds,
+      }),
+  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds, spatialLayout, spatialDepth, executionContext])
   const structurallyVisibleIds = useMemo(() => new Set(
     nodes.filter(node => semanticVisibility.get(node.id) !== 'hidden'
       && (!isolatedIds || isolatedIds.has(node.id))).map(node => node.id),
   ), [nodes, semanticVisibility, isolatedIds])
   const summaries = useMemo(
-    () => buildDenseViewSummaries(nodes, edges, zoomLevel),
-    [nodes, edges, zoomLevel],
+    () => spatialLayout ? [] : buildDenseViewSummaries(nodes, edges, zoomLevel),
+    [nodes, edges, zoomLevel, spatialLayout],
   )
   const summaryByParent = useMemo(() => new Map(summaries.map(summary => [summary.parentId, summary])), [summaries])
-  const inspectorBottomInset = inspectorOpen && viewport.width < 768 ? view.h * 0.48 : 0
-  const overlayTopPx = Math.max(0, overlayInsets?.top ?? 0)
-  const overlayBottomPx = Math.max(0, overlayInsets?.bottom ?? 0)
-  // Read by the camera when it next fits; a new value alone moves nothing.
-  const overlayRef = useRef<GraphOverlayInsets | undefined>(undefined)
-  overlayRef.current = overlayTopPx > 0 || overlayBottomPx > 0 ? { top: overlayTopPx, bottom: overlayBottomPx } : undefined
+  const sheetPresentation = inspectorSheet ?? viewport.width < 768
+  const inspectorBottomInset = inspectorOpen && sheetPresentation ? view.h * 0.48 : 0
   const reservedBoxes = useMemo(
     () => reservedCanvasBoxes(view, viewport.height, inspectorBottomInset, { top: overlayTopPx, bottom: overlayBottomPx }),
     [inspectorBottomInset, view, viewport.height, overlayTopPx, overlayBottomPx],
@@ -260,25 +360,47 @@ export function GraphCanvas({
     () => territoryLabelPlacements.map(label => label.bounds),
     [territoryLabelPlacements],
   )
+  const labelScale = view.w / Math.max(1, viewport.width)
+  // Hubs, Atlas, clusters and band captions carry their own text; node labels route around what is drawn.
+  const spatialTextPlan = useMemo(
+    () => spatialLayout ? planSpatialTexts(spatialLayout, spatialTexts, labelScale, structurallyVisibleIds) : null,
+    [spatialLayout, spatialTexts, labelScale, structurallyVisibleIds],
+  )
+  const spatialObstacles = useMemo(() => spatialTextPlan?.obstacles ?? [], [spatialTextPlan])
+  const labelNodes = useMemo(() => spatialLayout ? nodes.filter(node => node.kind !== 'project') : nodes, [nodes, spatialLayout])
+  // A drilled project is the view itself: its selection does not make every agent's name eligible.
+  const labelSelectedId = spatialLayout && selectedId !== null && selectedId === spatialLayout.anchorId && nodeById.get(selectedId)?.kind === 'project'
+    ? null
+    : selectedId
   const visibleLabels = useMemo(() => new Map(
     selectVisibleNodeLabels({
-      nodes,
+      nodes: labelNodes,
       layout,
       view,
       viewportWidth: viewport.width,
       viewportHeight: viewport.height,
       mode,
       level: zoomLevel,
-      selectedId,
+      selectedId: labelSelectedId,
       hoverId,
       focusId,
       searchResultId,
       neighborIds: semanticNeighborIds,
       structurallyVisibleIds,
       reservedBoxes,
-      occupiedBoxes: territoryLabelBoxes,
+      occupiedBoxes: spatialLayout ? [...territoryLabelBoxes, ...spatialObstacles] : territoryLabelBoxes,
     }).map(label => [label.id, label]),
-  ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes])
+  ), [labelNodes, layout, view, viewport, mode, zoomLevel, labelSelectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes, spatialLayout, spatialObstacles])
+  // A label that had nowhere else to go (a selected or attention label) keeps its place; counts and captions under it give way.
+  const spatialTextsShown = useMemo(() => {
+    if (!spatialTextPlan) return null
+    const labelBoxes = [...visibleLabels.values()].map(label => label.bounds)
+    const covered = spatialTextPlan.yielding.filter(text => labelBoxes.some(box => box.minX < text.box.maxX && box.maxX > text.box.minX && box.minY < text.box.maxY && box.maxY > text.box.minY))
+    if (covered.length === 0) return spatialTextPlan.shown
+    const shown = new Set(spatialTextPlan.shown)
+    for (const text of covered) shown.delete(text.key)
+    return shown
+  }, [spatialTextPlan, visibleLabels])
 
   const fit = useCallback(() => {
     setView(fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current))
@@ -307,7 +429,7 @@ export function GraphCanvas({
     fit()
   // A new graph or explicit fit/reset gets a complete, aspect-aware fit.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitSignal, graphBounds])
+  }, [fitSignal, layoutBounds])
 
   useEffect(() => {
     if (!cameraCommand) return
@@ -340,7 +462,7 @@ export function GraphCanvas({
   }, [cameraCommand, fit, layout, viewport])
 
   useEffect(() => { onCameraChange?.(view) }, [view, onCameraChange])
-  useEffect(() => { onZoomLevelChange?.(zoomLevel) }, [zoomLevel, onZoomLevelChange])
+  useEffect(() => { onZoomLevelChange?.(reportedZoomLevel) }, [reportedZoomLevel, onZoomLevelChange])
 
   useEffect(() => {
     const viewportKey = `${viewport.width}x${viewport.height}`
@@ -349,7 +471,14 @@ export function GraphCanvas({
     const viewportChanged = handledViewportRef.current !== viewportKey
     handledViewportRef.current = viewportKey
     handledCameraContextRef.current = contextKey
-    if (selectedNeighborhood.size > 0 && (viewportChanged || viewport.width < 768)) {
+    if (spatialLayout && viewportChanged && autoFitRef.current) {
+      // Nobody has moved the spatial camera since it fitted: a new canvas size re-fits the level,
+      // still keeping a selection clear of the sheet and the page's overlays.
+      const fitted = fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current)
+      setView(selectedNeighborhood.size > 0
+        ? preserveSelectedNeighborhoodCamera(fitted, layout, selectedNeighborhood, selectedId, viewport, inspectorOpen, overlayRef.current, inspectorSheet)
+        : fitted)
+    } else if (selectedNeighborhood.size > 0 && (viewportChanged || sheetPresentation)) {
       setView(current => preserveSelectedNeighborhoodCamera(
         current,
         layout,
@@ -358,11 +487,12 @@ export function GraphCanvas({
         viewport,
         inspectorOpen,
         overlayRef.current,
+        inspectorSheet,
       ))
     } else if (selectedNeighborhood.size === 0 && viewportChanged && autoFitRef.current) {
       fit()
     }
-  }, [viewport, selectedId, selectedNeighborhood, layout, fit, inspectorOpen])
+  }, [viewport, selectedId, selectedNeighborhood, layout, fit, inspectorOpen, spatialLayout, graphBounds, inspectorSheet, sheetPresentation])
 
   const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -486,6 +616,9 @@ export function GraphCanvas({
       data-edge-detail={semanticPolicy.edgeDetail}
       data-interaction-detail={semanticPolicy.interactionDetail}
       data-inspector-detail={semanticPolicy.inspectorDetail}
+      data-layout={spatialLayout ? 'spatial' : undefined}
+      data-spatial-level={spatialLayout?.level}
+      data-spatial-aspect={spatialLayout?.aspect}
     >
       <defs>
         <marker id="ig-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -497,7 +630,20 @@ export function GraphCanvas({
         <marker id="ig-arrow-approval" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
           <path d="M0,0 L6,3 L0,6 Z" fill={GRAPH_VISUAL_TOKENS.edge.approval} />
         </marker>
+        {spatialLayout && <SpatialDefs />}
       </defs>
+
+      {spatialLayout && (
+        <SpatialFields layout={spatialLayout} visibleIds={structurallyVisibleIds} />
+      )}
+      {spatialLayout && spatial && (
+        <AtlasLinks
+          atlas={spatialLayout.atlas}
+          layout={layout}
+          visibleIds={structurallyVisibleIds}
+          visual={spatial.atlasLinkVisual}
+        />
+      )}
 
       <g className={styles.territories}>
         {visibleTerritories.map(territory => {
@@ -544,10 +690,14 @@ export function GraphCanvas({
           if (!source || !target || !structurallyVisibleIds.has(edgeValue.source) || !structurallyVisibleIds.has(edgeValue.target)) return null
           const visual = edgeVisual ? edgeVisual(edgeValue, getEdgeVisual(edgeValue)) : getEdgeVisual(edgeValue)
           const isHot = highlighted?.edgeIds.has(edgeValue.id) ?? false
+          // Spatial views state project membership by placement. A hub's line to an agent is drawn only
+          // while that agent is the focus — never as a fan of every agent around a selected hub.
+          if (spatialLayout && edgeValue.relation === 'CONTAINS' && nodeById.get(edgeValue.target)?.kind === 'agent'
+            && (selectedId ?? hoverId ?? focusId) !== edgeValue.target) return null
           const readability = getEdgeReadability({
             edge: edgeValue,
             visual,
-            zoomLevel,
+            zoomLevel: edgeZoomLevel,
             highlighted: isHot,
             attentionPath: attentionNodeIds.has(edgeValue.source) || attentionNodeIds.has(edgeValue.target),
             hasInteraction: highlighted !== null,
@@ -562,6 +712,7 @@ export function GraphCanvas({
               ? 'url(#ig-arrow-approval)'
               : isHot ? 'url(#ig-arrow-hot)' : 'url(#ig-arrow)'
             : undefined
+          if (spatialLayout && (spatialLayout.roles.get(edgeValue.source) === 'context' || spatialLayout.roles.get(edgeValue.target) === 'context') && !isHot) return null
           return (
             <line
               key={edgeValue.id}
@@ -580,8 +731,31 @@ export function GraphCanvas({
         })}
       </g>
 
+      {spatialLayout && spatial && (
+        <RunClusters
+          clusters={spatialLayout.clusters}
+          nodeById={nodeById}
+          visibleIds={structurallyVisibleIds}
+          textsShown={spatialTextsShown}
+          highlightedIds={highlighted?.ids ?? null}
+          scale={labelScale}
+          copy={spatial.copy}
+          onSelect={onSelect}
+          movedRef={movedRef}
+        />
+      )}
+      {spatialLayout && spatial && (
+        <UnlinkedBands
+          bands={spatialLayout.unlinkedBands}
+          visibleIds={structurallyVisibleIds}
+          textsShown={spatialTextsShown}
+          scale={labelScale}
+          copy={spatial.copy}
+        />
+      )}
+
       <g>
-        {nodes.map(node => {
+        {(spatialLayout ? spatialRenderOrder(nodes, spatialLayout) : nodes).map(node => {
           const position = layout.get(node.id)
           if (!position || !structurallyVisibleIds.has(node.id)) return null
           const visual = getNodeVisual(node)
@@ -594,6 +768,9 @@ export function GraphCanvas({
           const isHot = (highlighted?.ids.has(node.id) ?? !dim) && !filterDimmed
           const label = visibleLabels.get(node.id)
           const summary = summaryByParent.get(node.id)
+          const hub = spatialLayout && node.kind === 'project' ? spatialLayout.hubs.find(entry => entry.nodeId === node.id) : undefined
+          const spatialRole = spatialLayout?.roles.get(node.id)
+          const baseOpacity = isHot ? (semanticState === 'dimmed' ? 0.42 : 1) : filterDimmed ? 0.12 : 0.22
           return (
             <g
               key={node.id}
@@ -601,12 +778,16 @@ export function GraphCanvas({
                 if (element) nodeRefs.current.set(node.id, element)
                 else nodeRefs.current.delete(node.id)
               }}
-              transform={`translate(${position.x},${position.y})`}
-              opacity={isHot ? (semanticState === 'dimmed' ? 0.42 : 1) : filterDimmed ? 0.12 : 0.22}
-              className={cn(styles.node, 'cursor-pointer focus:outline-none')}
+              transform={spatialLayout ? undefined : `translate(${position.x},${position.y})`}
+              style={spatialLayout ? { transform: `translate(${position.x}px, ${position.y}px)` } : undefined}
+              opacity={spatialRole === 'context' ? (isSelected ? 1 : Math.min(baseOpacity, 0.36)) : baseOpacity}
+              className={cn(styles.node, spatialLayout && styles.spatialNode, 'cursor-pointer focus:outline-none')}
+              data-spatial-role={spatialRole}
               tabIndex={0}
               role="button"
-              aria-label={`${node.kind}: ${node.label}${node.status ? ` (${node.status})` : ''}`}
+              aria-label={hub && spatial
+                ? `${node.kind}: ${node.label} · ${spatial.copy.hubDescription(hub)}`
+                : `${node.kind}: ${node.label}${node.status ? ` (${node.status})` : ''}`}
               aria-pressed={isSelected}
               onKeyDown={event => {
                 if (event.key.startsWith('Arrow')) {
@@ -637,19 +818,45 @@ export function GraphCanvas({
             >
               <title>{`${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`}</title>
               <circle r={Math.max(22, position.r + 8)} fill="transparent" pointerEvents="all" />
-              {isFocused && <FocusRings radius={position.r} />}
-              {isSelected && (
-                <circle
-                  r={position.r + 7}
-                  fill="none"
-                  stroke={GRAPH_VISUAL_TOKENS.status.selected}
-                  strokeWidth={1.8}
-                  vectorEffect="non-scaling-stroke"
-                />
+              {spatialLayout ? (
+                <g className={styles.spatialAppear}>
+                  {isFocused && <FocusRings radius={position.r} />}
+                  {isSelected && (
+                    <circle
+                      r={position.r + 7}
+                      fill="none"
+                      stroke={GRAPH_VISUAL_TOKENS.status.selected}
+                      strokeWidth={1.8}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                  {hub ? (
+                    <HubGlyph hub={hub} scale={labelScale} selected={isSelected} showSubtext={spatialTextsShown?.has(`hub-subtext:${hub.nodeId}`) ?? true} />
+                  ) : (
+                    <>
+                      {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
+                      <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
+                      {status && <StatusBadge radius={position.r} status={status} />}
+                    </>
+                  )}
+                </g>
+              ) : (
+                <>
+                  {isFocused && <FocusRings radius={position.r} />}
+                  {isSelected && (
+                    <circle
+                      r={position.r + 7}
+                      fill="none"
+                      stroke={GRAPH_VISUAL_TOKENS.status.selected}
+                      strokeWidth={1.8}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                  {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
+                  <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
+                  {status && <StatusBadge radius={position.r} status={status} />}
+                </>
               )}
-              {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
-              <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
-              {status && <StatusBadge radius={position.r} status={status} />}
               {summary && (
                 <g className={styles.summaryBadge} transform={`translate(${position.r + 8},${position.r + 8})`} aria-hidden="true">
                   <rect x={-4} y={-8} width={Math.max(25, summary.label.length * 4.8)} height={16} rx={8} />
@@ -697,6 +904,16 @@ export function GraphCanvas({
           )
         })}
       </g>
+
+      {spatialLayout && spatial && (
+        <AtlasOrb
+          atlas={spatialLayout.atlas}
+          scale={labelScale}
+          label={spatial.copy.atlasLabel}
+          description={spatial.copy.atlasDescription}
+          onActivate={spatial.onAtlasActivate}
+        />
+      )}
     </svg>
   )
 }
@@ -814,3 +1031,327 @@ function documentPath(radius: number): string {
   const fold = radius * 0.32
   return `M${-width} ${-radius} H${width - fold} L${width} ${-radius + fold} V${radius} H${-width} Z`
 }
+
+// ─── Spatial rendering (vNext Live Operations only) ─────────────────────────
+
+const SPATIAL_ROLE_ORDER: Record<string, number> = {
+  context: 0, satellite: 1, run: 2, detail: 3, structure: 4, hub: 5, anchor: 6,
+}
+
+/** Paint order for the spatial view: context first, detail under structure, hubs on top (book ¶503). */
+function spatialRenderOrder(nodes: readonly IntelligenceGraphNode[], layout: SpatialLayout): IntelligenceGraphNode[] {
+  return [...nodes].sort((a, b) => (SPATIAL_ROLE_ORDER[layout.roles.get(a.id) ?? ''] ?? -1) - (SPATIAL_ROLE_ORDER[layout.roles.get(b.id) ?? ''] ?? -1)
+    || canonicalKindOrder(b.kind) - canonicalKindOrder(a.kind)
+    || a.id.localeCompare(b.id))
+}
+
+const CLUSTER_STATUS_COLORS: Record<string, string> = {
+  done: GRAPH_VISUAL_TOKENS.status.completed,
+  completed: GRAPH_VISUAL_TOKENS.status.completed,
+  running: GRAPH_VISUAL_TOKENS.status.running,
+  failed: GRAPH_VISUAL_TOKENS.status.failed,
+  awaiting_approval: GRAPH_VISUAL_TOKENS.status.waiting,
+  pending: GRAPH_VISUAL_TOKENS.status.waiting,
+  cancelled: GRAPH_VISUAL_TOKENS.status.cancelled,
+}
+
+function SpatialDefs() {
+  return (
+    <>
+      <radialGradient id="ig-atlas-halo">
+        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.32} />
+        <stop offset="58%" stopColor="#8b5cf6" stopOpacity={0.1} />
+        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+      </radialGradient>
+      <radialGradient id="ig-atlas-energy" cx="44%" cy="38%" r="62%">
+        <stop offset="0%" stopColor="#eef2ff" stopOpacity={0.92} />
+        <stop offset="34%" stopColor="#818cf8" stopOpacity={0.6} />
+        <stop offset="74%" stopColor="#6d28d9" stopOpacity={0.38} />
+        <stop offset="100%" stopColor="#1e1b4b" stopOpacity={0.3} />
+      </radialGradient>
+      <radialGradient id="ig-atlas-core">
+        <stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
+        <stop offset="62%" stopColor="#e0e7ff" stopOpacity={0.85} />
+        <stop offset="100%" stopColor="#a5b4fc" stopOpacity={0} />
+      </radialGradient>
+    </>
+  )
+}
+
+/** A soft field under each hub: separation by space and light, not by dashed borders. */
+function SpatialFields({ layout, visibleIds }: { layout: SpatialLayout; visibleIds: ReadonlySet<string> }) {
+  return (
+    <g aria-hidden="true" pointerEvents="none">
+      {layout.hubs.map((hub, index) => {
+        if (hub.orbit === 'receded' || !visibleIds.has(hub.nodeId)) return null
+        const id = `ig-hub-field-${index}`
+        const radius = hub.orbit === 'focus' ? hub.r * 6.2 : hub.r * 3.1
+        const strength = hub.orbit === 'calm' ? 0.07 : 0.13
+        return (
+          <g key={hub.nodeId} className={styles.spatialNode} style={{ transform: `translate(${hub.x}px, ${hub.y}px)` }}>
+            <defs>
+              <radialGradient id={id}>
+                <stop offset="0%" stopColor={hub.color} stopOpacity={strength} />
+                <stop offset="100%" stopColor={hub.color} stopOpacity={0} />
+              </radialGradient>
+            </defs>
+            <circle r={radius} fill={`url(#${id})`} />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/** Derived links from Atlas to the hubs it may link to — drawn only between visible ends. */
+function AtlasLinks({
+  atlas, layout, visibleIds, visual,
+}: {
+  atlas: SpatialAtlasOrb
+  layout: ReadonlyMap<string, PositionedNode>
+  visibleIds: ReadonlySet<string>
+  visual?: Pick<GraphEdgeVisual, 'stroke' | 'opacity' | 'dash' | 'width'>
+}) {
+  const stroke = visual?.stroke ?? '#a5b4fc'
+  const opacity = (visual?.opacity ?? 0.3) * (atlas.receded ? 0.55 : 1)
+  return (
+    <g aria-hidden="true" pointerEvents="none" data-atlas-links={atlas.linkedHubIds.length}>
+      {atlas.linkedHubIds.map(id => {
+        const hub = layout.get(id)
+        if (!hub || !visibleIds.has(id)) return null
+        const dx = hub.x - atlas.x
+        const dy = hub.y - atlas.y
+        const distance = Math.hypot(dx, dy)
+        if (distance <= atlas.r + hub.r + 12) return null
+        const ux = dx / distance
+        const uy = dy / distance
+        return (
+          <line
+            key={id}
+            x1={atlas.x + ux * (atlas.r + 8)}
+            y1={atlas.y + uy * (atlas.r + 8)}
+            x2={hub.x - ux * (hub.r + 10)}
+            y2={hub.y - uy * (hub.r + 10)}
+            stroke={stroke}
+            strokeOpacity={opacity}
+            strokeWidth={visual?.width ?? 1.2}
+            strokeDasharray={visual?.dash}
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        )
+      })}
+    </g>
+  )
+}
+
+function RunClusters({
+  clusters, nodeById, visibleIds, textsShown, highlightedIds, scale, copy, onSelect, movedRef,
+}: {
+  clusters: readonly SpatialRunCluster[]
+  nodeById: ReadonlyMap<string, IntelligenceGraphNode>
+  visibleIds: ReadonlySet<string>
+  textsShown: ReadonlySet<string> | null
+  highlightedIds: ReadonlySet<string> | null
+  scale: number
+  copy: GraphSpatialOptions['copy']
+  onSelect: (node: IntelligenceGraphNode | null) => void
+  movedRef: React.MutableRefObject<boolean>
+}) {
+  return (
+    <g>
+      {clusters.map(cluster => {
+        if (!visibleIds.has(cluster.parentId)) return null
+        const parent = nodeById.get(cluster.parentId)
+        const dimmed = highlightedIds !== null && !highlightedIds.has(cluster.parentId)
+        const circumference = Math.PI * 2 * cluster.r
+        let offset = 0
+        const segments = cluster.distribution.map(entry => {
+          const length = (circumference * entry.count) / Math.max(1, cluster.count)
+          const segment = { status: entry.status, length, offset }
+          offset += length
+          return segment
+        })
+        const countSize = Math.max(8.5 * scale, cluster.r * (cluster.count >= 100 ? 0.74 : 0.92))
+        const captionSize = 9.5 * scale
+        return (
+          <g
+            key={cluster.id}
+            className={cn(styles.cluster, styles.spatialNode)}
+            style={{ transform: `translate(${cluster.x}px, ${cluster.y}px)` }}
+            opacity={dimmed ? 0.28 : 1}
+            data-cluster-kind={cluster.kind}
+            data-cluster-count={cluster.count}
+            onClick={event => {
+              event.stopPropagation()
+              if (!movedRef.current && parent) onSelect(parent)
+            }}
+          >
+            <title>{copy.clusterDescription(cluster, parent?.label ?? '')}</title>
+            <g className={styles.spatialAppear}>
+              <circle r={cluster.r + 3 * scale} fill="var(--ig-canvas)" fillOpacity={0.88} />
+              <circle r={cluster.r} fill="none" stroke="var(--ig-label-muted)" strokeOpacity={0.3} strokeWidth={0.9 * scale} />
+              {segments.map(segment => (
+                <circle
+                  key={segment.status}
+                  r={cluster.r}
+                  fill="none"
+                  stroke={CLUSTER_STATUS_COLORS[segment.status] ?? GRAPH_VISUAL_TOKENS.status.cancelled}
+                  strokeOpacity={0.78}
+                  strokeWidth={2.2 * scale}
+                  strokeDasharray={`${Math.max(0, segment.length - 0.8 * scale)} ${circumference}`}
+                  strokeDashoffset={-segment.offset}
+                  transform="rotate(-90)"
+                />
+              ))}
+              <text className={styles.clusterCount} textAnchor="middle" y={countSize * 0.36} fontSize={countSize}>
+                {copy.clusterCount(cluster)}
+              </text>
+              {(textsShown?.has(`cluster-caption:${cluster.id}`) ?? true) && (
+                <text className={styles.clusterCaption} textAnchor="middle" y={cluster.r + captionSize * 1.45} fontSize={captionSize}>
+                  {copy.clusterCaption(cluster)}
+                </text>
+              )}
+            </g>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+function UnlinkedBands({
+  bands, visibleIds, textsShown, scale, copy,
+}: {
+  bands: readonly SpatialUnlinkedBand[]
+  visibleIds: ReadonlySet<string>
+  textsShown: ReadonlySet<string> | null
+  scale: number
+  copy: GraphSpatialOptions['copy']
+}) {
+  return (
+    <g aria-hidden="true" pointerEvents="none">
+      {bands.map(band => {
+        if (!band.memberIds.some(id => visibleIds.has(id)) || !(textsShown?.has(`band:${band.id}`) ?? true)) return null
+        const [first, second] = copy.unlinkedAgents(band.count)
+        const size = 10.5 * scale
+        return (
+          <text
+            key={band.id}
+            className={cn(styles.bandCaption, styles.spatialNode)}
+            style={{ transform: `translate(${band.x}px, ${band.y}px)` }}
+            textAnchor={bandAnchor(band)}
+            fontSize={size}
+            data-band-count={band.count}
+          >
+            <tspan x={0} dy={-size * 0.2}>{first}</tspan>
+            <tspan x={0} dy={size * 1.25}>{second}</tspan>
+          </text>
+        )
+      })}
+    </g>
+  )
+}
+
+function HubGlyph({ hub, scale, selected, showSubtext }: { hub: SpatialHub; scale: number; selected: boolean; showSubtext: boolean }) {
+  const receded = hub.orbit === 'receded'
+  const strength = receded ? 0.55 : hub.orbit === 'calm' ? 0.62 : 1
+  const nameSize = (receded ? 11 : hub.orbit === 'focus' ? 15 : 13.5) * scale
+  const subtextSize = 10.5 * scale
+  return (
+    <g data-hub-orbit={hub.orbit}>
+      {!receded && <circle r={hub.r + 10} fill={hub.color} fillOpacity={0.07 * strength} />}
+      <circle
+        r={hub.r}
+        fill={hub.color}
+        fillOpacity={0.08 + 0.2 * strength}
+        stroke={selected ? GRAPH_VISUAL_TOKENS.status.selected : hub.color}
+        strokeOpacity={selected ? 1 : 0.75 * strength}
+        strokeWidth={selected ? 1.8 : 1.2}
+        vectorEffect="non-scaling-stroke"
+        className={styles.identity}
+      />
+      <circle
+        r={hub.r * 0.84}
+        fill="none"
+        stroke={hub.color}
+        strokeOpacity={0.42 * strength}
+        strokeWidth={hub.r * 0.035}
+        strokeDasharray={`${(hub.r * 0.3).toFixed(2)} ${(hub.r * 0.13).toFixed(2)}`}
+      />
+      <circle r={hub.r * 0.6} fill="var(--ig-canvas)" fillOpacity={0.4} />
+      <text
+        className={styles.hubMonogram}
+        textAnchor="middle"
+        y={hub.r * 0.2}
+        fontSize={hub.r * 0.56}
+        fillOpacity={0.5 + 0.5 * strength}
+      >
+        {hub.monogram}
+      </text>
+      {!receded && (
+        <text className={styles.hubName} textAnchor="middle" y={hub.r + nameSize * 1.4} fontSize={nameSize} fontWeight={650}>
+          {hub.label}
+        </text>
+      )}
+      {!receded && showSubtext && (
+        <text className={styles.hubSubtext} textAnchor="middle" y={hub.r + nameSize * 1.4 + subtextSize * 1.5} fontSize={subtextSize}>
+          {hub.subtext}
+        </text>
+      )}
+    </g>
+  )
+}
+
+/**
+ * Atlas, the identity orb. Not a node of the snapshot: it has no status, no
+ * inspector and no data behind its light. Its slow breathing is identity
+ * motion only and stands down with reduced motion (book ¶208).
+ */
+function AtlasOrb({
+  atlas, scale, label, description, onActivate,
+}: {
+  atlas: SpatialAtlasOrb
+  scale: number
+  label: string
+  description: string
+  onActivate?: () => void
+}) {
+  const labelSize = (atlas.receded ? 11.5 : 15) * scale
+  return (
+    <g
+      className={cn(styles.atlas, styles.spatialNode)}
+      style={{ transform: `translate(${atlas.x}px, ${atlas.y}px)` }}
+      opacity={atlas.receded ? 0.6 : 1}
+      data-atlas={atlas.receded ? 'receded' : 'core'}
+      role="button"
+      tabIndex={0}
+      aria-label={`${label}. ${description}`}
+      onClick={event => { event.stopPropagation(); onActivate?.() }}
+      onKeyDown={event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        event.stopPropagation()
+        onActivate?.()
+      }}
+    >
+      <title>{`${label} — ${description}`}</title>
+      <g className={styles.atlasBreath} aria-hidden="true">
+        <circle r={atlas.r * 2.05} fill="url(#ig-atlas-halo)" />
+        <circle r={atlas.r * 1.42} fill="url(#ig-atlas-halo)" />
+      </g>
+      <circle r={atlas.r * 1.12} fill="none" stroke={GRAPH_VISUAL_TOKENS.status.selected} strokeWidth={1.6} vectorEffect="non-scaling-stroke" className={styles.atlasFocus} />
+      <circle r={atlas.r} fill="url(#ig-atlas-energy)" />
+      <circle r={atlas.r} fill="none" stroke="#a5b4fc" strokeOpacity={0.62} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <circle r={atlas.r * 0.7} fill="none" stroke="#c4b5fd" strokeOpacity={0.3} strokeWidth={0.9} vectorEffect="non-scaling-stroke" />
+      <circle r={atlas.r * 0.26} fill="url(#ig-atlas-core)" />
+      {!atlas.receded && (
+        <text className={styles.atlasLabel} textAnchor="middle" y={atlas.r + labelSize * 1.55} fontSize={labelSize} fontWeight={650}>
+          {label}
+        </text>
+      )}
+    </g>
+  )
+}
+
+

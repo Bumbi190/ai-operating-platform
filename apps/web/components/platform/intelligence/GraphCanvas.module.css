@@ -74,3 +74,100 @@
     transition: none !important;
   }
 }
+
+/* ── Spatial view (vNext Live Operations only) ───────────────────────────────
+   Presentation motion: nodes glide to a new level's places and fade in when
+   they first appear (book ¶207). Identity motion: Atlas breathes slowly (¶208).
+   Neither says anything operational, and both stand down with reduced motion. */
+
+.spatialNode {
+  transition: transform 460ms cubic-bezier(0.22, 0.8, 0.26, 1), opacity 220ms ease;
+}
+
+.spatialAppear {
+  animation: igSpatialAppear 320ms ease-out both;
+}
+
+@keyframes igSpatialAppear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.atlas {
+  cursor: pointer;
+  outline: none;
+}
+
+.atlasBreath {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: igAtlasBreath 9s ease-in-out infinite;
+}
+
+@keyframes igAtlasBreath {
+  0%, 100% { opacity: 0.82; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.025); }
+}
+
+.atlasFocus {
+  opacity: 0;
+}
+
+.atlas:focus-visible .atlasFocus {
+  opacity: 1;
+}
+
+.atlasLabel,
+.hubName,
+.hubSubtext,
+.clusterCaption,
+.bandCaption {
+  paint-order: stroke fill;
+  stroke: var(--ig-canvas);
+  stroke-opacity: 0.94;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.atlasLabel,
+.hubName {
+  fill: var(--ig-label-strong);
+  letter-spacing: 0.01em;
+}
+
+.hubMonogram {
+  fill: var(--ig-label-strong);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.hubSubtext,
+.bandCaption {
+  fill: var(--ig-label-muted);
+}
+
+.cluster {
+  cursor: pointer;
+}
+
+.clusterCount {
+  fill: var(--ig-label-strong);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.clusterCaption {
+  fill: var(--ig-label-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .spatialNode,
+  :where(html:not([data-motion='full'])) .spatialAppear,
+  :where(html:not([data-motion='full'])) .atlasBreath {
+    animation: none !important;
+    transition: none !important;
+  }
+}

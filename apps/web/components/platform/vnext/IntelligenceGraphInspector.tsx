@@ -89,7 +89,7 @@ export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGr
   const scopeable = SCOPEABLE_KINDS.has(node.kind)
   const neighborById = new Map(neighbors.map(neighbor => [neighbor.id, neighbor]))
   const fetched = mode === 'operations' && meta ? snapshotStamp('operations', meta) : null
-  const facts = inspectorFacts(node)
+  const facts = inspectorFacts(node, edges, neighbors)
   const storedError = typeof node.metadata?.error === 'string' && node.metadata.error ? node.metadata.error : null
   const tabId = (value: InspectorTab) => `${baseId}-tab-${value}`
   const panelId = (value: InspectorTab) => `${baseId}-panel-${value}`
@@ -299,8 +299,12 @@ interface Fact {
   mono?: boolean
 }
 
-/** Stored fields only, each under the name of what it is. Absent stays absent. */
-function inspectorFacts(node: IntelligenceGraphNode): Fact[] {
+/**
+ * Stored fields only, each under the name of what it is. Absent stays absent.
+ * The one count here — a workflow's runs in this snapshot — uses the canvas
+ * cluster's rule (`STARTED` to a run of the same project), so both say the same number.
+ */
+function inspectorFacts(node: IntelligenceGraphNode, edges: readonly IntelligenceGraphEdge[], neighbors: readonly IntelligenceGraphNode[]): Fact[] {
   const metadata = node.metadata ?? {}
   const text = (key: string) => (typeof metadata[key] === 'string' && metadata[key] ? (metadata[key] as string) : null)
   const facts: Fact[] = []
@@ -321,6 +325,11 @@ function inspectorFacts(node: IntelligenceGraphNode): Fact[] {
   push('Avslutad', formatStored(text('finishedAt')))
   push('Granskad', formatStored(text('reviewedAt')))
   if (typeof metadata.attempts === 'number') push('Försök', String(metadata.attempts))
+  if (node.kind === 'workflow') {
+    const runs = new Map(neighbors.filter(neighbor => neighbor.kind === 'run' && neighbor.projectId === node.projectId).map(run => [run.id, run]))
+    const started = new Set(edges.filter(edge => edge.relation === 'STARTED' && edge.source === node.id && runs.has(edge.target)).map(edge => edge.target))
+    push('Körningar i ögonblicksbilden', started.size > 0 ? String(started.size) : null)
+  }
   push(operatorLabel(node), node.kind === 'approval' ? text('operator') : null)
   return facts
 }

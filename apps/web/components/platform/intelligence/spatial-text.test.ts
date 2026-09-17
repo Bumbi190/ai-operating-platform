@@ -29,6 +29,7 @@ const SPATIAL_TEST_COPY: SpatialCopy = {
   clusterCaption: (cluster) => (cluster.kind === 'older' ? 'äldre' : cluster.kind === 'no-workflow' ? 'utan workflow' : 'körningar'),
   unlinkedAgents: (count) => [`${count} agenter`, 'som inget workflow nämner'] as const,
   hubDescription: (hub) => hub.subtext,
+  previewCaption: (shown, total) => `Visar ${shown} av ${total} workflows`,
   clusterDescription: (cluster, parent) => `${parent}: ${cluster.count}`,
   statusWord: (node) => (node.status === 'failed' ? 'misslyckades' : node.status === 'running' ? 'kör' : node.status ? 'väntar' : null),
 }

@@ -86,7 +86,7 @@ const REPLAY_UNAVAILABLE = 'Kräver händelsedata per steg, som Omnira inte regi
 const GRAPH_ABOUT = 'Hur Omnira hänger ihop — ritat enbart ur data som finns, med källan synlig för varje koppling.'
 
 /** What the spatial Live Operations view adds to the explanation — its two rules, in the product's words. */
-const SPATIAL_ABOUT = `${GRAPH_ABOUT} Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger. Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan. Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats, när du väljer den, eller när du fördjupar dig i dess workflow.`
+const SPATIAL_ABOUT = `${GRAPH_ABOUT} Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger. Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan. Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats, när du väljer den, eller när du fördjupar dig i dess workflow. På en bredare skärm visar översikten ett urval av högst tre workflows per projekt, med antalet körningar under namnet: först de vars körningar visas för sig, sedan de med flest körningar i fönstret och aktiva före inaktiva; lika viktiga sprids runt projektet. Antalen under projektet räknar alla — zooma in eller fördjupa dig i projektet för resten.`
 
 /** The legend line for Atlas's links: derived from the caller owning the project, never stored. */
 const ATLAS_LINK_RELATION = 'Atlas → projekt du äger (ägarskap)'
@@ -109,6 +109,7 @@ const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
   hubDescription: hub => (hub.orbit === 'calm'
     ? `${hub.subtext} · inga körningar i fönstret och inget aktivt workflow`
     : hub.subtext),
+  previewCaption: (shown, total) => `Visar ${shown} av ${total} ${total === 1 ? 'workflow' : 'workflows'}`,
   clusterDescription: (cluster, parentLabel) => {
     const distribution = cluster.distribution.map(entry => `${entry.count} ${runStatusWords(entry.status)}`).join(', ')
     if (cluster.kind === 'older') return `${parentLabel}: ${cluster.count} äldre körningar i fönstret (${distribution})`

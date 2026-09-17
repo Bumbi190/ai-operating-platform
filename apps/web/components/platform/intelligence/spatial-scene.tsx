@@ -30,7 +30,7 @@ import type { IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { GRAPH_VISUAL_TOKENS, getStatusVisual, type GraphStatusVisual } from './graph-visuals'
 import type { SpatialAtlasOrb, SpatialHub, SpatialLayout, SpatialRunCluster } from './spatial-layout'
 import type { SpatialLabelPlacement } from './spatial-labels'
-import { clusterDrawRadius, selectionRingOffset } from './spatial-text'
+import { SPATIAL_TYPE, clusterDrawRadius, selectionRingOffset } from './spatial-text'
 import styles from './GraphCanvas.module.css'
 
 /** The canonical Atlas orb's colours (AtlasHomeVNext.module.css `.orbButton`, `.orbGlass`, `.orbHalo`, orbits). */
@@ -647,6 +647,11 @@ export function SpatialLabelLayer({ placements, dimmedOwners, attributesFor }: {
             {label.status && (
               <tspan x={label.x} dy={label.lineHeight} fontSize={label.status.fontSize} fontWeight={600} fill={label.status.color}>
                 {label.status.text}
+              </tspan>
+            )}
+            {label.detail && (
+              <tspan x={label.x} dy={label.detail.dy} fontSize={label.detail.fontSize} fontWeight={SPATIAL_TYPE.nodeDetail.weight} className={styles.labelMuted} data-label-detail="">
+                {label.detail.text}
               </tspan>
             )}
           </text>

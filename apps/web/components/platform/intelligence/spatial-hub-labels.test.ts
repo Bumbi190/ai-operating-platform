@@ -29,6 +29,7 @@ const PAGE_COPY: SpatialCopy = {
   clusterCaption: (cluster) => (cluster.kind === 'older' ? 'äldre' : cluster.kind === 'no-workflow' ? 'utan workflow' : cluster.count === 1 ? 'körning' : 'körningar'),
   unlinkedAgents: (count) => [`${count} ${count === 1 ? 'agent' : 'agenter'}`, 'som inget workflow nämner'] as const,
   hubDescription: (hub) => hub.subtext,
+  previewCaption: (shown, total) => `Visar ${shown} av ${total} workflows`,
   clusterDescription: (cluster, parentLabel) => `${parentLabel}: ${cluster.count}`,
   statusWord: (node) => nodeStatus(node)?.label.toLowerCase() ?? null,
 }

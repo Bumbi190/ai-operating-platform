@@ -1290,15 +1290,28 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     // A new canvas size — or a phone's sheet opening or closing — re-fits a view nobody has moved, keeping a selection clear of sheet and overlays.
     expect(CANVAS).toContain('if (spatialLayout && (viewportChanged || sheetChanged) && autoFitRef.current) {')
     expect(CANVAS).toContain('const sheetChanged = sheetPresentation && handledInspectorRef.current !== inspectorOpen')
-    // A fit frames the level's names and counts at their screen size; the portfolio frames its hubs and Atlas.
-    expect(CANVAS).toContain("return boundsWithScreenText(core, framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band'), viewport, undefined, overlayRef.current)")
-    expect(CANVAS).toContain("? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext')")
+    // A fit frames the level's names and counts at their screen size; the portfolio frames its hubs and Atlas, with what a
+    // preview leaves out. With the previews it frames their workflows, and their names while the whole widens the overview's
+    // view by at most a tenth — names on a narrower canvas would shrink the overview until hub names give way.
+    expect(CANVAS).toContain("const texts = framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band')")
+    expect(CANVAS).toContain("? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext' || text.kind === 'hub-preview')")
+    expect(CANVAS).toContain('const PREVIEW_NAME_ROOM = 0.1')
+    expect(CANVAS).toContain('const named = fitted(spatialLayout.preview.fitBounds, previewNameScreenTexts(spatialLayout, nodeById, spatial.copy))')
+    expect(CANVAS).toContain('return width(named) <= width(overview) * (1 + PREVIEW_NAME_ROOM) ? named : fitted(spatialLayout.preview.fitBounds)')
     // A phone opening a project with many agents frames its core; the agents come with zoom (T2c).
-    expect(CANVAS).toContain('const core = compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds')
+    expect(CANVAS).toContain('if (!previewing || !spatial) return fitted(compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds)')
     expect(CANVAS).toContain('const graphBounds = spatialBounds ?? forceBounds!')
-    // The complete fit that resets a moved camera runs for a new layout only — the text-aware bounds change with the canvas.
+    // The complete fit that resets a moved camera runs for a new layout only — or when its previews start or stop showing;
+    // the text-aware bounds change with the canvas.
     expect(CANVAS).toContain('}, [fitSignal, layoutBounds])')
-    expect(CANVAS).toContain('const layoutBounds = spatialLayout ? spatialLayout.fitBounds : graphBounds')
+    expect(CANVAS).toContain('const layoutBounds = spatialLayout ? (previewing ? spatialLayout.preview.fitBounds : spatialLayout.fitBounds) : graphBounds')
+    // The overview previews workflows only where the inspector is not a sheet, and only once the canvas is measured:
+    // the server's markup and every first paint are the compact overview (T2c).
+    expect(CANVAS).toContain("const previewing = spatialLayout?.level === 'portfolio' && viewportMeasured && !sheetPresentation")
+    // What a preview leaves out is said in the hub's accessible name too, in the page's words.
+    expect(CANVAS).toContain("${previewNote ? ` · ${spatial.copy.previewCaption(previewNote.shown, previewNote.total)}` : ''}")
+    expect(VNEXT).toContain("previewCaption: (shown, total) => `Visar ${shown} av ${total} ${total === 1 ? 'workflow' : 'workflows'}`,")
+    expect(CANVAS).toContain('preview: previewing,')
   })
 
   it('puts Atlas at the centre as identity, linked only to owned projects, and names that link as derived', async () => {
@@ -1341,6 +1354,10 @@ describe('phase 18 T2b · spatial Live Operations', () => {
       expect(label(svg, `hub-name:project:${projectId}`), name).toBe(name)
       expect(label(svg, `hub-subtext:project:${projectId}`), name).toBe(counts)
     }
+    // The server's markup — every first paint — is the compact overview: no workflow previewed, nothing said about one (T2c).
+    expect(values(svg, 'data-spatial-role').sort()).toEqual(['hub', 'hub', 'hub', 'hub'])
+    expect(svg).not.toContain('data-label-kind="hub-preview"')
+    expect(svg).not.toContain('Visar ')
     expect(svg).toContain('aria-label="project: GainPilot · Inga agenter eller workflows · inga körningar i fönstret och inget aktivt workflow"')
     expect(svg).toContain('aria-label="project: AUDIT 0b · 2 inaktiva workflows · inga körningar i fönstret och inget aktivt workflow"')
     // The children stay folded into those counts: no agent, workflow or run is drawn at the overview.
@@ -1426,6 +1443,8 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     expect(legend).toContain('Atlas i mitten är Omniras identitet, inte en datanod; linjerna från Atlas går bara till projekt du äger.')
     expect(legend).toContain('Projekt utan körningar i fönstret och utan aktivt workflow ligger på den yttre, lugnare banan.')
     expect(legend).toContain('Körningar räknas per workflow — en körning visas för sig när den kör, väntar eller har misslyckats')
+    expect(legend).toContain('På en bredare skärm visar översikten ett urval av högst tre workflows per projekt, med antalet körningar under namnet')
+    expect(legend).toContain('Antalen under projektet räknar alla — zooma in eller fördjupa dig i projektet för resten.')
     const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
     expect(text(system)).not.toContain('Atlas i mitten')
   })

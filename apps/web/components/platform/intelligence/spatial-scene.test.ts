@@ -3,12 +3,16 @@
  * how lines find their way, how a count shows its statuses, and how a project's
  * own colour is lit without inventing one.
  */
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { GRAPH_VISUAL_TOKENS } from './graph-visuals'
 import type { SpatialLayout, SpatialRunCluster } from './spatial-layout'
+import type { SpatialLabelPlacement } from './spatial-labels'
 import {
   CLEAR_BEND_FACTORS,
   CLUSTER_STATUS_COLORS,
+  SpatialLabelLayer,
   clearSpatialEdgePath,
   clusterSegments,
   hubRingColour,
@@ -115,5 +119,26 @@ describe('phase 18 T2c · a project’s own colour', () => {
     expect(identityColour({ id: 'agent:a', kind: 'agent', label: 'A', source: 'runtime', projectId: 'p2', metadata: {} }, colours)).toBe('#8b5cf6')
     const neutral = identityColour({ id: 'output:o', kind: 'output', label: 'O', source: 'runtime', metadata: {} }, colours)
     expect([...colours.values()]).not.toContain(neutral)
+  })
+})
+
+describe('phase 18 T2c · a label’s detail line', () => {
+  it('draws a previewed workflow’s run count as a muted line under its name, where the plan measured it', () => {
+    const placement: SpatialLabelPlacement = {
+      key: 'node:workflow:tp-1', kind: 'node', ownerId: 'workflow:tp-1', tier: 5, lines: ['Daglig short'],
+      x: 10, y: 20, anchor: 'middle', fontSize: 12.5, lineHeight: 15.5, weight: 600, tone: 'normal',
+      detail: { text: '5 körningar', fontSize: 11, dy: 14.03 },
+      box: { minX: -30, minY: 10, maxX: 50, maxY: 36.89 }, widthPx: 80,
+    }
+    const markup = renderToStaticMarkup(createElement(SpatialLabelLayer, { placements: [placement], dimmedOwners: () => false }))
+    const name = markup.indexOf('>Daglig short</tspan>')
+    expect(name).toBeGreaterThan(0)
+    const detail = markup.slice(markup.lastIndexOf('<tspan', markup.indexOf('>5 körningar</tspan>')))
+    expect(markup.indexOf('>5 körningar</tspan>')).toBeGreaterThan(name)
+    expect(detail).toMatch(/^<tspan x="10" dy="14.03" font-size="11" font-weight="500" class="[^"]*labelMuted[^"]*" data-label-detail="">5 körningar<\/tspan>/)
+    // Without a detail, a label is drawn exactly as before.
+    const plain = renderToStaticMarkup(createElement(SpatialLabelLayer, { placements: [{ ...placement, detail: undefined }], dimmedOwners: () => false }))
+    expect(plain).not.toContain('data-label-detail')
+    expect(plain).not.toContain('körningar')
   })
 })

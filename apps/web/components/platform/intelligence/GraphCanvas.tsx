@@ -30,6 +30,7 @@ import {
   selectVisibleNodeLabels,
   type GraphLabelPlacement,
   type GraphOverlayInsets,
+  type GraphScreenText,
   type GraphViewBox,
   type GraphZoomLevel,
 } from './graph-readability'
@@ -39,6 +40,8 @@ import {
   PORTFOLIO_REVEAL,
   PROJECT_REVEAL,
   computeSpatialLayout,
+  previewsAtOverview,
+  spatialClusterShown,
   spatialDensityLevel,
   spatialEdgeLevel,
   spatialNodeVisibility,
@@ -50,7 +53,7 @@ import {
   type SpatialRunCluster,
 } from './spatial-layout'
 import { SPATIAL_NARROW_CANVAS, spatialScreenTexts, type SpatialCopy, type SpatialText } from './spatial-text'
-import { AGENT_NAMES_AT_OVERVIEW, planSpatialLabels } from './spatial-labels'
+import { AGENT_NAMES_AT_OVERVIEW, partialPreviews, planSpatialLabels, previewNameScreenTexts } from './spatial-labels'
 import {
   AgentGlyph,
   AtlasCore,
@@ -170,6 +173,8 @@ export interface GraphCameraCommand {
 
 const WORLD_W = 1200
 const WORLD_H = 800
+/** A fit gives previewed workflows' names room while the previews widen the overview's view by at most this share. */
+const PREVIEW_NAME_ROOM = 0.1
 /** One zoom step — shared by the keys and the zoom commands. */
 const ZOOM_STEP = 1.16
 
@@ -214,6 +219,7 @@ export function GraphCanvas({
     ? initialSpatialView(nodes, edges, spatial, overlayInsets)
     : { x: 0, y: 0, w: WORLD_W, h: WORLD_H })
   const [viewport, setViewport] = useState({ width: WORLD_W, height: WORLD_H })
+  const [viewportMeasured, setViewportMeasured] = useState(false)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
   const dragRef = useRef<{ startX: number; startY: number; view: GraphViewBox } | null>(null)
@@ -270,11 +276,15 @@ export function GraphCanvas({
     () => spatialLayout ? null : calculateGraphBounds(layout, territories),
     [layout, territories, spatialLayout],
   )
+  // The portfolio previews each project's workflows where the page has room: not where the inspector is a sheet
+  // (a phone, whose overview stays compact), and not before the canvas is measured, so the server's markup and
+  // the first paint are the compact overview on every screen.
+  const previewing = spatialLayout?.level === 'portfolio' && viewportMeasured && !sheetPresentation
   // A spatial fit also holds the level's own names and counts, which are drawn at screen size.
   const narrowCanvas = viewport.width < SPATIAL_NARROW_CANVAS
   const spatialTexts = useMemo(
-    () => spatialLayout && spatial ? spatialScreenTexts(spatialLayout, spatial.copy, { narrow: narrowCanvas }) : [],
-    [spatialLayout, spatial, narrowCanvas],
+    () => spatialLayout && spatial ? spatialScreenTexts(spatialLayout, spatial.copy, { narrow: narrowCanvas, preview: previewing }) : [],
+    [spatialLayout, spatial, narrowCanvas, previewing],
   )
   // A narrow canvas opening a project with many agents frames the project's core; its agents come with zoom.
   const compactAgents = useMemo(() => {
@@ -282,15 +292,23 @@ export function GraphCanvas({
     const projectId = nodes.find(node => node.id === spatialLayout.anchorId)?.projectId
     return nodes.filter(node => node.kind === 'agent' && node.projectId === projectId).length > AGENT_NAMES_AT_OVERVIEW
   }, [spatialLayout, narrowCanvas, nodes])
+  const nodeById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes])
   const spatialBounds = useMemo(() => {
     if (!spatialLayout) return null
-    const core = compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds
-    return boundsWithScreenText(core, framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band'), viewport, undefined, overlayRef.current)
-  }, [spatialLayout, spatialTexts, viewport, compactAgents, nodes])
+    const texts = framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band')
+    const fitted = (core: GraphBounds, more: readonly GraphScreenText[] = []) => boundsWithScreenText(core, [...texts, ...more], viewport, undefined, overlayRef.current)
+    if (!previewing || !spatial) return fitted(compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds)
+    // The previews widen the frame: always for their workflows, and for their names while the whole widens the overview's
+    // view by at most PREVIEW_NAME_ROOM. On a narrower canvas — a docked inspector's — names drawn at screen size would
+    // shrink the overview until hub names give way; there a previewed name without room is left out instead.
+    const width = (bounds: GraphBounds) => fitGraphBounds(bounds, viewport, undefined, overlayRef.current).w
+    const overview = boundsWithScreenText(spatialLayout.fitBounds, texts.filter(text => text.kind !== 'hub-preview'), viewport, undefined, overlayRef.current)
+    const named = fitted(spatialLayout.preview.fitBounds, previewNameScreenTexts(spatialLayout, nodeById, spatial.copy))
+    return width(named) <= width(overview) * (1 + PREVIEW_NAME_ROOM) ? named : fitted(spatialLayout.preview.fitBounds)
+  }, [spatialLayout, spatialTexts, viewport, compactAgents, nodes, previewing, spatial, nodeById])
   const graphBounds = spatialBounds ?? forceBounds!
-  // Changes only with the layout itself; a new canvas size re-fits through the camera context instead.
-  const layoutBounds = spatialLayout ? spatialLayout.fitBounds : graphBounds
-  const nodeById = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes])
+  // Changes only with the layout itself — and with whether its previews show; a new canvas size re-fits through the camera context instead.
+  const layoutBounds = spatialLayout ? (previewing ? spatialLayout.preview.fitBounds : spatialLayout.fitBounds) : graphBounds
 
   const highlighted = useMemo(() => {
     // In a drilled spatial view the selected anchor is the view itself; its selection
@@ -358,6 +376,7 @@ export function GraphCanvas({
         neighborIds: semanticNeighborIds,
         executionContext,
         compactAgents,
+        preview: previewing,
       })
       : getNodeSemanticVisibility(node, {
         level: zoomLevel,
@@ -367,7 +386,7 @@ export function GraphCanvas({
         searchResultId,
         neighborIds: semanticNeighborIds,
       }),
-  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds, spatialLayout, spatialDepth, executionContext, compactAgents])
+  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds, spatialLayout, spatialDepth, executionContext, compactAgents, previewing])
   // The page's chrome over the canvas, in world units.
   const chromeBoxes = useMemo(() => (spatialLayout ? chromeRects ?? [] : []).map(rect => ({
     minX: view.x + (rect.x / Math.max(1, viewport.width)) * view.w,
@@ -393,6 +412,17 @@ export function GraphCanvas({
     return !position || contextClear(position.x, position.y, position.r + 9)
   }).map(node => node.id).join('\u0000')
   const structurallyVisibleIds = useMemo(() => new Set(visibleKey ? visibleKey.split('\u0000') : []), [visibleKey])
+  // While the overview previews workflows, a workflow's run count is said under its name; its ring comes with zoom.
+  const countsUnderNames = spatialLayout !== null && previewsAtOverview(spatialLayout, { depth: spatialDepth, preview: previewing })
+  const shownClusters = useMemo(
+    () => spatialLayout ? spatialLayout.clusters.filter(cluster => spatialClusterShown(cluster, structurallyVisibleIds, countsUnderNames)) : [],
+    [spatialLayout, structurallyVisibleIds, countsUnderNames],
+  )
+  // What each hub's preview leaves out — said under its counts and in its accessible name.
+  const previewNotes = useMemo(
+    () => spatialLayout && previewing ? partialPreviews(spatialLayout, nodeById, structurallyVisibleIds) : new Map<string, { shown: number; total: number }>(),
+    [spatialLayout, previewing, nodeById, structurallyVisibleIds],
+  )
   const summaries = useMemo(
     () => spatialLayout ? [] : buildDenseViewSummaries(nodes, edges, zoomLevel),
     [nodes, edges, zoomLevel, spatialLayout],
@@ -462,13 +492,14 @@ export function GraphCanvas({
       focusId,
       searchResultId,
       neighborIds: labelSelection ? selectedNeighborhood : undefined,
+      preview: previewing,
     })
-    : null, [spatialLayout, spatial, nodeById, structurallyVisibleIds, view, viewport, reservedBoxes, chromeBoxes, spatialDepth, labelSelection, hoverId, focusId, searchResultId, selectedNeighborhood])
+    : null, [spatialLayout, spatial, nodeById, structurallyVisibleIds, view, viewport, reservedBoxes, chromeBoxes, spatialDepth, labelSelection, hoverId, focusId, searchResultId, selectedNeighborhood, previewing])
   const colours = useMemo(() => spatialLayout ? projectColours(spatialLayout) : new Map<string, string>(), [spatialLayout])
   // What a line keeps clear of: every circle drawn, so a line never passes through a node it does not touch.
   const lineObstacles = useMemo(() => spatialLayout
-    ? spatialLineObstacles(spatialLayout, structurallyVisibleIds, atlasShown)
-    : [], [spatialLayout, structurallyVisibleIds, atlasShown])
+    ? spatialLineObstacles(spatialLayout, structurallyVisibleIds, shownClusters, atlasShown)
+    : [], [spatialLayout, structurallyVisibleIds, shownClusters, atlasShown])
   // A line's path depends on the layout and what is drawn, never on the camera; each is found once.
   const spatialPaths = useMemo(() => new Map<string, string | null>(), [lineObstacles])
   const labelDimmed = useCallback((ownerId: string) => {
@@ -493,6 +524,7 @@ export function GraphCanvas({
         setViewport(current => current.width === rect.width && current.height === rect.height
           ? current
           : { width: rect.width, height: rect.height })
+        setViewportMeasured(true)
       }
     }
     updateViewport()
@@ -876,7 +908,7 @@ export function GraphCanvas({
       {spatialLayout && spatial && (
         <g clipPath={sheetClip}>
           <RunClusters
-            clusters={spatialLayout.clusters}
+            clusters={shownClusters}
             nodeById={nodeById}
             visibleIds={structurallyVisibleIds}
             highlightedIds={highlighted?.ids ?? null}
@@ -905,6 +937,7 @@ export function GraphCanvas({
           const summary = summaryByParent.get(node.id)
           const hub = spatialLayout && node.kind === 'project' ? spatialLayout.hubs.find(entry => entry.nodeId === node.id) : undefined
           const spatialRole = spatialLayout?.roles.get(node.id)
+          const previewNote = hub ? previewNotes.get(node.id) : undefined
           const baseOpacity = isHot ? (semanticState === 'dimmed' ? 0.42 : 1) : filterDimmed ? 0.12 : 0.22
           return (
             <g
@@ -921,7 +954,7 @@ export function GraphCanvas({
               tabIndex={0}
               role="button"
               aria-label={hub && spatial
-                ? `${node.kind}: ${node.label} · ${spatial.copy.hubDescription(hub)}`
+                ? `${node.kind}: ${node.label} · ${spatial.copy.hubDescription(hub)}${previewNote ? ` · ${spatial.copy.previewCaption(previewNote.shown, previewNote.total)}` : ''}`
                 : `${node.kind}: ${node.label}${node.status ? ` (${node.status})` : ''}`}
               aria-pressed={isSelected}
               onKeyDown={event => {
@@ -1186,11 +1219,12 @@ function spatialRenderOrder(nodes: readonly IntelligenceGraphNode[], layout: Spa
 
 /**
  * The level's own names and counts a fit keeps on the canvas: the portfolio
- * frames its hubs and Atlas; run counts and bands inside them unfold with zoom.
+ * frames its hubs and Atlas, with what a preview leaves out under the counts;
+ * run counts and bands inside them unfold with zoom.
  */
 function framedSpatialTexts(layout: SpatialLayout, texts: readonly SpatialText[]): SpatialText[] {
   return layout.level === 'portfolio'
-    ? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext')
+    ? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext' || text.kind === 'hub-preview')
     : [...texts]
 }
 
@@ -1238,15 +1272,20 @@ function circleMeetsBox(circle: { x: number; y: number; r: number }, box: GraphB
 interface SpatialLineObstacle { id: string; x: number; y: number; r: number }
 
 /** Every circle the spatial view draws — nodes, run counts, Atlas — with a little room around it. */
-function spatialLineObstacles(layout: SpatialLayout, visibleIds: ReadonlySet<string>, atlasShown: boolean): SpatialLineObstacle[] {
+function spatialLineObstacles(
+  layout: SpatialLayout,
+  visibleIds: ReadonlySet<string>,
+  clusters: readonly SpatialRunCluster[],
+  atlasShown: boolean,
+): SpatialLineObstacle[] {
   const circles: SpatialLineObstacle[] = []
   for (const id of [...visibleIds].sort()) {
     const position = layout.positions.get(id)
     if (position) circles.push({ id, x: position.x, y: position.y, r: position.r + 3 })
   }
-  for (const cluster of layout.clusters) {
+  for (const cluster of clusters) {
     // At its largest drawn size (`clusterDrawRadius` never exceeds 1.2×), so no camera moves a line.
-    if (visibleIds.has(cluster.parentId)) circles.push({ id: cluster.id, x: cluster.x, y: cluster.y, r: cluster.r * 1.2 + 3 })
+    circles.push({ id: cluster.id, x: cluster.x, y: cluster.y, r: cluster.r * 1.2 + 3 })
   }
   if (atlasShown) circles.push({ id: 'atlas', x: layout.atlas.x, y: layout.atlas.y, r: layout.atlas.r * 1.12 + 3 })
   return circles

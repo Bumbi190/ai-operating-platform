@@ -1,7 +1,7 @@
 # Omnira vNext Phase 18 T2 — Remaining Canonical Gap
 
 Status: **living document**. It is updated at every T2 sub-step.
-Last updated: 2026-09-17, at the T2c fix (a hub's counts crossed their own hub). T2a was approved by the owner at local commit `c068e7b` and T2b at `eedfc03`. T2c (`6c0b6a1`) and its fix are built on top of T2b locally, are not pushed, and are waiting for owner QA.
+Last updated: 2026-09-17, at the T2c overview preview (owner decision: the desktop portfolio no longer folds away every child). T2a was approved by the owner at local commit `c068e7b` and T2b at `eedfc03`. T2c (`6c0b6a1`) and its label fix (`53de556`, approved) are built on top of T2b locally. The overview preview is a separate local commit on top of the fix. None of it is pushed; the preview waits for the owner's visual approval.
 Branch: `feat/omnira-vnext-phase18-t2-live-operations`, from `origin/main` `faf34f7` (Phase 18 T1, PR #254).
 
 ## No canonical-complete claim
@@ -62,7 +62,7 @@ T2b gives vNext Live Operations a deterministic spatial layout, `components/plat
 - Selection, camera, inspector and filters never move a node (book ¶547). The aspect class comes from the stage minus the constant HUD rows, so opening or resizing the inspector does not re-lay the graph.
 
 **Levels**
-- *Portfolio.* Atlas is an identity orb at the centre. Project hubs have their project colour, a monogram and counts from the snapshot ("33 agenter · 5 workflows"). A project with runs in the window or an active workflow sits on the inner orbit. A project with neither sits on a calmer outer orbit and is never hidden (decision 6). Children fold into each hub's counts and unfold with zoom, leaving the sector under the hub open for its name.
+- *Portfolio.* Atlas is an identity orb at the centre. Project hubs have their project colour, a monogram and counts from the snapshot ("33 agenter · 5 workflows"). A project with runs in the window or an active workflow sits on the inner orbit. A project with neither sits on a calmer outer orbit and is never hidden (decision 6). Children fold into each hub's counts and unfold with zoom, leaving the sector under the hub open for its name. Since the T2c overview preview, a desktop page shows up to three workflows per project at the overview (see below).
 - *Project* (drill-down). The project becomes the centre, and the other projects and Atlas recede in the directions they lay on the portfolio. Workflows form the inner ring, with the sector below the hub left open. Each agent sits beside the workflow whose current definition names it (`DELEGATED_TO`). Agents that no workflow names get a band of their own, captioned "N agenter / som inget workflow nämner", so placement never implies a relation.
 - *Workflow* (drill-down). Its runs lie on a time arc, newest first, and older runs are counted in one cluster. The agents its definition names sit opposite, in step order. A run drill-down opens its workflow with that run in place.
 
@@ -118,6 +118,34 @@ T2c changes presentation only. T2b's layout model, run aggregation, relation tru
   - The three browser cases are replayed exactly from recordings of that build, and their regression tests fail on `6c0b6a1`.
   - Rerun of the 99-case matrix with this check: 988 label texts checked, and none lies over any node circle (its own included), over another text, under the chrome or past the canvas edge. 559 texts drawn inside glyphs are not checked.
   - The five cases where the operator's own zoom moves nodes under the controls are unchanged; they are a separate behaviour (G-27).
+
+## Overview preview (T2c, owner decision 2026-09-17)
+
+The owner changed one presentation decision: the desktop portfolio no longer has to fold away every child. The overview now previews each project's operational structure. Layout, relations, run aggregation, hub order and drill-down are unchanged, and no data source is added.
+
+**What shows**
+- Up to three of each project's workflows, drawn at the places zoom reveals them in, so nothing moves when the rest unfold (`SpatialPortfolioPreview` in `spatial-layout.ts`).
+- The selection depends on the snapshot alone. Workflows whose runs are shown on their own come first, so such a run is seen with its workflow. Then the most runs in the window, then active before inactive. When equals are more than the places left, they are taken spread over the ring (first, middle, last), so a preview does not bunch on one side of its hub.
+- A project without workflows stays empty (GainPilot). Nothing is added to fill it.
+- Workflows only, never agents. At the overview an agent is placed only by a workflow definition (`DELEGATED_TO`), beyond that workflow's run count. Drawn there, it would read as having done those runs, and the snapshot records no agent for any run. Agents stay in the hub's counts and come with zoom and drill-down. A project whose only children are agents therefore previews nothing.
+
+**What is said**
+- The hub's counts are unchanged and always count every row ("33 agenter · 5 workflows").
+- A hub whose preview leaves workflows out says so under its counts: "Visar 3 av 5 workflows". The same words are in the hub's accessible name. They are counted from what is drawn, so a workflow a search brings out counts too. Where the counts give way for lack of room, the caption goes with them.
+- The rest is one step away: zoom unfolds every workflow in place, and Fördjupa opens the project. The Förklaring panel states the selection rule.
+
+**Runs stay counted**
+- At the overview a previewed workflow's run count is written under its name ("5 körningar"), in place of a ring too small to read at that scale. As the workflows unfold, the count is a ring again. No run is drawn on its own that was not drawn before.
+
+**Where**
+- Only where the inspector is not a sheet. A phone keeps the compact overview.
+- Not in the server's markup or in the first paint before the canvas is measured, so no screen flashes a preview it does not keep.
+- A fit frames the previewed workflows and what a preview leaves out. It frames their names too while the previews widen the overview's view by at most a tenth (1440, 1280 and 1920 px pages). Names are drawn at screen size, so on a canvas narrowed by a docked inspector framing them would shrink the overview until hub names give way; there a previewed name without room is left out instead. The overview's own fit, without previews, is unchanged.
+
+**Label order**
+- Hub names, counts and preview captions are placed before the previewed workflows' names. The previewed workflows themselves are circles every text keeps clear of, as when zoom reveals them. Previewed names are texts of the same plan: drawn only clear of every other text, every circle (their own included), the page's chrome and the canvas edge, and otherwise left out.
+- In the unit plans, no hub name or count that the compact overview draws at its first view is lost with the preview: production-shaped, attention and stress snapshots, on the desktop canvases and on those a docked inspector leaves at 1440, 1280 and 1024 px.
+- Under pressure the plan's rules are unchanged, so a label can still take a count's place. In the browser matrix two fitted states draw one count fewer than before: at 1024 px with the attention snapshot a waiting approval's label is placed where AUDIT 0b's counts were, and at 1280 px the stress snapshot leaves out Forskningsstöd's counts. In manual zoom sequences the counts drawn differ step by step in both directions, because the fitted camera is up to 8 % wider; after Anpassa they are all back.
 
 ## Remaining canonical gap
 

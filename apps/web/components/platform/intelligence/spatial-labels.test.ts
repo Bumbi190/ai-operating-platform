@@ -17,22 +17,27 @@ import {
 import { getStatusVisual } from './graph-visuals'
 import { boundsWithScreenText, fitGraphBounds, reservedCanvasBoxes, type GraphBounds, type GraphViewBox } from './graph-readability'
 import {
+  PORTFOLIO_REVEAL,
   PROJECT_REVEAL,
   classifySpatialAspect,
   computeSpatialLayout,
+  previewsAtOverview,
+  spatialClusterShown,
   spatialNodeVisibility,
   type SpatialAnchor,
 } from './spatial-layout'
 import {
   SPATIAL_NARROW_CANVAS,
+  SPATIAL_TYPE,
   TEXT_ASCENT,
+  TEXT_DESCENT,
   TEXT_GAP,
   clusterDrawRadius,
   spatialScreenTexts,
   textWidthPx,
   type SpatialCopy,
 } from './spatial-text'
-import { AGENT_NAMES_AT_OVERVIEW, nodeLabelVariants, planSpatialLabels, type SpatialLabelPlan } from './spatial-labels'
+import { AGENT_NAMES_AT_OVERVIEW, nodeLabelVariants, planSpatialLabels, previewNameScreenTexts, type SpatialLabelPlan } from './spatial-labels'
 
 const COPY: SpatialCopy = {
   atlasLabel: 'Atlas',
@@ -42,6 +47,7 @@ const COPY: SpatialCopy = {
   clusterCaption: (cluster) => (cluster.kind === 'older' ? 'äldre' : cluster.kind === 'no-workflow' ? 'utan workflow' : 'körningar'),
   unlinkedAgents: (count) => [`${count} agenter`, 'som inget workflow nämner'] as const,
   hubDescription: (hub) => hub.subtext,
+  previewCaption: (shown, total) => `Visar ${shown} av ${total} workflows`,
   clusterDescription: (cluster, parent) => `${parent}: ${cluster.count}`,
   statusWord: (node) => ({ failed: 'misslyckades', running: 'körs', awaiting_approval: 'väntar på godkännande', pending: 'väntar', cancelled: 'avbruten' } as Record<string, string>)[node.status ?? ''] ?? null,
 }
@@ -80,6 +86,8 @@ interface SceneOptions {
   searchResultId?: string | null
   hoverId?: string | null
   sheet?: boolean
+  /** A desktop page: the portfolio previews its workflows. */
+  preview?: boolean
 }
 
 /** A scene as the canvas composes it: the level fitted between the page's rows, zoomed, with what covers it. */
@@ -89,11 +97,21 @@ function compose(options: SceneOptions) {
   const narrow = frame.width < SPATIAL_NARROW_CANVAS
   const sheetPx = options.sheet ? Math.min(frame.height * 0.48, 384) : 0
   const overlay = { top: (narrow ? 2 : 1) * ROW_PX, bottom: Math.max(ROW_PX, sheetPx) }
-  const texts = spatialScreenTexts(layout, COPY, { narrow })
+  const preview = options.preview === true && layout.level === 'portfolio'
+  const texts = spatialScreenTexts(layout, COPY, { narrow, preview })
   const framed = layout.level === 'portfolio'
-    ? texts.filter((text) => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext')
+    ? texts.filter((text) => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext' || text.kind === 'hub-preview')
     : texts
-  const fit = fitGraphBounds(boundsWithScreenText(layout.fitBounds, framed, frame, undefined, overlay), frame, undefined, overlay)
+  const nodeById = new Map(payload.nodes.map((node) => [node.id, node]))
+  const widthOf = (bounds: GraphBounds) => fitGraphBounds(bounds, frame, undefined, overlay).w
+  const overview = boundsWithScreenText(layout.fitBounds, framed.filter((text) => text.kind !== 'hub-preview'), frame, undefined, overlay)
+  // Like the canvas: the previewed workflows always, their names too while the previews widen the view by at most a tenth.
+  const named = preview ? boundsWithScreenText(layout.preview.fitBounds, [...framed, ...previewNameScreenTexts(layout, nodeById, COPY)], frame, undefined, overlay) : null
+  const framing = !preview ? 'overview' : named && widthOf(named) <= widthOf(overview) * 1.1 ? 'names' : 'workflows'
+  const fitted = framing === 'overview' ? overview
+    : framing === 'names' ? named!
+      : boundsWithScreenText(layout.preview.fitBounds, framed, frame, undefined, overlay)
+  const fit = fitGraphBounds(fitted, frame, undefined, overlay)
   const zoom = options.zoom ?? 1
   const view: GraphViewBox = { x: fit.x + (fit.w - fit.w / zoom) / 2, y: fit.y + (fit.h - fit.h / zoom) / 2, w: fit.w / zoom, h: fit.h / zoom }
   const selectedId = options.selectedId ?? null
@@ -117,7 +135,7 @@ function compose(options: SceneOptions) {
   const compactAgents = narrow && projectId !== null
     && payload.nodes.filter((node) => node.kind === 'agent' && node.projectId === projectId).length > AGENT_NAMES_AT_OVERVIEW
   const visibleIds = new Set(payload.nodes.filter((node) => spatialNodeVisibility(node, layout, {
-    depth: zoom, selectedId, focusId: options.hoverId ?? null, searchResultId: options.searchResultId ?? null, neighborIds: neighbours, compactAgents,
+    depth: zoom, selectedId, focusId: options.hoverId ?? null, searchResultId: options.searchResultId ?? null, neighborIds: neighbours, compactAgents, preview,
   }) !== 'hidden').map((node) => node.id))
   const unitsPerPx = view.w / frame.width
   const px = (rect: { x: number; y: number; width: number; height: number }): GraphBounds => ({
@@ -130,15 +148,15 @@ function compose(options: SceneOptions) {
     px({ x: frame.width - 150, y: frame.height - 110, width: 150, height: 110 }),
     ...(narrow ? [px({ x: 0, y: 0, width: 200, height: ROW_PX * 2.4 })] : []),
   ]
-  const nodeById = new Map(payload.nodes.map((node) => [node.id, node]))
   const anchorId = layout.anchorId
   const labelSelection = selectedId !== null && selectedId === anchorId ? null : selectedId
   const plan = planSpatialLabels({
     layout, nodeById, visibleIds, copy: COPY, view, viewport: frame, reserved, depth: zoom,
     selectedId: labelSelection, hoverId: options.hoverId ?? null, focusId: null, searchResultId: options.searchResultId ?? null,
-    neighborIds: labelSelection ? neighbours : undefined,
+    neighborIds: labelSelection ? neighbours : undefined, preview,
   })
-  return { layout, view, frame, reserved, visibleIds, nodeById, plan, scale: unitsPerPx }
+  const countsUnderNames = previewsAtOverview(layout, { depth: zoom, preview })
+  return { layout, view, frame, reserved, visibleIds, nodeById, plan, scale: unitsPerPx, countsUnderNames, framing }
 }
 
 type Composed = ReturnType<typeof compose>
@@ -153,7 +171,7 @@ function drawnCircles(scene: Composed, grown = true) {
   return [
     { owner: 'atlas', x: layout.atlas.x, y: layout.atlas.y, r: layout.atlas.r + pad(4) },
     ...[...layout.positions].filter(([id]) => visibleIds.has(id)).map(([owner, position]) => ({ owner, x: position.x, y: position.y, r: position.r + pad(2) })),
-    ...layout.clusters.filter((cluster) => visibleIds.has(cluster.parentId))
+    ...layout.clusters.filter((cluster) => spatialClusterShown(cluster, visibleIds, scene.countsUnderNames))
       .map((cluster) => ({ owner: cluster.id, x: cluster.x, y: cluster.y, r: clusterDrawRadius(cluster.r, scale) + pad(4) })),
   ]
 }
@@ -472,9 +490,173 @@ describe('phase 18 T2c · the spatial label plan', () => {
   })
 })
 
+describe('phase 18 T2c · the desktop overview’s preview in the label plan', () => {
+  const DESKTOP = FRAMES.filter((frame) => frame.width >= 768)
+  const PAYLOADS = [['prod', prod], ['week', week], ['stress', stress]] as const
+  const portfolio: SpatialAnchor = { level: 'portfolio' }
+  const hubOf = (projectId: string) => `project:${projectId}`
+
+  it('draws no text over another, over any circle — its own included — under the page’s chrome or past the canvas edge', () => {
+    let plans = 0
+    for (const [name, payload] of PAYLOADS) {
+      const previewed = computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor: portfolio, aspect: 'wide' }).preview
+      const workflow = previewed.hubs.find((entry) => entry.workflowIds.length > 0)!
+      const hidden = payload.nodes.find((node) => node.kind === 'workflow' && !previewed.ids.has(node.id))!
+      for (const frame of DESKTOP) {
+        for (const zoom of ZOOMS) {
+          expect(problems(compose({ payload, anchor: portfolio, frame, zoom, preview: true })), `${name} · ${frame.width} · zoom ${zoom}`).toEqual([])
+          plans++
+        }
+        // A selected hub, a selected previewed workflow, and a workflow the preview leaves out found by search.
+        for (const selection of [{ selectedId: workflow.hubId }, { selectedId: workflow.workflowIds[0] }, { searchResultId: hidden.id, selectedId: hidden.id }]) {
+          expect(problems(compose({ payload, anchor: portfolio, frame, preview: true, ...selection })), `${name} · ${frame.width} · ${JSON.stringify(selection)}`).toEqual([])
+          plans++
+        }
+      }
+    }
+    expect(plans).toBe(PAYLOADS.length * DESKTOP.length * (ZOOMS.length + 3))
+  })
+
+  it('says what a preview leaves out, under the counts it qualifies, only while workflows are left out', () => {
+    const scene = compose({ payload: prod, anchor: portfolio, frame: FRAMES[1], preview: true })
+    const captions = Object.fromEntries(scene.plan.placements.filter((label) => label.kind === 'hub-preview').map((label) => [label.ownerId, label.lines]))
+    expect(captions).toEqual({
+      [hubOf(P.familjeStunden)]: ['Visar 3 av 5 workflows'],
+      [hubOf(P.prompt)]: ['Visar 3 av 6 workflows'],
+    })
+    // Without the preview, or once zoom unfolds every workflow, nothing is left out and nothing is said.
+    expect(compose({ payload: prod, anchor: portfolio, frame: FRAMES[1] }).plan.placements.filter((label) => label.kind === 'hub-preview')).toEqual([])
+    expect(compose({ payload: prod, anchor: portfolio, frame: FRAMES[1], zoom: PORTFOLIO_REVEAL.workflows + 0.2, preview: true }).plan.placements.filter((label) => label.kind === 'hub-preview')).toEqual([])
+    // What is drawn is what is counted: a workflow the preview left out, found by search, is one more shown.
+    const found = compose({ payload: prod, anchor: portfolio, frame: FRAMES[1], preview: true, searchResultId: 'workflow:fs-2', selectedId: 'workflow:fs-2' })
+    expect(placed(found.plan, `hub-preview:${hubOf(P.familjeStunden)}`)?.lines).toEqual(['Visar 4 av 5 workflows'])
+    // Everywhere: with its counts, beyond them, away from the hub, and in the counts' alignment.
+    let checked = 0
+    for (const [name, payload] of PAYLOADS) {
+      for (const frame of DESKTOP) {
+        for (const zoom of ZOOMS) {
+          const where = `${name} · ${frame.width} · zoom ${zoom}`
+          const composed = compose({ payload, anchor: portfolio, frame, zoom, preview: true })
+          for (const caption of composed.plan.placements.filter((label) => label.kind === 'hub-preview')) {
+            const counts = placed(composed.plan, `hub-subtext:${caption.ownerId}`)
+            expect(counts, `${where} · ${caption.key}`).toBeDefined()
+            const hub = composed.layout.hubs.find((entry) => entry.nodeId === caption.ownerId)!
+            const gap = TEXT_GAP.subtext * composed.scale
+            const under = Math.abs(caption.box.minY - (counts!.box.maxY + gap)) < 1e-6
+            const over = Math.abs(caption.box.maxY - (counts!.box.minY - gap)) < 1e-6
+            expect(under || over, `${where} · ${caption.key}`).toBe(true)
+            if (counts!.box.minY >= hub.y) expect(under, `${where} · ${caption.key} under counts below the hub`).toBe(true)
+            if (counts!.box.maxY <= hub.y) expect(over, `${where} · ${caption.key} over counts above the hub`).toBe(true)
+            expect([caption.x, caption.anchor], where).toEqual([counts!.x, counts!.anchor])
+            expect(caption.tone).toBe('muted')
+            checked++
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(40)
+  })
+
+  it('names a previewed workflow with its run count after every hub’s own texts, and as a ring again once workflows unfold', () => {
+    const scene = compose({ payload: prod, anchor: portfolio, frame: FRAMES[1], preview: true })
+    const tp1 = placed(scene.plan, 'node:workflow:tp-1')!
+    expect(tp1.lines).toEqual(['Daglig short'])
+    expect(tp1.detail?.text).toBe('5 körningar')
+    expect(tp1.widthPx).toBeGreaterThanOrEqual(textWidthPx('5 körningar', SPATIAL_TYPE.nodeDetail.size, SPATIAL_TYPE.nodeDetail.weight) - 1e-6)
+    // The detail line's descent ends where the plan's box does: the box holds what is drawn.
+    expect(tp1.y + (tp1.lines.length - 1) * tp1.lineHeight + tp1.detail!.dy + tp1.detail!.fontSize * TEXT_DESCENT).toBeCloseTo(tp1.box.maxY, 6)
+    expect(tp1.detail!.fontSize / scene.scale).toBeCloseTo(SPATIAL_TYPE.nodeDetail.size, 6)
+    // A workflow with no runs in the window has no count to say.
+    expect(placed(scene.plan, 'node:workflow:fs-4')?.detail).toBeUndefined()
+    // Hub names, counts and captions are placed before any previewed name.
+    const index = (key: string) => scene.plan.placements.findIndex((label) => label.key === key)
+    const lastHubText = Math.max(...scene.plan.placements.filter((label) => label.kind.startsWith('hub-')).map((label) => index(label.key)))
+    for (const id of scene.layout.preview.ids) {
+      if (placed(scene.plan, `node:${id}`)) expect(index(`node:${id}`), id).toBeGreaterThan(lastHubText)
+    }
+    // Every previewed workflow of the production-shaped snapshot is named at a desktop overview's first view.
+    for (const frame of DESKTOP) {
+      const first = compose({ payload: prod, anchor: portfolio, frame, preview: true })
+      expect([...first.layout.preview.ids].filter((id) => !placed(first.plan, `node:${id}`)), `${frame.width}`).toEqual([])
+    }
+    // Once zoom unfolds every workflow, names are as before — no count under them — and counts are rings with captions.
+    const unfolded = compose({ payload: prod, anchor: portfolio, frame: FRAMES[0], zoom: PORTFOLIO_REVEAL.workflows + 0.2, preview: true })
+    expect(unfolded.countsUnderNames).toBe(false)
+    expect(unfolded.plan.placements.filter((label) => label.detail)).toEqual([])
+    expect(unfolded.plan.placements.filter((label) => label.kind === 'node' && label.ownerId.startsWith('workflow:')).every((label) => label.tier === 4)).toBe(true)
+    // At the overview no workflow's count is a ring, so none has a caption.
+    expect(scene.plan.placements.filter((label) => label.kind === 'cluster-caption' && label.ownerId.startsWith('cluster:workflow:'))).toEqual([])
+    // The count said is the snapshot's own: its cluster's count.
+    for (const [name, payload] of PAYLOADS) {
+      const composed = compose({ payload, anchor: portfolio, frame: FRAMES[1], preview: true })
+      for (const label of composed.plan.placements.filter((entry) => entry.detail)) {
+        const cluster = composed.layout.clusters.find((entry) => entry.kind === 'workflow' && entry.parentId === label.ownerId)!
+        expect(label.detail!.text, `${name} · ${label.key}`).toBe(`${cluster.count} ${COPY.clusterCaption(cluster)}`)
+      }
+    }
+  })
+
+  it('follows its counts over a name moved above the hub, or is left out with no room there, never crossing the hub', () => {
+    const scene = compose({ payload: prod, anchor: portfolio, frame: FRAMES[1], preview: true })
+    const hub = scene.layout.hubs.find((entry) => entry.projectId === P.familjeStunden)!
+    const context = {
+      layout: scene.layout, nodeById: scene.nodeById, visibleIds: scene.visibleIds, copy: COPY, view: scene.view, viewport: scene.frame, depth: 1, preview: true,
+    }
+    // Cover the room under the hub, as a control or the sheet would.
+    const underHub = { minX: hub.x - hub.r * 4, maxX: hub.x + hub.r * 4, minY: hub.y + hub.r, maxY: hub.y + hub.r * 5 }
+    const blocked = planSpatialLabels({ ...context, reserved: [...scene.reserved, underHub] })
+    const name = placed(blocked, `hub-name:${hub.nodeId}`)!
+    const counts = placed(blocked, `hub-subtext:${hub.nodeId}`)!
+    const caption = placed(blocked, `hub-preview:${hub.nodeId}`)!
+    expect(name.box.maxY).toBeLessThan(hub.y)
+    expect(counts.box.maxY).toBeLessThan(name.box.minY)
+    // Over the counts, which are over the name: the reading order away from the hub is caption, counts, name, hub.
+    expect(caption.lines).toEqual(['Visar 3 av 5 workflows'])
+    expect(caption.box.maxY).toBeCloseTo(counts.box.minY - TEXT_GAP.subtext * scene.scale, 6)
+    expect([caption.x, caption.anchor]).toEqual([counts.x, counts.anchor])
+    expect(distanceToBox(hub.x, hub.y, caption.box)).toBeGreaterThanOrEqual(hub.r)
+    // With the room over the counts taken as well, the caption is left out; the name and counts stay where they were.
+    const crowded = planSpatialLabels({ ...context, reserved: [...scene.reserved, underHub, { ...caption.box }] })
+    expect(placed(crowded, `hub-name:${hub.nodeId}`)!.box).toEqual(name.box)
+    expect(placed(crowded, `hub-subtext:${hub.nodeId}`)!.box).toEqual(counts.box)
+    expect(placed(crowded, `hub-preview:${hub.nodeId}`)).toBeUndefined()
+    expect(crowded.hidden).toContain(`hub-preview:${hub.nodeId}`)
+  })
+
+  it('frames previewed names while the previews widen the overview by at most a tenth, and only their workflows on a docked inspector’s canvas', () => {
+    const framing = (frame: { width: number; height: number }) => compose({ payload: prod, anchor: portfolio, frame, preview: true }).framing
+    // The page at 1920, 1440 and 1280 px, the inspector closed.
+    for (const frame of [{ width: 1602, height: 900 }, { width: 1122, height: 688 }, { width: 962, height: 520 }]) expect(framing(frame), `${frame.width}`).toBe('names')
+    // The same pages with the inspector docked.
+    for (const frame of [{ width: 758, height: 640 }, { width: 598, height: 470 }, { width: 382, height: 520 }]) expect(framing(frame), `${frame.width}`).toBe('workflows')
+    // Either way, the view is at most a tenth wider than the overview's without the previews.
+    for (const frame of [{ width: 1602, height: 900 }, { width: 1122, height: 688 }, { width: 962, height: 520 }, { width: 758, height: 640 }, { width: 598, height: 470 }, { width: 382, height: 520 }]) {
+      const plain = compose({ payload: prod, anchor: portfolio, frame })
+      const shown = compose({ payload: prod, anchor: portfolio, frame, preview: true })
+      expect(shown.view.w / plain.view.w, `${frame.width}`).toBeLessThanOrEqual(1.1 + 1e-9)
+    }
+  })
+
+  it('costs the overview no hub name or count at its first view, on a canvas narrowed by a docked inspector too', () => {
+    // The desktop canvases, and those a docked inspector leaves at 1440, 1280 and 1024 px.
+    const canvases = [...DESKTOP, { width: 758, height: 640 }, { width: 598, height: 470 }, { width: 382, height: 520 }]
+    for (const [name, payload] of PAYLOADS) {
+      for (const frame of canvases) {
+        const plain = compose({ payload, anchor: portfolio, frame }).plan
+        const shown = compose({ payload, anchor: portfolio, frame, preview: true }).plan
+        const hubTexts = (plan: SpatialLabelPlan) => plan.placements.filter((label) => label.kind === 'hub-name' || label.kind === 'hub-subtext').map((label) => label.key).sort()
+        // Every hub text the compact overview draws is drawn with the preview too.
+        expect(hubTexts(plain).filter((key) => !hubTexts(shown).includes(key)), `${name} · ${frame.width}`).toEqual([])
+      }
+    }
+  })
+})
+
 /** Whether a node belongs to the level an anchor opens (for picking a selection). */
 function belongsTo(anchor: SpatialAnchor, node: IntelligenceGraphNode): boolean {
   if (anchor.level === 'project') return node.projectId === anchor.projectId
   if (anchor.level === 'workflow') return node.id === anchor.workflowId
   return true
 }
+
+

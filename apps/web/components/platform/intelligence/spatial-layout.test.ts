@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { PROD_SHAPED_PROJECTS as P, productionShapedOperations } from '@/lib/qa/intelligence-graph-fixture'
 import {
+  PORTFOLIO_PREVIEW_LIMIT,
   PORTFOLIO_REVEAL,
   PROJECT_REVEAL,
   SPATIAL_METRICS,
@@ -22,9 +23,11 @@ import {
   computeSpatialLayout,
   hubSubtext,
   isOperationallyActive,
+  previewsAtOverview,
   projectMonogram,
   runNeedsOwnPlace,
   runsByWorkflow,
+  spatialClusterShown,
   spatialDensityLevel,
   spatialEdgeLevel,
   spatialNodeVisibility,
@@ -120,6 +123,7 @@ function serialise(layout: SpatialLayout) {
     bands: [...layout.unlinkedBands].sort((a, b) => a.id.localeCompare(b.id)),
     aggregated: [...layout.aggregatedRunIds].sort(),
     fitBounds: layout.fitBounds,
+    preview: { hubs: [...layout.preview.hubs].sort((a, b) => a.hubId.localeCompare(b.hubId)), ids: [...layout.preview.ids].sort(), fitBounds: layout.preview.fitBounds },
   }
 }
 
@@ -686,6 +690,162 @@ describe('phase 18 T2c · a phone opens a crowded project by its core', () => {
     expect(named).toHaveLength(5)
     for (const agent of named) {
       expect(spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true, selectedId: 'workflow:fs-1', neighborIds: fromWorkflow }), agent.id).toBe('visible')
+    }
+  })
+})
+
+describe('phase 18 T2c · the desktop overview previews a few real workflows per project', () => {
+  const PREVIEW_PROJECT = 'dddddddd-0000-4000-8000-000000000001'
+  /** One project whose workflows carry the given stored statuses and runs, for the preview's order. */
+  function previewed(rows: ReadonlyArray<{ name: string; status: 'active' | 'inactive'; runs?: readonly string[] }>) {
+    const nodes: IntelligenceGraphNode[] = [{ id: `project:${PREVIEW_PROJECT}`, kind: 'project', label: 'Urval', source: 'runtime', projectId: PREVIEW_PROJECT, metadata: {} }]
+    const edges: IntelligenceGraphEdge[] = []
+    rows.forEach((row, index) => {
+      const id = `workflow:pv-${index + 1}`
+      nodes.push({ id, kind: 'workflow', label: row.name, source: 'runtime', projectId: PREVIEW_PROJECT, status: row.status, metadata: {} })
+      edges.push({ id: `project:${PREVIEW_PROJECT}→${id}`, source: `project:${PREVIEW_PROJECT}`, target: id, relation: 'CONTAINS', confidence: 'DERIVED', metadata: {} })
+      ;(row.runs ?? []).forEach((status, run) => {
+        const runId = `run:pv-${index + 1}-${run}`
+        nodes.push({ id: runId, kind: 'run', label: `${row.name} · r${run}`, source: 'runtime', projectId: PREVIEW_PROJECT, status, metadata: { createdAt: '2026-09-16T10:00:00.000Z' } })
+        edges.push({ id: `${id}→${runId}`, source: id, target: runId, relation: 'STARTED', confidence: 'DERIVED', metadata: {} })
+      })
+    })
+    return computeSpatialLayout({ nodes, edges, anchor: { level: 'portfolio' }, aspect: 'wide' }).preview.hubs[0]
+  }
+  const previewOf = (layout: SpatialLayout, projectId: string) => layout.preview.hubs.find((entry) => entry.projectId === projectId)!
+
+  it('previews at most three of a project’s own workflows, counts all of them, and leaves a project without workflows empty', () => {
+    const { payload, layout } = layoutOf({ level: 'portfolio' })
+    expect(layout.preview.hubs.map((entry) => entry.hubId).sort()).toEqual(layout.hubs.map((entry) => entry.nodeId).sort())
+    for (const entry of layout.preview.hubs) {
+      const workflows = payload.nodes.filter((node) => node.kind === 'workflow' && node.projectId === entry.projectId)
+      expect(entry.workflowIds.length, entry.projectId).toBe(Math.min(PORTFOLIO_PREVIEW_LIMIT, workflows.length))
+      expect(new Set(entry.workflowIds).size).toBe(entry.workflowIds.length)
+      for (const id of entry.workflowIds) expect(workflows.map((node) => node.id), id).toContain(id)
+      // The counts stay whole: the snapshot's workflows, not the preview's.
+      expect(entry.workflowCount).toBe(summarizeProject(payload.nodes, entry.projectId).workflows)
+    }
+    expect(Object.fromEntries(layout.preview.hubs.map((entry) => [entry.projectId, entry.workflowIds]))).toEqual({
+      // Equal weight: spread over the ring — the first, the middle and the last by name.
+      [P.familjeStunden]: ['workflow:fs-4', 'workflow:fs-5', 'workflow:fs-1'],
+      // The most runs in the window first: 5, then the two with 4 in ring order.
+      [P.prompt]: ['workflow:tp-1', 'workflow:tp-3', 'workflow:tp-2'],
+      [P.audit]: ['workflow:audit-a', 'workflow:audit-b'],
+      [P.gainPilot]: [],
+    })
+    expect([...layout.preview.ids].sort()).toEqual(layout.preview.hubs.flatMap((entry) => entry.workflowIds).sort())
+    // Hub texts are the snapshot's own, preview or not.
+    expect(layout.hubs.find((entry) => entry.projectId === P.familjeStunden)!.subtext).toBe('33 agenter · 5 workflows')
+    // A project whose only children are agents previews nothing: agents are placed at the overview by a workflow definition alone.
+    const onlyAgents = computeSpatialLayout({ ...crowded(), anchor: { level: 'portfolio' }, aspect: 'wide' })
+    expect(previewOf(onlyAgents, 'cccccccc-0000-4000-8000-000000000010')).toMatchObject({ workflowIds: [], workflowCount: 0 })
+  })
+
+  it('chooses workflows whose runs are shown on their own, then the most runs, then active ones — and spreads equals over the ring', () => {
+    const chosen = previewed([
+      { name: 'A inaktivt', status: 'inactive' },
+      { name: 'B aktivt', status: 'active' },
+      { name: 'C två körningar', status: 'active', runs: ['done', 'done'] },
+      { name: 'D ett misslyckande', status: 'inactive', runs: ['failed'] },
+      { name: 'E fem körningar', status: 'active', runs: ['done', 'done', 'done', 'done', 'done'] },
+    ])
+    expect(chosen.workflowIds).toEqual(['workflow:pv-4', 'workflow:pv-5', 'workflow:pv-3'])
+    expect(chosen.workflowCount).toBe(5)
+    expect(previewed([{ name: 'A', status: 'inactive' }, { name: 'B', status: 'active' }]).workflowIds).toEqual(['workflow:pv-2', 'workflow:pv-1'])
+    // Seven equals: the first, the middle and the last in ring order.
+    const seven = previewed(['G', 'B', 'F', 'A', 'E', 'C', 'D'].map((name) => ({ name, status: 'active' as const })))
+    // (A, D and G by name.)
+    expect(seven.workflowIds).toEqual(['workflow:pv-4', 'workflow:pv-7', 'workflow:pv-1'])
+    // One place left among equals: the middle one.
+    const one = previewed([
+      { name: 'A', status: 'active', runs: ['done', 'done'] }, { name: 'B', status: 'active', runs: ['done', 'done'] },
+      { name: 'C', status: 'active' }, { name: 'D', status: 'active' }, { name: 'E', status: 'active' },
+    ])
+    expect(one.workflowIds).toEqual(['workflow:pv-1', 'workflow:pv-2', 'workflow:pv-4'])
+  })
+
+  it('is stable: the same snapshot in any row order, at any aspect, previews the same workflows', () => {
+    const payload = snapshot(24 * 7, true)
+    const reference = computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor: { level: 'portfolio' }, aspect: 'wide' }).preview.hubs
+    for (const aspect of ['wide', 'balanced', 'tall'] as const) {
+      for (const seed of [1, 7, 42]) {
+        const layout = computeSpatialLayout({ nodes: shuffled(payload.nodes, seed), edges: shuffled(payload.edges, seed + 1), anchor: { level: 'portfolio' }, aspect })
+        expect([...layout.preview.hubs].sort((a, b) => a.hubId.localeCompare(b.hubId)), `${aspect} · ${seed}`)
+          .toEqual([...reference].sort((a, b) => a.hubId.localeCompare(b.hubId)))
+      }
+    }
+    // With runs that need attention, their workflows come first.
+    expect(previewOf(computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor: { level: 'portfolio' }, aspect: 'wide' }), P.prompt).workflowIds)
+      .toEqual(['workflow:tp-1', 'workflow:tp-2', 'workflow:tp-3'])
+  })
+
+  it('shows the previewed workflows only where the page asks, at their own places, and nothing else of the project', () => {
+    const { payload, layout } = layoutOf({ level: 'portfolio' })
+    const visible = (preview: boolean, depth = 1) => payload.nodes.filter((node) => spatialNodeVisibility(node, layout, { depth, preview }) !== 'hidden').map((node) => node.id).sort()
+    const hubs = payload.nodes.filter((node) => node.kind === 'project').map((node) => node.id)
+    // A phone's overview — no preview asked for — is the compact overview it was.
+    expect(visible(false)).toEqual([...hubs].sort())
+    expect(visible(true)).toEqual([...hubs, ...layout.preview.ids].sort())
+    // No agent, run or satellite comes with the preview; a project without workflows shows only its hub.
+    for (const id of visible(true)) expect(['project', 'workflow'], id).toContain(payload.nodes.find((node) => node.id === id)!.kind)
+    expect(visible(true).filter((id) => payload.nodes.find((node) => node.id === id)!.projectId === P.gainPilot)).toEqual([hub(P.gainPilot)])
+    // Where zoom unfolds the workflows, all of them show, with or without the preview.
+    expect(visible(true, PORTFOLIO_REVEAL.workflows)).toEqual(visible(false, PORTFOLIO_REVEAL.workflows))
+    // A selected hub keeps its preview; nothing it does not touch disappears.
+    const fsHub = hub(P.familjeStunden)
+    const neighbours = new Set(payload.edges.filter((edge) => edge.source === fsHub || edge.target === fsHub).flatMap((edge) => [edge.source, edge.target]))
+    for (const id of previewOf(layout, P.familjeStunden).workflowIds) {
+      const node = payload.nodes.find((candidate) => candidate.id === id)!
+      expect(spatialNodeVisibility(node, layout, { depth: 1, preview: true, selectedId: fsHub, neighborIds: neighbours }), id).toBe('visible')
+    }
+    // The places are the layout's own: the same ones zoom reveals them at.
+    for (const id of layout.preview.ids) expect(layout.roles.get(id), id).toBe('structure')
+    // A drilled level previews nothing; it shows its structure as before.
+    for (const anchor of [{ level: 'project', projectId: P.prompt }, { level: 'workflow', workflowId: 'workflow:tp-1' }] as const) {
+      const drilled = computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor, aspect: 'wide' })
+      expect(drilled.preview.hubs, anchor.level).toEqual([])
+      expect(drilled.preview.fitBounds, anchor.level).toEqual(drilled.fitBounds)
+      expect(payload.nodes.map((node) => spatialNodeVisibility(node, drilled, { depth: 1, preview: true })), anchor.level)
+        .toEqual(payload.nodes.map((node) => spatialNodeVisibility(node, drilled, { depth: 1 })))
+    }
+  })
+
+  it('keeps runs counted: a previewed workflow’s count is said under its name at the overview, and is a ring again as workflows unfold', () => {
+    const { payload, layout } = layoutOf({ level: 'portfolio' }, 24 * 7, true)
+    const shown = (preview: boolean, depth: number) => new Set(payload.nodes.filter((node) => spatialNodeVisibility(node, layout, { depth, preview }) !== 'hidden').map((node) => node.id))
+    // Never a run circle for a counted run: the runs shown are those shown on their own before the preview too.
+    const runs = (ids: Set<string>) => [...ids].filter((id) => id.startsWith('run:')).sort()
+    expect(runs(shown(true, 1))).toEqual(runs(shown(false, 1)))
+    expect(runs(shown(true, 1)).length).toBeLessThan(10)
+    const rings = (preview: boolean, depth: number) => layout.clusters
+      .filter((cluster) => spatialClusterShown(cluster, shown(preview, depth), previewsAtOverview(layout, { depth, preview })))
+      .map((cluster) => cluster.id).sort()
+    expect(previewsAtOverview(layout, { depth: 1, preview: true })).toBe(true)
+    expect(previewsAtOverview(layout, { depth: PORTFOLIO_REVEAL.workflows, preview: true })).toBe(false)
+    expect(previewsAtOverview(layout, { depth: 1 })).toBe(false)
+    // At the overview only the count of runs without a workflow is a ring, as it was.
+    expect(rings(true, 1)).toEqual(['cluster:no-workflow:' + P.prompt])
+    expect(rings(false, 1)).toEqual(['cluster:no-workflow:' + P.prompt])
+    expect(rings(true, PORTFOLIO_REVEAL.workflows)).toEqual(rings(false, PORTFOLIO_REVEAL.workflows))
+    expect(rings(true, PORTFOLIO_REVEAL.workflows).length).toBe(4)
+  })
+
+  it('frames the previewed workflows when they show, and leaves the plain overview fit as it was', () => {
+    for (const aspect of ['wide', 'balanced', 'tall'] as const) {
+      const { layout } = layoutOf({ level: 'portfolio' }, 24, false, aspect)
+      const plain = layout.fitBounds
+      const framed = layout.preview.fitBounds
+      expect(framed.minX, aspect).toBeLessThanOrEqual(plain.minX)
+      expect(framed.minY, aspect).toBeLessThanOrEqual(plain.minY)
+      expect(framed.maxX, aspect).toBeGreaterThanOrEqual(plain.maxX)
+      expect(framed.maxY, aspect).toBeGreaterThanOrEqual(plain.maxY)
+      for (const id of layout.preview.ids) {
+        const position = layout.positions.get(id)!
+        expect(position.x - position.r, id).toBeGreaterThanOrEqual(framed.minX)
+        expect(position.x + position.r, id).toBeLessThanOrEqual(framed.maxX)
+        expect(position.y - position.r, id).toBeGreaterThanOrEqual(framed.minY)
+        expect(position.y + position.r, id).toBeLessThanOrEqual(framed.maxY)
+      }
     }
   })
 })

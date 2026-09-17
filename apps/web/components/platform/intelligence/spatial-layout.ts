@@ -14,8 +14,10 @@
  *    sits on a calmer outer orbit. Nothing is hidden for being quiet. Each
  *    hub's children are laid out in compact rings around it — leaving open the
  *    sector under the hub, where its name and counts are written — so that
- *    zooming reveals them in place; at the overview they stay folded into the
- *    hub's counts.
+ *    zooming reveals them in place. At the overview they fold into the hub's
+ *    counts, except for a preview: where the page has room, up to
+ *    `PORTFOLIO_PREVIEW_LIMIT` of a project's workflows show at their own
+ *    places (`SpatialPortfolioPreview`).
  *  - Project. The drilled project is the new centre. Its workflows form the
  *    inner ring; its agents the outer ring, each placed beside the workflow
  *    whose CURRENT definition names it (`DELEGATED_TO`). An agent no workflow
@@ -133,6 +135,31 @@ export interface SpatialUnlinkedBand {
   memberIds: readonly string[]
 }
 
+/**
+ * A project's workflows previewed around its hub at the portfolio overview, where the page has room
+ * for them: a small selection of the snapshot's own rows, at the places zooming reveals them in. The
+ * hub's counts still count every workflow.
+ */
+export interface SpatialPortfolioPreview {
+  hubId: string
+  projectId: string
+  /**
+   * At most `PORTFOLIO_PREVIEW_LIMIT`: workflows with runs shown on their own first (so such a run is seen
+   * with its workflow), then the most runs in the window, then active ones; equals spread over the ring.
+   */
+  workflowIds: readonly string[]
+  /** Every workflow the project has in this snapshot. */
+  workflowCount: number
+}
+
+export interface SpatialPreview {
+  /** One per project on the portfolio; none at a drilled level. */
+  hubs: readonly SpatialPortfolioPreview[]
+  ids: ReadonlySet<string>
+  /** What a fit frames while the previews show: `fitBounds` and the previewed workflows. */
+  fitBounds: GraphBounds
+}
+
 export interface SpatialLayout {
   level: SpatialLevel
   aspect: SpatialAspect
@@ -150,6 +177,8 @@ export interface SpatialLayout {
   shownWithParent: ReadonlyMap<string, string>
   /** What a fit frames: the level's own structure, not its receded context. */
   fitBounds: GraphBounds
+  /** The portfolio's workflow previews. They show only where the page asks for them (`spatialNodeVisibility`). */
+  preview: SpatialPreview
 }
 
 export interface SpatialLayoutInput {
@@ -225,6 +254,8 @@ export const SPATIAL_METRICS = {
 
 /** Zoom depth (fitted width ÷ current width) at which folded portfolio detail unfolds. */
 export const PORTFOLIO_REVEAL = { workflows: 1.8, agents: 2.8, satellites: 4 } as const
+/** At most this many of a project's workflows are previewed at the portfolio overview. */
+export const PORTFOLIO_PREVIEW_LIMIT = 3
 /** Zoom depth at which a project view names its agents, then shows satellites and every label. */
 export const PROJECT_REVEAL = { agentLabels: 1.35, satellites: 1.9 } as const
 
@@ -352,6 +383,11 @@ export function spatialNodeVisibility(
      * operator zooms in, like agent names do, instead of crowding a phone's first view.
      */
     compactAgents?: boolean
+    /**
+     * The page has room for the portfolio's previews: each project's previewed workflows show
+     * at the overview. Absent, the overview folds every child into its hub (a phone's).
+     */
+    preview?: boolean
   },
 ): GraphStructuralVisibility {
   const role = layout.roles.get(node.id)
@@ -375,7 +411,9 @@ export function spatialNodeVisibility(
   if (role === 'context') return 'dimmed'
   if (layout.level === 'portfolio') {
     if (role === 'hub' || role === 'run') return 'visible'
-    if (role === 'structure') return state.depth >= PORTFOLIO_REVEAL.workflows ? 'visible' : 'hidden'
+    if (role === 'structure') {
+      return state.depth >= PORTFOLIO_REVEAL.workflows || (state.preview === true && layout.preview.ids.has(node.id)) ? 'visible' : 'hidden'
+    }
     if (role === 'detail') return state.depth >= PORTFOLIO_REVEAL.agents ? 'visible' : 'hidden'
     return state.depth >= PORTFOLIO_REVEAL.satellites ? 'visible' : 'hidden'
   }
@@ -386,6 +424,20 @@ export function spatialNodeVisibility(
     return state.depth >= PROJECT_REVEAL.agentLabels ? 'visible' : 'hidden'
   }
   return 'visible'
+}
+
+/** The portfolio overview while it previews workflows: until the depth at which all of them unfold. */
+export function previewsAtOverview(layout: SpatialLayout, state: { depth: number; preview?: boolean }): boolean {
+  return state.preview === true && layout.level === 'portfolio' && state.depth < PORTFOLIO_REVEAL.workflows
+}
+
+/**
+ * Whether a run count is drawn as its ring: with its parent. While the overview previews workflows
+ * (`previewsAtOverview`), a workflow's count is said under the workflow's name instead, and becomes a
+ * ring again as the workflows unfold.
+ */
+export function spatialClusterShown(cluster: SpatialRunCluster, visibleIds: ReadonlySet<string>, countsUnderNames: boolean): boolean {
+  return visibleIds.has(cluster.parentId) && !(countsUnderNames && cluster.kind === 'workflow')
 }
 
 /**
@@ -458,7 +510,14 @@ export function computeSpatialLayout(input: SpatialLayoutInput): SpatialLayout {
   const graph = indexGraph(input)
   const stretch = SPATIAL_STRETCH[input.aspect]
   const portfolio = arrangePortfolio(graph, stretch)
-  const overview = () => finish('portfolio', input.aspect, null, portfolio.placement, portfolio.atlas, portfolioFitBounds(graph, portfolio.placement, portfolio.atlas))
+  const overview = () => {
+    const hubs = portfolioPreviews(graph)
+    const ids = new Set(hubs.flatMap(preview => preview.workflowIds))
+    const fitBounds = portfolioFitBounds(graph, portfolio.placement, portfolio.atlas)
+    return finish('portfolio', input.aspect, null, portfolio.placement, portfolio.atlas, fitBounds, {
+      hubs, ids, fitBounds: portfolioFitBounds(graph, portfolio.placement, portfolio.atlas, ids),
+    })
+  }
   const anchor = input.anchor
 
   switch (anchor.level) {
@@ -675,7 +734,52 @@ function orbitRadius(
   return radius
 }
 
-function portfolioFitBounds(graph: Graph, placement: Placement, atlas: SpatialAtlasOrb): GraphBounds {
+/**
+ * Each project's preview: at most `PORTFOLIO_PREVIEW_LIMIT` of its workflows — first those with runs shown
+ * on their own, then those with the most runs in the window, then active before inactive. Where equals
+ * are more than the room left, they are taken spread over the ring (the first, the middle, the last), so
+ * a preview is not bunched on one side of its hub. It depends on the snapshot alone; a project without
+ * workflows previews nothing.
+ */
+function portfolioPreviews(graph: Graph): SpatialPortfolioPreview[] {
+  return graph.projects.map(project => {
+    // In ring order, the order `planInterior` gives their slots.
+    const workflows = graph.nodes.filter(node => node.kind === 'workflow' && node.projectId === project.projectId).sort(byLabel)
+    const weight = new Map(workflows.map(workflow => {
+      const runs = graph.runsOf.get(workflow.id) ?? []
+      return [workflow.id, [runs.filter(run => runNeedsOwnPlace(run, graph.ownPlace)).length, runs.length, workflow.status === 'active' ? 1 : 0]]
+    }))
+    const heavier = (a: IntelligenceGraphNode, b: IntelligenceGraphNode) => {
+      const [x, y] = [weight.get(a.id)!, weight.get(b.id)!]
+      return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]
+    }
+    // A stable sort keeps equals in ring order.
+    const ranked = [...workflows].sort(heavier)
+    const chosen: IntelligenceGraphNode[] = []
+    for (let start = 0; start < ranked.length && chosen.length < PORTFOLIO_PREVIEW_LIMIT;) {
+      let end = start
+      while (end < ranked.length && heavier(ranked[start], ranked[end]) === 0) end++
+      chosen.push(...spreadOver(ranked.slice(start, end), PORTFOLIO_PREVIEW_LIMIT - chosen.length))
+      start = end
+    }
+    return {
+      hubId: project.id,
+      projectId: project.projectId!,
+      workflowIds: chosen.map(workflow => workflow.id),
+      workflowCount: workflows.length,
+    }
+  })
+}
+
+/** At most `count` of `items`, spread evenly over their order: all when they fit; else the first and the last, and those between. */
+function spreadOver<T>(items: readonly T[], count: number): T[] {
+  if (items.length <= count) return [...items]
+  if (count <= 0) return []
+  if (count === 1) return [items[Math.floor((items.length - 1) / 2)]]
+  return Array.from({ length: count }, (_, index) => items[Math.round((index * (items.length - 1)) / (count - 1))])
+}
+
+function portfolioFitBounds(graph: Graph, placement: Placement, atlas: SpatialAtlasOrb, previewIds: ReadonlySet<string> = new Set()): GraphBounds {
   const bounds = circleBounds(atlas.x, atlas.y, atlas.r + SPATIAL_METRICS.hubTextAllowance * 0.5)
   for (const hub of placement.hubs) {
     include(bounds, circleBounds(hub.x, hub.y, hub.r))
@@ -688,6 +792,11 @@ function portfolioFitBounds(graph: Graph, placement: Placement, atlas: SpatialAt
     if (role !== 'run' && !(role === 'satellite' && node && getStatusVisual(node)?.attention)) continue
     const position = placement.positions.get(id)!
     include(bounds, circleBounds(position.x, position.y, position.r + 12))
+  }
+  // With the previews, the previewed workflows (their run counts are said under their names there).
+  for (const id of previewIds) {
+    const position = placement.positions.get(id)
+    if (position) include(bounds, circleBounds(position.x, position.y, position.r + 12))
   }
   return pad(bounds, SPATIAL_METRICS.fitPadding)
 }
@@ -1270,6 +1379,7 @@ function finish(
   placement: Placement,
   atlas: SpatialAtlasOrb,
   fitBounds: GraphBounds,
+  preview?: SpatialPreview,
 ): SpatialLayout {
   return {
     level,
@@ -1284,6 +1394,9 @@ function finish(
     aggregatedRunIds: placement.aggregated,
     shownWithParent: placement.shownWithParent,
     fitBounds: roundBounds(fitBounds),
+    preview: preview
+      ? { ...preview, fitBounds: roundBounds(preview.fitBounds) }
+      : { hubs: [], ids: new Set(), fitBounds: roundBounds(fitBounds) },
   }
 }
 

@@ -28,6 +28,8 @@ export interface SpatialCopy {
   /** Two lines: "8 agenter" / "som inget workflow nämner". */
   unlinkedAgents: (count: number) => readonly [string, string]
   hubDescription: (hub: SpatialHub) => string
+  /** Under a hub's counts while the overview shows only some of its workflows: "Visar 3 av 5 workflows". */
+  previewCaption: (shown: number, total: number) => string
   clusterDescription: (cluster: SpatialRunCluster, parentLabel: string) => string
   /** The stored status in words ("misslyckades"), or null when a node carries none. */
   statusWord: (node: IntelligenceGraphNode) => string | null
@@ -40,7 +42,10 @@ export const SPATIAL_TYPE = {
   atlasSubtitle: { size: 11, weight: 500 },
   hubName: { active: 15, calm: 14, focus: 17, receded: 12, weight: 650 },
   hubSubtext: { size: 11.5, weight: 500 },
+  hubPreview: { size: 10.5, weight: 500 },
   workflow: { size: 12.5, weight: 600 },
+  /** A line under a node's name: a previewed workflow's run count. */
+  nodeDetail: { size: 11, weight: 500 },
   agent: { size: 11.5, weight: 500 },
   run: { size: 11.5, weight: 500 },
   satellite: { size: 11, weight: 500 },
@@ -147,7 +152,7 @@ export function wrapName(name: string): readonly [string, string] | null {
 
 // ─── The level's own texts, for a fit ───────────────────────────────────────
 
-export type SpatialTextKind = 'atlas' | 'atlas-subtitle' | 'hub-name' | 'hub-subtext' | 'band' | 'cluster-caption'
+export type SpatialTextKind = 'atlas' | 'atlas-subtitle' | 'hub-name' | 'hub-subtext' | 'hub-preview' | 'band' | 'cluster-caption'
 
 export interface SpatialText extends GraphScreenText {
   kind: SpatialTextKind
@@ -166,9 +171,10 @@ export function bandAnchor(band: SpatialUnlinkedBand): BandAnchor {
 
 /**
  * The level's own names and counts, at their widest (one line each) — what a
- * fit must keep on the canvas. Positions match `planSpatialLabels`.
+ * fit must keep on the canvas. Positions match `planSpatialLabels`. With
+ * `preview`, a hub that previews only some of its workflows says so under its counts.
  */
-export function spatialScreenTexts(layout: SpatialLayout, copy: SpatialCopy, options: { narrow?: boolean } = {}): SpatialText[] {
+export function spatialScreenTexts(layout: SpatialLayout, copy: SpatialCopy, options: { narrow?: boolean; preview?: boolean } = {}): SpatialText[] {
   const texts: SpatialText[] = []
   const add = (kind: SpatialTextKind, ownerId: string, x: number, y: number, width: number, topPx: number, bottomPx: number, anchor: BandAnchor = 'middle') => texts.push({
     kind, ownerId, key: `${kind}:${ownerId}`, x, y, topPx, bottomPx,
@@ -196,7 +202,14 @@ export function spatialScreenTexts(layout: SpatialLayout, copy: SpatialCopy, opt
     add('hub-name', hub.nodeId, hub.x, hub.y + hub.r, Math.max(...lines.map(line => textWidthPx(line, size, SPATIAL_TYPE.hubName.weight))), TEXT_GAP.hub, TEXT_GAP.hub + nameHeight)
     if (narrow) continue
     const subtextTop = TEXT_GAP.hub + nameHeight + TEXT_GAP.subtext
-    add('hub-subtext', hub.nodeId, hub.x, hub.y + hub.r, textWidthPx(hub.subtext, hubSubtext.size, hubSubtext.weight), subtextTop, subtextTop + textBlockHeightPx(1, hubSubtext.size))
+    const subtextBottom = subtextTop + textBlockHeightPx(1, hubSubtext.size)
+    add('hub-subtext', hub.nodeId, hub.x, hub.y + hub.r, textWidthPx(hub.subtext, hubSubtext.size, hubSubtext.weight), subtextTop, subtextBottom)
+    const preview = options.preview ? layout.preview.hubs.find(entry => entry.hubId === hub.nodeId) : undefined
+    if (preview && preview.workflowIds.length > 0 && preview.workflowIds.length < preview.workflowCount) {
+      const caption = copy.previewCaption(preview.workflowIds.length, preview.workflowCount)
+      const top = subtextBottom + TEXT_GAP.subtext
+      add('hub-preview', hub.nodeId, hub.x, hub.y + hub.r, textWidthPx(caption, SPATIAL_TYPE.hubPreview.size, SPATIAL_TYPE.hubPreview.weight), top, top + textBlockHeightPx(1, SPATIAL_TYPE.hubPreview.size))
+    }
   }
   for (const band of layout.unlinkedBands) {
     const lines = copy.unlinkedAgents(band.count)

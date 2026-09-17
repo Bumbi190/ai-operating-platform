@@ -12,7 +12,8 @@
  *   3  the hovered or keyboard-focused node; running runs; what the selection touches;
  *      then a drilled project's counts, which keep to their name while node labels have many places
  *   4  workflows
- *   5  band captions; portfolio hub counts; Atlas's subtitle
+ *   5  band captions; portfolio hub counts; Atlas's subtitle; what a hub's preview leaves out
+ *      ("Visar 3 av 5 workflows"); then the previewed workflows, while the overview previews them
  *   6  agents (see AGENT_NAMES_AT_OVERVIEW); runs on a workflow's time arc; satellites
  *   7  run-count captions
  *
@@ -29,12 +30,13 @@
  */
 
 import type { IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
-import type { GraphBounds, GraphViewBox } from './graph-readability'
+import type { GraphBounds, GraphScreenText, GraphViewBox } from './graph-readability'
 import { getStatusVisual } from './graph-visuals'
-import { PORTFOLIO_REVEAL, PROJECT_REVEAL, type SpatialLayout } from './spatial-layout'
+import { PORTFOLIO_REVEAL, PROJECT_REVEAL, previewsAtOverview, spatialClusterShown, type SpatialLayout } from './spatial-layout'
 import {
   SPATIAL_TYPE,
   TEXT_ASCENT,
+  TEXT_DESCENT,
   TEXT_GAP,
   TEXT_LINE_HEIGHT,
   bandAnchor,
@@ -54,7 +56,7 @@ export const AGENT_NAMES_AT_OVERVIEW = 8
 /** Longest single label line, in characters, before it wraps. */
 export const LABEL_LINE_MAX = 30
 
-export type SpatialLabelKind = 'node' | 'atlas' | 'atlas-subtitle' | 'hub-name' | 'hub-subtext' | 'band' | 'cluster-caption'
+export type SpatialLabelKind = 'node' | 'atlas' | 'atlas-subtitle' | 'hub-name' | 'hub-subtext' | 'hub-preview' | 'band' | 'cluster-caption'
 export type SpatialLabelTone = 'strong' | 'normal' | 'muted'
 
 export interface SpatialLabelContext {
@@ -74,6 +76,8 @@ export interface SpatialLabelContext {
   searchResultId?: string | null
   /** What the selection touches. */
   neighborIds?: ReadonlySet<string>
+  /** The overview previews each project's workflows (`spatialNodeVisibility`'s `preview`). */
+  preview?: boolean
 }
 
 export interface SpatialLabelPlacement {
@@ -91,6 +95,8 @@ export interface SpatialLabelPlacement {
   weight: number
   tone: SpatialLabelTone
   status?: { text: string; color: string; fontSize: number }
+  /** A muted line under the name — a previewed workflow's run count — and how far below the name's last baseline it sits. */
+  detail?: { text: string; fontSize: number; dy: number }
   box: GraphBounds
   /** The width the plan took the text block to be, in screen px. */
   widthPx: number
@@ -123,6 +129,8 @@ interface Candidate {
   weight: number
   tone: SpatialLabelTone
   status?: { text: string; color: string }
+  /** A muted line under the name, left out before the name is when there is no room for both. */
+  detail?: string
   /** Circles this text may touch: its own. */
   exempt: ReadonlySet<string>
   /** Places to try, in order. `above` is the placed text this one belongs under, when it has one. */
@@ -161,14 +169,22 @@ export function planSpatialLabels(context: SpatialLabelContext): SpatialLabelPla
     }
     const size = px(candidate.size * typeScale)
     const statusSize = px(SPATIAL_TYPE.status.size * typeScale)
+    const detailSize = px(SPATIAL_TYPE.nodeDetail.size * typeScale)
     let placement: SpatialLabelPlacement | null = null
-    const shapes = candidate.variants.map(lines => {
+    const shape = (lines: readonly string[], detail?: string) => {
       const width = px(Math.max(...lines.map(line => textWidthPx(line, candidate.size * typeScale, candidate.weight))))
       const statusWidth = candidate.status ? px(textWidthPx(candidate.status.text, SPATIAL_TYPE.status.size * typeScale, SPATIAL_TYPE.status.weight)) : 0
+      const detailWidth = detail ? px(textWidthPx(detail, SPATIAL_TYPE.nodeDetail.size * typeScale, SPATIAL_TYPE.nodeDetail.weight)) : 0
       const blockHeight = px(textBlockHeightPx(lines.length, candidate.size * typeScale))
         + (candidate.status ? statusSize * TEXT_LINE_HEIGHT : 0)
-      return { lines, blockWidth: Math.max(width, statusWidth), blockHeight, options: candidate.options(blockHeight, above) }
-    })
+        + (detail ? detailSize * TEXT_LINE_HEIGHT : 0)
+      return { lines, detail, blockWidth: Math.max(width, statusWidth, detailWidth), blockHeight, options: candidate.options(blockHeight, above) }
+    }
+    // With its detail line in every place first; where that finds no room, the name alone.
+    const shapes = [
+      ...candidate.variants.map(lines => shape(lines, candidate.detail)),
+      ...(candidate.detail ? candidate.variants.map(lines => shape(lines)) : []),
+    ]
     // Each variant in each place — or, for a text whose place matters more than its line breaks, every variant
     // in one place before the next: centred under or over its owner the full line first, beside it the narrowest.
     const attempts = candidate.placeFirst
@@ -177,7 +193,7 @@ export function planSpatialLabels(context: SpatialLabelContext): SpatialLabelPla
         return here[0]?.option.anchor === 'middle' ? here : [...here].sort((a, b) => a.blockWidth - b.blockWidth)
       }).flat()
       : shapes.flatMap(shape => shape.options.map(option => ({ ...shape, option })))
-    for (const { lines, blockWidth, blockHeight, option } of attempts) {
+    for (const { lines, detail, blockWidth, blockHeight, option } of attempts) {
       const box = blockBox(option, blockWidth, blockHeight)
       if (!inside(canvas, box)) continue
       if (reserved.some(band => intersects(band, box))) continue
@@ -197,6 +213,8 @@ export function planSpatialLabels(context: SpatialLabelContext): SpatialLabelPla
         weight: candidate.weight,
         tone: candidate.tone,
         status: candidate.status ? { ...candidate.status, fontSize: statusSize } : undefined,
+        // Its baseline sits so that the line's descent ends where the box does.
+        detail: detail ? { text: detail, fontSize: detailSize, dy: size * TEXT_DESCENT + detailSize * (TEXT_LINE_HEIGHT - TEXT_DESCENT) } : undefined,
         box,
         widthPx: blockWidth / scale,
         leader: option.leaderFrom ? leaderLine(option.leaderFrom, box) : undefined,
@@ -287,6 +305,29 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
     })
   }
 
+  // ── What a hub's preview leaves out, said with its counts ──
+  if (context.preview) {
+    for (const [hubId, { shown, total }] of partialPreviews(layout, nodeById, visibleIds)) {
+      const hub = layout.hubs.find(entry => entry.nodeId === hubId)
+      if (!hub) continue
+      add({
+        key: `hub-preview:${hubId}`, kind: 'hub-preview', ownerId: hubId, tier: 5, rank: 3, order: hub.label,
+        variants: [[copy.previewCaption(shown, total)]], size: SPATIAL_TYPE.hubPreview.size, weight: SPATIAL_TYPE.hubPreview.weight, tone: 'muted',
+        // Only with the counts it qualifies; left out with them, it remains in the hub's accessible name.
+        exempt: new Set(), after: `hub-subtext:${hubId}`,
+        // Beyond the counts, away from the hub: under counts below the hub's centre, over counts above it.
+        options: (height, counts) => {
+          if (!counts) return []
+          const under: Option = { x: counts.x, top: counts.box.maxY + px(TEXT_GAP.subtext), anchor: counts.anchor }
+          const over: Option = { x: counts.x, top: counts.box.minY - px(TEXT_GAP.subtext) - height, anchor: counts.anchor }
+          if (counts.box.minY >= hub.y) return [under]
+          if (counts.box.maxY <= hub.y) return [over]
+          return [under, over]
+        },
+      })
+    }
+  }
+
   // ── Bands and run counts ──
   for (const band of layout.unlinkedBands) {
     if (!band.memberIds.some(id => visibleIds.has(id))) continue
@@ -298,7 +339,7 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
     })
   }
   for (const cluster of layout.clusters) {
-    if (!visibleIds.has(cluster.parentId)) continue
+    if (!spatialClusterShown(cluster, visibleIds, previewsAtOverview(layout, context))) continue
     const drawn = clusterDrawRadius(cluster.r, scale)
     const gap = px(TEXT_GAP.cluster)
     add({
@@ -319,6 +360,9 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
   const hubNamed = new Set(layout.hubs.filter(hub => hub.orbit !== 'receded').map(hub => hub.nodeId))
   // A named hub's selection is the view itself (or its inspector): it does not name everything it contains.
   const selectionNamesNeighbours = Boolean(context.selectedId) && !hubNamed.has(context.selectedId ?? '')
+  // While the overview previews workflows, every hub's counts and preview caption are placed before the previewed
+  // workflows' names, and a workflow's run count is said under its name rather than drawn as a ring.
+  const previewing = previewsAtOverview(layout, context)
   const agentsInProject = new Map<string, number>()
   for (const id of visibleIds) {
     const node = nodeById.get(id)
@@ -342,6 +386,7 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
     else if (hovered) tier = 3
     else if (running) { tier = 3; rank = 1 }
     else if (neighbour) { tier = 3; rank = 2 }
+    else if (node.kind === 'workflow' && previewing) { tier = 5; rank = 4 }
     else if (node.kind === 'workflow') tier = 4
     else if (node.kind === 'agent') tier = agentNamed(layout.level, depth, agentsInProject.get(node.projectId ?? '') ?? 0) ? 6 : null
     else if (node.kind === 'run' || role === 'satellite') tier = 6
@@ -352,12 +397,14 @@ export function spatialLabelCandidates(context: SpatialLabelContext, scale: numb
           : role === 'context' ? { size: SPATIAL_TYPE.hubName.receded, weight: SPATIAL_TYPE.hubName.weight }
             : SPATIAL_TYPE.satellite
     const statusText = attention || running ? copy.statusWord(node) : null
+    const runCount = previewing && node.kind === 'workflow' ? layout.clusters.find(cluster => cluster.kind === 'workflow' && cluster.parentId === id) : undefined
     const centre = labelCentre(layout, node)
     add({
       key: `node:${id}`, kind: 'node', ownerId: id, tier, rank, order: `${KIND_ORDER[node.kind] ?? 9}:${node.label}`,
       variants: nodeLabelVariants(node), size: kindSize.size, weight: interaction !== null ? Math.max(kindSize.weight, 600) : kindSize.weight,
       tone: interaction !== null || hovered ? 'strong' : node.kind === 'agent' || role === 'satellite' ? 'muted' : 'normal',
       status: statusText ? { text: statusText, color: getStatusVisual(node)?.stroke ?? 'currentColor' } : undefined,
+      detail: runCount ? `${copy.clusterCount(runCount)} ${copy.clusterCaption(runCount)}` : undefined,
       exempt: new Set([id]),
       // What was asked for, or needs attention, may also sit further off, on a leader, in any direction.
       options: height => nodeOptions(position, centre, height, scale, tier <= 2),
@@ -371,6 +418,65 @@ export function agentNamed(level: SpatialLayout['level'], depth: number, agentsI
   if (level === 'workflow') return true
   if (level === 'project') return agentsInProject <= AGENT_NAMES_AT_OVERVIEW || depth >= PROJECT_REVEAL.agentLabels
   return depth >= PORTFOLIO_REVEAL.satellites
+}
+
+/**
+ * The portfolio's hubs that show only some of their workflows, by hub id: how many of the project's
+ * workflows are drawn, of how many the snapshot holds. Counted from what is drawn, so a workflow that a
+ * selection or a search brings out is counted too; a hub showing none or all of them is not listed.
+ */
+export function partialPreviews(
+  layout: SpatialLayout,
+  nodeById: ReadonlyMap<string, IntelligenceGraphNode>,
+  visibleIds: ReadonlySet<string>,
+): Map<string, { shown: number; total: number }> {
+  const partial = new Map<string, { shown: number; total: number }>()
+  if (layout.level !== 'portfolio') return partial
+  const drawn = new Map<string, number>()
+  for (const id of visibleIds) {
+    const node = nodeById.get(id)
+    if (node?.kind === 'workflow' && node.projectId) drawn.set(node.projectId, (drawn.get(node.projectId) ?? 0) + 1)
+  }
+  for (const preview of layout.preview.hubs) {
+    const shown = drawn.get(preview.projectId) ?? 0
+    if (visibleIds.has(preview.hubId) && shown > 0 && shown < preview.workflowCount) partial.set(preview.hubId, { shown, total: preview.workflowCount })
+  }
+  return partial
+}
+
+/**
+ * The previewed workflows' names, with their run counts, where the plan first tries them — away from
+ * their hub — as screen texts for a fit.
+ */
+export function previewNameScreenTexts(layout: SpatialLayout, nodeById: ReadonlyMap<string, IntelligenceGraphNode>, copy: SpatialCopy): GraphScreenText[] {
+  const { size, weight } = SPATIAL_TYPE.workflow
+  const texts: GraphScreenText[] = []
+  for (const preview of layout.preview.hubs) {
+    const hub = layout.hubs.find(entry => entry.nodeId === preview.hubId)
+    for (const id of preview.workflowIds) {
+      const node = nodeById.get(id)
+      const position = layout.positions.get(id)
+      if (!hub || !node || !position) continue
+      const lines = nodeLabelVariants(node)[0]
+      const runs = layout.clusters.find(cluster => cluster.kind === 'workflow' && cluster.parentId === id)
+      const detail = runs ? `${copy.clusterCount(runs)} ${copy.clusterCaption(runs)}` : null
+      const width = Math.max(...lines.map(line => textWidthPx(line, size, weight)), detail ? textWidthPx(detail, SPATIAL_TYPE.nodeDetail.size, SPATIAL_TYPE.nodeDetail.weight) : 0)
+      const height = textBlockHeightPx(lines.length, size) + (detail ? SPATIAL_TYPE.nodeDetail.size * TEXT_LINE_HEIGHT : 0)
+      // The label's gap in world units and in px, each taken at its largest (`nodeOptions`).
+      const reach = position.r + selectionRingOffset(position.r)
+      const gap = TEXT_GAP.node + 2
+      const dx = position.x - hub.x
+      const dy = position.y - hub.y
+      const length = Math.hypot(dx, dy)
+      const ux = length > 1e-6 ? dx / length : 0
+      const uy = length > 1e-6 ? dy / length : 1
+      if (ux > 0.55) texts.push({ x: position.x + reach, y: position.y, leftPx: 0, rightPx: gap + width, topPx: -height / 2, bottomPx: height / 2 })
+      else if (ux < -0.55) texts.push({ x: position.x - reach, y: position.y, leftPx: gap + width, rightPx: 0, topPx: -height / 2, bottomPx: height / 2 })
+      else if (uy > 0) texts.push({ x: position.x, y: position.y + reach, leftPx: width / 2, rightPx: width / 2, topPx: 0, bottomPx: gap + height })
+      else texts.push({ x: position.x, y: position.y - reach, leftPx: width / 2, rightPx: width / 2, topPx: -(gap + height), bottomPx: 0 })
+    }
+  }
+  return texts
 }
 
 /** A label's full text, then two lines, then its first part — never a word the node does not carry. */
@@ -481,8 +587,9 @@ function obstacleCircles(context: SpatialLabelContext, scale: number): Circle[] 
     if (!visibleIds.has(id)) continue
     circles.push({ ownerId: id, x: position.x, y: position.y, r: position.r + 2 * scale })
   }
+  const countsUnderNames = previewsAtOverview(layout, context)
   for (const cluster of layout.clusters) {
-    if (!visibleIds.has(cluster.parentId)) continue
+    if (!spatialClusterShown(cluster, visibleIds, countsUnderNames)) continue
     circles.push({ ownerId: cluster.id, x: cluster.x, y: cluster.y, r: clusterDrawRadius(cluster.r, scale) + 4 * scale })
   }
   // A band's caption keeps clear of its own agents too; its owner is the band, not them.

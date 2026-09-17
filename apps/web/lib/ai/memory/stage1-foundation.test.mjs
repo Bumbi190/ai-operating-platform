@@ -50,7 +50,9 @@ test('feedback-derived memory still writes content_feedback and platform_memory'
 
 test('memory seed route validates request fields and The Prompt project scope', () => {
   const route = read('apps/web/app/api/memory/patterns/route.ts')
-  const page = read('apps/web/app/(platform)/memory/page.tsx')
+  // Minne vNext is read-only. The existing seed control remains unchanged in
+  // the mechanically moved legacy rollback body.
+  const page = read('apps/web/app/(platform)/memory/MemoryLegacy.tsx')
 
   assert.match(route, /readMemoryPatternPostFields/)
   assert.match(route, /validateMemoryPatternPostFields/)

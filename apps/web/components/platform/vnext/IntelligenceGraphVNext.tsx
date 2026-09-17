@@ -47,9 +47,9 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import type { IntelligenceGraphEdge } from '@/lib/intelligence/graph-contract'
-import { GraphCanvas, type GraphSpatialOptions } from '@/components/platform/intelligence/GraphCanvas'
-import { classifySpatialAspect, type SpatialAnchor } from '@/components/platform/intelligence/spatial-layout'
-import type { GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
+import { GraphCanvas, type GraphChromeRect, type GraphSpatialOptions } from '@/components/platform/intelligence/GraphCanvas'
+import { classifySpatialAspect, projectMonogram, type SpatialAnchor } from '@/components/platform/intelligence/spatial-layout'
+import { nodeColor, projectAccent, type GraphEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
 import { TIME_FILTERS, useIntelligenceGraph } from '@/components/platform/intelligence/useIntelligenceGraph'
 import {
   INSPECTOR_WIDTH,
@@ -97,6 +97,7 @@ function runStatusWords(status: string): string {
 
 const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
   atlasLabel: 'Atlas',
+  atlasSubtitle: 'Omniras identitet',
   atlasDescription: 'Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten.',
   clusterCount: cluster => (cluster.kind === 'older' ? `+${cluster.count}` : String(cluster.count)),
   clusterCaption: cluster => (cluster.kind === 'older'
@@ -114,6 +115,7 @@ const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
     if (cluster.kind === 'no-workflow') return `${cluster.count} körningar utan workflow-referens (${distribution})`
     return `${parentLabel}: ${cluster.count} ${cluster.count === 1 ? 'körning' : 'körningar'} i fönstret (${distribution})`
   },
+  statusWord: node => nodeStatus(node)?.label.toLowerCase() ?? null,
 }
 
 /**
@@ -136,6 +138,8 @@ export function IntelligenceGraphVNext() {
   const fieldRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
+  const canvasFrameRef = useRef<HTMLDivElement>(null)
+  const floatProbeRef = useRef<HTMLSpanElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
   const showInspectorRef = useRef<HTMLButtonElement>(null)
@@ -263,6 +267,15 @@ export function IntelligenceGraphVNext() {
   const renderedWidth = clampInspectorWidth(inspectorWidth, stageRem)
   const widthMax = inspectorMaxWidth(stageRem)
   const inspectorVisible = Boolean(selected) && hiddenFor !== selected?.id
+
+  // On a phone, a drilled level opens with its own inspector put away: the sheet would cover the
+  // level just opened. The selection stays, and "Visa inspektören" brings the panel back.
+  const drillRootId = drillScope?.rootId ?? null
+  useEffect(() => {
+    if (narrow && drillRootId && selected?.id === drillRootId) setHiddenFor(drillRootId)
+    // Only a new drill-down (or becoming narrow) puts it away — never the operator's own choice to show it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrow, drillRootId])
 
   const commitInspectorWidth = useCallback((rem: number) => {
     setInspectorWidth(rem)
@@ -407,6 +420,63 @@ export function IntelligenceGraphVNext() {
     }
     : undefined), [canvasMode, spatialAnchor, spatialAspect, drillScope, isolateScope, graph.resetView, setFitSignal])
 
+  // What lies over the canvas, in canvas px: its own controls (the place row item by item, the zoom
+  // dock, the legend bar) and the shell's floating corner. Texts keep out of it and receded context
+  // gives way to it; the camera does not move for it. Measured, because a phone wraps the place row.
+  const [chromeRects, setChromeRects] = useState<ReadonlyArray<GraphChromeRect>>([])
+  const measureChrome = useCallback(() => {
+    const frame = canvasFrameRef.current
+    const probe = floatProbeRef.current
+    if (!frame || !probe || typeof window === 'undefined') return
+    // In the canvas's own px: the drawing surface sits inside the frame's border.
+    const canvas = (frame.querySelector('svg[role="group"]') ?? frame).getBoundingClientRect()
+    const clipped = (left: number, top: number, right: number, bottom: number): GraphChromeRect | null => {
+      const x1 = Math.max(left, canvas.left)
+      const y1 = Math.max(top, canvas.top)
+      const x2 = Math.min(right, canvas.right)
+      const y2 = Math.min(bottom, canvas.bottom)
+      return x2 > x1 && y2 > y1
+        ? { x: Math.floor(x1 - canvas.left), y: Math.floor(y1 - canvas.top), width: Math.ceil(x2 - x1), height: Math.ceil(y2 - y1) }
+        : null
+    }
+    const next = [
+      ...frame.querySelectorAll<HTMLElement>('[data-graph-chrome-items] > *, [data-graph-chrome]'),
+    ].flatMap(element => {
+      if (element.closest('[hidden]')) return []
+      const box = element.getBoundingClientRect()
+      const rect = box.width > 0 && box.height > 0 ? clipped(box.left, box.top, box.right, box.bottom) : null
+      return rect ? [rect] : []
+    })
+    const corner = clipped(window.innerWidth - probe.offsetWidth, window.innerHeight - probe.offsetHeight, window.innerWidth, window.innerHeight)
+    if (corner) next.push(corner)
+    setChromeRects(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+  }, [])
+  // After every render — the controls change with the place, the selection and the filters — and on resize.
+  useEffect(() => { measureChrome() })
+  useEffect(() => {
+    const frame = canvasFrameRef.current
+    if (!frame || typeof window === 'undefined') return
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureChrome)
+    observer?.observe(frame)
+    window.addEventListener('resize', measureChrome)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measureChrome)
+    }
+  }, [measureChrome, graphVisible])
+
+  // The selection's identity as the canvas draws it: its project's colour, and a hub's monogram.
+  const selectedIdentity = useMemo(() => {
+    if (!selected) return null
+    const hub = selected.kind === 'project'
+      ? selected
+      : nodes.find(node => node.kind === 'project' && node.projectId === selected.projectId)
+    return {
+      accent: hub ? projectAccent(hub) : nodeColor(selected),
+      monogram: selected.kind === 'project' ? projectMonogram(selected.label) : undefined,
+    }
+  }, [selected, nodes])
+
   const overlayInsets = {
     // A phone wraps the place row under the zoom controls: two rows.
     top: (narrow ? (placeShown ? 2 : 1) : placeShown ? 1 : 0) * HUD_ROW_REM * rootPx,
@@ -432,6 +502,8 @@ export function IntelligenceGraphVNext() {
       data-resizing={resizing ? 'true' : undefined}
     >
       <div className={styles.ambient} aria-hidden />
+      {/* Measures the shell's floating corner (--ig-float-right × --ig-float-top) for the canvas's chrome. */}
+      <span ref={floatProbeRef} className={styles.floatProbe} aria-hidden />
 
       <header className={styles.header}>
         {/* T1's lede — how the graph is drawn — now opens the canvas's Förklaring,
@@ -466,7 +538,7 @@ export function IntelligenceGraphVNext() {
 
         {/* ── Canvas + inspector ── */}
         <div ref={stageRef} className={styles.stage} data-inspector={inspectorVisible ? 'open' : 'closed'}>
-          <div className={styles.canvasFrame} data-testid="graph-canvas-frame">
+          <div ref={canvasFrameRef} className={styles.canvasFrame} data-testid="graph-canvas-frame">
             {loading && (
               <div className={styles.loading} role="status">
                 {canvasMode === 'operations' ? 'Hämtar ögonblicksbild…' : 'Laddar kodkartan…'}
@@ -541,13 +613,14 @@ export function IntelligenceGraphVNext() {
                   edgeVisual={truthEdgeVisual}
                   overlayInsets={overlayInsets}
                   spatial={spatial}
+                  chromeRects={canvasMode === 'operations' ? chromeRects : undefined}
                 />
               </div>
             )}
 
 
             {graphVisible && (
-              <div className={styles.zoomDock}>
+              <div className={styles.zoomDock} data-graph-chrome>
                 <div className={styles.zoomGroup} role="group" aria-label="Zoom">
                   <button type="button" className={styles.zoomStep} onClick={() => zoom('zoom-out')} aria-label="Zooma ut">−</button>
                   <button type="button" className={styles.zoomFit} onClick={() => setFitSignal(x => x + 1)}>Anpassa</button>
@@ -604,6 +677,7 @@ export function IntelligenceGraphVNext() {
                 onDrillIn={drillIn}
                 onIsolate={isolateNode}
                 onFocus={node => setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [node.id] })}
+                identity={canvasMode === 'operations' ? selectedIdentity ?? undefined : undefined}
               />
             </div>
           )}

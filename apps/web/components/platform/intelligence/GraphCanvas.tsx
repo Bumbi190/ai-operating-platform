@@ -28,6 +28,7 @@ import {
   reservedCanvasBoxes,
   selectTerritoryLabelPlacements,
   selectVisibleNodeLabels,
+  type GraphLabelPlacement,
   type GraphOverlayInsets,
   type GraphViewBox,
   type GraphZoomLevel,
@@ -35,6 +36,8 @@ import {
 import { buildDenseViewSummaries } from './graph-navigation'
 import type { PositionedNode } from './force-layout'
 import {
+  PORTFOLIO_REVEAL,
+  PROJECT_REVEAL,
   computeSpatialLayout,
   spatialDensityLevel,
   spatialEdgeLevel,
@@ -43,12 +46,27 @@ import {
   type SpatialAnchor,
   type SpatialAspect,
   type SpatialAtlasOrb,
-  type SpatialHub,
   type SpatialLayout,
   type SpatialRunCluster,
-  type SpatialUnlinkedBand,
 } from './spatial-layout'
-import { bandAnchor, planSpatialTexts, spatialScreenTexts, type SpatialCopy } from './spatial-text'
+import { SPATIAL_NARROW_CANVAS, spatialScreenTexts, type SpatialCopy, type SpatialText } from './spatial-text'
+import { AGENT_NAMES_AT_OVERVIEW, planSpatialLabels } from './spatial-labels'
+import {
+  AgentGlyph,
+  AtlasCore,
+  CLUSTER_STATUS_COLORS,
+  HubFields,
+  ProjectHubGlyph,
+  RunClusterGlyph,
+  RunGlyph,
+  SatelliteGlyph,
+  SpatialLabelLayer,
+  SpatialSceneDefs,
+  WorkflowGlyph,
+  clearSpatialEdgePath,
+  identityColour,
+  projectColours,
+} from './spatial-scene'
 import {
   GRAPH_VISUAL_TOKENS,
   buildProjectTerritories,
@@ -115,8 +133,17 @@ export interface GraphCanvasProps {
    * Absent, the canvas renders exactly what legacy and System Map always have.
    */
   spatial?: GraphSpatialOptions
+  /**
+   * Spatial view only: canvas px rectangles the page's chrome lies over — its
+   * controls on the canvas and the shell's floating corner. Texts keep out of
+   * them and receded context gives way to them; the camera does not move for them.
+   */
+  chromeRects?: ReadonlyArray<GraphChromeRect>
   className?: string
 }
+
+/** A rectangle of the canvas, in px from its top left corner. */
+export interface GraphChromeRect { x: number; y: number; width: number; height: number }
 
 export interface GraphSpatialOptions {
   anchor: SpatialAnchor
@@ -177,11 +204,15 @@ export function GraphCanvas({
   edgeVisual,
   overlayInsets,
   spatial,
+  chromeRects,
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const nodeRefs = useRef(new Map<string, SVGGElement>())
-  const [view, setView] = useState<GraphViewBox>({ x: 0, y: 0, w: WORLD_W, h: WORLD_H })
+  // A spatial view opens already fitted to its level, so the first paint — and the server's markup — frames it.
+  const [view, setView] = useState<GraphViewBox>(() => spatial
+    ? initialSpatialView(nodes, edges, spatial, overlayInsets)
+    : { x: 0, y: 0, w: WORLD_W, h: WORLD_H })
   const [viewport, setViewport] = useState({ width: WORLD_W, height: WORLD_H })
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
@@ -189,6 +220,7 @@ export function GraphCanvas({
   const movedRef = useRef(false)
   const autoFitRef = useRef(true)
   const handledViewportRef = useRef(`${WORLD_W}x${WORLD_H}`)
+  const handledInspectorRef = useRef(inspectorOpen)
   const handledCameraContextRef = useRef(`${WORLD_W}x${WORLD_H}:closed::`)
   // A zoom command already in state when this canvas mounts was issued to an
   // earlier instance; it is treated as handled rather than replayed.
@@ -226,7 +258,11 @@ export function GraphCanvas({
   // The spatial view separates projects by space and a soft field, not dashed territories.
   const territories = useMemo(() => spatialLayout ? [] : buildProjectTerritories(nodes, layout), [nodes, layout, spatialLayout])
   const overlayTopPx = Math.max(0, overlayInsets?.top ?? 0)
-  const overlayBottomPx = Math.max(0, overlayInsets?.bottom ?? 0)
+  const sheetPresentation = inspectorSheet ?? viewport.width < 768
+  // A spatial view fits above an open mobile sheet, so nothing it frames lies under the panel.
+  const sheetInsetPx = spatial && inspectorOpen && sheetPresentation ? Math.min(viewport.height * 0.48, 384) : 0
+  // The sheet covers the page's bottom controls too: the band is whichever reaches higher.
+  const overlayBottomPx = Math.max(0, overlayInsets?.bottom ?? 0, sheetInsetPx)
   // Read by the camera when it next fits; a new value alone moves nothing.
   const overlayRef = useRef<GraphOverlayInsets | undefined>(undefined)
   overlayRef.current = overlayTopPx > 0 || overlayBottomPx > 0 ? { top: overlayTopPx, bottom: overlayBottomPx } : undefined
@@ -235,15 +271,22 @@ export function GraphCanvas({
     [layout, territories, spatialLayout],
   )
   // A spatial fit also holds the level's own names and counts, which are drawn at screen size.
-  const spatialTexts = useMemo(() => spatialLayout && spatial ? spatialScreenTexts(spatialLayout, spatial.copy) : [], [spatialLayout, spatial])
+  const narrowCanvas = viewport.width < SPATIAL_NARROW_CANVAS
+  const spatialTexts = useMemo(
+    () => spatialLayout && spatial ? spatialScreenTexts(spatialLayout, spatial.copy, { narrow: narrowCanvas }) : [],
+    [spatialLayout, spatial, narrowCanvas],
+  )
+  // A narrow canvas opening a project with many agents frames the project's core; its agents come with zoom.
+  const compactAgents = useMemo(() => {
+    if (!spatialLayout || !narrowCanvas || spatialLayout.level !== 'project' || !spatialLayout.anchorId) return false
+    const projectId = nodes.find(node => node.id === spatialLayout.anchorId)?.projectId
+    return nodes.filter(node => node.kind === 'agent' && node.projectId === projectId).length > AGENT_NAMES_AT_OVERVIEW
+  }, [spatialLayout, narrowCanvas, nodes])
   const spatialBounds = useMemo(() => {
     if (!spatialLayout) return null
-    // The portfolio frames its hubs; the run counts and bands inside them unfold only with zoom.
-    const framed = spatialLayout.level === 'portfolio'
-      ? spatialTexts.filter(text => text.kind === 'atlas' || text.kind === 'hub-name' || text.kind === 'hub-subtext')
-      : spatialTexts
-    return boundsWithScreenText(spatialLayout.fitBounds, framed, viewport, undefined, overlayRef.current)
-  }, [spatialLayout, spatialTexts, viewport])
+    const core = compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds
+    return boundsWithScreenText(core, framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band'), viewport, undefined, overlayRef.current)
+  }, [spatialLayout, spatialTexts, viewport, compactAgents, nodes])
   const graphBounds = spatialBounds ?? forceBounds!
   // Changes only with the layout itself; a new canvas size re-fits through the camera context instead.
   const layoutBounds = spatialLayout ? spatialLayout.fitBounds : graphBounds
@@ -314,6 +357,7 @@ export function GraphCanvas({
         searchResultId,
         neighborIds: semanticNeighborIds,
         executionContext,
+        compactAgents,
       })
       : getNodeSemanticVisibility(node, {
         level: zoomLevel,
@@ -323,17 +367,37 @@ export function GraphCanvas({
         searchResultId,
         neighborIds: semanticNeighborIds,
       }),
-  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds, spatialLayout, spatialDepth, executionContext])
-  const structurallyVisibleIds = useMemo(() => new Set(
-    nodes.filter(node => semanticVisibility.get(node.id) !== 'hidden'
-      && (!isolatedIds || isolatedIds.has(node.id))).map(node => node.id),
-  ), [nodes, semanticVisibility, isolatedIds])
+  ])), [nodes, zoomLevel, mode, selectedId, focusId, searchResultId, semanticNeighborIds, spatialLayout, spatialDepth, executionContext, compactAgents])
+  // The page's chrome over the canvas, in world units.
+  const chromeBoxes = useMemo(() => (spatialLayout ? chromeRects ?? [] : []).map(rect => ({
+    minX: view.x + (rect.x / Math.max(1, viewport.width)) * view.w,
+    minY: view.y + (rect.y / Math.max(1, viewport.height)) * view.h,
+    maxX: view.x + ((rect.x + rect.width) / Math.max(1, viewport.width)) * view.w,
+    maxY: view.y + ((rect.y + rect.height) / Math.max(1, viewport.height)) * view.h,
+  })), [spatialLayout, chromeRects, view, viewport])
+  // An open mobile sheet ends the canvas: the scene is drawn above it, never through it.
+  const sheetTop = spatialLayout && sheetInsetPx > 0 ? view.y + view.h * (1 - (sheetInsetPx + 2) / Math.max(1, viewport.height)) : null
+  // Receded context — Atlas and the projects around a drilled view — gives way to the page's chrome
+  // and to the sheet instead of showing around their edges; the level's own structure is framed clear of both.
+  const contextClear = useCallback((x: number, y: number, reach: number) => (sheetTop === null || y + reach <= sheetTop)
+    && !chromeBoxes.some(box => circleMeetsBox({ x, y, r: reach }, box)), [sheetTop, chromeBoxes])
+  const sheetClip = sheetTop !== null ? 'url(#ig-sheet-clip)' : undefined
+  const atlasShown = !spatialLayout || !spatialLayout.atlas.receded
+    || contextClear(spatialLayout.atlas.x, spatialLayout.atlas.y, spatialLayout.atlas.r * 1.5)
+  // Keyed by content: a camera frame that changes nothing drawn keeps the same set, so what derives
+  // from it (line obstacles and routes) is not recomputed while the operator pans or zooms.
+  const visibleKey = nodes.filter(node => {
+    if (semanticVisibility.get(node.id) === 'hidden' || (isolatedIds && !isolatedIds.has(node.id))) return false
+    if (spatialLayout?.roles.get(node.id) !== 'context') return true
+    const position = layout.get(node.id)
+    return !position || contextClear(position.x, position.y, position.r + 9)
+  }).map(node => node.id).join('\u0000')
+  const structurallyVisibleIds = useMemo(() => new Set(visibleKey ? visibleKey.split('\u0000') : []), [visibleKey])
   const summaries = useMemo(
     () => spatialLayout ? [] : buildDenseViewSummaries(nodes, edges, zoomLevel),
     [nodes, edges, zoomLevel, spatialLayout],
   )
   const summaryByParent = useMemo(() => new Map(summaries.map(summary => [summary.parentId, summary])), [summaries])
-  const sheetPresentation = inspectorSheet ?? viewport.width < 768
   const inspectorBottomInset = inspectorOpen && sheetPresentation ? view.h * 0.48 : 0
   const reservedBoxes = useMemo(
     () => reservedCanvasBoxes(view, viewport.height, inspectorBottomInset, { top: overlayTopPx, bottom: overlayBottomPx }),
@@ -360,47 +424,61 @@ export function GraphCanvas({
     () => territoryLabelPlacements.map(label => label.bounds),
     [territoryLabelPlacements],
   )
-  const labelScale = view.w / Math.max(1, viewport.width)
-  // Hubs, Atlas, clusters and band captions carry their own text; node labels route around what is drawn.
-  const spatialTextPlan = useMemo(
-    () => spatialLayout ? planSpatialTexts(spatialLayout, spatialTexts, labelScale, structurallyVisibleIds) : null,
-    [spatialLayout, spatialTexts, labelScale, structurallyVisibleIds],
-  )
-  const spatialObstacles = useMemo(() => spatialTextPlan?.obstacles ?? [], [spatialTextPlan])
-  const labelNodes = useMemo(() => spatialLayout ? nodes.filter(node => node.kind !== 'project') : nodes, [nodes, spatialLayout])
-  // A drilled project is the view itself: its selection does not make every agent's name eligible.
-  const labelSelectedId = spatialLayout && selectedId !== null && selectedId === spatialLayout.anchorId && nodeById.get(selectedId)?.kind === 'project'
-    ? null
-    : selectedId
-  const visibleLabels = useMemo(() => new Map(
+  const visibleLabels = useMemo(() => spatialLayout ? new Map<string, GraphLabelPlacement>() : new Map(
     selectVisibleNodeLabels({
-      nodes: labelNodes,
+      nodes,
       layout,
       view,
       viewportWidth: viewport.width,
       viewportHeight: viewport.height,
       mode,
       level: zoomLevel,
-      selectedId: labelSelectedId,
+      selectedId,
       hoverId,
       focusId,
       searchResultId,
       neighborIds: semanticNeighborIds,
       structurallyVisibleIds,
       reservedBoxes,
-      occupiedBoxes: spatialLayout ? [...territoryLabelBoxes, ...spatialObstacles] : territoryLabelBoxes,
+      occupiedBoxes: territoryLabelBoxes,
     }).map(label => [label.id, label]),
-  ), [labelNodes, layout, view, viewport, mode, zoomLevel, labelSelectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes, spatialLayout, spatialObstacles])
-  // A label that had nowhere else to go (a selected or attention label) keeps its place; counts and captions under it give way.
-  const spatialTextsShown = useMemo(() => {
-    if (!spatialTextPlan) return null
-    const labelBoxes = [...visibleLabels.values()].map(label => label.bounds)
-    const covered = spatialTextPlan.yielding.filter(text => labelBoxes.some(box => box.minX < text.box.maxX && box.maxX > text.box.minX && box.minY < text.box.maxY && box.maxY > text.box.minY))
-    if (covered.length === 0) return spatialTextPlan.shown
-    const shown = new Set(spatialTextPlan.shown)
-    for (const text of covered) shown.delete(text.key)
-    return shown
-  }, [spatialTextPlan, visibleLabels])
+  ), [nodes, layout, view, viewport, mode, zoomLevel, selectedId, hoverId, focusId, searchResultId, semanticNeighborIds, structurallyVisibleIds, reservedBoxes, territoryLabelBoxes, spatialLayout])
+
+  // ── The spatial view's texts: one deterministic plan (spatial-labels.ts) ──
+  // A drilled project is the view itself: its selection neither labels it again nor names all it contains.
+  const labelSelection = spatialLayout && selectedId !== null && selectedId === spatialLayout.anchorId ? null : selectedId
+  const spatialLabels = useMemo(() => spatialLayout && spatial
+    ? planSpatialLabels({
+      layout: spatialLayout,
+      nodeById,
+      visibleIds: structurallyVisibleIds,
+      copy: spatial.copy,
+      view,
+      viewport,
+      reserved: [...reservedBoxes, ...chromeBoxes],
+      depth: spatialDepth,
+      selectedId: labelSelection,
+      hoverId,
+      focusId,
+      searchResultId,
+      neighborIds: labelSelection ? selectedNeighborhood : undefined,
+    })
+    : null, [spatialLayout, spatial, nodeById, structurallyVisibleIds, view, viewport, reservedBoxes, chromeBoxes, spatialDepth, labelSelection, hoverId, focusId, searchResultId, selectedNeighborhood])
+  const colours = useMemo(() => spatialLayout ? projectColours(spatialLayout) : new Map<string, string>(), [spatialLayout])
+  // What a line keeps clear of: every circle drawn, so a line never passes through a node it does not touch.
+  const lineObstacles = useMemo(() => spatialLayout
+    ? spatialLineObstacles(spatialLayout, structurallyVisibleIds, atlasShown)
+    : [], [spatialLayout, structurallyVisibleIds, atlasShown])
+  // A line's path depends on the layout and what is drawn, never on the camera; each is found once.
+  const spatialPaths = useMemo(() => new Map<string, string | null>(), [lineObstacles])
+  const labelDimmed = useCallback((ownerId: string) => {
+    if (!spatialLayout || ownerId === 'atlas') return false
+    const cluster = spatialLayout.clusters.find(entry => entry.id === ownerId)
+    const band = cluster ? undefined : spatialLayout.unlinkedBands.find(entry => entry.id === ownerId)
+    const owners = cluster ? [cluster.parentId] : band ? band.memberIds : [ownerId]
+    if (highlighted && !owners.some(id => highlighted.ids.has(id))) return true
+    return owners.every(id => dimmedIds.has(id))
+  }, [spatialLayout, highlighted, dimmedIds])
 
   const fit = useCallback(() => {
     setView(fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current))
@@ -454,11 +532,29 @@ export function GraphCanvas({
       return
     }
     const ids = new Set(cameraCommand.nodeIds ?? [])
+    if (spatialLayout && cameraCommand.type === 'fit-node') {
+      // A spatial view shows a found or focused node among what it touches, and never dives past the
+      // depth at which its level already shows everything: the node keeps its place in the whole.
+      const touched = edges.flatMap(edge => ids.has(edge.source) ? [edge.target] : ids.has(edge.target) ? [edge.source] : [])
+      for (const id of touched) if (spatialLayout.roles.get(id) !== 'context') ids.add(id)
+      const next = fitNodeIds(layout, ids, viewport, overlayRef.current)
+      if (!next) return
+      const maxDepth = spatialLayout.level === 'portfolio' ? PORTFOLIO_REVEAL.satellites : PROJECT_REVEAL.satellites
+      const factor = Math.max(1, spatialFitWidth / maxDepth / next.w)
+      const target = layout.get(cameraCommand.nodeIds?.[0] ?? '')
+      const cx = target?.x ?? next.x + next.w / 2
+      const cy = target?.y ?? next.y + next.h / 2
+      autoFitRef.current = false
+      setView({ x: cx - (cx - next.x) * factor, y: cy - (cy - next.y) * factor, w: next.w * factor, h: next.h * factor })
+      return
+    }
     const next = fitNodeIds(layout, ids, viewport, overlayRef.current)
     if (next) {
       autoFitRef.current = false
       setView(next)
     }
+  // The spatial fit width changes with the canvas; a new width alone replays no command.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraCommand, fit, layout, viewport])
 
   useEffect(() => { onCameraChange?.(view) }, [view, onCameraChange])
@@ -469,9 +565,11 @@ export function GraphCanvas({
     const contextKey = graphCameraPreservationKey(viewport, inspectorOpen, selectedId, selectedNeighborhood)
     if (handledCameraContextRef.current === contextKey) return
     const viewportChanged = handledViewportRef.current !== viewportKey
+    const sheetChanged = sheetPresentation && handledInspectorRef.current !== inspectorOpen
     handledViewportRef.current = viewportKey
+    handledInspectorRef.current = inspectorOpen
     handledCameraContextRef.current = contextKey
-    if (spatialLayout && viewportChanged && autoFitRef.current) {
+    if (spatialLayout && (viewportChanged || sheetChanged) && autoFitRef.current) {
       // Nobody has moved the spatial camera since it fitted: a new canvas size re-fits the level,
       // still keeping a selection clear of the sheet and the page's overlays.
       const fitted = fitGraphBounds(graphBounds, viewport, undefined, overlayRef.current)
@@ -630,22 +728,30 @@ export function GraphCanvas({
         <marker id="ig-arrow-approval" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
           <path d="M0,0 L6,3 L0,6 Z" fill={GRAPH_VISUAL_TOKENS.edge.approval} />
         </marker>
-        {spatialLayout && <SpatialDefs />}
+        {spatialLayout && <SpatialSceneDefs hubs={spatialLayout.hubs} />}
+        {sheetTop !== null && (
+          <clipPath id="ig-sheet-clip">
+            <rect x={view.x - view.w} y={view.y - view.h} width={view.w * 3} height={Math.max(0, sheetTop - (view.y - view.h))} />
+          </clipPath>
+        )}
       </defs>
 
       {spatialLayout && (
-        <SpatialFields layout={spatialLayout} visibleIds={structurallyVisibleIds} />
-      )}
-      {spatialLayout && spatial && (
-        <AtlasLinks
-          atlas={spatialLayout.atlas}
-          layout={layout}
-          visibleIds={structurallyVisibleIds}
-          visual={spatial.atlasLinkVisual}
-        />
+        <g clipPath={sheetClip}>
+          <HubFields layout={spatialLayout} visibleIds={structurallyVisibleIds} />
+          {spatial && atlasShown && (
+            <AtlasLinks
+              atlas={spatialLayout.atlas}
+              layout={layout}
+              visibleIds={structurallyVisibleIds}
+              visual={spatial.atlasLinkVisual}
+              obstacles={lineObstacles}
+            />
+          )}
+        </g>
       )}
 
-      <g className={styles.territories}>
+      <g className={styles.territories} clipPath={sheetClip}>
         {visibleTerritories.map(territory => {
           const label = territoryLabelById.get(territory.id)
           return (
@@ -683,7 +789,7 @@ export function GraphCanvas({
         })}
       </g>
 
-      <g aria-hidden="true">
+      <g aria-hidden="true" clipPath={sheetClip}>
         {edges.map(edgeValue => {
           const source = layout.get(edgeValue.source)
           const target = layout.get(edgeValue.target)
@@ -713,6 +819,42 @@ export function GraphCanvas({
               : isHot ? 'url(#ig-arrow-hot)' : 'url(#ig-arrow)'
             : undefined
           if (spatialLayout && (spatialLayout.roles.get(edgeValue.source) === 'context' || spatialLayout.roles.get(edgeValue.target) === 'context') && !isHot) return null
+          if (spatialLayout) {
+            let d = spatialPaths.get(edgeValue.id)
+            if (d === undefined) {
+              d = clearSpatialEdgePath(
+                source,
+                target,
+                spatialEdgeCentre(spatialLayout, nodeById.get(edgeValue.source)),
+                edgeValue.relation === 'CONTAINS' ? 0.05 : 0.11,
+                lineObstacles.filter(circle => circle.id !== edgeValue.source && circle.id !== edgeValue.target),
+              )
+              spatialPaths.set(edgeValue.id, d)
+            }
+            if (!d) return null
+            const owner = nodeById.get(edgeValue.source)
+            const colour = owner ? identityColour(owner, colours) : visual.stroke
+            // A selection brightens what it touches and dims the rest; nothing it does not touch disappears.
+            const opacity = filterDimmed
+              ? Math.min(0.05, readability.opacity)
+              : isHot ? Math.max(0.85, readability.opacity) : highlighted ? readability.opacity * 0.4 : readability.opacity
+            return (
+              <g key={edgeValue.id} data-relation={edgeValue.relation}>
+                {isHot && <path d={d} fill="none" stroke={colour} strokeOpacity={0.18} strokeWidth={5.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+                <path
+                  d={d}
+                  fill="none"
+                  stroke={isHot ? GRAPH_VISUAL_TOKENS.edge.selected : colour}
+                  strokeOpacity={opacity}
+                  strokeWidth={visual.width + (isHot ? 0.6 : 0)}
+                  strokeDasharray={visual.dash}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                  className={styles.spatialEdge}
+                />
+              </g>
+            )
+          }
           return (
             <line
               key={edgeValue.id}
@@ -732,29 +874,22 @@ export function GraphCanvas({
       </g>
 
       {spatialLayout && spatial && (
-        <RunClusters
-          clusters={spatialLayout.clusters}
-          nodeById={nodeById}
-          visibleIds={structurallyVisibleIds}
-          textsShown={spatialTextsShown}
-          highlightedIds={highlighted?.ids ?? null}
-          scale={labelScale}
-          copy={spatial.copy}
-          onSelect={onSelect}
-          movedRef={movedRef}
-        />
-      )}
-      {spatialLayout && spatial && (
-        <UnlinkedBands
-          bands={spatialLayout.unlinkedBands}
-          visibleIds={structurallyVisibleIds}
-          textsShown={spatialTextsShown}
-          scale={labelScale}
-          copy={spatial.copy}
-        />
+        <g clipPath={sheetClip}>
+          <RunClusters
+            clusters={spatialLayout.clusters}
+            nodeById={nodeById}
+            visibleIds={structurallyVisibleIds}
+            highlightedIds={highlighted?.ids ?? null}
+            colours={colours}
+            copy={spatial.copy}
+            onSelect={onSelect}
+            movedRef={movedRef}
+            scale={view.w / Math.max(1, viewport.width)}
+          />
+        </g>
       )}
 
-      <g>
+      <g clipPath={sheetClip}>
         {(spatialLayout ? spatialRenderOrder(nodes, spatialLayout) : nodes).map(node => {
           const position = layout.get(node.id)
           if (!position || !structurallyVisibleIds.has(node.id)) return null
@@ -820,24 +955,16 @@ export function GraphCanvas({
               <circle r={Math.max(22, position.r + 8)} fill="transparent" pointerEvents="all" />
               {spatialLayout ? (
                 <g className={styles.spatialAppear}>
-                  {isFocused && <FocusRings radius={position.r} />}
-                  {isSelected && (
-                    <circle
-                      r={position.r + 7}
-                      fill="none"
-                      stroke={GRAPH_VISUAL_TOKENS.status.selected}
-                      strokeWidth={1.8}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  )}
                   {hub ? (
-                    <HubGlyph hub={hub} scale={labelScale} selected={isSelected} showSubtext={spatialTextsShown?.has(`hub-subtext:${hub.nodeId}`) ?? true} />
+                    <ProjectHubGlyph hub={hub} selected={isSelected} focused={isFocused} />
+                  ) : node.kind === 'workflow' ? (
+                    <WorkflowGlyph radius={position.r} colour={identityColour(node, colours)} inactive={node.status === 'inactive'} selected={isSelected} focused={isFocused} nodeId={node.id} />
+                  ) : node.kind === 'agent' ? (
+                    <AgentGlyph radius={position.r} colour={identityColour(node, colours)} selected={isSelected} focused={isFocused} nodeId={node.id} />
+                  ) : node.kind === 'run' ? (
+                    <RunGlyph radius={position.r} status={status} colour={identityColour(node, colours)} selected={isSelected} focused={isFocused} nodeId={node.id} />
                   ) : (
-                    <>
-                      {status && <StatusRing shape={visual.shape} radius={position.r} status={status} />}
-                      <NodeGlyph node={node} visual={visual} radius={position.r} fill={fill} selected={isSelected} />
-                      {status && <StatusBadge radius={position.r} status={status} />}
-                    </>
+                    <SatelliteGlyph kind={node.kind} radius={position.r} status={status} selected={isSelected} focused={isFocused} nodeId={node.id} />
                   )}
                 </g>
               ) : (
@@ -905,14 +1032,26 @@ export function GraphCanvas({
         })}
       </g>
 
-      {spatialLayout && spatial && (
-        <AtlasOrb
-          atlas={spatialLayout.atlas}
-          scale={labelScale}
-          label={spatial.copy.atlasLabel}
-          description={spatial.copy.atlasDescription}
-          onActivate={spatial.onAtlasActivate}
-        />
+      {spatialLayout && (
+        <g clipPath={sheetClip}>
+          {spatial && atlasShown && (
+            <AtlasCore
+              atlas={spatialLayout.atlas}
+              label={spatial.copy.atlasLabel}
+              description={spatial.copy.atlasDescription}
+              onActivate={spatial.onAtlasActivate}
+            />
+          )}
+          {spatialLabels && (
+            <SpatialLabelLayer
+              placements={spatialLabels.placements}
+              dimmedOwners={labelDimmed}
+              attributesFor={label => label.kind === 'band'
+                ? { 'data-band-count': spatialLayout.unlinkedBands.find(band => band.id === label.ownerId)?.count ?? 0 }
+                : undefined}
+            />
+          )}
+        </g>
       )}
     </svg>
   )
@@ -1045,72 +1184,92 @@ function spatialRenderOrder(nodes: readonly IntelligenceGraphNode[], layout: Spa
     || a.id.localeCompare(b.id))
 }
 
-const CLUSTER_STATUS_COLORS: Record<string, string> = {
-  done: GRAPH_VISUAL_TOKENS.status.completed,
-  completed: GRAPH_VISUAL_TOKENS.status.completed,
-  running: GRAPH_VISUAL_TOKENS.status.running,
-  failed: GRAPH_VISUAL_TOKENS.status.failed,
-  awaiting_approval: GRAPH_VISUAL_TOKENS.status.waiting,
-  pending: GRAPH_VISUAL_TOKENS.status.waiting,
-  cancelled: GRAPH_VISUAL_TOKENS.status.cancelled,
+/**
+ * The level's own names and counts a fit keeps on the canvas: the portfolio
+ * frames its hubs and Atlas; run counts and bands inside them unfold with zoom.
+ */
+function framedSpatialTexts(layout: SpatialLayout, texts: readonly SpatialText[]): SpatialText[] {
+  return layout.level === 'portfolio'
+    ? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext')
+    : [...texts]
 }
 
-function SpatialDefs() {
-  return (
-    <>
-      <radialGradient id="ig-atlas-halo">
-        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.32} />
-        <stop offset="58%" stopColor="#8b5cf6" stopOpacity={0.1} />
-        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
-      </radialGradient>
-      <radialGradient id="ig-atlas-energy" cx="44%" cy="38%" r="62%">
-        <stop offset="0%" stopColor="#eef2ff" stopOpacity={0.92} />
-        <stop offset="34%" stopColor="#818cf8" stopOpacity={0.6} />
-        <stop offset="74%" stopColor="#6d28d9" stopOpacity={0.38} />
-        <stop offset="100%" stopColor="#1e1b4b" stopOpacity={0.3} />
-      </radialGradient>
-      <radialGradient id="ig-atlas-core">
-        <stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
-        <stop offset="62%" stopColor="#e0e7ff" stopOpacity={0.85} />
-        <stop offset="100%" stopColor="#a5b4fc" stopOpacity={0} />
-      </radialGradient>
-    </>
-  )
+/** A project's core — hub, workflows, run counts and runs shown on their own — for a narrow first view. */
+function projectCoreBounds(layout: SpatialLayout, nodes: readonly IntelligenceGraphNode[]): GraphBounds {
+  const kinds = new Map(nodes.map(node => [node.id, node.kind]))
+  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+  const include = (x: number, y: number, r: number) => {
+    bounds.minX = Math.min(bounds.minX, x - r)
+    bounds.minY = Math.min(bounds.minY, y - r)
+    bounds.maxX = Math.max(bounds.maxX, x + r)
+    bounds.maxY = Math.max(bounds.maxY, y + r)
+  }
+  for (const [id, role] of layout.roles) {
+    const position = layout.positions.get(id)
+    if (!position || role === 'context' || layout.aggregatedRunIds.has(id) || layout.shownWithParent.has(id)) continue
+    if (role === 'structure' && kinds.get(id) === 'agent') continue
+    include(position.x, position.y, position.r + 12)
+  }
+  for (const cluster of layout.clusters) include(cluster.x, cluster.y, cluster.r + 12)
+  if (!Number.isFinite(bounds.minX)) return layout.fitBounds
+  return { minX: bounds.minX - 36, minY: bounds.minY - 36, maxX: bounds.maxX + 36, maxY: bounds.maxY + 36 }
 }
 
-/** A soft field under each hub: separation by space and light, not by dashed borders. */
-function SpatialFields({ layout, visibleIds }: { layout: SpatialLayout; visibleIds: ReadonlySet<string> }) {
-  return (
-    <g aria-hidden="true" pointerEvents="none">
-      {layout.hubs.map((hub, index) => {
-        if (hub.orbit === 'receded' || !visibleIds.has(hub.nodeId)) return null
-        const id = `ig-hub-field-${index}`
-        const radius = hub.orbit === 'focus' ? hub.r * 6.2 : hub.r * 3.1
-        const strength = hub.orbit === 'calm' ? 0.07 : 0.13
-        return (
-          <g key={hub.nodeId} className={styles.spatialNode} style={{ transform: `translate(${hub.x}px, ${hub.y}px)` }}>
-            <defs>
-              <radialGradient id={id}>
-                <stop offset="0%" stopColor={hub.color} stopOpacity={strength} />
-                <stop offset="100%" stopColor={hub.color} stopOpacity={0} />
-              </radialGradient>
-            </defs>
-            <circle r={radius} fill={`url(#${id})`} />
-          </g>
-        )
-      })}
-    </g>
-  )
+/** The first view of a spatial canvas: its level fitted to the default canvas, before the real one is measured. */
+function initialSpatialView(
+  nodes: IntelligenceGraphNode[],
+  edges: IntelligenceGraphEdge[],
+  spatial: GraphSpatialOptions,
+  overlayInsets: GraphOverlayInsets | undefined,
+): GraphViewBox {
+  const layout = computeSpatialLayout({ nodes, edges, anchor: spatial.anchor, aspect: spatial.aspect })
+  const viewport = { width: WORLD_W, height: WORLD_H }
+  const overlay = overlayInsets && ((overlayInsets.top ?? 0) > 0 || (overlayInsets.bottom ?? 0) > 0) ? overlayInsets : undefined
+  const bounds = boundsWithScreenText(layout.fitBounds, framedSpatialTexts(layout, spatialScreenTexts(layout, spatial.copy)), viewport, undefined, overlay)
+  return fitGraphBounds(bounds, viewport, undefined, overlay)
+}
+
+function circleMeetsBox(circle: { x: number; y: number; r: number }, box: GraphBounds): boolean {
+  const nearestX = Math.min(Math.max(circle.x, box.minX), box.maxX)
+  const nearestY = Math.min(Math.max(circle.y, box.minY), box.maxY)
+  return Math.hypot(circle.x - nearestX, circle.y - nearestY) < circle.r
+}
+
+interface SpatialLineObstacle { id: string; x: number; y: number; r: number }
+
+/** Every circle the spatial view draws — nodes, run counts, Atlas — with a little room around it. */
+function spatialLineObstacles(layout: SpatialLayout, visibleIds: ReadonlySet<string>, atlasShown: boolean): SpatialLineObstacle[] {
+  const circles: SpatialLineObstacle[] = []
+  for (const id of [...visibleIds].sort()) {
+    const position = layout.positions.get(id)
+    if (position) circles.push({ id, x: position.x, y: position.y, r: position.r + 3 })
+  }
+  for (const cluster of layout.clusters) {
+    // At its largest drawn size (`clusterDrawRadius` never exceeds 1.2×), so no camera moves a line.
+    if (visibleIds.has(cluster.parentId)) circles.push({ id: cluster.id, x: cluster.x, y: cluster.y, r: cluster.r * 1.2 + 3 })
+  }
+  if (atlasShown) circles.push({ id: 'atlas', x: layout.atlas.x, y: layout.atlas.y, r: layout.atlas.r * 1.12 + 3 })
+  return circles
+}
+
+/** The point a relation's curve bows away from: its hub on the portfolio, the level's centre elsewhere. */
+function spatialEdgeCentre(layout: SpatialLayout, source: IntelligenceGraphNode | undefined): { x: number; y: number } {
+  if (layout.level === 'portfolio' && source?.projectId) {
+    const hub = layout.hubs.find(entry => entry.projectId === source.projectId)
+    if (hub && hub.nodeId !== source.id) return { x: hub.x, y: hub.y }
+  }
+  return { x: 0, y: 0 }
 }
 
 /** Derived links from Atlas to the hubs it may link to — drawn only between visible ends. */
 function AtlasLinks({
-  atlas, layout, visibleIds, visual,
+  atlas, layout, visibleIds, visual, obstacles,
 }: {
   atlas: SpatialAtlasOrb
   layout: ReadonlyMap<string, PositionedNode>
   visibleIds: ReadonlySet<string>
   visual?: Pick<GraphEdgeVisual, 'stroke' | 'opacity' | 'dash' | 'width'>
+  obstacles: ReadonlyArray<SpatialLineObstacle>
 }) {
   const stroke = visual?.stroke ?? '#a5b4fc'
   const opacity = (visual?.opacity ?? 0.3) * (atlas.receded ? 0.55 : 1)
@@ -1119,25 +1278,26 @@ function AtlasLinks({
       {atlas.linkedHubIds.map(id => {
         const hub = layout.get(id)
         if (!hub || !visibleIds.has(id)) return null
-        const dx = hub.x - atlas.x
-        const dy = hub.y - atlas.y
-        const distance = Math.hypot(dx, dy)
-        if (distance <= atlas.r + hub.r + 12) return null
-        const ux = dx / distance
-        const uy = dy / distance
+        const d = clearSpatialEdgePath(
+          { x: atlas.x, y: atlas.y, r: atlas.r * 1.12 + 4 },
+          { x: hub.x, y: hub.y, r: hub.r + 8 },
+          { x: atlas.x + 1, y: atlas.y + 1 },
+          0.07,
+          obstacles.filter(circle => circle.id !== 'atlas' && circle.id !== id),
+        )
+        if (!d) return null
         return (
-          <line
+          <path
             key={id}
-            x1={atlas.x + ux * (atlas.r + 8)}
-            y1={atlas.y + uy * (atlas.r + 8)}
-            x2={hub.x - ux * (hub.r + 10)}
-            y2={hub.y - uy * (hub.r + 10)}
+            d={d}
+            fill="none"
             stroke={stroke}
             strokeOpacity={opacity}
             strokeWidth={visual?.width ?? 1.2}
             strokeDasharray={visual?.dash}
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
+            data-atlas-link={id}
           />
         )
       })}
@@ -1146,17 +1306,17 @@ function AtlasLinks({
 }
 
 function RunClusters({
-  clusters, nodeById, visibleIds, textsShown, highlightedIds, scale, copy, onSelect, movedRef,
+  clusters, nodeById, visibleIds, highlightedIds, colours, copy, onSelect, movedRef, scale,
 }: {
   clusters: readonly SpatialRunCluster[]
   nodeById: ReadonlyMap<string, IntelligenceGraphNode>
   visibleIds: ReadonlySet<string>
-  textsShown: ReadonlySet<string> | null
   highlightedIds: ReadonlySet<string> | null
-  scale: number
+  colours: ReadonlyMap<string, string>
   copy: GraphSpatialOptions['copy']
   onSelect: (node: IntelligenceGraphNode | null) => void
   movedRef: React.MutableRefObject<boolean>
+  scale: number
 }) {
   return (
     <g>
@@ -1164,22 +1324,15 @@ function RunClusters({
         if (!visibleIds.has(cluster.parentId)) return null
         const parent = nodeById.get(cluster.parentId)
         const dimmed = highlightedIds !== null && !highlightedIds.has(cluster.parentId)
-        const circumference = Math.PI * 2 * cluster.r
-        let offset = 0
-        const segments = cluster.distribution.map(entry => {
-          const length = (circumference * entry.count) / Math.max(1, cluster.count)
-          const segment = { status: entry.status, length, offset }
-          offset += length
-          return segment
-        })
-        const countSize = Math.max(8.5 * scale, cluster.r * (cluster.count >= 100 ? 0.74 : 0.92))
-        const captionSize = 9.5 * scale
+        // The mark takes the colour of the most frequent stored status that needs attention.
+        const attention = cluster.attentionCount > 0
+          ? cluster.distribution.find(entry => entry.status === 'failed' || entry.status === 'awaiting_approval' || entry.status === 'pending')
+          : undefined
         return (
           <g
             key={cluster.id}
             className={cn(styles.cluster, styles.spatialNode)}
             style={{ transform: `translate(${cluster.x}px, ${cluster.y}px)` }}
-            opacity={dimmed ? 0.28 : 1}
             data-cluster-kind={cluster.kind}
             data-cluster-count={cluster.count}
             onClick={event => {
@@ -1189,29 +1342,14 @@ function RunClusters({
           >
             <title>{copy.clusterDescription(cluster, parent?.label ?? '')}</title>
             <g className={styles.spatialAppear}>
-              <circle r={cluster.r + 3 * scale} fill="var(--ig-canvas)" fillOpacity={0.88} />
-              <circle r={cluster.r} fill="none" stroke="var(--ig-label-muted)" strokeOpacity={0.3} strokeWidth={0.9 * scale} />
-              {segments.map(segment => (
-                <circle
-                  key={segment.status}
-                  r={cluster.r}
-                  fill="none"
-                  stroke={CLUSTER_STATUS_COLORS[segment.status] ?? GRAPH_VISUAL_TOKENS.status.cancelled}
-                  strokeOpacity={0.78}
-                  strokeWidth={2.2 * scale}
-                  strokeDasharray={`${Math.max(0, segment.length - 0.8 * scale)} ${circumference}`}
-                  strokeDashoffset={-segment.offset}
-                  transform="rotate(-90)"
-                />
-              ))}
-              <text className={styles.clusterCount} textAnchor="middle" y={countSize * 0.36} fontSize={countSize}>
-                {copy.clusterCount(cluster)}
-              </text>
-              {(textsShown?.has(`cluster-caption:${cluster.id}`) ?? true) && (
-                <text className={styles.clusterCaption} textAnchor="middle" y={cluster.r + captionSize * 1.45} fontSize={captionSize}>
-                  {copy.clusterCaption(cluster)}
-                </text>
-              )}
+              <RunClusterGlyph
+                cluster={cluster}
+                colour={parent ? identityColour(parent, colours) : '#a5b4fc'}
+                count={copy.clusterCount(cluster)}
+                dimmed={dimmed}
+                attentionColour={attention ? CLUSTER_STATUS_COLORS[attention.status] ?? null : null}
+                scale={scale}
+              />
             </g>
           </g>
         )
@@ -1219,139 +1357,3 @@ function RunClusters({
     </g>
   )
 }
-
-function UnlinkedBands({
-  bands, visibleIds, textsShown, scale, copy,
-}: {
-  bands: readonly SpatialUnlinkedBand[]
-  visibleIds: ReadonlySet<string>
-  textsShown: ReadonlySet<string> | null
-  scale: number
-  copy: GraphSpatialOptions['copy']
-}) {
-  return (
-    <g aria-hidden="true" pointerEvents="none">
-      {bands.map(band => {
-        if (!band.memberIds.some(id => visibleIds.has(id)) || !(textsShown?.has(`band:${band.id}`) ?? true)) return null
-        const [first, second] = copy.unlinkedAgents(band.count)
-        const size = 10.5 * scale
-        return (
-          <text
-            key={band.id}
-            className={cn(styles.bandCaption, styles.spatialNode)}
-            style={{ transform: `translate(${band.x}px, ${band.y}px)` }}
-            textAnchor={bandAnchor(band)}
-            fontSize={size}
-            data-band-count={band.count}
-          >
-            <tspan x={0} dy={-size * 0.2}>{first}</tspan>
-            <tspan x={0} dy={size * 1.25}>{second}</tspan>
-          </text>
-        )
-      })}
-    </g>
-  )
-}
-
-function HubGlyph({ hub, scale, selected, showSubtext }: { hub: SpatialHub; scale: number; selected: boolean; showSubtext: boolean }) {
-  const receded = hub.orbit === 'receded'
-  const strength = receded ? 0.55 : hub.orbit === 'calm' ? 0.62 : 1
-  const nameSize = (receded ? 11 : hub.orbit === 'focus' ? 15 : 13.5) * scale
-  const subtextSize = 10.5 * scale
-  return (
-    <g data-hub-orbit={hub.orbit}>
-      {!receded && <circle r={hub.r + 10} fill={hub.color} fillOpacity={0.07 * strength} />}
-      <circle
-        r={hub.r}
-        fill={hub.color}
-        fillOpacity={0.08 + 0.2 * strength}
-        stroke={selected ? GRAPH_VISUAL_TOKENS.status.selected : hub.color}
-        strokeOpacity={selected ? 1 : 0.75 * strength}
-        strokeWidth={selected ? 1.8 : 1.2}
-        vectorEffect="non-scaling-stroke"
-        className={styles.identity}
-      />
-      <circle
-        r={hub.r * 0.84}
-        fill="none"
-        stroke={hub.color}
-        strokeOpacity={0.42 * strength}
-        strokeWidth={hub.r * 0.035}
-        strokeDasharray={`${(hub.r * 0.3).toFixed(2)} ${(hub.r * 0.13).toFixed(2)}`}
-      />
-      <circle r={hub.r * 0.6} fill="var(--ig-canvas)" fillOpacity={0.4} />
-      <text
-        className={styles.hubMonogram}
-        textAnchor="middle"
-        y={hub.r * 0.2}
-        fontSize={hub.r * 0.56}
-        fillOpacity={0.5 + 0.5 * strength}
-      >
-        {hub.monogram}
-      </text>
-      {!receded && (
-        <text className={styles.hubName} textAnchor="middle" y={hub.r + nameSize * 1.4} fontSize={nameSize} fontWeight={650}>
-          {hub.label}
-        </text>
-      )}
-      {!receded && showSubtext && (
-        <text className={styles.hubSubtext} textAnchor="middle" y={hub.r + nameSize * 1.4 + subtextSize * 1.5} fontSize={subtextSize}>
-          {hub.subtext}
-        </text>
-      )}
-    </g>
-  )
-}
-
-/**
- * Atlas, the identity orb. Not a node of the snapshot: it has no status, no
- * inspector and no data behind its light. Its slow breathing is identity
- * motion only and stands down with reduced motion (book ¶208).
- */
-function AtlasOrb({
-  atlas, scale, label, description, onActivate,
-}: {
-  atlas: SpatialAtlasOrb
-  scale: number
-  label: string
-  description: string
-  onActivate?: () => void
-}) {
-  const labelSize = (atlas.receded ? 11.5 : 15) * scale
-  return (
-    <g
-      className={cn(styles.atlas, styles.spatialNode)}
-      style={{ transform: `translate(${atlas.x}px, ${atlas.y}px)` }}
-      opacity={atlas.receded ? 0.6 : 1}
-      data-atlas={atlas.receded ? 'receded' : 'core'}
-      role="button"
-      tabIndex={0}
-      aria-label={`${label}. ${description}`}
-      onClick={event => { event.stopPropagation(); onActivate?.() }}
-      onKeyDown={event => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        event.stopPropagation()
-        onActivate?.()
-      }}
-    >
-      <title>{`${label} — ${description}`}</title>
-      <g className={styles.atlasBreath} aria-hidden="true">
-        <circle r={atlas.r * 2.05} fill="url(#ig-atlas-halo)" />
-        <circle r={atlas.r * 1.42} fill="url(#ig-atlas-halo)" />
-      </g>
-      <circle r={atlas.r * 1.12} fill="none" stroke={GRAPH_VISUAL_TOKENS.status.selected} strokeWidth={1.6} vectorEffect="non-scaling-stroke" className={styles.atlasFocus} />
-      <circle r={atlas.r} fill="url(#ig-atlas-energy)" />
-      <circle r={atlas.r} fill="none" stroke="#a5b4fc" strokeOpacity={0.62} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <circle r={atlas.r * 0.7} fill="none" stroke="#c4b5fd" strokeOpacity={0.3} strokeWidth={0.9} vectorEffect="non-scaling-stroke" />
-      <circle r={atlas.r * 0.26} fill="url(#ig-atlas-core)" />
-      {!atlas.receded && (
-        <text className={styles.atlasLabel} textAnchor="middle" y={atlas.r + labelSize * 1.55} fontSize={labelSize} fontWeight={650}>
-          {label}
-        </text>
-      )}
-    </g>
-  )
-}
-
-

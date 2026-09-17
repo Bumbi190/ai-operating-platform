@@ -25,9 +25,10 @@
  * Everything renders as text. Nothing here fetches.
  */
 
-import { forwardRef, useId, useState, type KeyboardEvent } from 'react'
+import { forwardRef, useId, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import Link from 'next/link'
 import { Crosshair, PanelRightClose, X } from 'lucide-react'
+import { NodeIdentityGlyph } from '@/components/platform/intelligence/spatial-scene'
 import type {
   IntelligenceGraphEdge,
   IntelligenceGraphMeta,
@@ -74,10 +75,15 @@ export interface IntelligenceGraphInspectorProps {
   onDrillIn: (node: IntelligenceGraphNode) => void
   onIsolate: (node: IntelligenceGraphNode) => void
   onFocus: (node: IntelligenceGraphNode) => void
+  /**
+   * Live Operations: the colour the canvas draws this node in (its project's) and a hub's
+   * monogram, so the panel shows the same identity as the selection on the canvas.
+   */
+  identity?: { accent: string; monogram?: string }
 }
 
 export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGraphInspectorProps>(function IntelligenceGraphInspector({
-  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus,
+  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus, identity,
 }, ref) {
   // Kept across selections: following a connection stays on Kopplingar.
   const [tab, setTab] = useState<InspectorTab>('overview')
@@ -114,9 +120,17 @@ export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGr
       className={styles.inspector}
       aria-label={`${kindLabel(node.kind)}: ${node.label}`}
       data-testid="graph-inspector"
+      data-identity={identity ? 'spatial' : undefined}
+      style={identity ? ({ '--ig-inspector-accent': identity.accent } as CSSProperties) : undefined}
     >
       <div className={styles.inspectorHeader}>
-        <span className={styles.inspectorGlyph} style={{ backgroundColor: color }} aria-hidden />
+        {identity ? (
+          <span className={styles.inspectorIdentity}>
+            <NodeIdentityGlyph node={node} colour={identity.accent} monogram={identity.monogram} />
+          </span>
+        ) : (
+          <span className={styles.inspectorGlyph} style={{ backgroundColor: color }} aria-hidden />
+        )}
         <div className={styles.inspectorHeading}>
           <p className={styles.inspectorTitle} title={node.label}>{node.label}</p>
           <p className={styles.inspectorKind}>{kindLabel(node.kind)}</p>

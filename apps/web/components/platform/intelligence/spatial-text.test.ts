@@ -1,28 +1,42 @@
 /**
- * Phase 18 T2b — the spatial view's own texts: kept on the canvas by a fit,
- * and never drawn over each other or over a circle that is not theirs.
+ * Phase 18 T2b, refined in T2c — the spatial view's typography, and the texts a
+ * fit keeps on the canvas. Where texts are drawn is spatial-labels.test.ts.
  */
 import { describe, expect, it } from 'vitest'
 import { PROD_SHAPED_PROJECTS as P, productionShapedOperations } from '@/lib/qa/intelligence-graph-fixture'
 import { boundsWithScreenText, fitGraphBounds, type GraphBounds, type GraphScreenText } from './graph-readability'
-import { computeSpatialLayout, spatialNodeVisibility, type SpatialAnchor, type SpatialLayout, type SpatialUnlinkedBand } from './spatial-layout'
-import { bandAnchor, planSpatialTexts, spatialScreenTexts, type SpatialCopy, type SpatialText } from './spatial-text'
+import { computeSpatialLayout, type SpatialAnchor, type SpatialUnlinkedBand } from './spatial-layout'
+import {
+  SPATIAL_NARROW_CANVAS,
+  SPATIAL_NARROW_TYPE_SCALE,
+  SPATIAL_TYPE,
+  bandAnchor,
+  clusterDrawRadius,
+  selectionRingOffset,
+  spatialScreenTexts,
+  spatialTypeScale,
+  textBlockHeightPx,
+  textWidthPx,
+  wrapName,
+  type SpatialCopy,
+} from './spatial-text'
 
-const COPY: SpatialCopy = {
+const SPATIAL_TEST_COPY: SpatialCopy = {
   atlasLabel: 'Atlas',
+  atlasSubtitle: 'Omniras identitet',
   atlasDescription: 'Omniras identitet, inte en datanod.',
   clusterCount: (cluster) => (cluster.kind === 'older' ? `+${cluster.count}` : String(cluster.count)),
   clusterCaption: (cluster) => (cluster.kind === 'older' ? 'äldre' : cluster.kind === 'no-workflow' ? 'utan workflow' : 'körningar'),
   unlinkedAgents: (count) => [`${count} agenter`, 'som inget workflow nämner'] as const,
   hubDescription: (hub) => hub.subtext,
   clusterDescription: (cluster, parent) => `${parent}: ${cluster.count}`,
+  statusWord: (node) => (node.status === 'failed' ? 'misslyckades' : node.status === 'running' ? 'kör' : node.status ? 'väntar' : null),
 }
+const COPY = SPATIAL_TEST_COPY
 
-function layoutAt(anchor: SpatialAnchor, hours = 24, attention = false) {
-  const payload = productionShapedOperations(hours, { attention })
-  const layout = computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor, aspect: 'wide' })
-  const visibleIds = new Set(payload.nodes.filter((node) => spatialNodeVisibility(node, layout, { depth: 1 }) !== 'hidden').map((node) => node.id))
-  return { payload, layout, visibleIds }
+function layoutAt(anchor: SpatialAnchor) {
+  const payload = productionShapedOperations(24)
+  return computeSpatialLayout({ nodes: payload.nodes, edges: payload.edges, anchor, aspect: 'wide' })
 }
 
 const boxOf = (text: GraphScreenText, scale: number): GraphBounds => ({
@@ -31,37 +45,88 @@ const boxOf = (text: GraphScreenText, scale: number): GraphBounds => ({
   minY: text.y + text.topPx * scale,
   maxY: text.y + text.bottomPx * scale,
 })
-const overlaps = (a: GraphBounds, b: GraphBounds) => a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY
 
-/** Every drawn text against every other drawn text and every visible circle it does not own. */
-function collisions(layout: SpatialLayout, texts: readonly SpatialText[], shown: ReadonlySet<string>, scale: number, visibleIds: ReadonlySet<string>) {
-  const drawn = texts.filter((text) => shown.has(text.key))
-  const found: string[] = []
-  for (let i = 0; i < drawn.length; i++) {
-    for (let j = i + 1; j < drawn.length; j++) {
-      if (overlaps(boxOf(drawn[i], scale), boxOf(drawn[j], scale))) found.push(`${drawn[i].key} × ${drawn[j].key}`)
-    }
-    const own = new Set([drawn[i].ownerId, ...(layout.unlinkedBands.find((band) => band.id === drawn[i].ownerId)?.memberIds ?? [])])
-    for (const [id, position] of layout.positions) {
-      if (own.has(id) || !visibleIds.has(id)) continue
-      const circle = { minX: position.x - position.r - 2 * scale, maxX: position.x + position.r + 2 * scale, minY: position.y - position.r - 2 * scale, maxY: position.y + position.r + 2 * scale }
-      if (overlaps(circle, boxOf(drawn[i], scale))) found.push(`${drawn[i].key} × ${id}`)
-    }
-  }
-  return found
-}
+describe('phase 18 T2c · spatial typography', () => {
+  it('orders type by what a thing is: Atlas and the drilled hub, hubs, workflows over agents, captions last', () => {
+    const { atlasName, hubName, workflow, agent, run, satellite, caption, hubSubtext, atlasSubtitle } = SPATIAL_TYPE
+    expect(atlasName.size).toBeGreaterThan(hubName.active)
+    expect(hubName.focus).toBeGreaterThan(hubName.active)
+    expect(hubName.active).toBeGreaterThan(hubName.calm)
+    expect(hubName.calm).toBeGreaterThan(hubName.receded)
+    expect(hubName.calm).toBeGreaterThan(workflow.size)
+    // A workflow is easier to find than an agent: larger and heavier.
+    expect(workflow.size).toBeGreaterThan(agent.size)
+    expect(workflow.weight).toBeGreaterThan(agent.weight)
+    expect(agent.size).toBeGreaterThanOrEqual(satellite.size)
+    expect(run.size).toBeLessThan(workflow.size)
+    for (const small of [hubSubtext.size, atlasSubtitle.size]) expect(small).toBeLessThan(hubName.calm)
+    expect(Math.min(...Object.values(SPATIAL_TYPE).map((entry) => ('size' in entry ? entry.size : Infinity)))).toBe(caption.size)
+  })
 
-describe('phase 18 T2b · the spatial view’s own texts', () => {
+  it('steps every text down one size below the narrow canvas width, and only there', () => {
+    expect(spatialTypeScale(375)).toBe(SPATIAL_NARROW_TYPE_SCALE)
+    expect(spatialTypeScale(SPATIAL_NARROW_CANVAS - 1)).toBe(SPATIAL_NARROW_TYPE_SCALE)
+    expect(spatialTypeScale(SPATIAL_NARROW_CANVAS)).toBe(1)
+    expect(spatialTypeScale(1440)).toBe(1)
+  })
+
+  it('takes a text to be wide rather than narrow: wide glyphs, heavy weights and the halo all add', () => {
+    expect(textWidthPx('', 12, 500)).toBe(5)
+    expect(textWidthPx('iiii', 12, 500)).toBeLessThan(textWidthPx('aaaa', 12, 500))
+    expect(textWidthPx('aaaa', 12, 500)).toBeLessThan(textWidthPx('AAAA', 12, 500))
+    expect(textWidthPx('AAAA', 12, 500)).toBeLessThan(textWidthPx('MMMM', 12, 500))
+    expect(textWidthPx('Familje-Stunden', 15, 650)).toBeGreaterThan(textWidthPx('Familje-Stunden', 15, 500))
+    // Linear in size above the halo and each glyph's rounding.
+    const fixed = 5 + [...'Månadsbrev'].length * 0.1
+    expect(textWidthPx('Månadsbrev', 24, 500) - fixed).toBeCloseTo(2 * (textWidthPx('Månadsbrev', 12, 500) - fixed), 6)
+    expect(textBlockHeightPx(2, 10)).toBeGreaterThan(textBlockHeightPx(1, 10))
+    expect(textBlockHeightPx(0, 10)).toBe(textBlockHeightPx(1, 10))
+  })
+
+  it('breaks a name at the hyphen or space nearest its middle, keeping the hyphen, and never breaks a name without one', () => {
+    expect(wrapName('Familje-Stunden')).toEqual(['Familje-', 'Stunden'])
+    expect(wrapName('The Prompt')).toEqual(['The', 'Prompt'])
+    expect(wrapName('Nordisk Kundservice och Supportautomation')).toEqual(['Nordisk Kundservice', 'och Supportautomation'])
+    expect(wrapName('GainPilot')).toBeNull()
+    expect(wrapName('MMMMMMMMMMMMMMMMMMMMMMMM')).toBeNull()
+    expect(wrapName('-edge')).toBeNull()
+  })
+
+  it('leaves a selection ring room at every size, and draws a run count no smaller than legible nor past its room', () => {
+    expect(selectionRingOffset(10)).toBe(6)
+    expect(selectionRingOffset(100)).toBe(18)
+    // A small count at a far camera is raised toward the legible minimum — never past 1.2×, the room its rings leave.
+    expect(clusterDrawRadius(5, 1)).toBeCloseTo(6)
+    expect(clusterDrawRadius(20, 1)).toBe(20)
+    expect(clusterDrawRadius(5, 0.1)).toBe(5)
+  })
+})
+
+describe('phase 18 T2b · the level’s own texts, for a fit', () => {
   it('names each thing that carries its own text once, and nothing receded', () => {
-    const portfolio = spatialScreenTexts(layoutAt({ level: 'portfolio' }).layout, COPY)
+    const portfolio = spatialScreenTexts(layoutAt({ level: 'portfolio' }), COPY)
     expect(new Set(portfolio.map((text) => text.key)).size).toBe(portfolio.length)
     expect(portfolio.filter((text) => text.kind === 'hub-name')).toHaveLength(4)
     expect(portfolio.filter((text) => text.kind === 'atlas')).toHaveLength(1)
-    const project = spatialScreenTexts(layoutAt({ level: 'project', projectId: P.familjeStunden }).layout, COPY)
+    expect(portfolio.filter((text) => text.kind === 'atlas-subtitle')).toHaveLength(1)
+    const project = spatialScreenTexts(layoutAt({ level: 'project', projectId: P.familjeStunden }), COPY)
     // The drilled hub only: the other projects and Atlas have receded and carry no text.
     expect(project.filter((text) => text.kind === 'hub-name').map((text) => text.ownerId)).toEqual([`project:${P.familjeStunden}`])
-    expect(project.filter((text) => text.kind === 'atlas')).toEqual([])
+    expect(project.filter((text) => text.kind === 'atlas' || text.kind === 'atlas-subtitle')).toEqual([])
     expect(project.filter((text) => text.kind === 'band')).toHaveLength(1)
+  })
+
+  it('frames names only on a narrow canvas, as they wrap', () => {
+    const layout = layoutAt({ level: 'portfolio' })
+    const wide = spatialScreenTexts(layout, COPY)
+    const narrow = spatialScreenTexts(layout, COPY, { narrow: true })
+    expect(narrow.filter((text) => text.kind === 'hub-subtext' || text.kind === 'atlas-subtitle')).toEqual([])
+    const width = (text: GraphScreenText) => text.leftPx + text.rightPx
+    const name = (texts: typeof wide, owner: string) => texts.find((text) => text.kind === 'hub-name' && text.ownerId === owner)!
+    const familjeStunden = `project:${P.familjeStunden}`
+    // "Familje-" over "Stunden", set a step smaller: narrower and taller than the one line.
+    expect(width(name(narrow, familjeStunden))).toBeLessThan(width(name(wide, familjeStunden)) * 0.7)
+    expect(name(narrow, familjeStunden).bottomPx).toBeGreaterThan(name(wide, familjeStunden).bottomPx)
   })
 
   it('reads a band caption away from its project', () => {
@@ -71,52 +136,11 @@ describe('phase 18 T2b · the spatial view’s own texts', () => {
     expect(bandAnchor(band(Math.PI / 2))).toBe('middle')
     expect(bandAnchor(band(-Math.PI / 2))).toBe('middle')
     // The box follows the anchor: a caption on the left side reaches left from its point.
-    const { layout } = layoutAt({ level: 'project', projectId: P.familjeStunden })
+    const layout = layoutAt({ level: 'project', projectId: P.familjeStunden })
     const end = spatialScreenTexts({ ...layout, unlinkedBands: [band(Math.PI)] }, COPY).find((text) => text.kind === 'band')!
     expect(end.rightPx).toBeLessThan(end.leftPx)
     const start = spatialScreenTexts({ ...layout, unlinkedBands: [band(0)] }, COPY).find((text) => text.kind === 'band')!
     expect(start.leftPx).toBeLessThan(start.rightPx)
-  })
-
-  it('draws everything at a roomy scale, and never draws over another text or a circle that is not its own', () => {
-    for (const anchor of [{ level: 'portfolio' }, { level: 'project', projectId: P.familjeStunden }, { level: 'project', projectId: P.prompt }] as SpatialAnchor[]) {
-      for (const [hours, attention] of [[24, false], [24 * 7, true]] as const) {
-        const { layout, visibleIds } = layoutAt(anchor, hours, attention)
-        const texts = spatialScreenTexts(layout, COPY)
-        for (const scale of [0.8, 1, 1.6, 2.4, 4]) {
-          const plan = planSpatialTexts(layout, texts, scale, visibleIds)
-          const found = collisions(layout, texts, new Set([...plan.shown].filter((key) => !key.startsWith('hub-name') && !key.startsWith('atlas'))), scale, visibleIds)
-          expect(found, `${JSON.stringify(anchor)} ${hours} h · scale ${scale}`).toEqual([])
-        }
-      }
-    }
-    const { layout, visibleIds } = layoutAt({ level: 'project', projectId: P.familjeStunden })
-    const roomy = planSpatialTexts(layout, spatialScreenTexts(layout, COPY), 1, visibleIds)
-    expect([...roomy.shown].map((key) => key.split(':')[0]).sort()).toEqual(['band', 'hub-name', 'hub-subtext'])
-  })
-
-  it('keeps the names when space runs out, and lets counts and captions give way', () => {
-    const { layout, visibleIds } = layoutAt({ level: 'portfolio' })
-    const texts = spatialScreenTexts(layout, COPY)
-    const crowded = planSpatialTexts(layout, texts, 12, visibleIds)
-    for (const text of texts.filter((candidate) => candidate.kind === 'hub-name' || candidate.kind === 'atlas')) {
-      expect(crowded.shown.has(text.key), text.key).toBe(true)
-    }
-    const roomy = planSpatialTexts(layout, texts, 1, visibleIds)
-    const subtexts = (plan: { shown: ReadonlySet<string> }) => [...plan.shown].filter((key) => key.startsWith('hub-subtext')).length
-    expect(subtexts(roomy)).toBe(4)
-    expect(subtexts(crowded)).toBeLessThan(4)
-    // Captions that give way are named, so a label placed over them later can hide them.
-    expect(roomy.yielding.map((text) => text.key).every((key) => key.startsWith('hub-subtext') || key.startsWith('cluster-caption'))).toBe(true)
-  })
-
-  it('lets node labels route around Atlas, hubs, run counts and what is drawn', () => {
-    const { layout, visibleIds } = layoutAt({ level: 'project', projectId: P.prompt })
-    const texts = spatialScreenTexts(layout, COPY)
-    const plan = planSpatialTexts(layout, texts, 1, visibleIds)
-    const visibleClusters = layout.clusters.filter((cluster) => visibleIds.has(cluster.parentId))
-    const visibleHubs = layout.hubs.filter((hub) => visibleIds.has(hub.nodeId))
-    expect(plan.obstacles).toHaveLength(1 + visibleHubs.length + visibleClusters.length + plan.shown.size)
   })
 })
 

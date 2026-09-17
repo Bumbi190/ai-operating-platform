@@ -347,6 +347,11 @@ export function spatialNodeVisibility(
     searchResultId?: string | null
     neighborIds?: ReadonlySet<string>
     executionContext?: boolean
+    /**
+     * A narrow canvas opening a project with many agents (T2c): its agents arrive as the
+     * operator zooms in, like agent names do, instead of crowding a phone's first view.
+     */
+    compactAgents?: boolean
   },
 ): GraphStructuralVisibility {
   const role = layout.roles.get(node.id)
@@ -359,11 +364,13 @@ export function spatialNodeVisibility(
   const parentId = layout.shownWithParent.get(node.id)
   if (parentId !== undefined) return interacting || asked(parentId) ? 'visible' : 'hidden'
   if (interacting || getStatusVisual(node)?.attention) return 'visible'
-  // On the portfolio a selected hub keeps its children folded — the inspector has them; a
-  // selected child still shows what it touches.
+  // On the portfolio a selected hub keeps its children folded — the inspector has them; so does
+  // a narrow canvas's own project while its agents are compact. A selected child still shows
+  // what it touches.
   const selectedRole = state.selectedId ? layout.roles.get(state.selectedId) : undefined
-  const revealsNeighbours = !(layout.level === 'portfolio' && selectedRole === 'hub')
-  if (state.selectedId && revealsNeighbours && state.neighborIds?.has(node.id)) return 'visible'
+  const foldsNeighbour = (layout.level === 'portfolio' && selectedRole === 'hub')
+    || (state.compactAgents === true && selectedRole === 'anchor' && node.kind === 'agent')
+  if (state.selectedId && !foldsNeighbour && state.neighborIds?.has(node.id)) return 'visible'
   if (state.executionContext) return state.neighborIds?.has(node.id) ? 'visible' : 'hidden'
   if (role === 'context') return 'dimmed'
   if (layout.level === 'portfolio') {
@@ -374,6 +381,9 @@ export function spatialNodeVisibility(
   }
   if (layout.level === 'project' && role === 'satellite') {
     return state.depth >= PROJECT_REVEAL.satellites ? 'visible' : 'hidden'
+  }
+  if (layout.level === 'project' && state.compactAgents && node.kind === 'agent') {
+    return state.depth >= PROJECT_REVEAL.agentLabels ? 'visible' : 'hidden'
   }
   return 'visible'
 }

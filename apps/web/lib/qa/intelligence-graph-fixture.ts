@@ -228,3 +228,153 @@ export function productionShapedOperations(hours = 24, options: { attention?: bo
     edges,
   }
 }
+
+// ─── Label stress payload (Phase 18 T2c) ─────────────────────────────────────
+//
+// Not production's shape: a synthetic worst case for the spatial view's labels,
+// in the builder's shapes. Seven projects, several with long names (one with no
+// place to break); a crowded project with 12 long-named workflows, 30 agents
+// (8 named by no workflow) and runs that need attention on six workflows at
+// once, plus runs without a workflow and outputs beside done runs; a project
+// with exactly AGENT_NAMES_AT_OVERVIEW long-named agents, so they are named from
+// its first view. Test-only.
+
+export const LABEL_STRESS_PROJECTS = {
+  crowded: 'cccccccc-0000-4000-8000-000000000001',
+  named: 'cccccccc-0000-4000-8000-000000000002',
+  research: 'cccccccc-0000-4000-8000-000000000003',
+  empty: 'cccccccc-0000-4000-8000-000000000004',
+  internal: 'cccccccc-0000-4000-8000-000000000005',
+  unbroken: 'cccccccc-0000-4000-8000-000000000006',
+  family: 'cccccccc-0000-4000-8000-000000000007',
+} as const
+
+const LABEL_STRESS_PROJECT_ROWS = [
+  { id: LABEL_STRESS_PROJECTS.crowded, name: 'Nordisk Kundservice och Supportautomation', slug: 'nordisk-kundservice', color: '#22d3ee' },
+  { id: LABEL_STRESS_PROJECTS.named, name: 'Q4-kampanj för Återförsäljare', slug: 'q4-kampanj', color: '#f472b6' },
+  { id: LABEL_STRESS_PROJECTS.research, name: 'Forskningsstöd — Medicinsk litteratur', slug: 'forskningsstod', color: '#a3e635' },
+  { id: LABEL_STRESS_PROJECTS.empty, name: 'Ekonomi', slug: 'ekonomi', color: '#fbbf24' },
+  { id: LABEL_STRESS_PROJECTS.internal, name: 'Internt verktygsstöd', slug: 'internt', color: '#6b7280' },
+  { id: LABEL_STRESS_PROJECTS.unbroken, name: 'MMMMMMMMMMMMMMMMMMMMMMMM', slug: 'mmmm', color: '#8b5cf6' },
+  { id: LABEL_STRESS_PROJECTS.family, name: 'Familje-Stunden', slug: 'familje-stunden', color: '#34d399' },
+]
+
+const CROWDED_WORKFLOWS = [
+  'Inkommande ärenden – prioritering och routing', 'Svarsförslag till kund', 'Eskalering till specialist',
+  'Kvalitetsgranskning av svar', 'Veckorapport kundnöjdhet', 'Kunskapsbas: uppdatering av artiklar',
+  'Återkoppling från produktteam', 'SLA-bevakning', 'Språkgranskning (svenska, norska, danska)',
+  'Churn-signaler i ärendehistorik', 'Enkätutskick efter avslutat ärende', 'Arkivering av stängda ärenden',
+]
+const CROWDED_ROLES = [
+  'Ärendeklassificerare', 'Tonalitetsgranskare för kundsvar', 'Specialist på fakturafrågor', 'Översättare nordiska språk',
+  'Sammanfattare av långa trådar', 'Kunskapsbasredaktör', 'SLA-vakt', 'Produktfeedbackanalytiker',
+]
+const NAMED_AGENTS = [
+  'Kampanjstrateg för återförsäljarkanalen', 'Copywriter sociala medier', 'Bildbeskrivare och alt-text',
+  'Budgetanalytiker Q4', 'Juridisk granskning av erbjudanden', 'Översättare finska', 'Återförsäljarkontakt', 'Rapportskrivare',
+]
+
+export function labelStressOperations() {
+  const P = LABEL_STRESS_PROJECTS
+  const base = Date.parse('2026-09-16T19:07:00.000Z')
+  const nodes: IntelligenceGraphNode[] = []
+  const edges: IntelligenceGraphEdge[] = []
+  const contains = (projectId: string, target: string) => edges.push({
+    id: `project:${projectId}→${target}`, source: `project:${projectId}`, target, relation: 'CONTAINS', confidence: 'DERIVED', metadata: {},
+  })
+  const agent = (projectId: string, id: string, label: string) => {
+    nodes.push({ id, kind: 'agent', label, source: 'runtime', projectId, metadata: { model: 'claude-sonnet-4-6', description: null } })
+    contains(projectId, id)
+  }
+  const workflow = (projectId: string, id: string, label: string, status: 'active' | 'inactive' = 'active') => {
+    nodes.push({ id, kind: 'workflow', label, source: 'runtime', projectId, status, metadata: { trigger: 'manual' } })
+    contains(projectId, id)
+  }
+  const delegate = (workflowId: string, agentId: string, order: number) => edges.push({
+    id: `${workflowId}→${agentId}`, source: workflowId, target: agentId, relation: 'DELEGATED_TO', confidence: 'DERIVED', metadata: { step: `Steg ${order}`, order },
+  })
+  let minute = 0
+  const run = (projectId: string, projectName: string, id: string, label: string, status: string, workflowId: string | null) => {
+    minute += 17
+    const createdAt = new Date(base - minute * 60_000).toISOString()
+    nodes.push({
+      id, kind: 'run', label, source: 'runtime', projectId, status,
+      metadata: { createdAt, startedAt: createdAt, finishedAt: status === 'done' ? createdAt : null, error: status === 'failed' ? 'Provider timeout' : null, attempts: 1, kind: workflowId ? 'workflow' : 'adhoc', projectName },
+    })
+    if (workflowId) edges.push({ id: `${workflowId}→${id}`, source: workflowId, target: id, relation: 'STARTED', confidence: 'DERIVED', timestamp: createdAt, metadata: {} })
+    if (status === 'awaiting_approval') {
+      nodes.push({ id: `approval:${id}`, kind: 'approval', label: 'Approval · customer_reply', source: 'runtime', projectId, status: 'pending', metadata: { kind: 'workflow', createdAt, reviewedAt: null, operator: null } })
+      edges.push({ id: `${id}→approval:${id}`, source: id, target: `approval:${id}`, relation: 'REQUESTED_APPROVAL', confidence: 'DERIVED', timestamp: createdAt, metadata: {} })
+    }
+    if (status === 'done' && minute % 3 === 0) {
+      nodes.push({ id: `output:${id}`, kind: 'output', label: `svarsutkast-${id.slice(-6)}.md`, source: 'runtime', projectId, metadata: { type: 'text', createdAt } })
+      edges.push({ id: `${id}→output:${id}`, source: id, target: `output:${id}`, relation: 'PRODUCED', confidence: 'DERIVED', timestamp: createdAt, metadata: {} })
+    }
+  }
+
+  for (const row of LABEL_STRESS_PROJECT_ROWS) {
+    nodes.push({ id: `project:${row.id}`, kind: 'project', label: row.name, source: 'runtime', projectId: row.id, metadata: { slug: row.slug, color: row.color } })
+  }
+
+  // Crowded: 30 agents, 12 workflows naming 22 of them, attention on six workflows at once.
+  for (let index = 0; index < 30; index++) {
+    agent(P.crowded, `agent:nk-${String(index + 1).padStart(2, '0')}`, `${CROWDED_ROLES[index % CROWDED_ROLES.length]} ${Math.floor(index / CROWDED_ROLES.length) + 1}`)
+  }
+  const attention = ['running', 'failed', 'awaiting_approval', 'failed', 'running', 'cancelled']
+  CROWDED_WORKFLOWS.forEach((name, workflowIndex) => {
+    const id = `workflow:nk-${String(workflowIndex + 1).padStart(2, '0')}`
+    workflow(P.crowded, id, name, workflowIndex === 11 ? 'inactive' : 'active')
+    for (let step = 0; step < 2; step++) delegate(id, `agent:nk-${String(((workflowIndex * 2 + step) % 22) + 1).padStart(2, '0')}`, step + 1)
+    const runs = 3 + ((workflowIndex * 5) % 9)
+    for (let index = 0; index < runs; index++) {
+      const status = index === 0 && workflowIndex < attention.length ? attention[workflowIndex] : index === 1 && workflowIndex === 3 ? 'failed' : 'done'
+      run(P.crowded, 'Nordisk Kundservice och Supportautomation', `run:nk-${workflowIndex + 1}-${index}`, `${name} · r${String(8100000 + workflowIndex * 100 + index)}`, status, id)
+    }
+  })
+  for (const [index, status] of ['failed', 'done', 'done'].entries()) {
+    run(P.crowded, 'Nordisk Kundservice och Supportautomation', `run:nk-orphan-${index}`, `run nkorph${index}`, status, null)
+  }
+
+  // Named: exactly eight long-named agents, so they are named from the first view.
+  NAMED_AGENTS.forEach((name, index) => agent(P.named, `agent:q4-${index + 1}`, name))
+  ;['Kampanjplan', 'Annonsmaterial för sociala medier', 'Budgetuppföljning', 'Återförsäljarbrev'].forEach((name, workflowIndex) => {
+    const id = `workflow:q4-${workflowIndex + 1}`
+    workflow(P.named, id, name)
+    for (let step = 0; step < 3; step++) delegate(id, `agent:q4-${((workflowIndex * 2 + step) % 8) + 1}`, step + 1)
+    for (let index = 0; index < 4; index++) {
+      const status = index === 0 && workflowIndex === 0 ? 'running' : index === 0 && workflowIndex === 1 ? 'failed' : 'done'
+      run(P.named, 'Q4-kampanj för Återförsäljare', `run:q4-${workflowIndex + 1}-${index}`, `${name} · r${String(8200000 + workflowIndex * 100 + index)}`, status, id)
+    }
+  })
+
+  // Research: small and quiet in the window.
+  ;['Litteratursökning PubMed', 'Sammanfattning av studier', 'Referenshantering'].forEach((name, index) => {
+    agent(P.research, `agent:fs-r${index + 1}`, `Forskningsassistent ${index + 1}`)
+    workflow(P.research, `workflow:fs-r${index + 1}`, name)
+    delegate(`workflow:fs-r${index + 1}`, `agent:fs-r${index + 1}`, 1)
+    run(P.research, 'Forskningsstöd — Medicinsk litteratur', `run:fs-r${index + 1}`, `${name} · r${8300000 + index}`, 'done', `workflow:fs-r${index + 1}`)
+  })
+
+  // Internal: two inactive workflows. Unbroken: one workflow, one running run.
+  workflow(P.internal, 'workflow:int-1', 'Verktygsinventering (manuell)', 'inactive')
+  workflow(P.internal, 'workflow:int-2', 'Licensgranskning (manuell)', 'inactive')
+  workflow(P.unbroken, 'workflow:mm-1', 'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW')
+  run(P.unbroken, 'MMMMMMMMMMMMMMMMMMMMMMMM', 'run:mm-1', 'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW · r8400000', 'running', 'workflow:mm-1')
+
+  // Family: twelve agents, five workflows.
+  for (let index = 0; index < 12; index++) agent(P.family, `agent:fam-${index + 1}`, `[Preview] Familjeassistent nummer ${index + 1}`)
+  ;['Veckans familjeplan', 'Måltider och inköp', 'Skola och läxor', 'Helg och fritid', 'Månadsbrev'].forEach((name, workflowIndex) => {
+    const id = `workflow:fam-${workflowIndex + 1}`
+    workflow(P.family, id, name)
+    delegate(id, `agent:fam-${workflowIndex * 2 + 1}`, 1)
+    delegate(id, `agent:fam-${workflowIndex * 2 + 2}`, 2)
+  })
+
+  return {
+    available: true,
+    projects: LABEL_STRESS_PROJECT_ROWS,
+    meta: { source: 'runtime' as const, generatedAt: new Date(base).toISOString(), nodeCount: nodes.length, edgeCount: edges.length },
+    nodes,
+    edges,
+  }
+}

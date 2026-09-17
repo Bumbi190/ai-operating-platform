@@ -144,7 +144,7 @@ export function GraphPlace({
   if (quiet) return null
 
   return (
-    <div className={`${styles.hud} ${styles.hudTop}`} data-testid="graph-place">
+    <div className={`${styles.hud} ${styles.hudTop}`} data-testid="graph-place" data-graph-chrome-items>
       {onBack && (
         <button type="button" onClick={onBack} className={styles.hudButton}>
           <ArrowLeft className={styles.buttonIcon} aria-hidden /> Tillbaka
@@ -270,7 +270,7 @@ export function GraphLegend({ entries, snapshotNote, about }: GraphLegendProps) 
         )}
       </div>
 
-      <div className={styles.legendBar}>
+      <div className={styles.legendBar} data-graph-chrome>
         {entries.length > 0 && (
           <ul className={styles.legendKey} aria-label="Linjestil efter källa">
             {entries.map(entry => (

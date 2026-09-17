@@ -656,3 +656,36 @@ describe('phase 18 T2b · semantic levels', () => {
     expect(spatialReportedLevel('workflow', 1, true)).toBe('execution')
   })
 })
+
+describe('phase 18 T2c · a phone opens a crowded project by its core', () => {
+  const neighboursOf = (edges: readonly IntelligenceGraphEdge[], id: string) => new Set([id, ...edges.filter((edge) => edge.source === id || edge.target === id).flatMap((edge) => [edge.source, edge.target])])
+
+  it('brings a crowded project’s agents with zoom, as their names come — and keeps them all on a wide canvas', () => {
+    const { payload, layout } = layoutOf({ level: 'project', projectId: P.familjeStunden })
+    const agent = payload.nodes.find((node) => node.id === 'agent:fs-01')!
+    const workflow = payload.nodes.find((node) => node.id === 'workflow:fs-1')!
+    expect(spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true })).toBe('hidden')
+    expect(spatialNodeVisibility(agent, layout, { depth: PROJECT_REVEAL.agentLabels, compactAgents: true })).toBe('visible')
+    expect(spatialNodeVisibility(workflow, layout, { depth: 1, compactAgents: true })).toBe('visible')
+    expect(spatialNodeVisibility(agent, layout, { depth: 1 })).toBe('visible')
+    // Asked for, it is shown.
+    expect(spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true, selectedId: agent.id })).toBe('visible')
+    expect(spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true, searchResultId: agent.id })).toBe('visible')
+  })
+
+  it('does not unfold them when the drilled project itself is selected, but shows what a selected workflow names', () => {
+    const { payload, layout } = layoutOf({ level: 'project', projectId: P.familjeStunden })
+    const fsHub = hub(P.familjeStunden)
+    const agents = payload.nodes.filter((node) => node.kind === 'agent' && node.projectId === P.familjeStunden)
+    const fromHub = neighboursOf(payload.edges, fsHub)
+    expect(agents.filter((agent) => spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true, selectedId: fsHub, neighborIds: fromHub }) !== 'hidden')).toEqual([])
+    // On a wide canvas the drilled project's selection hides nothing either — it never did.
+    expect(agents.every((agent) => spatialNodeVisibility(agent, layout, { depth: 1, selectedId: fsHub, neighborIds: fromHub }) === 'visible')).toBe(true)
+    const fromWorkflow = neighboursOf(payload.edges, 'workflow:fs-1')
+    const named = agents.filter((agent) => fromWorkflow.has(agent.id))
+    expect(named).toHaveLength(5)
+    for (const agent of named) {
+      expect(spatialNodeVisibility(agent, layout, { depth: 1, compactAgents: true, selectedId: 'workflow:fs-1', neighborIds: fromWorkflow }), agent.id).toBe('visible')
+    }
+  })
+})

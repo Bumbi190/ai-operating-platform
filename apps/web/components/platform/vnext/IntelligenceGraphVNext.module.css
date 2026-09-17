@@ -569,6 +569,16 @@
   min-width: 0;
 }
 
+.floatProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--ig-float-right);
+  height: var(--ig-float-top);
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .canvasFrame {
   position: relative;
   flex: 1 1 0;
@@ -964,6 +974,20 @@
   padding: 0.8125rem 0.75rem 0.625rem 0.875rem;
 }
 .inspectorGlyph { width: 0.75rem; height: 0.75rem; margin-top: 0.25rem; border-radius: 999px; flex: none; }
+/* Live Operations: the node's canvas glyph and colour, so panel and selection read as one. */
+.inspectorIdentity { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; margin: -0.125rem 0 0 -0.125rem; flex: none; }
+.inspectorIdentity svg { width: 1.75rem; height: 1.75rem; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ig-inspector-accent, #a5b4fc) 45%, transparent)); }
+.inspector[data-identity='spatial']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ig-inspector-accent, #a5b4fc), transparent);
+  opacity: 0.75;
+  pointer-events: none;
+}
 .inspectorHeading { min-width: 0; flex: 1 1 auto; margin-left: 0.125rem; }
 .inspectorTitle {
   margin: 0;

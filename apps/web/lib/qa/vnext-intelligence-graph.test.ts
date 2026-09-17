@@ -1231,6 +1231,37 @@ describe('phase 18 T2a · the canvas keeps nodes out from under its own controls
 // T2b — the spatial Live Operations view, on the production-shaped snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Reading the spatial canvas's server markup (T2b, T2c) ──
+
+/** The canvas markup alone: the SVG that carries the layout attribute, with the SVGs nested in it (Atlas's mark). */
+const canvas = (html: string) => {
+  const marker = html.indexOf('data-layout="spatial"')
+  expect(marker, 'spatial canvas').toBeGreaterThanOrEqual(0)
+  return element(html, html.lastIndexOf('<svg', marker), 'svg')
+}
+/** The element that opens at `start`, to its own closing tag. */
+const element = (markup: string, start: number, tag: string) => {
+  const pattern = new RegExp(`<${tag}[\\s>]|</${tag}>`, 'g')
+  pattern.lastIndex = start
+  let depth = 0
+  for (let match = pattern.exec(markup); match; match = pattern.exec(markup)) {
+    depth += match[0].startsWith('</') ? -1 : 1
+    if (depth === 0) return markup.slice(start, match.index + match[0].length)
+  }
+  throw new Error(`unclosed <${tag}>`)
+}
+/** A drawn text by its plan key: what the label layer placed for that owner. */
+const label = (svg: string, key: string) => {
+  const at = svg.indexOf(`data-label-key="${key}"`)
+  return at < 0 ? null : text(element(svg, svg.lastIndexOf('<g', at), 'g'))
+}
+const values = (markup: string, name: string) => [...markup.matchAll(new RegExp(`${name}="([^"]*)"`, 'g'))].map((match) => match[1])
+/** Every relation line the canvas draws — Atlas's links and each relation's own stroke (not its selection glow) — by dash. */
+const dashes = (markup: string) => [
+  ...(markup.match(/<path[^>]*data-atlas-link="[^"]*"[^>]*>/g) ?? []),
+  ...[...markup.matchAll(/<g data-relation="[^"]*">([\s\S]*?)<\/g>/g)].map((match) => (match[1].match(/<path[^>]*>/g) ?? []).at(-1)!),
+].map((line) => line.match(/stroke-dasharray="([^"]+)"/)?.[1] ?? 'solid')
+
 describe('phase 18 T2b · spatial Live Operations', () => {
   const P = PROD_SHAPED_PROJECTS
   const day = productionShapedOperations(24)
@@ -1238,16 +1269,6 @@ describe('phase 18 T2b · spatial Live Operations', () => {
   type Payload = ReturnType<typeof productionShapedOperations>
   const at = (payload: Payload, over: Partial<GraphState> = {}) => graphState({ data: payload as GraphState['data'], ...over })
   const drill = (payload: Payload, id: string) => buildDrilldownScope(payload.nodes.find((candidate) => candidate.id === id)!, payload.nodes, payload.edges)!
-  /** The canvas markup alone: the SVG that carries the layout attribute. */
-  const canvas = (html: string) => {
-    const marker = html.indexOf('data-layout="spatial"')
-    expect(marker, 'spatial canvas').toBeGreaterThanOrEqual(0)
-    const start = html.lastIndexOf('<svg', marker)
-    return html.slice(start, html.indexOf('</svg>', start) + '</svg>'.length)
-  }
-  const values = (markup: string, name: string) => [...markup.matchAll(new RegExp(`${name}="([^"]*)"`, 'g'))].map((match) => match[1])
-  const dashes = (markup: string) => (markup.match(/<line[^>]*>/g) ?? []).filter((line) => !line.includes('class=')).map((line) => line.match(/stroke-dasharray="([^"]+)"/)?.[1] ?? 'solid')
-
   it('lays out Live Operations spatially, while System Map and legacy keep the force layout', async () => {
     const html = await renderVNext(at(day))
     expect(html).toContain('data-spatial-level="portfolio"')
@@ -1266,11 +1287,14 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     expect(VNEXT).toContain('const spatialAspect = classifySpatialAspect(stageSize.width, stageSize.height - 2 * HUD_ROW_REM * rootPx)')
     // A counted run that is selected appears at its slot; nothing is re-laid for it.
     expect(read('components/platform/intelligence/spatial-layout.ts')).not.toContain('pinnedIds')
-    // A new canvas size re-fits a view nobody has moved, keeping a selection clear of sheet and overlays.
-    expect(CANVAS).toContain('if (spatialLayout && viewportChanged && autoFitRef.current) {')
+    // A new canvas size — or a phone's sheet opening or closing — re-fits a view nobody has moved, keeping a selection clear of sheet and overlays.
+    expect(CANVAS).toContain('if (spatialLayout && (viewportChanged || sheetChanged) && autoFitRef.current) {')
+    expect(CANVAS).toContain('const sheetChanged = sheetPresentation && handledInspectorRef.current !== inspectorOpen')
     // A fit frames the level's names and counts at their screen size; the portfolio frames its hubs and Atlas.
-    expect(CANVAS).toContain('return boundsWithScreenText(spatialLayout.fitBounds, framed, viewport, undefined, overlayRef.current)')
-    expect(CANVAS).toContain("? spatialTexts.filter(text => text.kind === 'atlas' || text.kind === 'hub-name' || text.kind === 'hub-subtext')")
+    expect(CANVAS).toContain("return boundsWithScreenText(core, framedSpatialTexts(spatialLayout, spatialTexts).filter(text => !compactAgents || text.kind !== 'band'), viewport, undefined, overlayRef.current)")
+    expect(CANVAS).toContain("? texts.filter(text => text.kind === 'atlas' || text.kind === 'atlas-subtitle' || text.kind === 'hub-name' || text.kind === 'hub-subtext')")
+    // A phone opening a project with many agents frames its core; the agents come with zoom (T2c).
+    expect(CANVAS).toContain('const core = compactAgents ? projectCoreBounds(spatialLayout, nodes) : spatialLayout.fitBounds')
     expect(CANVAS).toContain('const graphBounds = spatialBounds ?? forceBounds!')
     // The complete fit that resets a moved camera runs for a new layout only — the text-aware bounds change with the canvas.
     expect(CANVAS).toContain('}, [fitSignal, layoutBounds])')
@@ -1288,23 +1312,35 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     // The link rests on the payload holding owned projects only.
     expect(BUILDER).toContain("scopeToProjects(db.from('projects').select('id, name, slug, color'), allowed, 'id')")
     expect(read('lib/atlas/isolation.ts')).toContain(".from('projects').select('id').eq('owner_id', userId)")
-    // Identity carries no status colour.
-    const orbStart = svg.lastIndexOf('<g', svg.indexOf('data-atlas="core"'))
-    const orb = svg.slice(orbStart, svg.indexOf('</text></g>', orbStart))
-    expect(text(orb)).toBe('Atlas — Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten. Atlas')
+    // Identity carries no status colour — and says what it is, never what it is doing.
+    const orb = element(svg, svg.lastIndexOf('<g', svg.indexOf('data-atlas="core"')), 'g')
+    expect(text(orb)).toBe('Atlas — Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten.')
+    expect(orb).toContain('aria-label="Atlas. Omniras identitet, inte en datanod. Linjerna från Atlas går till projekt du äger. Aktivera för översikten."')
+    expect(label(svg, 'atlas:atlas')).toBe('Atlas')
+    expect(label(svg, 'atlas-subtitle:atlas')).toBe('Omniras identitet')
     for (const status of ['running', 'failed', 'waiting', 'approval', 'completed', 'cancelled'] as const) {
       expect(orb).not.toContain(`"${GRAPH_VISUAL_TOKENS.status[status]}"`)
     }
+    // The canonical orb's language: glass, the Omnira mark in its cyan glow, orbits — drawn, not a new asset.
+    expect(orb).toContain('aria-label="Omnira mark"')
+    expect(orb).toContain('filter="url(#ig-atlas-mark-glow)"')
   })
 
   it('gives each owned project a hub with its monogram and true counts; quiet ones orbit further out, never hidden', async () => {
     const svg = canvas(await renderVNext(at(day)))
     expect(values(svg, 'data-hub-orbit').sort()).toEqual(['active', 'active', 'calm', 'calm'])
-    const words = text(svg)
-    expect(words).toContain('TP The Prompt 2 agenter · 6 workflows · 13 körningar')
-    expect(words).toContain('FS Familje-Stunden 33 agenter · 5 workflows')
-    expect(words).toContain('GP GainPilot Inga agenter eller workflows')
-    expect(words).toContain('A0 AUDIT 0b 2 inaktiva workflows')
+    const hubs: Array<[string, string, string, string]> = [
+      [P.prompt, 'TP', 'The Prompt', '2 agenter · 6 workflows · 13 körningar'],
+      [P.familjeStunden, 'FS', 'Familje-Stunden', '33 agenter · 5 workflows'],
+      [P.gainPilot, 'GP', 'GainPilot', 'Inga agenter eller workflows'],
+      [P.audit, 'A0', 'AUDIT 0b', '2 inaktiva workflows'],
+    ]
+    for (const [projectId, monogram, name, counts] of hubs) {
+      const glyph = element(svg, svg.lastIndexOf('<g', svg.indexOf('data-hub-orbit', svg.indexOf(`aria-label="project: ${name} ·`))), 'g')
+      expect(text(glyph), name).toBe(monogram)
+      expect(label(svg, `hub-name:project:${projectId}`), name).toBe(name)
+      expect(label(svg, `hub-subtext:project:${projectId}`), name).toBe(counts)
+    }
     expect(svg).toContain('aria-label="project: GainPilot · Inga agenter eller workflows · inga körningar i fönstret och inget aktivt workflow"')
     expect(svg).toContain('aria-label="project: AUDIT 0b · 2 inaktiva workflows · inga körningar i fönstret och inget aktivt workflow"')
     // The children stay folded into those counts: no agent, workflow or run is drawn at the overview.
@@ -1325,7 +1361,8 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     expect(text(svg.slice(orbStart, svg.indexOf('</g>', svg.indexOf('</title>', orbStart))))).not.toMatch(/Atlas$/)
     expect(svg.slice(orbStart)).not.toMatch(/<text[^>]*>Atlas<\/text>/)
     // The drilled hub keeps its name and counts.
-    expect(text(svg)).toContain('FS Familje-Stunden 33 agenter · 5 workflows')
+    expect(label(svg, `hub-name:project:${P.familjeStunden}`)).toBe('Familje-Stunden')
+    expect(label(svg, `hub-subtext:project:${P.familjeStunden}`)).toBe('33 agenter · 5 workflows')
   })
 
   it('captions the agents no workflow names, and draws only relations the snapshot holds', async () => {
@@ -1400,5 +1437,159 @@ describe('phase 18 T2b · spatial Live Operations', () => {
     const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
     for (const name of ['spatialNode', 'spatialAppear', 'atlasBreath']) expect(reduced).toContain(`:where(html:not([data-motion='full'])) .${name}`)
     expect(reduced).toMatch(/animation: none !important;\s*transition: none !important;/)
+  })
+})
+
+describe('phase 18 T2c · visual language, labels and spatial polish', () => {
+  const P = PROD_SHAPED_PROJECTS
+  const day = productionShapedOperations(24)
+  const week = productionShapedOperations(24 * 7, { attention: true })
+  type Payload = ReturnType<typeof productionShapedOperations>
+  const at = (payload: Payload, over: Partial<GraphState> = {}) => graphState({ data: payload as GraphState['data'], ...over })
+  const drill = (payload: Payload, id: string) => buildDrilldownScope(payload.nodes.find((candidate) => candidate.id === id)!, payload.nodes, payload.edges)!
+  const node = (payload: Payload, id: string) => payload.nodes.find((candidate) => candidate.id === id)!
+  const SCENE = read('components/platform/intelligence/spatial-scene.tsx')
+  const HUD = read('components/platform/vnext/IntelligenceGraphHud.tsx')
+  /** The markup with every element that opens with `marker` removed, nested ones included. */
+  const without = (markup: string, marker: RegExp) => {
+    let rest = markup
+    for (let match = marker.exec(rest); match; match = marker.exec(rest)) {
+      const start = rest.lastIndexOf('<g', match.index)
+      rest = rest.slice(0, start) + rest.slice(start + element(rest, start, 'g').length)
+    }
+    return rest
+  }
+  it('draws the spatial canvas’s names, counts and captions through the one label plan', async () => {
+    for (const state of [at(day), at(day, { drillScope: drill(day, `project:${P.prompt}`) }), at(week, { hours: 168, drillScope: drill(week, 'workflow:tp-1') })]) {
+      const svg = canvas(await renderVNext(state))
+      const layer = element(svg, svg.lastIndexOf('<g', svg.indexOf('data-spatial-labels=')), 'g')
+      expect(values(layer, 'data-label-key').length).toBe(Number(values(svg, 'data-spatial-labels')[0]))
+      // Outside the layer, only glyphs carry text — a hub's monogram, a run count's number, a status badge.
+      const glyphs = without(without(svg.replace(layer, ''), /<g[^>]*data-spatial-role="/), /<g[^>]*data-cluster-count="/)
+      expect(glyphs.match(/<text[\s>]/g) ?? []).toEqual([])
+      expect(svg.replace(layer, '').match(/<text[\s>]/g)?.length ?? 0).toBeGreaterThan(0)
+    }
+    expect(CANVAS).not.toContain('selectVisibleNodeLabels({\n      layout: spatialLayout')
+    expect(CANVAS).toContain('const visibleLabels = useMemo(() => spatialLayout ? new Map<string, GraphLabelPlacement>() : new Map(')
+  })
+
+  it('still says what a text leaves out: every node’s name and status, a hub’s counts, a run count’s statuses', async () => {
+    const svg = canvas(await renderVNext(at(week, { hours: 168, drillScope: drill(week, `project:${P.prompt}`) })))
+    const shown = new Set(values(svg, 'data-label-key'))
+    const groups = [...svg.matchAll(/<g[^>]*data-spatial-role="[^"]*"[^>]*>/g)].map((match) => match[0])
+    expect(groups.length).toBeGreaterThan(8)
+    for (const group of groups) {
+      const aria = group.match(/aria-label="([^"]*)"/)?.[1] ?? ''
+      expect(aria, group).toMatch(/^(project|workflow|agent|run|approval|output|task): ./)
+    }
+    const attention = week.nodes.filter((candidate) => candidate.kind === 'run' && ['failed', 'running', 'awaiting_approval'].includes(candidate.status ?? ''))
+    expect(attention.length).toBe(4)
+    for (const run of attention) expect(svg, run.id).toContain(`aria-label="run: ${run.label} (${run.status})"`)
+    // The Prompt's own name and counts are drawn; its counts are also its accessible name.
+    expect(shown.has(`hub-name:project:${P.prompt}`)).toBe(true)
+    expect(svg).toContain(`aria-label="project: The Prompt · 2 agenter · 6 workflows · 88 körningar`)
+    // A run count carries its distribution in its title, drawn or not.
+    expect(text(svg)).toContain('Daglig short: 29 körningar i fönstret (28 klar, 1 kör)')
+    // A text that needs attention says its stored status in the page's words.
+    expect(label(svg, 'node:run:tp-001')).toBe('Veckosammanfattning · r7000001 misslyckades')
+  })
+
+  it('keeps each relation’s truth class through a selection: it brightens what it touches, dims the rest, removes nothing', async () => {
+    const base = canvas(await renderVNext(at(day, { drillScope: drill(day, `project:${P.prompt}`) })))
+    const selected = canvas(await renderVNext(at(day, { drillScope: drill(day, `project:${P.prompt}`), selected: node(day, 'workflow:tp-1') })))
+    const byDash = (svg: string) => dashes(svg).sort()
+    expect(byDash(selected)).toEqual(byDash(base))
+    const relations = (svg: string) => [...svg.matchAll(/<g data-relation="([^"]*)">([\s\S]*?)<\/g>/g)].map((match) => ({ relation: match[1], body: match[2] }))
+    const hot = relations(selected).filter((entry) => entry.body.includes(`stroke="${GRAPH_VISUAL_TOKENS.edge.selected}"`))
+    expect(hot.length).toBeGreaterThan(0)
+    for (const entry of relations(selected)) {
+      const strokes = entry.body.match(/<path[^>]*>/g) ?? []
+      const own = strokes.at(-1)!
+      const opacity = Number(own.match(/stroke-opacity="([^"]+)"/)?.[1])
+      if (hot.includes(entry)) expect(opacity, entry.relation).toBeGreaterThanOrEqual(0.85)
+      else expect(opacity, entry.relation).toBeGreaterThan(0)
+    }
+    // Texts dim with what they belong to — a workflow the selection does not touch — and stay drawn.
+    const opacityOf = (svg: string, key: string) => Number(svg.slice(svg.lastIndexOf('<g', svg.indexOf(`data-label-key="${key}"`))).match(/^<g[^>]*opacity="([^"]+)"/)?.[1])
+    expect(opacityOf(selected, 'node:workflow:tp-2')).toBeCloseTo(0.34)
+    expect(opacityOf(base, 'node:workflow:tp-2')).toBe(1)
+    expect(opacityOf(selected, `hub-name:project:${P.prompt}`)).toBe(1)
+    // Lines are drawn only between what the snapshot relates, and route around circles they do not touch.
+    expect(CANVAS).toContain('lineObstacles.filter(circle => circle.id !== edgeValue.source && circle.id !== edgeValue.target)')
+    expect(SCENE).toContain('export const CLEAR_BEND_FACTORS = [1, 2.4, -1, 4, -2.4, 6, -4] as const')
+  })
+
+  it('draws Atlas in the canonical orb’s language, and a quiet project lit in its own colour, never greyed out', async () => {
+    const svg = canvas(await renderVNext(at(day)))
+    for (const id of ['ig-atlas-halo', 'ig-atlas-glass', 'ig-atlas-glass-light', 'ig-atlas-reflection', 'ig-atlas-mark-glow']) expect(svg, id).toContain(`id="${id}"`)
+    expect(SCENE).toContain("import { OmniraMark } from '@/components/platform/OmniraLogo'")
+    expect(SCENE).not.toMatch(/import[^\n]*AtlasOrbVisual/)
+    // AUDIT 0b is stored grey: its ring is lifted toward white, never dimmed below a lit project.
+    const audit = element(svg, svg.lastIndexOf('<g', svg.indexOf('data-hub-orbit="calm"', svg.indexOf('aria-label="project: AUDIT 0b'))), 'g')
+    expect(audit).not.toContain('stroke="#6b7280"')
+    expect(audit).toMatch(/stroke="#[\da-f]{6}" stroke-opacity="0.76"/)
+  })
+
+  it('shows the selection’s identity in the inspector as the canvas draws it, in Live Operations only', async () => {
+    const project = await renderVNext(at(day, { selected: node(day, `project:${P.familjeStunden}`) }))
+    const inspector = section(project, 'data-testid="graph-inspector"')
+    expect(inspector).toContain('data-identity="spatial"')
+    expect(inspector).toContain('--ig-inspector-accent:#34d399')
+    expect(inspector).toContain('data-identity-kind="project"')
+    expect(text(element(inspector, inspector.indexOf('<svg'), 'svg'))).toBe('FS')
+    const workflow = section(await renderVNext(at(day, { selected: node(day, 'workflow:tp-5') })), 'data-testid="graph-inspector"')
+    expect(workflow).toContain('data-identity-kind="workflow"')
+    // An inactive workflow's ring is dashed in the inspector as on the canvas.
+    expect(workflow).toContain('stroke-dasharray="3 2"')
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'], selected: SYSTEM_FIXTURE_NODES[0] }))
+    expect(system).not.toContain('data-identity="spatial"')
+  })
+
+  it('keeps texts out of the page’s measured chrome, lets receded context give way to it, and ends the scene at a phone’s sheet', () => {
+    expect(VNEXT).toContain("frame.querySelectorAll<HTMLElement>('[data-graph-chrome-items] > *, [data-graph-chrome]')")
+    expect(VNEXT).toContain('chromeRects={canvasMode === \'operations\' ? chromeRects : undefined}')
+    expect(VNEXT).toContain('<div className={styles.zoomDock} data-graph-chrome>')
+    expect(HUD).toContain('data-testid="graph-place" data-graph-chrome-items>')
+    expect(HUD).toContain('<div className={styles.legendBar} data-graph-chrome>')
+    expect(CANVAS).toContain('reserved: [...reservedBoxes, ...chromeBoxes],')
+    expect(CANVAS).toContain("if (spatialLayout?.roles.get(node.id) !== 'context') return true")
+    expect(CANVAS).toContain('return !position || contextClear(position.x, position.y, position.r + 9)')
+    expect(CANVAS).toContain('<clipPath id="ig-sheet-clip">')
+    expect(CANVAS).toContain("const sheetClip = sheetTop !== null ? 'url(#ig-sheet-clip)' : undefined")
+    // Legacy draws none of it.
+    for (const [name, { props }] of Object.entries(LEGACY_CANVAS_RENDERS)) {
+      const markup = legacyCanvas(props)
+      expect(markup, name).not.toContain('ig-sheet-clip')
+      expect(markup, name).not.toContain('data-label-key')
+    }
+    expect(legacyCanvas({ ...LEGACY_CANVAS_RENDERS['operations-selected-sheet'].props, chromeRects: [{ x: 0, y: 0, width: 400, height: 80 }] }))
+      .toBe(legacyCanvas(LEGACY_CANVAS_RENDERS['operations-selected-sheet'].props))
+  })
+
+  it('folds a crowded project’s agents on a phone and puts the drilled level’s own inspector away there', () => {
+    expect(CANVAS).toContain("const compactAgents = useMemo(() => {")
+    expect(CANVAS).toContain('return nodes.filter(node => node.kind === \'agent\' && node.projectId === projectId).length > AGENT_NAMES_AT_OVERVIEW')
+    expect(VNEXT).toContain('if (narrow && drillRootId && selected?.id === drillRootId) setHiddenFor(drillRootId)')
+  })
+
+  it('finds and focuses a node among what it touches, never diving past the depth where its level shows everything', () => {
+    expect(CANVAS).toContain("if (spatialLayout && cameraCommand.type === 'fit-node') {")
+    expect(CANVAS).toContain("for (const id of touched) if (spatialLayout.roles.get(id) !== 'context') ids.add(id)")
+    expect(CANVAS).toContain("const maxDepth = spatialLayout.level === 'portfolio' ? PORTFOLIO_REVEAL.satellites : PROJECT_REVEAL.satellites")
+  })
+
+  it('stands every spatial transition and animation down for reduced motion, and adds no motion of its own', () => {
+    const css = read('components/platform/intelligence/GraphCanvas.module.css')
+    const spatial = css.slice(css.indexOf('/* ── Spatial view (vNext Live Operations only)'))
+    const reduced = spatial.slice(spatial.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    const moving = [...spatial.slice(0, spatial.lastIndexOf('@media (prefers-reduced-motion: reduce)')).matchAll(/\.(\w+) \{[^}]*(?:transition|animation):/g)].map((match) => match[1])
+    expect(moving.sort()).toEqual(['atlasBreath', 'selectionRing', 'spatialAppear', 'spatialEdge', 'spatialGlyph', 'spatialLabelGroup', 'spatialNode'])
+    for (const name of moving) expect(reduced, name).toContain(`:where(html:not([data-motion='full'])) .${name}`)
+    // Only Atlas's breath repeats: nothing else in the spatial view moves on its own.
+    expect([...spatial.matchAll(/\.(\w+) \{[^}]*animation:[^;]*infinite/g)].map((match) => match[1])).toEqual(['atlasBreath'])
+    expect([...css.matchAll(/@keyframes (\w+)/g)].map((match) => match[1])).toEqual(['igSpatialAppear', 'igAtlasBreath'])
+    // The ambient depth is a still background, not motion.
+    expect(spatial).toMatch(/\.canvas\[data-layout='spatial'\] \{[^}]*background:/)
+    expect(spatial.slice(0, spatial.indexOf('.spatialNode {'))).not.toMatch(/animation|transition/)
   })
 })

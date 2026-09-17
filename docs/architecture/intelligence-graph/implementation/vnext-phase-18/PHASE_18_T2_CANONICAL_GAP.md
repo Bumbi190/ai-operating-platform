@@ -1,7 +1,7 @@
 # Omnira vNext Phase 18 T2 — Remaining Canonical Gap
 
 Status: **living document**. It is updated at every T2 sub-step.
-Last updated: 2026-09-17, at T2b (Spatial Layout). T2a was approved by the owner at local commit `c068e7b`. T2b is built on top of it locally, is not pushed, and is waiting for owner QA.
+Last updated: 2026-09-17, at T2c (Visual Language, Labels & Spatial Polish). T2a was approved by the owner at local commit `c068e7b` and T2b at `eedfc03`. T2c is built on top of T2b locally, is not pushed, and is waiting for owner QA.
 Branch: `feat/omnira-vnext-phase18-t2-live-operations`, from `origin/main` `faf34f7` (Phase 18 T1, PR #254).
 
 ## No canonical-complete claim
@@ -84,9 +84,34 @@ T2b gives vNext Live Operations a deterministic spatial layout, `components/plat
 **Inspector**
 - A workflow shows "Körningar i ögonblicksbilden", counted by the same rule as its cluster.
 
+## What T2c changed (visual language, labels and spatial polish)
+
+T2c changes presentation only. T2b's layout model, run aggregation, relation truth and determinism are unchanged: no node moves, no relation is added, and no data source is added.
+
+**Visual language** (`spatial-scene.tsx`)
+- *Atlas* is drawn in the language of the canonical orb (`AtlasOrbVisual` / `AtlasHomeVNext.module.css`): glass layers, halo, axes, orbits, and the existing `OmniraMark` with the canonical cyan glow. It is reproduced in SVG rather than embedding `AtlasOrbVisual`, because that component is a stateful voice control. No new asset. It carries no status colour, breathes slowly, and is static under reduced motion.
+- *Project hubs* are a ring lit in the project's own colour around a dark core, with the monogram tinted from that colour. A quiet project is dimmer. A project stored grey (AUDIT 0b) has its ring lifted toward white, so it never reads as switched off.
+- *Workflow → agent → run count* read by size, light and shape. A workflow is a cube in a ring of its project's colour (an inactive workflow's ring is dashed grey, as stored). An agent is a smaller ring with one point of light. A run count is its number inside a ring segmented by stored status.
+- *Lines* keep T1's truth classes by dash (direct solid, definition dashed, derived dotted). Colour says only which project a line belongs to. A line bends around circles it does not touch, so it never looks like a relation it is not. A selection brightens the lines and texts it touches and dims the rest; nothing disappears.
+- *Depth* is a still starfield and a violet depth under the level. Only Atlas's breath repeats. Otherwise, nodes glide to a new level's places (T2b), and selection and focus change softly. All of it stands down with reduced motion.
+- *Inspector*: its header shows the selection's glyph as the canvas draws it (project colour, monogram), in Live Operations only.
+
+**Labels** (`spatial-labels.ts`)
+- One deterministic plan places every text the spatial view draws: selection and search first, then Atlas and hub names, attention (with the stored status in words), hover/running/what a selection touches, workflows, captions and counts, agents and runs, and run-count captions last.
+- A text is placed only inside the canvas, clear of the page's measured chrome (the controls on the canvas, the phone sheet and the shell's floating corner), clear of every circle that is not its own and clear of every text placed before it. Otherwise it is left out. What is left out is still in the node's accessible name and title, the cluster's title, and the inspector.
+- A project names its agents from its first view when it has eight or fewer (The Prompt's two). A larger project (Familje-Stunden's 33) names them as the operator zooms in.
+- Widths are measured from Inter's real advance widths (the app's font), so a text that fits by the plan fits on screen.
+
+**Phone and sheet**
+- On a narrow canvas, a project with many agents opens framed on its core (hub, workflows, run counts), and its agents come with zoom. A drilled level opens with its own inspector put away. An open sheet ends the scene: nothing is drawn through or behind it, and receded context (Atlas, the other projects) gives way to the sheet and the controls instead of showing around their edges.
+- A search or focus frames the node among what it touches and never dives past the depth at which its level already shows everything.
+
+**Verification**
+- Label invariants are tested over the production-shaped snapshot and a synthetic stress snapshot (`labelStressOperations`), at six canvas sizes and five zoom depths. The browser harness (Inter loaded) checks label/label, label/node, label/chrome and node/chrome collisions geometrically in 99 cases at 1920, 1440, 1280, 1024, 768 and 375 px.
+
 ## Remaining canonical gap
 
-| # | Canonical requirement | Book / risk reference | State after T2b | Planned |
+| # | Canonical requirement | Book / risk reference | State after T2c | Planned |
 |---|---|---|---|---|
 | G-01 | A synchronized list view sharing selection, filters, search, project scope, live/frozen state and inspector | ¶593, ¶656, ¶839; R-005 (canonical release blocker) | Absent | T3 |
 | G-02 | Realtime truth: graph event envelope, live/frozen state, freeze buffer, reconnect and reconciliation | ¶759, ¶772; R-002 | Absent. Live Operations is a manually refreshed snapshot (`generatedAt` plus Uppdatera) | After T2; requires a runtime contract |
@@ -95,7 +120,7 @@ T2b gives vNext Live Operations a deterministic spatial layout, `components/plat
 | G-05 | Atlas and Manager as sourced graph entities with sourced relations | ¶119, ¶373, ¶604 | Atlas is an identity orb (T2b, decision 1), never a data node. Its only lines are the derived ownership links to project hubs. Manager is not drawn | Needs a source contract |
 | G-06 | An activity rail integrated with the graph (event → focus → inspector), respecting project scope | ¶289 | Absent. The shell's activity peek is a separate surface | Not scheduled |
 | G-07 | A tablet overlay inspector | ¶508, ¶866, ¶873 | Docked panel from 768px | Not scheduled |
-| G-08 | Mobile: list/attention-first default, full-screen detail, swipe on the sheet, sticky critical actions | ¶508, ¶597, ¶652, ¶868, ¶870 | Bottom sheet, compact graph, no swipe, no list | T3 (list) / not scheduled |
+| G-08 | Mobile: list/attention-first default, full-screen detail, swipe on the sheet, sticky critical actions | ¶508, ¶597, ¶652, ¶868, ¶870 | Bottom sheet that ends the scene; a crowded project opens on its core (T2c). No swipe, no list | T3 (list) / not scheduled |
 | G-09 | Approval and incident actions in the inspector, with server confirmation | ¶884; R-006, R-007 | Absent. The inspector links to the existing product routes | Not scheduled |
 | G-10 | Inspector "senaste event" and tool, retry and incident detail | ¶598; R-019 | Absent. No per-step event, tool-call or incident source exists | Needs runtime sources |
 | G-11 | Execution Replay | R-003 | Disabled. Per-step event data is not recorded | Replay epic |
@@ -105,9 +130,16 @@ T2b gives vNext Live Operations a deterministic spatial layout, `components/plat
 | G-15 | Builder truth: FK edges labelled `DERIVED`, definition references named `DELEGATED_TO`, `runs.workflow_id` named `STARTED`, no `truncated`/`no-store`/envelope on operations | T1 findings | Worded truthfully in the UI. API keys are unchanged under the owner rule | Backend change, separately approved |
 | G-16 | Run status `pending` has no shared label, so the graph shows it as unknown | T1 finding (`RUN_STATE_LABELS`) | Unchanged | T2 cleanup candidate, if approved |
 | G-17 | A secure, reproducible System Map (Graphify) artifact in production | R-001, R-016 | The honest empty state is kept. Generation and delivery are out of scope | Separate workstream |
-| G-18 | Label placement under pressure: a forced (selected or attention) run label may still fall back over a run-count circle; on a phone a drilled hub's name can cross the nearest workflow icons | ¶579, ¶633 | Fixed texts never collide (T2b). Node labels keep T1's truth-preserving fallback | T2c (label placement, responsive type) |
-| G-19 | Volume signal: a bounded intensity from the real run count (decision 3) | Decision 3 | Counts are shown as numbers only | T2c (visual language) |
-| G-20 | A run-level layout (execution chain) distinct from its workflow's time arc | ¶401, ¶545 | A run drill-down opens its workflow with the run placed | With G-11 (Replay) |
+| G-18 | Label placement under pressure | ¶579, ¶633 | **Closed in T2c** for overlap: no text is drawn over another text, a foreign circle, the page's chrome or the canvas edge. Under pressure a text is left out instead, so a crowded phone view (for example a seven-project stress portfolio) names only some hubs; the rest keep their monograms, accessible names and the inspector | — |
+| G-19 | Volume signal: a bounded intensity from the real run count (decision 3) | Decision 3 | Counts are shown as numbers only. Not built in T2c (owner rule) | Not scheduled |
+| G-20 | A run-level layout (execution chain) distinct from its workflow's time arc | ¶401, ¶545 | A run drill-down opens its workflow with the run placed. Not built in T2c (owner rule) | With G-11 (Replay) |
+| G-21 | The reference's insight chips on relations ("Insikter", "Strategi", "Kreativitet", "Effektivitet", "Minneskopplingar") | Visual target | Absent. No insight source is attached to graph relations | Needs a source contract |
+| G-22 | Knowledge/Memory hubs with document, insight, decision and lesson counts | Visual target; ¶373 | Absent. The operations payload has no memory entities | Needs a source contract |
+| G-23 | An operator node linked to Atlas | Visual target | Absent. The graph has no sourced operator entity | Needs a source contract |
+| G-24 | Role subtitles under workflows and agents ("Familjecoach", "Analys") | Visual target | Absent. Nodes carry only their stored name; no role field distinct from the name exists | Needs a source field |
+| G-25 | "Live"/"Atlas · Online" states and the recent-activity strip under the graph | Visual target; ¶289, ¶748 | Absent. The snapshot is refreshed by hand; see G-02, G-03 and G-06 | After G-02 |
+| G-26 | Luminous flowing lines and particles along relations | Visual target; ¶699–701 | Not built: on a relation they read as activity, which needs fresh data (G-04) | With G-04 |
+| G-27 | Nodes under the floating controls after the operator zooms or pans | ¶579, ¶633 | Fits and automatic camera moves keep the level's structure clear; an operator's own zoom or pan can move nodes under the controls. Texts never go under them | Not scheduled |
 
 ## Not in T2 by owner rule
 

@@ -221,6 +221,34 @@ describe('Minne vNext · presentation truth', () => {
     expect(html).toContain('inte en verifierad sannolikhet')
   })
 
+  it('calculates decision counters from the fetched feedback sample and labels their scope', () => {
+    const sampledModel: MemoryViewModel = {
+      ...model,
+      feedback: {
+        state: 'ok',
+        items: [
+          feedbackRow({ id: 'feedback-approved-1', decision: 'approved' }),
+          feedbackRow({ id: 'feedback-approved-2', decision: 'approved' }),
+          feedbackRow({ id: 'feedback-rejected', decision: 'rejected' }),
+          feedbackRow({ id: 'feedback-revised', decision: 'revised' }),
+        ],
+      },
+    }
+    const html = renderToStaticMarkup(React.createElement(MemoryView, { model: sampledModel }))
+
+    expect(html).toContain('2 godkända')
+    expect(html).toContain('1 avvisade')
+    expect(html).toContain('1 reviderade')
+    expect(html).toContain('Alla räknare avser bara de 4 poster som hämtats i detta urval.')
+  })
+
+  it('labels local search as limited to fetched rules and excludes feedback and other memory layers', () => {
+    const html = renderToStaticMarkup(React.createElement(MemoryView, { model }))
+
+    expect(html).toContain('Sökningen omfattar de 2 aktiva poster som hämtats för projektet')
+    expect(html).toContain('inte andra minneslager eller feedbackhistoriken.')
+  })
+
   it('has no write controls or executable-markup renderer', () => {
     const component = codeOnly(read('components/platform/vnext/MemoryView.tsx'))
     for (const forbidden of [

@@ -23,3 +23,30 @@ En native Supabase preview-branch (`create_branch`) gav ett **tomt schema** (`MI
 3. **Verifiera:** en frisk `create_branch` ger `MIGRATIONS_PASSED` + full schema-paritet.
 
 Tills dess: scoped-subset-branchar per behov (som i H1.P5), eller manuell DDL-replay av de objekt ett givet arbete rör.
+
+## INFRA-2 — Migration Guard v2 verifierar mängdintegritet, inte ordnad historik
+**Upptäckt:** 2026-09-18 (Guard v2-reconciliation).
+**Status:** delvis åtgärdad — okänd ledger-drift och dubbletter blockeras; ordnad historik återstår.
+
+### Nuvarande kontrakt
+Migration Guard v2 låser den kanoniska korpusen till 93 SQL-filer: 14 frysta
+grandfathered namn och 79 enforced namn. Produktionsledgern får dessutom innehålla
+exakt 30 dokumenterade legacy-only namn. Av dessa fanns 29 i ledgern innan den
+ursprungliga guarden infördes; det trettionde namnet har kvar sin deklarativa källa
+i repo-rotens legacy-katalog. Listorna är explicita och frysta — inga prefix eller
+wildcards accepteras, och framtida migrationer ska läggas i den kanoniska katalogen.
+
+Guarden stoppar nu saknade enforced migrationer, okända produktionsnamn, dubbletter
+i både repo och ledger samt oavsiktlig ändring av de fastlåsta antalen/listorna.
+Den skriver aldrig till databasen och försöker inte reparera historik.
+
+### Kvarvarande skuld
+RPC:n exponerar bara migrationsnamn. Därför bevisar Guard v2 inte appliceringsordning,
+ledger-versioner, SQL-innehållshash eller att hela schemat kan spelas upp från noll.
+EI-S1.6A:s 79-räknare behålls som ett äldre, oberoende companion-test; Guard v2 äger
+den repoövergripande count-tripwiren.
+
+### Framtida åtgärd
+Inför först när produkt- och authoritybeslut finns en ordnad, read-only ledgerprojektion
+med version/tidsordning och deklarerad innehållsidentitet. Den förändringen kräver en
+separat RPC-/migrationsleverans och får inte smygas in i Guard v2.

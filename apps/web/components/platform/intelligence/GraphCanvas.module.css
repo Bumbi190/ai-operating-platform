@@ -154,7 +154,10 @@
 
 .cluster {
   cursor: pointer;
+  outline: none;
 }
+
+.clusterFocus { pointer-events: none; }
 
 .clusterCount {
   fill: var(--ig-label-strong);
@@ -192,5 +195,49 @@
   :where(html:not([data-motion='full'])) .spatialLabelGroup {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* T3b release hardening is opt-in from vNext Live Operations. System Map and
+   the legacy no-prop canvas keep their existing rendering. */
+@media (forced-colors: active) {
+  .canvas[data-release-a11y='true'] {
+    forced-color-adjust: auto;
+    background: Canvas;
+  }
+
+  .canvas[data-release-a11y='true'] .identity,
+  .canvas[data-release-a11y='true'] .statusRing {
+    stroke: CanvasText !important;
+    filter: none !important;
+  }
+
+  .canvas[data-release-a11y='true'] .node[data-selected='true'] .selectionRing,
+  .canvas[data-release-a11y='true'] .cluster[data-selected='true'] .clusterFocus {
+    stroke: Highlight !important;
+    stroke-width: 3 !important;
+    stroke-dasharray: none !important;
+  }
+
+  .canvas[data-release-a11y='true'] .node[data-focused='true'] .selectionRing,
+  .canvas[data-release-a11y='true'] .cluster[data-focused='true'] .clusterFocus {
+    stroke: CanvasText !important;
+    stroke-width: 2 !important;
+    stroke-dasharray: 4 3 !important;
+  }
+
+  .canvas[data-release-a11y='true'] :is(line[data-truth='direct'], path[data-truth='direct']) {
+    stroke: CanvasText !important;
+    stroke-dasharray: none !important;
+  }
+
+  .canvas[data-release-a11y='true'] :is(line[data-truth='definition'], path[data-truth='definition']) {
+    stroke: CanvasText !important;
+    stroke-dasharray: 7 4 !important;
+  }
+
+  .canvas[data-release-a11y='true'] :is(line[data-truth='derived'], path[data-truth='derived']) {
+    stroke: CanvasText !important;
+    stroke-dasharray: 2 4 !important;
   }
 }

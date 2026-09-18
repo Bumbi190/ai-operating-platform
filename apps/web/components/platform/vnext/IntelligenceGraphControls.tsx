@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { Maximize2, Minimize2, MoreHorizontal, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { LayoutList, Maximize2, Minimize2, MoreHorizontal, Network, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import type { IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { nodeColor } from '@/components/platform/intelligence/GraphCanvas'
 import {
@@ -71,10 +71,13 @@ export interface IntelligenceGraphControlsProps {
   relationName: (relation: string) => string
   fullscreen: boolean
   onToggleFullscreen: () => void
+  presentation: 'canvas' | 'list'
+  onPresentationChange: (presentation: 'canvas' | 'list') => void
 }
 
 export function IntelligenceGraphControls({
   graph, searchInputRef, replayUnavailable, relationName, fullscreen, onToggleFullscreen,
+  presentation, onPresentationChange,
 }: IntelligenceGraphControlsProps) {
   const { mode, switchMode } = graph
 
@@ -85,6 +88,29 @@ export function IntelligenceGraphControls({
         <ModeButton active={mode === 'operations'} onClick={() => switchMode('operations')}>Live Operations</ModeButton>
         <ModeButton active={false} disabled title={replayUnavailable}>Execution Replay</ModeButton>
       </div>
+
+      {mode === 'operations' && (
+        <div className={styles.presentationSwitch} role="group" aria-label="Presentation">
+          <button
+            type="button"
+            className={styles.presentationOption}
+            aria-pressed={presentation === 'canvas'}
+            onClick={() => onPresentationChange('canvas')}
+          >
+            <Network className={styles.buttonIcon} aria-hidden />
+            Canvas
+          </button>
+          <button
+            type="button"
+            className={styles.presentationOption}
+            aria-pressed={presentation === 'list'}
+            onClick={() => onPresentationChange('list')}
+          >
+            <LayoutList className={styles.buttonIcon} aria-hidden />
+            Lista
+          </button>
+        </div>
+      )}
 
       <div className={styles.controlsEnd}>
         <GraphSearch graph={graph} inputRef={searchInputRef} />

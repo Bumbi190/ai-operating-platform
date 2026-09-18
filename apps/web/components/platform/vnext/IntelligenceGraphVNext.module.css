@@ -305,6 +305,33 @@
 .mode[aria-pressed='true'] { background: rgb(255 255 255 / 0.1); color: var(--ig-text); }
 .mode:disabled { cursor: not-allowed; color: rgb(var(--foreground-rgb) / 0.3); }
 
+.presentationSwitch {
+  display: inline-flex;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--ig-edge);
+  background: var(--ig-surface);
+}
+.presentationOption {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 1.875rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: none;
+  color: var(--ig-text-2);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.presentationOption:hover { color: var(--ig-text); }
+.presentationOption[aria-pressed='true'] { background: rgb(255 255 255 / 0.1); color: var(--ig-text); }
+
 .controlButton {
   display: inline-flex;
   align-items: center;
@@ -597,6 +624,117 @@
 
 /* Absolute, so the SVG always has the frame's used size to fill. */
 .canvas { position: absolute; inset: 0; }
+
+/* ── Synchronized list projection ────────────────────────────────────────── */
+
+.canvasFrame[data-presentation='list'] {
+  background:
+    linear-gradient(160deg, rgb(var(--omnira-violet-rgb) / 0.035), transparent 38%),
+    #050816;
+}
+
+.listView {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.listContext {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: none;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--ig-edge);
+  background: rgb(5 8 22 / 0.76);
+}
+.listContextTitle { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--ig-text); }
+.listContextNote { margin: 0.1875rem 0 0; font-size: 0.625rem; line-height: 1.45; color: var(--ig-text-3); }
+.listContextFacts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.25rem 0.75rem; font-size: 0.625rem; color: var(--ig-text-2); text-align: right; }
+
+.listScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.625rem 0.75rem max(1rem, var(--ig-float-top));
+  scroll-padding-block: 3rem;
+}
+.listGroup + .listGroup { margin-top: 0.75rem; }
+.listGroupHeader {
+  position: sticky;
+  top: -0.625rem;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.4375rem;
+  background: rgb(5 8 22 / 0.94);
+  border-bottom: 1px solid var(--ig-edge);
+  backdrop-filter: blur(10px);
+}
+.listGroupHeader h2 { margin: 0; font-size: 0.75rem; font-weight: 650; color: var(--ig-text); }
+.listGroupHeader span { font-size: 0.625rem; color: var(--ig-text-3); font-variant-numeric: tabular-nums; }
+.nodeList { display: flex; flex-direction: column; gap: 0.1875rem; margin: 0; padding: 0.25rem 0 0; list-style: none; }
+.nodeListItem { min-width: 0; }
+.nodeRow {
+  display: grid;
+  grid-template-columns: 0.5rem minmax(10rem, 1fr) auto minmax(7rem, auto) 6rem;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.5rem 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  background: rgb(255 255 255 / 0.018);
+  color: var(--ig-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+.nodeRow:hover { border-color: var(--ig-edge); background: rgb(255 255 255 / 0.045); }
+.nodeRow[data-selected='true'] { border-color: rgb(var(--omnira-violet-rgb) / 0.5); background: rgb(var(--omnira-violet-rgb) / 0.11); }
+.nodeRow[data-dimmed='true']:not([data-selected='true']) { opacity: 0.42; }
+.nodeRowGlyph { width: 0.5rem; height: 0.5rem; border-radius: 999px; box-shadow: 0 0 0 3px rgb(255 255 255 / 0.035); }
+.nodeRowIdentity { display: flex; flex-direction: column; min-width: 0; }
+.nodeRowTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; font-weight: 550; }
+.nodeRowKind { margin-top: 0.125rem; font-size: 0.625rem; color: var(--ig-text-3); }
+.nodeRowMatch { padding: 0.125rem 0.375rem; border-radius: 999px; background: rgb(var(--omnira-violet-rgb) / 0.18); color: var(--ig-text-2); font-size: 0.5625rem; white-space: nowrap; }
+.nodeRowStatus { display: inline-flex; align-items: center; gap: 0.375rem; min-width: 0; font-size: 0.6875rem; color: var(--ig-text-2); white-space: nowrap; }
+.nodeRowStatus > span { width: 0.375rem; height: 0.375rem; flex: none; border-radius: 999px; background: var(--ig-text-3); }
+.nodeRowStatus[data-tone='running'] > span { background: var(--ig-tone-running); }
+.nodeRowStatus[data-tone='failed'] > span { background: var(--ig-tone-failed); }
+.nodeRowStatus[data-tone='waiting'] > span { background: var(--ig-tone-waiting); }
+.nodeRowStatus[data-tone='approval'] > span { background: var(--ig-tone-approval); }
+.nodeRowStatus[data-tone='settled'] > span { background: var(--ig-tone-settled); }
+.nodeRowRelations { justify-self: end; font-size: 0.625rem; color: var(--ig-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  .listContext { flex-direction: column; gap: 0.375rem; padding: 0.625rem 0.75rem; }
+  .listContextFacts { justify-content: flex-start; text-align: left; }
+  .listScroll { padding: 0.5rem 0.5rem max(1rem, var(--ig-float-top)); }
+  .listGroupHeader { top: -0.5rem; }
+  .nodeRow {
+    grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      'glyph identity match'
+      'glyph status relations';
+    gap: 0.1875rem 0.625rem;
+    min-height: 3.5rem;
+  }
+  .nodeRowGlyph { grid-area: glyph; }
+  .nodeRowIdentity { grid-area: identity; }
+  .nodeRowMatch { grid-area: match; }
+  .nodeRowStatus { grid-area: status; }
+  .nodeRowRelations { grid-area: relations; }
+}
 
 .loading {
   position: absolute;
@@ -1012,6 +1150,43 @@
   cursor: pointer;
 }
 .inspectorClose:hover { background: rgb(255 255 255 / 0.06); color: var(--ig-text); }
+.mobileDetailBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  flex: none;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ig-edge);
+  background: rgb(255 255 255 / 0.035);
+  color: var(--ig-text-2);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+.mobileDetailBack:hover { background: rgb(255 255 255 / 0.07); color: var(--ig-text); }
+
+@media (max-width: 767px) {
+  .stage[data-mobile-detail='open'] .inspectorDock {
+    inset: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+  }
+  .stage[data-mobile-detail='open'] .inspector {
+    overflow: hidden;
+    /* The list stays mounted underneath so Back can restore its exact scroll
+       position and focused row. Keep the detail surface opaque so that
+       preserved state never reads as duplicate content through the panel. */
+    background: linear-gradient(160deg, #10142b, #080b1c 55%);
+  }
+  .stage[data-mobile-detail='open'] .inspectorBody {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-bottom: max(1rem, var(--ig-float-top));
+  }
+}
 
 .inspectorActions {
   display: flex;
@@ -1176,6 +1351,7 @@
 
 .refresh:focus-visible,
 .mode:focus-visible,
+.presentationOption:focus-visible,
 .controlButton:focus-visible,
 .menuItem:focus-visible,
 .segment:focus-visible,
@@ -1188,6 +1364,8 @@
 .legendToggle:focus-visible,
 .resizeHandle:focus-visible,
 .inspectorClose:focus-visible,
+.mobileDetailBack:focus-visible,
+.nodeRow:focus-visible,
 .tab:focus-visible,
 .tabPanel:focus-visible,
 .relation:focus-visible,
@@ -1207,6 +1385,7 @@
 @media (prefers-reduced-motion: reduce) {
   :where(html:not([data-motion='full'])) .refresh,
   :where(html:not([data-motion='full'])) .mode,
+  :where(html:not([data-motion='full'])) .presentationOption,
   :where(html:not([data-motion='full'])) .controlButton,
   :where(html:not([data-motion='full'])) .menuItem,
   :where(html:not([data-motion='full'])) .chip,
@@ -1215,6 +1394,7 @@
   :where(html:not([data-motion='full'])) .zoomFit,
   :where(html:not([data-motion='full'])) .legendToggle,
   :where(html:not([data-motion='full'])) .resizeHandle::before,
+  :where(html:not([data-motion='full'])) .nodeRow,
   :where(html:not([data-motion='full'])) .tab {
     transition: none !important;
   }

@@ -27,6 +27,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas } from '@/components/platform/intelligence/GraphCanvas'
 import { NodeInspector } from '@/components/platform/intelligence/NodeInspector'
+import { IntelligenceGraphList } from '@/components/platform/vnext/IntelligenceGraphList'
 import { GRAPH_VISUAL_TOKENS, getEdgeVisual } from '@/components/platform/intelligence/graph-visuals'
 import { buildDrilldownScope, buildGraphBreadcrumbs, computeGraphFilterState } from '@/components/platform/intelligence/graph-navigation'
 import { fitGraphBounds, fitNodeIds, preserveSelectedNeighborhoodCamera, reservedCanvasBoxes } from '@/components/platform/intelligence/graph-readability'
@@ -110,6 +111,8 @@ const CONTROLS = read('components/platform/vnext/IntelligenceGraphControls.tsx')
 const HUD = read('components/platform/vnext/IntelligenceGraphHud.tsx')
 const CANVAS = read('components/platform/intelligence/GraphCanvas.tsx')
 const BUILDER = read('lib/intelligence/operations-graph.ts')
+const LIST = read('components/platform/vnext/IntelligenceGraphList.tsx')
+const LIST_MODEL = read('components/platform/intelligence/graph-list-model.ts')
 
 function node(id: string): IntelligenceGraphNode {
   const found = [...OPERATIONS_FIXTURE_NODES, ...SYSTEM_FIXTURE_NODES].find((candidate) => candidate.id === id)
@@ -1610,5 +1613,116 @@ describe('phase 18 T2c · visual language, labels and spatial polish', () => {
     // The ambient depth is a still background, not motion.
     expect(spatial).toMatch(/\.canvas\[data-layout='spatial'\] \{[^}]*background:/)
     expect(spatial.slice(0, spatial.indexOf('.spatialNode {'))).not.toMatch(/animation|transition/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3a — the same authorized snapshot, readable as a list
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase 18 T3a · synchronized list presentation', () => {
+  function renderList(over: Partial<React.ComponentProps<typeof IntelligenceGraphList>> = {}) {
+    return renderToStaticMarkup(createElement(IntelligenceGraphList, {
+      nodes: OPERATIONS_FIXTURE_NODES,
+      edges: OPERATIONS_FIXTURE_EDGES,
+      projects: OPERATIONS_FIXTURE_PAYLOAD.projects,
+      selectedId: null,
+      activeNodeId: null,
+      dimmedIds: new Set<string>(),
+      dimmedEdgeIds: new Set<string>(),
+      searchHitIds: new Set<string>(),
+      scopeNodeIds: null,
+      filtersActive: false,
+      matchCount: OPERATIONS_FIXTURE_NODES.length,
+      query: '',
+      onSelect: noop,
+      onFocusNode: noop,
+      ...over,
+    }))
+  }
+
+  it('renders every node in the exact snapshot once, grouped by verified project', () => {
+    const html = renderList()
+    const ids = [...html.matchAll(/data-node-id="([^"]+)"/g)].map(match => match[1])
+    expect(ids).toHaveLength(OPERATIONS_FIXTURE_NODES.length)
+    expect(new Set(ids)).toEqual(new Set(OPERATIONS_FIXTURE_NODES.map(value => value.id)))
+    expect(text(html)).toContain('Familje-Stunden 5 objekt')
+    expect(text(html)).toContain('The Prompt 10 objekt')
+    expect(text(html)).toContain('15 objekt i samma ögonblicksbild')
+  })
+
+  it('states filter and search scope and preserves selected, dimmed and exact relation counts', () => {
+    const html = renderList({
+      selectedId: 'run:r1',
+      activeNodeId: 'run:r1',
+      dimmedIds: new Set(['run:r2']),
+      dimmedEdgeIds: new Set(['workflow:w1→run:r1']),
+      searchHitIds: new Set(['run:r1']),
+      scopeNodeIds: new Set(['workflow:w1', 'run:r1']),
+      filtersActive: true,
+      matchCount: 2,
+      query: 'artikel',
+    })
+    expect(html).toContain('data-node-id="run:r1" data-selected="true" data-active="true"')
+    expect(html).toContain('data-node-id="run:r2" data-dimmed="true"')
+    expect(text(html)).toContain('2 matchar filter · övriga tonas ned')
+    expect(text(html)).toContain('1 sökträff i aktuell scope')
+    expect(text(html)).toContain('2 objekt i fördjupad scope · övriga visas nedtonade')
+    expect(text(html)).toContain('Sökträff')
+    expect(text(html)).toContain('2 av 3 kopplingar')
+  })
+
+  it('adds no fetch, payload, route, status or relation implementation', () => {
+    for (const source of [LIST, LIST_MODEL]) {
+      expect(codeOnly(source)).not.toMatch(/\bfetch\(|createClient|createAdminClient|\/api\//)
+      expect(source).not.toContain('GraphPayload')
+    }
+    expect(LIST).toContain('nodeStatus(row.node)')
+    expect(LIST_MODEL).toContain('edge,')
+    expect(LIST_MODEL).toContain('node,')
+    expect(VNEXT).toContain('projects={data?.projects ?? []}')
+  })
+
+  it('defaults Live Operations to canvas on the server and never offers List for System Map', async () => {
+    const operations = await renderVNext(graphState())
+    expect(operations).toContain('data-presentation="canvas"')
+    expect(text(operations)).toContain('Canvas Lista')
+    expect(operations).not.toContain('data-testid="graph-list-view"')
+
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
+    expect(system).toContain('data-presentation="canvas"')
+    expect(text(section(system, 'data-testid="graph-controls"'))).not.toMatch(/Canvas Lista/)
+    expect(system).not.toContain('data-testid="graph-list-view"')
+  })
+
+  it('makes phone list-first a viewport presentation only and keeps explicit Canvas available', () => {
+    expect(VNEXT).toContain("presentationOverride ?? (narrow ? 'list' : 'canvas')")
+    expect(VNEXT).toContain("setPresentationOverride(next)")
+    expect(VNEXT).toContain("if (narrow && presentation === 'list') setMobileListDetail(true)")
+    expect(CONTROLS).toContain("onPresentationChange('canvas')")
+    expect(CONTROLS).toContain("onPresentationChange('list')")
+    expect(CONTROLS).toContain("mode === 'operations'")
+  })
+
+  it('keeps one selection across presentations and restores phone list focus without scrolling it', () => {
+    expect(VNEXT).toContain('selectedId={selected?.id ?? null}')
+    expect(VNEXT).toContain('activeNodeId={activeNodeId}')
+    expect(VNEXT).toContain("listRef.current?.focusNode(nodeId, { scroll: false })")
+    expect(VNEXT).toContain("setCameraCommand({ nonce: Date.now(), type: 'fit-node', nodeIds: [nodeId] })")
+    expect(CANVAS).toContain('nodeRefs.current.get(activeNodeId)?.focus()')
+    expect(CANVAS).toContain('onFocusNode?.(node)')
+    expect(CSS).toMatch(/\.stage\[data-mobile-detail='open'\] \.inspectorDock \{\s*inset: 0;/)
+  })
+
+  it('uses semantic controls and honors the existing scale and reduced-motion rules', () => {
+    const html = renderList()
+    expect(html).toContain('<section')
+    expect(html).toContain('<ul')
+    expect(html).toContain('<li')
+    expect(html).toContain('<button')
+    expect(html).toContain('aria-pressed="false"')
+    expect(CSS).toMatch(/\.nodeRow \{[\s\S]*?min-height: 3rem;/)
+    expect(CSS).toContain(':where(html:not([data-motion=\'full\'])) .nodeRow')
+    expect(CSS).toContain('.nodeRow:focus-visible')
   })
 })

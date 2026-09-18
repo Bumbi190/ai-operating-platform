@@ -82,10 +82,13 @@ export interface IntelligenceGraphInspectorProps {
   identity?: { accent: string; monogram?: string }
   /** Phone list detail: returns to the still-mounted list and restores its focused row. */
   listBack?: { label: string; onBack: () => void }
+  /** Tablet presentation: modeless overlay with Escape returning to its trigger. */
+  overlay?: boolean
+  onEscape?: () => void
 }
 
 export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGraphInspectorProps>(function IntelligenceGraphInspector({
-  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus, identity, listBack,
+  node, edges, neighbors, meta, mode, onClose, onHide, onSelectNeighbor, onDrillIn, onIsolate, onFocus, identity, listBack, overlay = false, onEscape,
 }, ref) {
   // Kept across selections: following a connection stays on Kopplingar.
   const [tab, setTab] = useState<InspectorTab>('overview')
@@ -123,6 +126,13 @@ export const IntelligenceGraphInspector = forwardRef<HTMLElement, IntelligenceGr
       aria-label={`${kindLabel(node.kind)}: ${node.label}`}
       data-testid="graph-inspector"
       data-identity={identity ? 'spatial' : undefined}
+      data-overlay={overlay ? 'tablet' : undefined}
+      onKeyDown={event => {
+        if (event.key !== 'Escape' || !onEscape) return
+        event.preventDefault()
+        event.stopPropagation()
+        onEscape()
+      }}
       style={identity ? ({ '--ig-inspector-accent': identity.accent } as CSSProperties) : undefined}
     >
       <div className={styles.inspectorHeader}>

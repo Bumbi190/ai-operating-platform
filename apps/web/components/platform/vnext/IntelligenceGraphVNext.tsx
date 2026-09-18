@@ -113,9 +113,10 @@ const SPATIAL_COPY: GraphSpatialOptions['copy'] = {
   previewCaption: (shown, total) => `Visar ${shown} av ${total} ${total === 1 ? 'workflow' : 'workflows'}`,
   clusterDescription: (cluster, parentLabel) => {
     const distribution = cluster.distribution.map(entry => `${entry.count} ${runStatusWords(entry.status)}`).join(', ')
-    if (cluster.kind === 'older') return `${parentLabel}: ${cluster.count} äldre körningar i fönstret (${distribution})`
-    if (cluster.kind === 'no-workflow') return `${cluster.count} körningar utan workflow-referens (${distribution})`
-    return `${parentLabel}: ${cluster.count} ${cluster.count === 1 ? 'körning' : 'körningar'} i fönstret (${distribution})`
+    const statuses = distribution ? ` (${distribution})` : ''
+    if (cluster.kind === 'older') return `${parentLabel}: ${cluster.count} äldre körningar i fönstret${statuses}`
+    if (cluster.kind === 'no-workflow') return `${cluster.count} körningar utan workflow-referens${statuses}`
+    return `${parentLabel}: ${cluster.count} ${cluster.count === 1 ? 'körning' : 'körningar'} i fönstret${statuses}`
   },
   statusWord: node => nodeStatus(node)?.label.toLowerCase() ?? null,
 }
@@ -194,6 +195,7 @@ export function IntelligenceGraphVNext() {
   const [presentationOverride, setPresentationOverride] = useState<'canvas' | 'list' | null>(null)
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [mobileListDetail, setMobileListDetail] = useState(false)
+  const [canvasFocusSignal, setCanvasFocusSignal] = useState(0)
 
   useEffect(() => {
     const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === fieldRef.current)
@@ -227,6 +229,7 @@ export function IntelligenceGraphVNext() {
   const [rootPx, setRootPx] = useState(16)
   // Below 768px the zoom controls move to the canvas's top edge (see the stylesheet).
   const [narrow, setNarrow] = useState(false)
+  const [tablet, setTablet] = useState(false)
   const [resizing, setResizing] = useState(false)
   // The selection whose panel was put away. Selecting anything else opens it again.
   const [hiddenFor, setHiddenFor] = useState<string | null>(null)
@@ -239,6 +242,15 @@ export function IntelligenceGraphVNext() {
     } catch {
       // Storage unavailable: the default width stands.
     }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(min-width: 768px) and (max-width: 1023px)')
+    const update = () => setTablet(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
   }, [])
 
   useEffect(() => {
@@ -394,6 +406,15 @@ export function IntelligenceGraphVNext() {
     requestAnimationFrame(() => showInspectorRef.current?.focus())
   }, [selected])
 
+  const closeInspector = useCallback(() => {
+    const returnTo = selected?.id ?? activeNodeId
+    setSelected(null)
+    if (tablet && returnTo) {
+      setActiveNodeId(returnTo)
+      requestAnimationFrame(() => setCanvasFocusSignal(value => value + 1))
+    }
+  }, [activeNodeId, selected, setSelected, tablet])
+
   const showInspector = useCallback(() => {
     setHiddenFor(null)
     requestAnimationFrame(() => inspectorRef.current?.focus())
@@ -401,6 +422,13 @@ export function IntelligenceGraphVNext() {
 
   // ── What is on screen ──────────────────────────────────────────────────────
   const canvasMode = mode === 'operations' ? 'operations' : 'system'
+  const tabletOverlay = canvasMode === 'operations' && tablet && presentation === 'canvas'
+  const selectedNodeId = selected?.id ?? null
+  useEffect(() => {
+    if (!tabletOverlay || !inspectorRendered || !selectedNodeId) return
+    const frame = requestAnimationFrame(() => inspectorRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [tabletOverlay, inspectorRendered, selectedNodeId])
   // While a new mode loads, the previous payload is still in state. Nothing is
   // stamped, counted or explained from a payload that is not this mode's.
   const payloadIsCurrent = Boolean(data?.meta && data.meta.source === (canvasMode === 'operations' ? 'runtime' : 'graphify'))
@@ -504,8 +532,13 @@ export function IntelligenceGraphVNext() {
     })
     const corner = clipped(window.innerWidth - probe.offsetWidth, window.innerHeight - probe.offsetHeight, window.innerWidth, window.innerHeight)
     if (corner) next.push(corner)
+    if (tabletOverlay && dockRef.current) {
+      const box = dockRef.current.getBoundingClientRect()
+      const rect = clipped(box.left, box.top, box.right, box.bottom)
+      if (rect) next.push(rect)
+    }
     setChromeRects(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
-  }, [])
+  }, [tabletOverlay])
   // After every render — the controls change with the place, the selection and the filters — and on resize.
   useEffect(() => { measureChrome() })
   useEffect(() => {
@@ -556,6 +589,7 @@ export function IntelligenceGraphVNext() {
       data-mode={canvasMode}
       data-presentation={presentation}
       data-resizing={resizing ? 'true' : undefined}
+      data-tablet-overlay={tabletOverlay ? 'true' : undefined}
     >
       <div className={styles.ambient} aria-hidden />
       {/* Measures the shell's floating corner (--ig-float-right × --ig-float-top) for the canvas's chrome. */}
@@ -601,6 +635,7 @@ export function IntelligenceGraphVNext() {
           data-inspector={inspectorRendered ? 'open' : 'closed'}
           data-presentation={presentation}
           data-mobile-detail={narrow && presentation === 'list' && mobileListDetail ? 'open' : undefined}
+          data-inspector-layout={tabletOverlay ? 'overlay' : narrow ? 'sheet' : 'docked'}
         >
           <div ref={canvasFrameRef} className={styles.canvasFrame} data-testid="graph-canvas-frame" data-presentation={presentation}>
             {loading && (
@@ -664,6 +699,7 @@ export function IntelligenceGraphVNext() {
                     else setSearchResultId(null)
                   }}
                   activeNodeId={activeNodeId}
+                  focusSignal={canvasFocusSignal}
                   onFocusNode={node => setActiveNodeId(node.id)}
                   onOpen={drillIn}
                   fitSignal={fitSignal}
@@ -683,9 +719,12 @@ export function IntelligenceGraphVNext() {
                   onEscape={handleEscape}
                   appearance="vnext"
                   edgeVisual={truthEdgeVisual}
+                  edgeTruth={canvasMode === 'operations' ? relationTruth : undefined}
                   overlayInsets={overlayInsets}
                   spatial={spatial}
                   chromeRects={canvasMode === 'operations' ? chromeRects : undefined}
+                  releaseAccessibility={canvasMode === 'operations'}
+                  manualCameraGuard={canvasMode === 'operations'}
                 />
               </div>
             )}
@@ -762,8 +801,10 @@ export function IntelligenceGraphVNext() {
                 neighbors={neighborNodes}
                 meta={payloadIsCurrent ? data?.meta : undefined}
                 mode={canvasMode}
-                onClose={() => setSelected(null)}
+                onClose={closeInspector}
                 onHide={hideInspector}
+                overlay={tabletOverlay}
+                onEscape={tabletOverlay ? hideInspector : undefined}
                 onSelectNeighbor={node => { setActiveNodeId(node.id); setSelected(node) }}
                 onDrillIn={drillIn}
                 onIsolate={isolateNode}

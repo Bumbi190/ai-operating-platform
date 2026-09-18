@@ -8,7 +8,7 @@
  * is limited to interaction transitions (no synthetic operational activity).
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import type { GraphBounds } from './graph-readability'
 import type { IntelligenceGraphEdge, IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
@@ -37,6 +37,12 @@ import {
 import { buildDenseViewSummaries } from './graph-navigation'
 import type { PositionedNode } from './force-layout'
 import {
+  LIVE_OPERATIONS_CANVAS_INSTRUCTIONS,
+  canvasRovingOrder,
+  nextCanvasRovingId,
+} from './graph-canvas-a11y'
+import { cameraViewIsSafe, guardManualCamera, type CameraGuardCircle } from './graph-camera-guard'
+import {
   PORTFOLIO_REVEAL,
   PROJECT_REVEAL,
   computeSpatialLayout,
@@ -52,7 +58,7 @@ import {
   type SpatialLayout,
   type SpatialRunCluster,
 } from './spatial-layout'
-import { SPATIAL_NARROW_CANVAS, spatialScreenTexts, type SpatialCopy, type SpatialText } from './spatial-text'
+import { SPATIAL_NARROW_CANVAS, clusterDrawRadius, spatialScreenTexts, type SpatialCopy, type SpatialText } from './spatial-text'
 import { AGENT_NAMES_AT_OVERVIEW, partialPreviews, planSpatialLabels, previewNameScreenTexts } from './spatial-labels'
 import {
   AgentGlyph,
@@ -98,6 +104,8 @@ export interface GraphCanvasProps {
   activeNodeId?: string | null
   /** Reports keyboard focus without changing graph selection. */
   onFocusNode?: (node: IntelligenceGraphNode) => void
+  /** Re-focuses `activeNodeId` after a page-owned overlay returns focus. */
+  focusSignal?: number
   onOpen?: (node: IntelligenceGraphNode) => void
   fitSignal?: number
   mode?: 'system' | 'operations'
@@ -126,6 +134,8 @@ export interface GraphCanvasProps {
    * it to draw how certain a relation is; the canvas itself knows nothing of that.
    */
   edgeVisual?: (edge: IntelligenceGraphEdge, visual: GraphEdgeVisual) => GraphEdgeVisual
+  /** Optional truth class used only as a colour-independent presentation hook. */
+  edgeTruth?: (edge: IntelligenceGraphEdge) => 'direct' | 'definition' | 'derived'
   /**
    * Optional px bands at the top and bottom of the canvas that the page covers
    * with its own controls. Fitting keeps nodes out of them and labels avoid
@@ -146,6 +156,10 @@ export interface GraphCanvasProps {
    * them and receded context gives way to them; the camera does not move for them.
    */
   chromeRects?: ReadonlyArray<GraphChromeRect>
+  /** vNext Live Operations release semantics. Absent keeps shared/legacy markup unchanged. */
+  releaseAccessibility?: boolean
+  /** G-27 manual-camera guard. Absent keeps the shared canvas camera unchanged. */
+  manualCameraGuard?: boolean
   className?: string
 }
 
@@ -195,6 +209,7 @@ export function GraphCanvas({
   onSelect,
   activeNodeId = null,
   onFocusNode,
+  focusSignal = 0,
   onOpen,
   fitSignal = 0,
   mode = 'system',
@@ -213,13 +228,17 @@ export function GraphCanvas({
   onEscape,
   appearance = 'dark',
   edgeVisual,
+  edgeTruth,
   overlayInsets,
   spatial,
   chromeRects,
+  releaseAccessibility = false,
+  manualCameraGuard = false,
   className,
 }: GraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const nodeRefs = useRef(new Map<string, SVGGElement>())
+  const descriptionId = useId()
   // A spatial view opens already fitted to its level, so the first paint — and the server's markup — frames it.
   const [view, setView] = useState<GraphViewBox>(() => spatial
     ? initialSpatialView(nodes, edges, spatial, overlayInsets)
@@ -228,6 +247,7 @@ export function GraphCanvas({
   const [viewportMeasured, setViewportMeasured] = useState(false)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [rovingId, setRovingId] = useState<string | null>(activeNodeId ?? selectedId)
   const dragRef = useRef<{ startX: number; startY: number; view: GraphViewBox } | null>(null)
   const movedRef = useRef(false)
   const autoFitRef = useRef(true)
@@ -239,11 +259,16 @@ export function GraphCanvas({
   const handledZoomNonceRef = useRef<number | null>(
     cameraCommand && (cameraCommand.type === 'zoom-in' || cameraCommand.type === 'zoom-out') ? cameraCommand.nonce : null,
   )
+  const lastSafeViewRef = useRef(view)
 
   useEffect(() => {
     if (!activeNodeId) return
+    // A run cluster represents its parent in page-level presentation state,
+    // but remains the keyboard focus owner until the operator moves or selects.
+    if (typeof document !== 'undefined' && document.activeElement?.hasAttribute('data-cluster-count')) return
+    setRovingId(activeNodeId)
     nodeRefs.current.get(activeNodeId)?.focus()
-  }, [activeNodeId])
+  }, [activeNodeId, focusSignal])
 
   const spatialAnchorKey = spatial ? JSON.stringify(spatial.anchor) : null
   const spatialAspect = spatial?.aspect ?? null
@@ -429,6 +454,59 @@ export function GraphCanvas({
     () => spatialLayout ? spatialLayout.clusters.filter(cluster => spatialClusterShown(cluster, structurallyVisibleIds, countsUnderNames)) : [],
     [spatialLayout, structurallyVisibleIds, countsUnderNames],
   )
+  const rovingItems = useMemo(
+    () => releaseAccessibility ? canvasRovingOrder(nodes, layout, shownClusters, structurallyVisibleIds) : [],
+    [releaseAccessibility, nodes, layout, shownClusters, structurallyVisibleIds],
+  )
+  const rovingIds = useMemo(() => rovingItems.map(item => item.id), [rovingItems])
+  const primaryRovingId = releaseAccessibility
+    ? rovingIds.includes(rovingId ?? '')
+      ? rovingId
+      : rovingIds.includes(selectedId ?? '')
+        ? selectedId
+        : rovingIds[0] ?? null
+    : null
+
+  /** The actual interactive hit circles at the candidate camera's screen scale. */
+  const cameraCirclesFor = useCallback((candidate: GraphViewBox): CameraGuardCircle[] => {
+    if (!manualCameraGuard || !spatialLayout) return []
+    const scale = candidate.w / Math.max(1, viewport.width)
+    const circles = nodes.flatMap(node => {
+      if (semanticVisibility.get(node.id) === 'hidden' || (isolatedIds && !isolatedIds.has(node.id))) return []
+      const position = layout.get(node.id)
+      return position ? [{ id: node.id, x: position.x, y: position.y, r: Math.max(position.r + 8, 22 * scale) }] : []
+    })
+    for (const cluster of shownClusters) {
+      circles.push({
+        id: cluster.id,
+        x: cluster.x,
+        y: cluster.y,
+        r: Math.max(clusterDrawRadius(cluster.r, scale), 22 * scale),
+      })
+    }
+    return circles
+  }, [manualCameraGuard, spatialLayout, viewport.width, nodes, semanticVisibility, isolatedIds, layout, shownClusters])
+
+  const guardedManualView = useCallback((candidate: GraphViewBox): GraphViewBox => {
+    if (!manualCameraGuard || !spatialLayout) return candidate
+    const result = guardManualCamera({
+      candidate,
+      lastSafe: lastSafeViewRef.current,
+      viewport,
+      circles: cameraCirclesFor(candidate),
+      overlayInsets: overlayRef.current,
+      chromeRects,
+    })
+    if (result.outcome !== 'last-safe') lastSafeViewRef.current = result.view
+    return result.view
+  }, [manualCameraGuard, spatialLayout, viewport, cameraCirclesFor, chromeRects])
+
+  useEffect(() => {
+    if (!manualCameraGuard || !spatialLayout) return
+    if (cameraViewIsSafe(view, viewport, cameraCirclesFor(view), overlayRef.current, chromeRects)) {
+      lastSafeViewRef.current = view
+    }
+  }, [manualCameraGuard, spatialLayout, view, viewport, cameraCirclesFor, chromeRects])
   // What each hub's preview leaves out — said under its counts and in its accessible name.
   const previewNotes = useMemo(
     () => spatialLayout && previewing ? partialPreviews(spatialLayout, nodeById, structurallyVisibleIds) : new Map<string, { shown: number; total: number }>(),
@@ -561,7 +639,7 @@ export function GraphCanvas({
       handledZoomNonceRef.current = cameraCommand.nonce
       autoFitRef.current = false
       const factor = cameraCommand.type === 'zoom-in' ? 1 / ZOOM_STEP : ZOOM_STEP
-      setView(current => zoomAroundCenter(current, factor))
+      setView(current => guardedManualView(zoomAroundCenter(current, factor)))
       return
     }
     if (cameraCommand.type === 'restore' && cameraCommand.view) {
@@ -598,7 +676,7 @@ export function GraphCanvas({
     }
   // The spatial fit width changes with the canvas; a new width alone replays no command.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraCommand, fit, layout, viewport])
+  }, [cameraCommand, fit, guardedManualView, layout, viewport])
 
   useEffect(() => { onCameraChange?.(view) }, [view, onCameraChange])
   useEffect(() => { onZoomLevelChange?.(reportedZoomLevel) }, [reportedZoomLevel, onZoomLevelChange])
@@ -646,14 +724,14 @@ export function GraphCanvas({
     setView(current => {
       const w = Math.min(WORLD_W * 3, Math.max(80, current.w * factor))
       const h = Math.min(WORLD_H * 3, Math.max(53, current.h * factor))
-      return {
+      return guardedManualView({
         x: current.x + (current.w - w) * px,
         y: current.y + (current.h - h) * py,
         w,
         h,
-      }
+      })
     })
-  }, [])
+  }, [guardedManualView])
 
   const onPointerDown = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
     ;(event.target as Element).setPointerCapture?.(event.pointerId)
@@ -670,8 +748,8 @@ export function GraphCanvas({
     const dx = ((event.clientX - drag.startX) / rect.width) * drag.view.w
     const dy = ((event.clientY - drag.startY) / rect.height) * drag.view.h
     if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 4) movedRef.current = true
-    setView({ ...drag.view, x: drag.view.x - dx, y: drag.view.y - dy })
-  }, [])
+    setView(guardedManualView({ ...drag.view, x: drag.view.x - dx, y: drag.view.y - dy }))
+  }, [guardedManualView])
 
   const onPointerUp = useCallback(() => { dragRef.current = null }, [])
   const backgroundClick = useCallback(() => {
@@ -680,8 +758,8 @@ export function GraphCanvas({
 
   const changeZoom = useCallback((factor: number) => {
     autoFitRef.current = false
-    setView(current => zoomAroundCenter(current, factor))
-  }, [])
+    setView(current => guardedManualView(zoomAroundCenter(current, factor)))
+  }, [guardedManualView])
 
   const focusDirectionalNode = useCallback((fromId: string, key: string) => {
     const from = layout.get(fromId)
@@ -705,6 +783,13 @@ export function GraphCanvas({
     }).sort((a, b) => a.distance - b.distance || a.semanticOrder - b.semanticOrder || a.id.localeCompare(b.id))
     if (candidates[0]) nodeRefs.current.get(candidates[0].id)?.focus()
   }, [layout, nodes, structurallyVisibleIds])
+
+  const focusRovingItem = useCallback((fromId: string, key: string) => {
+    const nextId = nextCanvasRovingId(rovingIds, fromId, key)
+    if (!nextId) return
+    setRovingId(nextId)
+    nodeRefs.current.get(nextId)?.focus()
+  }, [rovingIds])
 
   const handleCanvasKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
     if (event.key === '+' || event.key === '=') { event.preventDefault(); changeZoom(1 / ZOOM_STEP) }
@@ -749,7 +834,8 @@ export function GraphCanvas({
       onClick={backgroundClick}
       onKeyDown={handleCanvasKeyDown}
       role="group"
-      aria-label={mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
+      aria-label={releaseAccessibility ? 'Live Operations, grafisk ögonblicksbild' : mode === 'system' ? 'System Map intelligence graph' : 'Live Operations snapshot graph'}
+      aria-describedby={releaseAccessibility ? descriptionId : undefined}
       data-semantic-zoom={zoomLevel}
       data-semantic-meaning={semanticPolicy.meaning}
       data-structural-detail={semanticPolicy.structuralDetail}
@@ -760,7 +846,10 @@ export function GraphCanvas({
       data-layout={spatialLayout ? 'spatial' : undefined}
       data-spatial-level={spatialLayout?.level}
       data-spatial-aspect={spatialLayout?.aspect}
+      data-release-a11y={releaseAccessibility ? 'true' : undefined}
+      data-manual-camera-guard={manualCameraGuard ? 'last-safe' : undefined}
     >
+      {releaseAccessibility && <desc id={descriptionId}>{LIVE_OPERATIONS_CANVAS_INSTRUCTIONS}</desc>}
       <defs>
         <marker id="ig-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
           <path d="M0,0 L6,3 L0,6 Z" fill={GRAPH_VISUAL_TOKENS.edge.structural} />
@@ -894,6 +983,7 @@ export function GraphCanvas({
                   strokeLinecap="round"
                   vectorEffect="non-scaling-stroke"
                   className={styles.spatialEdge}
+                  data-truth={edgeTruth?.(edgeValue)}
                 />
               </g>
             )
@@ -911,6 +1001,7 @@ export function GraphCanvas({
               strokeDasharray={visual.dash}
               markerEnd={marker}
               vectorEffect="non-scaling-stroke"
+              data-truth={edgeTruth?.(edgeValue)}
             />
           )
         })}
@@ -928,6 +1019,18 @@ export function GraphCanvas({
             onSelect={onSelect}
             movedRef={movedRef}
             scale={view.w / Math.max(1, viewport.width)}
+            releaseAccessibility={releaseAccessibility}
+            selectedId={selectedId}
+            focusedItemId={rovingId}
+            primaryRovingId={primaryRovingId}
+            nodeRefs={nodeRefs}
+            onFocus={(id, parent) => {
+              setRovingId(id)
+              setFocusId(parent.id)
+              onFocusNode?.(parent)
+            }}
+            onBlur={parentId => setFocusId(current => current === parentId ? null : current)}
+            onMoveFocus={focusRovingItem}
           />
         </g>
       )}
@@ -962,18 +1065,22 @@ export function GraphCanvas({
               opacity={spatialRole === 'context' ? (isSelected ? 1 : Math.min(baseOpacity, 0.36)) : baseOpacity}
               className={cn(styles.node, spatialLayout && styles.spatialNode, 'cursor-pointer focus:outline-none')}
               data-spatial-role={spatialRole}
-              tabIndex={0}
+              data-canvas-item={releaseAccessibility ? node.id : undefined}
+              data-selected={releaseAccessibility && isSelected ? 'true' : undefined}
+              data-focused={releaseAccessibility && isFocused ? 'true' : undefined}
+              tabIndex={releaseAccessibility ? (primaryRovingId === node.id ? 0 : -1) : 0}
               role="button"
               aria-label={hub && spatial
                 ? `${node.kind}: ${node.label} · ${spatial.copy.hubDescription(hub)}${previewNote ? ` · ${spatial.copy.previewCaption(previewNote.shown, previewNote.total)}` : ''}`
                 : `${node.kind}: ${node.label}${node.status ? ` (${node.status})` : ''}`}
               aria-pressed={isSelected}
               onKeyDown={event => {
-                if (event.key.startsWith('Arrow')) {
+                if (event.key.startsWith('Arrow') || (releaseAccessibility && (event.key === 'Home' || event.key === 'End'))) {
                   event.preventDefault()
                   event.stopPropagation()
-                  focusDirectionalNode(node.id, event.key)
-                } else if (event.key === 'Enter') {
+                  if (releaseAccessibility) focusRovingItem(node.id, event.key)
+                  else focusDirectionalNode(node.id, event.key)
+                } else if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
                   event.stopPropagation()
                   if (isSelected) onOpen?.(node)
@@ -988,7 +1095,7 @@ export function GraphCanvas({
                   onIsolate(node)
                 }
               }}
-              onFocus={() => { setFocusId(node.id); onFocusNode?.(node) }}
+              onFocus={() => { setRovingId(node.id); setFocusId(node.id); onFocusNode?.(node) }}
               onBlur={() => setFocusId(current => current === node.id ? null : current)}
               onClick={event => { event.stopPropagation(); if (!movedRef.current) onSelect(node) }}
               onDoubleClick={event => { event.stopPropagation(); onOpen?.(node) }}
@@ -996,7 +1103,14 @@ export function GraphCanvas({
               onPointerLeave={() => setHoverId(current => current === node.id ? null : current)}
             >
               <title>{`${node.label} · ${node.kind}${node.status ? ` · ${node.status}` : ''}`}</title>
-              <circle r={Math.max(22, position.r + 8)} fill="transparent" pointerEvents="all" />
+              <circle
+                r={releaseAccessibility
+                  ? Math.max(position.r + 8, 22 * view.w / Math.max(1, viewport.width))
+                  : Math.max(22, position.r + 8)}
+                fill="transparent"
+                pointerEvents="all"
+                data-hit-circle={releaseAccessibility ? node.id : undefined}
+              />
               {spatialLayout ? (
                 <g className={styles.spatialAppear}>
                   {hub ? (
@@ -1357,6 +1471,7 @@ function AtlasLinks({
 
 function RunClusters({
   clusters, nodeById, visibleIds, highlightedIds, colours, copy, onSelect, movedRef, scale,
+  releaseAccessibility, selectedId, focusedItemId, primaryRovingId, nodeRefs, onFocus, onBlur, onMoveFocus,
 }: {
   clusters: readonly SpatialRunCluster[]
   nodeById: ReadonlyMap<string, IntelligenceGraphNode>
@@ -1367,6 +1482,14 @@ function RunClusters({
   onSelect: (node: IntelligenceGraphNode | null) => void
   movedRef: React.MutableRefObject<boolean>
   scale: number
+  releaseAccessibility: boolean
+  selectedId: string | null
+  focusedItemId: string | null
+  primaryRovingId: string | null
+  nodeRefs: React.MutableRefObject<Map<string, SVGGElement>>
+  onFocus: (id: string, parent: IntelligenceGraphNode) => void
+  onBlur: (parentId: string) => void
+  onMoveFocus: (fromId: string, key: string) => void
 }) {
   return (
     <g>
@@ -1374,6 +1497,9 @@ function RunClusters({
         if (!visibleIds.has(cluster.parentId)) return null
         const parent = nodeById.get(cluster.parentId)
         const dimmed = highlightedIds !== null && !highlightedIds.has(cluster.parentId)
+        const focused = focusedItemId === cluster.id
+        const selected = selectedId === cluster.parentId
+        const description = copy.clusterDescription(cluster, parent?.label ?? '')
         // The mark takes the colour of the most frequent stored status that needs attention.
         const attention = cluster.attentionCount > 0
           ? cluster.distribution.find(entry => entry.status === 'failed' || entry.status === 'awaiting_approval' || entry.status === 'pending')
@@ -1381,16 +1507,59 @@ function RunClusters({
         return (
           <g
             key={cluster.id}
+            ref={element => {
+              if (!releaseAccessibility) return
+              if (element) nodeRefs.current.set(cluster.id, element)
+              else nodeRefs.current.delete(cluster.id)
+            }}
             className={cn(styles.cluster, styles.spatialNode)}
             style={{ transform: `translate(${cluster.x}px, ${cluster.y}px)` }}
             data-cluster-kind={cluster.kind}
             data-cluster-count={cluster.count}
+            data-canvas-item={releaseAccessibility ? cluster.id : undefined}
+            data-selected={releaseAccessibility && selected ? 'true' : undefined}
+            data-focused={releaseAccessibility && focused ? 'true' : undefined}
+            role={releaseAccessibility ? 'button' : undefined}
+            tabIndex={releaseAccessibility ? (primaryRovingId === cluster.id ? 0 : -1) : undefined}
+            aria-label={releaseAccessibility ? description : undefined}
+            aria-pressed={releaseAccessibility ? selected : undefined}
+            onFocus={() => { if (releaseAccessibility && parent) onFocus(cluster.id, parent) }}
+            onBlur={() => { if (releaseAccessibility) onBlur(cluster.parentId) }}
+            onKeyDown={event => {
+              if (!releaseAccessibility || !parent) return
+              if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+                event.preventDefault()
+                event.stopPropagation()
+                onMoveFocus(cluster.id, event.key)
+              } else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onSelect(parent)
+              }
+            }}
             onClick={event => {
               event.stopPropagation()
               if (!movedRef.current && parent) onSelect(parent)
             }}
           >
-            <title>{copy.clusterDescription(cluster, parent?.label ?? '')}</title>
+            <title>{description}</title>
+            {releaseAccessibility && (
+              <>
+                <circle r={Math.max(clusterDrawRadius(cluster.r, scale), 22 * scale)} fill="transparent" pointerEvents="all" data-hit-circle={cluster.id} />
+                {(focused || selected) && (
+                  <circle
+                    r={Math.max(clusterDrawRadius(cluster.r, scale), 22 * scale) + 4 * scale}
+                    fill="none"
+                    stroke="var(--ig-label-strong)"
+                    strokeWidth={selected ? 2 : 1.5}
+                    strokeDasharray={focused && !selected ? '4 3' : undefined}
+                    vectorEffect="non-scaling-stroke"
+                    className={styles.clusterFocus}
+                    aria-hidden="true"
+                  />
+                )}
+              </>
+            )}
             <g className={styles.spatialAppear}>
               <RunClusterGlyph
                 cluster={cluster}

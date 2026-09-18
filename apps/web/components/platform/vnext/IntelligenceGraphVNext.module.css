@@ -1027,6 +1027,26 @@
   margin-bottom: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));
 }
 
+/* The shell already defines 768–1023px as tablet navigation. In that same
+   interval Live Operations overlays the inspector, so it never consumes the
+   canvas's layout width. Desktop docking and phone list detail stay unchanged. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .field[data-mode='operations'] .stage[data-inspector-layout='overlay'] .inspectorDock {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: max(0px, calc(var(--ig-float-top) - var(--ig-hints) - var(--ig-pad-bottom)));
+    z-index: 10;
+    width: min(22rem, calc(100% - 1.5rem));
+    margin: 0;
+    transform: translateX(0);
+    opacity: 1;
+    transition: transform 180ms ease, opacity 160ms ease;
+  }
+
+  .field[data-mode='operations'] .stage[data-inspector-layout='overlay'] .resizeHandle { display: none; }
+}
+
 .resizeHandle {
   position: absolute;
   top: 0;
@@ -1223,6 +1243,35 @@
 }
 .secondaryAction:hover { background: rgb(255 255 255 / 0.06); color: var(--ig-text); }
 
+/* T3 interactions get a full touch target without enlarging their desktop
+   glyphs or changing unrelated product surfaces. */
+@media (max-width: 1023px), (pointer: coarse) {
+  .field[data-mode='operations'] :is(
+    .refresh,
+    .mode,
+    .presentationOption,
+    .searchInput,
+    .searchHit,
+    .controlButton,
+    .menuItem,
+    .segment,
+    .chip,
+    .hudButton,
+    .zoomStep,
+    .zoomFit,
+    .legendToggle,
+    .inspectorClose,
+    .mobileDetailBack,
+    .tab,
+    .relation,
+    .primaryAction,
+    .secondaryAction
+  ) {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
 .tabs {
   display: flex;
   gap: 0.125rem;
@@ -1376,6 +1425,33 @@
   outline-offset: 2px;
 }
 
+@media (forced-colors: active) {
+  .field[data-mode='operations'] {
+    --ig-edge: CanvasText;
+    --ig-edge-strong: CanvasText;
+    --ig-text: CanvasText;
+    --ig-text-2: CanvasText;
+    --ig-text-3: CanvasText;
+    --ig-focus: Highlight;
+    forced-color-adjust: auto;
+  }
+
+  .field[data-mode='operations'] :is(.canvasFrame, .inspector, .popover, .legendPanel, .snapshot) {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+
+  .field[data-mode='operations'] :is(.mode, .presentationOption, .controlButton, .zoomStep, .zoomFit, .legendToggle, .inspectorClose, .mobileDetailBack, .tab, .relation):focus-visible {
+    outline-color: Highlight;
+  }
+
+  .field[data-mode='operations'] .relationTruth[data-truth='direct'] { border-style: solid; }
+  .field[data-mode='operations'] .relationTruth[data-truth='definition'] { border-style: dashed; }
+  .field[data-mode='operations'] .relationTruth[data-truth='derived'] { border-style: dotted; }
+}
+
 /* ── Motion ───────────────────────────────────────────────────────────────────
    Colour transitions only; nothing here animates to suggest activity. An
    operator who chose reduced motion in Omnira is covered by the global
@@ -1394,6 +1470,7 @@
   :where(html:not([data-motion='full'])) .zoomFit,
   :where(html:not([data-motion='full'])) .legendToggle,
   :where(html:not([data-motion='full'])) .resizeHandle::before,
+  :where(html:not([data-motion='full'])) .inspectorDock,
   :where(html:not([data-motion='full'])) .nodeRow,
   :where(html:not([data-motion='full'])) .tab {
     transition: none !important;

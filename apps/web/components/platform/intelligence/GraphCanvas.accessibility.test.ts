@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { IntelligenceGraphNode } from '@/lib/intelligence/graph-contract'
 import { GraphCanvas } from './GraphCanvas'
+import { LIVE_OPERATIONS_CANVAS_INSTRUCTIONS } from './graph-canvas-a11y'
 
 const nodes: IntelligenceGraphNode[] = [{
   id: 'project:alpha',
@@ -82,5 +83,39 @@ describe('GraphCanvas rendered accessibility semantics', () => {
 
     expect(closed.match(nodeTransform)?.[1]).toBe(opened.match(nodeTransform)?.[1])
     expect(opened).toContain('aria-pressed="true"')
+  })
+
+  it('opts Live Operations into one primary canvas tab stop and localized instructions', () => {
+    const moreNodes: IntelligenceGraphNode[] = [
+      ...nodes,
+      { id: 'workflow:alpha', kind: 'workflow', label: 'Alpha workflow', source: 'runtime', projectId: 'alpha', metadata: {} },
+      { id: 'run:alpha', kind: 'run', label: 'Alpha run', source: 'runtime', projectId: 'alpha', status: 'failed', metadata: {} },
+    ]
+    const markup = renderToStaticMarkup(createElement(GraphCanvas, {
+      nodes: moreNodes,
+      edges: [],
+      selectedId: null,
+      onSelect: () => {},
+      mode: 'operations',
+      releaseAccessibility: true,
+      manualCameraGuard: true,
+    }))
+    const items = markup.match(/<g[^>]*data-canvas-item="[^"]+"[^>]*>/g) ?? []
+
+    expect(markup).toContain('aria-label="Live Operations, grafisk ögonblicksbild"')
+    expect(markup).toContain(LIVE_OPERATIONS_CANVAS_INSTRUCTIONS)
+    expect(markup).toContain('data-release-a11y="true"')
+    expect(markup).toContain('data-manual-camera-guard="last-safe"')
+    expect(items.length).toBeGreaterThan(1)
+    expect(items.filter(tag => tag.includes('tabindex="0"'))).toHaveLength(1)
+    expect(items.filter(tag => tag.includes('tabindex="-1"'))).toHaveLength(items.length - 1)
+  })
+
+  it('keeps the no-prop System Map semantics free of T3b release hooks', () => {
+    const markup = renderGraph('system')
+    expect(markup).toContain('aria-label="System Map intelligence graph"')
+    expect(markup).not.toContain('data-release-a11y')
+    expect(markup).not.toContain('data-manual-camera-guard')
+    expect(markup).not.toContain(LIVE_OPERATIONS_CANVAS_INSTRUCTIONS)
   })
 })

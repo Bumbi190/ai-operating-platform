@@ -110,6 +110,9 @@ const CSS = read('components/platform/vnext/IntelligenceGraphVNext.module.css')
 const CONTROLS = read('components/platform/vnext/IntelligenceGraphControls.tsx')
 const HUD = read('components/platform/vnext/IntelligenceGraphHud.tsx')
 const CANVAS = read('components/platform/intelligence/GraphCanvas.tsx')
+const CANVAS_CSS = read('components/platform/intelligence/GraphCanvas.module.css')
+const CANVAS_A11Y = read('components/platform/intelligence/graph-canvas-a11y.ts')
+const CAMERA_GUARD = read('components/platform/intelligence/graph-camera-guard.ts')
 const BUILDER = read('lib/intelligence/operations-graph.ts')
 const LIST = read('components/platform/vnext/IntelligenceGraphList.tsx')
 const LIST_MODEL = read('components/platform/intelligence/graph-list-model.ts')
@@ -930,7 +933,7 @@ describe('phase 18 T2a · on the canvas', () => {
       filterState: { matchingIds: new Set(['run:r1']), dimmedIds: new Set(), matchCount: 4, criticalOutsideFilters: 2 },
     }))
     const frame = section(html, 'data-testid="graph-canvas-frame"')
-    const place = section(frame, 'data-testid="graph-place"', 'role="group" aria-label="Live Operations snapshot graph"')
+    const place = section(frame, 'data-testid="graph-place"', 'role="group" aria-label="Live Operations, grafisk ögonblicksbild"')
     const words = text(`<div ${place}`)
     expect(words).toContain('Tillbaka')
     // The isolation is said once, by its own chip — not again as a crumb.
@@ -942,7 +945,7 @@ describe('phase 18 T2a · on the canvas', () => {
     expect(words).toContain('4 matchar · övriga dimmade Rensa filter')
     expect(words).toContain('2 kritiska objekt bevarade utanför filtermatch')
     // Tab reaches Tillbaka before the canvas.
-    expect(frame.indexOf('Tillbaka')).toBeLessThan(frame.indexOf('aria-label="Live Operations snapshot graph"'))
+    expect(frame.indexOf('Tillbaka')).toBeLessThan(frame.indexOf('aria-label="Live Operations, grafisk ögonblicksbild"'))
   })
 
   it('names a project scope, since a scoped snapshot counts only that project', async () => {
@@ -1033,7 +1036,7 @@ describe('phase 18 T2a · inspector', () => {
     expect(VNEXT).toMatch(/hiddenInspector=\{selected && !inspectorVisible\s*\? \{ label: selected\.label, onShow: showInspector, buttonRef: showInspectorRef \}/)
     expect(VNEXT).toMatch(/setHiddenFor\(selected\.id\)\s*\/\/[^\n]*\n\s*requestAnimationFrame\(\(\) => showInspectorRef\.current\?\.focus\(\)\)/)
     // Closing still deselects, as in T1.
-    expect(VNEXT).toContain('onClose={() => setSelected(null)}')
+    expect(VNEXT).toContain('onClose={closeInspector}')
     const { GraphPlace } = await import('@/components/platform/vnext/IntelligenceGraphHud')
     const place = renderToStaticMarkup(createElement(GraphPlace, {
       location: ['Översikt'], onBack: null, projectScope: null, isolate: null, filters: null, criticalOutsideFilters: 0,
@@ -1724,5 +1727,119 @@ describe('phase 18 T3a · synchronized list presentation', () => {
     expect(CSS).toMatch(/\.nodeRow \{[\s\S]*?min-height: 3rem;/)
     expect(CSS).toContain(':where(html:not([data-motion=\'full\'])) .nodeRow')
     expect(CSS).toContain('.nodeRow:focus-visible')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3b — release accessibility and opt-in manual camera safety
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase 18 T3b · release hardening', () => {
+  const P = PROD_SHAPED_PROJECTS
+  const day = productionShapedOperations(24)
+  type Payload = ReturnType<typeof productionShapedOperations>
+  const drill = (payload: Payload, id: string) => buildDrilldownScope(payload.nodes.find((candidate) => candidate.id === id)!, payload.nodes, payload.edges)!
+  const projectState = () => graphState({
+    data: day as GraphState['data'],
+    drillScope: drill(day, `project:${P.prompt}`),
+  })
+
+  it('uses one roving tab stop for visible nodes and run clusters', async () => {
+    const html = await renderVNext(projectState())
+    const svg = canvas(html)
+    const items = svg.match(/<g[^>]*data-canvas-item="[^"]+"[^>]*>/g) ?? []
+    const clusters = items.filter(tag => tag.includes('data-cluster-count='))
+
+    expect(items.length).toBeGreaterThan(1)
+    expect(items.filter(tag => tag.includes('tabindex="0"'))).toHaveLength(1)
+    expect(items.filter(tag => tag.includes('tabindex="-1"'))).toHaveLength(items.length - 1)
+    expect(clusters.length).toBeGreaterThan(0)
+    for (const cluster of clusters) {
+      expect(cluster).toContain('role="button"')
+      expect(cluster).toMatch(/aria-label="[^"]*\d+ [^"]*körning/)
+      expect(cluster).toContain('aria-pressed=')
+    }
+    expect(CANVAS).toContain('nextCanvasRovingId(rovingIds, fromId, key)')
+    expect(CANVAS).toContain("event.key === 'Enter' || event.key === ' '")
+    expect(CANVAS).toContain("document.activeElement?.hasAttribute('data-cluster-count')")
+    expect(CANVAS_A11Y).toContain('top to bottom, then')
+    expect(CANVAS_A11Y).not.toMatch(/status.*sort|priority.*sort/)
+  })
+
+  it('describes the canvas once, in Swedish, without making Atlas a data item', async () => {
+    const svg = canvas(await renderVNext(graphState({ data: day as GraphState['data'] })))
+    expect(svg).toContain('aria-label="Live Operations, grafisk ögonblicksbild"')
+    expect(text(svg)).toContain('Grafisk presentation av samma ögonblicksbild som listan.')
+    expect(text(svg)).toContain('Heldragna linjer är direkta referenser')
+    expect(text(svg)).toContain('Atlas är identitet och navigation, inte en datanod.')
+    const atlas = element(svg, svg.lastIndexOf('<g', svg.indexOf('data-atlas="core"')), 'g')
+    expect(atlas).toContain('role="button"')
+    expect(atlas).not.toContain('data-canvas-item=')
+    expect(svg.match(/aria-describedby=/g)).toHaveLength(1)
+  })
+
+  it('exposes line truth by dash and semantic hook under forced colors', async () => {
+    const svg = canvas(await renderVNext(projectState()))
+    expect(svg).toContain('data-truth="direct"')
+    expect(svg).toContain('data-truth="definition"')
+    expect(CANVAS_CSS).toContain('@media (forced-colors: active)')
+    expect(CANVAS_CSS).toMatch(/data-truth='direct'[^}]*stroke-dasharray: none !important;/)
+    expect(CANVAS_CSS).toMatch(/data-truth='definition'[^}]*stroke-dasharray: 7 4 !important;/)
+    expect(CANVAS_CSS).toMatch(/data-truth='derived'[^}]*stroke-dasharray: 2 4 !important;/)
+    expect(CANVAS_CSS).toMatch(/data-selected='true'[^}]*stroke: Highlight !important;/)
+    expect(CANVAS_CSS).toMatch(/data-focused='true'[^}]*stroke: CanvasText !important;/)
+    expect(CSS).toMatch(/@media \(forced-colors: active\)[\s\S]*\.field\[data-mode='operations'\]/)
+    expect(CSS).toContain(".relationTruth[data-truth='definition'] { border-style: dashed; }")
+    expect(CSS).toContain(".relationTruth[data-truth='derived'] { border-style: dotted;")
+  })
+
+  it('hardens only Graph T3 touch targets to roughly 44 pixels', () => {
+    expect(CSS).toMatch(/@media \(max-width: 1023px\), \(pointer: coarse\)[\s\S]*\.field\[data-mode='operations'\][\s\S]*min-width: 2\.75rem;\s*min-height: 2\.75rem;/)
+    expect(CSS).toMatch(/\.field\[data-mode='operations'\] :is\([\s\S]*\.searchInput,[\s\S]*\.searchHit,[\s\S]*\.controlButton/)
+    expect(CANVAS).toContain('22 * view.w / Math.max(1, viewport.width)')
+    expect(CANVAS).toContain('22 * scale')
+  })
+
+  it('uses the established tablet interval for a modeless overlay and restores focus', () => {
+    expect(VNEXT).toContain("window.matchMedia('(min-width: 768px) and (max-width: 1023px)')")
+    expect(VNEXT).toContain("data-inspector-layout={tabletOverlay ? 'overlay' : narrow ? 'sheet' : 'docked'}")
+    expect(CSS).toMatch(/@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*data-inspector-layout='overlay'[\s\S]*position: absolute;/)
+    expect(CSS).toMatch(/data-inspector-layout='overlay'[\s\S]*width: min\(22rem, calc\(100% - 1\.5rem\)\);/)
+    expect(VNEXT).toContain('requestAnimationFrame(() => inspectorRef.current?.focus())')
+    expect(VNEXT).toContain('requestAnimationFrame(() => setCanvasFocusSignal(value => value + 1))')
+    expect(INSPECTOR).toContain("if (event.key !== 'Escape' || !onEscape) return")
+    expect(VNEXT).toContain('overlay={tabletOverlay}')
+  })
+
+  it('opts only Live Operations into the G-27 last-safe guard', async () => {
+    const operations = await renderVNext(graphState({ data: day as GraphState['data'] }))
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_FIXTURE_PAYLOAD as GraphState['data'] }))
+    expect(operations).toContain('data-manual-camera-guard="last-safe"')
+    expect(system).not.toContain('data-manual-camera-guard')
+    expect(read('components/platform/intelligence/IntelligenceGraphClient.tsx')).not.toContain('manualCameraGuard')
+    expect(CANVAS).toContain('lastSafeViewRef.current')
+    expect(CANVAS).toContain('guardedManualView(zoomAroundCenter(current, factor))')
+    expect(CANVAS).toContain('setView(guardedManualView({ ...drag.view')
+    // Adapt is still an explicit fit/reset and does not enter the manual guard.
+    expect(CANVAS).toContain('const fit = useCallback(() => {\n    setView(fitGraphBounds(')
+    expect(CAMERA_GUARD).toContain("outcome: 'last-safe'")
+  })
+
+  it('keeps mobile list-first, System Map, Replay and legacy rollback contracts intact', async () => {
+    expect(VNEXT).toContain("presentationOverride ?? (narrow ? 'list' : 'canvas')")
+    const system = await renderVNext(graphState({ mode: 'system', data: SYSTEM_UNAVAILABLE_PAYLOAD as GraphState['data'] }))
+    expect(text(system)).toContain('Ingen System Map-artefakt ännu')
+    expect(text(await renderVNext(graphState()))).toContain('Execution Replay')
+    for (const [name, { props, hash }] of Object.entries(LEGACY_CANVAS_RENDERS)) {
+      expect(sha(legacyCanvas(props)), name).toBe(hash)
+    }
+  })
+
+  it('stands the tablet overlay transition down for reduced motion', () => {
+    expect(CSS).toMatch(/data-inspector-layout='overlay'[\s\S]*transition: transform 180ms ease, opacity 160ms ease;/)
+    const reduced = CSS.slice(CSS.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(reduced).toContain(":where(html:not([data-motion='full'])) .inspectorDock")
+    // Camera correction itself is instantaneous; no viewBox animation encodes activity.
+    expect(CAMERA_GUARD).not.toMatch(/requestAnimationFrame|setTimeout|transition|animation/)
   })
 })

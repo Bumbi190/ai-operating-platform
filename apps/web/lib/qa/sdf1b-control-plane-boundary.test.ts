@@ -42,7 +42,7 @@ describe('SDF-1B control plane boundary', () => {
     expect(workflow).toContain('SDF-1B Control Plane Boundary')
     expect(workflow).toContain('ATLAS_SQL_TEST_REQUIRED: 1')
     expect(workflow).toContain('postgres:16')
-    expect(workflow).toContain('passed < 12')
+    expect(workflow).toContain('passed < 13')
     expect(workflow).toContain('pending !== 0')
   })
 })

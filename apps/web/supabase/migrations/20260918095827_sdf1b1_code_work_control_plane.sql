@@ -1119,8 +1119,8 @@ begin
      or p_admission#>>'{worker,capabilityId}' <> 'code.worktree.patch.v1' then
     raise exception 'untrusted repository or capability' using errcode = 'check_violation';
   end if;
-  if not (p_admission#>'{evidence,requiredReceiptClasses}' @> '["authority_pins"]'::jsonb) then
-    raise exception 'authority_pins baseline evidence missing' using errcode = 'check_violation';
+  if p_admission#>'{evidence,requiredReceiptClasses}' <> '["authority_pins"]'::jsonb then
+    raise exception 'baseline evidence must be exactly authority_pins' using errcode = 'check_violation';
   end if;
 
   select work_package into v_wp from public.manager_tasks

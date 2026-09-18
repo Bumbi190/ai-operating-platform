@@ -54,7 +54,7 @@ jobs:
           const passed = report.numPassedTests ?? 0
           const failed = report.numFailedTests ?? 0
           const pending = report.numPendingTests ?? 0
-          if (passed < 12 || failed !== 0 || pending !== 0) {
+          if (passed < 13 || failed !== 0 || pending !== 0) {
             throw new Error(`SDF-1B SQL anti-skip floor failed: passed=${passed} failed=${failed} pending=${pending}`)
           }
           console.log(`SDF-1B SQL anti-skip floor satisfied: ${passed} passed, 0 failed, 0 pending`)

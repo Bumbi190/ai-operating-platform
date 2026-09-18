@@ -212,6 +212,21 @@ d('SDF-1B1 schema, immutability and ACL', () => {
     }
   })
 
+  it('rejects outcome-specific receipt classes in the persisted baseline', () => {
+    const workId = uuid('3')
+    const overbroad = admission(workId)
+    overbroad.evidence.requiredReceiptClasses = ['authority_pins', 'policy_denial']
+    const admissionJson = one(`select public.atlas_code_work_normalized_admission(${q(JSON.stringify(overbroad))}::jsonb)::text`)
+    const admissionHash = one(`select public.atlas_code_work_admission_hash(${q(admissionJson)}::jsonb)`)
+    const result = txn(`select public.atlas_code_work_propose(
+      ${q(workId)}::uuid,${q(PROJECT)}::uuid,${q(REQUESTER)}::uuid,
+      ${q(HASH_A)},${q(HASH_B)},${q(admissionJson)}::jsonb,${q(admissionHash)},
+      ${q(uuid('8'))}::uuid,${q(uuid('9'))}::uuid
+    )`)
+    expect(result.ok).toBe(false)
+    expect(result.err).toMatch(/baseline evidence must be exactly authority_pins/)
+  })
+
   it('refuses receipt UPDATE, DELETE and TRUNCATE even for the table owner', () => {
     const created = createProposal()
     for (const statement of [

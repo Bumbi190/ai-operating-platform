@@ -1,8 +1,8 @@
 # Atlas Phase B — latency audit and bounded optimization
 
-Date: 2026-09-19  
-Branch: `feat/omnira-atlas-voice-latency`  
-Base: `df2e66daaba8de9bca635995b107782a33f594fa`  
+Date: 2026-09-19
+Branch: `feat/omnira-atlas-voice-latency`
+Base: `df2e66daaba8de9bca635995b107782a33f594fa`
 Base tree: `a8282376d4fd2b018b8428236fbd9d53d4d25cff`
 
 This report separates three evidence classes. “Observed live baseline” is the

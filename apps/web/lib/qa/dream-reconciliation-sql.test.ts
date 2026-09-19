@@ -20,7 +20,9 @@ describe('Dream reconciliation migration contract', () => {
     expect(EXEC).toMatch(/before truncate on public\.dream_issue_reconciliation_events/)
     expect(EXEC).toMatch(/enable row level security/)
     expect(EXEC).toMatch(/revoke all on table public\.dream_issue_reconciliation_events from public, anon, authenticated, service_role/)
+    expect(EXEC).toMatch(/revoke all on sequence public\.dream_issue_reconciliation_events_event_seq_seq from public, anon, authenticated, service_role/)
     expect(EXEC).toMatch(/grant select, insert on table public\.dream_issue_reconciliation_events to service_role/)
+    expect(EXEC).toMatch(/grant usage, select on sequence public\.dream_issue_reconciliation_events_event_seq_seq to service_role/)
   })
 
   it('makes every writer idempotent within its project scope', () => {

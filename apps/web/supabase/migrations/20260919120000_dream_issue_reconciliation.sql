@@ -233,7 +233,7 @@ create trigger dream_reconciliation_no_truncate
 
 alter table public.dream_issue_reconciliation_events enable row level security;
 revoke all on table public.dream_issue_reconciliation_events from public, anon, authenticated, service_role;
-revoke all on sequence public.dream_issue_reconciliation_events_event_seq_seq from public, anon, authenticated;
+revoke all on sequence public.dream_issue_reconciliation_events_event_seq_seq from public, anon, authenticated, service_role;
 grant select, insert on table public.dream_issue_reconciliation_events to service_role;
 grant usage, select on sequence public.dream_issue_reconciliation_events_event_seq_seq to service_role;
 

@@ -3,7 +3,9 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { loadReviewQueue } from '@/lib/os/review-queue'
+import { loadCodeWorkReviewQueue } from '@/lib/atlas/code-work/control-plane/operator-read'
 import { ReviewQueue, ReviewQueueLoading } from '@/components/platform/vnext/ReviewQueue'
+import { CodeWorkReviewPanel } from '@/components/platform/vnext/CodeWorkReviewCard'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 import { ApprovalsLegacy } from './ApprovalsLegacy'
 
@@ -50,5 +52,17 @@ export default async function ApprovalsPage({
 
 async function LoadedReviewQueue({ projectSlug }: { projectSlug: string | null }) {
   const model = await loadReviewQueue({ projectSlug })
-  return <ReviewQueue model={model} />
+  return (
+    <>
+      <Suspense fallback={null}>
+        <LoadedCodeWorkReviewQueue projectSlug={projectSlug} />
+      </Suspense>
+      <ReviewQueue model={model} />
+    </>
+  )
+}
+
+async function LoadedCodeWorkReviewQueue({ projectSlug }: { projectSlug: string | null }) {
+  const model = await loadCodeWorkReviewQueue({ projectSlug })
+  return <CodeWorkReviewPanel model={model} />
 }

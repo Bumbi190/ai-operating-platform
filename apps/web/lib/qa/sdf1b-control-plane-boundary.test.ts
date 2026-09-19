@@ -1,4 +1,4 @@
-/** Structural proof that SDF-1B1 is control-plane-only. */
+/** Structural proof that SDF-1B1/B2 remains control-plane-only. */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -11,8 +11,10 @@ describe('SDF-1B control plane boundary', () => {
   it('contains only server policy/store modules and no execution bridge', () => {
     const files = readdirSync(CONTROL).filter(file => file.endsWith('.ts')).sort()
     expect(files).toEqual([
-      'authorization.ts', 'derive-admission.ts', 'principal-read.ts', 'principal-write.ts',
-      'store.ts', 'types.ts', 'work-package.ts',
+      'authorization.ts', 'derive-admission.ts', 'operator-admission.ts',
+      'operator-authorization.ts', 'operator-model.ts', 'operator-read.ts',
+      'operator-write.ts', 'principal-read.ts', 'principal-write.ts', 'store.ts',
+      'types.ts', 'work-package.ts',
     ])
     const source = files.map(file => readFileSync(join(CONTROL, file), 'utf8')).join('\n')
     expect(source).not.toMatch(/(?:node:)?child_process|\b(?:spawn|exec|execFile|fork)\s*\(/)
@@ -22,7 +24,7 @@ describe('SDF-1B control plane boundary', () => {
     expect(source).not.toMatch(/apply[_-]?patch|command[_-]?runner|worker[_-]?adapter.*invoke/i)
   })
 
-  it('creates persistence primitives but no route, UI, scheduler or execution hook', () => {
+  it('keeps B1 persistence unchanged while B2 exposes only its purpose-specific operator route', () => {
     const sql = readFileSync(MIGRATION, 'utf8')
     const executableSql = sql.replace(/--.*$/gm, '')
     expect((sql.match(/create table public\.atlas_code_work_/g) ?? [])).toHaveLength(2)
@@ -30,7 +32,11 @@ describe('SDF-1B control plane boundary', () => {
     expect(sql).toContain("set search_path = ''")
     expect(executableSql).not.toMatch(/cron\.schedule|pg_net|net\.http|http_(?:get|post)|dblink|copy\s+.+program|listen\s|notify\s/i)
     expect(executableSql).not.toMatch(/after\s+(?:insert|update|delete).*atlas_code_work/i)
-    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/route.ts'))).toBe(true)
+    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/[workId]/route.ts'))).toBe(true)
+    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/claim'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/execute'))).toBe(false)
+    expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker'))).toBe(false)
     expect(existsSync(resolve(ROOT, 'apps/web/app/atlas/code-work'))).toBe(false)
   })
 

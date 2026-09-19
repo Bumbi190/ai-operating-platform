@@ -29,8 +29,10 @@ Tills dess: scoped-subset-branchar per behov (som i H1.P5), eller manuell DDL-re
 **Status:** delvis åtgärdad — okänd ledger-drift och dubbletter blockeras; ordnad historik återstår.
 
 ### Nuvarande kontrakt
-Migration Guard v2 låser den kanoniska korpusen till 93 SQL-filer: 14 frysta
-grandfathered namn och 79 enforced namn. Produktionsledgern får dessutom innehålla
+Migration Guard v2 låser den kanoniska korpusen till 94 SQL-filer: 14 frysta
+grandfathered namn och 80 enforced namn. Migration 80 är
+`sdf1b1_code_work_control_plane`: SDF-1B1:s control-plane persistence utan
+code execution. Produktionsledgern får dessutom innehålla
 exakt 30 dokumenterade legacy-only namn. Av dessa fanns 29 i ledgern innan den
 ursprungliga guarden infördes; det trettionde namnet har kvar sin deklarativa källa
 i repo-rotens legacy-katalog. Listorna är explicita och frysta — inga prefix eller
@@ -43,7 +45,7 @@ Den skriver aldrig till databasen och försöker inte reparera historik.
 ### Kvarvarande skuld
 RPC:n exponerar bara migrationsnamn. Därför bevisar Guard v2 inte appliceringsordning,
 ledger-versioner, SQL-innehållshash eller att hela schemat kan spelas upp från noll.
-EI-S1.6A:s 79-räknare behålls som ett äldre, oberoende companion-test; Guard v2 äger
+EI-S1.6A:s 80-räknare behålls som ett äldre, oberoende companion-test; Guard v2 äger
 den repoövergripande count-tripwiren.
 
 ### Framtida åtgärd

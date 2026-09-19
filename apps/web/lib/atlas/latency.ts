@@ -20,6 +20,8 @@ export type LatencyOrigin = 'voice' | 'typed'
 /** The three durations the chat route already computes server-side. */
 export interface AtlasServerTiming {
   contextMs?: number
+  /** Route start to the first Anthropic stream dispatch. Includes context. */
+  modelStartMs?: number
   firstTokenMs?: number
   serverTotalMs?: number
 }
@@ -37,13 +39,40 @@ export interface AtlasLatencyMarks {
   readonly origin: LatencyOrigin
   /** Operator submit: speech-end for voice, send for typed. */
   readonly t0: number
+  /** Browser begins the same-origin `/api/chat` fetch. */
+  chatRequestStart?: number
+  /** Browser receives `/api/chat` response headers. */
+  chatHeadersReceived?: number
   sent?: number
+  /** First text SSE event reaches the browser callback. */
+  firstSseTextReceived?: number
   firstByte?: number
+  /** First streamed text committed to the visible React surface. */
+  firstDomVisible?: number
+  firstVisible?: number
+  /** First complete segment safe to hand to speech. */
+  firstSpeakable?: number
   firstSentence?: number
+  ttsRequestStart?: number
   ttsStart?: number
+  /** TTS response headers arrived; its body may still be streaming. */
+  ttsHeadersReceived?: number
+  ttsResponse?: number
+  /** First body chunk is readable by the client. */
+  ttsFirstBodyByte?: number
+  /** The complete first-segment response body has arrived. */
+  ttsBodyComplete?: number
   ttsBlobReady?: number
   /** The blob is handed to the playback module. NOT `audio.play()` — see below. */
   playbackHandoff?: number
+  playCalled?: number
+  playPromiseResolved?: number
+  playPromiseRejected?: number
+  loadedMetadata?: number
+  canPlay?: number
+  waiting?: number
+  stalled?: number
+  playbackError?: number
   /** The browser's `playing` event. The only mark that means audible. */
   firstAudio?: number
 }
@@ -94,9 +123,64 @@ export function mergeServerTiming(
   if (!incoming) return base
   return {
     contextMs:     incoming.contextMs     ?? base.contextMs,
+    modelStartMs:  incoming.modelStartMs  ?? base.modelStartMs,
     firstTokenMs:  incoming.firstTokenMs  ?? base.firstTokenMs,
     serverTotalMs: incoming.serverTotalMs ?? base.serverTotalMs,
   }
+}
+
+function relative(marks: AtlasLatencyMarks, mark: keyof AtlasLatencyMarks): string | null {
+  const value = marks[mark]
+  return typeof value === 'number' ? formatDuration(value - marks.t0) : null
+}
+
+/**
+ * Complete client-local timeline for the current request.
+ *
+ * Every client value is rendered relative to the same `performance.now()` T0;
+ * server durations stay explicitly server-relative so clocks are never mixed.
+ * Missing transitions are omitted, never inferred.
+ */
+export function formatRawLatency(
+  marks: AtlasLatencyMarks,
+  timing?: AtlasServerTiming,
+): string {
+  const client: Array<[string, keyof AtlasLatencyMarks]> = [
+    [marks.origin === 'voice' ? 'voiceT0' : 'typedT0', 't0'],
+    ['chatRequestStart', 'chatRequestStart'],
+    ['chatHeadersReceived', 'chatHeadersReceived'],
+    ['firstSseTextReceived', 'firstSseTextReceived'],
+    ['firstDomVisible', 'firstDomVisible'],
+    ['firstSpeakable', 'firstSpeakable'],
+    ['ttsRequestStart', 'ttsRequestStart'],
+    ['ttsHeadersReceived', 'ttsHeadersReceived'],
+    ['ttsFirstBodyByte', 'ttsFirstBodyByte'],
+    ['ttsBodyComplete', 'ttsBodyComplete'],
+    ['playbackHandoff', 'playbackHandoff'],
+    ['playCalled', 'playCalled'],
+    ['playPromiseResolved', 'playPromiseResolved'],
+    ['playPromiseRejected', 'playPromiseRejected'],
+    ['loadedmetadata', 'loadedMetadata'],
+    ['canplay', 'canPlay'],
+    ['waiting', 'waiting'],
+    ['stalled', 'stalled'],
+    ['playing', 'firstAudio'],
+    ['error', 'playbackError'],
+  ]
+
+  const clientParts = client.flatMap(([label, mark]) => {
+    if (mark === 't0') return [`${label}=0ms`]
+    const value = relative(marks, mark)
+    return value === null ? [] : [`${label}=${value}`]
+  })
+  const serverParts = [
+    timing?.contextMs === undefined ? null : `contextFinished=${formatDuration(timing.contextMs)}`,
+    timing?.modelStartMs === undefined ? null : `modelStart=${formatDuration(timing.modelStartMs)}`,
+    timing?.firstTokenMs === undefined ? null : `firstToken=${formatDuration(timing.firstTokenMs)}`,
+    timing?.serverTotalMs === undefined ? null : `serverDone=${formatDuration(timing.serverTotalMs)}`,
+  ].filter((value): value is string => value !== null)
+
+  return `raw-client ${clientParts.join(' · ')}${serverParts.length ? ` | raw-server requestReceived=0ms · ${serverParts.join(' · ')}` : ''}`
 }
 
 /** ms below a second, seconds above it — readable at both scales. */
@@ -113,30 +197,33 @@ export function formatDuration(ms: number): string {
  * would be a lie by a few hundred milliseconds.
  *
  * Stages that were never reached are omitted rather than shown as zero.
- * Returns null until there is audible speech to anchor the headline, which
- * preserves the existing behaviour of showing nothing on a silent response.
+ * Visible text is useful before audio exists, so the readout appears at the
+ * first committed text and grows as later stages become known.
  */
 export function formatLatency(
   marks: AtlasLatencyMarks,
   timing?: AtlasServerTiming,
 ): string | null {
-  if (marks.firstAudio === undefined) return null
-  const total = Math.round(marks.firstAudio - marks.t0)
-  if (!(total > 0)) return null
+  const textAt = marks.firstVisible ?? marks.firstByte
+  if (textAt === undefined) return null
+  const textMs = Math.round(textAt - marks.t0)
+  if (!(textMs >= 0)) return null
 
   const parts: string[] = []
   if (timing?.contextMs !== undefined) parts.push(`ctx ${formatDuration(timing.contextMs)}`)
   if (timing?.firstTokenMs !== undefined) parts.push(`TTFT ${formatDuration(timing.firstTokenMs)}`)
-  if (marks.firstSentence !== undefined) {
-    parts.push(`mening ${formatDuration(marks.firstSentence - marks.t0)}`)
+  if (marks.firstSpeakable !== undefined) {
+    parts.push(`segment ${formatDuration(marks.firstSpeakable - marks.t0)}`)
   }
   if (marks.ttsStart !== undefined && marks.ttsBlobReady !== undefined) {
     parts.push(`TTS ${formatDuration(marks.ttsBlobReady - marks.ttsStart)}`)
   }
-  if (marks.playbackHandoff !== undefined) {
+  if (marks.playbackHandoff !== undefined && marks.firstAudio !== undefined) {
     parts.push(`ljud ${formatDuration(marks.firstAudio - marks.playbackHandoff)}`)
   }
 
-  const headline = `⚡ ${formatDuration(total)}`
+  const headline = marks.firstAudio === undefined
+    ? `⚡ text ${formatDuration(textMs)}`
+    : `⚡ text ${formatDuration(textMs)} · audio ${formatDuration(marks.firstAudio - marks.t0)}`
   return parts.length ? `${headline} · ${parts.join(' · ')}` : headline
 }

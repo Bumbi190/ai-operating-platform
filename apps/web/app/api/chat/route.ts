@@ -41,7 +41,7 @@ import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
-import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
+import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope, type NormalizedView } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
@@ -55,6 +55,7 @@ import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { readAtlasContextSlices } from '@/lib/atlas/context-slices'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -269,6 +270,7 @@ const VOICE_DIRECTIVE = `
 
 VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 - Svara med HÖGST 2 meningar. Aldrig en rapport, aldrig en lista, aldrig markdown eller emojis.
+- Börja med en användbar, direkt sak-klausul på högst cirka 10 ord; utveckla först därefter. Ingen hälsningsutfyllnad, metakommentar eller konstgjord pausfras.
 - Prata som en avslappnad kollega — kort, varmt, naturligt.
 - Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
 - Hellre flera korta repliker i ett samtal än ett långt svar.
@@ -615,9 +617,10 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view } = await request.json() as {
+  const { messages, conversation_id, create_conversation, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
+    create_conversation?: boolean
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
@@ -643,17 +646,29 @@ export async function POST(request: Request) {
   // which every write site treats exactly like "no conversation supplied".
   let ownedConversationPromise: Promise<string | null> | null = null
   const resolveOwnedConversationId = (): Promise<string | null> => {
-    if (!conversation_id) return Promise.resolve(null)
-    ownedConversationPromise ??= (db.from('conversations') as any)
-      .select('id')
-      .eq('id', conversation_id)
-      .eq('user_id', userId)
-      .maybeSingle()
-      .then(
-        ({ data }: { data: { id: string } | null }) => (data ? conversation_id : null),
-        // A failed ownership read is NOT permission. Fail closed.
-        () => null,
-      )
+    if (!conversation_id && !create_conversation) return Promise.resolve(null)
+    ownedConversationPromise ??= conversation_id
+      ? (db.from('conversations') as any)
+        .select('id')
+        .eq('id', conversation_id)
+        .eq('user_id', userId)
+        .maybeSingle()
+        .then(
+          ({ data }: { data: { id: string } | null }) => (data ? conversation_id : null),
+          // A failed ownership read is NOT permission. Fail closed.
+          () => null,
+        )
+      : (db.from('conversations') as any)
+        .insert({
+          user_id: userId,
+          title: `🎙 ${lastUserText.slice(0, 56)}`,
+        })
+        .select('id')
+        .single()
+        .then(
+          ({ data }: { data: { id: string } | null }) => data?.id ?? null,
+          () => null,
+        )
     return ownedConversationPromise!
   }
 
@@ -732,44 +747,31 @@ export async function POST(request: Request) {
     // ett svar som tappar perioden är precis det som gjorde livstidssiffror till
     // "idag". Ren vägledning — ingen routing ändras, inget innehåll mallas.
     if (statusIntent) systemPrompt += renderStatusDirective(statusIntent)
-    // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
-    // the exact strings appended below, nothing recomputed, zero behavior change.
+    // These four reads are independent. Start them together, then append their
+    // results in the exact historical order so prompt semantics stay unchanged.
     let shadowLive = '', shadowAction = '', shadowView = ''
+    let normalizedView: NormalizedView | null = null
     try {
-      const live = await buildLiveContext(db, allowedProjectIds)
-      shadowLive = live
-      systemPrompt += live
-    } catch { /* icke-kritiskt */ }
-    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
-    // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
-    // across chats/sessions. Also reports whether a delegation is on record, used
-    // to suppress a false-claim correction on truthful recall.
-    try {
-      const am = await buildActionMemory(db, allowedProjectIds)
-      shadowAction = am.text
-      systemPrompt += am.text
-      recentDelegationKnown = am.hasRecentDelegation
-    } catch { /* icke-kritiskt */ }
-    // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
-    // currently looking at. Hint-only — route/project re-resolved via the registry.
-    if (isViewAwarenessEnabled()) {
-      try {
-        const nv = normalizeView(view)
-        if (nv) {
-          const viewBlock = renderViewBlock(nv)
-          shadowView = viewBlock
-          systemPrompt += viewBlock
-          // View → Record bridge (Foundation 2, flag-gated): auto-prefetch the
-          // actual rows on screen so Atlas can reason about them directly.
-          // Project-isolated and PII-free by construction (see view-records.ts).
-          if (isRecordAwarenessEnabled()) {
-            systemPrompt += await buildRecordsInView(db, nv, allowedProjectIds)
-          }
-        }
-      } catch { /* icke-kritiskt */ }
-    }
+      normalizedView = isViewAwarenessEnabled() ? normalizeView(view) : null
+    } catch { /* untrusted view hints are always non-critical */ }
+    const viewBlock = normalizedView ? renderViewBlock(normalizedView) : ''
+    const slices = await readAtlasContextSlices({
+      live: () => buildLiveContext(db, allowedProjectIds),
+      tool: () => buildToolMemory(db, conversation_id, userId),
+      action: () => buildActionMemory(db, allowedProjectIds),
+      records: () => normalizedView && isRecordAwarenessEnabled()
+        ? buildRecordsInView(db, normalizedView, allowedProjectIds)
+        : Promise.resolve(''),
+    })
+    shadowLive = slices.live
+    shadowAction = slices.action
+    shadowView = viewBlock
+    recentDelegationKnown = slices.hasRecentDelegation
+    systemPrompt += slices.live
+    systemPrompt += slices.tool
+    systemPrompt += slices.action
+    systemPrompt += viewBlock
+    systemPrompt += slices.records
     if (voice) systemPrompt += VOICE_DIRECTIVE
 
     // ── CL Commit 5 (Stage 0): context-shadow — INSTRUMENTATION ONLY ──────────
@@ -848,13 +850,24 @@ export async function POST(request: Request) {
   // SSE stream
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
-    async start(controller) {
+    start(controller) {
+      let streamOpen = true
       function send(event: string, data: unknown) {
+        if (!streamOpen) return
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\n\n`),
         )
       }
 
+      // First-turn persistence is deliberately concurrent with model work. The
+      // client learns the id when ready, but neither context nor TTFT waits for it.
+      const conversationEvent = create_conversation && !conversation_id
+        ? resolveOwnedConversationId().then(id => {
+          if (id) send('conversation', { id })
+        }).catch(() => undefined)
+        : Promise.resolve()
+
+      let modelStartMs: number | null = null // tid till FÖRSTA Anthropic-dispatch
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
       // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
       // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
@@ -885,6 +898,7 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
+          if (modelStartMs === null) modelStartMs = Date.now() - tStart
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
@@ -899,7 +913,7 @@ export async function POST(request: Request) {
               if (!earlyTimingSent) {
                 earlyTimingSent = true
                 // Diagnostik, inte innehåll: eget event, aldrig 'text'.
-                send('timing', { reqType, contextMs, firstTokenMs })
+                send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs })
               }
             }
             if (delta) send('text', { text: delta })
@@ -1060,16 +1074,26 @@ export async function POST(request: Request) {
         // Latens-sammanfattning från servern: hur lång tid Atlas Brain tog att
         // bygga + tid till första token. Klienten loggar resten (STT, TTS, totalt).
         const serverTotalMs = Date.now() - tStart
+        // Keep TTFT independent from persistence, but do not close the stream
+        // before a successfully-created first conversation id can reach the UI.
+        await conversationEvent
         // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
-        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
-        send('timing', { reqType, contextMs, firstTokenMs, serverTotalMs })
+        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs, serverTotalMs })
         send('done', {})
+        streamOpen = false
         controller.close()
       }
 
-      try {
-        await runConversation(messages)
-      } catch (err) {
+      // Do not return the conversation promise from ReadableStream.start().
+      // A pending async start keeps the stream in its setup phase, which lets
+      // the server enqueue token events but can prevent the response consumer
+      // from observing them until the whole conversation has finished. Launch
+      // the governed conversation in the background so the first `text` chunk
+      // is readable as soon as Anthropic emits it. The task owns every close
+      // and error path below; provider, governance and persistence semantics
+      // are otherwise unchanged.
+      void runConversation(messages).catch((err) => {
         const code = classifyAnthropicError(err)
         console.error(`[atlas-chat] Anthropic request failed (${code})`, {
           name: err instanceof Error ? err.name : 'UnknownError',
@@ -1078,8 +1102,9 @@ export async function POST(request: Request) {
             : undefined,
         })
         send('error', { code, message: getAtlasServiceErrorMessage(code) })
+        streamOpen = false
         controller.close()
-      }
+      })
     },
   })
 

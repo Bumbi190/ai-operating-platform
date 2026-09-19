@@ -182,4 +182,22 @@ describe('atlas tts · the merge intersection', () => {
     expect(res.headers.get('content-type')).toBe('audio/mpeg')
     expect(openaiCalls).toBe(1)
   })
+
+  it('passes the first upstream bytes through before the provider body closes', async () => {
+    let upstream!: ReadableStreamDefaultController<Uint8Array>
+    mockOpenAI(new Response(new ReadableStream<Uint8Array>({
+      start(controller) { upstream = controller },
+    }), { status: 200 }))
+
+    const res = await ttsRoute.POST(post({ text: 'ett strömmande svar' }))
+    expect(res.headers.get('x-tts-transport')).toBe('stream')
+    expect(res.headers.get('content-length')).toBeNull()
+    const reader = res.body!.getReader()
+    upstream.enqueue(new Uint8Array([1, 2, 3]))
+    const first = await reader.read()
+
+    expect(first).toEqual({ done: false, value: new Uint8Array([1, 2, 3]) })
+    upstream.close()
+    await reader.read()
+  })
 })

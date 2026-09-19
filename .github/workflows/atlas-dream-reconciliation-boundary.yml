@@ -1,0 +1,117 @@
+# Atlas Dream Reconciliation — canonical lifecycle and evidence boundary.
+#
+# The critical SQL suite applies the real migration to throwaway PostgreSQL.
+# CI=true and ATLAS_SQL_TEST_REQUIRED=1 turn an unavailable database into a
+# failure, while the JSON anti-skip proof refuses a green job unless every SQL
+# assertion actually ran.
+
+name: Atlas Dream Reconciliation Boundary
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-dream-reconciliation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boundary:
+    name: Atlas Dream Reconciliation Boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      ATLAS_SQL_TEST_REQUIRED: 1
+      ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # system-health.test.ts verifies the original Phase 12 merge diff.
+          # A shallow checkout omits that pinned history and creates a false red.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+      - name: Prove throwaway PostgreSQL is reachable
+        run: |
+          set -euo pipefail
+          psql --version
+          psql -X -t -A -d "$ATLAS_SQL_TEST_URL" -c "select current_user, current_database()"
+
+      - name: Run Dream reconciliation boundary suites
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/dream-reconciliation-postgres.test.ts \
+            lib/qa/dream-reconciliation-sql.test.ts \
+            lib/qa/dream-reconciliation.test.ts \
+            lib/qa/dream-resolution-routing.test.ts \
+            lib/qa/action-intent.test.ts \
+            lib/qa/action-memory.test.ts \
+            lib/qa/atlas-status-intent.test.ts \
+            lib/qa/system-health.test.ts \
+            lib/qa/instagram-webhook-self-filter.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/dream-reconciliation-boundary.json"
+
+      - name: Enforce PostgreSQL anti-skip floor
+        if: always()
+        env:
+          DREAM_SQL_REPORT: ${{ runner.temp }}/dream-reconciliation-boundary.json
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const reportPath = process.env.DREAM_SQL_REPORT
+          if (!reportPath || !fs.existsSync(reportPath)) {
+            throw new Error('Dream reconciliation test report missing — the SQL boundary did not run')
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const fileName = 'dream-reconciliation-postgres.test.ts'
+          const result = (report.testResults ?? []).find(item => path.basename(item.name) === fileName)
+          if (!result) throw new Error(`${fileName} absent from test report`)
+
+          const assertions = result.assertionResults ?? []
+          const passed = assertions.filter(item => item.status === 'passed').length
+          const failed = assertions.filter(item => item.status === 'failed').length
+          const notRun = assertions.filter(item => ['pending', 'skipped', 'todo', 'disabled'].includes(item.status)).length
+          if (result.status !== 'passed' || passed < 15 || failed !== 0 || notRun !== 0) {
+            throw new Error(`Dream SQL anti-skip floor failed: status=${result.status} passed=${passed} failed=${failed} notRun=${notRun}`)
+          }
+          const totalNotRun = (report.numPendingTests ?? 0) + (report.numTodoTests ?? 0)
+          if ((report.numFailedTests ?? 0) !== 0 || totalNotRun !== 0) {
+            throw new Error(`Dream boundary run not clean: failed=${report.numFailedTests ?? 0} notRun=${totalNotRun}`)
+          }
+          console.log(`Atlas Dream Reconciliation SQL boundary OK — ${passed} PostgreSQL tests, 0 skipped/pending/todo.`)
+          NODE
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: npx --no tsc --noEmit --incremental false

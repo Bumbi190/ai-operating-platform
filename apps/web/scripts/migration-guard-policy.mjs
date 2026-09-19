@@ -9,8 +9,8 @@ import { createHash } from 'node:crypto'
  * NOT prove application order, ledger versions, SQL content hashes, or replayability.
  */
 export const MIGRATION_GUARD_POLICY_VERSION = 2
-export const EXPECTED_CANONICAL_SQL_COUNT = 94
-export const EXPECTED_ENFORCED_COUNT = 80
+export const EXPECTED_CANONICAL_SQL_COUNT = 95
+export const EXPECTED_ENFORCED_COUNT = 81
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -12,7 +12,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { deriveIssueId, normSeverity } from '@/lib/atlas/dream'
+import { deriveIssueId, getDreamFindings, normSeverity } from '@/lib/atlas/dream'
 import type { DreamSeverity } from '@/lib/atlas/dream'
 import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { getAnthropic } from '@/lib/ai/anthropic'
@@ -43,7 +43,7 @@ Format: Returnera alltid giltig JSON med denna struktur:
     }
   ],
 
-VIKTIGT om issue_id: det är en STABIL identitet för det underliggande problemet (en kort snake_case-slug utan datum, t.ex. "alerting_missing", "step_logs_missing", "ig_self_account_id"). Om ett problem är SAMMA som ett tidigare (se listan KÄNDA ÖPPNA PROBLEM nedan) MÅSTE du återanvända exakt samma issue_id — hitta inte på en ny. Bara HELT nya problem får ett nytt issue_id. Detta gör att återkommande problem spåras som ETT ärende över tid i stället för ett nytt varje natt.
+VIKTIGT om issue_id: det är en STABIL identitet för det underliggande problemet (en kort snake_case-slug utan datum). Återanvänd identiteter i listan VERIFIERAT AKTIVA PROBLEM. Identiteter i TERMINAL IDENTITETSLISTA är historik och får INTE rapporteras som aktiva eller återöppnas från textlikhet; en regression kräver separat verifierbar evidence/operator-action utanför Dream. Ett helt nytt modellfynd sparas som UNVERIFIED tills det verifierats av reconciliation-boundaryn.
 
   "agent_suggestions": [
     {
@@ -264,16 +264,12 @@ export async function runDreamCycleForProject(
     .select('key, value')
     .eq('project_id', project.id)
     .order('updated_at', { ascending: false })
-    .limit(30)
+    .limit(60)
 
-  // 3b. Kända öppna problem (dream_issues) — så analyzern återanvänder issue_id
-  //     för återkommande problem i stället för att skapa ett nytt varje natt.
-  const { data: knownIssues } = await db
-    .from('dream_issues')
-    .select('issue_id, title, severity, manager_task_id')
-    .eq('project_id', project.id)
-    .order('last_seen_at', { ascending: false })
-    .limit(40)
+  // 3b. Reconciliation-aware issue context. Only verified ACTIVE findings are
+  // work. A bounded terminal identity list prevents duplicate resurrection
+  // without feeding historical prose back as a "known open problem".
+  const reconciledIssues = await getDreamFindings(db as any, project.id, 40)
 
   // 4. Statistik per steg
   const stepStats: Record<string, {
@@ -326,12 +322,20 @@ export async function runDreamCycleForProject(
     .join('\n')
 
   const memorySummary = (existingMemories ?? [])
+    .filter(m => !m.key.startsWith('dream_'))
     .slice(0, 10)
     .map(m => `  ${m.key}: ${m.value}`)
     .join('\n')
 
-  const knownIssuesSummary = (knownIssues ?? [])
-    .map((i: any) => `  ${i.issue_id} (${i.severity ?? '?'}${i.manager_task_id ? ', delegerad' : ''}): ${i.title ?? ''}`)
+  const activeIssuesSummary = reconciledIssues.findings
+    .filter(i => i.disposition === 'active')
+    .map(i => `  ${i.issueId} (${i.severity}, first_seen_at=${i.firstSeenAt}, last_verified_at=${i.lastVerifiedAt ?? 'okänd'}): ${i.insight}`)
+    .join('\n')
+
+  const terminalIdentitiesSummary = reconciledIssues.findings
+    .filter(i => i.disposition === 'resolved' || i.disposition === 'superseded' || i.disposition === 'invalidated')
+    .slice(0, 30)
+    .map(i => `  ${i.issueId}: ${i.disposition}${i.supersededBy ? ` → ${i.supersededBy}` : ''}`)
     .join('\n')
 
   const analysisReport = `Analysera följande körningsdata för projektet "${project.name}" (${dateStr}):
@@ -349,8 +353,13 @@ ${failuresList || '(inga misslyckanden)'}
 NUVARANDE MINNEN (befintlig kontext):
 ${memorySummary || '(inga sparade minnen)'}
 
-KÄNDA ÖPPNA PROBLEM (återanvänd exakt dessa issue_id om problemet återkommer):
-${knownIssuesSummary || '(inga kända problem ännu)'}
+VERIFIERAT AKTIVA PROBLEM (canonical reconciliation; återanvänd issue_id vid samma aktuella problem):
+${activeIssuesSummary || '(inga verifierat aktiva problem)'}
+
+TERMINAL IDENTITETSLISTA (bounded history; rapportera INTE som aktivt och återöppna INTE från AI-prosa):
+${terminalIdentitiesSummary || '(ingen terminal historik)'}
+
+UNVERIFIED legacy history är avsiktligt utelämnad och får inte beskrivas som aktiv sanning.
 
 Returnera din analys som giltig JSON enligt det format du instruerats att använda.`
 
@@ -429,8 +438,8 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
   // ── Stable issue ledger ────────────────────────────────────────────────────
   // Stamp the findings onto their stable issues. Recurring issues (same issue_id)
   // UPDATE the existing row — occurrences++ / last_seen — instead of forking a
-  // new lifecycle. Lifecycle itself is NOT stored here; it is derived from the
-  // linked manager_task (single source of truth), so we never touch the link.
+  // new observation row. Disposition is NOT stored here and is never inferred
+  // from this model output; the reconciliation event reducer owns lifecycle.
   //
   // One mutation per issue per cycle: an analyzer answer that names the same
   // issue twice used to insert it and then immediately update it — inflating

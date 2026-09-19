@@ -32,7 +32,7 @@ import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { NAV_CLAIM_RE, DELEGATE_CLAIM_RE, isUnsupportedActionClaim } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
-import { isActionIntent } from '@/lib/atlas/action-intent'
+import { isActionIntent, isDreamResolutionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter, scopeToProjects } from '@/lib/atlas/isolation'
@@ -180,12 +180,12 @@ async function buildToolMemory(
 
     const findings = dream.result.findings as Array<Record<string, any>>
     const lines = [
-      `\n\n[SENASTE DREAM-FYND — från ditt förra get_dream_findings i denna konversation]`,
-      `Projekt: ${dream.result.project ?? '—'}. Använd dessa issue_id DIREKT vid delegate_dream_finding — hämta INTE om i onödan.`,
+      `\n\n[SENASTE DREAM-FYND — historiska identiteter, INTE aktuell lifecycle]`,
+      `Projekt: ${dream.result.project ?? '—'}. Identiteterna kan återanvändas, men re-fetcha alltid get_dream_findings innan påståenden eller writes om aktuell disposition/status.`,
     ]
     for (const f of findings.slice(0, 12)) {
       lines.push(
-        `- issue_id=${f.issue_id} · ${f.severity} · lifecycle=${f.lifecycle ?? 'open'}` +
+        `- issue_id=${f.issue_id} · historisk severity=${f.severity}` +
         (f.insight ? ` · ${String(f.insight).slice(0, 80)}` : ''),
       )
     }
@@ -285,9 +285,9 @@ const TOOL_GUIDE = `Verktyg du har:
 - ask_manager — för djupare operativ analys, planering och utvärdering av godkännanden.
 - get_records — RAD-NIVÅ. När operatören frågar om konkreta poster eller "vad tittar jag på" (se [CURRENT VIEW]): hämta dem med rätt domain (leads, memories, website_content, runs, approvals, manager_tasks, opportunities, agents) + valfritt project/filters/id. När [RECORDS IN VIEW] redan finns i prompten är sidans rader REDAN hämtade — referera dem direkt och anropa get_records bara för andra domäner, fler rader eller PII. Allt är projekt-isolerat. PII (e-post/telefon) BARA med include_pii=true och bara om operatören uttryckligen ber om kontaktuppgifter. Referera bara poster verktyget returnerat — hitta aldrig på rader.
 - validate_workflow / save_workflow — när operatören ber dig SKAPA eller ÄNDRA ett workflow (ett automationsflöde av agent-steg, INTE en engångsuppgift → det är delegate). Arbetsgång: 1) hämta giltiga agent_id med get_records(domain=agents, project=…), 2) bygg stegen (varje steg: agent_id + input_template med {{output_key}} från tidigare steg + unik output_key), 3) validate_workflow (dry-run), 4) åtgärda ev. errors, 5) save_workflow (workflow_id för ändring, annars project för nytt). Rapportera workflow_id och required_inputs. Påstå ALDRIG att ett workflow sparats utan saved=true. Kör det inte automatiskt — föreslå trigger_workflow separat.
-- get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id (samma över tid även om problemet återkommer) och lifecycle (open/in_progress/completed) → svara på "vilka är öppna / under arbete / lösta?" direkt från det. Sammanfatta kritiska → varningar → info. Säg ALDRIG att du inte kan se Dream Cycle.
-- delegate_dream_finding — stänger Dream→Action-loopen. När ett ärende har lifecycle="open" och en recommended_action: FRÅGA INTE "vill du att jag delegerar?". Förklara kort vad du gör, anropa delegate_dream_finding (issue_id + project_id, valfri owner), returnera task-id, ägare, status. Idempotent på issue_id — återkommande problem skapar ingen dubblett. Påstå aldrig att en uppgift skapats utan att ha fått tillbaka ett task-id.
-- resolve_dream_finding — när operatören BEKRÄFTAR att ett delegerat ärende är åtgärdat: anropa resolve_dream_finding (issue_id + project_id). Det sätter uppgiften till done → lifecycle completed. Markera aldrig något löst på eget bevåg.
+- get_dream_findings — Dream Cycle är din nattliga självförbättringsanalys. Du HAR direkt tillgång per projekt. Varje ärende har en STABIL issue_id och canonical disposition (active/resolved/superseded/invalidated/unverified). Endast ACTIVE är verifierat aktuellt arbete. UNVERIFIED betyder "status ej verifierad", aldrig säker incident. Task-status är separat execution progress.
+- delegate_dream_finding — stänger Dream→Action-loopen. Delegera endast disposition="active" med recommended_action. FRÅGA INTE "vill du att jag delegerar?". Returnera task-id, ägare och aktuell task-status. Påstå aldrig att en uppgift skapats utan task-id.
+- resolve_dream_finding — vid en EXPLICIT request att markera ett ACTIVE, delegerat ärende löst: anropa verktyget. Verktyget registrerar task completion + operator-attestation före canonical RESOLVED. Påstå ALDRIG resolution om ok inte är true.
 - delegate — när operatören ber dig SKAPA/STARTA något större (t.ex. "skapa en GainPilot-kampanj"): bryt ner målet i konkreta uppgifter med ägare, delegera dem, och rapportera kedjan kort (t.ex. "Skapat: Research ✓ planerad, Copy, Bild, QA"). Uppgifterna syns live i Activity Center.
 - present_links — FÖRSLAG/BLÄDDRING. Använd BARA när operatören bläddrar, ställer en fråga, eller när flera destinationer är relevanta och du vill låta dem välja. Det ÖPPNAR ingenting — det visar klickbara genvägar under svaret. Logiska destinationer (t.ex. "approvals", "activity", "money", "revenue", "dream", "content_queue", "marketing_queue", "project_home") + valfritt project (verksamhetens namn eller slug) + valfria filters (t.ex. {state:"pending"} eller {status:"failed"}). Aldrig råa URL:er. Håll till 1–3 mest relevanta. FORMULERING: säg "Här är genvägar:" / "Here are shortcuts:". Påstå ALDRIG att du öppnat, navigerat till eller tagit operatören till sidan när du bara använt present_links — det har du inte gjort förrän de klickar.
 - navigate — ÖPPNAR en vy DIREKT åt operatören. Ett DIREKT navigeringskommando ("öppna X", "gå till X", "ta mig till X", "visa X", eng. "open/go to/take me to/show X") ÄR i sig bekräftelsen → anropa navigate OMEDELBART, samma tur, utan att fråga om bekräftelse och utan att erbjuda present_links först. Använd present_links endast när operatören bläddrar/frågar eller flera mål är relevanta. Samma destinationer/project/filters som present_links.
@@ -442,7 +442,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'delegate_dream_finding',
-    description: 'Omvandla ett Dream-ärende till en konkret uppgift i manager_tasks (stänger Dream→Action-loopen). Anropa DIREKT — utan att fråga om lov — när ett ärende har lifecycle="open" och en recommended_action. Idempotent på stabil issue_id: skapar ingen dubblett även om problemet återkommit under ny nyckel. Returnerar task-id, ägare och status.',
+    description: 'Omvandla ett verifierat ACTIVE Dream-ärende till en konkret manager-task. Idempotent på stabil issue_id. Task-status är execution progress och ändrar inte finding disposition.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -456,7 +456,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'resolve_dream_finding',
-    description: 'Markera ett Dream-ärende som löst genom att slutföra dess delegerade uppgift (status → done, lifecycle → completed). Anropa BARA när operatören bekräftar att arbetet faktiskt är gjort — hitta aldrig på att något är löst. Kräver att ärendet redan delegerats. Returnerar issue_id, task-id och status.',
+    description: 'Canonical resolution boundary för ett verifierat ACTIVE, delegerat Dream-ärende. Anropa endast på en explicit operator-request att markera/stänga/lösa ärendet. Verktyget registrerar task completion och operator-attestation innan RESOLVED; påstå aldrig resolution utan ok=true.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -672,7 +672,10 @@ export async function POST(request: Request) {
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
     !fastPath && classifyStaticConversation(lastUserText) === 'static_conversation'
-  // Action-intent (kör/starta/publicera …) → tvinga verktygsanrop på första turen.
+  // Resolution is a state-changing action with one exact boundary. Detect it
+  // separately so turn zero can force resolve_dream_finding rather than any tool.
+  const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
+  // Action-intent (kör/starta/publicera/resolution …) → tvinga verktygsanrop.
   const actionIntent = !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
@@ -688,7 +691,7 @@ export async function POST(request: Request) {
     ? 'fast_path'
     : staticConversation
       ? 'static_conversation'
-      : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas'))
+      : (resolutionIntent ? 'dream_resolution' : (actionIntent ? 'workflow_start' : (navIntent ? 'navigate' : 'atlas')))
 
   // Project-isolation boundary: the projects THIS user owns. Every Atlas data
   // path (live context, ask_manager, get_dream_findings) is scoped to these.
@@ -795,6 +798,7 @@ export async function POST(request: Request) {
   // exactly as before — this is not general per-class schema pruning.
   const activeTools = (fastPath || staticConversation) ? [] : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
+  const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
   const forceNavigateFirstTurn = navIntent && activeTools.length > 0
   const contextMs = Date.now() - tStart
@@ -873,7 +877,9 @@ export async function POST(request: Request) {
           //  • navigerings-kommando → tvinga specifikt navigate (kommandot ÄR bekräftelsen).
           //  • action-intent → tvinga något verktyg (tool_choice=any) så Atlas inte bara påstår.
           const toolChoice = i === 0
-            ? (forceNavigateFirstTurn
+            ? (forceResolutionFirstTurn
+                ? { tool_choice: { type: 'tool' as const, name: 'resolve_dream_finding' } }
+                : forceNavigateFirstTurn
                 ? { tool_choice: { type: 'tool' as const, name: 'navigate' } }
                 : forceToolFirstTurn
                   ? { tool_choice: { type: 'any' as const } }
@@ -962,7 +968,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1094,8 +1100,9 @@ async function executeTool(
   name: string,
   input: Record<string, unknown>,
   db: AdminClient,
-  _userId: string,
+  userId: string,
   allowedProjectIds: string[] = [],
+  toolCallId = globalThis.crypto.randomUUID(),
 ): Promise<unknown> {
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
@@ -1365,19 +1372,22 @@ async function executeTool(
       has_data: true,
       last_run_at: res.lastRunAt,
       summary: res.counts,
-      lifecycle: res.lifecycle, // { open, in_progress, completed } — answers "which are open/delegated/resolved?"
+      dispositions: res.lifecycle,
       findings: res.findings.map(f => ({
         issue_id: f.issueId, // STABLE identity — pass to delegate_dream_finding / resolve_dream_finding
         severity: f.severity,
         insight: f.insight,
         recommended_action: f.action,
         occurrences: f.occurrences, // how many nights it has recurred
-        lifecycle: f.lifecycle, // open | in_progress | completed
-        task: f.task, // { id, status, owner } when delegated
+        disposition: f.disposition,
+        superseded_by: f.supersededBy,
+        current_active_since: f.currentActiveSince,
+        last_verified_at: f.lastVerifiedAt,
+        task: f.task, // current execution progress; not resolution truth
         first_seen_at: f.firstSeenAt,
         last_seen_at: f.lastSeenAt,
       })),
-      note: 'Svara på "öppna/under arbete/lösta" via lifecycle. För findings med lifecycle="open" och en recommended_action: delegera DIREKT med delegate_dream_finding(issue_id) — fråga inte om lov, säg vad du gör och returnera task-id/ägare/status. När operatören bekräftar att ett ärende är åtgärdat: anropa resolve_dream_finding(issue_id).',
+      note: 'Endast disposition=active är verifierat aktuellt arbete. resolved/superseded/invalidated är history; unverified ska beskrivas som status ej verifierad. Task-status är separat och får inte användas som resolution truth.',
     }
   }
 
@@ -1406,7 +1416,7 @@ async function executeTool(
       dream_finding: r.finding,
       note: r.alreadyExisted
         ? 'Det här ärendet var redan delegerat — återanvände befintlig uppgift (ingen dubblett, även om problemet återkommit). Rapportera task-id, ägare och status.'
-        : 'Uppgift skapad i manager_tasks och synlig i Activity Center. Ärendets lifecycle är nu "in_progress". Rapportera task-id, ägare och status till operatören.',
+        : 'Uppgift skapad i manager_tasks och synlig i Activity Center. Finding disposition förblir ACTIVE; rapportera task-id, ägare och aktuell task-status.',
     }
   }
 
@@ -1420,14 +1430,21 @@ async function executeTool(
     // ISOLATION: resolve UUID/slug/name → owned project id before any write.
     const resolvedId = await resolveOwnedProjectId(db, project_id, allowedProjectIds)
     if (!resolvedId) return { ok: false, error: 'Inget sådant projekt i din åtkomst.' }
-    const r = await resolveDreamFinding(db, { projectId: resolvedId, issueId: issue_id, result })
+    const r = await resolveDreamFinding(db, {
+      projectId: resolvedId,
+      issueId: issue_id,
+      result,
+      actorPrincipal: `user:${userId}`,
+      sourceKey: `atlas-chat:${toolCallId}`,
+      evidenceLocator: `atlas-chat-tool:${toolCallId}`,
+    })
     if (!r.ok) return { ok: false, error: r.error }
     return {
       ok: true,
       issue_id: r.issueId,
       task_id: r.taskId,
       status: r.status,
-      note: 'Uppgiften är markerad som done — ärendets lifecycle är nu "completed". Bekräfta kort för operatören.',
+      note: 'Uppgiften är done och canonical reconciliation är RESOLVED. Bekräfta bara eftersom ok=true.',
     }
   }
 

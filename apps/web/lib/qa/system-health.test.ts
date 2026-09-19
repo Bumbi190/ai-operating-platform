@@ -83,6 +83,7 @@ function input(over: Partial<AssembleSystemHealthInput> = {}): AssembleSystemHea
     approvalsByProject: { ok: true, rows: [], count: null },
     workflows: { ok: true, rows: [], count: 0 },
     dreamIssues: { ok: true, rows: [], count: 0 },
+    dreamReconciliation: { ok: true, rows: [], count: 0 },
     legacyMemories: { ok: true, value: 12 },
     ...over,
   }
@@ -253,17 +254,28 @@ describe('phase 12 · what Omnira does not observe says so', () => {
     expect(JSON.stringify(m)).not.toMatch(/memory_events|ATLAS_MEMORY|readMemoryFlags/)
   })
 
-  it('dream findings are read from the ledger, with severities normalised', () => {
+  it('Dream shows only reconciliation-aware ACTIVE findings', () => {
     const m = model({
       dreamIssues: { ok: true, count: 2, rows: [
         { id: 'd1', project_id: 'proj-a', issue_id: 'alerting_missing', severity: 'CRITICAL', occurrences: 68, last_seen_at: NOW, manager_task_id: 't1' },
-        { id: 'd2', project_id: 'proj-a', issue_id: 'perfect_run_rate', severity: 'nonsense', occurrences: 97, last_seen_at: NOW, manager_task_id: null },
+        { id: 'd2', project_id: 'proj-a', issue_id: 'legacy_unknown', severity: 'CRITICAL', occurrences: 97, last_seen_at: NOW, manager_task_id: null },
+      ] },
+      dreamReconciliation: { ok: true, count: 2, rows: [
+        { event_id: 'e1', event_seq: 1, finding_id: 'd1', event_type: 'verification_evidence_recorded', occurred_at: NOW, recorded_at: NOW },
+        { event_id: 'e2', event_seq: 2, finding_id: 'd1', event_type: 'activated', occurred_at: NOW, recorded_at: NOW },
       ] },
     })
-    expect(m.dream.rows[0]).toMatchObject({ slug: 'alerting_missing', severity: 'critical', occurrences: 68, delegated: true })
-    expect(m.dream.rows[1].severity).toBe('info')
+    expect(m.dream.rows).toHaveLength(1)
+    expect(m.dream.rows[0]).toMatchObject({ slug: 'alerting_missing', severity: 'critical', occurrences: 68, delegated: true, disposition: 'active' })
+    expect(m.dream.rows.some(row => row.slug === 'legacy_unknown')).toBe(false)
     expect(stateOf(m, 'dream')).toBe('attention')
     expect(m.warnings.find((w) => w.id === 'dream:d1')).toMatchObject({ tone: 'attention' })
+  })
+
+  it('an unreadable reconciliation ledger is unavailable, never a calm Dream state', () => {
+    const m = model({ dreamReconciliation: { ok: false } })
+    expect(m.dream.state).toBe('error')
+    expect(stateOf(m, 'dream')).toBe('unavailable')
   })
 
   it.each([
@@ -448,7 +460,7 @@ describe('phase 12 · the loader reads inside the operator boundary', () => {
     const { loadSystemHealth } = await import('@/lib/os/system-health')
     const m = await loadSystemHealth()
     expect(m).not.toBeNull()
-    const scoped = queries.filter((q) => ['projects', 'runs', 'workflows', 'dream_issues', 'memories'].includes(q.table))
+    const scoped = queries.filter((q) => ['projects', 'runs', 'workflows', 'dream_issues', 'dream_issue_reconciliation_events', 'memories'].includes(q.table))
     expect(scoped.length).toBeGreaterThan(0)
     for (const q of scoped) {
       const names = q.filters.map(([k]) => k)

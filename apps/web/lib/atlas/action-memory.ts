@@ -76,11 +76,11 @@ function ageLabel(iso: string): string {
 export function renderActionMemory(rows: ActionRow[]): string {
   if (!rows.length) return ''
   const lines = [
-    `\n\n[SENASTE ÅTGÄRDER — vad du FAKTISKT har utfört (åtgärdslogg). Svara på "vad gjorde du / vilka delegerade du nyss" HÄRIFRÅN, med id:n — hämta INTE om i onödan. Re-fetcha bara om operatören frågar om AKTUELL status som kan ha ändrats sedan dess.]`,
+    `\n\n[SENASTE ÅTGÄRDER — historiska kvitton på vad du FAKTISKT utförde. Svara på "vad gjorde du / vilka delegerade du" härifrån, med id:n. Kvitto-statusen är INTE aktuell task/finding-status; re-fetcha alltid canonical task/finding state före påståenden som "pending", "kritiskt" eller "olöst".]`,
   ]
   for (const r of rows) {
     const t = ageLabel(r.created_at)
-    lines.push(`- [${r.action_type}] ${r.summary}${r.status ? ` · status=${r.status}` : ''}${t ? ` · ${t}` : ''}`)
+    lines.push(`- [${r.action_type}] ${r.summary}${t ? ` · utfört ${t}` : ''}`)
   }
   return lines.join('\n')
 }

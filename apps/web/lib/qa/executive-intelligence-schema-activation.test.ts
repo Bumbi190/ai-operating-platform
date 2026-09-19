@@ -233,11 +233,13 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // binding, every existing row and every Instagram and Facebook rule are unchanged.
     // 80: SDF-1B1's `sdf1b1_code_work_control_plane` — durable control-plane
     // persistence and invariants only; it adds no code-execution capability.
-    // Migration Guard v2 owns the repository-wide 94/80 count contract. This
+    // 81: canonical Dream issue reconciliation — the append-only evidence ledger
+    // owns finding disposition without deriving it from task status or model prose.
+    // Migration Guard v2 owns the repository-wide 95/81 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(80)
+    expect(enforced).toBe(81)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

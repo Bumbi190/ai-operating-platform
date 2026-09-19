@@ -850,7 +850,7 @@ export async function POST(request: Request) {
   // SSE stream
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       let streamOpen = true
       function send(event: string, data: unknown) {
         if (!streamOpen) return
@@ -1085,15 +1085,9 @@ export async function POST(request: Request) {
         controller.close()
       }
 
-      // Do not return the conversation promise from ReadableStream.start().
-      // A pending async start keeps the stream in its setup phase, which lets
-      // the server enqueue token events but can prevent the response consumer
-      // from observing them until the whole conversation has finished. Launch
-      // the governed conversation in the background so the first `text` chunk
-      // is readable as soon as Anthropic emits it. The task owns every close
-      // and error path below; provider, governance and persistence semantics
-      // are otherwise unchanged.
-      void runConversation(messages).catch((err) => {
+      try {
+        await runConversation(messages)
+      } catch (err) {
         const code = classifyAnthropicError(err)
         console.error(`[atlas-chat] Anthropic request failed (${code})`, {
           name: err instanceof Error ? err.name : 'UnknownError',
@@ -1104,7 +1098,7 @@ export async function POST(request: Request) {
         send('error', { code, message: getAtlasServiceErrorMessage(code) })
         streamOpen = false
         controller.close()
-      })
+      }
     },
   })
 

@@ -270,6 +270,7 @@ const VOICE_DIRECTIVE = `
 
 VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 - Svara med HÖGST 2 meningar. Aldrig en rapport, aldrig en lista, aldrig markdown eller emojis.
+- Börja med en användbar, direkt sak-klausul på högst cirka 10 ord; utveckla först därefter. Ingen hälsningsutfyllnad, metakommentar eller konstgjord pausfras.
 - Prata som en avslappnad kollega — kort, varmt, naturligt.
 - Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
 - Hellre flera korta repliker i ett samtal än ett långt svar.

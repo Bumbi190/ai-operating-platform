@@ -26,6 +26,22 @@ describe('Atlas speech segmenter', () => {
     })
   })
 
+  it('releases a useful short clause at an em dash', () => {
+    const source = 'Tre leads i Familje-Stunden väntar på uppföljning — resten ser stabilt ut.'
+    const segments = feed([source], false)
+
+    expect(segments).toEqual([{
+      text: 'Tre leads i Familje-Stunden väntar på uppföljning — ',
+      boundary: 'soft',
+    }])
+  })
+
+  it('keeps short filler and acknowledgements buffered at soft punctuation', () => {
+    const segmenter = new IncrementalSpeechSegmenter()
+    expect(segmenter.push('Absolut, ')).toEqual([])
+    expect(segmenter.push('jag tittar på det, ')).toEqual([])
+  })
+
   it('does not emit tiny fragments mid-stream', () => {
     const segmenter = new IncrementalSpeechSegmenter()
     expect(segmenter.push('Ja. ')).toEqual([])
@@ -38,6 +54,12 @@ describe('Atlas speech segmenter', () => {
     const segments = feed([source])
     expect(segments.map(segment => segment.text).join('')).toBe(source)
     expect(segments).toHaveLength(1)
+  })
+
+  it('preserves markdown source and segment order exactly', () => {
+    const source = '**Status:** tre viktiga signaler är stabila — [öppna rapporten](https://omnira.se/docs).'
+    const segments = feed([source.slice(0, 35), source.slice(35)])
+    expect(segments.map(segment => segment.text).join('')).toBe(source)
   })
 
   it('flushes a final unterminated answer', () => {

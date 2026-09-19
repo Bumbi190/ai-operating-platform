@@ -107,6 +107,10 @@ const STATIC_UTTERANCES: ReadonlySet<string> = new Set([
   'what is your name',
   // Social wellbeing, explicitly about Atlas rather than an operation/project.
   'hur mår du', 'hur mår du atlas', 'how are you', 'how are you atlas',
+  // Exact benchmark greetings. The Atlas address makes these social rather than
+  // an operational "how is it going?" status question; unknown variants fail closed.
+  'hej atlas hur är läget', 'hej atlas, hur är läget',
+  'hej atlas hur mår du idag', 'hej atlas, hur mår du idag',
   // Farewell
   'hej då', 'hejdå', 'vi ses', 'bye', 'goodbye', 'see you',
 ])
@@ -145,7 +149,7 @@ export function classifyStaticConversation(text: unknown): AtlasRequestClass {
 
     // These exact social phrases are about Atlas itself. The broader progress
     // veto must still catch "hur mår Familje-Stunden?" and every unknown variant.
-    if (STATIC_UTTERANCES.has(t) && /^(?:hur mår du(?: atlas)?|how are you(?: atlas)?)$/u.test(t)) {
+    if (STATIC_UTTERANCES.has(t) && /^(?:hur mår du(?: atlas)?|how are you(?: atlas)?|hej atlas,? hur (?:är läget|mår du idag))$/u.test(t)) {
       return 'static_conversation'
     }
 

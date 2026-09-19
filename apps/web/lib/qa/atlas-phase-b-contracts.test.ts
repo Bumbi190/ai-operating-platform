@@ -49,4 +49,10 @@ describe('Atlas Phase B integration contracts', () => {
     expect(runtime).toContain("voice: 'onyx'")
     expect(runtime).toContain('const SILENCE_MS    = 800')
   })
+
+  it('shapes voice output around a useful first clause without filler', () => {
+    expect(route).toContain('användbar, direkt sak-klausul')
+    expect(route).toContain('högst cirka 10 ord')
+    expect(route).toContain('Ingen hälsningsutfyllnad')
+  })
 })

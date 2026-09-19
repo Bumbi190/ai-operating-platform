@@ -12,8 +12,11 @@ const ABBREVIATIONS = new Set([
 ])
 
 const MIN_WORDS = 4
-const MIN_SOFT_WORDS = 6
-const MIN_SOFT_CHARS = 42
+// Phase B samples showed complete, useful first clauses commonly landing at
+// 5–7 words before a comma or em dash. Keep both floors so acknowledgements and
+// filler fragments still buffer, while a semantic clause can reach TTS sooner.
+const MIN_SOFT_WORDS = 5
+const MIN_SOFT_CHARS = 32
 
 function wordCount(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length
@@ -61,7 +64,7 @@ function findBoundary(value: string, final: boolean): { end: number; boundary: S
       return { end, boundary: 'sentence' }
     }
 
-    if (!/[,;:]/u.test(char)) continue
+    if (!/[,;:\u2014]/u.test(char)) continue
     if (char === ':' && /\d/u.test(value[i - 1] ?? '') && /\d/u.test(value[i + 1] ?? '')) continue
     if (char === ':' && /https?$/iu.test(value.slice(Math.max(0, i - 5), i))) continue
     const end = boundaryEnd(value, i)

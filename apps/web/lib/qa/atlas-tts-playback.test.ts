@@ -131,6 +131,21 @@ describe('Atlas TTS playback · speaking follows real audio', () => {
 })
 
 describe('Atlas TTS playback · failures are outcomes, never completions', () => {
+  it('lets a streaming source report an external failure without claiming completion', async () => {
+    const audio = fakeAudio()
+    const { handle, onStart } = play(audio)
+    await tick()
+
+    handle.fail()
+    await expect(handle.result).resolves.toEqual({
+      status: 'failed',
+      code: 'ATLAS_TTS_PLAYBACK_FAILED',
+      started: false,
+    })
+    expect(audio.pause).toHaveBeenCalledTimes(1)
+    expect(onStart).not.toHaveBeenCalled()
+  })
+
   it('surfaces an autoplay denial instead of passing for speech', async () => {
     const denial = Object.assign(new Error('blocked'), { name: 'NotAllowedError' })
     const audio = fakeAudio(async () => { throw denial })

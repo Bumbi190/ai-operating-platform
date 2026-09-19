@@ -99,7 +99,7 @@ export function AtlasCommandCore() {
         />
       </div>
 
-      <div className={styles.runtimeReadout} aria-live="polite">
+      <div className={styles.runtimeReadout} aria-live="polite" data-atlas-progressive-playback={atlas.progressivePlayback}>
         <span className={styles.runtimeDot} data-state={orbState} />
         <span>{stateDescription}</span>
         {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}

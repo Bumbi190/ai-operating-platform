@@ -107,7 +107,7 @@ export function AtlasVoiceHome({ operatorName }: Props) {
           {atlas.voicePhase === 'speaking' && (
             <div className="flex items-center gap-2">
               <p className="text-sm text-indigo-300/80 animate-fade-in">
-                {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw>{atlas.perfRaw}</span> : null}
+                {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw data-atlas-progressive-playback={atlas.progressivePlayback}>{atlas.perfRaw}</span> : null}
                 {atlas.perf && (
                   <span className="text-[10px] font-mono text-zinc-600 mr-2">
                     {atlas.perf}

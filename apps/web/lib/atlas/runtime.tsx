@@ -25,6 +25,12 @@ import { buildChatRequestBody }   from '@/lib/atlas/view-client'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
 import { playTtsUrl, type PlaybackEvent, type PlaybackHandle, type PlaybackResult } from './playback'
 import {
+  playProgressiveTtsResponse,
+  progressiveMp3Capability,
+  type ProgressiveCapability,
+  type TtsBodyEvent,
+} from './progressive-playback'
+import {
   createLatencyMarks,
   formatLatency,
   formatRawLatency,
@@ -92,6 +98,7 @@ export interface AtlasValue {
   response:    string            // ackumulerat Atlas-svar (streaming)
   perf:        string | null     // latens-readout, t.ex. "⚡ 1.4s"
   perfRaw:     string | null     // request-local raw timeline, never persisted
+  progressivePlayback: ProgressiveCapability
 
   // ── Exekutivt läge ────────────────────────────────────────────────────
   executiveState: ExecutiveState
@@ -185,6 +192,8 @@ export function AtlasRuntimeProvider({
   const [response, setResponse]     = useState('')
   const [perf, setPerf]             = useState<string | null>(null)
   const [perfRaw, setPerfRaw]       = useState<string | null>(null)
+  const [progressivePlayback, setProgressivePlayback] = useState<ProgressiveCapability>('unsupported')
+  useEffect(() => { setProgressivePlayback(progressiveMp3Capability()) }, [])
 
   // ── Session ──────────────────────────────────────────────────────────────
   const [isSessionActive, setIsSessionActive] = useState(false)
@@ -430,7 +439,8 @@ export function AtlasRuntimeProvider({
     sentence: string,
     signal: AbortSignal,
     generation: number,
-  ): Promise<{ url: string | null; errorCode?: unknown; responseAt?: number }> {
+    progressive: boolean,
+  ): Promise<{ url: string | null; response?: Response; errorCode?: unknown; responseAt?: number }> {
     try {
       const res = await fetch('/api/chat/tts', {
         method:  'POST',
@@ -448,6 +458,7 @@ export function AtlasRuntimeProvider({
       }
       const ms = Number(res.headers.get('x-tts-upstream-ms') || 0)
       if (ms) ttsMsRef.current += ms
+      if (progressive && res.body) return { url: null, response: res, responseAt }
       const chunks: ArrayBuffer[] = []
       const reader = res.body?.getReader()
       if (reader) {
@@ -486,14 +497,7 @@ export function AtlasRuntimeProvider({
    * raised when the blob arrives and NOT when `play()` is called; either would
    * be the orb claiming to speak into silence, which is the defect this fixes.
    */
-  async function playUrl(
-    url: string,
-    generation: number,
-    serverTiming?: AtlasServerTiming,
-  ): Promise<PlaybackResult> {
-    // The blob leaves our hands here. This is NOT `audio.play()` — the playback
-    // module owns that, and the gap between the two is its analyser preparation.
-    markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+  function playbackCallbacks(generation: number, serverTiming?: AtlasServerTiming) {
     const eventMarks: Partial<Record<PlaybackEvent, AtlasLatencyMark>> = {
       'play-called': 'playCalled',
       'play-promise-resolved': 'playPromiseResolved',
@@ -504,9 +508,8 @@ export function AtlasRuntimeProvider({
       stalled: 'stalled',
       error: 'playbackError',
     }
-    const handle = playTtsUrl(url, {
-      analyser: getAudioAnalyser(),
-      onEvent: (event) => {
+    return {
+      onEvent: (event: PlaybackEvent) => {
         const mark = eventMarks[event]
         if (mark && markOnce(marksRef.current, generation, mark, performance.now())) {
           logLatency(serverTiming)
@@ -515,9 +518,53 @@ export function AtlasRuntimeProvider({
       onStart: () => {
         if (requestGenRef.current !== generation || cancelRef.current) return
         setVoicePhase('speaking')
-        // Unchanged contract: `firstAudio` means the browser's `playing` event
-        // and nothing earlier.
         if (markOnce(marksRef.current, generation, 'firstAudio', performance.now())) {
+          logLatency(serverTiming)
+        }
+      },
+    }
+  }
+
+  async function playUrl(
+    url: string,
+    generation: number,
+    serverTiming?: AtlasServerTiming,
+  ): Promise<PlaybackResult> {
+    // The blob leaves our hands here. This is NOT `audio.play()` — the playback
+    // module owns that, and the gap between the two is its analyser preparation.
+    markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+    const handle = playTtsUrl(url, {
+      analyser: getAudioAnalyser(),
+      ...playbackCallbacks(generation, serverTiming),
+    })
+    playbackRef.current = handle
+    try {
+      return await handle.result
+    } finally {
+      if (playbackRef.current === handle) playbackRef.current = null
+    }
+  }
+
+  async function playResponse(
+    response: Response,
+    generation: number,
+    serverTiming?: AtlasServerTiming,
+  ): Promise<PlaybackResult> {
+    markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+    const bodyMarks: Partial<Record<TtsBodyEvent, AtlasLatencyMark>> = {
+      'first-byte': 'ttsFirstBodyByte',
+      'body-complete': 'ttsBodyComplete',
+    }
+    const handle = playProgressiveTtsResponse(response, {
+      analyser: getAudioAnalyser(),
+      capability: () => progressivePlayback,
+      ...playbackCallbacks(generation, serverTiming),
+      onBodyEvent: (event) => {
+        const mark = bodyMarks[event]
+        if (mark && markOnce(marksRef.current, generation, mark, performance.now())) {
+          if (event === 'body-complete') {
+            markOnce(marksRef.current, generation, 'ttsBlobReady', performance.now())
+          }
           logLatency(serverTiming)
         }
       },
@@ -601,6 +648,7 @@ export function AtlasRuntimeProvider({
     chatAbortRef.current = chatAbort
     const ttsQueue = new BoundedTaskQueue<{
       url: string | null
+      response?: Response
       errorCode?: unknown
       responseAt?: number
     }>(2)
@@ -636,7 +684,7 @@ export function AtlasRuntimeProvider({
     historyRef.current = [...historyRef.current, { role: 'user', content: text }]
     setHistory(h => [...h, { role: 'user', content: text }])
 
-    const urlQueue: Promise<{ url: string | null; errorCode?: unknown; responseAt?: number }>[] = []
+    const urlQueue: Promise<{ url: string | null; response?: Response; errorCode?: unknown; responseAt?: number }>[] = []
     let reply         = ''
     let streamDone    = false
     let playerStarted = false
@@ -656,13 +704,20 @@ export function AtlasRuntimeProvider({
         const url = tts.url
         if (!isCurrent()) {
           if (url) try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+          if (tts.response?.body) void tts.response.body.cancel().catch(() => undefined)
           break
         }
         if (tts.errorCode && !ttsFailureReported) {
           ttsFailureReported = true
           setWarning(resolveAtlasServiceWarning(tts.errorCode))
         }
-        if (url) {
+        if (tts.response) {
+          const outcome = await playResponse(tts.response, generation, serverTiming)
+          if (isCurrent() && outcome.code && !ttsFailureReported) {
+            ttsFailureReported = true
+            setWarning(resolveAtlasServiceWarning(outcome.code))
+          }
+        } else if (url) {
           // The phase is raised inside playUrl, on real playback start. Here we
           // only care what came back: a blocked or failed segment must reach the
           // operator rather than pass for speech nobody heard.
@@ -675,8 +730,9 @@ export function AtlasRuntimeProvider({
       }
       if (!isCurrent() && idx < urlQueue.length) {
         void Promise.all(urlQueue.slice(idx)).then((results) => {
-          results.forEach(({ url: queuedUrl }) => {
+          results.forEach(({ url: queuedUrl, response: queuedResponse }) => {
             if (queuedUrl) try { URL.revokeObjectURL(queuedUrl) } catch { /* ignore */ }
+            if (queuedResponse?.body) void queuedResponse.body.cancel().catch(() => undefined)
           })
         })
       }
@@ -699,7 +755,7 @@ export function AtlasRuntimeProvider({
       const ttsRequestAt = performance.now()
       markOnce(marksRef.current, generation, 'ttsRequestStart', ttsRequestAt)
       markOnce(marksRef.current, generation, 'ttsStart', ttsRequestAt)
-      const pending = ttsQueue.enqueue(signal => fetchTTSUrl(s, signal, generation)).then(result => {
+      const pending = ttsQueue.enqueue(signal => fetchTTSUrl(s, signal, generation, isFirstSegment)).then(result => {
         if (result.status === 'fulfilled') return result.value!
         if (result.status === 'failed') {
           return { url: null, errorCode: 'ATLAS_TTS_REQUEST_FAILED' as const }
@@ -844,6 +900,7 @@ export function AtlasRuntimeProvider({
     response,
     perf,
     perfRaw,
+    progressivePlayback,
     executiveState,
     execution,
     awaitingApproval,

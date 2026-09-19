@@ -9,6 +9,7 @@ describe('Atlas Phase B integration contracts', () => {
   const route = read('app/api/chat/route.ts')
   const miniOrb = read('components/platform/os/AtlasMiniOrb.tsx')
   const commandCore = read('components/platform/vnext/AtlasCommandCore.tsx')
+  const progressive = read('lib/atlas/progressive-playback.ts')
 
   it('does not block the client on auth or conversation insertion', () => {
     expect(runtime).not.toContain('ensureConversation')
@@ -54,5 +55,19 @@ describe('Atlas Phase B integration contracts', () => {
     expect(route).toContain('användbar, direkt sak-klausul')
     expect(route).toContain('högst cirka 10 ord')
     expect(route).toContain('Ingen hälsningsutfyllnad')
+  })
+
+  it('limits progressive playback to the first segment and exposes the runtime probe', () => {
+    expect(runtime).toContain('fetchTTSUrl(s, signal, generation, isFirstSegment)')
+    expect(runtime).toContain('progressivePlayback: ProgressiveCapability')
+    expect(commandCore).toContain('data-atlas-progressive-playback={atlas.progressivePlayback}')
+    expect(progressive).toContain("MediaSourceCtor.isTypeSupported(ATLAS_PROGRESSIVE_MIME)")
+  })
+
+  it('keeps playback FIFO and forbids post-playing Blob replay', () => {
+    expect(runtime).toContain('const tts = await urlQueue[idx]; idx++')
+    expect(runtime).toContain('const outcome = await playResponse(tts.response, generation, serverTiming)')
+    expect(progressive).toContain('if (started || fallbackUsed)')
+    expect(progressive).toContain("deps.onBodyEvent?.('blob-fallback')")
   })
 })

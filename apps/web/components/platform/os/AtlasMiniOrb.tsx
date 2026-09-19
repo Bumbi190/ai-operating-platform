@@ -172,7 +172,7 @@ export function AtlasMiniOrb() {
             {/* Streamad text visas omedelbart, även medan ljud förbereds. */}
             {!!atlas.response && (
               <div className="animate-fade-in">
-                {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw>{atlas.perfRaw}</span> : null}
+                {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw data-atlas-progressive-playback={atlas.progressivePlayback}>{atlas.perfRaw}</span> : null}
                 {atlas.perf && (
                   <span className="block mb-1 text-[9px] font-mono text-zinc-600">
                     {atlas.perf}

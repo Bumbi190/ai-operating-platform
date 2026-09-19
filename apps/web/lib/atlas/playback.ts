@@ -74,6 +74,11 @@ export interface PlaybackDeps {
   onEvent?: (event: PlaybackEvent) => void
 }
 
+interface ElementPlaybackDeps extends PlaybackDeps {
+  /** Releases the source owned by this element (object URL, MediaSource URL). */
+  releaseSource?: () => void
+}
+
 export type PlaybackEvent =
   | 'play-called'
   | 'play-promise-resolved'
@@ -89,6 +94,8 @@ export interface PlaybackHandle {
   result: Promise<PlaybackResult>
   /** Interrupt this segment. Safe to call after the result has settled. */
   stop: () => void
+  /** A streaming source failed outside the media element lifecycle. */
+  fail: () => void
 }
 
 /**
@@ -124,14 +131,20 @@ const PLAYBACK_CODES: Record<PlaybackStatus, AtlasServiceErrorCode | null> = {
 export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle {
   const createAudio = deps.createAudio ?? ((source: string) => new Audio(source))
   const revokeObjectUrl = deps.revokeObjectUrl ?? ((source: string) => URL.revokeObjectURL(source))
+  return playTtsElement(createAudio(url), {
+    ...deps,
+    releaseSource: () => revokeObjectUrl(url),
+  })
+}
+
+/** Play an already-created element while preserving the same truth contract. */
+export function playTtsElement(audio: HTMLAudioElement, deps: ElementPlaybackDeps = {}): PlaybackHandle {
   const analyser = deps.analyser ?? null
 
   let settled = false
   let started = false
   let resolveResult!: (value: PlaybackResult) => void
   const result = new Promise<PlaybackResult>(resolve => { resolveResult = resolve })
-
-  const audio = createAudio(url)
 
   const emit = (event: PlaybackEvent) => {
     try { deps.onEvent?.(event) } catch { /* diagnostics never gate speech */ }
@@ -167,7 +180,7 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
     analyser?.disconnect()
     // The single revocation point. Reaching it means the element can no longer
     // consume the URL, on every path including the ones that used to leak it.
-    try { revokeObjectUrl(url) } catch { /* already revoked */ }
+    try { deps.releaseSource?.() } catch { /* already released */ }
     resolveResult({ status, code: PLAYBACK_CODES[status], started })
   }
 
@@ -224,6 +237,11 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
       if (settled) return
       try { audio.pause() } catch { /* element already torn down */ }
       settle('cancelled')
+    },
+    fail() {
+      if (settled) return
+      try { audio.pause() } catch { /* element already torn down */ }
+      settle('failed')
     },
   }
 }

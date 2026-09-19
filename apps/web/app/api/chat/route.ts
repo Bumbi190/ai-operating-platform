@@ -866,6 +866,7 @@ export async function POST(request: Request) {
         }).catch(() => undefined)
         : Promise.resolve()
 
+      let modelStartMs: number | null = null // tid till FÖRSTA Anthropic-dispatch
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
       // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
       // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
@@ -896,6 +897,7 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
+          if (modelStartMs === null) modelStartMs = Date.now() - tStart
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
@@ -910,7 +912,7 @@ export async function POST(request: Request) {
               if (!earlyTimingSent) {
                 earlyTimingSent = true
                 // Diagnostik, inte innehåll: eget event, aldrig 'text'.
-                send('timing', { reqType, contextMs, firstTokenMs })
+                send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs })
               }
             }
             if (delta) send('text', { text: delta })
@@ -1075,8 +1077,8 @@ export async function POST(request: Request) {
         // before a successfully-created first conversation id can reach the UI.
         await conversationEvent
         // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
-        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
-        send('timing', { reqType, contextMs, firstTokenMs, serverTotalMs })
+        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs, serverTotalMs })
         send('done', {})
         streamOpen = false
         controller.close()

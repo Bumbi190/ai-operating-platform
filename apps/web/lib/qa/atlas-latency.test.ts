@@ -20,6 +20,7 @@ import {
   createLatencyMarks,
   formatDuration,
   formatLatency,
+  formatRawLatency,
   markOnce,
   mergeServerTiming,
   type AtlasServerTiming,
@@ -29,9 +30,9 @@ describe('Atlas latency · server timing merges rather than overwrites', () => {
   it('accepts an early frame before the final one', () => {
     // The route proves contextMs and firstTokenMs at first token, and
     // serverTotalMs only at completion.
-    const early: AtlasServerTiming = { contextMs: 120, firstTokenMs: 780 }
+    const early: AtlasServerTiming = { contextMs: 120, modelStartMs: 140, firstTokenMs: 780 }
     const merged = mergeServerTiming(undefined, early)
-    expect(merged).toEqual({ contextMs: 120, firstTokenMs: 780, serverTotalMs: undefined })
+    expect(merged).toEqual({ contextMs: 120, modelStartMs: 140, firstTokenMs: 780, serverTotalMs: undefined })
   })
 
   it('keeps what the early frame proved when the final frame arrives', () => {
@@ -39,7 +40,7 @@ describe('Atlas latency · server timing merges rather than overwrites', () => {
     const final = mergeServerTiming(early, { serverTotalMs: 2400 })
 
     // A plain assignment here would have erased both earlier fields.
-    expect(final).toEqual({ contextMs: 120, firstTokenMs: 780, serverTotalMs: 2400 })
+    expect(final).toEqual({ contextMs: 120, modelStartMs: undefined, firstTokenMs: 780, serverTotalMs: 2400 })
   })
 
   it('never lets a later frame subtract a known value', () => {
@@ -198,6 +199,44 @@ describe('Atlas latency · compact diagnostic readout', () => {
   })
 })
 
+describe('Atlas latency · raw request-local critical path', () => {
+  it('renders client marks from one T0 and server marks in a separate clock domain', () => {
+    const marks = createLatencyMarks(9, 'voice', 10_000)
+    markOnce(marks, 9, 'chatRequestStart', 10_020)
+    markOnce(marks, 9, 'chatHeadersReceived', 10_700)
+    markOnce(marks, 9, 'firstSseTextReceived', 10_760)
+    markOnce(marks, 9, 'firstDomVisible', 10_780)
+    markOnce(marks, 9, 'firstSpeakable', 10_900)
+    markOnce(marks, 9, 'ttsRequestStart', 10_910)
+    markOnce(marks, 9, 'ttsHeadersReceived', 11_200)
+    markOnce(marks, 9, 'ttsFirstBodyByte', 11_220)
+    markOnce(marks, 9, 'ttsBodyComplete', 11_500)
+    markOnce(marks, 9, 'playbackHandoff', 11_510)
+    markOnce(marks, 9, 'playCalled', 11_550)
+    markOnce(marks, 9, 'playPromiseResolved', 11_570)
+    markOnce(marks, 9, 'firstAudio', 11_620)
+
+    expect(formatRawLatency(marks, {
+      contextMs: 110,
+      modelStartMs: 125,
+      firstTokenMs: 730,
+      serverTotalMs: 2_100,
+    })).toBe(
+      'raw-client voiceT0=0ms · chatRequestStart=20ms · chatHeadersReceived=700ms · firstSseTextReceived=760ms · firstDomVisible=780ms · firstSpeakable=900ms · ttsRequestStart=910ms · ttsHeadersReceived=1.2s · ttsFirstBodyByte=1.2s · ttsBodyComplete=1.5s · playbackHandoff=1.5s · playCalled=1.6s · playPromiseResolved=1.6s · playing=1.6s | raw-server requestReceived=0ms · contextFinished=110ms · modelStart=125ms · firstToken=730ms · serverDone=2.1s',
+    )
+  })
+
+  it('omits transitions that did not happen instead of inventing zeroes', () => {
+    const marks = createLatencyMarks(2, 'typed', 500)
+    markOnce(marks, 2, 'chatRequestStart', 510)
+    const raw = formatRawLatency(marks)
+
+    expect(raw).toBe('raw-client typedT0=0ms · chatRequestStart=10ms')
+    expect(raw).not.toContain('playing=')
+    expect(raw).not.toContain('raw-server')
+  })
+})
+
 /**
  * Instrumentation must be invisible in the answer.
  *
@@ -213,13 +252,13 @@ describe('Atlas latency · timing never becomes visible content', () => {
 
   it('emits the early frame once, on its own SSE event', () => {
     expect(routeSrc).toContain('let earlyTimingSent = false')
-    expect(routeSrc).toContain("send('timing', { reqType, contextMs, firstTokenMs })")
+    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs })")
     // Guarded, so a multi-turn tool loop cannot emit it repeatedly.
     expect(routeSrc).toContain('if (!earlyTimingSent) {')
   })
 
   it('still emits the final frame carrying serverTotalMs', () => {
-    expect(routeSrc).toContain("send('timing', { reqType, contextMs, firstTokenMs, serverTotalMs })")
+    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs, serverTotalMs })")
   })
 
   it('keeps the visible reply fed only by text events', () => {

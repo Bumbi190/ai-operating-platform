@@ -8,6 +8,7 @@ describe('Atlas Phase B integration contracts', () => {
   const runtime = read('lib/atlas/runtime.tsx')
   const route = read('app/api/chat/route.ts')
   const miniOrb = read('components/platform/os/AtlasMiniOrb.tsx')
+  const commandCore = read('components/platform/vnext/AtlasCommandCore.tsx')
 
   it('does not block the client on auth or conversation insertion', () => {
     expect(runtime).not.toContain('ensureConversation')
@@ -32,6 +33,14 @@ describe('Atlas Phase B integration contracts', () => {
     expect(runtime.match(/setVoicePhase\('speaking'\)/g)).toHaveLength(1)
     expect(runtime).toContain('onStart: () => {')
     expect(runtime).toContain("markOnce(marksRef.current, generation, 'firstAudio'")
+  })
+
+  it('exposes the raw same-request timeline locally without persisting it', () => {
+    expect(runtime).toContain('formatRawLatency(marksRef.current, serverTiming)')
+    expect(runtime).toContain('perfRaw:     string | null')
+    expect(commandCore).toContain('data-atlas-latency-raw')
+    expect(route).toContain('modelStartMs')
+    expect(runtime).not.toContain('perfRaw: body')
   })
 
   it('leaves the locked model, TTS model, voice and silence threshold unchanged', () => {

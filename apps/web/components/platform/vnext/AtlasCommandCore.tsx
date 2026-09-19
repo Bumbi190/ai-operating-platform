@@ -103,6 +103,7 @@ export function AtlasCommandCore() {
         <span className={styles.runtimeDot} data-state={orbState} />
         <span>{stateDescription}</span>
         {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}
+        {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw>{atlas.perfRaw}</span> : null}
       </div>
 
       {atlas.awaitingApproval?.detail ? (

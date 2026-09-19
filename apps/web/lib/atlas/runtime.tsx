@@ -23,12 +23,14 @@ import {
 import { useRouter, usePathname } from 'next/navigation'
 import { buildChatRequestBody }   from '@/lib/atlas/view-client'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
-import { playTtsUrl, type PlaybackHandle, type PlaybackResult } from './playback'
+import { playTtsUrl, type PlaybackEvent, type PlaybackHandle, type PlaybackResult } from './playback'
 import {
   createLatencyMarks,
   formatLatency,
+  formatRawLatency,
   markOnce,
   mergeServerTiming,
+  type AtlasLatencyMark,
   type AtlasLatencyMarks,
   type AtlasServerTiming,
   type LatencyOrigin,
@@ -89,6 +91,7 @@ export interface AtlasValue {
   transcript:  string            // löpande STT-text under listening
   response:    string            // ackumulerat Atlas-svar (streaming)
   perf:        string | null     // latens-readout, t.ex. "⚡ 1.4s"
+  perfRaw:     string | null     // request-local raw timeline, never persisted
 
   // ── Exekutivt läge ────────────────────────────────────────────────────
   executiveState: ExecutiveState
@@ -181,6 +184,7 @@ export function AtlasRuntimeProvider({
   const [transcript, setTranscript] = useState('')
   const [response, setResponse]     = useState('')
   const [perf, setPerf]             = useState<string | null>(null)
+  const [perfRaw, setPerfRaw]       = useState<string | null>(null)
 
   // ── Session ──────────────────────────────────────────────────────────────
   const [isSessionActive, setIsSessionActive] = useState(false)
@@ -250,7 +254,9 @@ export function AtlasRuntimeProvider({
   function reportTextVisible() {
     const generation = visibleGenerationRef.current
     if (generation === null) return
-    if (markOnce(marksRef.current, generation, 'firstVisible', performance.now())) {
+    const at = performance.now()
+    markOnce(marksRef.current, generation, 'firstDomVisible', at)
+    if (markOnce(marksRef.current, generation, 'firstVisible', at)) {
       logLatency(serverTimingRef.current)
     }
   }
@@ -423,6 +429,7 @@ export function AtlasRuntimeProvider({
   async function fetchTTSUrl(
     sentence: string,
     signal: AbortSignal,
+    generation: number,
   ): Promise<{ url: string | null; errorCode?: unknown; responseAt?: number }> {
     try {
       const res = await fetch('/api/chat/tts', {
@@ -432,13 +439,38 @@ export function AtlasRuntimeProvider({
         signal,
       })
       const responseAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsHeadersReceived', responseAt)
+      markOnce(marksRef.current, generation, 'ttsResponse', responseAt)
+      logLatency(serverTimingRef.current)
       if (!res.ok) {
         const payload = await res.json().catch(() => null) as { code?: unknown } | null
         return { url: null, errorCode: payload?.code, responseAt }
       }
       const ms = Number(res.headers.get('x-tts-upstream-ms') || 0)
       if (ms) ttsMsRef.current += ms
-      const blob = await res.blob()
+      const chunks: ArrayBuffer[] = []
+      const reader = res.body?.getReader()
+      if (reader) {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value?.byteLength) {
+            markOnce(marksRef.current, generation, 'ttsFirstBodyByte', performance.now())
+            chunks.push(Uint8Array.from(value).buffer)
+          }
+        }
+      } else {
+        const bytes = new Uint8Array(await res.arrayBuffer())
+        if (bytes.byteLength) {
+          markOnce(marksRef.current, generation, 'ttsFirstBodyByte', performance.now())
+          chunks.push(Uint8Array.from(bytes).buffer)
+        }
+      }
+      const completeAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsBodyComplete', completeAt)
+      markOnce(marksRef.current, generation, 'ttsBlobReady', completeAt)
+      logLatency(serverTimingRef.current)
+      const blob = new Blob(chunks, { type: res.headers.get('content-type') || 'audio/mpeg' })
       return { url: URL.createObjectURL(blob), responseAt }
     } catch (error) {
       if (signal.aborted) return { url: null }
@@ -462,8 +494,24 @@ export function AtlasRuntimeProvider({
     // The blob leaves our hands here. This is NOT `audio.play()` — the playback
     // module owns that, and the gap between the two is its analyser preparation.
     markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+    const eventMarks: Partial<Record<PlaybackEvent, AtlasLatencyMark>> = {
+      'play-called': 'playCalled',
+      'play-promise-resolved': 'playPromiseResolved',
+      'play-promise-rejected': 'playPromiseRejected',
+      loadedmetadata: 'loadedMetadata',
+      canplay: 'canPlay',
+      waiting: 'waiting',
+      stalled: 'stalled',
+      error: 'playbackError',
+    }
     const handle = playTtsUrl(url, {
       analyser: getAudioAnalyser(),
+      onEvent: (event) => {
+        const mark = eventMarks[event]
+        if (mark && markOnce(marksRef.current, generation, mark, performance.now())) {
+          logLatency(serverTiming)
+        }
+      },
       onStart: () => {
         if (requestGenRef.current !== generation || cancelRef.current) return
         setVoicePhase('speaking')
@@ -484,6 +532,7 @@ export function AtlasRuntimeProvider({
 
   function logLatency(serverTiming?: AtlasServerTiming) {
     setPerf(formatLatency(marksRef.current, serverTiming))
+    setPerfRaw(formatRawLatency(marksRef.current, serverTiming))
   }
 
   // ── Publika kontroller ────────────────────────────────────────────────────
@@ -568,6 +617,7 @@ export function AtlasRuntimeProvider({
     setTranscript(text)
     setResponse('')
     setPerf(null)
+    setPerfRaw(null)
     cancelRef.current = false
     ttsMsRef.current  = 0
     serverTimingRef.current = undefined
@@ -646,8 +696,10 @@ export function AtlasRuntimeProvider({
       if (boundary === 'sentence') {
         markOnce(marksRef.current, generation, 'firstSentence', performance.now())
       }
-      markOnce(marksRef.current, generation, 'ttsStart', performance.now())
-      const pending = ttsQueue.enqueue(signal => fetchTTSUrl(s, signal)).then(result => {
+      const ttsRequestAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsRequestStart', ttsRequestAt)
+      markOnce(marksRef.current, generation, 'ttsStart', ttsRequestAt)
+      const pending = ttsQueue.enqueue(signal => fetchTTSUrl(s, signal, generation)).then(result => {
         if (result.status === 'fulfilled') return result.value!
         if (result.status === 'failed') {
           return { url: null, errorCode: 'ATLAS_TTS_REQUEST_FAILED' as const }
@@ -659,18 +711,15 @@ export function AtlasRuntimeProvider({
         // take". The cumulative ttsMsRef cannot distinguish that.
         ? pending.then(result => {
             if (!isCurrent()) return result
-            if (result.responseAt !== undefined) {
-              markOnce(marksRef.current, generation, 'ttsResponse', result.responseAt)
-            }
-            markOnce(marksRef.current, generation, 'ttsBlobReady', performance.now())
-            logLatency(serverTiming)
             return result
           })
         : pending)
       if (!playerStarted) { playerStarted = true; player() }
     }
 
-    markOnce(marksRef.current, generation, 'sent', performance.now())
+    const chatRequestAt = performance.now()
+    markOnce(marksRef.current, generation, 'chatRequestStart', chatRequestAt)
+    markOnce(marksRef.current, generation, 'sent', chatRequestAt)
 
     try {
       const res = await fetch('/api/chat', {
@@ -687,6 +736,9 @@ export function AtlasRuntimeProvider({
         signal: chatAbort.signal,
       })
 
+      markOnce(marksRef.current, generation, 'chatHeadersReceived', performance.now())
+      logLatency(serverTiming)
+
       if (!isCurrent()) return
       if (!res.ok) {
         const payload = await res.json().catch(() => null) as { code?: unknown } | null
@@ -701,7 +753,9 @@ export function AtlasRuntimeProvider({
           if (!isCurrent()) return
 
           if (d.event === 'text' && typeof d.text === 'string' && d.text) {
-            markOnce(marksRef.current, generation, 'firstByte', performance.now())
+            const at = performance.now()
+            markOnce(marksRef.current, generation, 'firstSseTextReceived', at)
+            markOnce(marksRef.current, generation, 'firstByte', at)
             reply += d.text
             visibleGenerationRef.current = generation
             setResponse(reply)
@@ -712,6 +766,7 @@ export function AtlasRuntimeProvider({
           } else if (d.event === 'timing') {
             serverTiming = mergeServerTiming(serverTiming, {
               contextMs:     typeof d.contextMs === 'number' ? d.contextMs : undefined,
+              modelStartMs:  typeof d.modelStartMs === 'number' ? d.modelStartMs : undefined,
               firstTokenMs:  typeof d.firstTokenMs === 'number' ? d.firstTokenMs : undefined,
               serverTotalMs: typeof d.serverTotalMs === 'number' ? d.serverTotalMs : undefined,
             })
@@ -788,6 +843,7 @@ export function AtlasRuntimeProvider({
     transcript,
     response,
     perf,
+    perfRaw,
     executiveState,
     execution,
     awaitingApproval,

@@ -70,7 +70,20 @@ export interface PlaybackDeps {
   analyser?: PlaybackAnalyser | null
   /** Called the moment the browser reports real playback — never before. */
   onStart?: () => void
+  /** Client-local diagnostics only. Never changes playback decisions. */
+  onEvent?: (event: PlaybackEvent) => void
 }
+
+export type PlaybackEvent =
+  | 'play-called'
+  | 'play-promise-resolved'
+  | 'play-promise-rejected'
+  | 'loadedmetadata'
+  | 'canplay'
+  | 'waiting'
+  | 'stalled'
+  | 'playing'
+  | 'error'
 
 export interface PlaybackHandle {
   result: Promise<PlaybackResult>
@@ -120,18 +133,31 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
 
   const audio = createAudio(url)
 
+  const emit = (event: PlaybackEvent) => {
+    try { deps.onEvent?.(event) } catch { /* diagnostics never gate speech */ }
+  }
+
   const handlePlaying = () => {
     if (settled || started) return
+    emit('playing')
     started = true
     deps.onStart?.()
   }
   const handleEnded = () => settle('completed')
-  const handleError = () => settle('failed')
+  const handleError = () => { emit('error'); settle('failed') }
+  const handleLoadedMetadata = () => emit('loadedmetadata')
+  const handleCanPlay = () => emit('canplay')
+  const handleWaiting = () => emit('waiting')
+  const handleStalled = () => emit('stalled')
 
   function detach() {
     audio.removeEventListener('playing', handlePlaying)
     audio.removeEventListener('ended', handleEnded)
     audio.removeEventListener('error', handleError)
+    audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.removeEventListener('canplay', handleCanPlay)
+    audio.removeEventListener('waiting', handleWaiting)
+    audio.removeEventListener('stalled', handleStalled)
   }
 
   function settle(status: PlaybackStatus) {
@@ -148,6 +174,10 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
   audio.addEventListener('playing', handlePlaying)
   audio.addEventListener('ended', handleEnded)
   audio.addEventListener('error', handleError)
+  audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+  audio.addEventListener('canplay', handleCanPlay)
+  audio.addEventListener('waiting', handleWaiting)
+  audio.addEventListener('stalled', handleStalled)
 
   void (async () => {
     // Attaching the analyser is best-effort, and its answer decides only ONE
@@ -178,9 +208,12 @@ export function playTtsUrl(url: string, deps: PlaybackDeps = {}): PlaybackHandle
     // must never become a speech failure. If the browser itself refuses, that
     // surfaces below as a genuine autoplay denial rather than being hidden here.
     try {
+      emit('play-called')
       await audio.play()
+      emit('play-promise-resolved')
     } catch (error) {
       // A rejected play() is never a completed utterance.
+      emit('play-promise-rejected')
       settle(classifyPlaybackError(error))
     }
   })()

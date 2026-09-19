@@ -81,6 +81,12 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ── Recording Anthropic client ────────────────────────────────────────────────
 let streamCalls: Array<{ system: string; tools: unknown[]; messages: unknown[] }> = []
+let providerGate: Promise<void> = Promise.resolve()
+let releaseProvider = () => {}
+
+function blockProvider() {
+  providerGate = new Promise<void>(resolve => { releaseProvider = resolve })
+}
 
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
@@ -91,6 +97,7 @@ vi.mock('@anthropic-ai/sdk', () => {
         return {
           on(event: string, cb: (d: any) => void) { handlers[event] = cb; return this },
           async finalMessage() {
+            await providerGate
             handlers.text?.('Hej Andre.')
             return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Hej Andre.' }] }
           },
@@ -120,6 +127,8 @@ const userMsg = (content: string) => ({ messages: [{ role: 'user', content }] })
 beforeEach(() => {
   sessionUser = { id: 'user-1', email: 'owner@example.com' }
   process.env.ANTHROPIC_API_KEY = 'test-key'
+  providerGate = Promise.resolve()
+  releaseProvider = () => {}
 })
 
 describe('authentication is unchanged', () => {
@@ -189,6 +198,37 @@ describe('STATIC path execution contract', () => {
     expect(res.headers.get('Content-Type')).toBe('text/event-stream')
     expect(text).toContain('"event":"text"')
     expect(text).toContain('Hej Andre.')
+  })
+
+  it('opens the response stream while the provider is still blocked', async () => {
+    blockProvider()
+    vi.resetModules()
+    touchedTables = []
+    streamCalls = []
+    const { POST } = await import('@/app/api/chat/route')
+    const res = await POST(new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(userMsg('Hej')),
+    }) as any)
+    const reader = res.body!.getReader()
+
+    const first = await reader.read()
+    const firstChunk = new TextDecoder().decode(first.value)
+    expect(first.done).toBe(false)
+    expect(firstChunk).toMatch(/^: stream-open /)
+    expect(firstChunk.length).toBeGreaterThan(2_048)
+    expect(firstChunk).not.toContain('"event":"text"')
+
+    releaseProvider()
+    let remainder = ''
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      remainder += new TextDecoder().decode(next.value)
+    }
+    expect(remainder).toContain('"event":"text"')
+    expect(remainder).toContain('Hej Andre.')
   })
 
   it('reports the static class in telemetry without faking a zero', async () => {

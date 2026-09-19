@@ -28,6 +28,8 @@ describe('static conversation — the eligible class', () => {
     'Vem är du?',
     'Vad heter du?',
     'Vad är Atlas?',
+    'Hur mår du?',
+    'How are you Atlas?',
   ]
 
   for (const s of STATIC) {
@@ -64,6 +66,8 @@ describe('static conversation — mandatory full-path rejects', () => {
     'Vad är status på Familje-Stunden?',
     'Visa dagens statistik',
     'Hur går det?',
+    'Hur mår Familje-Stunden?',
+    'Hur mår projektet?',
     'Vad är status på projektet?',
     // Memory / operator history.
     'Vad minns du om min plan för The Prompt?',

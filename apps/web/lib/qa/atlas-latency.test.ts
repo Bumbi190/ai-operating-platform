@@ -143,6 +143,8 @@ describe('Atlas latency · compact diagnostic readout', () => {
     const marks = createLatencyMarks(1, 'voice', 0)
     markOnce(marks, 1, 'sent', 30)
     markOnce(marks, 1, 'firstByte', 800)
+    markOnce(marks, 1, 'firstVisible', 820)
+    markOnce(marks, 1, 'firstSpeakable', 1_000)
     markOnce(marks, 1, 'firstSentence', 1_100)
     markOnce(marks, 1, 'ttsStart', 1_100)
     markOnce(marks, 1, 'ttsBlobReady', 1_520)
@@ -161,22 +163,29 @@ describe('Atlas latency · compact diagnostic readout', () => {
   it('breaks the headline into the phases that were actually reached', () => {
     const readout = formatLatency(full(), { contextMs: 120, firstTokenMs: 780, serverTotalMs: 2_400 })
 
-    expect(readout).toBe('⚡ 1.8s · ctx 120ms · TTFT 780ms · mening 1.1s · TTS 420ms · ljud 270ms')
+    expect(readout).toBe('⚡ text 820ms · audio 1.8s · ctx 120ms · TTFT 780ms · segment 1.0s · TTS 420ms · ljud 270ms')
   })
 
   it('omits stages that were never reached instead of showing zero', () => {
     const marks = createLatencyMarks(1, 'voice', 0)
+    markOnce(marks, 1, 'firstVisible', 800)
     markOnce(marks, 1, 'firstAudio', 1_800)
 
-    expect(formatLatency(marks, undefined)).toBe('⚡ 1.8s')
+    expect(formatLatency(marks, undefined)).toBe('⚡ text 800ms · audio 1.8s')
   })
 
-  it('reports nothing until there is audible speech to anchor it', () => {
+  it('shows visible text before audible speech exists', () => {
     const marks = createLatencyMarks(1, 'voice', 0)
-    markOnce(marks, 1, 'firstSentence', 1_100)
+    markOnce(marks, 1, 'firstVisible', 800)
 
-    // Preserves today's behaviour: a silent response shows no perf readout.
-    expect(formatLatency(marks, { contextMs: 120, firstTokenMs: 780 })).toBeNull()
+    expect(formatLatency(marks, { contextMs: 120, firstTokenMs: 780 }))
+      .toBe('⚡ text 800ms · ctx 120ms · TTFT 780ms')
+  })
+
+  it('reports nothing before any text has committed', () => {
+    const marks = createLatencyMarks(1, 'voice', 0)
+    markOnce(marks, 1, 'firstSpeakable', 1_100)
+    expect(formatLatency(marks, { contextMs: 120 })).toBeNull()
   })
 
   it('labels TTFT as request-relative, never as model latency', () => {
@@ -217,7 +226,7 @@ describe('Atlas latency · timing never becomes visible content', () => {
     // The single accumulation point for what the operator reads and hears.
     const replyAppends = runtimeSrc.match(/reply \+= /g) ?? []
     expect(replyAppends).toHaveLength(1)
-    expect(runtimeSrc).toContain("if (d.event === 'text' && d.text) {")
+    expect(runtimeSrc).toContain("if (d.event === 'text' && typeof d.text === 'string' && d.text) {")
   })
 
   it('does not touch the reply from the timing branch', () => {

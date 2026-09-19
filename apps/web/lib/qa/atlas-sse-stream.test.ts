@@ -38,4 +38,20 @@ describe('Atlas SSE consumption', () => {
     await consumeAtlasSse(body, event => seen.push(event.text))
     expect(seen).toEqual(['delad'])
   })
+
+  it('ignores a padded transport-opening comment and still emits the first text immediately', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+    const seen: unknown[] = []
+    const consuming = consumeAtlasSse(body, event => seen.push(event.text))
+    const encoder = new TextEncoder()
+
+    controller.enqueue(encoder.encode(`: stream-open ${' '.repeat(2_048)}\n\n`))
+    controller.enqueue(encoder.encode('data: {"event":"text","text":"direkt"}\n\n'))
+    await Promise.resolve(); await Promise.resolve()
+
+    expect(seen).toEqual(['direkt'])
+    controller.close()
+    await consuming
+  })
 })

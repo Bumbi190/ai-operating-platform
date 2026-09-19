@@ -30,9 +30,9 @@ describe('Atlas latency · server timing merges rather than overwrites', () => {
   it('accepts an early frame before the final one', () => {
     // The route proves contextMs and firstTokenMs at first token, and
     // serverTotalMs only at completion.
-    const early: AtlasServerTiming = { contextMs: 120, modelStartMs: 140, firstTokenMs: 780 }
+    const early: AtlasServerTiming = { contextMs: 120, modelStartMs: 140, streamReadyMs: 260, firstTokenMs: 780 }
     const merged = mergeServerTiming(undefined, early)
-    expect(merged).toEqual({ contextMs: 120, modelStartMs: 140, firstTokenMs: 780, serverTotalMs: undefined })
+    expect(merged).toEqual({ contextMs: 120, modelStartMs: 140, streamReadyMs: 260, firstTokenMs: 780, serverTotalMs: undefined })
   })
 
   it('keeps what the early frame proved when the final frame arrives', () => {
@@ -40,7 +40,7 @@ describe('Atlas latency · server timing merges rather than overwrites', () => {
     const final = mergeServerTiming(early, { serverTotalMs: 2400 })
 
     // A plain assignment here would have erased both earlier fields.
-    expect(final).toEqual({ contextMs: 120, modelStartMs: undefined, firstTokenMs: 780, serverTotalMs: 2400 })
+    expect(final).toEqual({ contextMs: 120, modelStartMs: undefined, streamReadyMs: undefined, firstTokenMs: 780, serverTotalMs: 2400 })
   })
 
   it('never lets a later frame subtract a known value', () => {
@@ -219,10 +219,11 @@ describe('Atlas latency · raw request-local critical path', () => {
     expect(formatRawLatency(marks, {
       contextMs: 110,
       modelStartMs: 125,
+      streamReadyMs: 260,
       firstTokenMs: 730,
       serverTotalMs: 2_100,
     })).toBe(
-      'raw-client voiceT0=0ms · chatRequestStart=20ms · chatHeadersReceived=700ms · firstSseTextReceived=760ms · firstDomVisible=780ms · firstSpeakable=900ms · ttsRequestStart=910ms · ttsHeadersReceived=1.2s · ttsFirstBodyByte=1.2s · ttsBodyComplete=1.5s · playbackHandoff=1.5s · playCalled=1.6s · playPromiseResolved=1.6s · playing=1.6s | raw-server requestReceived=0ms · contextFinished=110ms · modelStart=125ms · firstToken=730ms · serverDone=2.1s',
+      'raw-client voiceT0=0ms · chatRequestStart=20ms · chatHeadersReceived=700ms · firstSseTextReceived=760ms · firstDomVisible=780ms · firstSpeakable=900ms · ttsRequestStart=910ms · ttsHeadersReceived=1.2s · ttsFirstBodyByte=1.2s · ttsBodyComplete=1.5s · playbackHandoff=1.5s · playCalled=1.6s · playPromiseResolved=1.6s · playing=1.6s | raw-server requestReceived=0ms · contextFinished=110ms · modelStart=125ms · streamReady=260ms · firstToken=730ms · serverDone=2.1s',
     )
   })
 
@@ -252,13 +253,13 @@ describe('Atlas latency · timing never becomes visible content', () => {
 
   it('emits the early frame once, on its own SSE event', () => {
     expect(routeSrc).toContain('let earlyTimingSent = false')
-    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs })")
+    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs })")
     // Guarded, so a multi-turn tool loop cannot emit it repeatedly.
     expect(routeSrc).toContain('if (!earlyTimingSent) {')
   })
 
   it('still emits the final frame carrying serverTotalMs', () => {
-    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs, serverTotalMs })")
+    expect(routeSrc).toContain("send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs, serverTotalMs })")
   })
 
   it('keeps the visible reply fed only by text events', () => {

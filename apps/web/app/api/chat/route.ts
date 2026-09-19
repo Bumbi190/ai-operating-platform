@@ -204,6 +204,12 @@ export const maxDuration = 120   // cap (sekunder); ger run_media_step plats att
 // Brain, verktyg eller workflows. De går direkt till LLM och streamar omedelbart.
 const FAST_PATH_SYSTEM = `Du är en skicklig copywriter för Omnira. Skriv det som efterfrågas — direkt, färdigt och i rätt ton för kanalen. Ingen meta-text, inga frågor tillbaka, inga verktyg. Svara på operatörens språk (svenska om inget annat anges). Håll det publiceringsklart.`
 
+// Some HTTP intermediaries wait for a non-trivial first body chunk before they
+// switch from response buffering to streaming. This SSE comment has no event
+// semantics and is ignored by consumeAtlasSse, but commits enough body bytes to
+// establish the streaming transport before context/model work completes.
+const SSE_STREAM_OPEN_COMMENT = `: stream-open ${' '.repeat(2_048)}\n\n`
+
 // ── INTENT CLASSIFIER ─────────────────────────────────────────────────────────
 // Avgör FAST PATH (ren skriv-/text-uppgift → direkt LLM) vs EXECUTIVE (verksamhet
 // → Executive Brain + verktyg). FAST PATH vinner bara om inget "systemy" finns med.
@@ -852,6 +858,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       let streamOpen = true
+      controller.enqueue(encoder.encode(SSE_STREAM_OPEN_COMMENT))
       function send(event: string, data: unknown) {
         if (!streamOpen) return
         controller.enqueue(
@@ -867,7 +874,8 @@ export async function POST(request: Request) {
         }).catch(() => undefined)
         : Promise.resolve()
 
-      let modelStartMs: number | null = null // tid till FÖRSTA Anthropic-dispatch
+      let modelStartMs: number | null = null // tid till inträde i FÖRSTA governed Anthropic-streamanrop
+      let streamReadyMs: number | null = null // governed client returned the first stream handle
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
       // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
       // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
@@ -907,13 +915,14 @@ export async function POST(request: Request) {
             ...toolChoice,
             messages: msgs,
           })
+          if (streamReadyMs === null) streamReadyMs = Date.now() - tStart
           llm.on('text', (delta: string) => {
             if (!firstTokenMs) {
               firstTokenMs = Date.now() - tStart
               if (!earlyTimingSent) {
                 earlyTimingSent = true
                 // Diagnostik, inte innehåll: eget event, aldrig 'text'.
-                send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs })
+                send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs })
               }
             }
             if (delta) send('text', { text: delta })
@@ -1078,8 +1087,8 @@ export async function POST(request: Request) {
         // before a successfully-created first conversation id can reach the UI.
         await conversationEvent
         // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
-        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
-        send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, firstTokenMs, serverTotalMs })
+        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} streamReadyMs=${streamReadyMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs, serverTotalMs })
         send('done', {})
         streamOpen = false
         controller.close()
@@ -1105,7 +1114,8 @@ export async function POST(request: Request) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
       Connection: 'keep-alive',
     },
   })

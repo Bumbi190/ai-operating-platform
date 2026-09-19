@@ -17,11 +17,13 @@
 /** Where T0 came from. A typed request has no speech to end. */
 export type LatencyOrigin = 'voice' | 'typed'
 
-/** The three durations the chat route already computes server-side. */
+/** Request-local durations emitted by the chat route. */
 export interface AtlasServerTiming {
   contextMs?: number
-  /** Route start to the first Anthropic stream dispatch. Includes context. */
+  /** Route start to entry into the first governed Anthropic stream call. Includes context. */
   modelStartMs?: number
+  /** Governed wrapper returned a stream handle; the remaining gap is provider/token time. */
+  streamReadyMs?: number
   firstTokenMs?: number
   serverTotalMs?: number
 }
@@ -124,6 +126,7 @@ export function mergeServerTiming(
   return {
     contextMs:     incoming.contextMs     ?? base.contextMs,
     modelStartMs:  incoming.modelStartMs  ?? base.modelStartMs,
+    streamReadyMs: incoming.streamReadyMs ?? base.streamReadyMs,
     firstTokenMs:  incoming.firstTokenMs  ?? base.firstTokenMs,
     serverTotalMs: incoming.serverTotalMs ?? base.serverTotalMs,
   }
@@ -176,6 +179,7 @@ export function formatRawLatency(
   const serverParts = [
     timing?.contextMs === undefined ? null : `contextFinished=${formatDuration(timing.contextMs)}`,
     timing?.modelStartMs === undefined ? null : `modelStart=${formatDuration(timing.modelStartMs)}`,
+    timing?.streamReadyMs === undefined ? null : `streamReady=${formatDuration(timing.streamReadyMs)}`,
     timing?.firstTokenMs === undefined ? null : `firstToken=${formatDuration(timing.firstTokenMs)}`,
     timing?.serverTotalMs === undefined ? null : `serverDone=${formatDuration(timing.serverTotalMs)}`,
   ].filter((value): value is string => value !== null)

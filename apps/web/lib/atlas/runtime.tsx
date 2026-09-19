@@ -823,6 +823,7 @@ export function AtlasRuntimeProvider({
             serverTiming = mergeServerTiming(serverTiming, {
               contextMs:     typeof d.contextMs === 'number' ? d.contextMs : undefined,
               modelStartMs:  typeof d.modelStartMs === 'number' ? d.modelStartMs : undefined,
+              streamReadyMs: typeof d.streamReadyMs === 'number' ? d.streamReadyMs : undefined,
               firstTokenMs:  typeof d.firstTokenMs === 'number' ? d.firstTokenMs : undefined,
               serverTotalMs: typeof d.serverTotalMs === 'number' ? d.serverTotalMs : undefined,
             })

@@ -30,6 +30,13 @@ describe('Atlas Phase B integration contracts', () => {
     expect(runtime).toContain("markOnce(marksRef.current, generation, 'firstVisible'")
   })
 
+  it('opens the SSE transport with a semantic-free flush chunk', () => {
+    expect(route).toContain("const SSE_STREAM_OPEN_COMMENT = `: stream-open ${' '.repeat(2_048)}\\n\\n`")
+    expect(route).toContain('controller.enqueue(encoder.encode(SSE_STREAM_OPEN_COMMENT))')
+    expect(route).toContain("'Cache-Control': 'no-cache, no-transform'")
+    expect(route).toContain("'X-Accel-Buffering': 'no'")
+  })
+
   it('keeps speaking truth bound to the audio playing event path', () => {
     expect(runtime.match(/setVoicePhase\('speaking'\)/g)).toHaveLength(1)
     expect(runtime).toContain('onStart: () => {')

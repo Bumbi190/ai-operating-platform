@@ -30,6 +30,12 @@ describe('Atlas Phase B integration contracts', () => {
     expect(runtime).toContain("markOnce(marksRef.current, generation, 'firstVisible'")
   })
 
+  it('does not hold ReadableStream setup open for the whole model run', () => {
+    expect(route).toContain('start(controller) {')
+    expect(route).not.toContain('async start(controller) {')
+    expect(route).toContain('void runConversation(messages).catch((err) => {')
+  })
+
   it('keeps speaking truth bound to the audio playing event path', () => {
     expect(runtime.match(/setVoicePhase\('speaking'\)/g)).toHaveLength(1)
     expect(runtime).toContain('onStart: () => {')

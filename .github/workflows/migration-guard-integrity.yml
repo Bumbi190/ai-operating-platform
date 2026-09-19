@@ -1,0 +1,96 @@
+# Migration Guard v2 — pure repository/policy integrity gate.
+#
+# This job never connects to Supabase and has no production credentials. It
+# proves the frozen set-integrity policy, its failure modes, and the fail-closed
+# runtime adapter with synthetic inputs only.
+
+name: Migration Guard Integrity
+
+# No paths filter: this check is intended to be eligible as a required check,
+# so every pull request must create a status for it.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-guard-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity:
+    name: Migration Guard Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (deterministic)
+        run: npm ci
+
+      - name: Check guard module syntax
+        run: |
+          node --check apps/web/scripts/migration-guard-policy.mjs
+          node --check apps/web/scripts/check-migrations.mjs
+
+      - name: Run Migration Guard v2 integrity suite
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/qa/migration-guard-v2.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
+
+      - name: Prove the integrity suite ran without skips
+        if: always()
+        run: |
+          set -euo pipefail
+          node - "$RUNNER_TEMP/migration-guard-integrity.json" <<'NODE'
+          const fs = require('node:fs')
+          const [, , resultsPath] = process.argv
+          if (!fs.existsSync(resultsPath)) {
+            console.error(`::error::no Vitest results at ${resultsPath} — the guard suite did not run`)
+            process.exit(1)
+          }
+
+          const report = JSON.parse(fs.readFileSync(resultsPath, 'utf8'))
+          const files = report.testResults ?? []
+          const testFile = files.find((file) => String(file.name).endsWith('migration-guard-v2.test.ts'))
+          if (!testFile) {
+            console.error('::error::migration-guard-v2.test.ts is absent from the results')
+            process.exit(1)
+          }
+
+          const tally = (testFile.assertionResults ?? []).reduce(
+            (counts, assertion) => ({ ...counts, [assertion.status]: (counts[assertion.status] ?? 0) + 1 }),
+            {},
+          )
+          const passed = tally.passed ?? 0
+          const notRun = (tally.pending ?? 0) + (tally.skipped ?? 0) + (tally.todo ?? 0)
+          let failed = false
+
+          if (passed < 19) {
+            console.error(`::error::only ${passed} Guard v2 tests passed; expected at least 19`)
+            failed = true
+          }
+          if (notRun > 0 || (report.numPendingTests ?? 0) > 0 || (report.numTodoTests ?? 0) > 0) {
+            console.error(`::error::Guard v2 integrity tests were skipped/pending/todo: ${JSON.stringify(tally)}`)
+            failed = true
+          }
+          if ((report.numFailedTests ?? 0) > 0 || (report.numFailedTestSuites ?? 0) > 0) {
+            console.error(`::error::Guard v2 integrity failures: ${report.numFailedTests ?? 0}`)
+            failed = true
+          }
+          if (failed) process.exit(1)
+          console.log(`Migration Guard Integrity OK — ${passed} tests passed, 0 skipped/pending/todo.`)
+          NODE

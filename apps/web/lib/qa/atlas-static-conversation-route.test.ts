@@ -27,7 +27,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
  * cannot be removed without removing the spend ceiling from Atlas chat — a
  * reservation that consults no prices is not a reservation.
  */
-const GOVERNANCE_TABLES = ['cost_rates']
+const GOVERNANCE_TABLES = ['cost_rates', 'projects']
 
 /** Context tables the static path must never touch. */
 const contextTablesFrom = (tables: string[]) => tables.filter(t => !GOVERNANCE_TABLES.includes(t))
@@ -53,7 +53,10 @@ vi.mock('server-only', () => ({}))
 let sessionUser: { id: string; email?: string } | null = null
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: sessionUser } }) },
+    auth: {
+      getUser: async () => ({ data: { user: sessionUser } }),
+      getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id, email: sessionUser.email } } : null, error: null }),
+    },
   }),
 }))
 
@@ -157,7 +160,7 @@ describe('authentication is unchanged', () => {
 })
 
 describe('STATIC path execution contract', () => {
-  it('performs NO context reads — only the governance price lookup', async () => {
+  it('performs NO context reads — only governed rate/project cache warmup', async () => {
     const { res } = await post(userMsg('Hej'))
     expect(res.status).toBe(200)
     expect(contextTablesFrom(touchedTables)).toEqual([])

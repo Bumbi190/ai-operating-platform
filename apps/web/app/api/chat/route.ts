@@ -10,7 +10,6 @@
  *   - get_run_status: poll a run for completion + output
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
@@ -37,6 +36,7 @@ import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/at
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter, scopeToProjects } from '@/lib/atlas/isolation'
 import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
+import { requireUserClaims } from '@/lib/auth/session'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
@@ -53,7 +53,7 @@ import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-know
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
-import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { PLATFORM_COMPAT_PROJECT, warmGovernanceReadCaches } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 import { readAtlasContextSlices } from '@/lib/atlas/context-slices'
 
@@ -594,13 +594,14 @@ const TOOLS: Anthropic.Tool[] = [
 ]
 
 export async function POST(request: Request) {
-  // Auth check
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // Capture as local — the `!user` narrowing above doesn't survive into the
-  // streaming closure further down.
-  const userId = user.id
+  const routeStart = Date.now()
+  // Verified cookie claims preserve the same human-session boundary. On an
+  // asymmetric Supabase project they avoid one Auth-server round trip; the SDK
+  // falls back to getUser verification when local verification is unavailable.
+  const auth = await requireUserClaims()
+  if (!auth.ok) return auth.response
+  const userId = auth.userId
+  const authReadyMs = Date.now() - routeStart
 
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
   if (!anthropicApiKey) {
@@ -631,6 +632,13 @@ export async function POST(request: Request) {
     mode?: string
     view?: ClientViewEnvelope
   }
+  const requestParsedMs = Date.now() - routeStart
+
+  // Read-only cache warmup only. Reservation, stop resolution and provider
+  // dispatch remain inside the canonical governed wrapper and are still
+  // fail-closed. Starting after configuration and body validation avoids work
+  // for rejected requests while still overlapping local routing and context.
+  const governanceWarmup = warmGovernanceReadCaches(PLATFORM_COMPAT_PROJECT)
 
   const db = createAdminClient()
   const tStart = Date.now()
@@ -722,7 +730,7 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, userId)
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -790,7 +798,7 @@ export async function POST(request: Request) {
         db,
         allowedProjectIds,
         principalId: userId,
-        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
+        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(auth.email),
         query: lastUserText,
         voice: !!voice,
         view: view ?? null,
@@ -907,6 +915,7 @@ export async function POST(request: Request) {
                   : {})
             : {}
           if (modelStartMs === null) modelStartMs = Date.now() - tStart
+          await governanceWarmup
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
@@ -922,7 +931,7 @@ export async function POST(request: Request) {
               if (!earlyTimingSent) {
                 earlyTimingSent = true
                 // Diagnostik, inte innehåll: eget event, aldrig 'text'.
-                send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs })
+                send('timing', { reqType, authReadyMs, requestParsedMs, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs })
               }
             }
             if (delta) send('text', { text: delta })
@@ -1087,8 +1096,8 @@ export async function POST(request: Request) {
         // before a successfully-created first conversation id can reach the UI.
         await conversationEvent
         // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
-        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} streamReadyMs=${streamReadyMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
-        send('timing', { reqType, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs, serverTotalMs })
+        console.log(`[chat-latency] type=${reqType} authReadyMs=${authReadyMs} requestParsedMs=${requestParsedMs} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} streamReadyMs=${streamReadyMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, authReadyMs, requestParsedMs, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs, serverTotalMs })
         send('done', {})
         streamOpen = false
         controller.close()

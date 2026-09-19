@@ -19,6 +19,10 @@ export type LatencyOrigin = 'voice' | 'typed'
 
 /** Request-local durations emitted by the chat route. */
 export interface AtlasServerTiming {
+  /** Route entry to verified session claims. */
+  authReadyMs?: number
+  /** Route entry to parsed request body. */
+  requestParsedMs?: number
   contextMs?: number
   /** Route start to entry into the first governed Anthropic stream call. Includes context. */
   modelStartMs?: number
@@ -124,6 +128,8 @@ export function mergeServerTiming(
   const base = previous ?? {}
   if (!incoming) return base
   return {
+    authReadyMs:   incoming.authReadyMs   ?? base.authReadyMs,
+    requestParsedMs: incoming.requestParsedMs ?? base.requestParsedMs,
     contextMs:     incoming.contextMs     ?? base.contextMs,
     modelStartMs:  incoming.modelStartMs  ?? base.modelStartMs,
     streamReadyMs: incoming.streamReadyMs ?? base.streamReadyMs,
@@ -177,11 +183,13 @@ export function formatRawLatency(
     return value === null ? [] : [`${label}=${value}`]
   })
   const serverParts = [
-    timing?.contextMs === undefined ? null : `contextFinished=${formatDuration(timing.contextMs)}`,
-    timing?.modelStartMs === undefined ? null : `modelStart=${formatDuration(timing.modelStartMs)}`,
-    timing?.streamReadyMs === undefined ? null : `streamReady=${formatDuration(timing.streamReadyMs)}`,
-    timing?.firstTokenMs === undefined ? null : `firstToken=${formatDuration(timing.firstTokenMs)}`,
-    timing?.serverTotalMs === undefined ? null : `serverDone=${formatDuration(timing.serverTotalMs)}`,
+    timing?.authReadyMs === undefined ? null : `authReady=${formatDuration(timing.authReadyMs)}`,
+    timing?.requestParsedMs === undefined ? null : `requestParsed=${formatDuration(timing.requestParsedMs)}`,
+    timing?.contextMs === undefined ? null : `contextDuration=${formatDuration(timing.contextMs)}`,
+    timing?.modelStartMs === undefined ? null : `modelStartAfterParse=${formatDuration(timing.modelStartMs)}`,
+    timing?.streamReadyMs === undefined ? null : `streamReadyAfterParse=${formatDuration(timing.streamReadyMs)}`,
+    timing?.firstTokenMs === undefined ? null : `firstTokenAfterParse=${formatDuration(timing.firstTokenMs)}`,
+    timing?.serverTotalMs === undefined ? null : `serverDoneAfterParse=${formatDuration(timing.serverTotalMs)}`,
   ].filter((value): value is string => value !== null)
 
   return `raw-client ${clientParts.join(' · ')}${serverParts.length ? ` | raw-server requestReceived=0ms · ${serverParts.join(' · ')}` : ''}`

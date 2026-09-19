@@ -821,6 +821,8 @@ export function AtlasRuntimeProvider({
 
           } else if (d.event === 'timing') {
             serverTiming = mergeServerTiming(serverTiming, {
+              authReadyMs:   typeof d.authReadyMs === 'number' ? d.authReadyMs : undefined,
+              requestParsedMs: typeof d.requestParsedMs === 'number' ? d.requestParsedMs : undefined,
               contextMs:     typeof d.contextMs === 'number' ? d.contextMs : undefined,
               modelStartMs:  typeof d.modelStartMs === 'number' ? d.modelStartMs : undefined,
               streamReadyMs: typeof d.streamReadyMs === 'number' ? d.streamReadyMs : undefined,

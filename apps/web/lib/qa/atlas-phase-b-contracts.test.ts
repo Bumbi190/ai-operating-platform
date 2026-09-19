@@ -37,6 +37,12 @@ describe('Atlas Phase B integration contracts', () => {
     expect(route).toContain("'X-Accel-Buffering': 'no'")
   })
 
+  it('warms only read caches while canonical governance remains on dispatch', () => {
+    expect(route).toContain('const governanceWarmup = warmGovernanceReadCaches(PLATFORM_COMPAT_PROJECT)')
+    expect(route).toContain('await governanceWarmup')
+    expect(route).toContain('const llm = await anthropic.messages.stream({')
+  })
+
   it('keeps speaking truth bound to the audio playing event path', () => {
     expect(runtime.match(/setVoicePhase\('speaking'\)/g)).toHaveLength(1)
     expect(runtime).toContain('onStart: () => {')

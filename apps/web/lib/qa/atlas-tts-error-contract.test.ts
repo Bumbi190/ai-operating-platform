@@ -44,7 +44,10 @@ let openaiCalls: number
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: sessionUser } }) },
+    auth: {
+      getUser: async () => ({ data: { user: sessionUser } }),
+      getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id } } : null, error: null }),
+    },
   }),
 }))
 

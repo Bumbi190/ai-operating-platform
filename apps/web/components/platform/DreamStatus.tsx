@@ -44,7 +44,7 @@ const healthConfig = {
     bg: 'bg-red-500/10',
   },
   empty: {
-    label: 'Inga data',
+    label: 'Inga aktiva fynd',
     icon: Moon,
     className: 'text-muted-foreground',
     bg: 'bg-muted/30',

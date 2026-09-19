@@ -9,16 +9,20 @@
  *                           nights. Recurring findings update the same row.
  *
  * Atlas reasons over `dream_issues` (stable identity), NOT the dated memory keys,
- * so a recurring problem is one finding with one lifecycle. Lifecycle
- * (open/in_progress/completed) is DERIVED from the linked manager_task status —
- * manager_tasks stays the single source of truth for execution state. Read-only
- * here except delegate/resolve, which go through manager_tasks. Project-scoped.
+ * so a recurring problem is one finding. Canonical disposition is reduced from
+ * `dream_issue_reconciliation_events`; task status remains execution progress
+ * and never substitutes for resolution evidence.
  */
 
 export type DreamSeverity = 'critical' | 'warning' | 'info'
 
-/** Lifecycle of a finding — DERIVED from its linked manager_task's status. */
-export type DreamLifecycle = 'open' | 'in_progress' | 'completed'
+import {
+  loadDreamDispositionStates,
+  type DreamDisposition,
+} from './dream-reconciliation'
+
+/** Kept as a public alias while callers migrate from the old lifecycle name. */
+export type DreamLifecycle = DreamDisposition
 
 /** The manager_task a finding was delegated into, if any. */
 export interface DreamLinkedTask {
@@ -41,8 +45,12 @@ export interface DreamFinding {
   lastSeenAt: string
   /** Newest dated memory key for this issue (traceability into the raw log). */
   latestMemoryKey: string | null
-  /** open = not yet delegated; in_progress = task pending/working; completed = task done. */
+  /** Canonical lifecycle, reduced only from immutable reconciliation events. */
   lifecycle: DreamLifecycle
+  disposition: DreamDisposition
+  supersededBy: string | null
+  currentActiveSince: string | null
+  lastVerifiedAt: string | null
   /** The delegated task, when one exists. */
   task: DreamLinkedTask | null
 }
@@ -51,19 +59,11 @@ export interface DreamFindingsResult {
   /** false when the project has never run a dream cycle. */
   hasData: boolean
   findings: DreamFinding[]
+  /** Severity counts for verified ACTIVE findings only. */
   counts: { critical: number; warning: number; info: number; total: number }
-  /** How many findings are open / delegated-in-progress / resolved. */
-  lifecycle: { open: number; in_progress: number; completed: number }
+  lifecycle: Record<DreamDisposition, number>
   /** Most recent dream insight timestamp, or null. */
   lastRunAt: string | null
-}
-
-/** Map a manager_task status to a finding lifecycle state. */
-function lifecycleFromTaskStatus(status: string | null | undefined): DreamLifecycle {
-  if (status === 'done') return 'completed'
-  if (status === 'pending' || status === 'in_progress') return 'in_progress'
-  // null / failed / cancelled → still actionable
-  return 'open'
 }
 
 import { applyProjectScope } from './isolation'
@@ -128,9 +128,9 @@ export function normSeverity(s: string | null | undefined): DreamSeverity {
 }
 
 /**
- * Retrieve Dream findings for a project from the stable issue ledger, with
- * lifecycle derived from each issue's linked manager_task. One row per issue
- * (recurring problems are NOT duplicated). Sorted by severity then recency.
+ * Retrieve Dream findings with canonical disposition from the reconciliation
+ * ledger. One row per issue (recurring problems are NOT duplicated). Findings
+ * without reconciliation events are UNVERIFIED, never implicitly active.
  * Defensive: degrades to empty rather than throwing.
  */
 export async function getDreamFindings(
@@ -142,7 +142,7 @@ export async function getDreamFindings(
     hasData: false,
     findings: [],
     counts: { critical: 0, warning: 0, info: 0, total: 0 },
-    lifecycle: { open: 0, in_progress: 0, completed: 0 },
+    lifecycle: { active: 0, resolved: 0, superseded: 0, invalidated: 0, unverified: 0 },
     lastRunAt: null,
   }
   if (!projectId) return empty
@@ -150,7 +150,7 @@ export async function getDreamFindings(
   try {
     const { data } = await db
       .from('dream_issues')
-      .select('issue_id, severity, latest_insight, latest_action, latest_memory_key, manager_task_id, occurrences, first_seen_at, last_seen_at')
+      .select('id, issue_id, severity, latest_insight, latest_action, latest_memory_key, manager_task_id, occurrences, first_seen_at, last_seen_at')
       .eq('project_id', projectId)
       .order('last_seen_at', { ascending: false })
       .limit(limit)
@@ -158,7 +158,11 @@ export async function getDreamFindings(
     const rows = (data ?? []) as any[]
     if (rows.length === 0) return empty
 
-    // Resolve linked tasks in one query (lifecycle source of truth).
+    const dispositionByFinding = await loadDreamDispositionStates(
+      db, projectId, rows.map(r => r.id),
+    )
+
+    // Task status is current execution progress, not finding disposition.
     const taskIds = rows.map(r => r.manager_task_id).filter(Boolean)
     const taskById = new Map<string, DreamLinkedTask>()
     if (taskIds.length) {
@@ -175,8 +179,7 @@ export async function getDreamFindings(
 
     const findings: DreamFinding[] = rows.map((r) => {
       const task = r.manager_task_id ? (taskById.get(r.manager_task_id) ?? null) : null
-      // A cancelled/failed task means the issue is actionable again → treat as open.
-      const effectiveTask = task && (task.status === 'cancelled' || task.status === 'failed') ? null : task
+      const state = dispositionByFinding.get(r.id)!
       return {
         issueId: r.issue_id,
         severity: normSeverity(r.severity),
@@ -186,24 +189,31 @@ export async function getDreamFindings(
         firstSeenAt: r.first_seen_at,
         lastSeenAt: r.last_seen_at,
         latestMemoryKey: r.latest_memory_key ?? null,
-        lifecycle: lifecycleFromTaskStatus(effectiveTask?.status),
-        task: effectiveTask,
+        lifecycle: state.disposition,
+        disposition: state.disposition,
+        supersededBy: state.supersededBy,
+        currentActiveSince: state.currentActiveSince,
+        lastVerifiedAt: state.lastVerifiedAt,
+        task,
       }
     })
 
-    const counts = findings.reduce(
+    const activeFindings = findings.filter(f => f.disposition === 'active')
+    const counts = activeFindings.reduce(
       (acc, f) => { acc[f.severity]++; acc.total++; return acc },
       { critical: 0, warning: 0, info: 0, total: 0 },
     )
     const lifecycle = findings.reduce(
       (acc, f) => { acc[f.lifecycle]++; return acc },
-      { open: 0, in_progress: 0, completed: 0 },
+      { active: 0, resolved: 0, superseded: 0, invalidated: 0, unverified: 0 },
     )
     const lastRunAt = rows.reduce<string | null>(
       (max, r) => (!max || r.last_seen_at > max ? r.last_seen_at : max), null,
     )
 
     findings.sort((a, b) => {
+      if (a.disposition === 'active' && b.disposition !== 'active') return -1
+      if (a.disposition !== 'active' && b.disposition === 'active') return 1
       const s = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
       return s !== 0 ? s : (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')
     })
@@ -238,8 +248,9 @@ export async function dreamLiveSummary(db: AnyDb, allowedProjectIds?: string[]):
     let text = `\n\nDREAM CYCLE (nattlig självförbättring — per projekt):`
     for (const { project, res } of noteworthy) {
       text += `\n- ${project.name}: ${res.counts.critical} kritiska · ${res.counts.warning} varningar · ${res.counts.info} info.`
-      // Surface up to 2 highest-severity items with their recommended action.
-      for (const f of res.findings.filter((x) => x.severity !== 'info').slice(0, 2)) {
+      // Surface only verified ACTIVE findings. Terminal and unverified history
+      // remains queryable through get_dream_findings but is never a warning.
+      for (const f of res.findings.filter((x) => x.disposition === 'active' && x.severity !== 'info').slice(0, 2)) {
         text += `\n    · [${f.severity.toUpperCase()}] ${f.insight}${f.action ? ` → åtgärd: ${f.action}` : ''}`
       }
     }
@@ -275,8 +286,8 @@ export interface DelegateDreamResult {
  * Dedup is on the stable issue, not a dated key: if the issue already links to a
  * non-cancelled/failed task, that task is returned (no duplicate) even if the
  * issue recurred under a new memory key. The new task carries source='dream' and
- * source_key=<issue_id>, and the issue's manager_task_id is linked back so
- * lifecycle derives correctly.
+ * source_key=<issue_id>, and the issue's manager_task_id is linked back as
+ * execution progress. The link never changes canonical finding disposition.
  */
 export async function delegateDreamFinding(
   db: AnyDb,
@@ -297,6 +308,14 @@ export async function delegateDreamFinding(
     .maybeSingle()
   if (!issue) {
     return { ok: false, error: `Hittade inget Dream-ärende med issue_id ${issueId} i projektet.` }
+  }
+  const disposition = (await loadDreamDispositionStates(db, projectId, [(issue as any).id]))
+    .get((issue as any).id)?.disposition ?? 'unverified'
+  if (disposition !== 'active') {
+    return {
+      ok: false,
+      error: `Ärendet ${issueId} har disposition ${disposition} och kan inte delegeras som verifierat aktivt.`,
+    }
   }
   const severity = normSeverity((issue as any).severity)
   const insight = (issue as any).latest_insight ?? ''
@@ -347,7 +366,7 @@ export async function delegateDreamFinding(
       .single()
     if (error || !data) return { ok: false, error: error?.message ?? 'Kunde inte skapa uppgift.' }
 
-    // 4. Link the task back onto the issue so lifecycle derives from it.
+    // 4. Link task progress back onto the observation (not resolution truth).
     try {
       await db.from('dream_issues')
         .update({ manager_task_id: data.id, updated_at: new Date().toISOString() })
@@ -386,14 +405,22 @@ export interface ResolveDreamResult {
 }
 
 /**
- * Mark a Dream issue resolved by completing its linked manager_task (status
- * 'done' → lifecycle derives to 'completed'). Operator-confirmed: Atlas calls
- * this only when the operator says the work is done. Reuses manager_tasks as the
- * execution source of truth (no separate completion state). Idempotent.
+ * Resolve a Dream issue from an explicit operator action.  The task completion
+ * is recorded as implementation evidence, the explicit action as operator
+ * attestation, and only then is the canonical RESOLVED event appended.
+ * manager_tasks remains execution progress; the event ledger is resolution
+ * truth.  `sourceKey` is the tool-call identity and makes retries idempotent.
  */
 export async function resolveDreamFinding(
   db: AnyDb,
-  params: { projectId: string; issueId: string; result?: string },
+  params: {
+    projectId: string
+    issueId: string
+    result?: string
+    actorPrincipal: string
+    sourceKey: string
+    evidenceLocator: string
+  },
 ): Promise<ResolveDreamResult> {
   const { projectId, issueId } = params
   if (!projectId || !issueId) return { ok: false, error: 'projectId och issueId krävs.' }
@@ -406,17 +433,74 @@ export async function resolveDreamFinding(
     .maybeSingle()
   if (!issue) return { ok: false, error: `Hittade inget Dream-ärende med issue_id ${issueId}.` }
 
+  const findingId = (issue as any).id as string
+  const current = (await loadDreamDispositionStates(db, projectId, [findingId])).get(findingId)
+  if (current?.disposition === 'resolved') {
+    return {
+      ok: true,
+      issueId,
+      taskId: (issue as any).manager_task_id ?? undefined,
+      status: 'resolved',
+    }
+  }
+  if (current?.disposition !== 'active') {
+    return { ok: false, error: `Ärendet ${issueId} har disposition ${current?.disposition ?? 'unverified'} och kan inte lösas.` }
+  }
+
   const taskId = (issue as any).manager_task_id as string | null
   if (!taskId) {
     return { ok: false, error: `Ärendet ${issueId} har ingen delegerad uppgift att slutföra — delegera först.` }
   }
 
   try {
-    await db.from('manager_tasks')
+    const { data: completedTask, error: taskError } = await db.from('manager_tasks')
       .update({ status: 'done', result: params.result ?? 'Markerad som löst via Atlas.', updated_at: new Date().toISOString() })
       .eq('id', taskId)
       .eq('project_id', projectId) // defensive: never update across projects
-    return { ok: true, issueId, taskId, status: 'done' }
+      .select('id, status')
+      .maybeSingle()
+    if (taskError || !completedTask || completedTask.status !== 'done') {
+      return { ok: false, error: `Kunde inte verifiera slutförd uppgift: ${taskError?.message ?? 'ingen projektbunden rad uppdaterades'}` }
+    }
+
+    const base = {
+      project_id: projectId,
+      finding_id: findingId,
+      finding_identity: issueId,
+      actor_principal: params.actorPrincipal,
+      provenance: 'atlas_chat_explicit_resolution',
+    }
+    const events = [
+      {
+        ...base,
+        event_type: 'implementation_evidence_recorded',
+        evidence_kind: 'canonical_task_completion',
+        evidence_locator: `manager_tasks:${taskId}`,
+        source_key: `${params.sourceKey}:task-completion`,
+      },
+      {
+        ...base,
+        event_type: 'verification_evidence_recorded',
+        evidence_kind: 'operator_attestation',
+        evidence_locator: params.evidenceLocator,
+        source_key: `${params.sourceKey}:operator-attestation`,
+      },
+      {
+        ...base,
+        event_type: 'resolved',
+        source_key: `${params.sourceKey}:resolved`,
+      },
+    ]
+
+    // Separate commands intentionally: the DB guard for RESOLVED can observe
+    // both evidence rows.  Each source key is unique, so a retried tool call is
+    // safe even if the earlier attempt stopped between events.
+    for (const event of events) {
+      const { error } = await (db.from('dream_issue_reconciliation_events') as any)
+        .upsert(event, { onConflict: 'project_id,source_key', ignoreDuplicates: true })
+      if (error) return { ok: false, error: `Kunde inte registrera canonical resolution: ${error.message}` }
+    }
+    return { ok: true, issueId, taskId, status: 'resolved' }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }

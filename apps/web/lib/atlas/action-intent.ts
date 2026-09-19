@@ -190,6 +190,31 @@ const OBJECT_ANYWHERE = new RegExp(anyOf(ACTION_OBJECTS), 'iu')
 /** Clause boundaries — a description and a command can share one message. */
 const CLAUSE_SPLIT = /[.!?…\n]+|[,;:]\s+|\s+[—–]\s+/
 
+const RESOLUTION_OBJECT = new RegExp(anyOf([
+  ...forms('fynd', 'et', 'en', 'ena'),
+  ...forms('ärende', 't', 'n', 'na'),
+  ...forms('problem', 'et'),
+  'finding', 'findings', 'issue', 'issues',
+]), 'iu')
+const MARK_RESOLVED = new RegExp(`^(?:markera|mark|set)${E}[^.!?]*(?:som\s+)?(?:löst|lösta|resolved|closed)${E}`, 'iu')
+const CLOSE_FINDING = new RegExp(`^(?:stäng|stänga|lös|lösa|resolve|close)${E}`, 'iu')
+
+/** Explicit request to change a Dream finding's canonical disposition. */
+export function isDreamResolutionIntent(text: string): boolean {
+  const raw = (text ?? '').normalize('NFC').trim()
+  if (!raw || RECALL.test(raw)) return false
+
+  for (const rawClause of raw.split(CLAUSE_SPLIT)) {
+    const clause = rawClause.trim().toLowerCase()
+    if (!clause || INFORMATIONAL.test(clause)) continue
+    const command = clause.replace(POLITE_PREFIX, '').trim()
+    if (!command || INFORMATIONAL.test(command) || SUBJECT_INVERSION.test(command)) continue
+    if (MARK_RESOLVED.test(command)) return true
+    if (CLOSE_FINDING.test(command) && RESOLUTION_OBJECT.test(command)) return true
+  }
+  return false
+}
+
 /**
  * True when the message is a direct request for Atlas to perform an action.
  *
@@ -201,6 +226,8 @@ const CLAUSE_SPLIT = /[.!?…\n]+|[,;:]\s+|\s+[—–]\s+/
 export function isActionIntent(text: string): boolean {
   const raw = (text ?? '').normalize('NFC').trim()
   if (!raw) return false
+
+  if (isDreamResolutionIntent(raw)) return true
 
   // A recall framing anywhere disqualifies the whole message: "Har du kört
   // workflowet?" must not become an order because of its verb and object.

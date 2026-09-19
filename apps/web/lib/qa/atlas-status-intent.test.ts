@@ -141,6 +141,24 @@ describe('honesty — read-only reporting draws no execution warning', () => {
   }
 })
 
+describe('honesty — operator-directed encouragement is not an execution claim', () => {
+  for (const text of [
+    'Perfekt, kör på!',
+    'Kör på!',
+    'Kör hårt!',
+    'Fortsätt du!',
+    'Gå vidare.',
+  ]) {
+    it(`does not append a false correction for: "${text}"`, () => {
+      expect(isUnsupportedActionClaim(text)).toBe(false)
+    })
+  }
+
+  it('keeps catching a real unsupported execution claim', () => {
+    expect(isUnsupportedActionClaim('Perfekt. Jag kör workflowet nu.')).toBe(true)
+  })
+})
+
 describe('honesty — unsupported execution claims are still caught', () => {
   const CLAIMS = [
     'Jag publicerade nästa video åt dig.',

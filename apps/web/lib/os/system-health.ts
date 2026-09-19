@@ -5,6 +5,11 @@ import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import { executionSafetyFlags, unsafeExecutionFlags } from '@/lib/ai/execution-flags'
 import { normSeverity } from '@/lib/atlas/dream'
+import {
+  reduceDreamDisposition,
+  type DreamReconciliationEvent,
+  type DreamReconciliationEventType,
+} from '@/lib/atlas/dream-reconciliation'
 import { resolveDestination } from '@/lib/nav/registry'
 import {
   COMPONENT_LABELS,
@@ -89,6 +94,7 @@ export interface SystemDreamIssue {
   lastSeenAt: string | null
   projectSlug: string | null
   delegated: boolean
+  disposition: 'active'
 }
 
 export interface SystemHealthModel {
@@ -134,6 +140,12 @@ export interface RawDreamIssue {
   id: string; project_id?: string | null; issue_id?: string | null; severity?: string | null
   occurrences?: number | null; last_seen_at?: string | null; manager_task_id?: string | null
 }
+export interface RawDreamReconciliationEvent {
+  event_id: string; event_seq?: number | null; finding_id: string
+  event_type: DreamReconciliationEventType; evidence_kind?: string | null
+  evidence_locator?: string | null; evidence_digest?: string | null
+  superseding_finding_identity?: string | null; occurred_at: string; recorded_at: string
+}
 export interface RawPlatformStop {
   automation_paused?: boolean | null; paused_at?: string | null; paused_reason?: string | null
 }
@@ -152,6 +164,7 @@ export interface AssembleSystemHealthInput {
   approvalsByProject: Read<{ project_id: string | null }>
   workflows: Read<RawWorkflow>
   dreamIssues: Read<RawDreamIssue>
+  dreamReconciliation: Read<RawDreamReconciliationEvent>
   legacyMemories: Value<number | null>
 }
 
@@ -251,8 +264,26 @@ export function assembleSystemHealth(input: AssembleSystemHealthInput): SystemHe
     truncated: workflowRows.length > SYSTEM_HEALTH_LIMITS.automation,
   }
 
-  // ── Dream: the stable issue ledger, read only.
-  const dreamRows = input.dreamIssues.ok ? input.dreamIssues.rows : []
+  // ── Dream: observations plus the one canonical disposition reducer.
+  const dreamReadable = input.dreamIssues.ok && input.dreamReconciliation.ok
+  const eventsByFinding = new Map<string, DreamReconciliationEvent[]>()
+  if (input.dreamReconciliation.ok) {
+    for (const row of input.dreamReconciliation.rows) {
+      const list = eventsByFinding.get(row.finding_id) ?? []
+      list.push({
+        eventId: row.event_id, eventSeq: row.event_seq ?? null, eventType: row.event_type,
+        evidenceKind: row.evidence_kind ?? null, evidenceLocator: row.evidence_locator ?? null,
+        evidenceDigest: row.evidence_digest ?? null,
+        supersedingFindingIdentity: row.superseding_finding_identity ?? null,
+        occurredAt: row.occurred_at, recordedAt: row.recorded_at,
+      })
+      eventsByFinding.set(row.finding_id, list)
+    }
+  }
+  const observedDreamRows = input.dreamIssues.ok ? input.dreamIssues.rows : []
+  const dreamRows = dreamReadable
+    ? observedDreamRows.filter(row => reduceDreamDisposition(eventsByFinding.get(row.id) ?? []).disposition === 'active')
+    : []
   const dreamIssues: SystemDreamIssue[] = dreamRows.slice(0, SYSTEM_HEALTH_LIMITS.dream).flatMap((row) => {
     const id = text(row.id); const slug = text(row.issue_id)
     if (!id || !slug) return []
@@ -263,10 +294,11 @@ export function assembleSystemHealth(input: AssembleSystemHealthInput): SystemHe
       lastSeenAt: text(row.last_seen_at),
       projectSlug: slugById.get(text(row.project_id) ?? '') ?? null,
       delegated: text(row.manager_task_id) !== null,
+      disposition: 'active',
     }]
   })
   const dream = {
-    state: (input.dreamIssues.ok ? 'ok' : 'error') as SectionState,
+    state: (dreamReadable ? 'ok' : 'error') as SectionState,
     rows: dreamIssues,
     lastSeenAt: dreamIssues.map((i) => i.lastSeenAt).filter(Boolean).sort().reverse()[0] ?? null,
     truncated: dreamRows.length > SYSTEM_HEALTH_LIMITS.dream,
@@ -322,8 +354,8 @@ export function assembleSystemHealth(input: AssembleSystemHealthInput): SystemHe
     dream.state === 'error'
       ? component('dream', 'unavailable', 'Dream-registret kunde inte läsas')
       : criticalDream.length > 0
-        ? component('dream', 'attention', `${criticalDream.length} kritiska fynd i registret`)
-        : component('dream', 'idle', `${dreamIssues.length} fynd i registret`),
+        ? component('dream', 'attention', `${criticalDream.length} verifierat aktiva kritiska fynd`)
+        : component('dream', 'idle', `${dreamIssues.length} verifierat aktiva fynd`),
 
     memory.state === 'error'
       ? component('memory', 'unavailable', 'Minnesregistret kunde inte läsas')
@@ -363,13 +395,13 @@ export function assembleSystemHealth(input: AssembleSystemHealthInput): SystemHe
   for (const issue of criticalDream) {
     warnings.push({ id: `dream:${issue.id}`, tone: 'attention',
       title: `Dream: ${issue.slug}`,
-      detail: `Kritisk · sedd ${issue.occurrences} gång(er)${issue.projectSlug ? ` · ${issue.projectSlug}` : ''}`,
+      detail: `Verifierat ACTIVE · kritisk · sedd ${issue.occurrences} gång(er)${issue.projectSlug ? ` · ${issue.projectSlug}` : ''}`,
       href: null })
   }
   for (const [id, label] of [
     [input.projects.ok, 'Projekten'], [execution.state === 'ok', 'Körningarna'],
     [input.pendingApprovals.ok, 'Granskningarna'], [input.workflows.ok, 'Arbetsflödena'],
-    [input.dreamIssues.ok, 'Dream-registret'], [input.legacyMemories.ok, 'Minnesregistret'],
+    [dreamReadable, 'Dream-registret'], [input.legacyMemories.ok, 'Minnesregistret'],
   ] as const) {
     if (!id) {
       warnings.push({ id: `unreadable:${label}`, tone: 'unreadable',
@@ -413,7 +445,7 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
 
   const [
     platformRes, projectsRes, openRunsRes, recentRunsRes, lastRunRes,
-    approvalsCountRes, approvalsRowsRes, workflowsRes, dreamRes, memoriesRes,
+    approvalsCountRes, approvalsRowsRes, workflowsRes, dreamRes, dreamReconciliationRes, memoriesRes,
   ] = await Promise.allSettled([
     (db.from('platform_config') as any)
       .select('automation_paused, paused_at, paused_reason').eq('id', 1).single(),
@@ -444,7 +476,11 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     (db.from('dream_issues') as any)
       .select('id, project_id, issue_id, severity, occurrences, last_seen_at, manager_task_id')
       .in('project_id', scoped).order('last_seen_at', { ascending: false })
-      .limit(SYSTEM_HEALTH_LIMITS.dream + 1),
+      .limit(200),
+    (db as any).from('dream_issue_reconciliation_events')
+      .select('event_id, event_seq, finding_id, event_type, evidence_kind, evidence_locator, evidence_digest, superseding_finding_identity, occurred_at, recorded_at')
+      .in('project_id', scoped).order('event_seq', { ascending: true })
+      .limit(2000),
     (db.from('memories') as any)
       .select('id', { count: 'exact', head: true }).in('project_id', scoped),
   ])
@@ -486,6 +522,7 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     approvalsByProject,
     workflows: toRead<RawWorkflow>(workflowsRes),
     dreamIssues: toRead<RawDreamIssue>(dreamRes),
+    dreamReconciliation: toRead<RawDreamReconciliationEvent>(dreamReconciliationRes),
     legacyMemories: toCount(memoriesRes),
   })
 }

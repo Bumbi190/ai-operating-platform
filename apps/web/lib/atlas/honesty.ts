@@ -56,6 +56,11 @@ export const ACTION_CLAIM_RE = new RegExp(
  */
 const OFFER_RE = /(vill du|vill ni|ska jag|ska vi|kan jag|kan vi|om du vill|säg till|bekräfta)/i
 
+// Short encouragements address the operator; they are not elliptical claims
+// that Atlas is executing a workflow.  Keep this deliberately narrow so
+// genuine clause-initial claims such as "Kör workflowet nu" stay protected.
+const USER_IMPERATIVE_RE = /^(?:(?:kör på|kör hårt|fortsätt du|fortsätt ni|gå vidare)(?:\s+(?:du|ni))?)[!\s]*$/iu
+
 /** Satsgränser: meningsskiljetecken samt komma/semikolon/tankstreck. */
 const CLAUSE_SPLIT = /[.!?…\n]+|[,;]\s+|\s+[—–]\s+/
 
@@ -73,6 +78,7 @@ export function isUnsupportedActionClaim(text: string): boolean {
     const clause = rawClause.trim()
     if (!clause) continue
     if (OFFER_RE.test(clause)) continue
+    if (USER_IMPERATIVE_RE.test(clause)) continue
     if (ACTION_CLAIM_RE.test(clause)) return true
   }
   return false

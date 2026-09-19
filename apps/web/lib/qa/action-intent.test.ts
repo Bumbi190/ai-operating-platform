@@ -7,7 +7,30 @@
  * bug). It must NOT fire on pure questions / read requests.
  */
 import { describe, it, expect } from 'vitest'
-import { isActionIntent } from '@/lib/atlas/action-intent'
+import { isActionIntent, isDreamResolutionIntent } from '@/lib/atlas/action-intent'
+
+describe('Dream resolution intent — forces the canonical resolution boundary', () => {
+  const requests = [
+    'markera som löst',
+    'markera problemet löst',
+    'stäng ärendet',
+    'lös finding',
+    'resolve issue',
+    'kan du markera ig_self_account_id som löst',
+  ]
+  for (const text of requests) {
+    it(`recognises and forces resolution for: "${text}"`, () => {
+      expect(isDreamResolutionIntent(text)).toBe(true)
+      expect(isActionIntent(text)).toBe(true)
+    })
+  }
+
+  for (const text of ['är problemet löst?', 'vilka ärenden är stängda?', 'har du stängt ärendet?']) {
+    it(`does not mutate for read/recall: "${text}"`, () => {
+      expect(isDreamResolutionIntent(text)).toBe(false)
+    })
+  }
+})
 
 describe('isActionIntent — delegation / task creation (the Dream bug)', () => {
   const actions = [

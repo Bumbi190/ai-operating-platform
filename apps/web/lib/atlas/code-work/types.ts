@@ -48,6 +48,17 @@ export const CODE_WORK_RECEIPT_CLASSES = [
 
 export type CodeWorkReceiptClass = (typeof CODE_WORK_RECEIPT_CLASSES)[number]
 
+/**
+ * Evidence every terminal outcome must carry, irrespective of why it ended.
+ *
+ * SDF-1B1 deliberately separates this baseline from outcome-specific evidence:
+ * a denied proposal must not invent a worktree receipt, and a successful patch
+ * must not invent a policy denial. The terminal profile adds those requirements.
+ */
+export const CODE_WORK_BASELINE_RECEIPT_CLASSES = [
+  'authority_pins',
+] as const satisfies readonly CodeWorkReceiptClass[]
+
 export const CODE_WORK_STOP_CONDITIONS = [
   'authority_drift',
   'stale_base',

@@ -44,6 +44,7 @@ import {
   SDF1_PATH_ENFORCEMENT_LEVEL,
 } from '@/lib/atlas/code-work/path-policy'
 import { validateCodeWorkAdmission } from '@/lib/atlas/code-work/policy'
+import { terminalEvidenceRequirements } from '@/lib/atlas/code-work/terminal-evidence'
 import {
   normalizeGitHubRemote,
   OMNIRA_REPOSITORY_ID,
@@ -54,10 +55,10 @@ import {
   CODE_WORK_ADMISSION_VERSION,
   CODE_WORK_AUTHORIZATION_ACTION_KIND,
   CODE_WORK_AUTHORIZATION_TARGET_TYPE,
+  CODE_WORK_BASELINE_RECEIPT_CLASSES,
   CODE_WORK_CAPABILITY_ID,
   CODE_WORK_CAPABILITY_VERSION,
   CODE_WORK_OUTPUT_PROTOCOL,
-  CODE_WORK_RECEIPT_CLASSES,
   CODE_WORK_STOP_CONDITIONS,
   CODE_WORK_WORKER_ADAPTER_ID,
   CODE_WORK_WORKER_ADAPTER_VERSION,
@@ -121,7 +122,7 @@ function admission(overrides: Partial<CodeWorkAdmissionV1> = {}): CodeWorkAdmiss
     },
     limits: { ...SDF1_LIMITS },
     isolation: { network: 'denied', secrets: 'none' },
-    evidence: { requiredReceiptClasses: [...CODE_WORK_RECEIPT_CLASSES] },
+    evidence: { requiredReceiptClasses: [...CODE_WORK_BASELINE_RECEIPT_CLASSES] },
     stopConditions: [...CODE_WORK_STOP_CONDITIONS],
   }
   return { ...base, ...overrides }
@@ -435,14 +436,35 @@ describe('SDF-1A evidence is structured, deterministic and annotation-free', () 
   })
 })
 
+describe('SDF-1A terminal evidence profiles', () => {
+  it('keeps baseline receipts separate from mutually exclusive outcomes', () => {
+    expect(CODE_WORK_BASELINE_RECEIPT_CLASSES).toEqual(['authority_pins'])
+    const invalid = validateCodeWorkAdmission(admission({
+      evidence: { requiredReceiptClasses: ['authority_pins', 'policy_denial'] },
+    }))
+    expect(invalid.ok).toBe(false)
+    expect(terminalEvidenceRequirements('policy_denied', admission()).requiredReceiptClasses)
+      .toEqual(expect.arrayContaining(['authority_pins', 'policy_denial', 'terminal']))
+    expect(terminalEvidenceRequirements('cancelled', admission()).requiredReceiptClasses)
+      .toEqual(expect.arrayContaining(['authority_pins', 'cancellation_fencing', 'terminal']))
+  })
+
+  it('derives successful command/test requirements without requiring policy denial', () => {
+    const required = terminalEvidenceRequirements('ready_for_human_review', admission())
+    expect(required.requiredCommandIds).toEqual(['sdf1.proof.fixture_test', 'sdf1.proof.typecheck'])
+    expect(required.requiredReceiptClasses).not.toContain('policy_denial')
+    expect(required.patchOperation).toBe('when_changed')
+  })
+})
+
 describe('SDF-1A structural no-execution proof', () => {
   it('contains contracts/policy only and no execution, model, store or route seam', () => {
     const directory = resolve(REPO_ROOT, 'apps/web/lib/atlas/code-work')
     const files = readdirSync(directory).filter(name => name.endsWith('.ts')).sort()
     expect(files).toEqual([
       'binding.ts', 'capability.ts', 'command-registry.ts', 'evidence.ts', 'lifecycle.ts',
-      'patch-protocol.ts', 'path-policy.ts', 'policy.ts', 'repository-registry.ts', 'types.ts',
-      'worker-registry.ts',
+      'patch-protocol.ts', 'path-policy.ts', 'policy.ts', 'repository-registry.ts',
+      'terminal-evidence.ts', 'types.ts', 'worker-registry.ts',
     ])
     const source = files.map(file => readFileSync(resolve(directory, file), 'utf8')).join('\n')
     expect(source).not.toMatch(/from ['"](?:node:)?child_process['"]|require\(['"](?:node:)?child_process['"]\)/)

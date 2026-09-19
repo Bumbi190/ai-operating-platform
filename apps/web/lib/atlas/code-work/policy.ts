@@ -23,7 +23,7 @@ import {
   CODE_WORK_ADMISSION_VERSION,
   CODE_WORK_AUTHORIZATION_ACTION_KIND,
   CODE_WORK_AUTHORIZATION_TARGET_TYPE,
-  CODE_WORK_RECEIPT_CLASSES,
+  CODE_WORK_BASELINE_RECEIPT_CLASSES,
   CODE_WORK_STOP_CONDITIONS,
   CODE_WORK_WORKTREE_POLICY_ID,
   SDF1_LIMITS,
@@ -327,8 +327,8 @@ export function validateCodeWorkAdmission(input: unknown): CodeWorkValidation<Co
   if (evidence) {
     validateStringSet(
       evidence.requiredReceiptClasses,
-      CODE_WORK_RECEIPT_CLASSES,
-      CODE_WORK_RECEIPT_CLASSES,
+      CODE_WORK_BASELINE_RECEIPT_CLASSES,
+      CODE_WORK_BASELINE_RECEIPT_CLASSES,
       'evidence.requiredReceiptClasses',
       violations,
     )

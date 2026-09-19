@@ -1,0 +1,64 @@
+name: SDF-1B Control Plane Boundary
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sdf1b-control-plane-boundary:
+    name: SDF-1B Control Plane Boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ATLAS_SQL_TEST_REQUIRED: 1
+      ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
+        working-directory: apps/web
+        run: >-
+          ../../node_modules/.bin/vitest run
+          lib/qa/sdf1b-code-work-control-plane-sql.test.ts
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/sdf1b-sql.json"
+      - name: Enforce the SQL anti-skip floor
+        env:
+          SDF1B_SQL_REPORT: ${{ runner.temp }}/sdf1b-sql.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const reportPath = process.env.SDF1B_SQL_REPORT
+          if (!reportPath || !fs.existsSync(reportPath)) throw new Error('SDF-1B SQL report missing')
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const passed = report.numPassedTests ?? 0
+          const failed = report.numFailedTests ?? 0
+          const pending = report.numPendingTests ?? 0
+          if (passed < 13 || failed !== 0 || pending !== 0) {
+            throw new Error(`SDF-1B SQL anti-skip floor failed: passed=${passed} failed=${failed} pending=${pending}`)
+          }
+          console.log(`SDF-1B SQL anti-skip floor satisfied: ${passed} passed, 0 failed, 0 pending`)
+          NODE
+      - name: Contracts and no-execution boundary
+        working-directory: apps/web
+        run: ../../node_modules/.bin/vitest run lib/qa/sdf1a-code-work-contracts.test.ts lib/qa/sdf1b-code-work-control-plane.test.ts lib/qa/sdf1b-control-plane-boundary.test.ts

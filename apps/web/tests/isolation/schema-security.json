@@ -2,14 +2,15 @@
   "_meta": {
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
-    "captured_at": "2026-09-10",
-    "total_tables": 74,
+    "captured_at": "2026-09-19",
+    "total_tables": 76,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
     "social_account_bindings_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914120000_social_account_bindings.sql (project-scoped social credentials): RLS on, no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE (bounded by the update guard) and EXECUTE on social_account_rebind. Applied to production before this row was merged.",
     "social_credential_health_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914120200_social_credential_health.sql (project-scoped social credentials): RLS on, no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE. Applied to production before this row was merged.",
     "social_oauth_states_note": "Its row reflects the state established by apps/web/supabase/migrations/20260915170000_youtube_project_oauth.sql (project-scoped YouTube, Y2a): created with RLS on and no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE (bounded by the update guard) and EXECUTE on social_oauth_state_consume. Applied to production before this row was merged.",
+    "atlas_code_work_note": "The atlas_code_work_runs and atlas_code_work_receipts rows reflect the state established by apps/web/supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql (SDF-1B1): RLS on with no policies, every client grant revoked, service_role holding SELECT only; all mutation access is through the migration's purpose-specific SECURITY DEFINER RPCs. Applied to production before these rows were moved into the live table map.",
     "regenerate": "Introspect pg_class.relrowsecurity, pg_policies and information_schema.role_table_grants for schema 'public' and rewrite this file. lib/qa/schema-security-invariant.test.ts defines the exact contract each entry must satisfy.",
     "classes": {
       "SERVER_ONLY": "Service-role only. anon and authenticated hold NO grants at all. RLS must be enabled.",
@@ -41,7 +42,7 @@
         "ai_cost_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY"
       },
-      "classes_note": "Phase 9AA. The migration security gate needs a class for every table a migration touches. These three are not live, so they cannot be introspected; Phase 9AB made all three server-only (policies dropped, client grants revoked) and no application code reads them, so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production."
@@ -118,6 +119,26 @@
       "created_by_migration": true
     },
     "atlas_authorizations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_code_work_receipts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_code_work_runs": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

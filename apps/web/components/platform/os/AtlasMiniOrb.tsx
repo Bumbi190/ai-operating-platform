@@ -162,23 +162,25 @@ export function AtlasMiniOrb() {
               </p>
             )}
 
-            {/* Tänkande */}
-            {atlas.voicePhase === 'thinking' && (
+            {/* Tänkande — bara tills första synliga token faktiskt finns. */}
+            {atlas.voicePhase === 'thinking' && !atlas.response && (
               <p className="text-[11px] text-violet-400/80 font-mono animate-fade-in">
                 tänker…
               </p>
             )}
 
-            {/* Senaste svar — visas under speaking och därefter */}
-            {(atlas.voicePhase === 'speaking' ||
-              (atlas.voicePhase === 'idle' && !!atlas.response)) && (
+            {/* Streamad text visas omedelbart, även medan ljud förbereds. */}
+            {!!atlas.response && (
               <div className="animate-fade-in">
                 {atlas.perf && (
                   <span className="block mb-1 text-[9px] font-mono text-zinc-600">
                     {atlas.perf}
                   </span>
                 )}
-                <p className="text-xs text-zinc-200 leading-relaxed line-clamp-5">
+                <p
+                  ref={node => { if (node) atlas.reportTextVisible() }}
+                  className="text-xs text-zinc-200 leading-relaxed line-clamp-5"
+                >
                   {atlas.response}
                 </p>
               </div>

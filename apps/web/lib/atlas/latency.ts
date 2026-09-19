@@ -39,8 +39,14 @@ export interface AtlasLatencyMarks {
   readonly t0: number
   sent?: number
   firstByte?: number
+  /** First streamed text committed to the visible React surface. */
+  firstVisible?: number
+  /** First complete segment safe to hand to speech. */
+  firstSpeakable?: number
   firstSentence?: number
   ttsStart?: number
+  /** TTS response headers arrived; its body may still be streaming. */
+  ttsResponse?: number
   ttsBlobReady?: number
   /** The blob is handed to the playback module. NOT `audio.play()` — see below. */
   playbackHandoff?: number
@@ -113,30 +119,33 @@ export function formatDuration(ms: number): string {
  * would be a lie by a few hundred milliseconds.
  *
  * Stages that were never reached are omitted rather than shown as zero.
- * Returns null until there is audible speech to anchor the headline, which
- * preserves the existing behaviour of showing nothing on a silent response.
+ * Visible text is useful before audio exists, so the readout appears at the
+ * first committed text and grows as later stages become known.
  */
 export function formatLatency(
   marks: AtlasLatencyMarks,
   timing?: AtlasServerTiming,
 ): string | null {
-  if (marks.firstAudio === undefined) return null
-  const total = Math.round(marks.firstAudio - marks.t0)
-  if (!(total > 0)) return null
+  const textAt = marks.firstVisible ?? marks.firstByte
+  if (textAt === undefined) return null
+  const textMs = Math.round(textAt - marks.t0)
+  if (!(textMs >= 0)) return null
 
   const parts: string[] = []
   if (timing?.contextMs !== undefined) parts.push(`ctx ${formatDuration(timing.contextMs)}`)
   if (timing?.firstTokenMs !== undefined) parts.push(`TTFT ${formatDuration(timing.firstTokenMs)}`)
-  if (marks.firstSentence !== undefined) {
-    parts.push(`mening ${formatDuration(marks.firstSentence - marks.t0)}`)
+  if (marks.firstSpeakable !== undefined) {
+    parts.push(`segment ${formatDuration(marks.firstSpeakable - marks.t0)}`)
   }
   if (marks.ttsStart !== undefined && marks.ttsBlobReady !== undefined) {
     parts.push(`TTS ${formatDuration(marks.ttsBlobReady - marks.ttsStart)}`)
   }
-  if (marks.playbackHandoff !== undefined) {
+  if (marks.playbackHandoff !== undefined && marks.firstAudio !== undefined) {
     parts.push(`ljud ${formatDuration(marks.firstAudio - marks.playbackHandoff)}`)
   }
 
-  const headline = `⚡ ${formatDuration(total)}`
+  const headline = marks.firstAudio === undefined
+    ? `⚡ text ${formatDuration(textMs)}`
+    : `⚡ text ${formatDuration(textMs)} · audio ${formatDuration(marks.firstAudio - marks.t0)}`
   return parts.length ? `${headline} · ${parts.join(' · ')}` : headline
 }

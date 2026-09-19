@@ -125,14 +125,17 @@ export async function POST(request: Request) {
     )
   }
 
-  const audio = await res.arrayBuffer()
-  const ttsMs = Date.now() - tTts
-  return new Response(audio, {
+  // Do not buffer the provider body in this route. openAISpeech already wraps
+  // it in a governance-watched pass-through whose lifetime ends only when the
+  // body finishes or is cancelled, so forwarding it preserves both controls
+  // and lets the browser receive the first MP3 bytes immediately.
+  const upstreamMs = Date.now() - tTts
+  return new Response(res.body, {
     headers: {
       'Content-Type':   'audio/mpeg',
-      'Content-Length': audio.byteLength.toString(),
       'Cache-Control':  'no-store',
-      'x-tts-ms':       String(ttsMs),   // latens-mätning per mening
+      'x-tts-upstream-ms': String(upstreamMs),
+      'x-tts-transport': 'stream',
     },
   })
 }

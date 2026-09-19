@@ -121,7 +121,7 @@ export function AtlasCommandCore() {
             <MessageSquare size={14} aria-hidden="true" />
             <span>Atlas</span>
           </div>
-          <p>{atlas.response}</p>
+          <p ref={node => { if (node) atlas.reportTextVisible() }}>{atlas.response}</p>
           {atlas.conversationId && atlas.voicePhase === 'idle' ? (
             <button
               type="button"

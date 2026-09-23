@@ -1,6 +1,11 @@
 # Model / Worker Routing
 
-**Status:** Canonical v0.1 (Phase 0 — routing design, not implemented; no new provider wiring in this slice)
+**Status:** Canonical v0.2 (Phase 0 — routing design, not implemented; no new provider wiring in this slice) · revised 2026-09-23
+
+**v0.2 addition:** §1a documents exactly what `claude_patch_v1` is and is not
+capable of today. A future dispatcher for this worker is a much smaller,
+narrower thing than "running Claude Code or Codex autonomously" — read §1a
+before assuming otherwise.
 
 ## 1. Current reality (verified, not aspirational)
 
@@ -22,6 +27,78 @@ Omnira does not have a general worker/provider abstraction today:
 **Phase 0 does not build a second provider seam.** It documents the interface
 a future Model Router should present, so that adding a second provider later
 is additive to this interface rather than a rewrite of it.
+
+## 1a. `claude_patch_v1` today is deliberately not "Claude Code" or "Codex" — read this before designing a dispatcher
+
+`worker-registry.ts`'s only registered worker, verified against source:
+
+```ts
+export const CLAUDE_PATCH_V1 = Object.freeze({
+  // ...
+  capability: 'structured_file_operations_only',
+  toolAccess: 'none',
+  shellAccess: 'none',
+  gitAccess: 'none',
+  directFilesystemAccess: 'none',
+  workerNetworkAccess: 'none',
+})
+```
+
+and `capability.ts`'s static declaration, in the same file:
+
+```ts
+workerRequirements: {
+  structuredOutputOnly: true,
+  directFilesystemAccess: false,
+  shellAccess: false,
+  gitAccess: false,
+  toolAccess: false,
+},
+isolationRequirements: {
+  vmBackedLinux: true,
+  executionNetwork: 'denied',
+  executionSecrets: 'none',
+  worktreeRetention: 'explicit_cleanup_only',
+},
+```
+
+**This worker cannot touch a filesystem, shell, git, network, or tool by
+itself, even in principle.** Its entire contract is: receive bounded input,
+emit `sdf1.structured_file_ops.v1` (typed create/replace/delete/rename
+operations with expected-sha256 preconditions), and nothing else — the
+*caller* (a not-yet-built dispatcher) would be the one that validates those
+operations and applies them inside an isolated, `vmBackedLinux`-required
+worktree with `executionNetwork: 'denied'`.
+
+**Therefore: a dispatcher for `claude_patch_v1` is NOT equivalent to running
+Claude Code or Codex autonomously.** Claude Code and Codex, as products, run
+with real shell/tool/filesystem/network access inside a session. Wiring a
+dispatcher for the current `claude_patch_v1` worker would only ever produce
+structured file-operation proposals for a human-reviewed patch pipeline — it
+would not grant, and must not be made to grant, interactive tool use, shell
+access, git operations, or network access.
+
+**Full Claude Code / Codex worker support — a worker that itself uses tools,
+runs shell commands, or reaches the network during a mission — requires a
+separately reviewed worker adapter and capability declaration (a new,
+distinct entry in `capability.ts`'s allow/forbid lists, not a loosening of
+`CLAUDE_PATCH_V1`'s existing `'none'` flags), plus a sandbox/broker
+architecture capable of actually enforcing `vmBackedLinux`-grade isolation
+around it.** `feat/omnira-sdf1c1-broker-identity` (unmerged, paused) is
+adjacent groundwork for device/broker identity, not this capability itself,
+and this Phase 0 does not restart it or assume it will land as designed.
+**Do not weaken `CLAUDE_PATCH_V1`'s or `CODE_WORK_CAPABILITY`'s existing
+`'none'`/`false` flags to make a dispatcher easier to build — that is a
+capability change to SDF-1A, requiring its own explicit, separately reviewed
+decision, never a side effect of shipping routing or evaluation-gate
+documentation.**
+
+The `vmBackedLinux: true` isolation requirement is itself an unresolved
+runtime constraint for whichever phase eventually builds a dispatcher: today
+nothing enforces it because nothing executes anything. Design that
+enforcement (a real VM-backed Linux execution boundary, not a
+best-effort local sandbox) as part of the dispatcher/broker phase, not as
+an afterthought once a dispatcher already runs code somewhere.
 
 ## 2. Task classes
 
@@ -85,6 +162,8 @@ flow) — it does not create a second cost ledger.
 - Does not add Codex, or any second provider, to the codebase.
 - Does not change `getAnthropic` or `CodeWorkAdmissionV1`'s current
   single-worker pin.
+- Does not weaken `CLAUDE_PATCH_V1`'s or `CODE_WORK_CAPABILITY`'s access
+  flags (§1a) in any way, for any reason.
 - Does not implement `ModelRoutingInputs`/`ModelRoutingDecision` — these are
   recommended interfaces for the next implementable slice
   (see PHASE-0.md §4).

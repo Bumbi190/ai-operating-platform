@@ -1,8 +1,19 @@
 # Mission Risk & Authority Levels
 
-**Status:** Canonical v0.1 (Phase 0 — classification scheme, not implemented; nothing here grants autonomy)
+**Status:** Canonical v0.2 (Phase 0 — classification scheme, not implemented; nothing here grants autonomy) · revised 2026-09-23
+
+**v0.2 correction:** clarified that a Work Package's `authority` reference
+(MISSION-CONTRACT.md §3/§5) is required at **every** level below, including
+Level 0/1 — a risk level only ever changes whether an *additional* standing
+human-approval gate is required on top of that authority, never whether
+authority itself is required. Also disambiguated against a third existing
+scale, `MissionRecord.risks` (see §0).
 
 ## 0. Read this before using "Level 0/1/2/3" anywhere near this codebase
+
+**This is the second, unrelated risk/autonomy vocabulary already in this
+codebase, not the first.** There are now three, and none of them may be
+compared or merged:
 
 Omnira already has a **different, canonical, locked** autonomy vocabulary:
 **Chapter 18 — Autonomy Licensing Model** (`docs/architecture/executive-intelligence/atlas-knowledge/v1.0/package/01_Canonical_Knowledge/Chapters/chapter-18-autonomy-licensing-model.md`,
@@ -31,7 +42,29 @@ vocabularies are ever visible in the same UI or log line, always qualify
 which one: "Mission Risk Level 1" vs. "Autonomy License L4", never bare
 "Level 1" / "L4".
 
+**The third existing scale: `MissionRecord.risks`.** Chapter 20's
+`MissionRecord` (`lib/atlas/mission/types.ts`) already carries `risks:
+MissionRisk[]` — a list of named risks, each with its own `severity: 'low' |
+'medium' | 'high'`. This is neither of the above: it is a per-risk
+assessment on the governing Mission itself (e.g. "vendor API may rate-limit
+— medium"), not a single overall tier for a Work Package's promotion
+oversight. **Mission Risk Level 0–3 may be *informed by* a Work Package's
+inherited `MissionRisk[]` entries (a Work Package descending from a Mission
+with a `high`-severity risk should rarely be Level 0), but it is not derived
+from them mechanically, does not replace them, and must never be printed as
+if it were the same field.** Three scales, three names, always spelled out
+in full: "Autonomy License L4", "Mission Risk Level 1", "Mission risk
+`high`".
+
 ## 1. The four Mission Risk Levels
+
+**Read before the table below: at every level, `authority` (MISSION-CONTRACT.md
+§3/§5 — a live reference into an existing `AuthorizationStatus` grant /
+`MissionAuthorityRecord`) is required and non-null. A risk level never
+decides *whether* a Work Package has authority — only whether an
+*additional*, standing human-approval gate (`humanApprovalRequired`) sits on
+top of that authority before promotion. Capability is never authority, at
+any level, including Level 0.**
 
 ### Mission Risk Level 0 — Mechanical
 
@@ -46,8 +79,10 @@ Very low-risk, mechanical work with no behavioral ambiguity:
 
 **Target policy (not implemented):** may eventually auto-merge after
 deterministic gates alone (EVALUATION-GATES.md §1) — no independent review,
-no human approval required. Even at Level 0, the mission still runs inside
-SDF-1A's capability/path boundary; "low risk" narrows the review bar, not the
+no *additional* human-approval gate. `authority` is still required and
+non-null (§1 above) — Level 0 narrows the review bar, never the requirement
+that a live grant already exists. The Work Package still runs inside SDF-1A's
+capability/path boundary; "low risk" narrows the review bar, not the
 containment.
 
 ### Mission Risk Level 1 — Normal software development
@@ -61,8 +96,9 @@ Ordinary application work with a clear, testable scope:
 
 **Target policy (not implemented):** may eventually merge automatically
 after required deterministic checks **and** independent review **and**
-evaluation (EVALUATION-GATES.md) — no standing human-approval requirement
-per mission, unless the specific mission's `approvalPolicy` says otherwise.
+evaluation (EVALUATION-GATES.md) — no *additional* standing human-approval
+gate by default, unless the specific Work Package's `humanApprovalRequired`
+says otherwise. `authority` is still required and non-null regardless.
 
 ### Mission Risk Level 2 — Sensitive implementation
 
@@ -78,11 +114,12 @@ security/governance-sensitive:
 - Architecture changes
 
 **Target policy (not implemented):** a worker may implement, test, and fully
-prepare the change — reaching `ready_for_human_review` — but **human
-approval is required before sensitive deployment/promotion**, via the
-existing `AuthorizationStatus` grant flow (SDF-1B2's operator plane is the
+prepare the change — reaching `ready_for_human_review` — but
+`humanApprovalRequired` is `true`: an **additional** standing human-approval
+gate sits on top of the `authority` reference every level already requires,
+before sensitive deployment/promotion. SDF-1B2's operator plane is the
 concrete precedent for exactly this pattern: full worker preparation, human
-grant/deny at the boundary).
+grant/deny at the boundary via the existing `AuthorizationStatus` flow.
 
 ### Mission Risk Level 3 — Human-authority operations
 
@@ -115,7 +152,12 @@ interface RiskLevelPolicy {
   label: 'mechanical' | 'normal_development' | 'sensitive_implementation' | 'human_authority'
   requiredChecks: 'deterministic_gates_only' | 'deterministic_gates_plus_review'
   independentReviewRequired: boolean
-  humanApprovalRequiredBeforePromotion: boolean
+  // `authority` is NOT a field here — it is not something a risk level can turn
+  // on or off. It is required unconditionally by MISSION-CONTRACT.md §5 before
+  // a Work Package may exist at all. `humanApprovalRequired` (matching
+  // MISSION-CONTRACT.md's `requiredReview.humanApprovalRequired`) only ever
+  // governs the ADDITIONAL gate on top of that already-required authority.
+  humanApprovalRequired: boolean
   mayAutoMerge: boolean // always false today; Phase 0 defines the field, not the automation
 }
 ```
@@ -127,7 +169,17 @@ admission policy for code work.
 
 ## 3. Explicit non-grant
 
-Nothing in this document grants any mission any autonomy. A mission's
+Nothing in this document grants any mission any autonomy. A Work Package's
 declared `riskLevel` is a *classification*, checked by policy that does not
-exist yet. Until that policy exists, every mission — regardless of declared
-level — requires the same explicit human review SDF-1B2 already enforces.
+exist yet. Until that policy exists, every Work Package — regardless of
+declared level — requires the same explicit human review SDF-1B2 already
+enforces, in addition to (never instead of) a live `authority` reference.
+
+This is the same rule stated in README.md §2 and MISSION-CONTRACT.md §0/§5,
+applied here specifically to risk level: **capability ≠ authority.** A
+worker capable of producing a correct, low-risk patch (Level 0) is not
+thereby authorized to have it merged — `authority` (a real
+`MissionAuthorityRecord` / `AuthorizationStatus` grant) must already exist,
+for every Work Package, at every level, before translation into
+`CodeWorkAdmissionV1` even begins. What changes level to level is only
+whether *another* human has to look at it *again* on top of that.

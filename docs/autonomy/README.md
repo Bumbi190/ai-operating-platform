@@ -1,6 +1,6 @@
 # Omnira Autonomy Foundation
 
-**Status:** Canonical v0.1 (Phase 0 — documentation only, nothing here executes)
+**Status:** Canonical v0.2 (Phase 0 — documentation only, nothing here executes) · revised 2026-09-23
 
 > **Read this first.** This tree is the entry point for any work on delegating
 > software-development missions to a coding worker (Claude, Codex, or a future
@@ -90,9 +90,15 @@ grants a worker any new capability.
 Before writing any code against this foundation, read the systems it
 extends — do not re-implement them:
 
+- **`apps/web/lib/atlas/mission/*`** (Chapter 20, Executive Mission Brief V1)
+  and **`apps/web/lib/atlas/delegation/*`** / **`apps/web/lib/atlas/workpackage/*`**
+  (Chapter 21) — the real, canonical Mission → Delegation Envelope → Work
+  Package chain. **This document's "Mission Contract" is not a new Mission
+  type** — see MISSION-CONTRACT.md §0.
 - **`apps/web/lib/atlas/code-work/*`** ("SDF-1A/1B1/1B2") — an existing,
   merged, execution-free contract/lifecycle/persistence/operator-review stack
-  for exactly this problem (see MISSION-CONTRACT.md §2 for the relationship).
+  for the last hop of that chain, bounded code work specifically (see
+  MISSION-CONTRACT.md §2 for the relationship).
 - **`apps/web/lib/atlas/authorization/*`** — the canonical human-authorization
   vocabulary (`AuthorizationStatus`, principal, target, effectiveness).
 - **`apps/web/lib/ai/anthropic.ts`** (`getAnthropic`) — the sanctioned,

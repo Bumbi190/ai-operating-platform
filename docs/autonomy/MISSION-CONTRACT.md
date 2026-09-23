@@ -1,96 +1,206 @@
 # Mission Contract
 
-**Status:** Canonical v0.1 (Phase 0 — schema recommendation, not implemented)
+**Status:** Canonical v0.2 (Phase 0 — schema recommendation, not implemented) · revised 2026-09-23
+
+**v0.2 correction:** v0.1 of this document invented a standalone `Mission`
+schema. That was wrong — Omnira already has a canonical **Mission**, and this
+revision replaces the invented schema with a mapping onto it. Read §0–§2
+before anything else in this file.
+
+## 0. Omnira already has a canonical Mission — do not invent another one
+
+**Chapter 20 — Executive Mission Brief V1** (`apps/web/lib/atlas/mission/types.ts`,
+805 lines, `MissionRecord`) is the real, structured, typed Mission in this
+codebase. It already has: `objective`, `inScope`/`outOfScope`,
+`successCriteria` (`MissionSuccessCriterion[]`), `allowedActions`/
+`forbiddenActions` (`MissionActionBound[]`), `tools` (`MissionToolBound[]`),
+`dataScope` (`MissionDataScope[]`), `risks` (`MissionRisk[]`, severity
+`low`/`medium`/`high`), `approvalGates` (`MissionApprovalGate[]`),
+`escalationTriggers` (`MissionEscalationTrigger[]`, escalating to a **human**
+role — manager/project_executive/portfolio_executive/founder/governance/
+specialist_reviewer), `stopConditions`/`pauseConditions`
+(`MissionHaltCondition[]`), `evidenceRequirements`
+(`MissionEvidenceRequirement[]`), `budget` (`MissionBudget`), and —
+critically for §3 below — `authority` + `authoritySource` +
+`authorityRecord`, which already separates *what the mission may decide*
+from *why it is allowed to*.
+
+It flows, per Chapter 21: **Mission ⊇ Delegation Envelope ⊇ Work Package**
+(`lib/atlas/delegation/types.ts`'s `DelegationEnvelope`, `lib/atlas/workpackage/types.ts`'s
+`WorkPackage`) — "Its parent is the Delegation, not the Mission" is the
+module's own stated invariant. SDF-1A's `CodeWorkGovernancePins` already pins
+into this exact chain: `mission.{id,version,hash}`, `delegation.{envelopeId,hash}`,
+`workPackage.{id,hash}`.
+
+**This document does not define a new Mission.** It defines the
+**code-work-specific fields a `WorkPackage` must carry (or that a Mission's
+existing bound fields must be populated with) when a Work Package is handed
+to a coding worker**, and how that Work Package translates into SDF-1A's
+`CodeWorkAdmissionV1`. Anywhere this document previously used the bare word
+"Mission" to mean a new object, read it as "the governing `MissionRecord`
+this Work Package descends from" instead.
 
 ## 1. Purpose
 
-A **Mission** is the provider-neutral envelope Atlas hands to a Context
-Router / Model Router when it wants a coding worker (Claude, Codex, or a
-future worker) to do bounded, substantial work and return a tested,
-independently reviewed pull request.
+A coding-worker delegation is the last hop of an existing chain:
 
-A Mission is a *proposal for delegated work*, not a grant of authority. It
-carries no capability by itself — see [RISK-AND-AUTHORITY.md](./RISK-AND-AUTHORITY.md).
+```
+MissionRecord (Ch.20, lib/atlas/mission)
+  → DelegationEnvelope (Ch.21, lib/atlas/delegation)
+    → WorkPackage (Ch.21, lib/atlas/workpackage)
+      → CodeWorkAdmissionV1 (SDF-1A, lib/atlas/code-work)  ← this document's actual subject
+```
 
-## 2. Relationship to the existing SDF stack — read this before designing anything
+Nothing in this chain is a grant of authority by itself. A `WorkPackage`
+"has been RECEIVED, not started" (its own module doc). Authority is proven
+only by a live `MissionAuthorityRecord`/`AuthorizationStatus`, never by the
+existence of any object in this chain — see §3.
 
-Omnira **already has** a mature, merged, execution-free contract for exactly
-one class of mission — "bounded code work" — in
-`apps/web/lib/atlas/code-work/` (internally called SDF-1A/1B1/1B2):
+## 2. Relationship to SDF-1A/1B1/1B2 — read this before designing anything
 
-- `types.ts` defines `CodeWorkAdmissionV1`: governance pins (mission id/
-  version/hash, authorization target, delegation envelope, work-package
-  hash), a repository binding, a pinned worker (`provider`, `modelId`,
-  `adapterId`, `outputProtocol`), file-scope limits, an allowed-command list,
-  numeric limits (`SDF1_LIMITS`: max 2 worker iterations, max 8 changed
-  files, max 131072 diff bytes, max 1200s total runtime), and the required
-  evidence classes (`CODE_WORK_RECEIPT_CLASSES`).
+`apps/web/lib/atlas/code-work/` (SDF-1A/1B1/1B2) is a mature, merged,
+execution-free contract for exactly one Work Package class: bounded code
+work.
+
+- `types.ts` defines `CodeWorkAdmissionV1`: the governance pins above, a
+  repository binding, a pinned worker (`provider`, `modelId`, `adapterId`,
+  `outputProtocol`), file-scope limits, an allowed-command-**id** list
+  (`commands.approvedCommandIds: string[]` — not shell strings, see §4),
+  numeric limits (`SDF1_LIMITS`), and required evidence classes.
 - `lifecycle.ts` defines the state machine
   (`proposed → authorized → claimed → preparing → working → testing →`
-  one of eight terminal states, including `ready_for_human_review`,
-  `tests_failed`, `scope_violation`, `stale_base`, `policy_denied`).
+  one of eight terminal states).
 - `control-plane/store.ts` (SDF-1B1) persists runs with fencing tokens and a
   hash-chained receipt trail.
-- `control-plane/operator-*.ts` and
-  `app/api/atlas/code-work/[workId]/route.ts` (SDF-1B2) are the human
-  grant/deny/cancel review surface, built on the existing
-  `AuthorizationStatus` vocabulary rather than a new one.
+- `control-plane/derive-admission.ts` shows the **real** construction path
+  today: a caller supplies a candidate `admission` plus a real `WorkPackage`;
+  `deriveCodeWorkProposal` validates the admission, then calls
+  `validateCodeWorkPackageAttenuation(workPackage, admission)` to prove the
+  admission is contained inside that Work Package's own bounds, before
+  hashing anything. **The Work Package is the source of truth the admission
+  is checked against — a translator does not get to assert its own
+  containment.**
+- `control-plane/operator-*.ts` (SDF-1B2) is the human grant/deny/cancel
+  review surface, built on the existing `AuthorizationStatus` vocabulary.
 - **What SDF does not yet have: a dispatcher.** Nothing in this stack invokes
-  a model, spawns a process, or applies a patch. `capability.ts` and
-  `patch-protocol.ts` say so explicitly in their own comments.
+  a model, spawns a process, or applies a patch.
 
-**The Mission Contract defined below is not a competing schema.** It is the
-outer envelope a Context Router / Model Router uses to decide *what kind of
-work this is* and *who should do it*, before translating it into a
-worker-specific admission contract. For the "bounded code work" mission
-class specifically, that translation target is `CodeWorkAdmissionV1` —
-**a future Mission→Admission translator should consume a Mission and emit a
-`CodeWorkAdmissionV1`, not reimplement admission, lifecycle, persistence, or
-evidence.** Other future mission classes (non-code work) would translate into
-their own, not-yet-designed admission contracts.
+`feat/omnira-sdf1c1-broker-identity` (device/broker identity) is an
+**unmerged, paused branch**. This Phase 0 does not build on it or assume it
+will land as designed.
 
-`feat/omnira-sdf1c1-broker-identity` (device/broker identity for a human's
-own machine) is an **unmerged, paused branch**. Per repository discipline,
-this Phase 0 does not build on it, does not restart it, and does not assume
-it will land as designed.
+## 3. Fields — mapped onto real types, not reinvented
 
-## 3. Fields
-
-| Field | Type | Notes |
+| This document's concept | Real backing type / field | Notes |
 |---|---|---|
-| `missionId` | string (stable id) | Maps to `CodeWorkGovernancePins.mission.id` when translated for code work. |
-| `projectId` | string | Must resolve inside `lib/atlas/isolation.ts`'s project boundary. Never inferred from repository path alone. |
-| `repository` | `{ provider, owner, repo, baseBranch, baseSha }` | `baseSha` pin exists so a stale base can be detected — SDF already has a `stale_base` terminal state for this. |
-| `objective` | string (human-readable) | One or two sentences. Not itself an acceptance criterion. |
-| `acceptanceCriteria` | string[] | Concrete, checkable statements. Feeds `completionDefinition` below and the reviewer's rubric. |
-| `scope` | string (freeform description) | The intended shape of the change, for a human/reviewer's orientation — not enforced; `allowedPaths`/`forbiddenPaths` are what's enforced. |
-| `allowedPaths` | string[] (globs) | Enforced at the capability boundary. Analogous to SDF-1A's path-policy allow-list. |
-| `forbiddenPaths` | string[] (globs) | Always wins over `allowedPaths` on overlap. |
-| `allowedCapabilities` | string[] (capability ids, e.g. `code.worktree.patch.v1`) | Must be a subset of what the worker's pinned adapter actually supports — never assumed. |
-| `forbiddenCapabilities` | string[] | Explicit denials (e.g. `git.commit`, `network.egress`) — SDF-1A's `capability.ts` already forbids some of these unconditionally for all missions. |
-| `riskLevel` | `0 \| 1 \| 2 \| 3` | See RISK-AND-AUTHORITY.md. Determines `requiredReview` and `approvalPolicy` floor. |
-| `requiredChecks` | string[] (check ids) | Deterministic gates the output must pass — see EVALUATION-GATES.md. Never optional regardless of risk level. |
-| `requiredReview` | `{ independentReviewer: boolean, humanApprovalRequired: boolean }` | The floor is set by `riskLevel`; a mission may require more, never less. |
-| `approvalPolicy` | reference to an existing `AuthorizationTarget`/policy, or `null` for Level 0 | Must resolve through `lib/atlas/authorization/*`. A Mission never defines its own approval semantics. |
-| `contextReferences` | `{ knowledgeRefs: string[], memoryRefs: string[], docRefs: string[] }` | Pointers, not payloads — see CONTEXT-ROUTING.md. |
-| `preferredWorker` | `{ provider?: string, modelHint?: string, adapterId?: string }` (all optional) | A hint, not a binding pin — the Model Router may override it (see MODEL-ROUTING.md). Today only `provider: 'anthropic'` has a wired adapter (`claude_patch_v1`). |
-| `retryEscalationPolicy` | `{ maxAttempts: number, escalateTo?: preferredWorker-shaped hint }` | SDF-1A currently hardcodes `maxWorkerIterations: 2` with no escalation; this field documents the target shape for when escalation exists, and must not exceed SDF's numeric limits until SDF itself raises them. |
-| `completionDefinition` | `{ acceptanceCriteria: string[], requiredChecks: string[], terminalState: 'ready_for_human_review' }` | A mission is "complete" only when it reaches a terminal state that satisfies all three — completion is never merge, deploy, or the worker's own claim. |
+| Mission/work identity | `MissionRecord.missionId`, `WorkPackage.id` (Chapter 20/21) | Never invented by a translator — see §5. |
+| `projectId` | `MissionRecord.projectId` | Must resolve inside `lib/atlas/isolation.ts`'s project boundary. |
+| `repository` | New, SDF-1A-specific: `CodeWorkRepositoryBinding` (`types.ts`) | Chapter 20/21 have no repository concept — this is a legitimate code-work-only addition, carried on the `WorkPackage`, not the Mission. |
+| `objective` | `MissionRecord.objective` | Reused verbatim — not re-authored per Work Package. |
+| `acceptanceCriteria` | `MissionRecord.successCriteria` (`MissionSuccessCriterion[]`) | Reused, not duplicated. |
+| `scope` | `MissionRecord.inScope` / `outOfScope` (string[]) | Reused. |
+| `allowedPaths` / `forbiddenPaths` | New, SDF-1A-specific: `CodeWorkFilePolicy` (`path-policy.ts`) | Chapter 20's `MissionToolBound.restriction` is prose-shaped ("e.g. read-only, specific paths"); SDF-1A's path policy is the actual enforced, glob-checkable boundary. A code-work Work Package must populate SDF-1A's path policy, not rely on `MissionToolBound`'s free-text restriction for enforcement. |
+| `allowedCapabilities` / `forbiddenCapabilities` | `MissionRecord.allowedActions` / `forbiddenActions` (`MissionActionBound[]`) at the Mission level; **enforced** at the code-work level by SDF-1A's `capability.ts` (`CODE_WORK_OPERATION_FAMILIES` / `CODE_WORK_FORBIDDEN_OPERATION_FAMILIES`) | A Work Package's declared capabilities must be a subset of what the Mission already allowed **and** a subset of what `capability.ts` permits. Neither layer may be skipped. |
+| `riskLevel` (0–3) | **New** — see RISK-AND-AUTHORITY.md | Distinct from `MissionRecord.risks` (`MissionRisk[]`, named risks with `low`/`medium`/`high` severity). Mission Risk Level is a single overall promotion-oversight tier for a code-work Work Package; it may be *informed by* `risks`, but does not replace or renumber it. Never conflate the two scales. |
+| `requiredChecks` | New — check-outcome ids, see §4 | Distinct from `MissionRecord.evidenceRequirements`, which is broader (screenshots, metrics, production observation). `requiredChecks` is specifically the deterministic-gate subset relevant to code work. |
+| `requiredReview` | Derived from `riskLevel` policy (RISK-AND-AUTHORITY.md) | Independent-reviewer requirement; not itself an authority grant. |
+| `authority` (required) | `MissionRecord.authority` (`MissionActionBound[]`) + `authoritySource` (`MissionAuthoritySource`) + a live `authorityRecord`/`AuthorizationStatus` proof | **Required on every Work Package, at every risk level.** See §5 — this replaces v0.1's `approvalPolicy: null`, which was ambiguous about whether "no policy" meant "no authority." It never does. |
+| `humanApprovalRequired` (optional, in addition to `authority`) | `MissionRecord.approvalGates` (`MissionApprovalGate[]`) / `MissionGateResolution` | A **separate**, additional gate a specific risk level may require on top of `authority` — never a substitute for it. |
+| `contextReferences` | Pointers into `lib/atlas/knowledge/*` / `lib/atlas/memory/*` | See CONTEXT-ROUTING.md. |
+| `preferredWorker` | **New** — no Chapter 20/21 equivalent | A hint, not a binding pin (see MODEL-ROUTING.md). Today only `provider: 'anthropic'`/`adapterId: 'claude_patch_v1'` is wired. |
+| `workerRetryEscalation` | **New**, and distinct from `MissionRecord.escalationTriggers` | `MissionEscalationTrigger` escalates a *mission condition* to a **human** role. This field escalates a *failed worker attempt* to a **stronger worker/model**, bounded by `SDF1_LIMITS.maxWorkerIterations` (currently 2). Do not merge these two concepts — one names a person, the other names a model. |
+| `completionDefinition` | `MissionRecord.completionConditions` (string[]) + `evidenceRequirements` + SDF-1A's `ready_for_human_review` terminal state | A Work Package is "complete" only when all three agree — never the worker's own claim. |
 
-## 4. Worked example
+## 4. `requiredChecks` vs. executable command authority — these are not the same thing
+
+`requiredChecks` describes **required evaluation outcomes** (e.g. "typecheck
+passes," "the fixture test suite passes"). It is never a shell string and is
+never translated into argv directly.
+
+Executable commands come **only** from SDF-1A's registered command ids
+(`lib/atlas/code-work/command-registry.ts`, `CODE_WORK_COMMANDS`). As of this
+writing exactly two commands are registered:
+
+- `sdf1.proof.typecheck` → `npm run typecheck` (fixed, no arguments)
+- `sdf1.proof.fixture_test` → `vitest run lib/qa/sdf1a-code-work-contracts.test.ts`
+  (one hardcoded enum value — not an arbitrary suite path)
+
+**There is no registered command for lint, build, or an arbitrary Vitest
+path.** A Mission→Work Package translation step that needs one of those
+checks and finds no matching `CodeWorkCommandId` must **reject the
+translation** with an explicit "unmapped required check" violation — it must
+never fall back to constructing a shell string, and never silently drop the
+check. This PR does not expand `CODE_WORK_COMMANDS`; doing so is a separate,
+reviewable change to SDF-1A itself.
+
+## 5. Authority is never inferred — the translator's real input shape
+
+A Mission→Admission translator must not manufacture `CodeWorkGovernancePins`,
+a repository binding, or any hash. Those are authoritative bindings that
+already exist elsewhere by the time translation happens — the translator's
+job is to carry them through unchanged, not to derive them:
+
+```ts
+// Recommended shape — not implemented in this PR. Reuses real types wherever
+// one exists; every field is a reference to something already authoritative,
+// never a value the translator computes itself.
+
+import type { MissionRecord, MissionId } from '@/lib/atlas/mission/types'
+import type { DelegationEnvelope } from '@/lib/atlas/delegation/types'
+import type { WorkPackage } from '@/lib/atlas/workpackage/types'
+import type { AuthorizationTarget } from '@/lib/atlas/authorization/types'
+import type { CodeWorkAdmissionV1 } from '@/lib/atlas/code-work/types'
+
+interface CodeWorkMissionBindings {
+  mission: Pick<MissionRecord, 'missionId' | 'version'> & { hash: string }
+  delegation: Pick<DelegationEnvelope, 'envelopeId'> & { hash: string }
+  workPackage: WorkPackage           // the real, already-validated Work Package
+  authorizationTarget: AuthorizationTarget
+  repositoryId: string               // resolves an existing repository-registry.ts entry
+}
+
+function translateWorkPackageToAdmission(
+  workPackage: WorkPackage,          // must already be attenuated against its DelegationEnvelope
+  riskPolicy: RiskLevelPolicy,       // RISK-AND-AUTHORITY.md §2
+  bindings: CodeWorkMissionBindings, // resolved by the CALLER from live authority state, never guessed
+): CodeWorkAdmissionV1 | MissionTranslationRejection
+```
+
+Properties this function must have:
+
+- **Pure and non-authoritative.** It never mints a hash, a delegation id, a
+  work-package id, or an `AuthorizationTarget`. Every field in `bindings` is
+  supplied by a caller that already resolved it against live state (the same
+  discipline `derive-admission.ts` already follows for `WorkPackage`).
+- **Rejects, never broadens.** If `workPackage`'s declared capabilities
+  exceed what `capability.ts` allows, if `riskPolicy` has no defined policy
+  for the Work Package's risk level, or if a `requiredChecks` entry has no
+  `CodeWorkCommandId` mapping (§4), the function returns
+  `MissionTranslationRejection` — it never widens scope to make translation
+  succeed.
+- **Output still passes SDF-1A's own gate.** The produced `CodeWorkAdmissionV1`
+  is handed to the existing `validateCodeWorkAdmission` (`policy.ts`)
+  unchanged — this function's output is not trusted merely because it came
+  from a translator.
+
+## 6. Worked example
 
 > Category: "Implement a scoped frontend/backend feature and return a tested PR."
 
+This example shows the **Work Package-level fields** a code-work delegation
+needs, assuming a `MissionRecord` already exists and has already authorized
+this work (via `authority`/`authoritySource`/a live `AuthorizationStatus`
+grant — not shown here, since that grant is a precondition, not a mission
+field to invent).
+
 ```jsonc
 {
-  "missionId": "mission_2026-09-23_atlas-project-tag-filter",
+  "workPackageId": "wp_2026-09-23_atlas-project-tag-filter",
+  "missionId": "mission_...",            // real MissionRecord.missionId — resolved, not invented
   "projectId": "proj_omnira_core",
   "repository": {
-    "provider": "github",
-    "owner": "Bumbi190",
-    "repo": "ai-operating-platform",
-    "baseBranch": "main",
-    "baseSha": "df2e66daaba8de9bca635995b107782a33f594fa"
+    "provider": "github", "owner": "Bumbi190", "repo": "ai-operating-platform",
+    "baseBranch": "main", "baseSha": "df2e66daaba8de9bca635995b107782a33f594fa"
   },
   "objective": "Add a tag filter dropdown to the Project Command Center list view.",
   "acceptanceCriteria": [
@@ -98,40 +208,39 @@ it will land as designed.
     "No tag selected shows all projects (existing behaviour unchanged)",
     "New Vitest coverage for the filter logic"
   ],
-  "scope": "One new filter component plus its wiring into the existing list view; no API or schema changes.",
   "allowedPaths": ["apps/web/app/projects/**", "apps/web/components/projects/**"],
   "forbiddenPaths": ["apps/web/lib/atlas/**", "supabase/migrations/**", "**/*.sql"],
   "allowedCapabilities": ["code.worktree.patch.v1"],
   "forbiddenCapabilities": ["git.commit", "git.push", "network.egress", "db.migrate"],
   "riskLevel": 1,
-  "requiredChecks": ["tsc --noEmit", "next lint", "vitest apps/web/app/projects", "next build"],
+  "requiredChecks": ["sdf1.proof.typecheck"],
+  "_note_on_requiredChecks": "Only registered command ids may appear here today (§4). A lint/build/arbitrary-suite check cannot be expressed until CODE_WORK_COMMANDS registers one — that is a separate SDF-1A change, not something this example may fabricate.",
   "requiredReview": { "independentReviewer": true, "humanApprovalRequired": false },
-  "approvalPolicy": null,
-  "contextReferences": {
-    "knowledgeRefs": [],
-    "memoryRefs": [],
-    "docRefs": ["docs/architecture/... (Project Command Center design doc, if one exists)"]
-  },
+  "authority": { "resolvedFrom": "an existing, live AuthorizationStatus grant — required, never null" },
   "preferredWorker": { "provider": "anthropic", "adapterId": "claude_patch_v1" },
-  "retryEscalationPolicy": { "maxAttempts": 2 },
+  "workerRetryEscalation": { "maxAttempts": 2 },
   "completionDefinition": {
-    "acceptanceCriteria": ["see above"],
+    "completionConditions": ["see acceptanceCriteria"],
     "requiredChecks": ["see above"],
     "terminalState": "ready_for_human_review"
   }
 }
 ```
 
-This is a **Level 1** mission (see RISK-AND-AUTHORITY.md): no database
-migration, no auth, no memory, no governance change — so it may, once the
-runtime exists, merge automatically after required checks plus independent
-review, with no standing human-approval requirement per mission. It is not
-wired to any production execution today.
+This is a **Mission Risk Level 1** Work Package (RISK-AND-AUTHORITY.md): no
+migration, no auth, no memory, no governance change. At Level 1 the target
+policy is deterministic gates + independent review with no *additional*
+standing human-approval gate — but `authority` is still required and
+non-null, because capability is never authority (§0, §5).
 
-## 5. What this is not
+## 7. What this is not
 
-- Not a replacement for `CodeWorkAdmissionV1`. A Mission is upstream of it.
-- Not itself a source of authority. `approvalPolicy` only ever *references*
-  an existing authorization target; it cannot invent permission.
+- Not a new Mission type. §0.
+- Not a replacement for `CodeWorkAdmissionV1`, `DelegationEnvelope`, or
+  `WorkPackage`. This document sits at the code-work-specific edge of a chain
+  that already exists.
+- Not a source of authority. `authority` only ever *references* an existing,
+  live grant; it cannot invent permission, and `humanApprovalRequired` is
+  additive to it, never a substitute.
 - Not Claude-specific. `preferredWorker.provider` is a hint string, not an
   enum tied to one vendor.

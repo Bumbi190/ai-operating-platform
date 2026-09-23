@@ -1,10 +1,17 @@
 # Evaluation Gates
 
-**Status:** Canonical v0.1 (Phase 0 — pipeline design, not implemented)
+**Status:** Canonical v0.2 (Phase 0 — pipeline design, not implemented) · revised 2026-09-23
+
+**v0.2 correction:** §1 previously listed checks (`next lint`, `next build`,
+arbitrary Vitest paths) as if declaring them were sufficient to run them.
+It is not — see the new §1a. A required check with no registered executable
+behind it must reject, never silently execute an unlisted command.
 
 ## 1. Deterministic gates (prefer these wherever possible)
 
-Every mission's output must pass, before any reviewer looks at it:
+Every Work Package's output must pass, before any reviewer looks at it. This
+list names the **evaluation outcomes** required — see §1a immediately below
+for the hard line between naming a check and having authority to execute one:
 
 - Formatting
 - Lint (`npm run lint` → `next lint`)
@@ -33,6 +40,33 @@ Every mission's output must pass, before any reviewer looks at it:
   migration-guard-integrity,trading-canon-integrity}.yml`. Each has an
   explicit anti-skip floor (a minimum passed-test count) so a suite silently
   reporting 0 tests never reads as green.
+
+### 1a. Naming a check is not authority to execute one
+
+**`requiredChecks` (MISSION-CONTRACT.md §3) and executable command authority
+are not the same thing, and this document must not blur them.** The list
+above names evaluation outcomes a Work Package should satisfy in the fully
+built-out target state. It is **not** a list of shell strings a gate runner
+may invoke.
+
+The only commands an evaluation-gate runner may actually execute for
+code-work today are SDF-1A's registered command ids
+(`lib/atlas/code-work/command-registry.ts`, `CODE_WORK_COMMANDS`). As of this
+writing that registry has exactly two entries:
+
+- `sdf1.proof.typecheck` → `npm run typecheck`
+- `sdf1.proof.fixture_test` → `vitest run lib/qa/sdf1a-code-work-contracts.test.ts`
+  (one fixed suite path, not an arbitrary argument)
+
+**Lint, build, and arbitrary unit/integration test paths have no registered
+command id.** A Work Package's `requiredChecks` may only reference outcomes
+that resolve to one of these two ids (or a future registry entry — expanding
+`CODE_WORK_COMMANDS` is a separate, reviewable change to SDF-1A, out of
+scope for this Phase 0). **If a required check has no command-id mapping,
+the translation step (MISSION-CONTRACT.md §5) must reject rather than
+construct a shell string or an arbitrary argv from mission data.** No
+Mission or Work Package field is ever the source of an executable command —
+only the registry is, and the registry does not grow by a mission asking.
 
 **A skipped or silently-empty check is not a pass.** This has already burned
 this codebase once (`omnira-github-ci-reader`: "skipped is not green") —
@@ -65,8 +99,11 @@ that its own work is correct.** Concretely:
 ```
 Worker
   → deterministic gates (§1)
-  → issues found? → back to Worker (bounded by the mission's retryEscalationPolicy
-                     and SDF1_LIMITS.maxWorkerIterations)
+  → issues found? → back to Worker (bounded by the Work Package's
+                     workerRetryEscalation and SDF1_LIMITS.maxWorkerIterations —
+                     see MISSION-CONTRACT.md §3: this escalates to a stronger
+                     WORKER, never to a human; human escalation is a distinct,
+                     existing field, MissionRecord.escalationTriggers)
   → independent reviewer (§2)
   → issues found? → back to Worker
   → gates again

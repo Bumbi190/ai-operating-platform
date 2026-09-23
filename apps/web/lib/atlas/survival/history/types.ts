@@ -71,6 +71,13 @@ export interface SurvivalStateEvent {
   gaps: SurvivalGap[]
   bindingScope: BudgetScope | null
   bindingLimitSek: number | null
+  /**
+   * MAY BE NEGATIVE, and that is meaningful evidence rather than a defect.
+   * `budget_scope_state()` computes `least(limit, limit - spent - held)`, so an
+   * overspent scope reports negative headroom, and `deriveSurvivalState()` reads
+   * `<= 0` as `headroom_exhausted` → HIBERNATE. Stored exactly as measured:
+   * clamping it to zero would rewrite the measurement into a different fact.
+   */
   bindingRemainingSek: number | null
   burnSekPerDay: number | null
   fundingState: FundingState

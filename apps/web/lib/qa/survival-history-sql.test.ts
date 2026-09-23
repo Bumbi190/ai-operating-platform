@@ -107,6 +107,8 @@ const P_C = '66666666-6666-6666-6666-666666666666'
 /** Dedicated to the funding-biconditional probes, whose whole point is that the
  *  state CHANGES — an unchanged observation short-circuits before any CHECK. */
 const P_D = '77777777-7777-7777-7777-777777777777'
+/** Dedicated to negative (overspent) headroom evidence. */
+const P_E = '88888888-8888-8888-8888-888888888888'
 const MISSING = '99999999-9999-9999-9999-999999999999'
 
 const FIXTURE = `
@@ -159,7 +161,8 @@ insert into public.projects (id, slug) values
   ('${P_R}', 'rho'),
   ('${P_S}', 'sigma'),
   ('${P_C}', 'chi'),
-  ('${P_D}', 'delta');
+  ('${P_D}', 'delta'),
+  ('${P_E}', 'epsilon');
 `
 
 const d = AVAILABLE ? describe : describe.skip
@@ -612,7 +615,12 @@ describe('survival history · closed vocabularies', () => {
     // form proves it is forbidden elsewhere. One without the other is the gap
     // this constraint was widened to close.
     has('survival_events_declared_funding_matches_state', "funding_state = 'KNOWN'", 'IS NOT NULL')
-    has('survival_events_amounts_non_negative', 'binding_remaining_sek')
+    // The magnitudes constraint covers limit, burn and runway — NOT remaining
+    // headroom, which is legitimately negative on an overspent scope.
+    has('survival_events_non_negative_magnitudes', 'binding_limit_sek', 'burn_sek_per_day', 'runway_days')
+    const magnitudes = definitions.get('survival_events_non_negative_magnitudes') ?? ''
+    expect(magnitudes, 'remaining headroom must NOT be constrained non-negative')
+      .not.toContain('binding_remaining_sek')
     has('survival_events_shape', 'BASELINE_OBSERVED')
     has('survival_events_actor_machine_identity', 'atlas.survival_recorder')
     has('survival_events_provenance_machine_identity', 'atlas.survival.observation.v1')
@@ -687,17 +695,63 @@ describe('survival history · closed vocabularies', () => {
     expect(count(P)).toBe(4)
   })
 
-  it('refuses a negative amount', () => {
+  it('ACCEPTS negative remaining headroom — an overspent scope is valid evidence', () => {
+    // Canonical `budget_scope_state()` computes `least(limit, limit - spent - held)`,
+    // so a genuinely overspent scope reports NEGATIVE remaining headroom, and
+    // `deriveSurvivalState()` reads `remainingSek <= 0` as `headroom_exhausted`
+    // → HIBERNATE. Refusing the negative value would have made the recorder fail
+    // at exactly the moment Atlas was overspent — losing the evidence precisely
+    // when it matters most.
+    const P = P_E
+    expect(call({ project: P, to: 'HIBERNATE', remaining: '-125.50', reasons: ['headroom_exhausted'] }))
+      .toBe('baseline_recorded')
+
+    const [stored, exact, isZero, level] = query(dsn, `select binding_remaining_sek::text,
+             (binding_remaining_sek = -125.50)::text,
+             (binding_remaining_sek = 0)::text,
+             autonomy_level
+        from public.survival_state_events where project_id = '${P}'`)[0]
+
+    // 2. Round-trips exactly — same value AND same scale.
+    expect(stored).toBe('-125.50')
+    expect(exact).toBe('true')
+    // 3. NOT clamped to zero. A clamp would rewrite the measurement into a
+    //    different fact: "-125.50" would become "nothing left" instead of
+    //    "125.50 beyond the ceiling".
+    expect(isZero).toBe('false')
+    // 4. The ceiling is the DB's derived one for HIBERNATE, not a caller's.
+    expect(level).toBe('L0')
+
+    // 5. Retry is a no-op: the boundary short-circuits and writes nothing.
+    expect(call({ project: P, to: 'HIBERNATE', remaining: '-125.50', reasons: ['headroom_exhausted'] }))
+      .toBe('unchanged')
+    expect(count(P)).toBe(1)
+  })
+
+  it('refuses a negative limit, burn rate or runway', () => {
+    // The three that ARE magnitudes. Again a state change, so the row reaches
+    // the CHECK under test rather than short-circuiting as 'unchanged'.
     const before = count(P_B)
-    // Again a state change, so the row reaches the CHECK under test.
-    expect(expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CRITICAL', remaining: '-5' })}`))
-      .toMatch(/survival_events_amounts_non_negative|violates check/i)
+    for (const [column, o] of [
+      ['binding_limit_sek', { limit: '-1' }],
+      ['burn_sek_per_day', { burn: '-1' }],
+      ['runway_days', { runway: '-1' }],
+    ] as Array<[string, Partial<Observe>]>) {
+      expect(expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CRITICAL', ...o })}`), column)
+        .toMatch(/survival_events_non_negative_magnitudes|violates check/i)
+    }
     expect(count(P_B)).toBe(before)
+    // …and the same constraint still ACCEPTS a negative remaining on the very
+    // same call shape, so the refusal above is specific to magnitudes.
+    expect(call({ project: P_B, to: 'CRITICAL', remaining: '-42.25' })).toBe('transition_recorded')
+    expect(one(dsn, `select binding_remaining_sek::text from public.survival_state_events
+                      where project_id='${P_B}' order by event_seq desc limit 1`)).toBe('-42.25')
   })
 
   it('refuses an unknown event type, which can only arrive by direct INSERT', () => {
     // The boundary itself can only write the two canonical types, so the only way
     // to reach the CHECK is a direct write — and the guard refuses that first.
+    const before = count(P_B)
     const err = expectFailure(dsn,
       `insert into public.survival_state_events
        (project_id, event_type, from_state, to_state, autonomy_level, funding_state,
@@ -705,7 +759,9 @@ describe('survival history · closed vocabularies', () => {
        values ('${P_B}','SURVIVAL_DRIFTED','NORMAL','CONSERVE','L3','UNDECLARED',
                'provisional',1,'x','y', now())`)
     expect(err).toMatch(/survival history|cannot open a second baseline/)
-    expect(count(P_B)).toBe(1)
+    // Relative, not absolute: this stream is written by earlier tests, and an
+    // absolute count here would break whenever they legitimately add a row.
+    expect(count(P_B)).toBe(before)
   })
 
   it('refuses an unknown project, fail-closed', () => {

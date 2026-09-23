@@ -177,14 +177,24 @@ create table if not exists public.survival_state_events (
   -- (derivation_version / threshold_status are constrained together above, as the
   -- policy identity. A separate `>= 1` range here would be the weaker claim
   -- standing next to the stronger one, and only the stronger one is true.)
-  -- Amounts and durations are non-negative. A negative headroom is not a fact
-  -- this ledger should be able to hold.
-  constraint survival_events_amounts_non_negative
+  -- Magnitudes are non-negative. These three are QUANTITIES — a limit, a burn
+  -- rate, a runway — and none of them can meaningfully be below zero.
+  --
+  -- `binding_remaining_sek` is DELIBERATELY EXCLUDED. Canonical
+  -- `budget_scope_state()` computes `least(limit, limit - spent - held)`, so a
+  -- genuinely overspent scope yields NEGATIVE remaining headroom, and
+  -- `deriveSurvivalState()` treats `remainingSek <= 0` as `headroom_exhausted`
+  -- → HIBERNATE. A negative reading is therefore VALID MEASURED EVIDENCE, and
+  -- the most important kind: it is exactly what the ledger exists to capture.
+  -- Constraining it to >= 0 would have made the recorder FAIL at the moment
+  -- Atlas was overspent — losing the evidence precisely when it matters — and
+  -- clamping it to zero instead would rewrite the measurement into a different
+  -- fact. A stored -125.50 means the scope is 125.50 SEK beyond its ceiling.
+  constraint survival_events_non_negative_magnitudes
     check (
       (binding_limit_sek     is null or binding_limit_sek     >= 0)
-      and (binding_remaining_sek is null or binding_remaining_sek >= 0)
-      and (burn_sek_per_day      is null or burn_sek_per_day      >= 0)
-      and (runway_days           is null or runway_days           >= 0)
+      and (burn_sek_per_day  is null or burn_sek_per_day      >= 0)
+      and (runway_days       is null or runway_days           >= 0)
     ),
   -- A survival observation is NOT a human authority act. Recording `owner` (or
   -- any person) here would assert that a person decided something, which is

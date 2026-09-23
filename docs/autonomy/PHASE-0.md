@@ -181,6 +181,17 @@ The translator therefore lives in a new sibling subdirectory,
 `code-work/mission-translation/`, mirroring the existing `control-plane/`
 precedent, rather than as a new top-level file in either directory.
 
+**Phase 1B — the translator now has a real caller.** `proposeOperatorCodeWork`
+(`control-plane/operator-write.ts`, the only production proposal path, reached
+from `app/api/atlas/code-work/route.ts`) now runs: authenticate →
+`resolveWorkPackage()` → status `ok` and `usable` → project check →
+`buildOperatorCodeWorkBindings` (server-derived from the reviewed registries) →
+`translateWorkPackageToAdmission` → `deriveCodeWorkProposal` → control-plane
+`propose` → a pending Authorization V1 a human must grant. Nothing executes.
+The pre-existing `buildOperatorCodeWorkAdmission` is retained unchanged as the
+SDF-1B2 suite's reference builder; a parity test proves the translator path
+produces a deep-equal admission.
+
 **Next step, not built:** design the dispatcher itself as its own,
 separately reviewed, Level-2-risk phase (it is exactly the kind of "agent
 runtime" change RISK-AND-AUTHORITY.md classifies as sensitive) — scoped

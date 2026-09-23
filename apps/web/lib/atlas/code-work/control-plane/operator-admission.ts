@@ -29,6 +29,8 @@ import {
   type CodeWorkValidation,
 } from '../types'
 
+import type { CodeWorkMissionBindings, MissionRiskLevel } from '../mission-translation/types'
+
 const FULL_GIT_SHA = /^[a-f0-9]{40}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_PATHS = 32
@@ -111,6 +113,79 @@ export function operatorCodeWorkId(projectId: string, requestedBy: string, idemp
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`
 }
 
+/**
+ * PROVISIONAL Mission Risk Level applied to every operator-created proposal.
+ *
+ * No canonical runtime source assigns a Mission Risk Level to a Work Package
+ * today (nothing in the repository classifies one; see
+ * docs/autonomy/RISK-AND-AUTHORITY.md §2-§3), so this is a single uniform
+ * server-side constant, not a per-package classification and not a client
+ * choice — the operator DTO rejects any `riskLevel` field, and nothing in this
+ * module reads one from a request. Level 2 is the lowest level whose policy
+ * requires independent review AND human approval, which is exactly what the
+ * SDF-1B2 flow already enforces for every run (a pending Authorization V1 that
+ * a human must grant), so applying it cannot lower any existing control. It is
+ * inert for persistence: the level is not stored and the translator's
+ * `riskPolicy` result is not consulted for any decision. Replacing this with a
+ * real per-package source is a governance decision, not an implementation
+ * detail — do not derive it heuristically.
+ */
+export const OPERATOR_PROPOSAL_MISSION_RISK_LEVEL: MissionRiskLevel = 2
+
+/**
+ * Server-derived `CodeWorkMissionBindings` for the operator proposal path.
+ *
+ * Every authority-bearing field comes from the reviewed static registries; the
+ * only operator-supplied values are the human-intent fields the closed DTO
+ * already parsed — `pinnedBaseSha` and the read/write path lists — and those
+ * are not trusted here: `translateWorkPackageToAdmission` hands them to the
+ * existing `validateCodeWorkAdmission` and
+ * `validateCodeWorkPackageAttenuation`, which reject a malformed SHA, an
+ * unsafe path, or a scope the live Work Package never covered.
+ *
+ * `worker` is deliberately omitted so the translator resolves the one
+ * registered worker from `worker-registry.ts` itself.
+ */
+export function buildOperatorCodeWorkBindings(args: {
+  proposal: OperatorCodeWorkProposalInput
+  workPackage: Pick<WorkPackage, 'projectId'>
+  requestedBy: string
+}): CodeWorkMissionBindings {
+  const { proposal, workPackage, requestedBy } = args
+  const repository = OMNIRA_TRUSTED_REPOSITORY
+  return {
+    workId: operatorCodeWorkId(workPackage.projectId, requestedBy, proposal.idempotencyKey),
+    repository: {
+      repositoryId: repository.repositoryId,
+      owner: repository.owner,
+      name: repository.name,
+      expectedRemote: { ...repository.remoteIdentity },
+      pinnedBaseSha: proposal.pinnedBaseSha,
+      approvedRemote: repository.approvedRemote,
+      approvedBaseRef: repository.approvedBaseRefs[0],
+    },
+    worktree: { branchPrefix: repository.approvedBranchPrefix },
+    files: {
+      readScopes: proposal.readPaths,
+      writeScopes: proposal.writePaths,
+      deniedScopes: [],
+      permissions: { create: true, update: true, delete: false, rename: false },
+    },
+    requiredCommandIds: Object.keys(CODE_WORK_COMMANDS).sort(),
+  }
+}
+
+/**
+ * Original operator admission builder, retained unchanged. Production no
+ * longer calls it: `proposeOperatorCodeWork` composes
+ * `buildOperatorCodeWorkBindings` with `translateWorkPackageToAdmission`
+ * instead. It stays exported because the SDF-1B2 operator-plane suite uses it
+ * as its reference builder, and a parity test in
+ * `operator-proposal-composition.test.ts` proves the translator path produces
+ * a deep-equal admission for the same input, so the two cannot silently
+ * diverge. Deleting it is a follow-up that also means rewriting that suite's
+ * helper.
+ */
 export function buildOperatorCodeWorkAdmission(args: {
   proposal: OperatorCodeWorkProposalInput
   workPackage: WorkPackage

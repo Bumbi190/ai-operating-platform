@@ -8,6 +8,7 @@ import { codeWorkAdmissionHash } from '@/lib/atlas/code-work/binding'
 import {
   buildOperatorCodeWorkAdmission,
   operatorCodeWorkId,
+  OPERATOR_CODE_WORK_COMMAND_IDS,
   parseOperatorCodeWorkProposal,
 } from '@/lib/atlas/code-work/control-plane/operator-admission'
 import { readOperatorCodeWorkDetail, toSafeCodeWorkReceipt } from '@/lib/atlas/code-work/control-plane/operator-read'
@@ -140,7 +141,10 @@ describe('SDF-1B2 operator proposal contract', () => {
     })
     expect(value.repository).toMatchObject({ repositoryId: OMNIRA_REPOSITORY_ID, pinnedBaseSha: BASE })
     expect(value.worker).toMatchObject({ adapterId: 'claude_patch_v1', provider: 'anthropic', modelId: 'claude-sonnet-4-6' })
-    expect(value.commands.approvedCommandIds).toEqual(['sdf1.proof.fixture_test', 'sdf1.proof.typecheck'])
+    // Phase 1C0.5: the explicit operator command policy, not the full
+    // registry — registered != authorized. See operator-proposal-composition.test.ts
+    // for the dedicated authority-narrowing coverage.
+    expect(value.commands.approvedCommandIds).toEqual([...OPERATOR_CODE_WORK_COMMAND_IDS])
     expect(value.isolation).toEqual({ network: 'denied', secrets: 'none' })
   })
 

@@ -8,7 +8,12 @@
 
 import { createHash } from 'node:crypto'
 import type { WorkPackage } from '@/lib/atlas/workpackage/types'
-import { codeWorkCommandRegistryHash, CODE_WORK_COMMANDS, COMMAND_REGISTRY_VERSION } from '../command-registry'
+import {
+  codeWorkCommandRegistryHash,
+  CODE_WORK_COMMANDS,
+  COMMAND_REGISTRY_VERSION,
+  type CodeWorkCommandId,
+} from '../command-registry'
 import { OMNIRA_TRUSTED_REPOSITORY } from '../repository-registry'
 import {
   CODE_WORK_ADMISSION_SCHEMA,
@@ -35,6 +40,33 @@ const FULL_GIT_SHA = /^[a-f0-9]{40}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_PATHS = 32
 const MAX_IDEMPOTENCY_KEY = 200
+
+/**
+ * The explicit, reviewed set of SDF-1A commands an operator-created admission
+ * authorizes. This is deliberately NOT `Object.keys(CODE_WORK_COMMANDS)`.
+ *
+ * Registry membership is capability availability, not mission authority: a
+ * command being *registered* in `command-registry.ts` means SDF-1A knows how
+ * to resolve it safely, never that every mission may run it. Deriving this
+ * list from the registry's own keys meant a future registry addition would
+ * silently broaden every operator-created admission the moment it landed,
+ * with no review of whether the operator path specifically should get it.
+ *
+ * `sdf1.proof.fixture_test` is deliberately excluded: it always runs SDF-1A's
+ * own contract test suite (`lib/qa/sdf1a-code-work-contracts.test.ts`),
+ * regardless of what the operator's Work Package actually touches — running
+ * it for unrelated work would prove nothing about that work. It stays
+ * registered (a real, resolvable command) but is simply not one this path
+ * authorizes. Registered != authorized.
+ *
+ * The `satisfies` keeps this statically checked against the real registry:
+ * if `sdf1.proof.typecheck` were ever removed from `CODE_WORK_COMMANDS`, this
+ * line would fail to compile rather than silently authorizing an id that no
+ * longer resolves.
+ */
+export const OPERATOR_CODE_WORK_COMMAND_IDS = [
+  'sdf1.proof.typecheck',
+] as const satisfies readonly CodeWorkCommandId[]
 
 export interface OperatorCodeWorkProposalInput {
   workPackageId: string
@@ -171,7 +203,7 @@ export function buildOperatorCodeWorkBindings(args: {
       deniedScopes: [],
       permissions: { create: true, update: true, delete: false, rename: false },
     },
-    requiredCommandIds: Object.keys(CODE_WORK_COMMANDS).sort(),
+    requiredCommandIds: [...OPERATOR_CODE_WORK_COMMAND_IDS],
   }
 }
 
@@ -246,7 +278,7 @@ export function buildOperatorCodeWorkAdmission(args: {
       permissions: { create: true, update: true, delete: false, rename: false },
     },
     commands: {
-      approvedCommandIds: Object.keys(CODE_WORK_COMMANDS).sort(),
+      approvedCommandIds: [...OPERATOR_CODE_WORK_COMMAND_IDS],
       registryVersion: COMMAND_REGISTRY_VERSION,
       registryHash: codeWorkCommandRegistryHash(),
     },

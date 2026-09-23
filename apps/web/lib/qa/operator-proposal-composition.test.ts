@@ -19,6 +19,7 @@ import {
   buildOperatorCodeWorkAdmission,
   buildOperatorCodeWorkBindings,
   operatorCodeWorkId,
+  OPERATOR_CODE_WORK_COMMAND_IDS,
   OPERATOR_PROPOSAL_MISSION_RISK_LEVEL,
   parseOperatorCodeWorkProposal,
 } from '@/lib/atlas/code-work/control-plane/operator-admission'
@@ -232,7 +233,10 @@ describe('Phase 1B — bindings are server-derived, never client-supplied', () =
       approvedBaseRef: OMNIRA_TRUSTED_REPOSITORY.approvedBaseRefs[0],
     })
     expect(bindings.worktree.branchPrefix).toBe(OMNIRA_TRUSTED_REPOSITORY.approvedBranchPrefix)
-    expect(bindings.requiredCommandIds).toEqual(Object.keys(CODE_WORK_COMMANDS).sort())
+    // The explicit operator command policy, never the full registry — see the
+    // dedicated "Phase 1C0.5" describe block below for the authority-narrowing
+    // property this specifically guards.
+    expect(bindings.requiredCommandIds).toEqual([...OPERATOR_CODE_WORK_COMMAND_IDS])
     expect(bindings.files.deniedScopes).toEqual([])
     expect(bindings.files.permissions).toEqual({ create: true, update: true, delete: false, rename: false })
     // No worker hint: the translator resolves the one registered worker.
@@ -262,6 +266,68 @@ describe('Phase 1B — bindings are server-derived, never client-supplied', () =
     expect(resolvePackage).not.toHaveBeenCalled()
     expect(controlStore.propose).not.toHaveBeenCalled()
     expect(parseOperatorCodeWorkProposal({ ...rawProposal, [field]: 'forged' }, 'k').ok).toBe(false)
+  })
+})
+
+describe('Phase 1C0.5 — explicit operator command authority, not registry-wide', () => {
+  it('is exactly [sdf1.proof.typecheck] — a reviewed, closed list, not derived from the registry', () => {
+    expect(OPERATOR_CODE_WORK_COMMAND_IDS).toEqual(['sdf1.proof.typecheck'])
+  })
+
+  it('registered != authorized: sdf1.proof.fixture_test stays a real command but is not operator-authorized', () => {
+    // The registry still knows how to resolve it...
+    expect(Object.keys(CODE_WORK_COMMANDS)).toContain('sdf1.proof.fixture_test')
+    // ...but the operator policy never includes it.
+    expect(OPERATOR_CODE_WORK_COMMAND_IDS).not.toContain('sdf1.proof.fixture_test')
+  })
+
+  it('buildOperatorCodeWorkBindings returns exactly the pinned policy, never the full registry', () => {
+    const bindings = buildOperatorCodeWorkBindings({
+      proposal: rawProposal, workPackage: { projectId: PROJECT }, requestedBy: USER,
+    })
+    expect(bindings.requiredCommandIds).toEqual([...OPERATOR_CODE_WORK_COMMAND_IDS])
+    expect(bindings.requiredCommandIds).not.toEqual(Object.keys(CODE_WORK_COMMANDS).sort())
+  })
+
+  it('buildOperatorCodeWorkAdmission (the retained reference builder) uses the SAME policy, not its own list', () => {
+    const admission = buildOperatorCodeWorkAdmission({ proposal: rawProposal, workPackage: workPackage(), requestedBy: USER })
+    expect(admission.commands.approvedCommandIds).toEqual([...OPERATOR_CODE_WORK_COMMAND_IDS])
+    expect(admission.commands.approvedCommandIds).not.toEqual(Object.keys(CODE_WORK_COMMANDS).sort())
+  })
+
+  it('the translator path and the legacy reference builder still produce a deep-equal admission (parity holds)', () => {
+    const pkg = workPackage()
+    const translated = translateWorkPackageToAdmission(
+      usable(pkg), OPERATOR_PROPOSAL_MISSION_RISK_LEVEL,
+      buildOperatorCodeWorkBindings({ proposal: rawProposal, workPackage: pkg, requestedBy: USER }),
+    )
+    expect(translated.ok).toBe(true)
+    if (!translated.ok) return
+    const legacy = buildOperatorCodeWorkAdmission({ proposal: rawProposal, workPackage: pkg, requestedBy: USER })
+    expect(translated.admission.commands.approvedCommandIds).toEqual(legacy.commands.approvedCommandIds)
+    expect(translated.admission).toEqual(legacy)
+  })
+
+  it('the resulting admission (with the narrowed command list) still passes SDF-1A validation', () => {
+    const admission = buildOperatorCodeWorkAdmission({ proposal: rawProposal, workPackage: workPackage(), requestedBy: USER })
+    expect(validateCodeWorkAdmission(admission)).toEqual({ ok: true, value: admission })
+  })
+
+  it('never reverts to deriving the command policy from the registry\'s own keys', () => {
+    // A structural guard against the exact regression this slice exists to
+    // prevent: the source must not construct a command list FROM the
+    // registry's own keys (the exact expression this slice removed).
+    // Requires the trailing `.sort()` so this doesn't false-positive on this
+    // file's own doc comment explaining what NOT to do.
+    const source = readFileSync(
+      resolve(process.cwd(), 'lib/atlas/code-work/control-plane/operator-admission.ts'), 'utf8',
+    )
+    expect(source).not.toMatch(/Object\.keys\(CODE_WORK_COMMANDS\)\.sort\(\)/)
+    expect(source).toMatch(/OPERATOR_CODE_WORK_COMMAND_IDS\s*=\s*\[\s*'sdf1\.proof\.typecheck'\s*,?\s*\]/)
+    // Exactly two authority-bearing use sites of the constant: the bindings
+    // builder and the retained reference builder. A third would mean a new
+    // command-authority surface appeared without this test knowing about it.
+    expect([...source.matchAll(/\[\.\.\.OPERATOR_CODE_WORK_COMMAND_IDS\]/g)]).toHaveLength(2)
   })
 })
 

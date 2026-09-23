@@ -30,6 +30,8 @@ import {
   type ReplaceableChannelId,
   type YouTubeConnectOutcome,
 } from '@/lib/os/settings-shared'
+import type { BrokerSettingsModel } from '@/lib/atlas/code-broker/types'
+import { SettingsBrokerPanel } from './SettingsBrokerPanel'
 import { SettingsCredentialForm } from './SettingsCredentialForm'
 import { SettingsVerifyButton } from './SettingsVerifyButton'
 import { SettingsYouTubeConnect } from './SettingsYouTubeConnect'
@@ -57,11 +59,13 @@ import styles from './SettingsSurface.module.css'
  * `SettingsYouTubeConnect` starts Google's consent for one project's YouTube channel;
  * the callback's closed answer comes back as `youtubeOutcome`.
  *
- * NOTHING HERE WRITES. The component is a server component; its client children post
- * to the credential, verification and YouTube connection routes and nowhere else.
+ * The container itself does not write. Its client children post only to the existing
+ * credential/verification/YouTube routes and the purpose-specific C1 broker lifecycle
+ * routes rendered below; there is no generic settings mutation boundary.
  */
-export function SettingsSurface({ model, displayPreferences, youtubeOutcome = null }: {
+export function SettingsSurface({ model, brokerModel, displayPreferences, youtubeOutcome = null }: {
   model: SettingsModel
+  brokerModel?: BrokerSettingsModel
   displayPreferences: ReactNode
   youtubeOutcome?: YouTubeConnectOutcome | null
 }) {
@@ -96,6 +100,7 @@ export function SettingsSurface({ model, displayPreferences, youtubeOutcome = nu
             {displayPreferences}
           </section>
           <ConfigPanel config={model.config} />
+          {brokerModel ? <SettingsBrokerPanel model={brokerModel} /> : null}
         </div>
       </div>
     </div>

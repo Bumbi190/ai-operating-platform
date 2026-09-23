@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { loadSettings } from '@/lib/os/settings'
+import { loadBrokerSettings } from '@/lib/atlas/code-broker/operator'
 import { youtubeConnectOutcome, type YouTubeConnectOutcome } from '@/lib/os/settings-shared'
 import { SettingsSurface, SettingsSurfaceLoading } from '@/components/platform/vnext/SettingsSurface'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
@@ -47,7 +48,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Re
 }
 
 async function LoadedSettings({ youtubeOutcome }: { youtubeOutcome: YouTubeConnectOutcome | null }) {
-  const model = await loadSettings()
+  const [model, brokerModel] = await Promise.all([loadSettings(), loadBrokerSettings()])
   if (!model) redirect('/login')
-  return <SettingsSurface model={model} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
+  return <SettingsSurface model={model} brokerModel={brokerModel} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
 }

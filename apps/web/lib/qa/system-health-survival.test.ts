@@ -271,7 +271,11 @@ describe('the three funding situations stay distinct', () => {
       survival: { ok: true, value: survival('CONSERVE', { fundingState: 'UNDECLARED', declaredFundingSek: null }) },
     }))
     const unavailable = await html(model({
-      survival: { ok: true, value: survival('CRITICAL', { fundingState: 'UNAVAILABLE', declaredFundingSek: null }) },
+      // HIBERNATE, not CRITICAL: an unreadable funding source floors at
+      // HIBERNATE, so this is the only state an UNAVAILABLE reading can carry.
+      // A CRITICAL+UNAVAILABLE fixture would assert on a combination the
+      // derivation cannot produce.
+      survival: { ok: true, value: survival('HIBERNATE', { fundingState: 'UNAVAILABLE', declaredFundingSek: null }) },
     }))
 
     expect(fact(undeclared, 'Finansiering')).toContain(FUNDING_STATE_LABELS.UNDECLARED)
@@ -291,6 +295,9 @@ describe('the three funding situations stay distinct', () => {
       const rendered = await html(model({
         survival: { ok: true, value: survival('CONSERVE', { fundingState: state, declaredFundingSek: null }) },
       }))
+      // "ONLY when KNOWN" is the claim, so the absence half is asserted rather
+      // than merely rendered.
+      expect(text(fact(rendered, 'Deklarerat driftkapital')), state).not.toMatch(/\d/)
     }
   })
 
@@ -301,7 +308,7 @@ describe('the three funding situations stay distinct', () => {
       survival: { ok: true, value: survival('CONSERVE', { fundingState: 'UNDECLARED' }) },
     }))
     const unavailable = await html(model({
-      survival: { ok: true, value: survival('CRITICAL', { fundingState: 'UNAVAILABLE' }) },
+      survival: { ok: true, value: survival('HIBERNATE', { fundingState: 'UNAVAILABLE' }) },
     }))
     const toneOf = (rendered: string) => {
       const m = rendered.match(/<dt>Finansiering<\/dt>/)

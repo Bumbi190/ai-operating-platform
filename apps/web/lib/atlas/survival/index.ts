@@ -82,3 +82,22 @@ export {
   BURN_WINDOW_DAYS,
   type SnapshotOptions,
 } from './snapshot'
+
+// Phase 2A — durable transition history. History only: nothing here is read to
+// determine the CURRENT state.
+export {
+  SURVIVAL_EVENT_TYPES,
+  SURVIVAL_DERIVATION_VERSION,
+  SURVIVAL_HISTORY_DEFAULT_LIMIT,
+  SURVIVAL_HISTORY_MAX_LIMIT,
+  recordSurvivalTransition,
+  observeProjectSurvival,
+  listProjectSurvivalTransitions,
+  latestProjectSurvivalEvent,
+  type SurvivalStateEvent,
+  type SurvivalEventType,
+  type SurvivalRecordResult,
+  type SurvivalRecordOutcome,
+  type SurvivalHistoryReadResult,
+  type SurvivalHistoryReadStatus,
+} from './history'

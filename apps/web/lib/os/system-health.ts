@@ -553,6 +553,13 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     //
     // The scope is the operator's own project list, exactly as every other read
     // here, so a status surface does not become a cross-tenant window.
+    //
+    // NOTE THE SCOPE IS THE SET. This derives ONE observation across every project
+    // the operator may read. A survival history stream is per project and is a
+    // DIFFERENT fact: see `lib/atlas/survival/history/`. The two agree only when
+    // this list holds exactly one project, and neither is derived from the other.
+    // Recording this aggregate into a per-project stream would attribute a
+    // set-wide condition to one project.
     readSurvivalSnapshot(access.allowedProjectIds, { db, funding: { kind: 'UNDECLARED' } }),
   ])
 

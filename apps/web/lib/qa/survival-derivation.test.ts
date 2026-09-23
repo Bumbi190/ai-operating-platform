@@ -775,6 +775,8 @@ describe('read-only, with a closed consumer set', () => {
       // Phase 1b's own suite imports the backend deliberately: it asserts the
       // surface renders the module's OWN strings rather than fixture copies.
       resolve(process.cwd(), 'lib/qa/system-health-survival.test.ts'),
+      // Phase 2A's structural suite, for the same reason.
+      resolve(process.cwd(), 'lib/qa/survival-history.test.ts'),
       // Phase 1b — display only. The loader carries the observation into the
       // system-health model, and the Systemhälsa view renders it.
       resolve(process.cwd(), 'lib/os/system-health'),

@@ -49,33 +49,44 @@ grants promotion. Never on the worker's own say-so.
 ```
 Andre
   → Atlas
-    → Mission                      (docs/autonomy/MISSION-CONTRACT.md)
-      → Context Router             (docs/autonomy/CONTEXT-ROUTING.md)
-      → Skill Router                (existing: .claude skill/agent routing)
-      → Model Router                (docs/autonomy/MODEL-ROUTING.md)
-        → Worker                    (Claude, Codex, ...)
-          → Capability / Governance boundary   (existing: lib/atlas/code-work/capability.ts,
-                                                 lib/atlas/authorization/*)
-            → execution              (NOT built in Phase 0 — no dispatcher exists yet)
-              → deterministic verification   (docs/autonomy/EVALUATION-GATES.md)
-              → independent review            (docs/autonomy/EVALUATION-GATES.md)
-              → evaluation                     (docs/autonomy/EVALUATION-GATES.md)
-              → promotion policy               (docs/autonomy/RISK-AND-AUTHORITY.md)
-              → PR / deploy
+    → MissionRecord → DelegationEnvelope → WorkPackage
+        (existing, canonical: lib/atlas/mission/*, lib/atlas/delegation/*, lib/atlas/workpackage/*
+         — Chapter 20/21; see §5 below and MISSION-CONTRACT.md §0)
+      → code-work translation      (docs/autonomy/MISSION-CONTRACT.md — maps a bounded-code-work
+                                     WorkPackage onto SDF-1A's CodeWorkAdmissionV1; not a new
+                                     Mission schema)
+        → Context Router           (docs/autonomy/CONTEXT-ROUTING.md)
+        → Skill Router              (future runtime; existing skill assets in .agents/skills/
+                                      and packages/agent-skills/, tracked via skills-lock.json —
+                                      no routing/dispatch code exists yet)
+        → Model Router              (docs/autonomy/MODEL-ROUTING.md)
+          → Worker                  (Claude, Codex, ...)
+            → Capability / Governance boundary   (existing: lib/atlas/code-work/capability.ts,
+                                                   lib/atlas/authorization/*)
+              → execution              (NOT built in Phase 0 — no dispatcher exists yet)
+                → deterministic verification   (docs/autonomy/EVALUATION-GATES.md)
+                → independent review            (docs/autonomy/EVALUATION-GATES.md)
+                → evaluation                     (docs/autonomy/EVALUATION-GATES.md)
+                → promotion policy               (docs/autonomy/RISK-AND-AUTHORITY.md)
+                → PR / deploy
 ```
 
 **Phase 0 is not the complete implementation of this diagram.** It documents
-the shape, defines a provider-neutral Mission Contract, defines risk/authority
-levels, and identifies exactly where each stage should plug into architecture
-that already exists (see [PHASE-0.md](./PHASE-0.md) §3). Nothing in this tree
-grants a worker any new capability.
+the shape, maps bounded code-work delegation onto the Mission/Delegation/Work
+Package chain that already exists, defines risk/authority levels, and
+identifies exactly where each stage should plug into architecture that
+already exists (see [PHASE-0.md](./PHASE-0.md) §3). Nothing in this tree
+grants a worker any new capability, and nothing in this tree defines a new
+Mission concept — see §5.
 
 ## 4. Reading order
 
 1. [PHASE-0.md](./PHASE-0.md) — what this slice does and does not do, and the
    existing architecture it builds on.
-2. [MISSION-CONTRACT.md](./MISSION-CONTRACT.md) — the provider-neutral mission
-   envelope.
+2. [MISSION-CONTRACT.md](./MISSION-CONTRACT.md) — how a bounded code-work
+   `WorkPackage`, descending from the existing canonical
+   `MissionRecord → DelegationEnvelope → WorkPackage` chain, maps onto
+   SDF-1A's `CodeWorkAdmissionV1`. Not a new Mission schema — see its §0.
 3. [RISK-AND-AUTHORITY.md](./RISK-AND-AUTHORITY.md) — the four mission risk
    levels and how they relate to (and differ from) Chapter 18's Autonomy
    Licensing Model.

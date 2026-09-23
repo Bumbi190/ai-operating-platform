@@ -38,9 +38,12 @@ discipline, not touched, not restarted, not built on by this phase):
 has built the contract, the persistence, and the human-review surface, but
 nothing that actually invokes a model, streams patch operations back, or
 enforces stop-conditions at runtime. That gap is precisely where this
-Phase 0's Mission Contract → Model Router → Context Router → Evaluation
-Gates design is meant to eventually connect — as the missing execution layer
-for the contract that already exists, not as a parallel contract.
+Phase 0's design is meant to eventually connect: the canonical
+`MissionRecord → DelegationEnvelope → WorkPackage` chain, translated
+(MISSION-CONTRACT.md) into `CodeWorkAdmissionV1`, then routed
+(CONTEXT-ROUTING.md, MODEL-ROUTING.md) and verified (EVALUATION-GATES.md) —
+as the missing execution layer for the contract that already exists, not as
+a parallel Mission schema.
 
 **A second, equally important finding, added in v0.2: Omnira already has a
 canonical Mission, one layer above SDF-1A.** Chapter 20's Executive Mission

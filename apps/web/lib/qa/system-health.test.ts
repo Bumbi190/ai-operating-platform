@@ -70,6 +70,30 @@ const PROJECT_B: RawProject = {
 }
 const ALL_FLAGS = { fencing: true, cancel: true, policy_gate: true, unified_executor: true, spend_gate: true }
 
+/**
+ * A minimal survival observation for the panels that are not about survival.
+ * Phase 1b's own suite (`system-health-survival.test.ts`) owns the real cases;
+ * this only keeps the shared fixture type-complete.
+ */
+const SURVIVAL_FIXTURE = {
+  state: 'CONSERVE' as const,
+  ceilingLabel: 'Autonomy License L3 — Execute Internally',
+  ceilingEffect: 'Stop external action, continue internal operation (§18.42, L5 → L3).',
+  fundingState: 'UNDECLARED' as const,
+  bindingScope: 'global_monthly',
+  bindingRemainingSek: 1301.53,
+  bindingLimitSek: 1500,
+  burnSekPerDay: 8.3,
+  declaredFundingSek: null,
+  runwayDays: null,
+  revenueTrendSek: 12,
+  reasons: ['headroom_healthy' as const, 'funding_undeclared' as const],
+  gaps: ['funding_undeclared' as const, 'runway_unknown' as const],
+  operatingPaused: false,
+  thresholdStatus: 'provisional',
+  policyNotice: 'Survival thresholds are provisional and not owner-approved canonical policy.',
+}
+
 function input(over: Partial<AssembleSystemHealthInput> = {}): AssembleSystemHealthInput {
   return {
     now: NOW,
@@ -85,6 +109,7 @@ function input(over: Partial<AssembleSystemHealthInput> = {}): AssembleSystemHea
     dreamIssues: { ok: true, rows: [], count: 0 },
     dreamReconciliation: { ok: true, rows: [], count: 0 },
     legacyMemories: { ok: true, value: 12 },
+    survival: { ok: true, value: SURVIVAL_FIXTURE },
     ...over,
   }
 }

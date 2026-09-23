@@ -86,3 +86,91 @@ export const DREAM_SEVERITY_LABELS: Record<string, string> = {
   warning: 'Varning',
   info: 'Info',
 }
+
+// ── Atlas Survival (Phase 1b — display only) ─────────────────────────────────
+//
+// Labels for vocabulary that already exists in `lib/atlas/survival`. NOTHING
+// here computes a survival state, a ceiling, a threshold or an amount: the
+// loader calls the authoritative reader once and hands the result down, and this
+// file only names what it receives. Importing these types is type-only, so no
+// server module is pulled into a client bundle.
+
+import type {
+  FundingState,
+  SurvivalGap,
+  SurvivalReason,
+  SurvivalState,
+} from '@/lib/atlas/survival/types'
+
+/**
+ * The five survival states, in Swedish. These name the state; they never
+ * describe a health judgement — the same rule as `COMPONENT_STATE_LABELS`.
+ */
+export const SURVIVAL_STATE_LABELS: Record<SurvivalState, string> = {
+  EXPAND: 'Expandera',
+  NORMAL: 'Normalt',
+  CONSERVE: 'Sparläge',
+  CRITICAL: 'Kritiskt läge',
+  HIBERNATE: 'Viloläge',
+}
+
+/**
+ * The three funding situations. UNDECLARED is deliberately NOT worded as a
+ * problem: the owner simply has not supplied a figure, which is a stable fact
+ * and not a failure. UNAVAILABLE is worded as a read failure, because it is one.
+ */
+export const FUNDING_STATE_LABELS: Record<FundingState, string> = {
+  KNOWN: 'Deklarerat',
+  UNDECLARED: 'Ej deklarerat',
+  UNAVAILABLE: 'Otillgängligt',
+}
+
+/**
+ * The six budget scopes, in Swedish. Mirrors `BudgetScope` in `lib/cost`; a
+ * label map only, and the component falls back to the raw token for anything
+ * unlisted — the same shape as `DREAM_SEVERITY_LABELS`.
+ */
+export const SURVIVAL_SCOPE_LABELS: Record<string, string> = {
+  global_daily: 'Globalt dygn',
+  global_weekly: 'Global vecka',
+  global_monthly: 'Global månad',
+  project_daily: 'Projektets dygn',
+  project_weekly: 'Projektets vecka',
+  project_monthly: 'Projektets månad',
+}
+
+/** Why the state was derived. */
+export const SURVIVAL_REASON_LABELS: Record<SurvivalReason, string> = {
+  headroom_exhausted: 'Budgetutrymmet är slut',
+  headroom_critical: 'Kritiskt lågt budgetutrymme',
+  headroom_conserve: 'Lågt budgetutrymme',
+  headroom_healthy: 'Gott budgetutrymme',
+  no_budget_configured: 'Ingen budget konfigurerad',
+  funding_undeclared: 'Ingen finansiering deklarerad',
+  funding_unavailable: 'Finansieringskällan kunde inte läsas',
+  funding_depleted: 'Deklarerat kapital är slut',
+  runway_short: 'Kort räckvidd',
+  reads_unavailable: 'Läsning misslyckades',
+}
+
+/** What could not be established. A gap is never a reassurance. */
+export const SURVIVAL_GAP_LABELS: Record<SurvivalGap, string> = {
+  funding_undeclared: 'Ingen finansiering deklarerad',
+  funding_unavailable: 'Finansieringskällan kunde inte läsas',
+  runway_unknown: 'Räckvidd kan inte beräknas',
+  reads_incomplete: 'Ofullständig läsning',
+  infrastructure_cost_untracked: 'Infrastrukturkostnad ingår inte',
+}
+
+/**
+ * Stated where the revenue trend is shown. MRR is a performance signal and is
+ * never cash, never runway and never spendable — the same distinction the
+ * backend enforces, restated where an operator reads the number.
+ */
+export const SURVIVAL_REVENUE_SIGNAL_NOTE =
+  'Intäktstrenden är en prestationssignal. Den är inte tillgängliga medel och räknas aldrig som räckvidd.'
+
+/** Stated under the ceiling. The level itself always arrives fully qualified. */
+export const SURVIVAL_CEILING_NOTE =
+  'Taket begränsar vad ett redan beviljat mandat får göra. Det beviljar ingenting.'
+

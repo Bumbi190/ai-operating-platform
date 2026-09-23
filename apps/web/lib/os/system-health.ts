@@ -12,6 +12,20 @@ import {
 } from '@/lib/atlas/dream-reconciliation'
 import { resolveDestination } from '@/lib/nav/registry'
 import {
+  PROVISIONAL_POLICY_NOTICE,
+  SURVIVAL_CEILING_EFFECT,
+  SURVIVAL_THRESHOLD_STATUS,
+  describeCeiling,
+  readSurvivalSnapshot,
+  type SurvivalObservation,
+} from '@/lib/atlas/survival'
+import type {
+  FundingState,
+  SurvivalGap,
+  SurvivalReason,
+  SurvivalState,
+} from '@/lib/atlas/survival/types'
+import {
   COMPONENT_LABELS,
   type ComponentId,
   type ComponentState,
@@ -97,6 +111,47 @@ export interface SystemDreamIssue {
   disposition: 'active'
 }
 
+/**
+ * The Atlas Survival observation, as the surface displays it.
+ *
+ * CARRIED, NOT COMPUTED. Every value here is taken verbatim from
+ * `readSurvivalSnapshot()` / `describeCeiling()` / `SURVIVAL_CEILING_EFFECT` —
+ * the same functions `GET /api/system/survival` calls. This type deliberately
+ * carries no threshold, no ceiling arithmetic and no bare level token, so the UI
+ * has nothing to duplicate and nothing unqualified to print.
+ *
+ * There is deliberately no `ceilingLevel`-style bare 'L3' field: the level
+ * arrives only inside `ceilingLabel`, already qualified, which makes "never
+ * display a bare L3" a property of the data rather than a rule the view must
+ * remember.
+ */
+export interface SurvivalSection {
+  state: SurvivalState
+  /** Fully qualified, e.g. "Autonomy License L3 — Execute Internally". */
+  ceilingLabel: string
+  /** What that ceiling does, in §18.42's own words. */
+  ceilingEffect: string
+  fundingState: FundingState
+  /** The scope that would refuse first, and its headroom. */
+  bindingScope: string | null
+  bindingRemainingSek: number | null
+  bindingLimitSek: number | null
+  burnSekPerDay: number | null
+  /** Present only when funding is KNOWN. */
+  declaredFundingSek: number | null
+  /** Null means not established — never zero. */
+  runwayDays: number | null
+  /** A performance signal. Never cash, never runway. */
+  revenueTrendSek: number | null
+  reasons: SurvivalReason[]
+  gaps: SurvivalGap[]
+  /** The owner's own automation stop, shown as separate context. */
+  operatingPaused: boolean | null
+  /** Provisional-policy status, verbatim from the backend. */
+  thresholdStatus: string
+  policyNotice: string
+}
+
 export interface SystemHealthModel {
   generatedAt: string
   /** The global execution stop. `readable:false` is NOT "not stopped". */
@@ -117,6 +172,11 @@ export interface SystemHealthModel {
   automation: { state: SectionState; rows: SystemAutomation[]; truncated: boolean }
   dream: { state: SectionState; rows: SystemDreamIssue[]; lastSeenAt: string | null; truncated: boolean }
   memory: { state: SectionState; legacyRows: number | null }
+  /**
+   * Atlas Survival. `ok:false` is an UNREADABLE observation and renders as such
+   * — never as a default state and never as zeroes.
+   */
+  survival: Value<SurvivalSection>
   links: { approvals: string | null; planning: string | null; projects: string | null }
 }
 
@@ -166,6 +226,8 @@ export interface AssembleSystemHealthInput {
   dreamIssues: Read<RawDreamIssue>
   dreamReconciliation: Read<RawDreamReconciliationEvent>
   legacyMemories: Value<number | null>
+  /** Required, with no default: an omitted survival read is not "unavailable". */
+  survival: Value<SurvivalSection>
 }
 
 // ── Pure assembly ────────────────────────────────────────────────────────────
@@ -413,6 +475,7 @@ export function assembleSystemHealth(input: AssembleSystemHealthInput): SystemHe
     generatedAt: input.now,
     platform, safety, components, warnings,
     execution, approvals, projects, automation, dream, memory, links,
+    survival: input.survival,
   }
 }
 
@@ -446,6 +509,7 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
   const [
     platformRes, projectsRes, openRunsRes, recentRunsRes, lastRunRes,
     approvalsCountRes, approvalsRowsRes, workflowsRes, dreamRes, dreamReconciliationRes, memoriesRes,
+    survivalRes,
   ] = await Promise.allSettled([
     (db.from('platform_config') as any)
       .select('automation_paused, paused_at, paused_reason').eq('id', 1).single(),
@@ -483,6 +547,13 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
       .limit(2000),
     (db.from('memories') as any)
       .select('id', { count: 'exact', head: true }).in('project_id', scoped),
+    // THE ONE SURVIVAL TRUTH SOURCE. The same reader `GET /api/system/survival`
+    // calls, with the same funding state that route passes — so the surface and
+    // the API cannot disagree about the state, the ceiling or the headroom.
+    //
+    // The scope is the operator's own project list, exactly as every other read
+    // here, so a status surface does not become a cross-tenant window.
+    readSurvivalSnapshot(access.allowedProjectIds, { db, funding: { kind: 'UNDECLARED' } }),
   ])
 
   const platform: Value<RawPlatformStop> =
@@ -509,6 +580,13 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
         }
       : { ok: false }
 
+  // A survival observation that threw is UNREADABLE, never a default state and
+  // never zeroes — the same rule `platform.readable` follows for the stop.
+  const survival: Value<SurvivalSection> =
+    survivalRes.status === 'fulfilled'
+      ? { ok: true, value: toSurvivalSection(survivalRes.value) }
+      : { ok: false }
+
   const flags = executionSafetyFlags()
   return assembleSystemHealth({
     now,
@@ -524,5 +602,37 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     dreamIssues: toRead<RawDreamIssue>(dreamRes),
     dreamReconciliation: toRead<RawDreamReconciliationEvent>(dreamReconciliationRes),
     legacyMemories: toCount(memoriesRes),
+    survival,
   })
+}
+
+/**
+ * Shape the authoritative observation for display. Pure — it copies and names,
+ * and computes nothing.
+ *
+ * `describeCeiling(snapshot.state)` rather than the observation's own `ceiling`:
+ * both are derived from the same state, but the description is already fully
+ * qualified, so the bare token never enters the model and the view has nothing
+ * unqualified it could print.
+ */
+function toSurvivalSection(observation: SurvivalObservation): SurvivalSection {
+  const snapshot = observation.snapshot
+  return {
+    state: snapshot.state,
+    ceilingLabel: describeCeiling(snapshot.state),
+    ceilingEffect: SURVIVAL_CEILING_EFFECT[snapshot.state],
+    fundingState: snapshot.fundingState,
+    bindingScope: snapshot.bindingScope,
+    bindingRemainingSek: snapshot.bindingRemainingSek,
+    bindingLimitSek: snapshot.bindingLimitSek,
+    burnSekPerDay: snapshot.burnSekPerDay,
+    declaredFundingSek: snapshot.declaredFundingSek,
+    runwayDays: snapshot.runwayDays,
+    revenueTrendSek: snapshot.revenueTrendSek,
+    reasons: snapshot.reasons,
+    gaps: snapshot.gaps,
+    operatingPaused: snapshot.operatingPaused,
+    thresholdStatus: SURVIVAL_THRESHOLD_STATUS,
+    policyNotice: PROVISIONAL_POLICY_NOTICE,
+  }
 }

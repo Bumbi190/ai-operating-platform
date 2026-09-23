@@ -12,6 +12,7 @@
  * process launch occurs anywhere in this suite.
  */
 
+import { randomUUID } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -266,6 +267,81 @@ describe('Phase 1A — live usability gate: contract data is not proof of curren
   })
 })
 
+describe('Phase 1A — evaluation consistency: usable/effectiveState/reason must agree', () => {
+  // resolveWorkPackage()'s settle() helper only ever produces two combinations
+  // of these fields. A WorkPackageEvaluation is an ordinary TypeScript object,
+  // so nothing at the type level stops a caller from handing over a
+  // self-contradictory one — these prove the translator catches that instead
+  // of trusting `usable` alone.
+
+  it('rejects usable: true paired with effectiveState: invalidated', () => {
+    const contradictory: WorkPackageEvaluation = {
+      lifecycleState: 'assigned', effectiveState: 'invalidated', usable: true,
+      reason: 'usable', workPackage: workPackage(), assignedAt: ASSIGNED_AT,
+    }
+    const result = translateWorkPackageToAdmission(contradictory, 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_evaluation_inconsistent'])
+  })
+
+  it('rejects usable: true paired with a real unusable reason', () => {
+    const contradictory: WorkPackageEvaluation = {
+      lifecycleState: 'assigned', effectiveState: 'assigned', usable: true,
+      reason: 'delegation_unusable', workPackage: workPackage(), assignedAt: ASSIGNED_AT,
+    }
+    const result = translateWorkPackageToAdmission(contradictory, 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_evaluation_inconsistent'])
+  })
+
+  it('rejects usable: false paired with reason: usable', () => {
+    const contradictory: WorkPackageEvaluation = {
+      lifecycleState: 'assigned', effectiveState: 'invalidated', usable: false,
+      reason: 'usable', workPackage: workPackage(), assignedAt: ASSIGNED_AT,
+    }
+    const result = translateWorkPackageToAdmission(contradictory, 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_evaluation_inconsistent'])
+  })
+
+  it('rejects usable: false paired with effectiveState: assigned', () => {
+    const contradictory: WorkPackageEvaluation = {
+      lifecycleState: 'assigned', effectiveState: 'assigned', usable: false,
+      reason: 'role_unavailable', workPackage: workPackage(), assignedAt: ASSIGNED_AT,
+    }
+    const result = translateWorkPackageToAdmission(contradictory, 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_evaluation_inconsistent'])
+  })
+
+  it('rejects a lifecycleState other than assigned, even if the rest looks usable', () => {
+    const contradictory: WorkPackageEvaluation = {
+      lifecycleState: 'invalidated', effectiveState: 'assigned', usable: true,
+      reason: 'usable', workPackage: workPackage(), assignedAt: ASSIGNED_AT,
+    }
+    const result = translateWorkPackageToAdmission(contradictory, 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_evaluation_inconsistent'])
+  })
+
+  it('accepts the exact usable combination resolveWorkPackage() itself produces', () => {
+    const result = translateWorkPackageToAdmission(usable(), 1, bindings())
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts every exact unusable combination resolveWorkPackage() itself produces', () => {
+    const reasons: WorkPackageUnusableReason[] = [
+      'delegation_unusable', 'delegation_pin_changed', 'mission_pin_changed',
+      'exceeds_delegation', 'role_unavailable', 'delegation_unreadable',
+    ]
+    for (const reason of reasons) {
+      const result = translateWorkPackageToAdmission(invalidated(workPackage(), reason), 1, bindings())
+      expect(result.ok).toBe(false)
+      expect(rejectionCodes(result)).toEqual(['work_package_not_usable'])
+    }
+  })
+})
+
 describe('Phase 1A — work id must be persistable by the real SDF-1B control plane', () => {
   it('rejects a non-UUID workId even when everything else is valid', () => {
     const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: 'work-translate-1' }))
@@ -282,10 +358,73 @@ describe('Phase 1A — work id must be persistable by the real SDF-1B control pl
     '11111111_1111_4111_8111_111111111111',  // wrong separators
     '11111111-1111-4111-8111-11111111111G',  // non-hex character
     'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',   // uppercase — SDF-1A's own hash patterns are lowercase-only too
-  ])('rejects malformed UUID shape: %s', badWorkId => {
+  ])('rejects malformed UUID grouping: %s', badWorkId => {
     const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: badWorkId }))
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+  })
+
+  it('accepts a real, platform-generated v4 UUID — proving this is not a narrower-than-real-life check', () => {
+    const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: randomUUID() }))
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects the nil (all-zero) UUID — valid grouping, invalid version and variant nibbles', () => {
+    const result = translateWorkPackageToAdmission(
+      usable(), 1, bindings({ workId: '00000000-0000-0000-0000-000000000000' }),
+    )
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+  })
+
+  it.each(['0', '6', '7', '8', '9', 'a', 'f'])(
+    'rejects an invalid version nibble (must be 1-5): %s', badVersionNibble => {
+      const result = translateWorkPackageToAdmission(
+        usable(), 1, bindings({ workId: `11111111-1111-${badVersionNibble}111-8111-111111111111` }),
+      )
+      expect(result.ok).toBe(false)
+      expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+    },
+  )
+
+  it.each(['0', '1', '4', '5', '6', '7', 'c', 'f'])(
+    'rejects an invalid variant nibble (must be 8/9/a/b): %s', badVariantNibble => {
+      const result = translateWorkPackageToAdmission(
+        usable(), 1, bindings({ workId: `11111111-1111-4111-${badVariantNibble}111-111111111111` }),
+      )
+      expect(result.ok).toBe(false)
+      expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+    },
+  )
+
+  it.each(['1', '2', '3', '4', '5'])('accepts every valid version nibble: %s', versionNibble => {
+    const result = translateWorkPackageToAdmission(
+      usable(), 1, bindings({ workId: `11111111-1111-${versionNibble}111-8111-111111111111` }),
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it.each(['8', '9', 'a', 'b'])('accepts every valid variant nibble: %s', variantNibble => {
+    const result = translateWorkPackageToAdmission(
+      usable(), 1, bindings({ workId: `11111111-1111-4111-${variantNibble}111-111111111111` }),
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it('is a strict subset of the real operator route\'s own UUID acceptance regex', () => {
+    // apps/web/app/api/atlas/code-work/[workId]/route.ts's own UUID pattern,
+    // reproduced here ONLY to prove containment, not imported (it is a
+    // private, non-exported module constant, matching the existing repo
+    // convention of no shared UUID export).
+    const OPERATOR_ROUTE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    const samples = [
+      randomUUID(), '11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-5aaa-9aaa-aaaaaaaaaaaa',
+    ]
+    for (const workId of samples) {
+      const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId }))
+      expect(result.ok).toBe(true)
+      expect(OPERATOR_ROUTE_UUID.test(workId)).toBe(true)
+    }
   })
 
   it('accepts a valid UUID workId (happy path already proves this; this test isolates it)', () => {

@@ -24,7 +24,17 @@
  * translate an evaluation that isn't usable — synchronously, from a field
  * already on the object it was handed, adding no I/O of its own.
  *
-
+ * PROVENANCE IS NOT THIS MODULE'S JOB. This translator does not, and cannot,
+ * authenticate where a `WorkPackageEvaluation` actually came from — a plain
+ * object literal satisfies the type just as well as a real
+ * `resolveWorkPackage()` result does. A trusted, server-side caller MUST
+ * obtain the evaluation from that canonical boundary; this module's
+ * responsibility stops at verifying the evaluation it was handed is
+ * internally CONSISTENT with the shape `resolveWorkPackage()` actually
+ * produces (`translate.ts`'s `isCanonicalUsableCombination`) — not with
+ * proving it is genuine. Provenance is a caller/API-boundary concern, the
+ * same way it already is for `bindings.repository`/`bindings.workId` above.
+ *
  * WHY THIS BINDINGS SHAPE DIFFERS FROM docs/autonomy/MISSION-CONTRACT.md §5:
  * that document proposed a `bindings.mission`/`bindings.delegation` pair
  * (mission id/version/hash, delegation envelopeId/hash) supplied separately
@@ -59,6 +69,15 @@
  *     database-shape opinion; this translator's whole purpose is bridging
  *     toward that real persistence path, so it is the correct, minimal place
  *     to add the one check SDF-1A cannot: `translate.ts`'s `isUuidShaped`.
+ *     That check's version/variant nibble constraints (`[1-5]`/`[89ab]`) are
+ *     not arbitrary strictness — they match the exact UUID acceptance regex
+ *     `app/api/atlas/code-work/[workId]/route.ts` and
+ *     `control-plane/operator-admission.ts` already enforce, so a `workId`
+ *     this translator admits is guaranteed addressable through the real
+ *     operator API, not merely storable. `isUuidShaped` keeps the existing
+ *     lowercase-only narrowing (that route/module both accept case-
+ *     insensitively via `/i`) as a deliberate, strictly-smaller subset —
+ *     never a broadening.
  *   - `repository` / `worktree.branchPrefix`: which trusted repository, at
  *     which pinned live commit, this particular admission targets. This
  *     translator does not call `repository-registry.ts` itself — passing a
@@ -180,18 +199,30 @@ export type CodeWorkAdmissionCandidate = Omit<CodeWorkAdmissionV1, 'worker'> & {
  * `attenuation_failed` carry violations from the EXISTING SDF-1A validators
  * (`policy.ts`, `control-plane/work-package.ts`) verbatim — this module adds
  * no rejection vocabulary of its own for anything those already check.
- * Three cases are genuinely new, because nothing downstream of this module
+ * Four cases are genuinely new, because nothing downstream of this module
  * could ever catch them:
  *   - `risk_policy_undefined` — SDF-1A's contract has no concept of Mission
  *     Risk Level at all.
- *   - `work_package_not_usable` — carries the real `WorkPackageUnusableReason`
- *     `resolveWorkPackage()` already computed; this module invents no second
- *     liveness vocabulary of its own.
+ *   - `work_package_evaluation_inconsistent` — the evaluation's
+ *     `lifecycleState`/`effectiveState`/`usable`/`reason` fields do not form
+ *     either of the two combinations `resolveWorkPackage()` actually
+ *     produces (see `translate.ts`'s `isCanonicalUsableCombination`).
+ *     Distinct from `work_package_not_usable` below: this is a malformed or
+ *     self-contradictory evaluation, not a genuinely, consistently unusable
+ *     one — e.g. `usable: true` paired with `reason: 'delegation_unusable'`
+ *     could not have come from `resolveWorkPackage()` and must never be
+ *     trusted just because `usable` alone reads `true`.
+ *   - `work_package_not_usable` — the evaluation IS one of the two canonical
+ *     combinations, and it is the unusable one. Carries the real
+ *     `WorkPackageUnusableReason` `resolveWorkPackage()` already computed;
+ *     this module invents no second liveness vocabulary of its own.
  *   - `work_id_not_persistable` — SDF-1A's own validator does not, and should
- *     not, know about SDF-1B's Postgres `uuid` column type.
+ *     not, know about SDF-1B's Postgres `uuid` column type or the operator
+ *     API's UUID acceptance regex.
  */
 export type MissionTranslationRejection =
   | { kind: 'risk_policy_undefined'; level: unknown }
+  | { kind: 'work_package_evaluation_inconsistent' }
   | { kind: 'work_package_not_usable'; reason: WorkPackageUnusableReason }
   | { kind: 'work_id_not_persistable'; workId: string }
   | { kind: 'admission_invalid'; violations: CodeWorkPolicyViolation[] }

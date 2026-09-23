@@ -28,6 +28,15 @@
  * separate mission/delegation binding would be redundant and unsafe (a
  * second place those pins could drift out of sync with the WorkPackage they
  * actually came from).
+ *
+ * PROVENANCE, NOT AUTHENTICATED HERE. This module verifies that `evaluation`
+ * is internally CONSISTENT with the two shapes `resolveWorkPackage()` can
+ * actually produce (`isCanonicalUsableCombination` below) — it cannot, and
+ * does not try to, prove the evaluation genuinely came from that boundary
+ * rather than a hand-built object. A trusted, server-side caller must obtain
+ * `evaluation` from `resolveWorkPackage()` itself; that trust boundary is the
+ * caller's responsibility, the same way `bindings.repository`/`bindings.workId`
+ * already are.
  */
 
 import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
@@ -77,23 +86,49 @@ const DEFAULT_WORKER = Object.freeze({
 })
 
 /**
- * Postgres `uuid` shape, lowercase-only — matching the strictness SDF-1A's
- * own `SHA256`/`GIT_SHA` patterns already use in `policy.ts` (lowercase hex
- * only, no uppercase accepted). `crypto.randomUUID()` always produces
- * lowercase, so a caller using the platform's own generator never trips this.
- * SDF-1A's `validateCodeWorkAdmission` cannot check this itself — `workId` is
- * an opaque `string` at the SDF-1A contract layer, deliberately unaware of
- * SDF-1B's Postgres schema (`work_id uuid primary key`; see
- * `supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql`).
- * Mixing that persistence-shape knowledge into SDF-1A's own validator would
- * blur a boundary SDF-1A keeps deliberately clean, so this translator — whose
- * entire purpose is bridging toward that real persistence path — adds the one
- * check SDF-1A cannot.
+ * RFC 4122 UUID shape — version nibble `[1-5]`, variant nibble `[89ab]`,
+ * lowercase-only. The version/variant constraints are not extra strictness
+ * invented here: they are exactly what
+ * `app/api/atlas/code-work/[workId]/route.ts` and
+ * `control-plane/operator-admission.ts` already require of a `workId`
+ * (each declares its own private `UUID` regex; there is no shared exported
+ * one to import). Without them, a `workId` this translator admitted and
+ * SDF-1B's Postgres `uuid` column stored could still 404 at the real
+ * operator route — this translator's whole purpose is producing an
+ * admission that is genuinely usable end to end, not merely one that
+ * type-checks. The lowercase-only narrowing is stricter than that route
+ * (which accepts case-insensitively via `/i`) — a deliberate, strictly
+ * smaller subset, never a broadening; `crypto.randomUUID()` always produces
+ * lowercase, so a caller using the platform's own generator never trips it.
+ * SDF-1A's `validateCodeWorkAdmission` cannot check any of this itself —
+ * `workId` is an opaque `string` at the SDF-1A contract layer, deliberately
+ * unaware of SDF-1B's Postgres schema (`work_id uuid primary key`; see
+ * `supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql`)
+ * or of the operator route's own identity boundary.
  */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 function isUuidShaped(value: string): boolean {
   return UUID_PATTERN.test(value)
+}
+
+/**
+ * `resolveWorkPackage()`'s own `settle()` helper (`principal-read.ts`) only
+ * ever produces exactly two combinations of these four fields — usable, or
+ * consistently invalidated with a real reason. `usable`/`effectiveState`/
+ * `reason` are three independent-looking fields that are actually one fact
+ * observed three ways; nothing enforces that at the TYPE level, so a
+ * hand-built (or corrupted) `WorkPackageEvaluation` could claim
+ * `usable: true` while `reason` names a real unusable cause. This function
+ * is the one place that catches that contradiction, fail-closed — it does
+ * not re-derive liveness, it only checks the shape of what it was already
+ * handed is one of the two shapes that boundary can actually produce.
+ */
+function isCanonicalUsableCombination(evaluation: WorkPackageEvaluation): boolean {
+  if (evaluation.lifecycleState !== 'assigned') return false
+  return evaluation.usable
+    ? evaluation.effectiveState === 'assigned' && evaluation.reason === 'usable'
+    : evaluation.effectiveState === 'invalidated' && evaluation.reason !== 'usable'
 }
 
 /**
@@ -172,11 +207,13 @@ function buildCandidate(
  * `CodeWorkAdmissionV1`, or a structured rejection. Deterministic: the same
  * `evaluation`, `riskLevel` and `bindings` always produce the same result,
  * because nothing here reads a clock, a random source, the filesystem, the
- * network or a database — `evaluation.usable` is read, not computed.
+ * network or a database — `evaluation`'s fields are read and cross-checked
+ * for internal consistency, never recomputed.
  *
  * Fail-closed by construction, not by convention: every check that could
  * possibly widen scope to make translation succeed belongs to
- * `evaluation.usable` itself, `validateCodeWorkAdmission`, or
+ * `isCanonicalUsableCombination`, `evaluation.usable` itself,
+ * `isUuidShaped`, `validateCodeWorkAdmission`, or
  * `validateCodeWorkPackageAttenuation` — this function calls them unmodified.
  * There is no code path here that can accept a candidate any of them rejects.
  */
@@ -185,6 +222,10 @@ export function translateWorkPackageToAdmission(
   riskLevel: MissionRiskLevel,
   bindings: CodeWorkMissionBindings,
 ): MissionTranslationResult {
+  if (!isCanonicalUsableCombination(evaluation)) {
+    return { ok: false, rejection: { kind: 'work_package_evaluation_inconsistent' } }
+  }
+
   if (!evaluation.usable) {
     return { ok: false, rejection: { kind: 'work_package_not_usable', reason: evaluation.reason } }
   }

@@ -55,8 +55,6 @@ import type { SurvivalObservation } from '../types'
 import { recordObservation } from './store'
 import {
   SURVIVAL_DERIVATION_VERSION,
-  SURVIVAL_OBSERVATION_PROVENANCE,
-  SURVIVAL_RECORDER_PRINCIPAL,
   type SurvivalRecordResult,
 } from './types'
 
@@ -83,11 +81,12 @@ export async function recordSurvivalTransition(
   return recordObservation({
     projectId: input.projectId,
     toState: snapshot.state,
-    // The BARE canonical Chapter 18 token. The presentation label
-    // (`describeCeiling`) is derived from it and is deliberately not stored —
-    // storing both would be the same fact twice, and the label would then be
-    // frozen at whatever wording it had on the day.
-    autonomyLevel: input.observation.ceiling,
+    // NOTE what is NOT passed here. The autonomy ceiling, the actor and the
+    // provenance are all derived inside the database boundary: `autonomy_level`
+    // from `to_state` under v1's mapping, and the other two as the recorder's
+    // fixed machine identity. This module holds `input.observation.ceiling` and
+    // still does not send it — the boundary would refuse it, and sending a value
+    // the boundary ignores is how a reader comes to believe it matters.
     reasons: snapshot.reasons,
     gaps: snapshot.gaps,
     bindingScope: snapshot.bindingScope,
@@ -101,8 +100,6 @@ export async function recordSurvivalTransition(
     operatingPaused: snapshot.operatingPaused,
     thresholdStatus: SURVIVAL_THRESHOLD_STATUS,
     derivationVersion: SURVIVAL_DERIVATION_VERSION,
-    actorPrincipal: SURVIVAL_RECORDER_PRINCIPAL,
-    provenance: SURVIVAL_OBSERVATION_PROVENANCE,
     // The OBSERVATION instant, taken from the snapshot's own injected clock, not
     // from a fresh `now()` here. Replaying a recorded observation therefore keeps
     // its original instant, and `recorded_at` separately holds the write time.

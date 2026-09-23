@@ -116,17 +116,49 @@ create table if not exists public.survival_state_events (
       (event_type = 'STATE_TRANSITION_OBSERVED' and from_state is not null
         and from_state <> to_state)
     ),
-  constraint survival_events_autonomy_level_valid
-    check (autonomy_level in ('L0', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6')),
+  -- The ceiling is a FUNCTION OF THE STATE for derivation v1, so the row is
+  -- constrained to v1's mapping. Without this, a permitted direct INSERT could
+  -- hold `HIBERNATE + L6` — evidence of a survival condition that both said
+  -- "observe only" and claimed full strategic autonomy. The RPC no longer takes
+  -- a caller's ceiling at all; this is the second line, for a privileged writer.
+  --
+  -- This mapping is v1's. A future policy that changes SURVIVAL_CEILING must
+  -- revisit this constraint in the same reviewed migration, exactly as it must
+  -- bump the derivation version.
+  constraint survival_events_autonomy_matches_state
+    check (
+      (to_state = 'EXPAND'    and autonomy_level = 'L6')
+      or (to_state = 'NORMAL'    and autonomy_level = 'L6')
+      or (to_state = 'CONSERVE'  and autonomy_level = 'L3')
+      or (to_state = 'CRITICAL'  and autonomy_level = 'L1')
+      or (to_state = 'HIBERNATE' and autonomy_level = 'L0')
+    ),
   constraint survival_events_funding_state_valid
     check (funding_state in ('KNOWN', 'UNDECLARED', 'UNAVAILABLE')),
-  -- The amount exists exactly when the funding situation is KNOWN. An
-  -- UNDECLARED or UNAVAILABLE row carrying a figure would be a manufactured
-  -- number, and this is where that is refused rather than trusted.
+  -- The amount exists EXACTLY WHEN the funding situation is KNOWN — both
+  -- directions. One direction alone would still admit `KNOWN` with no figure,
+  -- which is a KNOWN row that knows nothing: it would read as "we were told the
+  -- capital" while carrying no capital, and a reader could not tell it from a
+  -- genuine reading that had been dropped. UNDECLARED/UNAVAILABLE carrying a
+  -- figure is the mirror-image lie: a manufactured number. Both are refused
+  -- here rather than trusted. A KNOWN figure may be zero or negative — this
+  -- constrains presence, not sign, so the canonical FundingReading contract is
+  -- unchanged.
   constraint survival_events_declared_funding_matches_state
-    check (declared_funding_sek is null or funding_state = 'KNOWN'),
-  constraint survival_events_threshold_status_valid
-    check (threshold_status in ('provisional', 'canonical')),
+    check (
+      (funding_state = 'KNOWN'      and declared_funding_sek is not null)
+      or
+      (funding_state in ('UNDECLARED', 'UNAVAILABLE') and declared_funding_sek is null)
+    ),
+  -- POLICY IDENTITY MUST NAME A DERIVATION THAT EXISTS. An audit ledger that
+  -- accepted `version 999 + canonical` would be recording a claim about a policy
+  -- no recorder has ever implemented, and a later reader would have no way to
+  -- tell it from a genuine row. Exactly one policy identity is implemented
+  -- today: v1, whose thresholds are still provisional. This constraint is the
+  -- pairing itself, not two independent ranges — widening it is a reviewed
+  -- migration that ships alongside the derivation it describes.
+  constraint survival_events_policy_identity_valid
+    check (derivation_version = 1 and threshold_status = 'provisional'),
   constraint survival_events_binding_scope_valid
     check (binding_scope is null
         or binding_scope in ('project_daily', 'project_weekly', 'project_monthly',
@@ -142,8 +174,9 @@ create table if not exists public.survival_state_events (
     check (gaps <@ array[
       'funding_undeclared', 'funding_unavailable', 'runway_unknown',
       'reads_incomplete', 'infrastructure_cost_untracked']::text[]),
-  constraint survival_events_derivation_version_valid
-    check (derivation_version >= 1),
+  -- (derivation_version / threshold_status are constrained together above, as the
+  -- policy identity. A separate `>= 1` range here would be the weaker claim
+  -- standing next to the stronger one, and only the stronger one is true.)
   -- Amounts and durations are non-negative. A negative headroom is not a fact
   -- this ledger should be able to hold.
   constraint survival_events_amounts_non_negative
@@ -160,8 +193,13 @@ create table if not exists public.survival_state_events (
   -- Widening this set is a deliberate migration, not a caller's choice.
   constraint survival_events_actor_machine_identity
     check (actor_principal in ('atlas.survival_recorder')),
-  constraint survival_events_provenance_present
-    check (length(btrim(provenance)) between 3 and 200)
+  -- Provenance is the observation FORMAT the recorder implements, not a note
+  -- anyone may write. Free text here would be a caller-authored claim about how
+  -- the row was produced, standing next to an actor column that is a closed
+  -- vocabulary — the same forgery in a different column. The RPC no longer takes
+  -- it; this constrains a privileged direct INSERT to the same value.
+  constraint survival_events_provenance_machine_identity
+    check (provenance = 'atlas.survival.observation.v1')
 );
 
 -- The only access pattern: "recent transitions for one project, newest first".
@@ -272,11 +310,21 @@ create trigger survival_events_no_truncate
   for each statement execute function public.survival_events_append_only();
 
 -- ── The one write boundary ─────────────────────────────────────────────────
+--
+-- THREE THINGS ARE DELIBERATELY NOT PARAMETERS: the autonomy ceiling, the actor
+-- and the provenance. All three are DERIVED FACTS the database already knows:
+-- the ceiling is v1's mapping from the state, and the actor and provenance are
+-- the fixed identity of the machine recorder. A caller that could pass them
+-- could author evidence about its own authority, which is exactly what this
+-- ledger must not be able to hold.
+--
+-- `p_threshold_status` / `p_derivation_version` STAY, for the opposite reason:
+-- they are the application's ASSERTION about which policy it observed under, and
+-- the boundary must be able to REFUSE a claim this schema cannot honour.
 
 create or replace function public.survival_record_observation(
   p_project_id          uuid,
   p_to_state            text,
-  p_autonomy_level      text,
   p_reasons             text[],
   p_gaps                text[],
   p_binding_scope       text,
@@ -290,8 +338,6 @@ create or replace function public.survival_record_observation(
   p_operating_paused    boolean,
   p_threshold_status    text,
   p_derivation_version  integer,
-  p_actor_principal     text,
-  p_provenance          text,
   p_occurred_at         timestamptz
 ) returns table (result text, event_id uuid, event_seq bigint, from_state text, to_state text)
 language plpgsql
@@ -302,24 +348,17 @@ declare
   v_previous text;
   v_event_id uuid;
   v_event_seq bigint;
+  v_autonomy_level text;
 begin
   if p_project_id is null then
     raise exception 'p_project_id is required' using errcode = '22023';
-  end if;
-  -- Provenance is the point of the row. A nameless transition looks like
-  -- evidence and is not.
-  if p_actor_principal is null or length(btrim(p_actor_principal)) < 3 then
-    raise exception 'p_actor_principal is required' using errcode = '22023';
-  end if;
-  if p_provenance is null or length(btrim(p_provenance)) < 3 then
-    raise exception 'p_provenance is required' using errcode = '22023';
   end if;
   if p_to_state is null then
     raise exception 'p_to_state is required' using errcode = '22023';
   end if;
   -- The derived facts this row exists to explain must be present. A transition
-  -- with no reasons and no ceiling cannot be explained later, which is the only
-  -- thing this ledger is for.
+  -- with no reasons cannot be explained later, which is the only thing this
+  -- ledger is for.
   if p_reasons is null then
     raise exception 'p_reasons is required (may be empty)' using errcode = '22023';
   end if;
@@ -328,6 +367,35 @@ begin
   end if;
   if p_occurred_at is null then
     raise exception 'p_occurred_at is required' using errcode = '22023';
+  end if;
+
+  -- ── Fail closed on version skew ──────────────────────────────────────────
+  -- The persisted policy identity is v1/provisional and nothing else. If the
+  -- application has moved ahead of this schema, recording must FAIL rather than
+  -- have a v2 observation written down as v1: a mislabelled row is worse than a
+  -- missing one, because nothing later can tell it apart from a true v1 row.
+  if p_derivation_version is null or p_derivation_version <> 1 then
+    raise exception 'unsupported derivation version % — this schema implements v1',
+      p_derivation_version using errcode = '22023';
+  end if;
+  if p_threshold_status is null or p_threshold_status <> 'provisional' then
+    raise exception 'unsupported threshold status % — this schema implements provisional',
+      p_threshold_status using errcode = '22023';
+  end if;
+
+  -- ── The ceiling is derived here, not accepted ────────────────────────────
+  -- v1's canonical mapping. Deriving it at the boundary means the guardian of
+  -- autonomy cannot be given a contradictory ceiling by the thing it observes,
+  -- and the table constraint below closes the same door for a privileged writer.
+  v_autonomy_level := case p_to_state
+    when 'EXPAND'    then 'L6'
+    when 'NORMAL'    then 'L6'
+    when 'CONSERVE'  then 'L3'
+    when 'CRITICAL'  then 'L1'
+    when 'HIBERNATE' then 'L0'
+  end;
+  if v_autonomy_level is null then
+    raise exception 'unsupported to_state %', p_to_state using errcode = '22023';
   end if;
 
   -- Serialise concurrent observers of THIS stream. Without the lock two workers
@@ -355,11 +423,11 @@ begin
       operating_paused, threshold_status, derivation_version,
       actor_principal, provenance, occurred_at)
     values (
-      p_project_id, 'BASELINE_OBSERVED', null, p_to_state, p_autonomy_level,
+      p_project_id, 'BASELINE_OBSERVED', null, p_to_state, v_autonomy_level,
       p_reasons, p_gaps, p_binding_scope, p_binding_limit_sek, p_binding_remaining_sek,
       p_burn_sek_per_day, p_funding_state, p_declared_funding_sek, p_runway_days,
       p_revenue_trend_sek, p_operating_paused, p_threshold_status, p_derivation_version,
-      btrim(p_actor_principal), btrim(p_provenance), p_occurred_at)
+      'atlas.survival_recorder', 'atlas.survival.observation.v1', p_occurred_at)
     returning survival_state_events.event_id, survival_state_events.event_seq
       into v_event_id, v_event_seq;
 
@@ -382,11 +450,11 @@ begin
     operating_paused, threshold_status, derivation_version,
     actor_principal, provenance, occurred_at)
   values (
-    p_project_id, 'STATE_TRANSITION_OBSERVED', v_previous, p_to_state, p_autonomy_level,
+    p_project_id, 'STATE_TRANSITION_OBSERVED', v_previous, p_to_state, v_autonomy_level,
     p_reasons, p_gaps, p_binding_scope, p_binding_limit_sek, p_binding_remaining_sek,
     p_burn_sek_per_day, p_funding_state, p_declared_funding_sek, p_runway_days,
     p_revenue_trend_sek, p_operating_paused, p_threshold_status, p_derivation_version,
-    btrim(p_actor_principal), btrim(p_provenance), p_occurred_at)
+    'atlas.survival_recorder', 'atlas.survival.observation.v1', p_occurred_at)
   returning survival_state_events.event_id, survival_state_events.event_seq
     into v_event_id, v_event_seq;
 
@@ -398,8 +466,10 @@ $$;
 --
 -- SELECT and EXECUTE, and nothing else. There is deliberately no INSERT grant to
 -- any role: the ONLY way a row can be written is through the function above,
--- which derives from_state itself. A caller that could INSERT could choose its
--- own predecessor, which is exactly what `from_state` must not be.
+-- which derives from_state itself — and, for the same reason, the autonomy
+-- ceiling, the actor and the provenance. A caller that could INSERT could choose
+-- its own predecessor and author its own evidence, which is exactly what those
+-- four columns must not be.
 
 alter table public.survival_state_events enable row level security;
 revoke all on table public.survival_state_events from public, anon, authenticated, service_role;
@@ -410,13 +480,17 @@ grant select on table public.survival_state_events to service_role;
 -- no other grant exists — but including it makes service_role's privilege set
 -- exactly {EXECUTE} unconditionally, rather than depending on that reasoning
 -- holding against whatever default ACL the project happens to carry.
+--
+-- The signature list must track the function exactly: a stale argument list
+-- makes the REVOKE a no-op for a name that does not exist, which PostgreSQL
+-- reports as nothing at all.
 revoke all on function public.survival_record_observation(
-  uuid, text, text, text[], text[], text, numeric, numeric, numeric,
-  text, numeric, numeric, numeric, boolean, text, integer, text, text, timestamptz)
+  uuid, text, text[], text[], text, numeric, numeric, numeric,
+  text, numeric, numeric, numeric, boolean, text, integer, timestamptz)
   from public, anon, authenticated, service_role;
 grant execute on function public.survival_record_observation(
-  uuid, text, text, text[], text[], text, numeric, numeric, numeric,
-  text, numeric, numeric, numeric, boolean, text, integer, text, text, timestamptz)
+  uuid, text, text[], text[], text, numeric, numeric, numeric,
+  text, numeric, numeric, numeric, boolean, text, integer, timestamptz)
   to service_role;
 
 -- The identity sequence needs its own revoke. `revoke ... on table` does not

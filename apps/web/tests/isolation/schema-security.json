@@ -11,6 +11,7 @@
     "social_credential_health_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914120200_social_credential_health.sql (project-scoped social credentials): RLS on, no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE. Applied to production before this row was merged.",
     "social_oauth_states_note": "Its row reflects the state established by apps/web/supabase/migrations/20260915170000_youtube_project_oauth.sql (project-scoped YouTube, Y2a): created with RLS on and no policy, every client grant revoked; the service role holds SELECT, INSERT and UPDATE (bounded by the update guard) and EXECUTE on social_oauth_state_consume. Applied to production before this row was merged.",
     "atlas_code_work_note": "The atlas_code_work_runs and atlas_code_work_receipts rows reflect the state established by apps/web/supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql (SDF-1B1): RLS on with no policies, every client grant revoked, service_role holding SELECT only; all mutation access is through the migration's purpose-specific SECURITY DEFINER RPCs. Applied to production before these rows were moved into the live table map.",
+    "survival_state_events_note": "Atlas Survival Phase 2A (supabase/migrations/20260923120000_survival_state_events.sql). DELIBERATELY not yet applied to production pending an explicit owner migration gate — unlike the other created_not_live entries, which were never applied or dropped out-of-band. Classification is read from the migration, not from a live catalog: it enables RLS with no client policy, revokes every client grant, and gives service_role SELECT only, with the sole writer a SECURITY DEFINER function that service_role alone may EXECUTE. Its row will move into `tables` when the apply is approved.",
     "regenerate": "Introspect pg_class.relrowsecurity, pg_policies and information_schema.role_table_grants for schema 'public' and rewrite this file. lib/qa/schema-security-invariant.test.ts defines the exact contract each entry must satisfy.",
     "classes": {
       "SERVER_ONLY": "Service-role only. anon and authenticated hold NO grants at all. RLS must be enabled.",
@@ -33,14 +34,16 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "survival_state_events"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "survival_state_events": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },

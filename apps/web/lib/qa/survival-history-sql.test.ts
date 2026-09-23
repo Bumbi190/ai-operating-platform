@@ -101,6 +101,12 @@ const P_B = '22222222-2222-2222-2222-222222222222'
 const P_R = '44444444-4444-4444-4444-444444444444'
 /** Dedicated to the actor-identity proofs, which must not perturb another stream. */
 const P_S = '55555555-5555-5555-5555-555555555555'
+/** Kept EMPTY: direct-INSERT constraint probes need a project with no history,
+ *  or the guard refuses the probe before the CHECK under test is reached. */
+const P_C = '66666666-6666-6666-6666-666666666666'
+/** Dedicated to the funding-biconditional probes, whose whole point is that the
+ *  state CHANGES — an unchanged observation short-circuits before any CHECK. */
+const P_D = '77777777-7777-7777-7777-777777777777'
 const MISSING = '99999999-9999-9999-9999-999999999999'
 
 const FIXTURE = `
@@ -151,7 +157,9 @@ insert into public.projects (id, slug) values
   ('${P_A}', 'alpha'),
   ('${P_B}', 'beta'),
   ('${P_R}', 'rho'),
-  ('${P_S}', 'sigma');
+  ('${P_S}', 'sigma'),
+  ('${P_C}', 'chi'),
+  ('${P_D}', 'delta');
 `
 
 const d = AVAILABLE ? describe : describe.skip
@@ -181,7 +189,6 @@ afterAll(() => {
 interface Observe {
   project?: string
   to: string
-  level?: string
   reasons?: string[]
   gaps?: string[]
   scope?: string | null
@@ -195,18 +202,22 @@ interface Observe {
   paused?: boolean
   threshold?: string
   version?: number
-  actor?: string
-  provenance?: string
   occurredAt?: string
 }
 
-/** The RPC call as SQL text, with production-shaped defaults. */
+/**
+ * The RPC call as SQL text, with production-shaped defaults.
+ *
+ * There are deliberately NO arguments here for the autonomy ceiling, the actor
+ * or the provenance. They are not parameters any more: the boundary derives all
+ * three, and a helper that could still pass them would let a test assert a shape
+ * the function cannot have.
+ */
 function rpc(o: Observe): string {
   const arr = (xs: string[]) => (xs.length ? `array[${xs.map(x => `'${x}'`).join(',')}]::text[]` : `array[]::text[]`)
   const args = [
     `'${o.project ?? P_A}'`,
     `'${o.to}'`,
-    `'${o.level ?? 'L3'}'`,
     arr(o.reasons ?? ['headroom_healthy']),
     arr(o.gaps ?? []),
     o.scope === undefined ? `'global_monthly'` : (o.scope === null ? 'null' : `'${o.scope}'`),
@@ -220,8 +231,6 @@ function rpc(o: Observe): string {
     o.paused === undefined ? 'false' : String(o.paused),
     `'${o.threshold ?? 'provisional'}'`,
     String(o.version ?? 1),
-    `'${o.actor ?? 'atlas.survival_recorder'}'`,
-    `'${o.provenance ?? 'atlas.survival.observation.v1'}'`,
     o.occurredAt ?? 'now()',
   ]
   return `public.survival_record_observation(${args.join(', ')})`
@@ -281,9 +290,13 @@ describe('survival history · contract', () => {
 // ── The boundary is the only writer, and it is hardened ─────────────────────
 
 describe('survival history · the recording boundary is hardened', () => {
+  // The argument list must track the function exactly. has_function_privilege
+  // resolves by signature, and a stale list resolves to a function that does not
+  // exist — which PostgreSQL reports as an ERROR, not as "false", so a mismatch
+  // fails loudly rather than quietly proving nothing.
   const SIG = `public.survival_record_observation(
-    uuid, text, text, text[], text[], text, numeric, numeric, numeric,
-    text, numeric, numeric, numeric, boolean, text, integer, text, text, timestamptz)`
+    uuid, text, text[], text[], text, numeric, numeric, numeric,
+    text, numeric, numeric, numeric, boolean, text, integer, timestamptz)`
   const fn = (privilege: string, role: string) =>
     one(dsn, `select has_function_privilege('${role}', '${SIG}', '${privilege}')`)
 
@@ -331,20 +344,96 @@ describe('survival history · the recording boundary is hardened', () => {
     expect(nonOwner[0]).toMatch(/^service_role=X\//)
   })
 
-  it('refuses a human or arbitrary actor, even on a direct RPC call', () => {
+  it('has no autonomy, actor or provenance parameter at all', () => {
+    // The strongest form of each claim: there is nothing to forge. The ceiling
+    // is a function of the state and the identity is the recorder's own, so
+    // neither is expressible by a caller — not merely refused after the fact.
+    const args = one(dsn, `select pg_get_function_arguments(p.oid)
+                           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                           where n.nspname = 'public' and p.proname = 'survival_record_observation'`)
+    for (const forbidden of ['p_autonomy_level', 'p_actor_principal', 'p_provenance']) {
+      expect(args, `still accepts ${forbidden}`).not.toContain(forbidden)
+    }
+    expect(args).toContain('p_to_state')
+    expect(args).toContain('p_derivation_version')
+    expect(args).toContain('p_threshold_status')
+  })
+
+  it('refuses a human or arbitrary actor, even on a direct INSERT', () => {
     // A survival observation is not a human authority act. If a caller could
     // record `owner`, the ledger would assert that a person decided something.
-    // The closed vocabulary makes that a database refusal, not a convention.
+    // The closed vocabulary makes that a database refusal, not a convention —
+    // and the RPC no longer takes the value, so only a privileged direct INSERT
+    // can even attempt it.
     expect(one(dsn, `select pg_get_constraintdef(oid) from pg_constraint
                      where conname = 'survival_events_actor_machine_identity'`))
       .toContain('atlas.survival_recorder')
+    expect(one(dsn, `select pg_get_constraintdef(oid) from pg_constraint
+                     where conname = 'survival_events_provenance_machine_identity'`))
+      .toContain('atlas.survival.observation.v1')
+    const insertAsOwner = (actor: string, provenance: string) =>
+      `insert into public.survival_state_events
+        (project_id, event_type, to_state, autonomy_level, funding_state,
+         threshold_status, derivation_version, actor_principal, provenance, occurred_at)
+       values ('${P_C}','BASELINE_OBSERVED','NORMAL','L6','UNDECLARED',
+               'provisional',1,'${actor}','${provenance}', now())`
     for (const actor of ['owner', 'atlas', 'service_role', 'someone@example.com']) {
-      const err = expectFailure(dsn, `select * from ${rpc({ project: P_S, to: 'CRITICAL', actor })}`)
+      const err = expectFailure(dsn, insertAsOwner(actor, 'atlas.survival.observation.v1'))
       expect(err, actor).toMatch(/actor_machine_identity|violates check constraint|23514/i)
     }
-    expect(one(dsn, `select count(*)::text from public.survival_state_events where project_id='${P_S}'`)).toBe('0')
-    // …and the canonical machine identity still records.
+    for (const provenance of ['owner said so', 'manual_privileged', '']) {
+      const err = expectFailure(dsn, insertAsOwner('atlas.survival_recorder', provenance))
+      expect(err, `provenance ${JSON.stringify(provenance)}`)
+        .toMatch(/provenance_machine_identity|violates check constraint|23514/i)
+    }
+    expect(count(P_S)).toBe(0)
+  })
+
+  it('the RPC writes the canonical machine identity, whatever the observer', () => {
     expect(call({ project: P_S, to: 'CRITICAL' })).toBe('baseline_recorded')
+    const row = query(dsn, `select actor_principal, provenance, autonomy_level
+                              from public.survival_state_events where project_id='${P_S}'`)[0]
+    expect(row[0]).toBe('atlas.survival_recorder')
+    expect(row[1]).toBe('atlas.survival.observation.v1')
+    // …and the ceiling is the DERIVED one for the state, not a caller's L1.
+    expect(row[2]).toBe('L1')
+  })
+
+  it('refuses an impossible state/ceiling pair on a direct INSERT', () => {
+    // The RPC cannot produce this — it derives the ceiling. This is the second
+    // line, for a privileged writer: `HIBERNATE + L6` would be evidence of a
+    // condition that both said "observe only" and claimed full autonomy.
+    const err = expectFailure(dsn, `insert into public.survival_state_events
+      (project_id, event_type, to_state, autonomy_level, funding_state,
+       threshold_status, derivation_version, actor_principal, provenance, occurred_at)
+      values ('${P_C}','BASELINE_OBSERVED','HIBERNATE','L6','UNDECLARED',
+              'provisional',1,'atlas.survival_recorder','atlas.survival.observation.v1', now())`)
+    expect(err).toMatch(/autonomy_matches_state|violates check constraint|23514/i)
+    expect(count(P_C)).toBe(0)
+  })
+
+  it('refuses a policy identity no derivation implements', () => {
+    // `version 999 + canonical` names a policy nobody wrote. Recording it would
+    // be indistinguishable, later, from a genuine row.
+    for (const [version, status] of [['999', 'canonical'], ['2', 'provisional'], ['1', 'canonical'], ['0', 'provisional']]) {
+      const err = expectFailure(dsn, `insert into public.survival_state_events
+        (project_id, event_type, to_state, autonomy_level, funding_state,
+         threshold_status, derivation_version, actor_principal, provenance, occurred_at)
+        values ('${P_C}','BASELINE_OBSERVED','NORMAL','L6','UNDECLARED',
+                '${status}',${version},'atlas.survival_recorder','atlas.survival.observation.v1', now())`)
+      expect(err, `v${version}/${status}`)
+        .toMatch(/policy_identity_valid|violates check constraint|23514/i)
+    }
+    // The RPC fails closed on the same skew, BEFORE touching the table, so a v2
+    // application against this schema errors loudly instead of mislabelling.
+    for (const [version, status] of [[999, 'canonical'], [2, 'provisional'], [1, 'canonical']] as Array<[number, string]>) {
+      const err = expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CONSERVE', version, threshold: status })}`)
+      expect(err, `rpc v${version}/${status}`)
+        .toMatch(/unsupported derivation version|unsupported threshold status/i)
+    }
+    // P_C stays empty throughout: every probe above was refused, so none of them
+    // left a row behind to make the next probe's guard fire first.
+    expect(count(P_C)).toBe(0)
   })
 
   it('service_role cannot write the table or the sequence directly', () => {
@@ -362,15 +451,15 @@ describe('survival history · the recording boundary is hardened', () => {
     }
   })
 
-  it('a real anon/authenticated session is refused, and service_role is not', () => {
+  it('a real anon session is refused, and the boundary is reachable as itself', () => {
     // has_*_privilege is a catalog reading. These are live sessions, so the
-    // refusal is observed rather than inferred.
-    const asAnon = expectFailure(dsn, `set role anon; select * from public.survival_record_observation(
-      '${P_B}', 'NORMAL', 'L6', array[]::text[], array[]::text[], 'global_monthly',
-      1500, 1301.53, 8.3, 'UNDECLARED', null, null, null, false,
-      'provisional', 1, 'atlas.survival_recorder', 'atlas.survival.observation.v1', now())`)
+    // refusal is observed rather than inferred — and the call is built from the
+    // same helper the passing tests use, so it cannot drift out of sync with the
+    // real signature and accidentally prove "no such function" instead.
+    const before = count(P_B)
+    const asAnon = expectFailure(dsn, `set role anon; select * from ${rpc({ project: P_B, to: 'CONSERVE' })}`)
     expect(asAnon).toMatch(/permission denied|42501/i)
-    expect(one(dsn, `select coalesce(count(*),0)::text from public.survival_state_events where project_id='${P_B}'`)).toBe('0')
+    expect(count(P_B)).toBe(before)
   })
 
   it('takes no from_state argument at all, and locks before it derives', () => {
@@ -498,7 +587,7 @@ describe('survival history · closed vocabularies', () => {
         .map(r => [r[0], r[1]] as [string, string]),
     )
 
-  it('closes the event, state, ceiling, funding and threshold vocabularies', () => {
+  it('closes the event, state, ceiling, funding and policy-identity vocabularies', () => {
     const definitions = constraintDefinitions()
     const has = (constraint: string, ...members: string[]) => {
       const def = definitions.get(constraint)
@@ -508,29 +597,48 @@ describe('survival history · closed vocabularies', () => {
     has('survival_events_event_type_valid', 'BASELINE_OBSERVED', 'STATE_TRANSITION_OBSERVED')
     has('survival_events_to_state_valid', 'EXPAND', 'NORMAL', 'CONSERVE', 'CRITICAL', 'HIBERNATE')
     has('survival_events_from_state_valid', 'HIBERNATE')
-    has('survival_events_autonomy_level_valid', 'L0', 'L6')
+    // The ceiling is tied to the state, not merely drawn from L0–L6.
+    has('survival_events_autonomy_matches_state',
+        "to_state = 'EXPAND'", "autonomy_level = 'L6'",
+        "to_state = 'CONSERVE'", "autonomy_level = 'L3'",
+        "to_state = 'HIBERNATE'", "autonomy_level = 'L0'")
     has('survival_events_funding_state_valid', 'KNOWN', 'UNDECLARED', 'UNAVAILABLE')
-    has('survival_events_threshold_status_valid', 'provisional', 'canonical')
+    // The policy identity is the PAIRING, not two independent ranges.
+    has('survival_events_policy_identity_valid', 'derivation_version = 1', "threshold_status = 'provisional'")
     has('survival_events_reasons_valid', 'funding_undeclared', 'funding_unavailable', 'funding_depleted')
     has('survival_events_gaps_valid', 'runway_unknown', 'infrastructure_cost_untracked')
-    has('survival_events_declared_funding_matches_state', "funding_state = 'KNOWN'")
+    // BOTH directions of the funding implication, asserted on the rendered
+    // definition: the positive form proves the amount is required, the negative
+    // form proves it is forbidden elsewhere. One without the other is the gap
+    // this constraint was widened to close.
+    has('survival_events_declared_funding_matches_state', "funding_state = 'KNOWN'", 'IS NOT NULL')
     has('survival_events_amounts_non_negative', 'binding_remaining_sek')
     has('survival_events_shape', 'BASELINE_OBSERVED')
+    has('survival_events_actor_machine_identity', 'atlas.survival_recorder')
+    has('survival_events_provenance_machine_identity', 'atlas.survival.observation.v1')
+    // The weaker standalone checks are GONE, not merely joined by stronger ones:
+    // a `>= 1` range beside the exact pairing would be a claim that is not true.
+    expect(definitions.has('survival_events_derivation_version_valid')).toBe(false)
+    expect(definitions.has('survival_events_autonomy_level_valid')).toBe(false)
+    expect(definitions.has('survival_events_provenance_present')).toBe(false)
   })
 
   it('seeds a project with history so the CHECKs, not the guard, are under test', () => {
-    expect(call({ project: P_B, to: 'NORMAL', level: 'L6' })).toBe('baseline_recorded')
+    expect(call({ project: P_B, to: 'NORMAL' })).toBe('baseline_recorded')
     expect(latest(P_B)).toBe('<null>->NORMAL')
   })
 
   it('refuses a value outside each closed set, by CHECK', () => {
     // from_state is derived correctly and to_state differs from the recorded
-    // state, so the guard is satisfied and the CHECK is what refuses.
+    // state, so the guard is satisfied and the CHECK is what refuses. The state
+    // CHANGE matters: an unchanged observation returns 'unchanged' before any
+    // CHECK runs, so a probe against the current state would prove nothing.
+    //
+    // `threshold_status` is deliberately NOT in this list. The boundary refuses
+    // a policy identity it does not implement before the table is reached, so
+    // its CHECK is proven by direct INSERT below instead.
     const probes: Array<[string, string]> = [
-      ['to_state', rpc({ project: P_B, to: 'DORMANT' })],
-      ['autonomy_level', rpc({ project: P_B, to: 'CONSERVE', level: 'L9' })],
       ['funding_state', rpc({ project: P_B, to: 'CONSERVE', funding: 'MAYBE' })],
-      ['threshold_status', rpc({ project: P_B, to: 'CONSERVE', threshold: 'draft' })],
       ['reasons', rpc({ project: P_B, to: 'CONSERVE', reasons: ['vibes_are_bad'] })],
       ['gaps', rpc({ project: P_B, to: 'CONSERVE', gaps: ['unknown_thing'] })],
       ['binding_scope', rpc({ project: P_B, to: 'CONSERVE', scope: 'galaxy_monthly' })],
@@ -541,14 +649,50 @@ describe('survival history · closed vocabularies', () => {
     expect(count(P_B)).toBe(1)
   })
 
-  it('refuses a declared funding amount unless funding is KNOWN, and a negative amount', () => {
-    for (const funding of ['UNDECLARED', 'UNAVAILABLE']) {
-      const err = expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CONSERVE', funding, declared: '5000' })}`)
-      expect(err, funding).toMatch(/survival_events_declared_funding_matches_state|violates check/i)
-    }
-    expect(expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CONSERVE', remaining: '-5' })}`))
-      .toMatch(/survival_events_amounts_non_negative|violates check/i)
+  it('refuses an unsupported to_state at the boundary, before anything is written', () => {
+    // The ceiling is derived from the state, so the boundary must reject a state
+    // it has no mapping for. This fails in the function, not by CHECK — which is
+    // the point: the row never reaches the table.
+    const err = expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'DORMANT' })}`)
+    expect(err).toMatch(/unsupported to_state/i)
     expect(count(P_B)).toBe(1)
+  })
+
+  it('the declared amount is biconditional with KNOWN — all four cases', () => {
+    // Its own stream, and every probe targets a state DIFFERENT from the current
+    // one. That is not incidental: an unchanged observation returns 'unchanged'
+    // before the row reaches any CHECK, so a probe against the current state
+    // would pass the constraint trivially and prove nothing.
+    const P = P_D
+    // 1. KNOWN + a figure is the real thing, and is accepted.
+    expect(call({ project: P, to: 'NORMAL', funding: 'KNOWN', declared: '120000' })).toBe('baseline_recorded')
+    // 2. KNOWN + no figure is REFUSED. This is the direction that was missing:
+    //    without it a row could say "we were told the capital" while carrying no
+    //    capital, which a reader cannot tell from a reading that was lost.
+    expect(expectFailure(dsn, `select * from ${rpc({ project: P, to: 'CONSERVE', funding: 'KNOWN', declared: null })}`))
+      .toMatch(/survival_events_declared_funding_matches_state|violates check/i)
+    // 3. UNDECLARED / UNAVAILABLE + a figure is a manufactured number.
+    for (const funding of ['UNDECLARED', 'UNAVAILABLE']) {
+      expect(expectFailure(dsn, `select * from ${rpc({ project: P, to: 'CONSERVE', funding, declared: '5000' })}`), funding)
+        .toMatch(/survival_events_declared_funding_matches_state|violates check/i)
+    }
+    // 4. UNDECLARED / UNAVAILABLE with no figure is the honest absence.
+    expect(call({ project: P, to: 'CONSERVE', funding: 'UNDECLARED', declared: null })).toBe('transition_recorded')
+    expect(call({ project: P, to: 'NORMAL', funding: 'UNAVAILABLE', declared: null })).toBe('transition_recorded')
+    // Zero is a FIGURE, not an absence: KNOWN at zero is accepted, and the
+    // constraint constrains presence rather than sign.
+    expect(call({ project: P, to: 'CRITICAL', funding: 'KNOWN', declared: '0' })).toBe('transition_recorded')
+    // Four writes: the baseline plus three accepted transitions. Every refused
+    // probe above wrote nothing.
+    expect(count(P)).toBe(4)
+  })
+
+  it('refuses a negative amount', () => {
+    const before = count(P_B)
+    // Again a state change, so the row reaches the CHECK under test.
+    expect(expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CRITICAL', remaining: '-5' })}`))
+      .toMatch(/survival_events_amounts_non_negative|violates check/i)
+    expect(count(P_B)).toBe(before)
   })
 
   it('refuses an unknown event type, which can only arrive by direct INSERT', () => {
@@ -578,7 +722,7 @@ describe('survival history · the observation survives the round trip', () => {
     // P_R is dedicated to this block, so the first observation is a baseline
     // regardless of what the blocks above did to P_A or P_B.
     expect(call({
-      project: P_R, to: 'CONSERVE', level: 'L3',
+      project: P_R, to: 'CONSERVE',
       reasons: ['headroom_healthy', 'funding_undeclared'],
       gaps: ['funding_undeclared', 'runway_unknown'],
       funding: 'UNDECLARED', scope: 'global_monthly', remaining: '1301.53', limit: '1500',
@@ -597,7 +741,7 @@ describe('survival history · the observation survives the round trip', () => {
   })
 
   it('keeps UNAVAILABLE distinct from UNDECLARED', () => {
-    expect(call({ project: P_R, to: 'CRITICAL', level: 'L1', funding: 'UNAVAILABLE',
+    expect(call({ project: P_R, to: 'CRITICAL', funding: 'UNAVAILABLE',
                   reasons: ['funding_unavailable'], gaps: ['funding_unavailable'] }))
       .toBe('transition_recorded')
     expect(one(dsn, `select funding_state from public.survival_state_events
@@ -608,7 +752,7 @@ describe('survival history · the observation survives the round trip', () => {
   })
 
   it('stores declared funding when KNOWN, and only then', () => {
-    expect(call({ project: P_R, to: 'NORMAL', level: 'L6', funding: 'KNOWN', declared: '120000',
+    expect(call({ project: P_R, to: 'NORMAL', funding: 'KNOWN', declared: '120000',
                   runway: '1445.78', trend: '12' })).toBe('transition_recorded')
     const row = query(dsn, `select funding_state, declared_funding_sek, runway_days, revenue_trend_sek
                             from public.survival_state_events
@@ -621,7 +765,7 @@ describe('survival history · the observation survives the round trip', () => {
 
   it('keeps MRR a SIGNAL — it never becomes runway, and runway stays unknown without funding', () => {
     // A loud revenue trend with undeclared funding.
-    expect(call({ project: P_R, to: 'CONSERVE', level: 'L3', funding: 'UNDECLARED',
+    expect(call({ project: P_R, to: 'CONSERVE', funding: 'UNDECLARED',
                   trend: '999999',
                   reasons: ['funding_undeclared'], gaps: ['runway_unknown'] }))
       .toBe('transition_recorded')
@@ -642,7 +786,7 @@ describe('survival history · the observation survives the round trip', () => {
   })
 
   it('records the observation instant separately from the write instant', () => {
-    expect(call({ project: P_R, to: 'CRITICAL', level: 'L1', occurredAt: `timestamptz '2026-09-01 00:00:00+00'` }))
+    expect(call({ project: P_R, to: 'CRITICAL', occurredAt: `timestamptz '2026-09-01 00:00:00+00'` }))
       .toBe('transition_recorded')
     const row = query(dsn, `select occurred_at::date::text, (recorded_at > occurred_at)::text
                             from public.survival_state_events
@@ -683,8 +827,8 @@ describe('survival history · concurrency cannot duplicate a logical transition'
     expect(latest(G)).toBe('<null>->CONSERVE')
 
     const [a, b] = await Promise.all([
-      concurrentObserve({ project: G, to: 'CRITICAL', level: 'L1' }, 700),
-      concurrentObserve({ project: G, to: 'CRITICAL', level: 'L1' }, 0),
+      concurrentObserve({ project: G, to: 'CRITICAL' }, 700),
+      concurrentObserve({ project: G, to: 'CRITICAL' }, 0),
     ])
     expect(count(G)).toBe(before + 1)
     expect(latest(G)).toBe('CONSERVE->CRITICAL')
@@ -694,7 +838,7 @@ describe('survival history · concurrency cannot duplicate a logical transition'
   it('a retry of the same observation is idempotent', () => {
     const G = '33333333-3333-3333-3333-333333333333'
     const before = count(G)
-    for (let i = 0; i < 5; i++) expect(call({ project: G, to: 'CRITICAL', level: 'L1' })).toBe('unchanged')
+    for (let i = 0; i < 5; i++) expect(call({ project: G, to: 'CRITICAL' })).toBe('unchanged')
     expect(count(G)).toBe(before)
   })
 })
@@ -707,8 +851,8 @@ describe('survival history · recording changes neither spend nor the stop', () 
     const spendBefore = one(dsn, `select count(*) from public.spend_reservations`)
     const G = '33333333-3333-3333-3333-333333333333'
 
-    expect(call({ project: G, to: 'HIBERNATE', level: 'L0' })).toBe('transition_recorded')
-    expect(call({ project: G, to: 'NORMAL', level: 'L6' })).toBe('transition_recorded')
+    expect(call({ project: G, to: 'HIBERNATE' })).toBe('transition_recorded')
+    expect(call({ project: G, to: 'NORMAL' })).toBe('transition_recorded')
 
     expect(one(dsn, `select automation_paused from public.platform_config where id=1`)).toBe(pausedBefore)
     expect(one(dsn, `select count(*) from public.spend_reservations`)).toBe(spendBefore)

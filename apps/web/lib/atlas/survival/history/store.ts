@@ -17,7 +17,6 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { BudgetScope } from '@/lib/cost/budget-gate'
 import type {
-  AutonomyLicenseLevel,
   FundingState,
   SurvivalGap,
   SurvivalReason,
@@ -33,10 +32,16 @@ import {
 type AnyDb = any
 
 /** Exactly what the SQL boundary accepts. One field per column, no extra shapes. */
+/**
+ * What the caller hands the boundary. Three facts a reader might expect here are
+ * ABSENT on purpose, because the database owns them and would refuse a caller's
+ * version: `autonomyLevel` (derived from `toState`), and `actorPrincipal` /
+ * `provenance` (the fixed machine identity of the recorder). There is nothing to
+ * send, so nothing can be forged in transit.
+ */
 export interface RecordObservationInput {
   projectId: string
   toState: SurvivalState
-  autonomyLevel: AutonomyLicenseLevel
   reasons: SurvivalReason[]
   gaps: SurvivalGap[]
   bindingScope: BudgetScope | null
@@ -48,10 +53,9 @@ export interface RecordObservationInput {
   runwayDays: number | null
   revenueTrendSek: number | null
   operatingPaused: boolean | null
+  /** Asserted so the boundary can REFUSE a policy this schema does not implement. */
   thresholdStatus: 'provisional' | 'canonical'
   derivationVersion: number
-  actorPrincipal: string
-  provenance: string
   occurredAt: string
 }
 
@@ -111,7 +115,6 @@ export async function recordObservation(
     const { data, error } = await client.rpc('survival_record_observation', {
       p_project_id: input.projectId,
       p_to_state: input.toState,
-      p_autonomy_level: input.autonomyLevel,
       p_reasons: input.reasons,
       p_gaps: input.gaps,
       p_binding_scope: input.bindingScope,
@@ -125,8 +128,6 @@ export async function recordObservation(
       p_operating_paused: input.operatingPaused,
       p_threshold_status: input.thresholdStatus,
       p_derivation_version: input.derivationVersion,
-      p_actor_principal: input.actorPrincipal,
-      p_provenance: input.provenance,
       p_occurred_at: input.occurredAt,
     })
     if (error) return { status: 'unavailable', detail: String(error.message ?? error) }

@@ -16,7 +16,12 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { SURVIVAL_DERIVATION_VERSION, SURVIVAL_HISTORY_MAX_LIMIT } from '@/lib/atlas/survival/history'
+import {
+  SURVIVAL_DERIVATION_VERSION,
+  SURVIVAL_HISTORY_MAX_LIMIT,
+  SURVIVAL_RECORDER_PRINCIPAL,
+  SURVIVAL_OBSERVATION_PROVENANCE,
+} from '@/lib/atlas/survival/history'
 import { SURVIVAL_STATES, FUNDING_STATES } from '@/lib/atlas/survival/types'
 import {
   PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
@@ -222,8 +227,51 @@ describe('the migration matches the contract the code assumes', () => {
     for (const f of FUNDING_STATES) expect(EXEC, f).toContain(`'${f.toLowerCase()}'`)
   })
 
-  it('binds the declared funding amount to the KNOWN state in SQL', () => {
-    expect(EXEC).toContain("check (declared_funding_sek is null or funding_state = 'known')")
+  it('binds the declared funding amount to the KNOWN state in BOTH directions', () => {
+    // The one-directional form this replaced permitted `KNOWN` with no figure —
+    // a row claiming "we were told the capital" while carrying none, which no
+    // later reader could tell from a reading that had been lost.
+    expect(EXEC).toContain("(funding_state = 'known'      and declared_funding_sek is not null)")
+    expect(EXEC).toContain("(funding_state in ('undeclared', 'unavailable') and declared_funding_sek is null)")
+  })
+
+  it('pins the policy identity to the one derivation that exists', () => {
+    expect(EXEC).toContain('constraint survival_events_policy_identity_valid')
+    expect(EXEC).toContain("check (derivation_version = 1 and threshold_status = 'provisional')")
+    // The weaker standalone claims are gone rather than standing beside it.
+    expect(EXEC).not.toContain('survival_events_derivation_version_valid')
+    expect(EXEC).not.toContain('survival_events_threshold_status_valid')
+  })
+
+  it('ties the stored ceiling to the stored state, and derives it in the boundary', () => {
+    expect(EXEC).toContain('constraint survival_events_autonomy_matches_state')
+    // Whitespace-tolerant: the constraint is column-aligned in the source, and
+    // pinning the alignment would make a reformat look like a contract change.
+    for (const [state, level] of [['expand', 'l6'], ['normal', 'l6'], ['conserve', 'l3'],
+                                  ['critical', 'l1'], ['hibernate', 'l0']]) {
+      expect(EXEC, state).toMatch(new RegExp(`to_state = '${state}'\\s+and autonomy_level = '${level}'`))
+    }
+    // The RPC derives the ceiling from the state and accepts no caller's version.
+    expect(EXEC).toContain('v_autonomy_level := case p_to_state')
+    expect(EXEC).not.toContain('p_autonomy_level')
+  })
+
+  it('writes actor and provenance itself, and accepts neither', () => {
+    expect(EXEC).toContain('constraint survival_events_actor_machine_identity')
+    expect(EXEC).toContain('constraint survival_events_provenance_machine_identity')
+    expect(EXEC).not.toContain('p_actor_principal')
+    expect(EXEC).not.toContain('p_provenance')
+    // Both branches of the writer, so no path writes a caller's value.
+    expect(EXEC.match(/'atlas\.survival_recorder'/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    expect(EXEC.match(/'atlas\.survival\.observation\.v1'/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+  })
+
+  it('the SQL literals and the TypeScript constants name the same identity', () => {
+    // The identity is now written by the database, but its NAME still lives in
+    // TypeScript for readers. Two representations of one fact drift silently, so
+    // the pair is asserted rather than assumed.
+    expect(EXEC).toContain(`'${SURVIVAL_RECORDER_PRINCIPAL}'`)
+    expect(EXEC).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE}'`)
   })
 })
 

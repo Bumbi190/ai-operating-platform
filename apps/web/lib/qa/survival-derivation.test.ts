@@ -757,13 +757,28 @@ describe('the thresholds cannot be mistaken for approved policy', () => {
   })
 })
 
-describe('Phase 1 is inert', () => {
-  it('nothing outside this subsystem, its route and this test imports it', () => {
-    const roots = ['lib', 'app'].map(r => resolve(process.cwd(), r))
+describe('read-only, with a closed consumer set', () => {
+  // PHASE 1 asserted this module was inert: nothing imported it at all. Phase 1b
+  // deliberately broke that, with owner approval, by displaying the observation
+  // in Systemhälsa. The guard is therefore rewritten rather than deleted — the
+  // property that matters now is not "nobody reads it" but "ONLY these read it".
+  //
+  // Any new importer fails this test. That is the point: a module whose ceiling
+  // can narrow autonomy should not silently acquire consumers, and adding one
+  // should be a deliberate edit to this list rather than an accident nobody sees.
+  it('only the route and the Systemhälsa surface import it', () => {
+    const roots = ['lib', 'app', 'components'].map(r => resolve(process.cwd(), r))
     const allowPrefixes = [
       resolve(process.cwd(), 'lib/atlas/survival'),
       resolve(process.cwd(), 'lib/qa/survival-derivation.test.ts'),
       resolve(process.cwd(), 'app/api/system/survival'),
+      // Phase 1b's own suite imports the backend deliberately: it asserts the
+      // surface renders the module's OWN strings rather than fixture copies.
+      resolve(process.cwd(), 'lib/qa/system-health-survival.test.ts'),
+      // Phase 1b — display only. The loader carries the observation into the
+      // system-health model, and the Systemhälsa view renders it.
+      resolve(process.cwd(), 'lib/os/system-health'),
+      resolve(process.cwd(), 'components/platform/vnext/SystemHealth'),
     ]
     const offenders: string[] = []
 

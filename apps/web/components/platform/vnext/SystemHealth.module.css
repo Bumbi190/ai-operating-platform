@@ -328,3 +328,76 @@
     transition: none;
   }
 }
+
+/* ── Atlas Survival (Phase 1b) ───────────────────────────────────────────────
+   Display only. Five states mapped onto the four tones already used above —
+   cyan for expanding, neutral for normal, amber for conserving, red for
+   critical and a filled red for hibernating — so the states are distinguishable
+   without introducing a colour the rest of the surface does not already mean. */
+
+.survivalState {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding-left: 0.5rem;
+  border-left: 2px solid rgb(var(--foreground-rgb) / 0.18);
+}
+.survivalStateLabel {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.45);
+}
+.survivalStateValue { font-size: 1.0625rem; font-weight: 650; color: hsl(var(--foreground)); }
+
+.survivalState[data-survival='EXPAND']    { border-left-color: rgb(var(--omnira-cyan-rgb) / 0.5); }
+.survivalState[data-survival='EXPAND']    .survivalStateValue { color: rgb(var(--omnira-cyan-rgb)); }
+.survivalState[data-survival='CONSERVE']  { border-left-color: rgb(251 191 36 / 0.6); }
+.survivalState[data-survival='CONSERVE']  .survivalStateValue { color: rgb(251 191 36); }
+.survivalState[data-survival='CRITICAL']  { border-left-color: rgb(248 113 113 / 0.6); }
+.survivalState[data-survival='CRITICAL']  .survivalStateValue { color: rgb(248 113 113 / 0.88); }
+.survivalState[data-survival='HIBERNATE'] {
+  border-left-color: rgb(248 113 113 / 0.9);
+  background: rgb(248 113 113 / 0.06);
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+.survivalState[data-survival='HIBERNATE'] .survivalStateValue { color: rgb(248 113 113); }
+
+.survivalTags { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.survivalTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.12);
+  background: rgb(var(--foreground-rgb) / 0.03);
+  font-size: 0.625rem;
+  color: rgb(var(--foreground-rgb) / 0.72);
+}
+/* A gap is a known unknown, not a problem: dashed, and quieter than a reason. */
+.survivalTag[data-kind='gap'] { border-style: dashed; color: rgb(var(--foreground-rgb) / 0.56); }
+
+/* Provisional policy. Deliberately the dashed "not settled" treatment rather
+   than an attention colour: it is a statement about the thresholds' status, not
+   a condition an operator has to act on — and borrowing amber or violet would
+   make it mean one of those instead. */
+.survivalProvisional {
+  margin-top: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px dashed rgb(var(--foreground-rgb) / 0.22);
+  background: rgb(var(--foreground-rgb) / 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.survivalProvisionalHead {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(var(--foreground-rgb) / 0.72);
+}
+.survivalProvisionalBody { font-size: 0.6875rem; line-height: 1.5; color: rgb(var(--foreground-rgb) / 0.62); }

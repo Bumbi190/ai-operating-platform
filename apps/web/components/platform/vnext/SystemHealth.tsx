@@ -5,6 +5,7 @@ import { sv } from 'date-fns/locale/sv'
 import { PauseToggle } from '@/components/platform/PauseToggle'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
 import type {
+  SurvivalSection,
   SystemAutomation,
   SystemComponent,
   SystemDreamIssue,
@@ -16,7 +17,14 @@ import {
   AUTOMATION_LIVENESS_NOTE,
   COMPONENT_STATE_LABELS,
   DREAM_SEVERITY_LABELS,
+  FUNDING_STATE_LABELS,
   MEMORY_OBSERVABILITY_NOTE,
+  SURVIVAL_CEILING_NOTE,
+  SURVIVAL_GAP_LABELS,
+  SURVIVAL_REASON_LABELS,
+  SURVIVAL_REVENUE_SIGNAL_NOTE,
+  SURVIVAL_SCOPE_LABELS,
+  SURVIVAL_STATE_LABELS,
   UNKNOWN_LABEL,
   UNREADABLE_LABEL,
 } from '@/lib/os/system-health-shared'
@@ -71,6 +79,7 @@ export function SystemHealth({ model }: { model: SystemHealthModel }) {
       <div className={styles.columns}>
         <div className={styles.column}>
           <ExecutionPanel model={model} />
+          <SurvivalPanel model={model} />
           <ProjectsPanel model={model} />
         </div>
         <div className={styles.column}>
@@ -176,6 +185,161 @@ function ExecutionPanel({ model }: { model: SystemHealthModel }) {
         Senaste körning: {execution.lastRunAt ? <Rel iso={execution.lastRunAt} /> : <span className={styles.absent}>{UNKNOWN_LABEL.toLowerCase()}</span>}
       </p>
     </section>
+  )
+}
+
+/**
+ * Atlas Survival — the read-only economic observation, displayed.
+ *
+ * DISPLAY ONLY, and structurally so. Nothing here computes a state, a ceiling, a
+ * threshold or an amount: every value is carried from `readSurvivalSnapshot()`,
+ * the same reader `GET /api/system/survival` calls, and this panel offers no
+ * control of any kind. There is no path from this surface to a change in the
+ * survival state, and no second reader that could disagree with the API.
+ *
+ * The ceiling always arrives fully qualified — the model carries no bare level
+ * token — so "Autonomy License L3" cannot degrade into "L3".
+ */
+function SurvivalPanel({ model }: { model: SystemHealthModel }) {
+  const { survival } = model
+  return (
+    <section className={styles.panel} aria-labelledby="sys-survival">
+      <SectionHead id="sys-survival" title="Atlas Survival" />
+      {!survival.ok ? (
+        <Note tone="error">
+          Överlevnadsobservationen {UNREADABLE_LABEL.toLowerCase()}. Okänt här är inte ett normalt
+          läge — ingen nivå antas och inga belopp visas.
+        </Note>
+      ) : (
+        <SurvivalBody survival={survival.value} />
+      )}
+    </section>
+  )
+}
+
+const sek = (value: number) =>
+  new Intl.NumberFormat('sv-SE', { maximumFractionDigits: 2 }).format(value)
+
+function SurvivalBody({ survival }: { survival: SurvivalSection }) {
+  const { state, fundingState } = survival
+  const unknown = <span className={styles.absent}>{UNKNOWN_LABEL.toLowerCase()}</span>
+
+  const headroom =
+    survival.bindingRemainingSek === null || survival.bindingLimitSek === null ? (
+      unknown
+    ) : (
+      <>
+        {sek(survival.bindingRemainingSek)} / {sek(survival.bindingLimitSek)} SEK
+      </>
+    )
+
+  const scopeLabel = survival.bindingScope
+    ? SURVIVAL_SCOPE_LABELS[survival.bindingScope] ?? survival.bindingScope
+    : null
+
+  return (
+    <>
+      <div className={styles.survivalState} data-survival={state}>
+        <span className={styles.survivalStateLabel}>Läge</span>
+        <span className={styles.survivalStateValue} data-role="survival-state">
+          {SURVIVAL_STATE_LABELS[state]}
+        </span>
+      </div>
+
+      <dl className={styles.facts}>
+        <TextFact label="Autonomitak" role="survival-ceiling" value={survival.ceilingLabel} />
+        <TextFact label="Vad taket innebär" value={survival.ceilingEffect} />
+        <TextFact
+          label={scopeLabel ? `Budgetutrymme (${scopeLabel})` : 'Budgetutrymme'}
+          value={headroom}
+        />
+        <TextFact
+          label="Uppmätt förbrukning"
+          value={
+            survival.burnSekPerDay === null ? unknown : <>{sek(survival.burnSekPerDay)} SEK/dygn</>
+          }
+        />
+        {/* UNDECLARED is a stable absence, not a fault, so it takes no warning
+            tone. UNAVAILABLE is a failed read and does. */}
+        <TextFact
+          label="Finansiering"
+          tone={fundingState === 'UNAVAILABLE' ? 'attention' : undefined}
+          value={FUNDING_STATE_LABELS[fundingState]}
+        />
+        <TextFact
+          label="Deklarerat driftkapital"
+          value={
+            fundingState === 'KNOWN' && survival.declaredFundingSek !== null ? (
+              <>{sek(survival.declaredFundingSek)} SEK</>
+            ) : (
+              FUNDING_STATE_LABELS[fundingState]
+            )
+          }
+        />
+        {/* Null means NOT ESTABLISHED. It is never rendered as 0. */}
+        <TextFact
+          label="Räckvidd"
+          value={survival.runwayDays === null ? unknown : <>{sek(survival.runwayDays)} dygn</>}
+        />
+        <TextFact
+          label="Intäktstrend"
+          value={
+            survival.revenueTrendSek === null ? (
+              unknown
+            ) : (
+              <>
+                {survival.revenueTrendSek > 0 ? '+' : ''}
+                {sek(survival.revenueTrendSek)} SEK
+              </>
+            )
+          }
+        />
+      </dl>
+
+      <p className={styles.meta}>{SURVIVAL_CEILING_NOTE}</p>
+      <p className={styles.meta}>{SURVIVAL_REVENUE_SIGNAL_NOTE}</p>
+
+      <ul className={styles.survivalTags} aria-label="Varför läget är vad det är">
+        {survival.reasons.map((reason) => (
+          <li key={reason} className={styles.survivalTag} data-kind="reason">
+            {SURVIVAL_REASON_LABELS[reason] ?? reason}
+          </li>
+        ))}
+      </ul>
+
+      {survival.gaps.length > 0 ? (
+        <ul className={styles.survivalTags} aria-label="Vad som inte kunde fastställas">
+          {survival.gaps.map((gap) => (
+            <li key={gap} className={styles.survivalTag} data-kind="gap">
+              {SURVIVAL_GAP_LABELS[gap] ?? gap}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* The pause is separate context and is attributed to the operator, so
+          nothing here can read as "the survival state stopped automation". */}
+      <p className={styles.meta}>
+        {survival.operatingPaused === null ? (
+          <>Automatiseringsstopp: {UNKNOWN_LABEL.toLowerCase()} — läses inte från den här ytan.</>
+        ) : survival.operatingPaused ? (
+          <>Automatiseringsstopp: satt av operatören, inte av överlevnadsläget.</>
+        ) : (
+          <>Automatiseringsstopp: inte satt.</>
+        )}
+      </p>
+
+      {/* PROVISIONAL POLICY, stated in the reading order and never only in a
+          tooltip. The notice itself is the backend's own string, rendered
+          verbatim: a UI-authored copy would be a second version of a policy
+          claim, free to drift from the one the API reports. */}
+      <div className={styles.survivalProvisional} data-role="survival-provisional">
+        <span className={styles.survivalProvisionalHead}>
+          Preliminär tröskelpolicy ({survival.thresholdStatus})
+        </span>
+        <span className={styles.survivalProvisionalBody}>{survival.policyNotice}</span>
+      </div>
+    </>
   )
 }
 
@@ -382,6 +546,30 @@ function Fact({ label, value, tone }: { label: string; value: number | null; ton
     <div className={styles.fact} data-tone={tone ?? 'plain'}>
       <dt>{label}</dt>
       <dd>{value == null ? <span className={styles.absent}>{UNKNOWN_LABEL.toLowerCase()}</span> : value}</dd>
+    </div>
+  )
+}
+
+/**
+ * The same fact row as `Fact`, for values that are already formatted text or
+ * carry their own unknown marker. `Fact` owns the numeric-plus-unknown case and
+ * is unchanged, so the panels that use it are untouched.
+ */
+function TextFact({
+  label,
+  value,
+  tone,
+  role,
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'attention'
+  role?: string
+}) {
+  return (
+    <div className={styles.fact} data-tone={tone ?? 'plain'}>
+      <dt>{label}</dt>
+      <dd data-role={role}>{value}</dd>
     </div>
   )
 }

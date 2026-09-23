@@ -135,39 +135,70 @@ reviewable change to SDF-1A itself.
 
 ## 5. Authority is never inferred — the translator's real input shape
 
+**Status update:** this slice is now implemented — see
+`apps/web/lib/atlas/code-work/mission-translation/{types,translate}.ts`
+(Phase 1A, PR #269). The shape below reflects what actually shipped, not
+the earlier illustrative sketch.
+
 A Mission→Admission translator must not manufacture `CodeWorkGovernancePins`,
 a repository binding, or any hash. Those are authoritative bindings that
 already exist elsewhere by the time translation happens — the translator's
-job is to carry them through unchanged, not to derive them:
+job is to carry them through unchanged, not to derive them. It also must not
+treat a stored `WorkPackage`'s own contract fields
+(`authority`/`allowedActions`/`tools`) as proof that the package is usable
+*right now*: a Delegation can be revoked, or a Mission can end, after a
+Work Package was cut from it. The real chain is:
+
+```
+stored WorkPackage (contract data, lib/atlas/workpackage/types.ts)
+  → resolveWorkPackage()                          (server-only, re-asks the live
+                                                     Delegation/Mission chain)
+    → WorkPackageEvaluation { usable, reason, workPackage, ... }
+      → translateWorkPackageToAdmission()          (PURE — takes the evaluation,
+                                                     refuses one that isn't usable)
+        → CodeWorkAdmissionV1 candidate
+          → validateCodeWorkAdmission / validateCodeWorkPackageAttenuation
+            (existing, unchanged)
+```
+
+`resolveWorkPackage()` is `server-only` and does real reads, so the
+translator never imports or calls it — exactly like
+`control-plane/principal-write.ts`'s `proposeCodeWork`, it takes an
+already-resolved `WorkPackageEvaluation` from its caller:
 
 ```ts
-// Recommended shape — not implemented in this PR. Reuses real types wherever
-// one exists; every field is a reference to something already authoritative,
-// never a value the translator computes itself.
-
-import type { MissionRecord, MissionId } from '@/lib/atlas/mission/types'
-import type { DelegationEnvelope } from '@/lib/atlas/delegation/types'
-import type { WorkPackage } from '@/lib/atlas/workpackage/types'
-import type { AuthorizationTarget } from '@/lib/atlas/authorization/types'
-import type { CodeWorkAdmissionV1 } from '@/lib/atlas/code-work/types'
+import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
+import type { CodeWorkFilePolicy, CodeWorkRepositoryBinding, CodeWorkAdmissionV1 } from '@/lib/atlas/code-work/types'
 
 interface CodeWorkMissionBindings {
-  mission: Pick<MissionRecord, 'missionId' | 'version'> & { hash: string }
-  delegation: Pick<DelegationEnvelope, 'envelopeId'> & { hash: string }
-  workPackage: WorkPackage           // the real, already-validated Work Package
-  authorizationTarget: AuthorizationTarget
-  repositoryId: string               // resolves an existing repository-registry.ts entry
+  workId: string                      // SDF-1B's own run identity — must be UUID-shaped
+  repository: CodeWorkRepositoryBinding
+  worktree: { branchPrefix: string }
+  files: CodeWorkFilePolicy
+  requiredCommandIds: string[]
+  worker?: { provider?: string; modelId?: string; adapterId?: string; adapterVersion?: number; outputProtocol?: string; capabilityId?: string; capabilityVersion?: number } | null
 }
 
 function translateWorkPackageToAdmission(
-  workPackage: WorkPackage,          // must already be attenuated against its DelegationEnvelope
-  riskPolicy: RiskLevelPolicy,       // RISK-AND-AUTHORITY.md §2
-  bindings: CodeWorkMissionBindings, // resolved by the CALLER from live authority state, never guessed
-): CodeWorkAdmissionV1 | MissionTranslationRejection
+  evaluation: WorkPackageEvaluation,  // caller already called resolveWorkPackage(); rejected if !evaluation.usable
+  riskLevel: 0 | 1 | 2 | 3,
+  bindings: CodeWorkMissionBindings,  // resolved by the CALLER from live state, never guessed
+): { ok: true; admission: CodeWorkAdmissionV1; riskPolicy: unknown } | { ok: false; rejection: unknown }
 ```
+
+Note there is no `mission`/`delegation` field in `CodeWorkMissionBindings`:
+`evaluation.workPackage` already carries `missionId`/`missionVersion`/
+`missionBoundHash`/`envelopeId`/`delegationBoundHash` directly (Chapter 21's
+own field set), and the existing `validateCodeWorkPackageAttenuation`
+already requires these to equal the admission's governance pins exactly —
+a separate binding would only be a second place for them to drift.
 
 Properties this function must have:
 
+- **Gated on live usability, not stored contract data.** Rejects immediately
+  if `evaluation.usable` is `false` — a stored Work Package's own
+  `authority`/`allowedActions`/`tools` never substitute for the live check
+  `resolveWorkPackage()` already performed.
 - **Pure and non-authoritative.** It never mints a hash, a delegation id, a
   work-package id, or an `AuthorizationTarget`. Every field in `bindings` is
   supplied by a caller that already resolved it against live state (the same

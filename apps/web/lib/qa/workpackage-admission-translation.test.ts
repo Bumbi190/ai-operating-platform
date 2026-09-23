@@ -1,19 +1,22 @@
 /**
- * Phase 1A — WorkPackage -> CodeWorkAdmissionV1 pure translation.
+ * Phase 1A — WorkPackage evaluation -> CodeWorkAdmissionV1 pure translation.
  *
  * Proves the translator is pure (no I/O, no clocks), non-authoritative (every
  * governance pin comes from the WorkPackage or a caller binding, never
- * invented), fail-closed (every widening attempt is rejected by SDF-1A's own
- * validators, not by a duplicate check here), and deterministic. No database,
- * network, Git mutation, filesystem mutation, model call or process launch
- * occurs anywhere in this suite.
+ * invented), gated on LIVE usability (a structurally valid but currently
+ * invalidated WorkPackage cannot translate), persistence-shape aware (a
+ * non-UUID workId cannot translate, since SDF-1B's real store column is
+ * Postgres `uuid`), fail-closed (every widening attempt is rejected by
+ * SDF-1A's own validators, not by a duplicate check here), and deterministic.
+ * No database, network, Git mutation, filesystem mutation, model call or
+ * process launch occurs anywhere in this suite.
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { workPackageHash } from '@/lib/atlas/workpackage/binding'
-import type { WorkPackage } from '@/lib/atlas/workpackage/types'
+import type { WorkPackage, WorkPackageEvaluation, WorkPackageUnusableReason } from '@/lib/atlas/workpackage/types'
 import {
   CODE_WORK_AUTHORIZATION_ACTION_KIND,
   CODE_WORK_CAPABILITY_ID,
@@ -23,6 +26,7 @@ import {
   OMNIRA_REPOSITORY_ID,
   OMNIRA_TRUSTED_REPOSITORY,
 } from '@/lib/atlas/code-work/repository-registry'
+import { CLAUDE_PATCH_V1 } from '@/lib/atlas/code-work/worker-registry'
 import {
   lookupMissionRiskLevelPolicy,
   MISSION_RISK_LEVEL_POLICIES,
@@ -40,6 +44,16 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 const BASE_SHA = 'd8b81b79848bd5aefec8fcc6776b95a56004318e'
 const SCOPE = 'apps/web/lib/atlas/code-work/mission-translation'
+const ASSIGNED_AT = '2026-09-23T00:00:00.000Z'
+
+// Valid, distinguishable UUID-shaped identities. SDF-1B's real store column
+// is Postgres `uuid` (see translate.ts's `isUuidShaped` comment) — every
+// fixture that expects a successful translation must use one of these, never
+// a human-readable slug.
+const WORK_ID_1 = '11111111-1111-4111-8111-111111111111'
+const WORK_ID_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const WORK_ID_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const WORK_ID_DISTINCT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 
 function workPackage(overrides: Partial<Omit<WorkPackage, 'packageHash'>> = {}): WorkPackage {
   const terms: Omit<WorkPackage, 'packageHash'> = {
@@ -80,9 +94,39 @@ function workPackage(overrides: Partial<Omit<WorkPackage, 'packageHash'>> = {}):
   return { ...terms, packageHash: workPackageHash(terms) }
 }
 
+/**
+ * The live-resolved shape `resolveWorkPackage()` would return for a currently
+ * usable package. The translator never calls `resolveWorkPackage()` itself
+ * (it is `server-only` and reads a real Delegation/Mission chain) — these
+ * tests construct the evaluation directly, exactly as
+ * `control-plane/principal-write.ts`'s `proposeCodeWork` receives it.
+ */
+function usable(pkg: WorkPackage = workPackage()): WorkPackageEvaluation {
+  return {
+    lifecycleState: 'assigned',
+    effectiveState: 'assigned',
+    usable: true,
+    reason: 'usable',
+    workPackage: pkg,
+    assignedAt: ASSIGNED_AT,
+  }
+}
+
+/** The same shape `resolveWorkPackage()` returns once the live chain no longer holds. */
+function invalidated(pkg: WorkPackage, reason: WorkPackageUnusableReason): WorkPackageEvaluation {
+  return {
+    lifecycleState: 'assigned',
+    effectiveState: 'invalidated',
+    usable: false,
+    reason,
+    workPackage: pkg,
+    assignedAt: ASSIGNED_AT,
+  }
+}
+
 function bindings(overrides: Partial<CodeWorkMissionBindings> = {}): CodeWorkMissionBindings {
   return {
-    workId: 'work-translate-1',
+    workId: WORK_ID_1,
     repository: {
       repositoryId: OMNIRA_REPOSITORY_ID,
       owner: OMNIRA_TRUSTED_REPOSITORY.owner,
@@ -107,13 +151,15 @@ function bindings(overrides: Partial<CodeWorkMissionBindings> = {}): CodeWorkMis
 function rejectionCodes(result: MissionTranslationResult): string[] {
   if (result.ok) return []
   const rejection = result.rejection
-  return rejection.kind === 'risk_policy_undefined' ? [rejection.kind] : rejection.violations.map(v => v.code)
+  return rejection.kind === 'admission_invalid' || rejection.kind === 'attenuation_failed'
+    ? rejection.violations.map(v => v.code)
+    : [rejection.kind]
 }
 
 describe('Phase 1A — happy path produces a genuinely admissible candidate', () => {
-  it('translates a valid bounded Work Package into an admission that independently passes both canonical validators', () => {
+  it('translates a usable Work Package evaluation into an admission that independently passes both canonical validators', () => {
     const pkg = workPackage()
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
@@ -136,22 +182,22 @@ describe('Phase 1A — happy path produces a genuinely admissible candidate', ()
       workPackageId: 'wp-b', missionId: 'mission-b', missionVersion: 7, missionBoundHash: HASH_B,
       envelopeId: 'delegation-b', delegationBoundHash: HASH_A, projectId: 'project-b',
     })
-    const resultA = translateWorkPackageToAdmission(a, 0, bindings({ workId: 'work-a' }))
-    const resultB = translateWorkPackageToAdmission(b, 0, bindings({ workId: 'work-b' }))
+    const resultA = translateWorkPackageToAdmission(usable(a), 0, bindings({ workId: WORK_ID_A }))
+    const resultB = translateWorkPackageToAdmission(usable(b), 0, bindings({ workId: WORK_ID_B }))
     expect(resultA.ok && resultB.ok).toBe(true)
     if (!resultA.ok || !resultB.ok) return
 
     expect(resultA.admission.projectId).toBe('project-a')
     expect(resultA.admission.governance).toEqual({
       mission: { id: 'mission-a', version: 3, hash: HASH_A },
-      authorizationTarget: { targetType: 'atlas.code_work_admission', targetId: 'work-a', actionKind: 'code.worktree.prepare_and_patch' },
+      authorizationTarget: { targetType: 'atlas.code_work_admission', targetId: WORK_ID_A, actionKind: 'code.worktree.prepare_and_patch' },
       delegation: { envelopeId: 'delegation-a', hash: HASH_B },
       workPackage: { id: 'wp-a', hash: a.packageHash },
     })
     expect(resultB.admission.projectId).toBe('project-b')
     expect(resultB.admission.governance).toEqual({
       mission: { id: 'mission-b', version: 7, hash: HASH_B },
-      authorizationTarget: { targetType: 'atlas.code_work_admission', targetId: 'work-b', actionKind: 'code.worktree.prepare_and_patch' },
+      authorizationTarget: { targetType: 'atlas.code_work_admission', targetId: WORK_ID_B, actionKind: 'code.worktree.prepare_and_patch' },
       delegation: { envelopeId: 'delegation-b', hash: HASH_A },
       workPackage: { id: 'wp-b', hash: b.packageHash },
     })
@@ -159,19 +205,101 @@ describe('Phase 1A — happy path produces a genuinely admissible candidate', ()
     // not fall back to one fixed/default set regardless of what it was given.
     expect(resultA.admission.governance).not.toEqual(resultB.admission.governance)
   })
+
+  it('sources the default worker identity from the real worker registry entry, not a second copy', () => {
+    const result = translateWorkPackageToAdmission(usable(), 0, bindings())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.admission.worker).toMatchObject({
+      adapterId: CLAUDE_PATCH_V1.adapterId,
+      adapterVersion: CLAUDE_PATCH_V1.adapterVersion,
+      provider: CLAUDE_PATCH_V1.provider,
+      modelId: CLAUDE_PATCH_V1.modelId,
+      outputProtocol: CLAUDE_PATCH_V1.outputProtocol,
+    })
+  })
 })
 
 describe('Phase 1A — determinism', () => {
   it('produces byte-identical results for structurally identical input', () => {
-    const first = translateWorkPackageToAdmission(workPackage(), 1, bindings())
-    const second = translateWorkPackageToAdmission(workPackage(), 1, bindings())
+    const first = translateWorkPackageToAdmission(usable(workPackage()), 1, bindings())
+    const second = translateWorkPackageToAdmission(usable(workPackage()), 1, bindings())
     expect(first).toEqual(second)
+  })
+})
+
+describe('Phase 1A — live usability gate: contract data is not proof of current authority', () => {
+  it('rejects an invalidated evaluation even though the embedded Work Package itself is structurally valid', () => {
+    // This Work Package's own authority/allowedActions/tools are exactly the
+    // same well-formed contract data the happy-path test uses — proving the
+    // rejection below comes from the LIVE usability gate, not from anything
+    // wrong with the stored contract.
+    const pkg = workPackage()
+    expect(pkg.authority.some(item => item.action === CODE_WORK_AUTHORIZATION_ACTION_KIND)).toBe(true)
+    expect(pkg.tools.some(item => item.tool === CODE_WORK_CAPABILITY_ID)).toBe(true)
+
+    const result = translateWorkPackageToAdmission(invalidated(pkg, 'delegation_unusable'), 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_not_usable'])
+    expect(!result.ok && result.rejection.kind === 'work_package_not_usable' && result.rejection.reason)
+      .toBe('delegation_unusable')
+  })
+
+  it.each([
+    'delegation_unusable', 'delegation_pin_changed', 'mission_pin_changed',
+    'exceeds_delegation', 'role_unavailable', 'delegation_unreadable',
+  ] satisfies WorkPackageUnusableReason[])('rejects every unusable reason SDF-1A itself can produce: %s', reason => {
+    const result = translateWorkPackageToAdmission(invalidated(workPackage(), reason), 1, bindings())
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_package_not_usable'])
+  })
+
+  it('never imports the server-only live resolver itself', () => {
+    // The doc comments explain WHY resolveWorkPackage() is never called, so
+    // they mention its name — this checks for the one thing that would
+    // actually wire it in: an import from the module that defines it.
+    const translateSource = readFileSync(
+      resolve(REPO_ROOT, 'apps/web/lib/atlas/code-work/mission-translation/translate.ts'), 'utf8',
+    )
+    expect(translateSource).not.toMatch(/from ['"].*workpackage\/principal-read['"]/)
+    expect(translateSource).not.toMatch(/from ['"]server-only['"]/)
+  })
+})
+
+describe('Phase 1A — work id must be persistable by the real SDF-1B control plane', () => {
+  it('rejects a non-UUID workId even when everything else is valid', () => {
+    const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: 'work-translate-1' }))
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+    expect(!result.ok && result.rejection.kind === 'work_id_not_persistable' && result.rejection.workId)
+      .toBe('work-translate-1')
+  })
+
+  it.each([
+    'not-a-uuid',
+    '11111111-1111-1111-1111-11111111111',  // one hex digit short
+    '11111111-1111-1111-1111-1111111111111', // one hex digit long
+    '11111111_1111_4111_8111_111111111111',  // wrong separators
+    '11111111-1111-4111-8111-11111111111G',  // non-hex character
+    'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',   // uppercase — SDF-1A's own hash patterns are lowercase-only too
+  ])('rejects malformed UUID shape: %s', badWorkId => {
+    const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: badWorkId }))
+    expect(result.ok).toBe(false)
+    expect(rejectionCodes(result)).toEqual(['work_id_not_persistable'])
+  })
+
+  it('accepts a valid UUID workId (happy path already proves this; this test isolates it)', () => {
+    const result = translateWorkPackageToAdmission(usable(), 1, bindings({ workId: WORK_ID_DISTINCT }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.admission.workId).toBe(WORK_ID_DISTINCT)
+    expect(result.admission.governance.authorizationTarget.targetId).toBe(WORK_ID_DISTINCT)
   })
 })
 
 describe('Phase 1A — fail-closed: every widening attempt is rejected, never silently accepted', () => {
   it('rejects an undefined Mission Risk Level — a concept SDF-1A itself has no way to catch', () => {
-    const result = translateWorkPackageToAdmission(workPackage(), 4 as never, bindings())
+    const result = translateWorkPackageToAdmission(usable(), 4 as never, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toEqual(['risk_policy_undefined'])
     expect(lookupMissionRiskLevelPolicy(4)).toBeNull()
@@ -180,7 +308,7 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects an unmapped required check instead of falling back to a shell string', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1, bindings({ requiredCommandIds: ['sdf1.proof.typecheck', 'shell.anything'] }),
+      usable(), 1, bindings({ requiredCommandIds: ['sdf1.proof.typecheck', 'shell.anything'] }),
     )
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('command_not_registered')
@@ -188,7 +316,7 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects a shell-metacharacter string smuggled as a command id — it is never turned into argv', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1, bindings({ requiredCommandIds: ['; rm -rf / #'] }),
+      usable(), 1, bindings({ requiredCommandIds: ['; rm -rf / #'] }),
     )
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('command_not_registered')
@@ -196,7 +324,7 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects a worker hint that cannot resolve to the one registered worker', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1, bindings({ worker: { modelId: 'claude-opus-4-1' } }),
+      usable(), 1, bindings({ worker: { modelId: 'claude-opus-4-1' } }),
     )
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('worker_not_registered')
@@ -204,7 +332,7 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects a capability hint broader than the one SDF-1A permits', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1, bindings({ worker: { capabilityId: 'code.worktree.patch.v2' } }),
+      usable(), 1, bindings({ worker: { capabilityId: 'code.worktree.patch.v2' } }),
     )
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('capability_not_registered')
@@ -212,44 +340,44 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects a repository binding that cannot resolve to trusted repository state', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1,
+      usable(), 1,
       bindings({ repository: { ...bindings().repository, repositoryId: 'github.com/other/repo' } }),
     )
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('repository_not_trusted')
   })
 
-  it('rejects a Work Package that never authorized code-work action — missing authority binding', () => {
+  it('rejects a Work Package whose stored contract never authorized code-work action', () => {
     const pkg = workPackage({ authority: [], allowedActions: [] })
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('code_action_not_authorized')
   })
 
   it('rejects a Work Package that explicitly forbids the code-work action, even if also allowed', () => {
     const pkg = workPackage({ forbiddenActions: [{ action: CODE_WORK_AUTHORIZATION_ACTION_KIND, note: null }] })
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('code_action_not_authorized')
   })
 
   it('rejects a Work Package missing the code-work tool bound', () => {
     const pkg = workPackage({ tools: [] })
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('code_capability_not_authorized')
   })
 
-  it('rejects an invalid governance binding — a Work Package hash that is not shaped like a hash', () => {
+  it('rejects a malformed governance hash carried on the stored Work Package', () => {
     const pkg = workPackage({ missionBoundHash: 'not-a-real-hash' })
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('sha256_required')
   })
 
   it('rejects a file scope the Work Package never covered — path/scope incompatibility', () => {
     const result = translateWorkPackageToAdmission(
-      workPackage(), 1,
+      usable(), 1,
       bindings({ files: { ...bindings().files, writeScopes: ['apps/web/lib/atlas/code-work/somewhere-else'] } }),
     )
     expect(result.ok).toBe(false)
@@ -258,7 +386,7 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 
   it('rejects a repository the Work Package data scope never named', () => {
     const pkg = workPackage({ dataScope: [] })
-    const result = translateWorkPackageToAdmission(pkg, 1, bindings())
+    const result = translateWorkPackageToAdmission(usable(pkg), 1, bindings())
     expect(result.ok).toBe(false)
     expect(rejectionCodes(result)).toContain('repository_not_covered')
   })
@@ -267,15 +395,15 @@ describe('Phase 1A — fail-closed: every widening attempt is rejected, never si
 describe('Phase 1A — never manufactures authority', () => {
   it('binds authorizationTarget.targetId to the caller-supplied workId, never to workPackageId', () => {
     const pkg = workPackage({ workPackageId: 'wp-distinct' })
-    const result = translateWorkPackageToAdmission(pkg, 0, bindings({ workId: 'work-distinct' }))
+    const result = translateWorkPackageToAdmission(usable(pkg), 0, bindings({ workId: WORK_ID_DISTINCT }))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.admission.governance.authorizationTarget.targetId).toBe('work-distinct')
+    expect(result.admission.governance.authorizationTarget.targetId).toBe(WORK_ID_DISTINCT)
     expect(result.admission.governance.authorizationTarget.targetId).not.toBe('wp-distinct')
   })
 
   it('the resulting commands carry only ids, never an argv or shell field of any kind', () => {
-    const result = translateWorkPackageToAdmission(workPackage(), 0, bindings())
+    const result = translateWorkPackageToAdmission(usable(), 0, bindings())
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(Object.keys(result.admission.commands).sort()).toEqual(
@@ -311,7 +439,12 @@ describe('Phase 1A structural no-execution proof', () => {
     expect(source).not.toMatch(/\b(?:execFile|spawn|fork)\s*\(|\bchildProcess\.exec\s*\(|\bfetch\s*\(|\b(?:writeFile|appendFile|createWriteStream)\s*\(/)
     expect(source).not.toMatch(/git\s+worktree\s+add|git\s+commit|gh\s+pr|vercel\s+deploy/i)
     expect(source).not.toMatch(/process\.env|SUPABASE_SERVICE_ROLE|ANTHROPIC_API_KEY|OPENAI_API_KEY/)
-    expect(source).not.toMatch(/Date\.now\(\)|Math\.random\(\)|crypto\.randomUUID\(\)/)
-    expect(source).not.toMatch(/resolveCommandInvocation/)
+    // Import-based, not bare-word: both files' doc comments explain the
+    // deliberate ABSENCE of a clock/random source and of resolveWorkPackage()
+    // by naming them, so a bare-word match would false-positive on prose.
+    expect(source).not.toMatch(/from ['"](?:node:)?crypto['"]/)
+    expect(source).not.toMatch(/from ['"].*workpackage\/principal-read['"]/)
+    expect(source).not.toMatch(/resolveCommandInvocation\(/)
+    expect(source).not.toMatch(/from ['"]server-only['"]/)
   })
 })

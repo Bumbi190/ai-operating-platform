@@ -110,80 +110,85 @@ docs/autonomy/EVALUATION-GATES.md
 
 No file outside `docs/autonomy/` is touched. No existing file is modified.
 
-## 4. Smallest implementable next slice (design only — not built in this PR)
+## 4. Smallest implementable next slice
+
+**Status: implemented as Phase 1A, PR #269 (`apps/web/lib/atlas/code-work/mission-translation/`).**
+The text below is kept as the design record; it now describes what shipped,
+not a future proposal.
 
 The smallest safe next step is **not** a dispatcher (that's a much larger,
 higher-risk piece requiring real process execution, real model calls, and
 real stop-condition enforcement under load). Given how mature SDF-1A/1B1/1B2
-already are, the smallest *safe and obviously non-duplicative* next slice is:
+already are, the smallest *safe and obviously non-duplicative* next slice
+turned out to be:
 
-**A Work Package → Admission translator** — a pure function, in the same
-execution-free spirit as SDF-1A itself, taking the real Work Package plus a
-separately-resolved bindings object rather than inventing any pin itself
-(MISSION-CONTRACT.md §5 has the full rationale):
+**A live Work Package evaluation → Admission translator** — a pure function,
+in the same execution-free spirit as SDF-1A itself, gated on
+`resolveWorkPackage()`'s own live-usability check rather than trusting a
+stored `WorkPackage`'s contract data alone (MISSION-CONTRACT.md §5 has the
+full rationale, including why the input is `WorkPackageEvaluation` and not a
+raw `WorkPackage`):
 
 ```ts
-// Recommended location: apps/web/lib/atlas/code-work/mission-translation.ts
-// (beside, not inside, SDF-1A's existing pure validators)
+// Actual location: apps/web/lib/atlas/code-work/mission-translation/translate.ts
+// (a new sibling subdirectory of code-work/, not a new top-level file — see
+// the closed-file-list note below)
 
 function translateWorkPackageToAdmission(
-  workPackage: WorkPackage,             // lib/atlas/workpackage/types.ts — real, already-attenuated
-  riskPolicy: RiskLevelPolicy,          // docs/autonomy/RISK-AND-AUTHORITY.md §2
+  evaluation: WorkPackageEvaluation,    // caller already called resolveWorkPackage();
+                                         // rejected if !evaluation.usable
+  riskLevel: 0 | 1 | 2 | 3,             // docs/autonomy/RISK-AND-AUTHORITY.md §2
   bindings: CodeWorkMissionBindings,    // docs/autonomy/MISSION-CONTRACT.md §5 —
-                                         // mission/delegation/authorizationTarget/repositoryId,
+                                         // workId/repository/worktree/files/requiredCommandIds/worker,
                                          // ALL resolved by the caller from live state
-): CodeWorkAdmissionV1 | MissionTranslationRejection
+): MissionTranslationResult
 ```
 
-Properties this function must have, by direct analogy to SDF-1A's existing
+Properties this function has, by direct analogy to SDF-1A's existing
 modules:
+- Gated on live usability: rejects immediately if `evaluation.usable` is
+  `false`, before touching anything else. A stored Work Package's own
+  `authority`/`allowedActions`/`tools` are contract data, not proof it is
+  still usable now.
 - Pure and non-authoritative — no I/O, no Git, no model call, no DB write,
   and **no minted hash, id, or authorization target of its own** (same
   discipline as `lib/atlas/code-work/policy.ts` and `control-plane/derive-admission.ts`,
   which already take a real `WorkPackage` as an input to check against, never
   as something to derive).
-- Rejects, never broadens: when `workPackage`'s declared capabilities exceed
-  what `capability.ts` permits, when `riskPolicy` has no policy defined for
-  the Work Package's risk level, or when a `requiredChecks` entry has no
-  matching `CodeWorkCommandId` (EVALUATION-GATES.md §1a) — every one of these
-  is a rejection, never a silent broadening of scope to make translation
-  succeed.
+- Rejects, never broadens: when `evaluation.workPackage`'s declared
+  capabilities exceed what `capability.ts` permits, when `riskLevel` has no
+  policy defined, when a `requiredCommandIds` entry has no matching
+  `CodeWorkCommandId` (EVALUATION-GATES.md §1a), or when the supplied
+  `workId` is not UUID-shaped (SDF-1B's real persistence column is Postgres
+  `uuid`; SDF-1A's own contract layer is deliberately unaware of that,
+  so this translator carries the one check SDF-1A cannot) — every one of
+  these is a rejection, never a silent broadening of scope.
 - Produces a `CodeWorkAdmissionV1` that is then handed to the **existing**
   SDF-1A admission validator (`policy.ts`) unchanged — this function's output
   must pass the same gate a hand-built admission would, and
   `validateCodeWorkPackageAttenuation` still re-checks it against the real
   `WorkPackage`, exactly as it does today.
+- The default worker identity is read from `worker-registry.ts`'s
+  `CLAUDE_PATCH_V1`, never a second copy of `provider`/`modelId`.
 - Adds zero new persistence, zero new authorization vocabulary, zero new
   evidence classes — reuses SDF-1B1/1B2/`authorization/*`/`mission/*`/
   `delegation/*`/`workpackage/*` as-is.
 
-**Implementation sequence, if/when approved:**
-1. Add `CodeWorkMissionBindings` and `RiskLevelPolicy` types (docs already
-   specify the shape) under `lib/atlas/code-work/mission.ts` or a
-   clearly-marked sibling — not inside `types.ts` itself, to keep SDF-1A's
-   existing exports stable, and importing `WorkPackage`/`DelegationEnvelope`/
-   `AuthorizationTarget` rather than redeclaring their shapes.
-2. Add the pure `translateWorkPackageToAdmission` function plus a
-   `MissionTranslationRejection` type, with unit tests mirroring the style of
-   SDF-1A's existing 454-line test file — including explicit test cases for
-   each rejection path in the bullet above (unmapped check, over-broad
-   capability, undefined risk-level policy).
-3. Wire nothing else. No API route, no dispatcher, no UI. The translator is
-   callable from a test or a future CLI, not from production, until a
-   dispatcher exists to call it for real.
-4. Only after that: design the dispatcher itself as its own, separately
-   reviewed, Level-2-risk phase (it is exactly the kind of "agent runtime"
-   change RISK-AND-AUTHORITY.md classifies as sensitive) — and scope it
-   explicitly to `claude_patch_v1`'s actual, current capability
-   (MODEL-ROUTING.md §1a): structured file-operation proposals inside an
-   isolated worktree, not interactive tool/shell/git/network use. Full
-   Claude Code/Codex-equivalent worker support is a later, separately
-   reviewed worker adapter and sandbox/broker decision, not an assumed
-   extension of this slice.
+**Architecture note found while implementing:** `code-work/` and its
+`control-plane/` subdirectory are each guarded by a closed-file-list test
+(`sdf1a-code-work-contracts.test.ts`, `sdf1b-control-plane-boundary.test.ts`).
+The translator therefore lives in a new sibling subdirectory,
+`code-work/mission-translation/`, mirroring the existing `control-plane/`
+precedent, rather than as a new top-level file in either directory.
 
-This phase does **not** implement step 1–4 above. It records the sequence so
-the next slice has an exact, pre-agreed starting point instead of a fresh
-design discussion.
+**Next step, not built:** design the dispatcher itself as its own,
+separately reviewed, Level-2-risk phase (it is exactly the kind of "agent
+runtime" change RISK-AND-AUTHORITY.md classifies as sensitive) — scoped
+explicitly to `claude_patch_v1`'s actual, current capability
+(MODEL-ROUTING.md §1a): structured file-operation proposals inside an
+isolated worktree, not interactive tool/shell/git/network use. Full Claude
+Code/Codex-equivalent worker support is a later, separately reviewed worker
+adapter and sandbox/broker decision, not an assumed extension of this slice.
 
 ## 5. Non-goals (confirmed not touched by this PR)
 

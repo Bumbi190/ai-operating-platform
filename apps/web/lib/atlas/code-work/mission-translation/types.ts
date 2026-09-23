@@ -6,6 +6,25 @@
  * This module carries no I/O, no clocks, no registries and no validation
  * logic. It exists only so `translate.ts` and its tests share one vocabulary.
  *
+ * STORED CONTRACT vs. LIVE USABILITY — read this before treating a
+ * `WorkPackage`'s own fields as proof of anything. A `WorkPackage`'s
+ * `authority`/`allowedActions`/`forbiddenActions`/`tools`/`dataScope` are
+ * CONTRACT DATA: terms written down when the package was cut from its
+ * Delegation Envelope. They do not, by themselves, prove the package is
+ * still usable right now — the Delegation behind it may since have been
+ * revoked, the Mission behind that may have ended, or the assigned role may
+ * no longer resolve. `lib/atlas/workpackage/principal-read.ts`'s
+ * `resolveWorkPackage()` is the only thing that re-asks that live chain, and
+ * it is `server-only` and does real reads — this translator must never
+ * import or call it. Instead, `translateWorkPackageToAdmission` takes the
+ * already-resolved `WorkPackageEvaluation` its caller obtained from
+ * `resolveWorkPackage()` (the exact same object
+ * `control-plane/principal-write.ts`'s `proposeCodeWork` already requires
+ * `.usable === true` on before it will derive anything), and refuses to
+ * translate an evaluation that isn't usable — synchronously, from a field
+ * already on the object it was handed, adding no I/O of its own.
+ *
+
  * WHY THIS BINDINGS SHAPE DIFFERS FROM docs/autonomy/MISSION-CONTRACT.md §5:
  * that document proposed a `bindings.mission`/`bindings.delegation` pair
  * (mission id/version/hash, delegation envelopeId/hash) supplied separately
@@ -29,7 +48,17 @@
  *   - `workId`: SDF-1A's own control-plane run identity. Distinct from
  *     `workPackage.workPackageId` on purpose (a single Work Package could
  *     plausibly need more than one code-work admission across separate
- *     attempts), so it is never derived here.
+ *     attempts), so it is never derived here. It must also be UUID-shaped:
+ *     SDF-1A's own `validateCodeWorkAdmission` treats `workId` as an opaque,
+ *     persistence-agnostic string (`requireText` only checks non-empty/
+ *     trimmed/no-NUL — see `policy.ts`), but the real SDF-1B control plane's
+ *     `atlas_code_work_runs.work_id` column, and every RPC's `p_work_id`
+ *     parameter, are Postgres `uuid` (`supabase/migrations/
+ *     20260918095827_sdf1b1_code_work_control_plane.sql`). SDF-1A's contract
+ *     layer is deliberately persistence-agnostic and should not gain a
+ *     database-shape opinion; this translator's whole purpose is bridging
+ *     toward that real persistence path, so it is the correct, minimal place
+ *     to add the one check SDF-1A cannot: `translate.ts`'s `isUuidShaped`.
  *   - `repository` / `worktree.branchPrefix`: which trusted repository, at
  *     which pinned live commit, this particular admission targets. This
  *     translator does not call `repository-registry.ts` itself — passing a
@@ -61,6 +90,7 @@ import type {
   CodeWorkPolicyViolation,
   CodeWorkRepositoryBinding,
 } from '../types'
+import type { WorkPackageUnusableReason } from '@/lib/atlas/workpackage/types'
 
 // ── Mission Risk Level — a THIRD, independent scale. Never compare or merge
 // with Chapter 18's Autonomy Licensing L0-L6, or with MissionRecord.risks'
@@ -150,12 +180,20 @@ export type CodeWorkAdmissionCandidate = Omit<CodeWorkAdmissionV1, 'worker'> & {
  * `attenuation_failed` carry violations from the EXISTING SDF-1A validators
  * (`policy.ts`, `control-plane/work-package.ts`) verbatim — this module adds
  * no rejection vocabulary of its own for anything those already check.
- * `risk_policy_undefined` is the one genuinely new case: SDF-1A's contract
- * has no concept of Mission Risk Level at all, so nothing downstream could
- * ever catch an undefined one.
+ * Three cases are genuinely new, because nothing downstream of this module
+ * could ever catch them:
+ *   - `risk_policy_undefined` — SDF-1A's contract has no concept of Mission
+ *     Risk Level at all.
+ *   - `work_package_not_usable` — carries the real `WorkPackageUnusableReason`
+ *     `resolveWorkPackage()` already computed; this module invents no second
+ *     liveness vocabulary of its own.
+ *   - `work_id_not_persistable` — SDF-1A's own validator does not, and should
+ *     not, know about SDF-1B's Postgres `uuid` column type.
  */
 export type MissionTranslationRejection =
   | { kind: 'risk_policy_undefined'; level: unknown }
+  | { kind: 'work_package_not_usable'; reason: WorkPackageUnusableReason }
+  | { kind: 'work_id_not_persistable'; workId: string }
   | { kind: 'admission_invalid'; violations: CodeWorkPolicyViolation[] }
   | { kind: 'attenuation_failed'; violations: CodeWorkPolicyViolation[] }
 

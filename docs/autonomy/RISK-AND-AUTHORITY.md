@@ -169,6 +169,16 @@ admission policy for code work.
 
 ## 3. Explicit non-grant
 
+**Provisional operator level (Phase 1B).** No canonical source assigns a
+Mission Risk Level to a Work Package. The operator proposal path therefore
+applies one uniform, server-side constant — Level 2, the lowest level whose
+policy requires independent review and human approval, which is what SDF-1B2
+already enforces for every run — as `OPERATOR_PROPOSAL_MISSION_RISK_LEVEL` in
+`control-plane/operator-admission.ts`. It is not a per-package classification,
+is never client-supplied (the operator DTO rejects a `riskLevel` field), is not
+persisted, and is not consulted for any decision. A real per-package source is
+a governance decision still to be made; do not derive one heuristically.
+
 Nothing in this document grants any mission any autonomy. A Work Package's
 declared `riskLevel` is a *classification*, checked by policy that does not
 exist yet. Until that policy exists, every Work Package — regardless of

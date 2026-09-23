@@ -25,10 +25,13 @@ import type { WorkPackageEvaluation } from '@/lib/atlas/workpackage/types'
 import { isTerminalCodeWorkState } from '../lifecycle'
 import { deriveCodeWorkProposal } from './derive-admission'
 import {
-  buildOperatorCodeWorkAdmission,
+  buildOperatorCodeWorkBindings,
+  OPERATOR_PROPOSAL_MISSION_RISK_LEVEL,
   parseOperatorCodeWorkProposal,
   type OperatorCodeWorkProposalInput,
 } from './operator-admission'
+import { translateWorkPackageToAdmission } from '../mission-translation/translate'
+import type { MissionTranslationRejection } from '../mission-translation/types'
 import { createCodeWorkControlPlaneStore, type CodeWorkControlPlaneStore } from './store'
 import type { StoredCodeWorkRun } from './types'
 import { operatorAuthorizationHistoryMatchesRun } from './operator-authorization'
@@ -69,6 +72,31 @@ const DENY = (status: OperatorWriteStatus, detail?: string): OperatorWriteResult
   ...(detail ? { detail } : {}),
 })
 
+/**
+ * Maps a translator rejection to the operator vocabulary. A package that is no
+ * longer usable (or an evaluation that contradicts itself) reads as
+ * `not_permitted` with no detail — the same non-oracle answer an unusable
+ * package already got. Violations from the existing SDF validators are input
+ * problems (`invalid_request`). The two remaining kinds cannot be caused by a
+ * request — the work id is hash-derived and the risk level is a server
+ * constant — so they surface as `integrity_violation`, never as a client fault.
+ */
+export function translationRejectionToOperatorStatus(
+  rejection: MissionTranslationRejection,
+): { status: OperatorWriteStatus; detail?: string } {
+  switch (rejection.kind) {
+    case 'work_package_not_usable':
+    case 'work_package_evaluation_inconsistent':
+      return { status: 'not_permitted' }
+    case 'admission_invalid':
+    case 'attenuation_failed':
+      return { status: 'invalid_request', detail: rejection.violations.map(item => item.code).join(',') }
+    case 'work_id_not_persistable':
+    case 'risk_policy_undefined':
+      return { status: 'integrity_violation', detail: rejection.kind }
+  }
+}
+
 function safeProposalError(error: unknown): OperatorWriteStatus {
   const message = error instanceof Error ? error.message : String(error)
   if (message.includes('proposal_fingerprint_conflict')) return 'conflict'
@@ -94,13 +122,20 @@ export async function proposeOperatorCodeWork(
   const workPackage = resolved.evaluation.workPackage
   if (!assertProjectAllowed(workPackage.projectId, access.allowedProjectIds)) return DENY('not_permitted')
 
-  const admission = buildOperatorCodeWorkAdmission({
-    proposal: parsed.value,
-    workPackage,
-    requestedBy: access.userId,
-  })
+  // The live evaluation itself — never the stored package on its own — is what
+  // the translator consumes, and the bindings are derived here from the
+  // reviewed registries, never from the request.
+  const translated = translateWorkPackageToAdmission(
+    resolved.evaluation,
+    OPERATOR_PROPOSAL_MISSION_RISK_LEVEL,
+    buildOperatorCodeWorkBindings({ proposal: parsed.value, workPackage, requestedBy: access.userId }),
+  )
+  if (!translated.ok) {
+    const mapped = translationRejectionToOperatorStatus(translated.rejection)
+    return DENY(mapped.status, mapped.detail)
+  }
   const derived = deriveCodeWorkProposal({
-    admission,
+    admission: translated.admission,
     workPackage,
     requestedBy: access.userId,
     idempotencyKey: parsed.value.idempotencyKey,

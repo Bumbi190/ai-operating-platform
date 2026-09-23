@@ -69,6 +69,7 @@ jobs:
           lib/qa/sdf1b2-code-work-operator-plane.test.ts
           lib/qa/sdf1b2-code-work-ui.test.ts
           lib/qa/workpackage-admission-translation.test.ts
+          lib/qa/operator-proposal-composition.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1b-contracts.json"
       - name: Enforce the contract and B2 anti-skip floor
@@ -88,6 +89,7 @@ jobs:
             ['sdf1b2-code-work-operator-plane.test.ts', 26],
             ['sdf1b2-code-work-ui.test.ts', 4],
             ['workpackage-admission-translation.test.ts', 70],
+            ['operator-proposal-composition.test.ts', 51],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
 

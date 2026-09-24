@@ -70,6 +70,9 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 // SDF-1C1B: a claim now requires the SHA-256 of a claim credential (the raw token never reaches SQL).
 const CLAIM_HASH = 'c'.repeat(64)
+// SDF-1C2: heartbeat proves the claim (claim id, fence, broker, host, credential HASH) inside the row lock.
+const heartbeatSql = (workId: string, claimId: string, fence: number, broker = 'fixture-broker', host = 'fixture-host') =>
+  `public.atlas_code_work_heartbeat('${workId}','${claimId}',${fence},'${broker}','${host}','${CLAIM_HASH}')`
 let counter = 0
 const uuid = (prefix: string) => `${prefix}0000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`
 
@@ -194,6 +197,8 @@ beforeAll(() => {
   run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql')])
   // SDF-1C1B replaces the credential-less claim; the B1 suite exercises the schema as it now ships.
   run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260924080000_sdf1c1b_broker_claim_credentials.sql')])
+  // SDF-1C2 makes heartbeat credential-bearing and adds same-broker claim recovery; these suites run against the schema as it ships.
+  run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260924140000_sdf1c2_broker_control_channel.sql')])
   run(ADMIN_URL, ['-c', `create role "${SVC}" nologin bypassrls in role service_role`])
 }, 120_000)
 
@@ -310,7 +315,7 @@ d('SDF-1B1 authorization, chain and lifecycle', () => {
     expect(wrongPrevious.err).toMatch(/previous hash mismatch/)
     const wrongAdmission = txn(`select public.atlas_code_work_append_evidence('${created.workId}','${HASH_B}','${created.claimId}',${created.fence},${sequence},null,'worker_identity',${payload}::jsonb,clock_timestamp(),'worker','fixture')`)
     expect(wrongAdmission.err).toMatch(/run\/admission not found/)
-    const staleFence = txn(`select public.atlas_code_work_heartbeat('${created.workId}','${created.claimId}',${created.fence + 1})`)
+    const staleFence = txn(`select ${heartbeatSql(created.workId, created.claimId, created.fence + 1)}`)
     expect(staleFence.err).toMatch(/stale code-work fence/)
   })
 })
@@ -326,7 +331,8 @@ d('SDF-1B1 claim, cancellation races and terminal evidence', () => {
     const claimId = one(`select claim_id from public.atlas_code_work_runs where work_id='${created.workId}'`)
     const fence = Number(one(`select fence from public.atlas_code_work_runs where work_id='${created.workId}'`))
     one(`begin; select set_config('omnira.code_work_control','on',true); update public.atlas_code_work_runs set lease_until=now()-interval '1 second',broker_token_expires_at=now()-interval '1 second' where work_id='${created.workId}'; commit`)
-    expect(rpc(`select (public.atlas_code_work_heartbeat('${created.workId}','${claimId}',${fence})).state`)).toBe('timeout')
+    const [winnerBroker, winnerHost] = one(`select broker_id||'|'||broker_host_id from public.atlas_code_work_runs where work_id='${created.workId}'`).split('|')
+    expect(rpc(`select (${heartbeatSql(created.workId, claimId, fence, winnerBroker, winnerHost)}).state`)).toBe('timeout')
     expect(txn(`select public.atlas_code_work_claim('${created.workId}','broker-c','host-c','${CLAIM_HASH}')`).err).toMatch(/not claimable/)
   })
 
@@ -343,7 +349,7 @@ d('SDF-1B1 claim, cancellation races and terminal evidence', () => {
       const seq = Number(one(`select last_receipt_sequence+1 from public.atlas_code_work_runs where work_id='${active.workId}'`))
       const head = one(`select quote_literal(receipt_chain_head) from public.atlas_code_work_runs where work_id='${active.workId}'`)
       const other = operation === 'heartbeat'
-        ? `select public.atlas_code_work_heartbeat('${active.workId}','${active.claimId}',${active.fence})`
+        ? `select ${heartbeatSql(active.workId, active.claimId, active.fence)}`
         : `select public.atlas_code_work_append_evidence('${active.workId}','${active.admissionHash}','${active.claimId}',${active.fence},${seq},${head},'worker_identity','{"receiptClass":"worker_identity"}'::jsonb,clock_timestamp(),'worker','fixture')`
       await concurrently(other, `select public.atlas_code_work_cancel('${active.workId}','${PROJECT}','${REQUESTER}','owner_cancel')`)
       expect(one(`select state from public.atlas_code_work_runs where work_id='${active.workId}'`)).toBe('cancelled')

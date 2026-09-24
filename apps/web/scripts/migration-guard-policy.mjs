@@ -15,16 +15,18 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 //    + 20260924080000_sdf1c1b_broker_claim_credentials.sql (Phase 1C1B — claim-scoped
 //      credential foundation only)
 //    + 20260924120000_survival_funding_phase2b.sql (Atlas Survival Phase 2B —
-//      owner-declared operating capital, its audit ledger, and derivation v2 coverage).
-// Enforced trips together: 99 = 14 grandfathered + 85 enforced.
+//      owner-declared operating capital, its audit ledger, and derivation v2 coverage)
+//    + 20260924140000_sdf1c2_broker_control_channel.sql (Phase 1C2 — broker control
+//      channel, database side only).
+// Enforced trips together: 100 = 14 grandfathered + 86 enforced.
 //
-// 1C1A, 1C1B and 2B each arrived on their own branch and each moved this tripwire by
-// one, so the reconciled total is the sum of all four additions rather than any one
+// 1C1A, 1C1B, 2B and 1C2 each arrived on their own branch and each moved this tripwire by
+// one, so the reconciled total is the sum of all five additions rather than any one
 // branch's value. Phase 2B is ENFORCED, not grandfathered: it is a live repository
 // migration whose absence from the production ledger must fail the guard until the
 // approved apply happens.
-export const EXPECTED_CANONICAL_SQL_COUNT = 99
-export const EXPECTED_ENFORCED_COUNT = 85
+export const EXPECTED_CANONICAL_SQL_COUNT = 100
+export const EXPECTED_ENFORCED_COUNT = 86
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

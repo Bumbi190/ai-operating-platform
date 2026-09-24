@@ -5,7 +5,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { CodeWorkReceiptV1 } from '../evidence'
 import type { CodeWorkState } from '../lifecycle'
-import type { DerivedCodeWorkProposal, StoredCodeWorkReceipt, StoredCodeWorkRun } from './types'
+import { BROKER_DISCOVERY_MAX_RESULTS, type BrokerDiscoverableWork, type DerivedCodeWorkProposal, type StoredCodeWorkReceipt, type StoredCodeWorkRun } from './types'
 
 type AnyDb = any
 
@@ -108,7 +108,17 @@ export interface CodeWorkControlPlaneStore {
   synchronizeAuthorization(workId: string): Promise<StoredCodeWorkRun>
   /** `brokerTokenHash` is the SHA-256 storage form only; the raw claim token never enters the store. */
   claim(workId: string, brokerId: string, brokerHostId: string, brokerTokenHash: string): Promise<StoredCodeWorkRun>
-  heartbeat(workId: string, claimId: string, fence: number): Promise<StoredCodeWorkRun>
+  /**
+   * SDF-1C2: the claim proof is verified INSIDE the row lock that renews the lease. Only the
+   * credential HASH is passed; the raw claim token never reaches the store or SQL.
+   */
+  heartbeat(workId: string, claimId: string, fence: number, brokerId: string, brokerHostId: string, brokerTokenHash: string): Promise<StoredCodeWorkRun>
+  /** Same-broker replacement of the credential HASH for a claim still in its handshake. */
+  recoverClaimCredential(workId: string, brokerId: string, brokerHostId: string, brokerTokenHash: string): Promise<StoredCodeWorkRun>
+  /** Closed, bounded, oldest-authorized-first metadata read for broker discovery. */
+  discoverClaimable(repositoryIds: readonly string[], limit?: number): Promise<BrokerDiscoverableWork[]>
+  /** The repository a run is bound to (immutable), or null when the work does not exist. */
+  repositoryIdForWork(workId: string): Promise<string | null>
   appendEvidence(workId: string, admissionHash: string, claimId: string, fence: number, expectedSequence: number, expectedPreviousHash: string | null, receipt: CodeWorkReceiptV1, producerType: string, producerId: string): Promise<StoredCodeWorkRun>
   transition(workId: string, expectedState: CodeWorkState, expectedVersion: number, toState: CodeWorkState, claimId: string, fence: number, reasonCode?: string): Promise<StoredCodeWorkRun>
   cancel(workId: string, projectId: string, requestedBy: string, reasonCode: string): Promise<StoredCodeWorkRun>
@@ -192,8 +202,35 @@ class PostgresCodeWorkControlPlaneStore implements CodeWorkControlPlaneStore {
       p_broker_token_hash: brokerTokenHash,
     })
   }
-  heartbeat(workId: string, claimId: string, fence: number) {
-    return this.rpc('atlas_code_work_heartbeat', { p_work_id: workId, p_claim_id: claimId, p_fence: fence })
+  private static readonly HASH = /^[a-f0-9]{64}$/
+  heartbeat(workId: string, claimId: string, fence: number, brokerId: string, brokerHostId: string, brokerTokenHash: string) {
+    if (!PostgresCodeWorkControlPlaneStore.HASH.test(brokerTokenHash)) throw new Error('[atlas-code-work] heartbeat requires a SHA-256 credential hash')
+    return this.rpc('atlas_code_work_heartbeat', {
+      p_work_id: workId, p_claim_id: claimId, p_fence: fence,
+      p_broker_id: brokerId, p_broker_host_id: brokerHostId, p_broker_token_hash: brokerTokenHash,
+    })
+  }
+  recoverClaimCredential(workId: string, brokerId: string, brokerHostId: string, brokerTokenHash: string) {
+    if (!PostgresCodeWorkControlPlaneStore.HASH.test(brokerTokenHash)) throw new Error('[atlas-code-work] recovery requires a SHA-256 credential hash')
+    return this.rpc('atlas_code_work_recover_claim_credential', {
+      p_work_id: workId, p_broker_id: brokerId, p_broker_host_id: brokerHostId,
+      p_broker_token_hash: brokerTokenHash,
+    })
+  }
+  async discoverClaimable(repositoryIds: readonly string[], limit: number = BROKER_DISCOVERY_MAX_RESULTS) {
+    if (repositoryIds.length === 0) return []
+    const { data, error } = await this.db().rpc('atlas_code_work_discover_claimable', {
+      p_repository_ids: [...repositoryIds],
+      p_limit: Math.max(1, Math.min(Math.trunc(limit), BROKER_DISCOVERY_MAX_RESULTS)),
+    })
+    if (error) throw new Error(`[atlas-code-work] discovery read failed: ${error.message}`)
+    return ((data ?? []) as Array<{ work_id: string; repository_id: string; pinned_base_sha: string }>)
+      .map(row => ({ workId: row.work_id, repositoryId: row.repository_id, pinnedBaseSha: row.pinned_base_sha }))
+  }
+  async repositoryIdForWork(workId: string) {
+    const { data, error } = await this.db().from('atlas_code_work_runs').select('repository_id').eq('work_id', workId).maybeSingle()
+    if (error) throw new Error(`[atlas-code-work] repository read failed: ${error.message}`)
+    return (data as { repository_id: string } | null)?.repository_id ?? null
   }
   appendEvidence(workId: string, admissionHash: string, claimId: string, fence: number, expectedSequence: number, expectedPreviousHash: string | null, receipt: CodeWorkReceiptV1, producerType: string, producerId: string) {
     return this.rpc('atlas_code_work_append_evidence', {

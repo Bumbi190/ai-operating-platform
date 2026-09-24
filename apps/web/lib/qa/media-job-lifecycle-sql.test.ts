@@ -90,9 +90,9 @@ const H     = 'a'.repeat(64)
 const FIXTURE = `
 create extension if not exists pgcrypto;
 do $do$ begin
-  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
-  if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
-  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role') then begin create role service_role; exception when duplicate_object or unique_violation then null; end; end if;
+  if not exists (select 1 from pg_roles where rolname='anon') then begin create role anon; exception when duplicate_object or unique_violation then null; end; end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated') then begin create role authenticated; exception when duplicate_object or unique_violation then null; end; end if;
 end $do$;
 create schema if not exists auth;
 create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;

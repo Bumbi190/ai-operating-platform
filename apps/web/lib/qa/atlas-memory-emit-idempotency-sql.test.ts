@@ -180,9 +180,9 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('Slice 2A — emit idempotency in t
     dsn = dsnFor(DB_NAME)
     run(dsn, [], `
       do $$ begin
-        if not exists (select 1 from pg_roles where rolname='service_role')  then create role service_role  nologin; end if;
-        if not exists (select 1 from pg_roles where rolname='anon')          then create role anon          nologin; end if;
-        if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+        if not exists (select 1 from pg_roles where rolname='service_role')  then begin create role service_role  nologin; exception when duplicate_object or unique_violation then null; end; end if;
+        if not exists (select 1 from pg_roles where rolname='anon')          then begin create role anon          nologin; exception when duplicate_object or unique_violation then null; end; end if;
+        if not exists (select 1 from pg_roles where rolname='authenticated') then begin create role authenticated nologin; exception when duplicate_object or unique_violation then null; end; end if;
       end $$;
       create table if not exists public.projects (id uuid primary key default gen_random_uuid(), owner_id uuid);
       insert into public.projects (id, owner_id) values ('${PROJECT}', '11111111-1111-4111-8111-111111111111');

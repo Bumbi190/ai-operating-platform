@@ -101,9 +101,9 @@ create table public.cost_events (
   cost_usd numeric(12,6) not null default 0,
   created_at timestamptz not null default now());
 do $$ begin
-  if not exists (select 1 from pg_roles where rolname='service_role')   then create role service_role;   end if;
-  if not exists (select 1 from pg_roles where rolname='anon')           then create role anon;           end if;
-  if not exists (select 1 from pg_roles where rolname='authenticated')  then create role authenticated;  end if;
+  if not exists (select 1 from pg_roles where rolname='service_role')   then begin create role service_role; exception when duplicate_object or unique_violation then null; end;   end if;
+  if not exists (select 1 from pg_roles where rolname='anon')           then begin create role anon; exception when duplicate_object or unique_violation then null; end;           end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated')  then begin create role authenticated; exception when duplicate_object or unique_violation then null; end;  end if;
 end $$;
 `
 

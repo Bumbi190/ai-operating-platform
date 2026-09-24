@@ -96,6 +96,8 @@ function fakeSpawn(script: (child: any, call: SpawnCall) => void) {
   return { impl, calls }
 }
 const fakeGit = { tool: 'git' as const, path: '/usr/bin/git' }
+/** Ancestor view for POSITIVE toolchain cases: temp dirs live under a world-writable /tmp on Linux (correctly refused by the real check), so fixtures pin ancestors as ordinary directories. The negative ancestor case uses the real filesystem. */
+const ordinaryAncestors = { lstat: () => ({ isDirectory: () => true, mode: 0o040755 }) } as const
 function forge<T extends object>(value: T): T { return { ...value } }
 
 describe('SDF-1C3A registry, parity and canonical requirements', () => {
@@ -166,8 +168,8 @@ describe('SDF-1C3A trusted toolchain: git and docker are never chosen by a calle
       noexec: [make('noexec', 0o644), 'not_executable'], groupw: [make('groupw', 0o775), 'group_or_other_writable'], otherw: [make('otherw', 0o757), 'group_or_other_writable'],
     }
     for (const [label, [path, reason]] of Object.entries(cases)) expect(explainToolCandidates('git', { candidates: { git: [path] } })[0].reason, label).toBe(reason)
-    expect(explainToolCandidates('git', { candidates: { git: [good] } })[0].reason).toBeNull()
-    expect(explainToolCandidates('git', { candidates: { git: [good] }, uid: (process.getuid?.() ?? 0) + 4242 })[0].reason).toBe('untrusted_owner' satisfies string)
+    expect(explainToolCandidates('git', { candidates: { git: [good] }, ...ordinaryAncestors })[0].reason).toBeNull()
+    expect(explainToolCandidates('git', { candidates: { git: [good] }, uid: (process.getuid?.() ?? 0) + 4242, ...ordinaryAncestors })[0].reason).toBe('untrusted_owner' satisfies string)
     const open = join(dir, 'open'); mkdirSync(open); chmodSync(open, 0o777)
     const inside = join(open, 'tool'); writeFileSync(inside, '#!/bin/sh\n'); chmodSync(inside, 0o755)
     expect(explainToolCandidates('git', { candidates: { git: [inside] } })[0].reason).toBe('other_writable_ancestor')
@@ -180,9 +182,9 @@ describe('SDF-1C3A trusted toolchain: git and docker are never chosen by a calle
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     const real = join(dir, 'real'); writeFileSync(real, '#!/bin/sh\n'); chmodSync(real, 0o775)
     const link = join(dir, 'link'); symlinkSync(real, link)
-    expect(resolveTrustedTool('git', { candidates: { git: [link] } })).toBeNull()
+    expect(resolveTrustedTool('git', { candidates: { git: [link] }, ...ordinaryAncestors })).toBeNull()
     chmodSync(real, 0o755)
-    expect(resolveTrustedTool('git', { candidates: { git: [link] } })?.path).toBe(real)
+    expect(resolveTrustedTool('git', { candidates: { git: [link] }, ...ordinaryAncestors })?.path).toBe(real)
   })
 
   it('the runner refuses a tool object that did not come from the resolver', async () => {

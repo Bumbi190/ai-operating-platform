@@ -106,8 +106,9 @@ comment on column public.survival_funding_config.declared_operating_capital_sek 
 -- declaration in any of those would corrupt what that ledger means.
 --
 -- IT IS NOT THE CURRENT TRUTH. The current declaration lives in
--- platform_config, and only there. This table answers "who changed it, when, and
--- was it SET or CLEARED" — nothing reads it to discover the current value.
+-- survival_funding_config, and only there. This table answers "who changed it,
+-- when, and was it SET or CLEARED" — nothing reads it to discover the current
+-- value.
 
 create table if not exists public.survival_funding_events (
   id                     uuid primary key default gen_random_uuid(),
@@ -168,7 +169,7 @@ create index if not exists survival_funding_events_seq_idx
 
 comment on table public.survival_funding_events is
   'Append-only audit of owner-declared operating capital changes. Answers who / when / '
-  'SET-or-CLEARED. NOT the current funding truth: that lives in platform_config.';
+  'SET-or-CLEARED. NOT the current funding truth: that lives in survival_funding_config.';
 
 -- Append-only, structurally. An audit ledger its own writer can rewrite is not
 -- an audit ledger, so this is triggers rather than convention.

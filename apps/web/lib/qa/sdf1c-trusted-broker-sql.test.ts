@@ -79,7 +79,7 @@ afterAll(() => {
 })
 
 d('SDF-1C1 SQL/RLS/ACL and lifecycle boundary', () => {
-  it('1/13 creates exactly two SERVER_ONLY broker tables with RLS and no policies', () => {
+  it('1/14 creates exactly two SERVER_ONLY broker tables with RLS and no policies', () => {
     expect(one("select string_agg(tablename,',' order by tablename) from pg_tables where schemaname='public' and tablename like 'atlas_code_broker%'")).toBe('atlas_code_broker_enrollments,atlas_code_brokers')
     for (const table of ['atlas_code_brokers','atlas_code_broker_enrollments']) {
       expect(one(`select relrowsecurity from pg_class where oid='public.${table}'::regclass`)).toBe('t')
@@ -87,7 +87,7 @@ d('SDF-1C1 SQL/RLS/ACL and lifecycle boundary', () => {
       expect(one(`select obj_description('public.${table}'::regclass) like '%SERVER_ONLY%'`)).toBe('t')
     }
   })
-  it('2/13 revokes all client access and permits service_role read plus purpose-specific functions only', () => {
+  it('2/14 revokes all client access and permits service_role read plus purpose-specific functions only', () => {
     for (const table of ['atlas_code_brokers','atlas_code_broker_enrollments']) for (const role of ['anon','authenticated']) {
       expect(one(`select has_table_privilege('${role}','public.${table}','SELECT')`)).toBe('f')
       expect(one(`select has_table_privilege('${role}','public.${table}','INSERT')`)).toBe('f')
@@ -97,16 +97,16 @@ d('SDF-1C1 SQL/RLS/ACL and lifecycle boundary', () => {
     expect(one("select has_function_privilege('authenticated','public.atlas_code_broker_approve(uuid,uuid)','EXECUTE')")).toBe('f')
     expect(one("select has_function_privilege('service_role','public.atlas_code_broker_approve(uuid,uuid)','EXECUTE')")).toBe('t')
   })
-  it('3/13 stores hashes rather than plaintext enrollment material', () => {
+  it('3/14 stores hashes rather than plaintext enrollment material', () => {
     const owner = id('1'), enrollment = id('2'), host = id('3')
     rpc(`select public.atlas_code_broker_begin_enrollment('${enrollment}','${owner}','${host}','${'e'.repeat(64)}','${'f'.repeat(64)}',clock_timestamp()+interval '5 minutes',array['${REPO}'])`)
     expect(one(`select challenge_hash||':'||pairing_code_hash from public.atlas_code_broker_enrollments where enrollment_id='${enrollment}'`)).toBe(`${'e'.repeat(64)}:${'f'.repeat(64)}`)
   })
-  it('4/13 requires the exact repository allowlist', () => {
+  it('4/14 requires the exact repository allowlist', () => {
     const result = txn(`select public.atlas_code_broker_begin_enrollment('${id('2')}','${id('1')}','${id('3')}','${'a'.repeat(64)}','${'b'.repeat(64)}',clock_timestamp()+interval '5 minutes',array['github.com/other/repo'])`)
     expect(result.ok).toBe(false); expect(result.err).toMatch(/invalid broker enrollment request/)
   })
-  it('5/13 blocks duplicate live enrollment and duplicate key identity', () => {
+  it('5/14 blocks duplicate live enrollment and duplicate key identity', () => {
     const fixture = createBroker()
     const live = txn(`select public.atlas_code_broker_begin_enrollment('${id('2')}','${fixture.owner}','${id('3')}','${'e'.repeat(64)}','${'f'.repeat(64)}',clock_timestamp()+interval '5 minutes',array['${REPO}'])`)
     expect(live.err).toMatch(/already has a live broker identity/)
@@ -115,57 +115,70 @@ d('SDF-1C1 SQL/RLS/ACL and lifecycle boundary', () => {
     const duplicate = txn(`select public.atlas_code_broker_complete_enrollment('${enrollment}','${'1'.repeat(64)}','${'2'.repeat(64)}','{"kty":"EC","crv":"P-256","x":"${X}","y":"${Y}"}'::jsonb,'${fixture.thumb}','ES256',1,'0.1.0','${HASH}','Other Mac','${UID}','macOS synthetic')`)
     expect(duplicate.ok).toBe(false); expect(duplicate.err).toMatch(/key_thumbprint/)
   })
-  it('6/13 consumes challenge once and rejects wrong or expired proof', () => {
+  it('6/14 consumes challenge once and rejects wrong or expired proof', () => {
     const fixture = createBroker()
     expect(txn(`select public.atlas_code_broker_complete_enrollment('${fixture.enrollment}','${fixture.challengeHash}','${fixture.pairingHash}','{"kty":"EC","crv":"P-256","x":"${X}","y":"${Y}"}'::jsonb,'${'Z'.repeat(43)}','ES256',1,'0.1.0','${HASH}','Mac','${UID}','macOS')`).err).toMatch(/not usable/)
     const owner = id('1'), enrollment = id('2'), host = id('3')
     one(`insert into public.atlas_code_broker_enrollments(enrollment_id,requested_by,host_id,challenge_hash,pairing_code_hash,allowed_repository_ids,created_at,expires_at) values('${enrollment}','${owner}','${host}','${'4'.repeat(64)}','${'5'.repeat(64)}',array['${REPO}'],clock_timestamp()-interval '10 minutes',clock_timestamp()-interval '5 minutes')`)
     expect(txn(`select public.atlas_code_broker_complete_enrollment('${enrollment}','${'4'.repeat(64)}','${'5'.repeat(64)}','{"kty":"EC","crv":"P-256","x":"${X}","y":"${Y}"}'::jsonb,'${'Q'.repeat(43)}','ES256',1,'0.1.0','${HASH}','Mac','${UID}','macOS')`).err).toMatch(/not usable/)
   })
-  it('7/13 requires explicit owner approval and hides foreign or unknown identity', () => {
+  it('7/14 requires explicit owner approval and hides foreign or unknown identity', () => {
     const fixture = createBroker()
     expect(one(`select status from public.atlas_code_brokers where broker_id='${fixture.broker}'`)).toBe('pending')
     expect(txn(`select public.atlas_code_broker_approve('${fixture.broker}','${id('1')}')`).err).toMatch(/not found/)
     expect(txn(`select public.atlas_code_broker_approve('${id('4')}','${fixture.owner}')`).err).toMatch(/not found/)
     expect(rpc(`select (public.atlas_code_broker_approve('${fixture.broker}','${fixture.owner}')).status`)).toBe('active')
   })
-  it('8/13 makes revocation immediate, terminal and non-reactivatable', () => {
+  it('8/14 makes revocation immediate, terminal and non-reactivatable', () => {
     const fixture = createBroker({ approve: true })
     expect(rpc(`select (public.atlas_code_broker_revoke('${fixture.broker}','${fixture.owner}','revoked','operator_revoked')).status`)).toBe('revoked')
     expect(txn(`select public.atlas_code_broker_approve('${fixture.broker}','${fixture.owner}')`).err).toMatch(/cannot be approved/)
     expect(txn(`select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',1,'${id('5')}',clock_timestamp())`).err).toMatch(/not active/)
   })
-  it('9/13 keeps identity and terminal lifecycle immutable and rejects delete/truncate', () => {
+  it('9/14 keeps identity and terminal lifecycle immutable and rejects delete/truncate', () => {
     const fixture = createBroker({ approve: true })
     expect(txn(`select set_config('omnira.code_broker_control','on',true); update public.atlas_code_brokers set host_id='${id('3')}' where broker_id='${fixture.broker}'`, null).err).toMatch(/identity is immutable/)
     for (const statement of [`delete from public.atlas_code_brokers where broker_id='${fixture.broker}'`, 'truncate public.atlas_code_brokers cascade']) {
       expect(txn(statement, null).err).toMatch(/append-preserved/)
     }
   })
-  it('10/13 accepts the next counter and rejects stale counter, duplicate jti and stale timestamp', () => {
+  it('10/14 accepts the next counter and rejects stale counter, duplicate jti and stale timestamp', () => {
     const fixture = createBroker({ approve: true }), jti = id('5')
     expect(rpc(`select (public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',1,'${jti}',clock_timestamp())).request_counter`)).toBe('1')
     expect(txn(`select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',1,'${id('5')}',clock_timestamp())`).err).toMatch(/replay or timestamp/)
     expect(txn(`select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',2,'${jti}',clock_timestamp())`).err).toMatch(/replay or timestamp/)
     expect(txn(`select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',2,'${id('5')}',clock_timestamp()-interval '3 minutes')`).err).toMatch(/replay or timestamp/)
   })
-  it('11/13 serializes concurrent duplicate authenticated contact so only one succeeds', async () => {
+  it('11/14 serializes concurrent duplicate authenticated contact so only one succeeds', async () => {
     const fixture = createBroker({ approve: true }), jti = id('5')
     const sql = `select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',1,'${jti}',clock_timestamp())`
     const results = await concurrently(sql, sql)
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
     expect(one(`select request_counter from public.atlas_code_brokers where broker_id='${fixture.broker}'`)).toBe('1')
   })
-  it('12/13 fails closed on host, protocol, version and build mismatch', () => {
+  it('12/14 fails closed on host, protocol, version and build mismatch', () => {
     const fixture = createBroker({ approve: true })
     for (const args of [
       `'${id('3')}',1,'0.1.0','${HASH}'`, `'${fixture.host}',2,'0.1.0','${HASH}'`,
       `'${fixture.host}',1,'9.9.9','${HASH}'`, `'${fixture.host}',1,'0.1.0','${'f'.repeat(64)}'`,
     ]) expect(txn(`select public.atlas_code_broker_accept_request('${fixture.broker}',${args},1,'${id('5')}',clock_timestamp())`).err).toMatch(/not active/)
   })
-  it('13/13 contains no token, claim, cron, network or execution bridge', () => {
+  it('13/14 contains no token, claim, cron, network or execution bridge', () => {
     const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20260923150000_sdf1c1_trusted_broker_identity.sql'), 'utf8').replace(/--.*$/gm, '')
     expect(sql).not.toMatch(/code_work_claim|broker_token|cron\.schedule|pg_net|net\.http|dblink|copy\s+.+program|listen\s|notify\s/i)
     expect((sql.match(/create table public\.atlas_code_broker/g) ?? [])).toHaveLength(2)
+  })
+  it('14/14 pins the replay boundary: the counter is durable, the jti is only the last one (not a global nonce)', () => {
+    const fixture = createBroker({ approve: true }), first = id('5'), second = id('5')
+    const accept = (counter: number, jti: string) =>
+      `select public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',${counter},'${jti}',clock_timestamp())`
+    rpc(accept(1, first)); rpc(accept(2, second))
+    // A replay of an already-accepted request is refused by the counter, whatever its jti.
+    expect(txn(accept(1, first)).err).toMatch(/replay or timestamp/)
+    expect(txn(accept(2, second)).err).toMatch(/replay or timestamp/)
+    expect(txn(accept(1, id('5'))).err).toMatch(/replay or timestamp/)
+    // Only the LAST jti is remembered, so an older jti is accepted again at the next counter.
+    // Documented so no later phase relies on global jti uniqueness that is not persisted.
+    expect(rpc(`select (public.atlas_code_broker_accept_request('${fixture.broker}','${fixture.host}',1,'0.1.0','${HASH}',3,'${first}',clock_timestamp())).request_counter`)).toBe('3')
   })
 })

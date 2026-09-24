@@ -97,6 +97,10 @@ export async function authenticateBrokerRequest(request: Request, rawBody: strin
     const url = new URL(request.url)
     const payload = canonicalRequestPayload({ ...headers, method: request.method, path: `${url.pathname}${url.search}`, bodySha256: sha256Hex(rawBody) })
     if (!verifyEs256(broker.publicJwk, payload, headers.signature)) return { status: 'rejected' }
+    // Replay boundary: the strictly monotonic per-broker counter (next = last + 1),
+    // enforced under a row lock inside atlas_code_broker_accept_request. Only the LAST
+    // jti is stored, so `jti` is an additional duplicate/concurrency signal, not a
+    // globally one-time nonce — an older jti is not remembered.
     const accepted = await d.store.acceptRequest({
       brokerId: headers.brokerId, hostId: headers.hostId, protocolVersion: headers.protocolVersion,
       brokerVersion: headers.brokerVersion, buildSha256: headers.buildSha256,

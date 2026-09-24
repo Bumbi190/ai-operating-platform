@@ -36,6 +36,7 @@ export interface StoredBroker {
   revokedBy: string | null
   revokedReason: string | null
   requestCounter: number
+  /** Most recent jti only (not a history). The durable replay boundary is `requestCounter`. */
   lastRequestJti: string | null
   lastRequestAt: string | null
   createdAt: string

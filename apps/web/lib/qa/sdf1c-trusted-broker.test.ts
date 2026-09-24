@@ -6,6 +6,7 @@ import { approveBroker, beginBrokerEnrollment, revokeBroker } from '@/lib/atlas/
 import { authenticateBrokerRequest, completeBrokerEnrollment, parseEnrollmentProof } from '@/lib/atlas/code-broker/principal'
 import { brokerEnrollmentSecretHash, canonicalEnrollmentPayload, canonicalRequestPayload, sha256Hex } from '@/lib/atlas/code-broker/protocol'
 import { publicJwkThumbprint } from '@/lib/atlas/code-broker/crypto'
+import { brokerBuildAccepted, configuredBrokerBuildPolicy } from '@/lib/atlas/code-broker/policy'
 import type { BrokerBuildPolicy } from '@/lib/atlas/code-broker/policy'
 import type { AcceptRequestInput, BeginEnrollmentInput, BrokerStore, CompleteEnrollmentInput } from '@/lib/atlas/code-broker/store'
 import type { BrokerPublicJwk, StoredBroker, StoredBrokerEnrollment } from '@/lib/atlas/code-broker/types'
@@ -220,6 +221,24 @@ describe('SDF-1C1 repository, secret and no-execution boundary', () => {
     expect(readFileSync(resolve(ROOT, 'apps/code-broker/src/identity/keychain.ts'), 'utf8')).toContain("execFileAsync(this.helperPath, args")
     expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/claim'))).toBe(false)
     expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/preflight'))).toBe(false)
+  })
+  it('treats buildSha256 as a declared identity checked against a fail-closed allowlist (not attestation)', () => {
+    const declared = { protocolVersion: 1, brokerVersion: '0.1.0', buildSha256: BUILD }
+    const previous = process.env.OMNIRA_CODE_BROKER_ALLOWED_BUILD_SHA256
+    try {
+      delete process.env.OMNIRA_CODE_BROKER_ALLOWED_BUILD_SHA256
+      expect(configuredBrokerBuildPolicy().allowedBuildSha256.size).toBe(0)
+      expect(brokerBuildAccepted(declared)).toBe(false)
+      process.env.OMNIRA_CODE_BROKER_ALLOWED_BUILD_SHA256 = `not-a-hash, ${BUILD.toUpperCase()}`
+      expect(brokerBuildAccepted(declared)).toBe(true)
+      expect(brokerBuildAccepted({ ...declared, buildSha256: 'c'.repeat(64) })).toBe(false)
+    } finally {
+      if (previous === undefined) delete process.env.OMNIRA_CODE_BROKER_ALLOWED_BUILD_SHA256
+      else process.env.OMNIRA_CODE_BROKER_ALLOWED_BUILD_SHA256 = previous
+    }
+    // The declaration is sourced from an operator flag and nothing measures the executable.
+    expect(readFileSync(resolve(ROOT, 'apps/code-broker/src/cli.ts'), 'utf8')).toContain("buildSha256: value('--build-sha256')")
+    expect(readFileSync(resolve(ROOT, 'apps/web/lib/atlas/code-broker/policy.ts'), 'utf8')).toContain('NOT remote attestation')
   })
   it('never touches atlas_code_work_runs or the dormant broker-token columns SDF-1C1B will activate', () => {
     const migration = readFileSync(resolve(ROOT, 'apps/web/supabase/migrations/20260923150000_sdf1c1_trusted_broker_identity.sql'), 'utf8')

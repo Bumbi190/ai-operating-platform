@@ -18,6 +18,18 @@ export function configuredBrokerBuildPolicy(): BrokerBuildPolicy {
   }
 }
 
+/**
+ * SECURITY SEMANTICS — read before relying on this in a later phase.
+ *
+ * `buildSha256` is a build identity the broker DECLARES (the CLI takes it from
+ * `--build-sha256`) and signs with its device key; this function checks that
+ * declaration against an operator-configured allowlist and fails closed when the
+ * allowlist is empty or the value is absent from it. Nothing measures the
+ * executable that is actually running, so this is NOT remote attestation: it
+ * proves a device holding an enrolled key vouched for an allowlisted build, not
+ * which binary is executing. A later phase that needs "this exact binary" must add
+ * a source-verified mechanism; it must not infer it from this field.
+ */
 export function brokerBuildAccepted(input: {
   protocolVersion: number
   brokerVersion: string

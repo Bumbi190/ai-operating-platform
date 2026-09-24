@@ -51,7 +51,12 @@ export class MacKeychainIdentity {
   }
 }
 
+// Canonical 8-4-4-4-12 UUID with a valid version (1-5) and variant (8/9/a/b) nibble —
+// the same family the server boundary accepts (lib/atlas/code-broker/principal.ts).
+// Kept local: apps/code-broker cannot import from apps/web.
+const IDENTITY_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 function safeIdentityId(value: string): string {
-  if (!/^[0-9a-f-]{36}$/i.test(value)) throw new Error('invalid identity id')
+  if (typeof value !== 'string' || !IDENTITY_UUID.test(value)) throw new Error('invalid identity id')
   return value
 }

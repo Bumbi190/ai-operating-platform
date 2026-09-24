@@ -9,6 +9,8 @@ const command = args.shift()
 const value = (flag: string) => { const i = args.indexOf(flag); if (i < 0 || !args[i + 1]) throw new Error(`missing ${flag}`); return args[i + 1] }
 const signer = new SecureMacBrokerSigner()
 
+// NOTE: `--build-sha256` is a build identity the operator DECLARES; it is signed and checked
+// against a server allowlist, but nothing here measures the running executable (no attestation).
 async function main() {
   if (command === 'generate') {
     const result = await signer.generateIdentity(value('--identity'), { allowKeychainFallback: args.includes('--allow-keychain-fallback') })

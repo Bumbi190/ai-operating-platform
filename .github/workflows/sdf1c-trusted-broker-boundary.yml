@@ -42,6 +42,7 @@ jobs:
           lib/qa/sdf1c-trusted-broker.test.ts
           lib/qa/sdf1c-trusted-broker-sql.test.ts
           lib/qa/sdf1c-trusted-broker-ui.test.ts
+          lib/qa/sdf1c-broker-identity-id.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -55,9 +56,10 @@ jobs:
           if (!reportPath || !fs.existsSync(reportPath)) throw new Error('SDF-1C report missing')
           const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
           const required = new Map([
-            ['sdf1c-trusted-broker.test.ts', 15],
-            ['sdf1c-trusted-broker-sql.test.ts', 13],
+            ['sdf1c-trusted-broker.test.ts', 16],
+            ['sdf1c-trusted-broker-sql.test.ts', 14],
             ['sdf1c-trusted-broker-ui.test.ts', 5],
+            ['sdf1c-broker-identity-id.test.ts', 13],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {

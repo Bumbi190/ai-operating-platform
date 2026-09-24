@@ -35,7 +35,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Identity, enrollment, replay, isolation and no-execution proofs
+      - name: Identity, enrollment, replay, claim-credential, isolation and no-execution proofs
         working-directory: apps/web
         run: >-
           ../../node_modules/.bin/vitest run
@@ -43,6 +43,8 @@ jobs:
           lib/qa/sdf1c-trusted-broker-sql.test.ts
           lib/qa/sdf1c-trusted-broker-ui.test.ts
           lib/qa/sdf1c-broker-identity-id.test.ts
+          lib/qa/sdf1c-broker-claim-credential.test.ts
+          lib/qa/sdf1c-broker-claim-credential-sql.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -60,6 +62,8 @@ jobs:
             ['sdf1c-trusted-broker-sql.test.ts', 14],
             ['sdf1c-trusted-broker-ui.test.ts', 5],
             ['sdf1c-broker-identity-id.test.ts', 13],
+            ['sdf1c-broker-claim-credential.test.ts', 16],
+            ['sdf1c-broker-claim-credential-sql.test.ts', 18],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {

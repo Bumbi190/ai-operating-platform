@@ -244,11 +244,14 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // enrollment only. It adds no claim, token, heartbeat, evidence or lifecycle
     // route, and the dormant broker-token columns on atlas_code_work_runs are
     // untouched; activating them is explicitly Phase 1C1B's job.
-    // Migration Guard v2 owns the repository-wide 97/83 count contract. This
+    // 84: Phase 1C1B's `sdf1c1b_broker_claim_credentials` — activates that seam: one
+    // claim-scoped credential whose hash lives exactly as long as the claim lease, and
+    // atlas_code_work_claim now requires it. No table, route or execution capability.
+    // Migration Guard v2 owns the repository-wide 98/84 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(83)
+    expect(enforced).toBe(84)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

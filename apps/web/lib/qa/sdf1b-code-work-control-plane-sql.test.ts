@@ -68,6 +68,8 @@ const ENVELOPE = '50000000-0000-4000-8000-000000000001'
 const PACKAGE = '60000000-0000-4000-8000-000000000001'
 const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
+// SDF-1C1B: a claim now requires the SHA-256 of a claim credential (the raw token never reaches SQL).
+const CLAIM_HASH = 'c'.repeat(64)
 let counter = 0
 const uuid = (prefix: string) => `${prefix}0000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`
 
@@ -154,7 +156,7 @@ function createProposal(options: { grant?: 'granted' | 'granted_with_conditions'
 function grantAndClaim(): Created & { claimId: string; fence: number } {
   const created = createProposal({ grant: 'granted' })
   expect(one(`select state from public.atlas_code_work_runs where work_id=${q(created.workId)}::uuid`)).toBe('authorized')
-  rpc(`select (public.atlas_code_work_claim(${q(created.workId)}::uuid,'fixture-broker','fixture-host')).state`)
+  rpc(`select (public.atlas_code_work_claim(${q(created.workId)}::uuid,'fixture-broker','fixture-host','${CLAIM_HASH}')).state`)
   return { ...created, claimId: one(`select claim_id from public.atlas_code_work_runs where work_id=${q(created.workId)}::uuid`), fence: Number(one(`select fence from public.atlas_code_work_runs where work_id=${q(created.workId)}::uuid`)) }
 }
 
@@ -190,6 +192,8 @@ beforeAll(() => {
   run(dsn, ['-c', `insert into public.manager_tasks(project_id,title,source,source_key,work_package_id,work_package,work_package_hash,delegation_envelope_id,delegation_bound_hash,mission_id,mission_version,mission_bound_hash,workforce_role_id,assigned_at)
     values('${PROJECT}','SDF-1B1','work_package','${PACKAGE}','${PACKAGE}',${q(JSON.stringify(pkg))}::jsonb,'${HASH_A}','${ENVELOPE}','${HASH_B}','${MISSION}',1,'${HASH_A}','${ROLE}',clock_timestamp())`])
   run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql')])
+  // SDF-1C1B replaces the credential-less claim; the B1 suite exercises the schema as it now ships.
+  run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260924080000_sdf1c1b_broker_claim_credentials.sql')])
   run(ADMIN_URL, ['-c', `create role "${SVC}" nologin bypassrls in role service_role`])
 }, 120_000)
 
@@ -315,21 +319,21 @@ d('SDF-1B1 claim, cancellation races and terminal evidence', () => {
   it('serializes duplicate claims and never requeues an expired lease', async () => {
     const created = createProposal({ grant: 'granted' })
     const result = await concurrently(
-      `select (public.atlas_code_work_claim('${created.workId}','broker-a','host-a')).state`,
-      `select (public.atlas_code_work_claim('${created.workId}','broker-b','host-b')).state`,
+      `select (public.atlas_code_work_claim('${created.workId}','broker-a','host-a','${CLAIM_HASH}')).state`,
+      `select (public.atlas_code_work_claim('${created.workId}','broker-b','host-b','${CLAIM_HASH}')).state`,
     )
     expect(result.filter(item => item.status === 'fulfilled')).toHaveLength(1)
     const claimId = one(`select claim_id from public.atlas_code_work_runs where work_id='${created.workId}'`)
     const fence = Number(one(`select fence from public.atlas_code_work_runs where work_id='${created.workId}'`))
-    one(`begin; select set_config('omnira.code_work_control','on',true); update public.atlas_code_work_runs set lease_until=clock_timestamp()-interval '1 second' where work_id='${created.workId}'; commit`)
+    one(`begin; select set_config('omnira.code_work_control','on',true); update public.atlas_code_work_runs set lease_until=now()-interval '1 second',broker_token_expires_at=now()-interval '1 second' where work_id='${created.workId}'; commit`)
     expect(rpc(`select (public.atlas_code_work_heartbeat('${created.workId}','${claimId}',${fence})).state`)).toBe('timeout')
-    expect(txn(`select public.atlas_code_work_claim('${created.workId}','broker-c','host-c')`).err).toMatch(/not claimable/)
+    expect(txn(`select public.atlas_code_work_claim('${created.workId}','broker-c','host-c','${CLAIM_HASH}')`).err).toMatch(/not claimable/)
   })
 
   it('makes cancel win safely against claim, heartbeat and receipt operations', async () => {
     const againstClaim = createProposal({ grant: 'granted' })
     await concurrently(
-      `select public.atlas_code_work_claim('${againstClaim.workId}','broker','host')`,
+      `select public.atlas_code_work_claim('${againstClaim.workId}','broker','host','${CLAIM_HASH}')`,
       `select public.atlas_code_work_cancel('${againstClaim.workId}','${PROJECT}','${REQUESTER}','owner_cancel')`,
     )
     expect(one(`select state||':'||(claim_id is null)::text from public.atlas_code_work_runs where work_id='${againstClaim.workId}'`)).toBe('cancelled:true')

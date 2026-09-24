@@ -507,6 +507,178 @@ export type Database = {
           },
         ]
       }
+      atlas_code_broker_enrollments: {
+        Row: {
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string | null
+          challenge_hash: string
+          consumed_at: string | null
+          created_at: string
+          enrollment_id: string
+          expires_at: string
+          host_id: string
+          pairing_code_hash: string
+          proposed_broker_version: string | null
+          proposed_build_sha256: string | null
+          proposed_host_label: string | null
+          proposed_local_uid_hash: string | null
+          proposed_os_version: string | null
+          proposed_protocol_version: number | null
+          requested_by: string
+          state: string
+        }
+        Insert: {
+          allowed_repository_ids: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          broker_id?: string | null
+          challenge_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          enrollment_id: string
+          expires_at: string
+          host_id: string
+          pairing_code_hash: string
+          proposed_broker_version?: string | null
+          proposed_build_sha256?: string | null
+          proposed_host_label?: string | null
+          proposed_local_uid_hash?: string | null
+          proposed_os_version?: string | null
+          proposed_protocol_version?: number | null
+          requested_by: string
+          state?: string
+        }
+        Update: {
+          allowed_repository_ids?: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          broker_id?: string | null
+          challenge_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          enrollment_id?: string
+          expires_at?: string
+          host_id?: string
+          pairing_code_hash?: string
+          proposed_broker_version?: string | null
+          proposed_build_sha256?: string | null
+          proposed_host_label?: string | null
+          proposed_local_uid_hash?: string | null
+          proposed_os_version?: string | null
+          proposed_protocol_version?: number | null
+          requested_by?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_code_broker_enrollments_broker_fk"
+            columns: ["broker_id"]
+            isOneToOne: true
+            referencedRelation: "atlas_code_brokers"
+            referencedColumns: ["broker_id"]
+          },
+        ]
+      }
+      atlas_code_brokers: {
+        Row: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at: string
+          enrollment_id: string
+          expires_at: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at: string | null
+          last_request_jti: string | null
+          last_seen_at: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter: number
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at?: string
+          enrollment_id: string
+          expires_at?: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at?: string | null
+          last_request_jti?: string | null
+          last_seen_at?: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          algorithm?: string
+          allowed_repository_ids?: string[]
+          approved_at?: string | null
+          approved_by?: string | null
+          broker_id?: string
+          broker_version?: string
+          build_sha256?: string
+          created_at?: string
+          enrollment_id?: string
+          expires_at?: string | null
+          host_id?: string
+          host_label?: string
+          key_thumbprint?: string
+          last_request_at?: string | null
+          last_request_jti?: string | null
+          last_seen_at?: string | null
+          local_uid_hash?: string
+          os_version?: string
+          owner_user_id?: string
+          protocol_version?: number
+          public_jwk?: Json
+          request_counter?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_code_brokers_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: true
+            referencedRelation: "atlas_code_broker_enrollments"
+            referencedColumns: ["enrollment_id"]
+          },
+        ]
+      }
       atlas_code_work_receipts: {
         Row: {
           admission_hash: string
@@ -4881,6 +5053,223 @@ export type Database = {
     }
     Functions: {
       action_phase_rank: { Args: { p: string }; Returns: number }
+      atlas_code_broker_accept_request: {
+        Args: {
+          p_broker_id: string
+          p_broker_version: string
+          p_build_sha256: string
+          p_host_id: string
+          p_jti: string
+          p_protocol_version: number
+          p_request_counter: number
+          p_request_timestamp: string
+        }
+        Returns: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at: string
+          enrollment_id: string
+          expires_at: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at: string | null
+          last_request_jti: string | null
+          last_seen_at: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter: number
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_brokers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_broker_approve: {
+        Args: { p_broker_id: string; p_owner_user_id: string }
+        Returns: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at: string
+          enrollment_id: string
+          expires_at: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at: string | null
+          last_request_jti: string | null
+          last_seen_at: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter: number
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_brokers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_broker_begin_enrollment: {
+        Args: {
+          p_allowed_repository_ids: string[]
+          p_challenge_hash: string
+          p_enrollment_id: string
+          p_expires_at: string
+          p_host_id: string
+          p_pairing_code_hash: string
+          p_requested_by: string
+        }
+        Returns: {
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string | null
+          challenge_hash: string
+          consumed_at: string | null
+          created_at: string
+          enrollment_id: string
+          expires_at: string
+          host_id: string
+          pairing_code_hash: string
+          proposed_broker_version: string | null
+          proposed_build_sha256: string | null
+          proposed_host_label: string | null
+          proposed_local_uid_hash: string | null
+          proposed_os_version: string | null
+          proposed_protocol_version: number | null
+          requested_by: string
+          state: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_broker_enrollments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_broker_complete_enrollment: {
+        Args: {
+          p_algorithm: string
+          p_broker_version: string
+          p_build_sha256: string
+          p_challenge_hash: string
+          p_enrollment_id: string
+          p_host_label: string
+          p_key_thumbprint: string
+          p_local_uid_hash: string
+          p_os_version: string
+          p_pairing_code_hash: string
+          p_protocol_version: number
+          p_public_jwk: Json
+        }
+        Returns: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at: string
+          enrollment_id: string
+          expires_at: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at: string | null
+          last_request_jti: string | null
+          last_seen_at: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter: number
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_brokers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_broker_revoke: {
+        Args: {
+          p_broker_id: string
+          p_owner_user_id: string
+          p_reason: string
+          p_status: string
+        }
+        Returns: {
+          algorithm: string
+          allowed_repository_ids: string[]
+          approved_at: string | null
+          approved_by: string | null
+          broker_id: string
+          broker_version: string
+          build_sha256: string
+          created_at: string
+          enrollment_id: string
+          expires_at: string | null
+          host_id: string
+          host_label: string
+          key_thumbprint: string
+          last_request_at: string | null
+          last_request_jti: string | null
+          last_seen_at: string | null
+          local_uid_hash: string
+          os_version: string
+          owner_user_id: string
+          protocol_version: number
+          public_jwk: Json
+          request_counter: number
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_reason: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_brokers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       atlas_code_work_admission_hash: {
         Args: { p_admission: Json }
         Returns: string

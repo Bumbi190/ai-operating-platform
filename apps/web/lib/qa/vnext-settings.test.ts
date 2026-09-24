@@ -717,6 +717,12 @@ describe('settings · generation', () => {
       ...(await importOriginal<typeof import('@/lib/os/settings')>()),
       loadSettings: loadSpy,
     }))
+    vi.doMock('@/lib/atlas/code-broker/operator', () => ({
+      loadBrokerSettings: async () => ({
+        capability: { allowed: true, reason: 'allowed' }, brokers: [], openEnrollment: null,
+        generatedAt: NOW, readable: true,
+      }),
+    }))
     vi.doMock('@/app/(platform)/settings/SettingsLegacy', () => ({
       SettingsLegacy: () => createElement('div', { id: 'legacy-body' }),
     }))

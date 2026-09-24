@@ -1,0 +1,84 @@
+name: SDF-1C Trusted Broker Boundary
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sdf1c-trusted-broker-boundary:
+    name: SDF-1C Trusted Broker Boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ATLAS_SQL_TEST_REQUIRED: 1
+      ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Identity, enrollment, replay, isolation and no-execution proofs
+        working-directory: apps/web
+        run: >-
+          ../../node_modules/.bin/vitest run
+          lib/qa/sdf1c-trusted-broker.test.ts
+          lib/qa/sdf1c-trusted-broker-sql.test.ts
+          lib/qa/sdf1c-trusted-broker-ui.test.ts
+          lib/qa/sdf1c-broker-identity-id.test.ts
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/sdf1c.json"
+      - name: Enforce per-file anti-skip floors
+        env:
+          SDF1C_REPORT: ${{ runner.temp }}/sdf1c.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const reportPath = process.env.SDF1C_REPORT
+          if (!reportPath || !fs.existsSync(reportPath)) throw new Error('SDF-1C report missing')
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const required = new Map([
+            ['sdf1c-trusted-broker.test.ts', 16],
+            ['sdf1c-trusted-broker-sql.test.ts', 14],
+            ['sdf1c-trusted-broker-ui.test.ts', 5],
+            ['sdf1c-broker-identity-id.test.ts', 13],
+          ])
+          const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
+          for (const [file, floor] of required) {
+            const result = byFile.get(file)
+            if (!result) throw new Error(`SDF-1C anti-skip missing file: ${file}`)
+            const assertions = result.assertionResults ?? []
+            const passed = assertions.filter(a => a.status === 'passed').length
+            const failed = assertions.filter(a => a.status === 'failed').length
+            const pending = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
+            if (result.status !== 'passed' || passed < floor || failed !== 0 || pending !== 0) {
+              throw new Error(`SDF-1C anti-skip failed for ${file}: passed=${passed} failed=${failed} pending=${pending}`)
+            }
+          }
+          if ((report.numFailedTests ?? 0) !== 0 || (report.numPendingTests ?? 0) !== 0 || (report.numTodoTests ?? 0) !== 0) {
+            throw new Error('SDF-1C aggregate anti-skip failed')
+          }
+          console.log('SDF-1C Trusted Broker Boundary satisfied with 0 failed / 0 pending')
+          NODE
+      - name: Typecheck web and broker identity library
+        run: |
+          npm run typecheck --workspace=apps/web
+          npm run typecheck --prefix apps/code-broker

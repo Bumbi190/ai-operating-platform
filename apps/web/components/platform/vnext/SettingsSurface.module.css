@@ -394,6 +394,51 @@
   .columns { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* ── Trusted local broker identity (C1 only) ─────────────────────────────── */
+
+.brokerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  min-width: 0;
+  border: 1px solid rgb(var(--foreground-rgb) / 0.1);
+  border-left: 2px solid rgb(var(--foreground-rgb) / 0.2);
+  border-radius: 0.625rem;
+  background: rgb(var(--foreground-rgb) / 0.018);
+}
+.brokerCard[data-broker-state='active'] { border-left-color: rgb(var(--omnira-cyan-rgb) / 0.75); }
+.brokerCard[data-broker-state='pending'],
+.brokerCard[data-broker-state='enrollment'] { border-left-color: rgb(251 191 36 / 0.75); }
+.brokerCard[data-broker-state='revoked'],
+.brokerCard[data-broker-state='lost'] { border-left-color: rgb(248 113 113 / 0.75); }
+.brokerActions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.brokerActions :is(.primary, .secondary), .brokerStart { min-height: 2.75rem; }
+.enrollmentPackage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(251 191 36 / 0.4);
+  border-radius: 0.625rem;
+  background: rgb(251 191 36 / 0.05);
+  font-size: 0.75rem;
+}
+.enrollmentPackage p { margin: 0; color: rgb(var(--foreground-rgb) / 0.65); }
+.enrollmentPackage pre {
+  margin: 0;
+  padding: 0.625rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 0.5rem;
+  background: rgb(var(--foreground-rgb) / 0.04);
+  font: 0.625rem/1.5 var(--font-geist-mono, ui-monospace), monospace;
+}
+
 /* ── Mobile ───────────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
@@ -402,6 +447,8 @@
   .row { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
   /* The submit control gets its own line, never a mis-tap away from its hint. */
   .formActions { flex-direction: column; align-items: stretch; }
+  .brokerActions { flex-direction: column; }
+  .brokerActions :is(.primary, .secondary) { width: 100%; }
 }
 
 /* ── Motion ───────────────────────────────────────────────────────────────── */
@@ -411,4 +458,11 @@
   :where(html:not([data-motion='full'])) .primary {
     transition: none;
   }
+}
+
+@media (forced-colors: active) {
+  .brokerCard, .enrollmentPackage { border: 1px solid CanvasText; }
+  .brokerCard[data-broker-state='active'] { border-left: 4px solid LinkText; }
+  .brokerCard[data-broker-state='pending'], .brokerCard[data-broker-state='enrollment'] { border-left: 4px solid Highlight; }
+  .brokerCard[data-broker-state='revoked'], .brokerCard[data-broker-state='lost'] { border-left: 4px solid Mark; }
 }

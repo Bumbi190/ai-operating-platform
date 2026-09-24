@@ -1,0 +1,11 @@
+{
+  "name": "@omnira/code-broker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "native:build": "mkdir -p .native && swiftc native/macos/OmniraBrokerIdentity.swift -o .native/omnira-broker-identity -framework Security",
+    "cli": "tsx src/cli.ts"
+  }
+}

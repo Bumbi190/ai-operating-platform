@@ -44,14 +44,14 @@ const runtimeHarness = {
 }
 
 describe('Migration Guard v2 — frozen policy and repository set', () => {
-  it('pins policy v2 and the current 96/82/14/30 counts', () => {
+  it('pins policy v2 and the current 97/83/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(96)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(82)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(97)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(83)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(96)
-    expect(repositoryState.enforcedNames).toHaveLength(82)
+    expect(repositoryState.sqlFiles).toHaveLength(97)
+    expect(repositoryState.enforcedNames).toHaveLength(83)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -90,7 +90,7 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 describe('Migration Guard v2 — production ledger set integrity', () => {
   it('passes the exact current synthetic known history', () => {
     const result = evaluateAppliedMigrationLedger(exactVerifiedKnownLedger, repositoryState)
-    expect(result.appliedLedgerCount).toBe(119)
+    expect(result.appliedLedgerCount).toBe(120)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -202,9 +202,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 96,
-      enforcedCount: 82,
-      appliedLedgerCount: 119,
+      canonicalSqlCount: 97,
+      enforcedCount: 83,
+      appliedLedgerCount: 120,
     })
   })
 })

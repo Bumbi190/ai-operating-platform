@@ -11,8 +11,10 @@ import { createHash } from 'node:crypto'
 export const MIGRATION_GUARD_POLICY_VERSION = 2
 // 95 + 20260923120000_survival_state_events.sql (Atlas Survival Phase 2A).
 // Enforced trips together: 96 = 14 grandfathered + 82 enforced.
-export const EXPECTED_CANONICAL_SQL_COUNT = 96
-export const EXPECTED_ENFORCED_COUNT = 82
+// 96 + 20260923150000_sdf1c1_trusted_broker_identity.sql (Phase 1C1A, broker identity
+// and enrollment only): 97 = 14 grandfathered + 83 enforced.
+export const EXPECTED_CANONICAL_SQL_COUNT = 97
+export const EXPECTED_ENFORCED_COUNT = 83
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

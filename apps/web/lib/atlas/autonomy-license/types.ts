@@ -138,6 +138,16 @@ export const LICENSE_REASONS = [
   'revoked',
   /** A replacement licence lineage exists (§18.56). */
   'superseded',
+  /**
+   * More than one non-terminal licence lineage exists for this instance and
+   * nothing says which one governs.
+   *
+   * This is the expected — and safe — state DURING a replacement: issuing a
+   * successor beside a live licence is transiently ambiguous until the
+   * supersession act lands. Ambiguity must never be resolved by guessing, so it
+   * fails closed to L0 rather than picking a winner.
+   */
+  'ambiguous_licenses',
   /** The immutable event chain cannot be folded. Fails closed, never repairs. */
   'malformed_lineage',
   /** The Decision Ledger decision that authorized the grant no longer governs. */

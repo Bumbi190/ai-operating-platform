@@ -98,7 +98,12 @@ create table if not exists public.atlas_autonomy_license_events (
   -- body, and constrained below to the canonical human shape.
   actor                    text not null,
 
-  created_at               timestamptz not null default now(),
+  -- When the event happened. Named `occurred_at` — the vocabulary
+  -- `LicenseEvent.occurredAt` and the rest of the repo's event ledgers use — so
+  -- the column the TypeScript store selects is the column this table has.
+  -- Audit evidence only: it is NOT the authority ordering (see the generation
+  -- index below).
+  occurred_at              timestamptz not null default now(),
 
   constraint atlas_autonomy_license_events_act_valid
     check (act in (
@@ -127,6 +132,28 @@ create table if not exists public.atlas_autonomy_license_events (
   -- Only a supersession names a replacement, and it must name one.
   constraint atlas_autonomy_license_events_supersession_shape
     check ((act = 'LICENSE_SUPERSEDED') = (superseded_by_license_id is not null)),
+
+  -- ── Representation invariants ─────────────────────────────────────────
+  -- Facts the ledger already assumes, stated structurally so a malformed row
+  -- cannot become history. These are REPRESENTATION only: no authority policy
+  -- lives here, because authority is decided in TypeScript against Chapter 11's
+  -- own fold and in the RPC below.
+  constraint atlas_autonomy_license_events_generation_non_negative
+    check (license_generation >= 0),
+  constraint atlas_autonomy_license_events_decision_version_positive
+    check (decision_version >= 1),
+  -- Both hashes are the repository's canonical sha256 shape. A shorter or
+  -- non-hex value could not have come from `canonicalTargetVersionHash`, so
+  -- accepting one would let a row look pinned while pinning nothing.
+  constraint atlas_autonomy_license_events_def_hash_shape
+    check (bound_def_hash ~ '^[0-9a-f]{64}$'),
+  constraint atlas_autonomy_license_events_scope_fingerprint_shape
+    check (action_scope_fingerprint ~ '^[0-9a-f]{64}$'),
+  -- No NULL element may hide inside the licensed set. A NULL would make
+  -- `cardinality(allowed_action_kinds) > 0` true while the set is meaningless,
+  -- and every read-side comparison would silently treat it as an unknown kind.
+  constraint atlas_autonomy_license_events_action_kinds_non_null
+    check (array_position(allowed_action_kinds, null) is null),
 
   -- The same canonical human-identity shape the survival funding ledger uses:
   -- the version nibble must be 1–5 and the variant nibble 8, 9, a or b. A loose
@@ -277,35 +304,60 @@ begin
   end if;
 
   if v_generation = 0 then
-    -- ── ISSUED: prove the immutable facts about the pinned decision ───────
-    -- The structural half of the decision check. Whether it is CURRENTLY
-    -- GOVERNING is proven in TypeScript against Chapter 11's own fold; this
-    -- refuses a record whose decision does not exist, belongs elsewhere, or was
-    -- never an autonomy decision.
+    -- ── ISSUED: the subject must be the instance's OWN truth ─────────────
+    -- ONE relational check. The caller names the instance and nothing else: the
+    -- project, the definition key and the definition hash are read from that
+    -- instance's row rather than believed. Without this the ledger could record
+    -- a binding the database itself knows to be false — a licence claiming a
+    -- project or a definition its own workflow instance does not have.
     if not exists (
-      select 1 from public.atlas_decision_ledger
-       where decision_id = p_decision_id
-         and record_id = p_decision_record_id
-         and version = p_decision_version
+      select 1 from public.workflow_instances wi
+       where wi.id = p_workflow_instance_id
+         and wi.project_id = p_project_id
+         and wi.def_key = p_bound_def_key
+         and wi.def_hash = p_bound_def_hash
     ) then
-      raise exception 'pinned decision act does not exist' using errcode = 'P0002';
+      raise exception
+        'the licence subject does not match workflow instance %: project, def_key or def_hash disagrees',
+        p_workflow_instance_id using errcode = '22023';
     end if;
 
-    if exists (
-      select 1 from public.atlas_decision_ledger
-       where decision_id = p_decision_id
-         and (project_id <> p_project_id
-              or not (materiality @> '["autonomy"]'::jsonb))
+    -- ── ISSUED: the pinned decision act says exactly what we claim ───────
+    -- ONE exact-row condition on the immutable record the licence pins.
+    -- Deliberately NOT a scan of the whole lineage: a material amendment to the
+    -- same decision may legitimately carry different materiality, and refusing
+    -- on that would reject a valid pin. Whether the decision is CURRENTLY
+    -- GOVERNING is proven in TypeScript against Chapter 11's own fold, which
+    -- this function does not re-implement.
+    if not exists (
+      select 1 from public.atlas_decision_ledger dl
+       where dl.decision_id = p_decision_id
+         and dl.record_id = p_decision_record_id
+         and dl.version = p_decision_version
+         and dl.project_id = p_project_id
+         and dl.materiality @> '["autonomy"]'::jsonb
     ) then
-      raise exception 'the authorizing decision is not a same-project autonomy decision'
+      raise exception
+        'the pinned decision act is not a same-project autonomy record as claimed'
+        using errcode = '22023';
+    end if;
+  else
+    -- ── A suspended licence may only be revoked or superseded ────────────
+    -- There is no RESUMED act, and a restriction must not become a hidden
+    -- resume path. After a suspension the only admissible acts are the two
+    -- terminal ones; restoring autonomy requires a NEW reviewed licensing
+    -- lineage, not another act on this one. Checked here, refused again by the
+    -- pure fold, and re-derived as ineffective at read time — three independent
+    -- mechanisms, because "suspended means stopped" is the whole point of
+    -- suspension.
+    if p_act = 'LICENSE_RESTRICTED' and exists (
+      select 1 from public.atlas_autonomy_license_events
+       where license_id = p_license_id and act = 'LICENSE_SUSPENDED'
+    ) then
+      raise exception 'a suspended licence cannot be restricted back into effect'
         using errcode = '22023';
     end if;
 
-    if not exists (select 1 from public.workflow_instances where id = p_workflow_instance_id) then
-      raise exception 'workflow instance % does not exist', p_workflow_instance_id
-        using errcode = 'P0002';
-    end if;
-  else
     -- ── Every continuing act inherits the issued subject, unchanged ───────
     select * into v_first from public.atlas_autonomy_license_events
      where license_id = p_license_id and license_generation = 0;
@@ -389,10 +441,13 @@ comment on function public.autonomy_license_append(
   timestamptz, timestamptz, uuid, text, text
 ) is
   'The ONLY write path for the autonomy licence ledger. Serializes the lineage by generation, '
-  'refuses an act after a terminal one, refuses any continuing act that widens level, actions or '
-  'window, and re-proves the immutable facts about the authorizing decision. Whether that '
-  'decision is CURRENTLY governing is proven in TypeScript against Chapter 11''s own fold, which '
-  'this function deliberately does not re-implement.';
+  'refuses an act after a terminal one, refuses a restriction that would resume a suspended '
+  'licence, refuses any continuing act that widens level, actions or window, and proves on issue '
+  'that the licence subject is the workflow instance''s OWN project/def_key/def_hash and that the '
+  'pinned decision record says exactly what the licence claims. Whether that decision is '
+  'CURRENTLY governing is proven in TypeScript against Chapter 11''s own fold, which this function '
+  'deliberately does not re-implement. The actor-shape CHECK is defence in depth, NOT proof of '
+  'platform-operator authority: that authority is resolvePlatformOperator() in the application.';
 
 -- ── 4. Server-only reachability ────────────────────────────────────────────
 --

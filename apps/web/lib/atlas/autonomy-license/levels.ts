@@ -52,6 +52,23 @@ export const AUTONOMY_LICENSE_LABELS: Record<AutonomyLicenseLevel, string> = {
   L6: 'Autonomy License L6 — Full Strategic Autonomy',
 }
 
+/**
+ * Non-throwing membership test, for UNTRUSTED input.
+ *
+ * `levelIndex` below deliberately throws: calling it with something that is not
+ * a level is an internal impossibility, and an exception is the right response
+ * to a broken invariant. Caller input is the opposite case. A licence request
+ * may carry anything at all, and an unrecognised level must become a REFUSAL
+ * (`{ ok: false, reason: 'invalid_level' }`) — never an exception escaping the
+ * licensing boundary as a 500.
+ *
+ * Derived from `AUTONOMY_LICENSE_LEVELS` rather than a second literal list, so
+ * it cannot drift from the vocabulary it guards.
+ */
+export function isAutonomyLicenseLevel(value: unknown): value is AutonomyLicenseLevel {
+  return typeof value === 'string' && (AUTONOMY_LICENSE_LEVELS as readonly string[]).includes(value)
+}
+
 // ── Ordering helpers ──────────────────────────────────────────────────────────
 //
 // Owned here because ordering IS a property of the level scale. Survival's

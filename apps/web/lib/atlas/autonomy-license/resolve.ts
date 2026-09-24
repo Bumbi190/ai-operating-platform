@@ -51,27 +51,85 @@ export interface ResolveArgs {
   decisionLineage?: (decisionId: string) => Promise<unknown[]>
 }
 
+/** Statuses that END a lineage, so it cannot compete for current authority. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['revoked', 'superseded'])
+
+type LineageSelection =
+  | { kind: 'resolved'; lineage: LicenseEvent[] }
+  /** Two or more non-terminal lineages: nothing says which one governs. */
+  | { kind: 'ambiguous' }
+  | { kind: 'none' }
+  | { kind: 'malformed' }
+
 /**
- * The current licence lineage for an instance: the one whose latest act was
- * appended last.
+ * Which lineage, if any, currently speaks for this instance.
  *
- * Ordering is by `eventSeq`, the database's monotonic identity column, not by
- * time — a replacement lineage appended in the same millisecond as the act that
- * superseded it must still win, and only the sequence can say that.
+ * ── WHY THIS IS NOT "LATEST EVENT WINS" ────────────────────────────────────
+ * An earlier revision picked the lineage whose latest event had the largest
+ * `eventSeq`. That is wrong the moment supersession is used:
+ *
+ *     A  LICENSE_ISSUED        seq 10
+ *     B  LICENSE_ISSUED        seq 11
+ *     A  LICENSE_SUPERSEDED→B  seq 12     <-- A's lineage now has the newest event
+ *
+ * Latest-event-wins selects A, which is superseded, so the answer is L0 — while
+ * B, the replacement the act explicitly names, is never consulted. The
+ * supersession act made the answer worse than not superseding at all.
+ *
+ * ── THE MODEL ──────────────────────────────────────────────────────────────
+ * Terminal lineages (revoked, superseded) do not compete: supersession makes a
+ * lineage stop speaking, so its replacement speaks instead. That leaves:
+ *
+ *   • exactly one live lineage  → resolve it
+ *   • more than one             → `ambiguous_licenses`, fail closed to L0
+ *   • none                      → resolve the latest terminal one for
+ *                                 EXPLANATION only (it will read as revoked or
+ *                                 superseded, hence L0), so a caller learns why
+ *                                 rather than getting a bare `no_license`
+ *
+ * The ambiguity case is not a defect to be papered over — it is the correct and
+ * expected state *during* a replacement. Issuing B beside a live A is
+ * transiently ambiguous until the supersession act lands, and the safe answer
+ * in that window is L0, not a guess about which of two live grants the human
+ * meant. That is what makes replacement a two-step dance rather than a
+ * moment where authority could double.
+ *
+ * A malformed lineage never competes (one broken chain must not mask a healthy
+ * one) but is never silently discarded either: if nothing else is present, the
+ * caller is told `malformed_lineage` rather than `no_license`.
  */
-function currentLineage(events: readonly LicenseEvent[]): LicenseEvent[] | null {
-  if (events.length === 0) return null
+function selectCurrentLineage(events: readonly LicenseEvent[]): LineageSelection {
+  if (events.length === 0) return { kind: 'none' }
+
   const byLicense = new Map<string, LicenseEvent[]>()
   for (const event of events) {
     byLicense.set(event.licenseId, [...(byLicense.get(event.licenseId) ?? []), event])
   }
-  let best: LicenseEvent[] | null = null
-  let bestSeq = -1
+
+  const derived: { lineage: LicenseEvent[]; status: string; lastSeq: number }[] = []
+  let sawMalformed = false
   for (const lineage of byLicense.values()) {
-    const seq = Math.max(...lineage.map(e => e.eventSeq))
-    if (seq > bestSeq) { bestSeq = seq; best = lineage }
+    try {
+      const state = deriveLicenseState(lineage)
+      derived.push({
+        lineage,
+        status: state.status,
+        lastSeq: Math.max(...lineage.map(e => e.eventSeq)),
+      })
+    } catch {
+      sawMalformed = true
+    }
   }
-  return best
+
+  if (derived.length === 0) return sawMalformed ? { kind: 'malformed' } : { kind: 'none' }
+
+  const live = derived.filter(d => !TERMINAL_STATUSES.has(d.status))
+  if (live.length === 1) return { kind: 'resolved', lineage: live[0].lineage }
+  if (live.length > 1) return { kind: 'ambiguous' }
+
+  // Every lineage is terminal. Explain with the most recently appended one.
+  const latest = derived.reduce((a, b) => (b.lastSeq > a.lastSeq ? b : a))
+  return { kind: 'resolved', lineage: latest.lineage }
 }
 
 export async function resolveAutonomyLicense(
@@ -102,8 +160,17 @@ export async function resolveAutonomyLicense(
     return { ...noLicense(workflowInstanceId, 'unavailable'), projectId: instance.project_id }
   }
 
-  const lineage = currentLineage(events)
-  if (!lineage) return { ...noLicense(workflowInstanceId, 'no_license'), projectId: instance.project_id }
+  const selection = selectCurrentLineage(events)
+  if (selection.kind === 'none') {
+    return { ...noLicense(workflowInstanceId, 'no_license'), projectId: instance.project_id }
+  }
+  if (selection.kind === 'ambiguous') {
+    return { ...noLicense(workflowInstanceId, 'ambiguous_licenses'), projectId: instance.project_id }
+  }
+  if (selection.kind === 'malformed') {
+    return { ...noLicense(workflowInstanceId, 'malformed_lineage'), projectId: instance.project_id }
+  }
+  const lineage = selection.lineage
 
   let state
   try {

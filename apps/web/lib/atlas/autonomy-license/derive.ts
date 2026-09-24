@@ -70,17 +70,27 @@ export class MalformedLicenseLineageError extends Error {
 }
 
 /**
- * Canonical order: time, then GENERATION, then the database's monotonic cursor.
+ * Canonical order: GENERATION first, then the database's monotonic cursor.
  *
- * The generation tiebreak is load-bearing for the same reason it is in the
- * decision ledger: two acts stamped in the same millisecond would otherwise be
- * ordered by a random UUID, and "was this licence revoked before or after it
- * was restricted?" would be a coin flip. Generation is a fact about the chain,
- * not about the clock.
+ * ── WHY THE CLOCK IS NOT THE ORDER ─────────────────────────────────────────
+ * This is an AUTHORITY history, so its order must be causal. `license_generation`
+ * is assigned inside the database under the row lock that reads the current
+ * chain, which makes it the structural position of each act: generation 1 was
+ * derived from generation 0 and can be nothing else. `event_seq` is the
+ * database's monotonic total cursor, and breaks the only tie generation can
+ * leave.
+ *
+ * `occurred_at` is deliberately NOT in the sort. It is audit evidence — when
+ * the act was recorded — and ordering by it would let an NTP correction, a
+ * timezone-tolerant client or a manual backfill reorder causal acts. An earlier
+ * revision sorted on it first, which allowed a revocation stamped one second
+ * early to be folded BEFORE the issue it revokes.
+ *
+ * The decision ledger reaches the same conclusion for the same reason, and its
+ * comment records the measured failure that forced it.
  */
 export function orderLicenseEvents(events: readonly LicenseEvent[]): LicenseEvent[] {
   return [...events].sort((a, b) =>
-    (Date.parse(a.occurredAt) - Date.parse(b.occurredAt)) ||
     (a.generation - b.generation) ||
     (a.eventSeq - b.eventSeq),
   )
@@ -144,6 +154,26 @@ export function deriveLicenseState(events: readonly LicenseEvent[]): DerivedLice
   const terminalIndex = ordered.findIndex(e => TERMINAL_ACTS.has(e.act))
   if (terminalIndex !== -1 && terminalIndex !== ordered.length - 1) {
     throw new MalformedLicenseLineageError('act-after-terminal', ordered[terminalIndex + 1].act)
+  }
+
+  // ── A suspended licence has no path back to effect ────────────────────────
+  // Ruling 7 removed RESUMED, so there is no act that clears a suspension. A
+  // restriction must not become a hidden one: on
+  // `ISSUED → SUSPENDED → RESTRICTED` the last act is `LICENSE_RESTRICTED`, so
+  // the status would compute as `restricted`, the suspension check in
+  // `effectivenessOf` would not fire, and the licence would silently return to
+  // effective — a suspended grant revived by an act that is only supposed to
+  // narrow.
+  //
+  // The write boundary and the RPC both refuse this on the real chain. The fold
+  // refuses it as well, so a future writer that bypasses both still cannot
+  // resurrect a suspended licence. Fail closed, never repair.
+  const suspendedAt = ordered.findIndex(e => e.act === 'LICENSE_SUSPENDED')
+  if (suspendedAt !== -1) {
+    const resurrection = ordered.slice(suspendedAt + 1).find(e => e.act === 'LICENSE_RESTRICTED')
+    if (resurrection) {
+      throw new MalformedLicenseLineageError('restriction-after-suspension', resurrection.eventId)
+    }
   }
 
   // ── Narrowing fold ────────────────────────────────────────────────────────

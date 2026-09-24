@@ -43,7 +43,7 @@ import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { readInstance } from '@/lib/workflows/store'
 
 import { licenseGenerationOf, deriveLicenseState, MalformedLicenseLineageError } from './derive'
-import { compareLevels, INEFFECTIVE_LEVEL, levelIndex } from './levels'
+import { compareLevels, INEFFECTIVE_LEVEL, isAutonomyLicenseLevel } from './levels'
 import { resolveActionScope } from './scope'
 import { createAutonomyLicenseStore, type AutonomyLicenseStore } from './store'
 import { LICENSE_ACTS } from './types'
@@ -75,6 +75,8 @@ export const LICENSE_REFUSALS = [
   'license_not_found',
   'license_malformed',
   'license_terminal',
+  /** A suspended licence is stopped; only revocation or supersession may follow. */
+  'license_suspended',
   'restriction_raises_level',
   'restriction_adds_action',
   'restriction_extends_window',
@@ -241,9 +243,15 @@ function validateWindow(effectiveAt: string, expiresAt: string): LicenseRefusal 
   return null
 }
 
-function validateLevel(level: string): level is AutonomyLicenseLevel {
-  return levelIndex(level as AutonomyLicenseLevel) >= 0
-}
+/**
+ * Untrusted level input, refused rather than thrown.
+ *
+ * An earlier revision validated by calling `levelIndex()`, which THROWS on an
+ * unknown level — so a request carrying `L9` escaped this boundary as an
+ * exception instead of returning `{ ok: false, reason: 'invalid_level' }`. The
+ * guard is the non-throwing membership test; `levelIndex` keeps throwing for
+ * internal impossibilities, which is a different job.
+ */
 
 // ── ISSUE ─────────────────────────────────────────────────────────────────────
 
@@ -257,7 +265,8 @@ export async function issueAutonomyLicense(
   const subject = await loadSubject(request.workflowInstanceId, args)
   if (!subject.ok) return deny(subject.reason)
 
-  if (!validateLevel(request.licensedLevel)) return deny('invalid_level', request.licensedLevel)
+  const requestedLevel = request.licensedLevel
+  if (!isAutonomyLicenseLevel(requestedLevel)) return deny('invalid_level', String(requestedLevel))
   const windowRefusal = validateWindow(request.effectiveAt, request.expiresAt)
   if (windowRefusal) return deny(windowRefusal)
 
@@ -281,7 +290,7 @@ export async function issueAutonomyLicense(
       workflowInstanceId: request.workflowInstanceId,
       boundDefKey: subject.subject.def_key,
       boundDefHash: subject.subject.def_hash,
-      licensedLevel: request.licensedLevel,
+      licensedLevel: requestedLevel,
       allowedActionKinds: scope.scope.entries.map(e => e.actionKind),
       actionScopeFingerprint: scope.scope.fingerprint,
       decisionId: decision.pin.decisionId,
@@ -319,9 +328,21 @@ export async function restrictAutonomyLicense(
   const auth = await authorize(args)
   if (!auth.ok) return deny(auth.reason)
 
-  if (!validateLevel(request.licensedLevel)) return deny('invalid_level', request.licensedLevel)
+  const requestedLevel = request.licensedLevel
+  if (!isAutonomyLicenseLevel(requestedLevel)) return deny('invalid_level', String(requestedLevel))
 
-  if (compareLevels(request.licensedLevel, current.state.licensedLevel) > 0) {
+  // ── A suspended licence cannot be restricted back into effect ───────────
+  // Ruling 7 removed RESUMED, so no act clears a suspension. A restriction is a
+  // narrowing act, never a resurrection: on `ISSUED → SUSPENDED → RESTRICTED`
+  // the last act would be RESTRICTED, the status would compute as `restricted`,
+  // and the licence would silently return to effective. Restoring autonomy
+  // after a suspension requires a NEW reviewed licence lineage — the same rule
+  // the RPC and the pure fold enforce independently.
+  if (current.state.status === 'suspended') {
+    return deny('license_suspended', 'a suspension is cleared only by a new licence lineage')
+  }
+
+  if (compareLevels(requestedLevel, current.state.licensedLevel) > 0) {
     return deny('restriction_raises_level')
   }
 
@@ -345,7 +366,7 @@ export async function restrictAutonomyLicense(
 
   return append(current, auth.actor, {
     act: 'LICENSE_RESTRICTED',
-    licensedLevel: request.licensedLevel,
+    licensedLevel: requestedLevel,
     allowedActionKinds: scope.scope.entries.map(e => e.actionKind),
     actionScopeFingerprint: scope.scope.fingerprint,
     effectiveAt: request.effectiveAt,

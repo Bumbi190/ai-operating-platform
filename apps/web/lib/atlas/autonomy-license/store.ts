@@ -53,7 +53,16 @@ export interface AppendLicenseEventArgs {
   readonly actor: string
 }
 
-const COLS = [
+/**
+ * The exact columns this store selects.
+ *
+ * EXPORTED so the real-PostgreSQL contract test can compare it against the
+ * migrated table. That test is the one that would have caught a schema/store
+ * disagreement: an earlier revision of the migration declared `created_at`
+ * while this list selects `occurred_at`, and neither the SQL suite nor the unit
+ * suite could see it because each tested only its own side.
+ */
+export const AUTONOMY_LICENSE_EVENT_COLS = [
   'event_id', 'event_seq', 'license_id', 'license_generation', 'act',
   'project_id', 'workflow_instance_id', 'bound_def_key', 'bound_def_hash',
   'licensed_level', 'allowed_action_kinds', 'action_scope_fingerprint',
@@ -161,11 +170,14 @@ class PostgresAutonomyLicenseStore implements AutonomyLicenseStore {
 
   async lineage(licenseId: string): Promise<LicenseEvent[]> {
     const { data, error } = await this.table()
-      .select(COLS)
+      .select(AUTONOMY_LICENSE_EVENT_COLS)
       .eq('license_id', licenseId)
-      // Matches the pure core's canonical order and the lineage index. The core
-      // re-sorts regardless — this is never the authority on ordering.
-      .order('occurred_at', { ascending: true })
+      // CAUSAL order, not clock order: generation is the structural position of
+      // each act and event_seq is the total cursor. `occurred_at` is audit
+      // evidence and is never the authority on ordering — ordering by it would
+      // let a clock skew reorder an act before the act it was derived from.
+      // Mirrors `orderLicenseEvents`; the pure core re-sorts regardless, so this
+      // is a convenience, never the authority.
       .order('license_generation', { ascending: true })
       .order('event_seq', { ascending: true })
     if (error) throw new Error(`[autonomy-license] lineage failed: ${error.message}`)
@@ -174,9 +186,9 @@ class PostgresAutonomyLicenseStore implements AutonomyLicenseStore {
 
   async byInstance(workflowInstanceId: string): Promise<LicenseEvent[]> {
     const { data, error } = await this.table()
-      .select(COLS)
+      .select(AUTONOMY_LICENSE_EVENT_COLS)
       .eq('workflow_instance_id', workflowInstanceId)
-      .order('occurred_at', { ascending: true })
+      .order('license_generation', { ascending: true })
       .order('event_seq', { ascending: true })
     if (error) throw new Error(`[autonomy-license] byInstance failed: ${error.message}`)
     return ((data ?? []) as Row[]).map(rowToEvent)

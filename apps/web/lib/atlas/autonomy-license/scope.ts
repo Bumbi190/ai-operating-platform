@@ -39,7 +39,12 @@
  * rather than creating another JSON canonicalizer."
  */
 
-import { ACTION_REGISTRY, isKnownActionKind, type ActionKind } from '@/lib/workflows/action-registry'
+import {
+  ACTION_REGISTRY,
+  isGovernedEffectEnabled,
+  isKnownActionKind,
+  type ActionKind,
+} from '@/lib/workflows/action-registry'
 import { canonicalTargetVersionHash } from '@/lib/atlas/authorization/build'
 import type { ActionScope, LicensedActionEntry } from './types'
 
@@ -115,10 +120,25 @@ export function entriesFor(actionKinds: readonly string[]): LicensedActionEntry[
  * Bound, deliberately:
  *   • `kind`         — which action.
  *   • `action_class` — the blast radius, and what every downstream guard reads.
+ *   • `executor_family` — whether the action is even EXECUTABLE, and by what.
+ *   • `governed_effect_enabled` — whether the closed enablement registry
+ *                      currently admits it to real effect. `ACTION_REGISTRY`
+ *                      separates family membership from enablement on purpose,
+ *                      and both are load-bearing.
  *   • `states`       — WHERE in this definition the kind is declared. A kind
  *                      that leaves the bound definition is no longer reachable
  *                      from this workflow, which is material to a grant whose
  *                      whole subject is "what this workflow may do unattended".
+ *
+ * ── WHY EXECUTABILITY IS BOUND (and why class + placement were not enough) ──
+ * An action can move from INERT to EXECUTABLE without its class or its
+ * placement changing at all: `executor_family` can change, or the kind can be
+ * added to `GOVERNED_EFFECT_ENABLED_KINDS`. Under a fingerprint that bound only
+ * kind, class and placement, such a change would leave the fingerprint equal —
+ * and a licence issued while the action did nothing would silently become a
+ * licence to make it do something real. That is precisely the silent widening
+ * §18.60 forbids, so the executability facts are bound and their change reads
+ * as `scope_drifted`.
  *
  * NOT bound, deliberately: `description`. Ruling 4 is explicit that "changing
  * prose should not invalidate authority" — a typo fix in a doc string is not a
@@ -129,19 +149,25 @@ export function entriesFor(actionKinds: readonly string[]): LicensedActionEntry[
  * may legitimately appear in several workflows, and another workflow adopting it
  * says nothing about whether THIS workflow's grant still means what it meant.
  *
- * A kind no longer in the registry hashes as `action_class: null`, which cannot
- * equal the class recorded at issue time — so removal reads as drift, which it
- * is, rather than being silently absorbed.
+ * A kind no longer in the registry hashes as `action_class: null` and
+ * `executor_family: null`, neither of which can equal what was recorded at issue
+ * time — so removal reads as drift, which it is, rather than being silently
+ * absorbed.
+ *
+ * `v: 2` records that this payload gained the two executability facts. Safe to
+ * change now because no licence exists yet: the migration is unapplied, so
+ * there is no stored fingerprint to invalidate.
  */
 export function fingerprintFor(
   actionKinds: readonly string[],
   boundDefKey: string | null,
 ): string {
   const payload = {
-    v: 1,
+    v: 2,
     boundDefKey,
     actions: [...actionKinds].sort().map(kind => {
-      const canonical = isKnownActionKind(kind) ? ACTION_REGISTRY[kind as ActionKind] : null
+      const known = isKnownActionKind(kind)
+      const canonical = known ? ACTION_REGISTRY[kind as ActionKind] : null
       const states = canonical
         ? canonical.placements
             .filter(p => p.def_key === boundDefKey)
@@ -149,7 +175,13 @@ export function fingerprintFor(
             .slice()
             .sort()
         : []
-      return { kind, action_class: canonical ? canonical.action_class : null, states }
+      return {
+        kind,
+        action_class: canonical ? canonical.action_class : null,
+        executor_family: canonical ? canonical.executor_family : null,
+        governed_effect_enabled: known ? isGovernedEffectEnabled(kind) : false,
+        states,
+      }
     }),
   }
   return canonicalTargetVersionHash(payload)

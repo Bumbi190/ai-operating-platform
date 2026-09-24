@@ -11,10 +11,17 @@
  * local Postgres, and FAILS instead of skipping wherever proof is required.
  */
 
-import { describe, expect, it, beforeAll, afterAll } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+// The store module is imported ONLY so the schema/store contract test can read
+// its EXPORTED column list rather than a regex over its source. Mocked so the
+// import cannot reach for a Supabase client this suite never uses.
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({})) }))
+
+import { AUTONOMY_LICENSE_EVENT_COLS } from '@/lib/atlas/autonomy-license/store'
 
 function findPsql(): string | null {
   const candidates = [
@@ -91,6 +98,7 @@ const d = AVAILABLE ? describe : describe.skip
 const P_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const P_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const INSTANCE_A = '99999999-9999-4999-8999-999999999999'
+const INSTANCE_B = '88888888-8888-4888-8888-888888888888'
 const DECISION_A = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const RECORD_A = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 const ACTOR = 'user:11111111-1111-4111-8111-111111111111'
@@ -122,7 +130,8 @@ create table public.atlas_decision_ledger (
 insert into public.projects (id, slug) values
   ('${P_A}','alpha'), ('${P_B}','beta');
 insert into public.workflow_instances (id, project_id, def_key, def_hash) values
-  ('${INSTANCE_A}','${P_A}','familje-stunden.monthly-release', repeat('f',64));
+  ('${INSTANCE_A}','${P_A}','familje-stunden.monthly-release', repeat('f',64)),
+  ('${INSTANCE_B}','${P_B}','familje-stunden.monthly-release', repeat('f',64));
 
 -- A same-project autonomy decision (accepted) ...
 insert into public.atlas_decision_ledger (record_id, decision_id, version, project_id, materiality) values
@@ -139,7 +148,7 @@ const append = (overrides: Record<string, string> = {}) => {
     p_bound_def_hash: `repeat('f',64)`,
     p_licensed_level: `'L3'`,
     p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
-    p_action_scope_fingerprint: `'fp-1'`,
+    p_action_scope_fingerprint: `repeat('a',64)`,
     p_decision_id: `'${DECISION_A}'`,
     p_decision_version: `2`,
     p_decision_record_id: `'${RECORD_A}'`,
@@ -276,27 +285,90 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
       .toMatch(/non-empty forward interval|22023/i)
   })
 
-  // ── Decision re-proof (the structural half; governing-ness is TypeScript's) ─
+  // ── Workflow binding: the subject must be the instance's OWN truth ───────
+  //
+  // The RPC proves project/def_key/def_hash against the workflow instance's row
+  // rather than believing the caller. Without it the ledger could record a
+  // binding the database itself knows to be false.
 
-  it('refuses a pinned decision act that does not exist', () => {
-    const missing = `'${'0'.repeat(8)}-0000-4000-8000-000000000000'`
-    expect(expectFailure(dsn, append({ p_license_id: `gen_random_uuid()`, p_decision_record_id: missing })))
-      .toMatch(/pinned decision act does not exist|P0002/i)
+  it('accepts an instance binding that is true', () => {
+    const row = one(dsn, `select license_generation from (${append({ p_license_id: `gen_random_uuid()` })}) t`)
+    expect(row).toBe('0')
   })
 
-  it('refuses a decision belonging to another project', () => {
+  it('refuses a project the instance does not belong to', () => {
+    expect(expectFailure(dsn, append({ p_license_id: `gen_random_uuid()`, p_project_id: `'${P_B}'` })))
+      .toMatch(/does not match workflow instance|22023/i)
+  })
+
+  it('refuses a def_key the instance does not have', () => {
+    expect(expectFailure(dsn, append({
+      p_license_id: `gen_random_uuid()`, p_bound_def_key: `'some.other.definition'`,
+    }))).toMatch(/does not match workflow instance|22023/i)
+  })
+
+  it('refuses a def_hash the instance does not have', () => {
+    expect(expectFailure(dsn, append({
+      p_license_id: `gen_random_uuid()`, p_bound_def_hash: `repeat('9',64)`,
+    }))).toMatch(/does not match workflow instance|22023/i)
+  })
+
+  it('refuses a workflow instance that does not exist', () => {
+    expect(expectFailure(dsn, append({
+      p_license_id: `gen_random_uuid()`,
+      p_workflow_instance_id: `'0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f'`,
+    }))).toMatch(/does not match workflow instance|22023/i)
+  })
+
+  // ── Decision pin: ONE exact-row condition ────────────────────────────────
+  //
+  // The RPC proves the pinned IMMUTABLE record says what the licence claims.
+  // Whether the decision is CURRENTLY governing is proven in TypeScript against
+  // Chapter 11's own fold, which this function deliberately does not reimplement.
+
+  it('refuses a pinned record id that does not exist', () => {
+    expect(expectFailure(dsn, append({
+      p_license_id: `gen_random_uuid()`,
+      p_decision_record_id: `'${'0'.repeat(8)}-0000-4000-8000-000000000000'`,
+    }))).toMatch(/not a same-project autonomy record|22023/i)
+  })
+
+  it('refuses a wrong decision version', () => {
+    expect(expectFailure(dsn, append({ p_license_id: `gen_random_uuid()`, p_decision_version: `99` })))
+      .toMatch(/not a same-project autonomy record|22023/i)
+  })
+
+  it('refuses a decision pinned from another project', () => {
     const other = '12121212-1212-4212-8212-121212121212'
     const otherRecord = '13131313-1313-4313-8313-131313131313'
     run(dsn, ['-c', `insert into public.atlas_decision_ledger
       (record_id, decision_id, version, project_id, materiality)
       values ('${otherRecord}','${other}', 1, '${P_B}', '["autonomy"]'::jsonb)`])
+    // The subject stays the true P_A/INSTANCE_A binding, so the instance check
+    // passes and the failure can only come from the decision pin: the pinned
+    // record says P_B while the licence claims P_A.
     expect(expectFailure(dsn, append({
       p_license_id: `gen_random_uuid()`, p_decision_id: `'${other}'`,
       p_decision_version: `1`, p_decision_record_id: `'${otherRecord}'`,
-    }))).toMatch(/not a same-project autonomy decision|22023/i)
+    }))).toMatch(/not a same-project autonomy record|22023/i)
   })
 
-  it('refuses a decision whose materiality excludes autonomy', () => {
+  it('accepts a P_B decision for a P_B instance — the rule is same-project, not P_A', () => {
+    // Guards against the cross-project test above passing for the wrong reason.
+    const ok = '17171717-1717-4717-8717-171717171717'
+    const okRecord = '18181818-1818-4818-8818-181818181818'
+    run(dsn, ['-c', `insert into public.atlas_decision_ledger
+      (record_id, decision_id, version, project_id, materiality)
+      values ('${okRecord}','${ok}', 1, '${P_B}', '["autonomy"]'::jsonb)`])
+    const row = one(dsn, `select license_generation from (${append({
+      p_license_id: `gen_random_uuid()`, p_project_id: `'${P_B}'`,
+      p_workflow_instance_id: `'${INSTANCE_B}'`, p_decision_id: `'${ok}'`,
+      p_decision_version: `1`, p_decision_record_id: `'${okRecord}'`,
+    })}) t`)
+    expect(row).toBe('0')
+  })
+
+  it('refuses a pinned record whose own materiality excludes autonomy', () => {
     const money = '14141414-1414-4414-8414-141414141414'
     const moneyRecord = '15151515-1515-4515-8515-151515151515'
     run(dsn, ['-c', `insert into public.atlas_decision_ledger
@@ -305,14 +377,127 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
     expect(expectFailure(dsn, append({
       p_license_id: `gen_random_uuid()`, p_decision_id: `'${money}'`,
       p_decision_version: `1`, p_decision_record_id: `'${moneyRecord}'`,
-    }))).toMatch(/not a same-project autonomy decision|22023/i)
+    }))).toMatch(/not a same-project autonomy record|22023/i)
   })
 
-  it('refuses an unknown workflow instance', () => {
-    expect(expectFailure(dsn, append({
-      p_license_id: `gen_random_uuid()`,
-      p_workflow_instance_id: `'0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f'`,
-    }))).toMatch(/does not exist|23503|P0002/i)
+  it('accepts a pin even though a LATER amendment to the same decision differs', () => {
+    // The defect this guards. An earlier revision scanned the WHOLE lineage for
+    // any row whose project or materiality disagreed, so a legitimate material
+    // amendment — here one declaring `money` — rejected a valid pin. The check
+    // is now one exact-row condition on the immutable record itself.
+    run(dsn, ['-c', `insert into public.atlas_decision_ledger
+      (record_id, decision_id, version, project_id, materiality)
+      values ('16161616-1616-4616-8616-161616161616','${DECISION_A}', 3, '${P_A}', '["money"]'::jsonb)`])
+    const row = one(dsn, `select license_generation from (${append({ p_license_id: `gen_random_uuid()` })}) t`)
+    expect(row).toBe('0')
+  })
+
+  // ── Suspension is a dead end (no hidden resume) ───────────────────────────
+
+  const issueFor = (l: string) => run(dsn, ['-c', append({ p_license_id: `'${l}'` })])
+  const suspendFor = (l: string) => run(dsn, ['-c', append({
+    p_license_id: `'${l}'`, p_act: `'LICENSE_SUSPENDED'`,
+    p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
+  })])
+  const restrictFor = (l: string) => append({
+    p_license_id: `'${l}'`, p_act: `'LICENSE_RESTRICTED'`, p_licensed_level: `'L1'`,
+    p_allowed_action_kinds: `array['validate_monthly_story']`,
+    p_expires_at: `'2026-10-01T00:00:00Z'`,
+  })
+
+  it('refuses a restriction that would resume a suspended licence', () => {
+    const l = 'e1'.repeat(16)
+    issueFor(l); suspendFor(l)
+    expect(expectFailure(dsn, restrictFor(l)))
+      .toMatch(/cannot be restricted back into effect|22023/i)
+    expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('2')
+  })
+
+  it('still allows revocation after a suspension', () => {
+    const l = 'f2'.repeat(16)
+    issueFor(l); suspendFor(l)
+    run(dsn, ['-c', append({
+      p_license_id: `'${l}'`, p_act: `'LICENSE_REVOKED'`,
+      p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
+    })])
+    expect(one(dsn, `select act from public.atlas_autonomy_license_events
+      where license_id = '${l}' order by license_generation desc limit 1`)).toBe('LICENSE_REVOKED')
+  })
+
+  // ── Representation invariants, enforced at the table ─────────────────────
+
+  const rawInsert = (over: Record<string, string> = {}) => {
+    const c: Record<string, string> = {
+      license_id: `gen_random_uuid()`, license_generation: '0', act: `'LICENSE_ISSUED'`,
+      project_id: `'${P_A}'`, workflow_instance_id: `'${INSTANCE_A}'`,
+      bound_def_key: `'familje-stunden.monthly-release'`, bound_def_hash: `repeat('f',64)`,
+      licensed_level: `'L3'`, allowed_action_kinds: `array['generate_monthly_story']`,
+      action_scope_fingerprint: `repeat('a',64)`, decision_id: `'${DECISION_A}'`,
+      decision_version: '2', decision_record_id: `'${RECORD_A}'`,
+      effective_at: `'2026-09-20T09:30:00Z'`, expires_at: `'2026-10-20T08:00:00Z'`,
+      actor: `'${ACTOR}'`, ...over,
+    }
+    return `insert into public.atlas_autonomy_license_events
+      (license_id, license_generation, act, project_id, workflow_instance_id,
+       bound_def_key, bound_def_hash, licensed_level, allowed_action_kinds,
+       action_scope_fingerprint, decision_id, decision_version, decision_record_id,
+       effective_at, expires_at, actor)
+      values (${c.license_id}, ${c.license_generation}, ${c.act}, ${c.project_id}, ${c.workflow_instance_id},
+              ${c.bound_def_key}, ${c.bound_def_hash}, ${c.licensed_level}, ${c.allowed_action_kinds},
+              ${c.action_scope_fingerprint}, ${c.decision_id}, ${c.decision_version}, ${c.decision_record_id},
+              ${c.effective_at}, ${c.expires_at}, ${c.actor})`
+  }
+
+  it('refuses a negative generation, a zero decision version, and malformed hashes', () => {
+    expect(expectFailure(dsn, rawInsert({ license_generation: '-1' })))
+      .toMatch(/generation_non_negative|violates check|23514/i)
+    expect(expectFailure(dsn, rawInsert({ decision_version: '0' })))
+      .toMatch(/decision_version_positive|violates check|23514/i)
+    expect(expectFailure(dsn, rawInsert({ bound_def_hash: `'short'` })))
+      .toMatch(/def_hash_shape|violates check|23514/i)
+    expect(expectFailure(dsn, rawInsert({ action_scope_fingerprint: `'fp'` })))
+      .toMatch(/scope_fingerprint_shape|violates check|23514/i)
+  })
+
+  it('refuses a NULL element inside the licensed action set', () => {
+    expect(expectFailure(dsn, rawInsert({
+      allowed_action_kinds: `array['generate_monthly_story', null]`,
+    }))).toMatch(/action_kinds_non_null|violates check|23514/i)
+  })
+
+  // ── THE cross-layer contract: the store and the table must agree ─────────
+  //
+  // This is the test that would have caught `created_at` vs `occurred_at`.
+  // Before it existed the SQL suite tested the schema and the unit suite tested
+  // a fake store, so nothing compared the two, and the deployed table and the
+  // real store would not have worked together.
+
+  it('the store selects only columns the migrated table actually has', () => {
+    const wanted = AUTONOMY_LICENSE_EVENT_COLS.split(',').map(s => s.trim()).filter(Boolean)
+    expect(wanted.length, 'the store column list is suspiciously short').toBeGreaterThan(15)
+
+    const actual = new Set(query(dsn, `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'atlas_autonomy_license_events'`).map(r => r[0]))
+
+    const missing = wanted.filter(c => !actual.has(c))
+    expect(missing, `store selects columns the table does not have: ${missing.join(', ')}`).toEqual([])
+
+    // The ordering columns must exist too, or every read would fail at runtime
+    // rather than at review time.
+    for (const col of ['license_generation', 'event_seq']) {
+      expect(wanted, `store must order by ${col}`).toContain(col)
+      expect(actual, `table must have ${col}`).toContain(col)
+    }
+  })
+
+  it('names the timestamp column occurred_at, not created_at', () => {
+    const cols = query(dsn, `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'atlas_autonomy_license_events'`).map(r => r[0])
+    expect(cols).toContain('occurred_at')
+    expect(cols).not.toContain('created_at')
+    // And the store agrees, so neither side can drift alone.
+    expect(AUTONOMY_LICENSE_EVENT_COLS).toContain('occurred_at')
+    expect(AUTONOMY_LICENSE_EVENT_COLS).not.toContain('created_at')
   })
 
   // ── Generation serialization and lifecycle ────────────────────────────────
@@ -343,7 +528,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
        effective_at, expires_at, actor)
       values ('${'cd'.repeat(16)}', 1, 'LICENSE_SUSPENDED', '${P_A}', '${INSTANCE_A}',
               'familje-stunden.monthly-release', repeat('f',64), 'L3',
-              array['generate_monthly_story'], 'fp', '${DECISION_A}', 2, '${RECORD_A}',
+              array['generate_monthly_story'], repeat('a',64), '${DECISION_A}', 2, '${RECORD_A}',
               '2026-09-20T09:30:00Z', '2026-10-20T08:00:00Z', '${ACTOR}')`])
     const dup = expectFailure(dsn, `insert into public.atlas_autonomy_license_events
       (license_id, license_generation, act, project_id, workflow_instance_id,
@@ -352,7 +537,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
        effective_at, expires_at, actor)
       values ('${'cd'.repeat(16)}', 1, 'LICENSE_REVOKED', '${P_A}', '${INSTANCE_A}',
               'familje-stunden.monthly-release', repeat('f',64), 'L3',
-              array['generate_monthly_story'], 'fp', '${DECISION_A}', 2, '${RECORD_A}',
+              array['generate_monthly_story'], repeat('a',64), '${DECISION_A}', 2, '${RECORD_A}',
               '2026-09-20T09:30:00Z', '2026-10-20T08:00:00Z', '${ACTOR}')`)
     expect(dup).toMatch(/duplicate key|unique|23505/i)
   })
@@ -394,7 +579,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
       p_license_id => '${revoked}', p_act => 'LICENSE_ISSUED', p_project_id => '${P_A}',
       p_workflow_instance_id => '${INSTANCE_A}', p_bound_def_key => 'familje-stunden.monthly-release',
       p_bound_def_hash => repeat('f',64), p_licensed_level => 'L3',
-      p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => 'fp',
+      p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => repeat('a',64),
       p_decision_id => '${DECISION_A}', p_decision_version => 2, p_decision_record_id => '${RECORD_A}',
       p_effective_at => '2026-09-20T09:30:00Z', p_expires_at => '2026-10-20T08:00:00Z',
       p_superseded_by_license_id => null, p_reason => null, p_actor => '${ACTOR}')`])
@@ -402,7 +587,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
       p_license_id => '${revoked}', p_act => 'LICENSE_REVOKED', p_project_id => '${P_A}',
       p_workflow_instance_id => '${INSTANCE_A}', p_bound_def_key => 'familje-stunden.monthly-release',
       p_bound_def_hash => repeat('f',64), p_licensed_level => 'L3',
-      p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => 'fp',
+      p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => repeat('a',64),
       p_decision_id => '${DECISION_A}', p_decision_version => 2, p_decision_record_id => '${RECORD_A}',
       p_effective_at => '2026-09-20T09:30:00Z', p_expires_at => '2026-10-20T08:00:00Z',
       p_superseded_by_license_id => null, p_reason => 'incident', p_actor => '${ACTOR}')`])

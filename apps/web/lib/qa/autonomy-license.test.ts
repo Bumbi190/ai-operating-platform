@@ -32,12 +32,12 @@ import {
   supersedeAutonomyLicense,
 } from '@/lib/atlas/autonomy-license/issue'
 import { resolveAutonomyLicense } from '@/lib/atlas/autonomy-license/resolve'
-import { resolveActionScope, scopeDrifted } from '@/lib/atlas/autonomy-license/scope'
+import { fingerprintFor, resolveActionScope, scopeDrifted } from '@/lib/atlas/autonomy-license/scope'
 import type { AutonomyLicenseStore, AppendLicenseEventArgs } from '@/lib/atlas/autonomy-license/store'
 import { LICENSE_ACTS, LICENSE_REASONS, noLicense } from '@/lib/atlas/autonomy-license/types'
 import type { LicenseEvent } from '@/lib/atlas/autonomy-license/types'
 import { ACTION_CLASSES, ACTION_CLASS_POLICY } from '@/lib/workflows/action-target'
-import { ACTION_REGISTRY, isKnownActionKind } from '@/lib/workflows/action-registry'
+import { ACTION_REGISTRY, GOVERNED_EFFECT_ENABLED_KINDS, isKnownActionKind } from '@/lib/workflows/action-registry'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -675,12 +675,23 @@ describe('Phase 2C — lifecycle', () => {
     expect(after).toMatchObject({ ok: false, reason: 'license_terminal' })
   })
 
-  it('38. supersession resolves to L0', async () => {
+  it('38. supersession resolves the REPLACEMENT, not the superseded lineage', async () => {
     const store = new FakeStore()
     const first = await issueAutonomyLicense(REQUEST, issueArgs(store))
     const second = await issueAutonomyLicense(REQUEST, issueArgs(store))
     expect(first.ok && second.ok).toBe(true)
     if (!first.ok || !second.ok) return
+
+    const resolve = () => resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+
+    // BEFORE the supersession both lineages are live and nothing yet says which
+    // governs, so the only safe answer is L0 — not a guess.
+    const before = await resolve()
+    expect(before.reason).toBe('ambiguous_licenses')
+    expect(before.effective).toBe(false)
+    expect(before.resolvedLevel).toBe('L0')
 
     const result = await supersedeAutonomyLicense(
       { licenseId: first.event.licenseId, supersededByLicenseId: second.event.licenseId },
@@ -688,11 +699,70 @@ describe('Phase 2C — lifecycle', () => {
     )
     expect(result.ok).toBe(true)
 
+    // AFTER it, B is the unique live lineage — and it must be B that answers.
+    // Latest-event-wins would pick A here, because A's supersession act is the
+    // newest event in the instance; A is superseded, so the licence would read
+    // L0 and the replacement would never be consulted.
+    const after = await resolve()
+    expect(after.licenseId).toBe(second.event.licenseId)
+    expect(after.effective).toBe(true)
+    expect(after.reason).toBe('active')
+    expect(after.resolvedLevel).toBe('L3')
+
+    // A's own history is untouched and still reads as superseded.
+    const a = deriveLicenseState(store.events.filter(e => e.licenseId === first.event.licenseId))
+    expect(a.status).toBe('superseded')
+    expect(a.supersededByLicenseId).toBe(second.event.licenseId)
+  })
+
+  it('38c. a chain A → B → C resolves C', async () => {
+    const store = new FakeStore()
+    const a = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    const b = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    const c = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(a.ok && b.ok && c.ok).toBe(true)
+    if (!a.ok || !b.ok || !c.ok) return
+
+    await supersedeAutonomyLicense({ licenseId: a.event.licenseId, supersededByLicenseId: b.event.licenseId }, args(store))
+    // B is superseded too: after this every lineage is terminal except C.
+    await supersedeAutonomyLicense({ licenseId: b.event.licenseId, supersededByLicenseId: c.event.licenseId }, args(store))
+
     const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
       store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
     })
-    expect(resolved.reason).toBe('superseded')
+    expect(resolved.licenseId).toBe(c.event.licenseId)
+    expect(resolved.effective).toBe(true)
+    expect(store.events.filter(e => e.licenseId === a.event.licenseId)).toHaveLength(2)
+    expect(store.events.filter(e => e.licenseId === b.event.licenseId)).toHaveLength(2)
+    expect(store.events.filter(e => e.licenseId === c.event.licenseId)).toHaveLength(1)
+  })
+
+  it('38d. two live lineages with no supersession are ambiguous, never guessed', async () => {
+    const store = new FakeStore()
+    await issueAutonomyLicense(REQUEST, issueArgs(store))
+    await issueAutonomyLicense(REQUEST, issueArgs(store))
+    const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+    expect(resolved.reason).toBe('ambiguous_licenses')
+    expect(resolved.effective).toBe(false)
     expect(resolved.resolvedLevel).toBe('L0')
+    expect(resolved.licenseId).toBeNull()
+  })
+
+  it('38e. a revoked lineage does not compete with a live one', async () => {
+    const store = new FakeStore()
+    const dead = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    const live = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(dead.ok && live.ok).toBe(true)
+    if (!dead.ok || !live.ok) return
+    await revokeAutonomyLicense({ licenseId: dead.event.licenseId }, args(store))
+
+    const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+    expect(resolved.licenseId).toBe(live.event.licenseId)
+    expect(resolved.effective).toBe(true)
   })
 
   it('38b. a supersession may not cross instances', async () => {
@@ -931,6 +1001,219 @@ describe('Phase 2C — the migration does not collide with the chain it joins', 
     const files = readdirSync(MIGRATION_DIR).filter(f => f.endsWith('.sql')).sort()
     expect(files[files.length - 1]).toBe(MY_FILE)
     expect(files).toHaveLength(101)
+  })
+})
+
+// ── HARDENING ─────────────────────────────────────────────────────────────────
+//
+// Each of these reproduces a defect found by independent review, and asserts the
+// fixed behaviour. The defect is stated in the test so a future reader can tell
+// what the assertion is defending against.
+
+describe('Phase 2C — hardening', () => {
+  const args = (store: FakeStore) =>
+    ({ store, operator: OPERATOR, instance: INSTANCE, decisionLineage: async () => autonomyDecision(), now: IN_WINDOW })
+
+  it('H1. causal order is generation, not the clock', async () => {
+    const store = new FakeStore()
+    const issued = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    await suspendAutonomyLicense({ licenseId: issued.event.licenseId }, args(store))
+
+    // Scramble the timestamps so the CLOCK contradicts the causal order: the
+    // suspension claims to have happened before the issue it followed. Under
+    // clock-first ordering this chain either reorders into
+    // "suspended, then issued" (which cannot be folded at all) or folds to the
+    // wrong status. Generation is the act's structural position and cannot be
+    // skewed by an NTP correction or a client's clock.
+    const scrambled = store.events.map(e => ({
+      ...e,
+      occurredAt: e.generation === 0 ? '2026-12-31T00:00:00.000Z' : '2026-01-01T00:00:00.000Z',
+    }))
+    let state
+    expect(() => { state = deriveLicenseState(scrambled) }).not.toThrow()
+    expect(state!.status).toBe('suspended')
+  })
+
+  it('H2. a restriction cannot clear a suspension — write boundary', async () => {
+    const store = new FakeStore()
+    const issued = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    await suspendAutonomyLicense({ licenseId: issued.event.licenseId }, args(store))
+
+    // The defect: ISSUED → SUSPENDED → RESTRICTED left the last act RESTRICTED,
+    // so the status computed as `restricted`, the suspension check never fired,
+    // and the licence silently returned to effective — a suspended grant revived
+    // by an act that is only supposed to narrow.
+    const result = await restrictAutonomyLicense(
+      { licenseId: issued.event.licenseId, licensedLevel: 'L1',
+        allowedActionKinds: REQUEST.allowedActionKinds, effectiveAt: EFFECTIVE, expiresAt: EXPIRES },
+      args(store),
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'license_suspended' })
+    expect(store.events).toHaveLength(2)
+  })
+
+  it('H3. after a suspension only revocation and supersession are admissible', async () => {
+    const store = new FakeStore()
+    const issued = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    await suspendAutonomyLicense({ licenseId: issued.event.licenseId }, args(store))
+
+    expect((await revokeAutonomyLicense({ licenseId: issued.event.licenseId }, args(store))).ok).toBe(true)
+    const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+    expect(resolved.status).toBe('revoked')
+    expect(resolved.effective).toBe(false)
+    expect(resolved.resolvedLevel).toBe('L0')
+  })
+
+  it('H3b. suspension then supersession is a valid lineage', async () => {
+    const store = new FakeStore()
+    const a = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    const b = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(a.ok && b.ok).toBe(true)
+    if (!a.ok || !b.ok) return
+    await suspendAutonomyLicense({ licenseId: a.event.licenseId }, args(store))
+    expect((await supersedeAutonomyLicense(
+      { licenseId: a.event.licenseId, supersededByLicenseId: b.event.licenseId }, args(store),
+    )).ok).toBe(true)
+
+    const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+    expect(resolved.licenseId).toBe(b.event.licenseId)
+    expect(resolved.effective).toBe(true)
+  })
+
+  it('H4. the pure fold fails closed on a restriction after a suspension', () => {
+    // Even if a future writer bypassed both the boundary and the RPC, an
+    // impossible history must not fold into an effective licence.
+    const store = new FakeStore()
+    return issueAutonomyLicense(REQUEST, issueArgs(store)).then(async issued => {
+      if (!issued.ok) throw new Error('issue failed')
+      await suspendAutonomyLicense({ licenseId: issued.event.licenseId }, args(store))
+      const forged = [
+        ...store.events,
+        { ...store.events[1], eventId: 'forged', generation: 2, eventSeq: 99, act: 'LICENSE_RESTRICTED' as const },
+      ]
+      expect(() => deriveLicenseState(forged)).toThrow(/restriction-after-suspension/)
+    })
+  })
+
+  it('H5. invalid level input is REFUSED, never thrown', async () => {
+    const store = new FakeStore()
+    for (const level of ['L9', '', '2', 'l3', 'L', null, undefined, 3, {}, []]) {
+      let threw: unknown = null
+      let result: Awaited<ReturnType<typeof issueAutonomyLicense>> | null = null
+      try {
+        result = await issueAutonomyLicense(
+          { ...REQUEST, licensedLevel: level as string }, issueArgs(store),
+        )
+      } catch (error) { threw = error }
+      expect(threw, `level ${JSON.stringify(level)} must not throw`).toBeNull()
+      expect(result, `level ${JSON.stringify(level)}`).toMatchObject({ ok: false, reason: 'invalid_level' })
+    }
+    expect(store.events).toHaveLength(0)
+  })
+
+  it('H5b. the same refusal applies to a restriction', async () => {
+    const store = new FakeStore()
+    const issued = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    const result = await restrictAutonomyLicense(
+      { licenseId: issued.event.licenseId, licensedLevel: 'L9',
+        allowedActionKinds: REQUEST.allowedActionKinds, effectiveAt: EFFECTIVE, expiresAt: EXPIRES },
+      args(store),
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'invalid_level' })
+    expect(store.events).toHaveLength(1)
+  })
+
+  it('H6. the fingerprint binds executability, not only class and placement', () => {
+    // The defect: an action could move from INERT to EXECUTABLE without its
+    // class or placement changing — `executor_family` could change, or the kind
+    // could join `GOVERNED_EFFECT_ENABLED_KINDS`. The fingerprint stayed equal,
+    // so a licence issued while the action did nothing would silently become a
+    // licence to make it do something real.
+    //
+    // Proven by MUTATING the real registry and calling the real function, so the
+    // test cannot drift from the payload it is testing.
+    const registry = ACTION_REGISTRY as unknown as Record<string, Record<string, unknown>>
+    const enabled = GOVERNED_EFFECT_ENABLED_KINDS as unknown as string[]
+    const kind = 'generate_monthly_story'
+    const originalMeta = { ...registry[kind] }
+    const originalEnabled = [...enabled]
+    const before = fingerprintFor([kind], DEF_KEY)
+    expect(before).toMatch(/^[0-9a-f]{64}$/)
+
+    try {
+      registry[kind] = { ...originalMeta, executor_family: 'a-different-family' }
+      expect(fingerprintFor([kind], DEF_KEY), 'family change must move the fingerprint').not.toBe(before)
+
+      registry[kind] = originalMeta
+      expect(fingerprintFor([kind], DEF_KEY)).toBe(before)
+
+      const at = enabled.indexOf(kind)
+      if (at !== -1) enabled.splice(at, 1)
+      expect(fingerprintFor([kind], DEF_KEY), 'enablement change must move the fingerprint').not.toBe(before)
+
+      enabled.length = 0
+      enabled.push(...originalEnabled)
+      expect(fingerprintFor([kind], DEF_KEY)).toBe(before)
+
+      // Prose is deliberately NOT bound: rewording a description must not
+      // invalidate authority, or reviewers learn to ignore the signal.
+      registry[kind] = { ...originalMeta, description: 'reworded prose' }
+      expect(fingerprintFor([kind], DEF_KEY), 'description must not move the fingerprint').toBe(before)
+    } finally {
+      registry[kind] = originalMeta
+      enabled.length = 0
+      enabled.push(...originalEnabled)
+    }
+  })
+
+  it('H6b. an executability change reads as scope_drifted at read time', async () => {
+    const store = new FakeStore()
+    const issued = await issueAutonomyLicense(REQUEST, issueArgs(store))
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    // A fingerprint recorded under a registry that has since moved cannot match
+    // a live recomputation, whatever moved.
+    const stale = new FakeStore()
+    stale.events = [{ ...issued.event, actionScopeFingerprint: 'b'.repeat(64) }]
+    const resolved = await resolveAutonomyLicense(REQUEST.workflowInstanceId, IN_WINDOW, {
+      store: stale, instance: INSTANCE, decisionLineage: async () => autonomyDecision(),
+    })
+    expect(resolved.reason).toBe('scope_drifted')
+    expect(resolved.resolvedLevel).toBe('L0')
+  })
+
+  it('H7. the machine write seam is closed at the code level', () => {
+    const namingRpc: string[] = []
+    const appending: string[] = []
+    for (const file of sourceFiles()) {
+      const code = codeOnly(readFileSync(file, 'utf8'))
+      if (code.includes('autonomy_license_append')) namingRpc.push(file.split('/').pop()!)
+      if (/\.append\(/.test(code)) appending.push(file.split('/').pop()!)
+    }
+    // The RPC may be NAMED in exactly one place, and the store's append path may
+    // be DRIVEN from exactly one place: the reviewed human licensing boundary.
+    // resolve/compose/executors/gates/providers/spend have no write reach.
+    expect(namingRpc, 'only store.ts may name the RPC').toEqual(['store.ts'])
+    expect(appending, 'only issue.ts may drive the append path').toEqual(['issue.ts'])
+  })
+
+  it('H7b. the actor constraint is documented as defence in depth, not authority', () => {
+    const sql = migrationSql()
+    expect(sql).toMatch(/defence in depth|defense in depth/i)
+    expect(sql).toMatch(/resolvePlatformOperator/)
+    expect(sql).toMatch(/NOT proof of/i)
   })
 })
 

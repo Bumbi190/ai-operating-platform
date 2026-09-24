@@ -105,6 +105,14 @@ export const SURVIVAL_GAPS = [
   'funding_unavailable',
   /** Runway in days could not be established (see `SurvivalSnapshot.runwayDays`). */
   'runway_unknown',
+  /**
+   * A runway figure COULD be computed and was deliberately withheld, because the
+   * observation does not cover every project whose burn belongs in platform
+   * runway. This is NOT a synonym for `runway_unknown`: that says "no figure
+   * could be established", this says "a figure exists and would be misleading".
+   * The distinction is the whole point of the coverage model.
+   */
+  'runway_scope_incomplete',
   /** This snapshot does not account for platform infrastructure cost. */
   'infrastructure_cost_untracked',
   /** At least one source read did not complete; the state is conservative as a result. */
@@ -112,6 +120,25 @@ export const SURVIVAL_GAPS = [
 ] as const
 
 export type SurvivalGap = (typeof SURVIVAL_GAPS)[number]
+
+/**
+ * Whether an observation's project set covers the WHOLE platform burn
+ * population, and therefore whether a runway figure derived from platform-wide
+ * capital would be truthful.
+ *
+ * This exists because the two sides of the runway division have different
+ * scopes. Operating capital is one platform-wide declaration; measured burn is
+ * summed over whatever project set the caller may read. Dividing a platform
+ * figure by a partial burn produces a number that is neither the observed
+ * project's runway (it owns none of the capital) nor the platform's (other
+ * projects' burn is missing) — it is simply too large, which would raise the
+ * autonomy ceiling on the strength of a measurement error.
+ *
+ * A partial scope may therefore only ever RESTRICT. It never relaxes.
+ */
+export const RUNWAY_COVERAGES = ['PLATFORM_COMPLETE', 'PARTIAL_SCOPE'] as const
+
+export type RunwayCoverage = (typeof RUNWAY_COVERAGES)[number]
 
 // ─── Autonomy ceiling (Chapter 18) ──────────────────────────────────────────
 
@@ -228,6 +255,11 @@ export interface SurvivalReads {
   burn: boolean
   /** The `revenue_snapshots` trend answered. */
   revenue: boolean
+  // NOTE: deliberately no `funding` flag. Whether the funding source could be
+  // read is already carried EXACTLY by `FundingReading.kind === 'UNAVAILABLE'`,
+  // so a boolean here would be the same truth stored twice — and two
+  // representations of one fact drift. The measurement reads need flags because
+  // their failures have no other channel; the funding read does not.
 }
 
 export interface SurvivalInput {
@@ -237,6 +269,14 @@ export interface SurvivalInput {
   reads: SurvivalReads
   /** Trailing burn in SEK per day, or null when not established. */
   burnSekPerDay: number | null
+  /**
+   * Whether the project set this input was assembled from covers the whole
+   * platform burn population. Required, not optional: a caller that could omit
+   * it would be choosing whether its own runway was computable, and the safe
+   * default has to be the RESTRICTIVE one — so it is stated explicitly at every
+   * construction site rather than defaulted anywhere.
+   */
+  runwayCoverage: RunwayCoverage
   /**
    * The funding situation, discriminated — see `FundingReading`.
    *
@@ -292,11 +332,22 @@ export interface SurvivalSnapshot {
    * Days of runway at the measured burn, or `null` when not established.
    *
    * `null` means NOT ESTABLISHED and covers: undeclared funding, unreadable
-   * funding, unreadable burn, or known funding with no measured burn to project
-   * from. `fundingState` and `reasons`/`gaps` say which. It is NEVER estimated
-   * from MRR.
+   * funding, unreadable burn, known funding with no measured burn to project
+   * from, or known funding observed over a PARTIAL scope — see
+   * `runwayCoverage` and the `runway_scope_incomplete` gap, which is what makes
+   * the last case distinguishable in a stored row. It is NEVER estimated from
+   * MRR.
    */
   runwayDays: number | null
+  /**
+   * Whether this observation covered the whole platform burn population. The
+   * runway figure is only meaningful when it did; see `RUNWAY_COVERAGES`.
+   *
+   * Carried explicitly rather than inferred from `runwayDays === null`, because
+   * "no figure exists" and "a figure was withheld as misleading" are different
+   * facts with different remedies.
+   */
+  runwayCoverage: RunwayCoverage
   revenueTrendSek: number | null
   /**
    * Whether the platform's own automation pause is currently set. Reported for

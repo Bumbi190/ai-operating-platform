@@ -21,6 +21,7 @@ import {
 } from '@/lib/atlas/survival'
 import type {
   FundingState,
+  RunwayCoverage,
   SurvivalGap,
   SurvivalReason,
   SurvivalState,
@@ -141,6 +142,13 @@ export interface SurvivalSection {
   declaredFundingSek: number | null
   /** Null means not established — never zero. */
   runwayDays: number | null
+  /**
+   * Whether this surface's project set covered the whole platform burn
+   * population. When it did not, `runwayDays` is deliberately null even though a
+   * declaration exists — carried explicitly so the panel can say WHICH reason
+   * applies rather than showing an unexplained blank.
+   */
+  runwayCoverage: RunwayCoverage
   /** A performance signal. Never cash, never runway. */
   revenueTrendSek: number | null
   reasons: SurvivalReason[]
@@ -560,7 +568,13 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     // this list holds exactly one project, and neither is derived from the other.
     // Recording this aggregate into a per-project stream would attribute a
     // set-wide condition to one project.
-    readSurvivalSnapshot(access.allowedProjectIds, { db, funding: { kind: 'UNDECLARED' } }),
+    //
+    // PHASE 2B: funding and runway coverage are not passed. Both are canonical
+    // reads inside the snapshot — the declaration comes from `platform_config`,
+    // and coverage is decided by whether THIS operator's set is the whole
+    // platform. The surface therefore cannot choose its own funding, and cannot
+    // claim a scope is complete.
+    readSurvivalSnapshot(access.allowedProjectIds, { db }),
   ])
 
   const platform: Value<RawPlatformStop> =
@@ -635,6 +649,7 @@ function toSurvivalSection(observation: SurvivalObservation): SurvivalSection {
     burnSekPerDay: snapshot.burnSekPerDay,
     declaredFundingSek: snapshot.declaredFundingSek,
     runwayDays: snapshot.runwayDays,
+    runwayCoverage: snapshot.runwayCoverage,
     revenueTrendSek: snapshot.revenueTrendSek,
     reasons: snapshot.reasons,
     gaps: snapshot.gaps,

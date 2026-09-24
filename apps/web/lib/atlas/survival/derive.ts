@@ -201,6 +201,9 @@ const GAP_ORDER: readonly SurvivalGap[] = [
   'funding_undeclared',
   'funding_unavailable',
   'runway_unknown',
+  // Immediately after runway_unknown: both are about why no runway figure was
+  // produced, and a reader comparing them should see them adjacent.
+  'runway_scope_incomplete',
   'reads_incomplete',
   'infrastructure_cost_untracked',
 ]
@@ -312,9 +315,65 @@ export function deriveSurvivalState(
         // That floor is what forces FUNDING_UNAVAILABLE_FLOOR to be HIBERNATE
         // too; see its comment. Lowering this constant without lowering that one
         // is safe. Raising it is not.
+        //
+        // NOTE the scope plays no part here. A depleted declaration is HIBERNATE
+        // whether the observation covers the platform or one project, because
+        // "there is nothing to spend" does not become less true by looking at
+        // less of the platform. Coverage can only ever withhold a POSITIVE
+        // figure.
         applicable.add('funding_depleted')
         runwayDays = 0
         state = mostRestrictive(state, FUNDING_DEPLETED_FLOOR)
+      } else if (input.runwayCoverage === 'PARTIAL_SCOPE') {
+        // ── THE RULE THIS PHASE EXISTS FOR ──────────────────────────────────
+        // Platform-wide capital over a partial burn is not runway. The division
+        // would be larger than the truth — it omits the burn of every project
+        // outside this observation — and an overstated runway is exactly the
+        // input that would relax the autonomy ceiling. So the figure is not
+        // produced at all.
+        //
+        // ── WHY THE CAP IS CRITICAL, NOT CONSERVE ───────────────────────────
+        // It was CONSERVE, and that was too high. The property is narrow and
+        // exact, and it is worth stating precisely because the loose version of
+        // it is FALSE:
+        //
+        //   Changing ONLY the runway coverage — PLATFORM_COMPLETE →
+        //   PARTIAL_SCOPE — while holding every OTHER supplied measurement
+        //   equal, may never produce a MORE PERMISSIVE state, because runway
+        //   information was lost.
+        //
+        // CONSERVE breaks that: with the same funding, burn and headroom, a
+        // complete observation whose runway falls under
+        // `PROVISIONAL_RUNWAY_CRITICAL_DAYS` is CRITICAL, so a partial one
+        // reporting CONSERVE sits a full level above it — a ceiling raised by
+        // losing runway information. Same defect class as the
+        // FUNDING_UNAVAILABLE_FLOOR sweep documented above.
+        //
+        // CRITICAL is the EXACT bound, not a safe over-correction. Holding the
+        // other measurements fixed and funding positive with headroom not
+        // exhausted, CRITICAL is the most restrictive state a complete
+        // observation can reach: HIBERNATE requires `headroom_exhausted` or
+        // depleted funding, and neither is reachable here by a coverage change.
+        //
+        // ── WHAT THIS DOES NOT CLAIM ────────────────────────────────────────
+        // This is NOT a statement that a real project-scoped observation is
+        // always at least as restrictive as a real platform-complete one. It is
+        // not, and coverage is not why. Headroom is itself scope-dependent: a
+        // platform-complete set can contain a project whose own headroom is
+        // exhausted (HIBERNATE) that a single-project observation never sees.
+        // That divergence is caused by the HEADROOM measurement, not by runway,
+        // and no cap in this branch can or should address it.
+        //
+        // Nor does it claim the platform IS critical. The gap below records that
+        // a runway figure was withheld, which is the fact a reader needs; the
+        // state is only the conservative bound for runway uncertainty.
+        //
+        // A test asserts the fixed-inputs property across the full funding ×
+        // burn × headroom × revenue matrix with every other input held equal
+        // between the two coverages, so the bound survives future edits rather
+        // than only the constant.
+        gaps.add('runway_scope_incomplete')
+        state = mostRestrictive(state, 'CRITICAL')
       } else if (input.burnSekPerDay !== null && input.burnSekPerDay > 0) {
         runwayDays = declaredFundingSek / input.burnSekPerDay
         if (runwayDays < PROVISIONAL_RUNWAY_CRITICAL_DAYS) {
@@ -325,9 +384,9 @@ export function deriveSurvivalState(
           state = mostRestrictive(state, 'CONSERVE')
         }
       } else {
-        // Funding is known but there is no measured burn to project from, so a
-        // runway in days does not exist. Reported as unknown rather than as an
-        // infinite runway.
+        // Funding is known and the scope is complete, but there is no measured
+        // burn to project from, so a runway in days does not exist. Reported as
+        // unknown rather than as an infinite runway.
         gaps.add('runway_unknown')
       }
       break
@@ -381,6 +440,7 @@ export function deriveSurvivalState(
     fundingState: input.funding.kind,
     declaredFundingSek,
     runwayDays,
+    runwayCoverage: input.runwayCoverage,
     revenueTrendSek: input.revenueTrendSek,
     // Copied through, never branched on. If it ever influenced `state` above,
     // an owner pause and a survival reduction would become indistinguishable

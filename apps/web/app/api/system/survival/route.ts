@@ -77,17 +77,16 @@ export async function GET() {
     })
   }
 
-  // UNDECLARED, not UNAVAILABLE: no funding source has ever supplied a figure,
-  // so nothing has been lost. The two are separate states because they floor
-  // differently — a failed reading must never buy freedom — and naming the wrong
-  // one here would either overstate the alarm or understate it.
+  // ── PHASE 2B: FUNDING AND COVERAGE ARE SERVER-DERIVED ────────────────────
+  // The route passes neither. The funding reading comes from the canonical
+  // persisted source (`platform_config`), and runway coverage is derived from
+  // this caller's actual project set — so a request can choose neither the
+  // figure that governs expansion nor the claim that its scope is complete.
   //
-  // The state therefore floors at CONSERVE by construction. That is the honest
-  // reading, not a placeholder: `revenue_events` and `infra_costs` hold no usable
-  // figure, and MRR is not cash.
-  const { snapshot, ceiling } = await readSurvivalSnapshot(access.allowedProjectIds, {
-    funding: { kind: 'UNDECLARED' },
-  })
+  // UNDECLARED, UNAVAILABLE and KNOWN are now all reachable, and they floor
+  // differently on purpose: a failed reading must never buy freedom. Nothing
+  // here can name one of those states by hand.
+  const { snapshot, ceiling } = await readSurvivalSnapshot(access.allowedProjectIds)
 
   return NextResponse.json({
     ...policy,

@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { PauseToggle } from '@/components/platform/PauseToggle'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
+import { FundingDeclarationControl } from '@/components/platform/FundingDeclarationControl'
 import type {
   SurvivalSection,
   SystemAutomation,
@@ -189,13 +190,19 @@ function ExecutionPanel({ model }: { model: SystemHealthModel }) {
 }
 
 /**
- * Atlas Survival — the read-only economic observation, displayed.
+ * Atlas Survival — the economic observation, displayed, with its one input.
  *
- * DISPLAY ONLY, and structurally so. Nothing here computes a state, a ceiling, a
- * threshold or an amount: every value is carried from `readSurvivalSnapshot()`,
- * the same reader `GET /api/system/survival` calls, and this panel offers no
- * control of any kind. There is no path from this surface to a change in the
- * survival state, and no second reader that could disagree with the API.
+ * NO SURVIVAL VALUE IS COMPUTED HERE. Every state, ceiling, threshold and amount
+ * is carried from `readSurvivalSnapshot()` — the same reader `GET
+ * /api/system/survival` calls — so there is no client-side arithmetic to drift
+ * from the server's, and no second reader that could disagree with the API.
+ *
+ * The panel offers exactly ONE control, and it is an INPUT rather than a
+ * survival value: the declared operating capital. Setting it changes what the
+ * NEXT observation derives. It changes no state on this page, and it grants no
+ * authority — `effectiveAutonomy = min(licensedAutonomy, survivalCeiling)` is
+ * untouched. Authority belongs to the server action, which re-derives
+ * platform-operator identity from the verified session on every call.
  *
  * The ceiling always arrives fully qualified — the model carries no bare level
  * token — so "Autonomy License L3" cannot degrade into "L3".
@@ -295,6 +302,16 @@ function SurvivalBody({ survival }: { survival: SurvivalSection }) {
           }
         />
       </dl>
+
+      {/* The one input on this panel. It changes what the NEXT observation
+          derives — never a value already rendered above, and never a licence.
+          `readable` is false only for UNAVAILABLE, the case where the current
+          declaration could not be established: the field is then blank and
+          disabled rather than pre-filled with a guess. */}
+      <FundingDeclarationControl
+        declaredSek={fundingState === 'KNOWN' ? survival.declaredFundingSek : null}
+        readable={fundingState !== 'UNAVAILABLE'}
+      />
 
       <p className={styles.meta}>{SURVIVAL_CEILING_NOTE}</p>
       <p className={styles.meta}>{SURVIVAL_REVENUE_SIGNAL_NOTE}</p>

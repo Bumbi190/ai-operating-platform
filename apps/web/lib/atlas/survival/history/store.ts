@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { BudgetScope } from '@/lib/cost/budget-gate'
 import type {
   FundingState,
+  RunwayCoverage,
   SurvivalGap,
   SurvivalReason,
   SurvivalState,
@@ -51,6 +52,8 @@ export interface RecordObservationInput {
   fundingState: FundingState
   declaredFundingSek: number | null
   runwayDays: number | null
+  /** Stated on every v2 observation; the boundary requires it. */
+  runwayCoverage: RunwayCoverage | null
   revenueTrendSek: number | null
   operatingPaused: boolean | null
   /** Asserted so the boundary can REFUSE a policy this schema does not implement. */
@@ -63,7 +66,7 @@ const COLS = [
   'event_id', 'event_seq', 'project_id', 'event_type', 'from_state', 'to_state',
   'autonomy_level', 'reasons', 'gaps', 'binding_scope', 'binding_limit_sek',
   'binding_remaining_sek', 'burn_sek_per_day', 'funding_state', 'declared_funding_sek',
-  'runway_days', 'revenue_trend_sek', 'operating_paused', 'threshold_status',
+  'runway_days', 'runway_coverage', 'revenue_trend_sek', 'operating_paused', 'threshold_status',
   'derivation_version', 'actor_principal', 'provenance', 'occurred_at', 'recorded_at',
 ].join(', ')
 
@@ -87,6 +90,7 @@ function toEvent(row: any): SurvivalStateEvent {
     fundingState: row.funding_state,
     declaredFundingSek: num(row.declared_funding_sek),
     runwayDays: num(row.runway_days),
+    runwayCoverage: row.runway_coverage ?? null,
     revenueTrendSek: num(row.revenue_trend_sek),
     operatingPaused: row.operating_paused ?? null,
     thresholdStatus: row.threshold_status,
@@ -124,6 +128,7 @@ export async function recordObservation(
       p_funding_state: input.fundingState,
       p_declared_funding_sek: input.declaredFundingSek,
       p_runway_days: input.runwayDays,
+      p_runway_coverage: input.runwayCoverage,
       p_revenue_trend_sek: input.revenueTrendSek,
       p_operating_paused: input.operatingPaused,
       p_threshold_status: input.thresholdStatus,

@@ -78,6 +78,7 @@ function survival(state: SurvivalState, over: Partial<SurvivalSection> = {}): Su
     ceilingLabel: describeCeiling(state),
     ceilingEffect: SURVIVAL_CEILING_EFFECT[state],
     fundingState: 'KNOWN',
+    runwayCoverage: 'PLATFORM_COMPLETE',
     bindingScope: 'global_monthly',
     bindingRemainingSek: 1301.53,
     bindingLimitSek: 1500,

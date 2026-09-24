@@ -9,14 +9,22 @@ import { createHash } from 'node:crypto'
  * NOT prove application order, ledger versions, SQL content hashes, or replayability.
  */
 export const MIGRATION_GUARD_POLICY_VERSION = 2
-// 95 + 20260923120000_survival_state_events.sql (Atlas Survival Phase 2A).
-// Enforced trips together: 96 = 14 grandfathered + 82 enforced.
-// 96 + 20260923150000_sdf1c1_trusted_broker_identity.sql (Phase 1C1A, broker identity
-// and enrollment only): 97 = 14 grandfathered + 83 enforced.
-// 97 + 20260924080000_sdf1c1b_broker_claim_credentials.sql (Phase 1C1B, claim-scoped
-// credential foundation only): 98 = 14 grandfathered + 84 enforced.
-export const EXPECTED_CANONICAL_SQL_COUNT = 98
-export const EXPECTED_ENFORCED_COUNT = 84
+// 95 + 20260923120000_survival_state_events.sql (Atlas Survival Phase 2A)
+//    + 20260923150000_sdf1c1_trusted_broker_identity.sql (Phase 1C1A — trusted broker
+//      device identity and enrollment only)
+//    + 20260924080000_sdf1c1b_broker_claim_credentials.sql (Phase 1C1B — claim-scoped
+//      credential foundation only)
+//    + 20260924120000_survival_funding_phase2b.sql (Atlas Survival Phase 2B —
+//      owner-declared operating capital, its audit ledger, and derivation v2 coverage).
+// Enforced trips together: 99 = 14 grandfathered + 85 enforced.
+//
+// 1C1A, 1C1B and 2B each arrived on their own branch and each moved this tripwire by
+// one, so the reconciled total is the sum of all four additions rather than any one
+// branch's value. Phase 2B is ENFORCED, not grandfathered: it is a live repository
+// migration whose absence from the production ledger must fail the guard until the
+// approved apply happens.
+export const EXPECTED_CANONICAL_SQL_COUNT = 99
+export const EXPECTED_ENFORCED_COUNT = 85
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

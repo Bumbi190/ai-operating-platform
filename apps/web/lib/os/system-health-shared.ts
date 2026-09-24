@@ -158,6 +158,10 @@ export const SURVIVAL_GAP_LABELS: Record<SurvivalGap, string> = {
   funding_undeclared: 'Ingen finansiering deklarerad',
   funding_unavailable: 'Finansieringskällan kunde inte läsas',
   runway_unknown: 'Räckvidd kan inte beräknas',
+  // Deliberately NOT the same wording as runway_unknown. That one says no figure
+  // could be established; this one says a figure would be misleading, because
+  // the platform-wide capital is not matched by platform-wide burn.
+  runway_scope_incomplete: 'Räckvidd kan inte beräknas för en delmängd av plattformen',
   reads_incomplete: 'Ofullständig läsning',
   infrastructure_cost_untracked: 'Infrastrukturkostnad ingår inte',
 }

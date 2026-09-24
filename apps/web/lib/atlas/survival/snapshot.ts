@@ -35,9 +35,11 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveSurvivalState } from './derive'
 import { survivalCeiling } from './ceiling'
+import { readDeclaredOperatingCapital, readRunwayCoverage } from './funding'
 import type {
   BudgetScopeReading,
   FundingReading,
+  RunwayCoverage,
   SurvivalInput,
   SurvivalObservation,
   SurvivalReads,
@@ -60,22 +62,29 @@ export interface SnapshotOptions {
   /** Injected so a snapshot can be reproduced for a recorded instant. */
   now?: string
   /**
-   * The funding situation. Defaults to `{ kind: 'UNDECLARED' }`.
+   * ── CONTROLLED TEST SEAM. PRODUCTION CALLERS MUST NOT PASS THIS. ─────────
    *
-   * ALWAYS UNDECLARED IN PHASE 1. No funding source exists yet, and the route
-   * deliberately does not accept one from a request body: a caller-supplied
-   * funding figure would let a request choose the input that governs expansion,
-   * which is the same class of mistake `lib/atlas/executive/http.ts` refuses
-   * when it rejects `principalId`/`actorId`/`target` fields outright.
+   * Phase 2B made the funding source canonical: this function now reads
+   * `platform_config` itself (see `readDeclaredOperatingCapital`). The override
+   * survives only so the derivation's funding branches stay exercisable without
+   * a database, and it is a plain server-side parameter — never a request field.
    *
-   * `'UNAVAILABLE'` exists for the Phase 2B case where a configured source
-   * fails to read. It is a distinct state from UNDECLARED precisely because it
-   * must floor HIGHER — a lost reading may not buy freedom.
-   *
-   * The parameter exists so Phase 2B changes exactly one call site, and so both
-   * non-UNDECLARED paths are exercisable in tests.
+   * It is deliberately still named `funding` so that every existing test call
+   * site stays visible, and so a production caller passing it is obvious in
+   * review. `GET /api/system/survival`, the Systemhälsa loader and the Phase 2A
+   * recorder all pass nothing here, which is what keeps one source of truth.
    */
   funding?: FundingReading
+  /**
+   * ── CONTROLLED TEST SEAM. PRODUCTION CALLERS MUST NOT PASS THIS. ─────────
+   *
+   * Named with an explicit `test` prefix because this is the dangerous one: a
+   * caller that could claim `PLATFORM_COMPLETE` for a partial project set would
+   * manufacture a runway figure, and an overstated runway is what raises the
+   * autonomy ceiling. Production coverage is derived server-side from the
+   * caller's actual project set by `readRunwayCoverage`.
+   */
+  testRunwayCoverage?: RunwayCoverage
 }
 
 /**
@@ -85,6 +94,11 @@ export interface SnapshotOptions {
  * The signature deliberately mirrors `lib/atlas/isolation.ts`'s
  * `applyProjectScope(db, allowedProjectIds)`: the scope is passed in by the
  * caller that proved it, never inferred from a payload.
+ *
+ * ── PHASE 2B: THE PRODUCTION PATH IS NOW FULLY CANONICAL ──────────────────
+ * current measurements + the canonical persisted funding source + whether that
+ * scope covers the platform → `SurvivalInput` → `deriveSurvivalState()`. No
+ * production caller supplies funding or coverage.
  */
 export async function readSurvivalSnapshot(
   allowedProjectIds: readonly string[],
@@ -93,9 +107,14 @@ export async function readSurvivalSnapshot(
   const db: AnyDb = options.db ?? createAdminClient()
   const at = options.now ?? new Date().toISOString()
 
+  // The funding source and the scope check are read alongside the measurements,
+  // in the same pass, so a snapshot can never mix a fresh burn with a stale
+  // declaration or vice versa.
   const [scopes, budgetsOk] = await readHeadroom(db, allowedProjectIds)
   const [burnSekPerDay, burnOk] = await readBurn(db, allowedProjectIds, at)
   const [revenueTrendSek, revenueOk] = await readRevenueTrend(db, allowedProjectIds)
+  const canonicalFunding = options.funding ?? await readDeclaredOperatingCapital(db)
+  const coverage = options.testRunwayCoverage ?? await readRunwayCoverage(allowedProjectIds, db)
   const operatingPaused = await readOperatingPaused(db)
 
   const reads: SurvivalReads = {
@@ -108,10 +127,8 @@ export async function readSurvivalSnapshot(
     scopes,
     reads,
     burnSekPerDay,
-    // Defaulting to UNDECLARED (not UNAVAILABLE) is the honest reading of "no
-    // source has ever supplied a figure". UNAVAILABLE must be asserted
-    // deliberately by a caller that knows a source was expected and failed.
-    funding: options.funding ?? { kind: 'UNDECLARED' },
+    runwayCoverage: coverage,
+    funding: canonicalFunding,
     revenueTrendSek,
     operatingPaused,
   }

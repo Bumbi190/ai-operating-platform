@@ -65,6 +65,10 @@ function input(over: Partial<SurvivalInput> = {}): SurvivalInput {
     reads: { budgets: true, burn: true, revenue: true },
     burnSekPerDay: 8.3,
     funding: { kind: 'KNOWN', declaredFundingSek: 120_000 },
+    // PLATFORM_COMPLETE by default so the pre-Phase-2B expectations below keep
+    // their meaning: these fixtures describe a whole-platform observation. The
+    // partial-scope rule has its own block.
+    runwayCoverage: 'PLATFORM_COMPLETE',
     revenueTrendSek: 12,
     operatingPaused: false,
     ...over,
@@ -466,6 +470,9 @@ describe('MECHANICAL: degrading any input can never improve the state', () => {
       reads,
       burnSekPerDay: burn,
       funding,
+      // The sweep below is about HEADROOM monotonicity, so it holds the scope
+      // fixed at complete. The partial-scope rule has its own dedicated block.
+      runwayCoverage: 'PLATFORM_COMPLETE',
       revenueTrendSek: 12,
       operatingPaused: false,
     }
@@ -777,6 +784,11 @@ describe('read-only, with a closed consumer set', () => {
       resolve(process.cwd(), 'lib/qa/system-health-survival.test.ts'),
       // Phase 2A's structural suite, for the same reason.
       resolve(process.cwd(), 'lib/qa/survival-history.test.ts'),
+      // Phase 2A's SQL suite and Phase 2B's two suites: they prove the record
+      // and the funding boundary against real PostgreSQL and against the code.
+      resolve(process.cwd(), 'lib/qa/survival-history-sql.test.ts'),
+      resolve(process.cwd(), 'lib/qa/survival-funding.test.ts'),
+      resolve(process.cwd(), 'lib/qa/survival-funding-sql.test.ts'),
       // Phase 1b — display only. The loader carries the observation into the
       // system-health model, and the Systemhälsa view renders it.
       resolve(process.cwd(), 'lib/os/system-health'),
@@ -810,9 +822,13 @@ describe('read-only, with a closed consumer set', () => {
     // governs its own expansion ceiling. The signature above already proves the
     // handler accepts nothing; these prove it cannot reach for anything either.
     expect(src).not.toMatch(/NextRequest|searchParams|URL\(/)
-    // The route names the funding state explicitly, and it must name UNDECLARED
-    // rather than UNAVAILABLE: nothing has been lost, so nothing may be alarmed.
-    expect(src).toContain("kind: 'UNDECLARED'")
+    // Phase 2B: the route no longer NAMES a funding state at all. Funding is a
+    // canonical read and coverage is derived from the caller's real project set,
+    // so the route must pass neither — naming a state by hand was the Phase 1
+    // placeholder, and asserting it now would be asserting the placeholder.
+    expect(src).not.toContain('kind:')
+    expect(src).not.toMatch(/testRunwayCoverage|runwayCoverage:/)
+    expect(src).toMatch(/readSurvivalSnapshot\(access\.allowedProjectIds\)/)
   })
 
   it('the route is session-authenticated and project-scoped', () => {
@@ -856,5 +872,190 @@ describe('read-only, with a closed consumer set', () => {
       expect(src, `${f} deletes`).not.toMatch(/\.delete\s*\(/)
       expect(src, `${f} touches the stop authority`).not.toMatch(/stop_set_(platform|project)/)
     }
+  })
+})
+
+// ─── Phase 2B: runway coverage ──────────────────────────────────────────────
+
+describe('runway coverage — a partial scope may only restrict', () => {
+  const COMPLETE_SCOPE = [scope({ limitSek: 1500, remainingSek: 1500 })]
+
+  it('computes runway only when the scope is platform-complete', () => {
+    const complete = derive({ runwayCoverage: 'PLATFORM_COMPLETE' })
+    expect(complete.runwayDays).not.toBeNull()
+    expect(complete.runwayCoverage).toBe('PLATFORM_COMPLETE')
+    expect(complete.gaps).not.toContain('runway_scope_incomplete')
+  })
+
+  it('withholds runway on a partial scope, and says WHICH kind of unknown it is', () => {
+    const partial = derive({ runwayCoverage: 'PARTIAL_SCOPE' })
+    expect(partial.runwayDays).toBeNull()
+    expect(partial.runwayCoverage).toBe('PARTIAL_SCOPE')
+    // The distinguishing gap. Without it a reader could not tell this from a
+    // complete scope that simply had no burn to measure.
+    expect(partial.gaps).toContain('runway_scope_incomplete')
+    expect(partial.gaps).not.toContain('runway_unknown')
+  })
+
+  it('caps a partial scope at CRITICAL even with ample headroom and revenue', () => {
+    // This is the load-bearing rule. Under v1 this exact input was EXPAND:
+    // healthy headroom, positive revenue, and 120 000 / 8.3 days of runway.
+    const partial = derive({
+      scopes: COMPLETE_SCOPE,
+      runwayCoverage: 'PARTIAL_SCOPE',
+    })
+    const complete = derive({ scopes: COMPLETE_SCOPE, runwayCoverage: 'PLATFORM_COMPLETE' })
+    expect(complete.state).toBe('EXPAND')
+    expect(partial.state).toBe('CRITICAL')
+  })
+
+  it('a partial scope can NEVER reach EXPAND or NORMAL, for any headroom', () => {
+    for (const remaining of [1500, 1200, 900, 600, 400, 100]) {
+      const s = derive({ scopes: [scope({ limitSek: 1500, remainingSek: remaining })],
+                         runwayCoverage: 'PARTIAL_SCOPE' })
+      expect(SURVIVAL_STATES.indexOf(s.state), `remaining=${remaining}`)
+        .toBeGreaterThanOrEqual(SURVIVAL_STATES.indexOf('CONSERVE'))
+    }
+  })
+
+  it('changing ONLY the coverage can never raise the state — the monotonicity that matters', () => {
+    // The whole point: losing RUNWAY information must not buy MORE autonomy.
+    //
+    // Scoped deliberately. Every case below supplies the SAME measurements to
+    // both coverages, so the only thing under test is the coverage change. This
+    // is not a claim that a real project-scoped observation is always at least
+    // as restrictive as a real platform-complete one — it is not, because
+    // headroom is itself scope-dependent and a platform-complete set can see a
+    // project whose headroom is exhausted. That divergence is the headroom
+    // measurement's, not runway's.
+    //
+    // The last two cases are the ones that exposed the defect. The original set
+    // varied HEADROOM only, and every one of those cases has a runway long
+    // enough that the complete observation is not pulled further down — so a
+    // CONSERVE cap looked safe. A short BURN-derived runway is what breaks it:
+    // the complete observation becomes CRITICAL, and a CONSERVE cap would then
+    // sit a whole level above it. That is a ceiling raised by losing runway
+    // information, and it is the direction this subsystem must never move.
+    for (const over of [
+      {}, { revenueTrendSek: 0 }, { scopes: [scope({ limitSek: 1500, remainingSek: 300 })] },
+      { scopes: [scope({ limitSek: 1500, remainingSek: 90 })] },
+      // Ample headroom, so the state is set by RUNWAY alone: 100 SEK over
+      // 50 SEK/day is 2 days, under the critical threshold.
+      { funding: { kind: 'KNOWN', declaredFundingSek: 100 }, burnSekPerDay: 50 },
+      { funding: { kind: 'KNOWN', declaredFundingSek: 300 }, burnSekPerDay: 50 },
+    ] as Partial<SurvivalInput>[]) {
+      const wide = derive({ ...over, runwayCoverage: 'PLATFORM_COMPLETE' })
+      const narrow = derive({ ...over, runwayCoverage: 'PARTIAL_SCOPE' })
+      expect(SURVIVAL_STATES.indexOf(narrow.state), JSON.stringify(over))
+        .toBeGreaterThanOrEqual(SURVIVAL_STATES.indexOf(wide.state))
+      // And the ceiling follows the state, never the capital: losing runway
+      // information cannot raise what the licence permits.
+      expect(effectiveAutonomy('L6', narrow.state)).toBe(survivalCeiling(narrow.state))
+    }
+  })
+
+  it('COVERAGE monotonicity holds exhaustively, with every other input held equal', () => {
+    // The invariant as a property rather than an example, stated at exactly the
+    // strength it has:
+    //
+    //   For EVERY combination of funding, burn, headroom and revenue the
+    //   derivation accepts, flipping ONLY the coverage from PLATFORM_COMPLETE to
+    //   PARTIAL_SCOPE — with all four of those inputs IDENTICAL on both sides —
+    //   may never yield a more permissive state.
+    //
+    // That "identical on both sides" is the entire content. The requirement is
+    // NOT that a real one-project observation is always at least as restrictive
+    // as a real platform-complete one; headroom is scope-dependent, so a
+    // platform-complete set can include a project whose headroom is exhausted
+    // while a different single project's is not. That gap is headroom's, not
+    // runway's, and it is outside what this rule can speak to.
+    //
+    // Holding the inputs fixed, the only divergence coverage can introduce is
+    // the short-runway path: depleted funding and exhausted headroom are
+    // reachable in both coverages from the same input, so CRITICAL is the exact
+    // upper bound of what the coverage change can cost.
+    const fundings = [
+      { kind: 'UNDECLARED' }, { kind: 'UNAVAILABLE' },
+      { kind: 'KNOWN', declaredFundingSek: 0 },
+      { kind: 'KNOWN', declaredFundingSek: -10 },
+      { kind: 'KNOWN', declaredFundingSek: 50 },
+      { kind: 'KNOWN', declaredFundingSek: 100 },
+      { kind: 'KNOWN', declaredFundingSek: 400 },
+      { kind: 'KNOWN', declaredFundingSek: 120_000 },
+    ] as SurvivalInput['funding'][]
+    const burns = [null, 0, 0.5, 8.3, 50, 4000]
+    const remainings = [1500, 900, 300, 90, 0, -25]
+    const revenues = [null, 0, -5, 250]
+
+    let checked = 0
+    for (const funding of fundings) {
+      for (const burnSekPerDay of burns) {
+        for (const remainingSek of remainings) {
+          for (const revenueTrendSek of revenues) {
+            const over = {
+              funding, burnSekPerDay, revenueTrendSek,
+              scopes: [scope({ limitSek: 1500, remainingSek })],
+            } as Partial<SurvivalInput>
+            const wide = derive({ ...over, runwayCoverage: 'PLATFORM_COMPLETE' })
+            const narrow = derive({ ...over, runwayCoverage: 'PARTIAL_SCOPE' })
+            const label = `funding=${JSON.stringify(funding)} burn=${burnSekPerDay} rem=${remainingSek} rev=${revenueTrendSek}`
+            expect(SURVIVAL_STATES.indexOf(narrow.state), label)
+              .toBeGreaterThanOrEqual(SURVIVAL_STATES.indexOf(wide.state))
+            // Never a positive runway on a partial scope — the same rule the
+            // table's `survival_events_coverage_runway_valid` CHECK enforces.
+            if (narrow.runwayDays !== null) expect(narrow.runwayDays, label).toBeLessThanOrEqual(0)
+            checked += 1
+          }
+        }
+      }
+    }
+    // Guards against the matrix silently collapsing to nothing.
+    expect(checked).toBe(fundings.length * burns.length * remainings.length * revenues.length)
+  })
+
+  it('KNOWN zero and negative stay HIBERNATE in BOTH coverages', () => {
+    // "There is nothing to spend" does not become less true by looking at less
+    // of the platform, so coverage must not touch these.
+    for (const kind of [0, -1, -125.5]) {
+      for (const coverage of ['PLATFORM_COMPLETE', 'PARTIAL_SCOPE'] as const) {
+        const s = derive({ funding: { kind: 'KNOWN', declaredFundingSek: kind }, runwayCoverage: coverage })
+        expect(s.state, `funding=${kind} coverage=${coverage}`).toBe('HIBERNATE')
+        expect(s.runwayDays).toBe(0)
+      }
+    }
+  })
+
+  it('UNAVAILABLE stays HIBERNATE in both coverages', () => {
+    for (const coverage of ['PLATFORM_COMPLETE', 'PARTIAL_SCOPE'] as const) {
+      const s = derive({ funding: { kind: 'UNAVAILABLE' }, runwayCoverage: coverage })
+      expect(s.state, coverage).toBe('HIBERNATE')
+      expect(s.runwayDays).toBeNull()
+    }
+  })
+
+  it('UNDECLARED stays CONSERVE in both coverages, with runway null', () => {
+    for (const coverage of ['PLATFORM_COMPLETE', 'PARTIAL_SCOPE'] as const) {
+      const s = derive({ funding: { kind: 'UNDECLARED' }, runwayCoverage: coverage })
+      expect(s.state, coverage).toBe('CONSERVE')
+      expect(s.runwayDays).toBeNull()
+    }
+  })
+
+  it('a complete scope with no measured burn is runway_unknown, NOT the scope gap', () => {
+    const s = derive({ runwayCoverage: 'PLATFORM_COMPLETE', burnSekPerDay: null })
+    expect(s.runwayDays).toBeNull()
+    expect(s.gaps).toContain('runway_unknown')
+    expect(s.gaps).not.toContain('runway_scope_incomplete')
+  })
+
+  it('never manufactures Infinity when burn is zero', () => {
+    const s = derive({ runwayCoverage: 'PLATFORM_COMPLETE', burnSekPerDay: 0 })
+    expect(s.runwayDays).toBeNull()
+    expect(Number.isFinite(s.runwayDays ?? 0)).toBe(true)
+  })
+
+  it('carries the coverage onto the snapshot so a stored row can explain itself', () => {
+    expect(derive({ runwayCoverage: 'PARTIAL_SCOPE' }).runwayCoverage).toBe('PARTIAL_SCOPE')
+    expect(derive({ runwayCoverage: 'PLATFORM_COMPLETE' }).runwayCoverage).toBe('PLATFORM_COMPLETE')
   })
 })

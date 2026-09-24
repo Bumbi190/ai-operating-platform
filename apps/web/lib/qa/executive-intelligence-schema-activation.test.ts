@@ -178,7 +178,7 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
    *          media_jobs requires re-running that suite. Applied to production
    *          2026-09-03 BEFORE this file was committed.)
    */
-  it('keeps the legacy EI companion count at exactly 82 enforced migrations', () => {
+  it('keeps the legacy EI companion count at exactly 83 enforced migrations', () => {
     // 66: `workflow_manual_privileged_provenance` (65) and Phase 2B-3C's
     // `spend_advisory_overrides` (66) landed in parallel branches, and BOTH bumped
     // this line to 65 independently. The merge conflict is the tripwire working:
@@ -247,11 +247,19 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 84: Phase 1C1B's `sdf1c1b_broker_claim_credentials` — activates that seam: one
     // claim-scoped credential whose hash lives exactly as long as the claim lease, and
     // atlas_code_work_claim now requires it. No table, route or execution capability.
-    // Migration Guard v2 owns the repository-wide 98/84 count contract. This
+    // 85: Atlas Survival Phase 2B `survival_funding_events` + the funding and
+    // coverage RPCs — one narrow append-only audit ledger for owner funding
+    // declarations, plus a server-side scope-completeness boolean. It grants no
+    // authority, enables no enforcement and adds no scheduler.
+    //
+    // 1C1A, 1C1B and 2B each arrived on their own branch and each moved this count
+    // by one, so the reconciled value is 85 and none may be dropped to make
+    // another fit.
+    // Migration Guard v2 owns the repository-wide 99/85 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(84)
+    expect(enforced).toBe(85)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

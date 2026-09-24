@@ -86,6 +86,7 @@ const SURVIVAL_FIXTURE = {
   burnSekPerDay: 8.3,
   declaredFundingSek: null,
   runwayDays: null,
+  runwayCoverage: 'PLATFORM_COMPLETE' as const,
   revenueTrendSek: 12,
   reasons: ['headroom_healthy' as const, 'funding_undeclared' as const],
   gaps: ['funding_undeclared' as const, 'runway_unknown' as const],

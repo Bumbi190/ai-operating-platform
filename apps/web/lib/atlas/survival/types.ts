@@ -44,6 +44,16 @@
  */
 
 import type { BudgetScope } from '@/lib/cost/budget-gate'
+// The Chapter 18 level vocabulary is OWNED by the autonomy-license module: the
+// L0–L6 scale is Chapter 18's, and Survival is one CONSUMER of it (survival
+// pressure restricts that scale; it does not define it). Imported here for this
+// file's own use below, and re-exported at the old declaration site so every
+// existing Survival consumer keeps its current import path.
+import {
+  AUTONOMY_LICENSE_LEVELS,
+  AUTONOMY_LICENSE_LABELS,
+  type AutonomyLicenseLevel,
+} from '@/lib/atlas/autonomy-license/levels'
 
 // ─── Survival state ─────────────────────────────────────────────────────────
 
@@ -143,34 +153,21 @@ export type RunwayCoverage = (typeof RUNWAY_COVERAGES)[number]
 // ─── Autonomy ceiling (Chapter 18) ──────────────────────────────────────────
 
 /**
- * The canonical Chapter 18 autonomy levels (§18.10). Reused verbatim — this is
- * not a new enum. `lib/atlas/capability/{media-generation,desktop-commander}.ts`
- * already declare `'L0' as const` against the same vocabulary, each documented
- * as "a ceiling, not a grant"; this type simply names all seven so a ceiling
- * can be expressed and compared.
+ * The canonical Chapter 18 autonomy levels (§18.10) are DECLARED in
+ * `lib/atlas/autonomy-license/levels.ts`, which owns them — Chapter 18 defines
+ * this scale and Survival applies it. They are re-exported here, unrenamed and
+ * in the same order, so this module's existing import surface is unchanged:
+ * `ceiling.ts`, `history/types.ts`, `index.ts` and the survival suites keep
+ * importing from where they always did.
+ *
+ * What stays HERE is Survival's own behaviour — `SURVIVAL_CEILING`,
+ * `survivalCeiling()`, `effectiveAutonomy()`, `lowestAutonomy()` and
+ * `SURVIVAL_CEILING_EFFECT` in `ceiling.ts`. Mapping a survival state to a
+ * permitted level is Survival's question; what the levels ARE is Chapter 18's.
+ * Neither module owns the other's concept.
  */
-export const AUTONOMY_LICENSE_LEVELS = [
-  'L0', // Observe
-  'L1', // Recommend
-  'L2', // Prepare
-  'L3', // Execute Internally
-  'L4', // External Low-Risk
-  'L5', // Conditional Business Autonomy
-  'L6', // Full Strategic Autonomy
-] as const
-
-export type AutonomyLicenseLevel = (typeof AUTONOMY_LICENSE_LEVELS)[number]
-
-/** §18.10's own names, for display. Never used in a comparison. */
-export const AUTONOMY_LICENSE_LABELS: Record<AutonomyLicenseLevel, string> = {
-  L0: 'Autonomy License L0 — Observe',
-  L1: 'Autonomy License L1 — Recommend',
-  L2: 'Autonomy License L2 — Prepare',
-  L3: 'Autonomy License L3 — Execute Internally',
-  L4: 'Autonomy License L4 — External Low-Risk',
-  L5: 'Autonomy License L5 — Conditional Business Autonomy',
-  L6: 'Autonomy License L6 — Full Strategic Autonomy',
-}
+export { AUTONOMY_LICENSE_LEVELS, AUTONOMY_LICENSE_LABELS }
+export type { AutonomyLicenseLevel }
 
 // ─── Input ──────────────────────────────────────────────────────────────────
 

@@ -252,20 +252,28 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // declarations, plus a server-side scope-completeness boolean. It grants no
     // authority, enables no enforcement and adds no scheduler.
     //
-    // 86: Phase 1C2's `sdf1c2_broker_control_channel` — the database side of the
+    // 86 → 87: two arrivals, each on its own branch — reconciled to 87, which is neither
+    // branch's figure, because both were written against main's 85.
+    //
+    // Phase 1C2's `sdf1c2_broker_control_channel` — the database side of the
     // authenticated broker control channel: a credential-bearing heartbeat (the
     // credential-less signature is dropped), handshake-only same-broker credential
     // recovery, a `claim_credential_reissued` control receipt and a bounded closed-shape
-    // discovery read. No table, no execution.
+    // discovery read. No table, no execution. Merged to main and applied to production.
     //
-    // 1C1A, 1C1B, 2B and 1C2 each arrived on their own branch and each moved this count
-    // by one, so the reconciled value is 86 and none may be dropped to make
+    // Atlas Autonomy Licensing Phase 2C `autonomy_license_phase2c` — the Chapter 18
+    // licence ledger, its narrowing write boundary and the derived read model. It grants
+    // no authority, enables no enforcement, adds no scheduler, and is not applied to
+    // production on this branch.
+    //
+    // 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
+    // count by one, so the reconciled value is 87 and none may be dropped to make
     // another fit.
-    // Migration Guard v2 owns the repository-wide 100/86 count contract. This
+    // Migration Guard v2 owns the repository-wide 101/87 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(86)
+    expect(enforced).toBe(87)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

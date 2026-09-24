@@ -287,11 +287,13 @@ export function deriveSurvivalState(
 
     case 'UNAVAILABLE': {
       // A source was expected and the read failed. This is a TELEMETRY FAILURE,
-      // and it floors at CRITICAL — strictly above the undeclared floor. If it
-      // floored at CONSERVE, then failing to read a known-near-zero position
-      // (CRITICAL) would RELAX it to CONSERVE: a ceiling that rises when
+      // and it floors at HIBERNATE — the most restrictive state, so no concealed
+      // truth can exceed it. It floored at CRITICAL until a mechanical sweep
+      // showed that insufficient: KNOWN funding at or below zero already reaches
+      // HIBERNATE (see below), so a CRITICAL floor RELAXED a known-zero position
+      // to CRITICAL merely by failing to read it — a ceiling that rises when
       // information is lost. That is the one direction this subsystem must never
-      // move.
+      // move, and no floor below HIBERNATE can satisfy it.
       applicable.add('funding_unavailable')
       gaps.add('funding_unavailable')
       gaps.add('runway_unknown')

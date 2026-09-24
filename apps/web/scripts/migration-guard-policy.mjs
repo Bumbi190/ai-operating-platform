@@ -9,8 +9,10 @@ import { createHash } from 'node:crypto'
  * NOT prove application order, ledger versions, SQL content hashes, or replayability.
  */
 export const MIGRATION_GUARD_POLICY_VERSION = 2
-export const EXPECTED_CANONICAL_SQL_COUNT = 95
-export const EXPECTED_ENFORCED_COUNT = 81
+// 95 + 20260923120000_survival_state_events.sql (Atlas Survival Phase 2A).
+// Enforced trips together: 96 = 14 grandfathered + 82 enforced.
+export const EXPECTED_CANONICAL_SQL_COUNT = 96
+export const EXPECTED_ENFORCED_COUNT = 82
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

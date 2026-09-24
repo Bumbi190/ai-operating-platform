@@ -178,19 +178,27 @@ export interface BudgetScopeReading {
  *                known-to-be-absent. Floors at CONSERVE.
  *   UNAVAILABLE  a funding source is configured or expected but could not be
  *                read. This is a TELEMETRY FAILURE, and losing information must
- *                never buy operational freedom. Floors at CRITICAL.
+ *                never buy operational freedom. Floors at HIBERNATE.
  *   KNOWN        a valid figure exists; runway is derivable from it.
  *
- * With `number | null` all three arrived as `null`, so a known-near-zero
- * position (CRITICAL) could be *relaxed* to the undeclared floor (CONSERVE) by
- * simply failing to read it. That is a ceiling that rises when information is
- * lost, which is the one direction this subsystem must never move.
+ * With `number | null` all three arrived as `null`, so a known-zero position
+ * (HIBERNATE) could be *relaxed* to the undeclared floor (CONSERVE) by simply
+ * failing to read it. That is a ceiling that rises when information is lost,
+ * which is the one direction this subsystem must never move.
  *
  * ── MONOTONICITY, STATED EXACTLY ────────────────────────────────────────────
  * KNOWN → UNAVAILABLE can never make the state more permissive: UNAVAILABLE
- * floors at CRITICAL, which is at least as restrictive as anything a known
- * figure can imply short of HIBERNATE, and HIBERNATE already wins over the
- * floor. A telemetry failure therefore cannot grant more than the truth could.
+ * floors at HIBERNATE, the most restrictive state there is, so no concealed
+ * truth — however bad — can be exceeded by losing the reading.
+ *
+ * That floor was CRITICAL, and a mechanical sweep proved it insufficient.
+ * HIBERNATE is a REACHABLE known state (KNOWN funding at or below zero), so a
+ * fixed floor below it is a relaxation whenever the concealed truth was worse:
+ * a known-zero position reports HIBERNATE, and merely failing to read it would
+ * report CRITICAL — a higher ceiling bought with less information. Monotonicity
+ * is thus unsatisfiable for any floor below HIBERNATE; the value itself lives in
+ * `FUNDING_UNAVAILABLE_FLOOR` (`derive.ts`), with a test asserting its order
+ * relative to `FUNDING_DEPLETED_FLOOR` so the reason survives future edits.
  *
  * UNDECLARED is NOT a telemetry failure — it is the absence of an owner
  * decision, and the floor is a policy choice (`CONSERVE`) rather than a

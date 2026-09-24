@@ -174,9 +174,9 @@ beforeAll(() => {
   run(ADMIN_URL, ['-c', `
     do $roles$
     begin
-      if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
-      if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
-      if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+      if not exists (select 1 from pg_roles where rolname = 'anon') then begin create role anon nologin; exception when duplicate_object or unique_violation then null; end; end if;
+      if not exists (select 1 from pg_roles where rolname = 'authenticated') then begin create role authenticated nologin; exception when duplicate_object or unique_violation then null; end; end if;
+      if not exists (select 1 from pg_roles where rolname = 'service_role') then begin create role service_role nologin bypassrls; exception when duplicate_object or unique_violation then null; end; end if;
     end
     $roles$;
   `])

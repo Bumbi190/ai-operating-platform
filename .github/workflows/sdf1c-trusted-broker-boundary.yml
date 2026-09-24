@@ -47,6 +47,7 @@ jobs:
           lib/qa/sdf1c-broker-claim-credential-sql.test.ts
           lib/qa/sdf1c2-broker-control-channel.test.ts
           lib/qa/sdf1c2-broker-control-channel-sql.test.ts
+          lib/qa/sql-test-role-bootstrap-race.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -68,6 +69,7 @@ jobs:
             ['sdf1c-broker-claim-credential-sql.test.ts', 18],
             ['sdf1c2-broker-control-channel.test.ts', 49],
             ['sdf1c2-broker-control-channel-sql.test.ts', 22],
+            ['sql-test-role-bootstrap-race.test.ts', 4],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {

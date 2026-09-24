@@ -40,6 +40,8 @@ const PSQL = findPsql()
 const ADMIN_URL = process.env.ATLAS_SQL_TEST_URL
   ?? `postgres://${process.env.USER ?? 'postgres'}@127.0.0.1:5432/postgres`
 const MIGRATION = join(process.cwd(), 'supabase/migrations/20260923120000_survival_state_events.sql')
+/** Phase 2B alters objects Phase 2A created, so the deployed state is BOTH. */
+const MIGRATION_2B = join(process.cwd(), 'supabase/migrations/20260924120000_survival_funding_phase2b.sql')
 
 function dsnFor(database: string): string {
   const url = new URL(ADMIN_URL); url.pathname = `/${database}`; return url.toString()
@@ -109,6 +111,32 @@ const P_C = '66666666-6666-6666-6666-666666666666'
 const P_D = '77777777-7777-7777-7777-777777777777'
 /** Dedicated to negative (overspent) headroom evidence. */
 const P_E = '88888888-8888-8888-8888-888888888888'
+/**
+ * Dedicated to the coverage/runway coherence probes: the refused probe must
+ * leave a stream untouched, and the accepted probe must not perturb another.
+ *
+ * Their slugs are purpose-named rather than another Greek letter on purpose.
+ * `slug` is UNIQUE, and the concurrency suite inserts its own project with
+ * `on conflict do nothing` — so a slug collision here would silently prevent
+ * THAT fixture from being created and fail four unrelated tests (which is
+ * exactly what happened when these first used the slug 'gamma').
+ */
+const P_F = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+const P_G = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+/**
+ * Dedicated to the provenance-pairing probes. DIRECT INSERTs are refused by the
+ * BEFORE INSERT guard on any project that already has history, so each probe
+ * needs a stream of its own — and `P_C`, reserved for the pre-existing direct
+ * INSERT probes, must stay EMPTY or the guard refuses THOSE before the CHECK
+ * under test is ever reached.
+ *
+ *   P_H  the accepted v1 row
+ *   P_I  the accepted v2 row
+ *   P_J  every mismatched pair — all refused, so this one stays empty
+ */
+const P_H = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+const P_I = 'dddddddd-dddd-dddd-dddd-dddddddddddd'
+const P_J = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'
 const MISSING = '99999999-9999-9999-9999-999999999999'
 
 const FIXTURE = `
@@ -162,7 +190,12 @@ insert into public.projects (id, slug) values
   ('${P_S}', 'sigma'),
   ('${P_C}', 'chi'),
   ('${P_D}', 'delta'),
-  ('${P_E}', 'epsilon');
+  ('${P_E}', 'epsilon'),
+  ('${P_F}', 'coverage-refused'),
+  ('${P_G}', 'coverage-accepted'),
+  ('${P_H}', 'provenance-v1'),
+  ('${P_I}', 'provenance-v2'),
+  ('${P_J}', 'provenance-mismatch');
 `
 
 const d = AVAILABLE ? describe : describe.skip
@@ -180,6 +213,7 @@ beforeAll(() => {
   dsn = dsnFor(DB_NAME)
   run(dsn, ['-c', FIXTURE])
   run(dsn, ['-f', MIGRATION])
+  run(dsn, ['-f', MIGRATION_2B])
 })
 
 afterAll(() => {
@@ -205,6 +239,8 @@ interface Observe {
   paused?: boolean
   threshold?: string
   version?: number
+  /** Runway coverage. Undefined = PLATFORM_COMPLETE (the v2 default for tests). */
+  coverage?: string | null
   occurredAt?: string
 }
 
@@ -233,7 +269,8 @@ function rpc(o: Observe): string {
     o.trend === undefined ? 'null' : (o.trend === null ? 'null' : o.trend),
     o.paused === undefined ? 'false' : String(o.paused),
     `'${o.threshold ?? 'provisional'}'`,
-    String(o.version ?? 1),
+    String(o.version ?? 2),
+    o.coverage === undefined ? `'PLATFORM_COMPLETE'` : (o.coverage === null ? 'null' : `'${o.coverage}'`),
     o.occurredAt ?? 'now()',
   ]
   return `public.survival_record_observation(${args.join(', ')})`
@@ -299,7 +336,7 @@ describe('survival history · the recording boundary is hardened', () => {
   // fails loudly rather than quietly proving nothing.
   const SIG = `public.survival_record_observation(
     uuid, text, text[], text[], text, numeric, numeric, numeric,
-    text, numeric, numeric, numeric, boolean, text, integer, timestamptz)`
+    text, numeric, numeric, numeric, boolean, text, integer, text, timestamptz)`
   const fn = (privilege: string, role: string) =>
     one(dsn, `select has_function_privilege('${role}', '${SIG}', '${privilege}')`)
 
@@ -393,13 +430,70 @@ describe('survival history · the recording boundary is hardened', () => {
   })
 
   it('the RPC writes the canonical machine identity, whatever the observer', () => {
+    // The default helper observes under DERIVATION v2, so the envelope marker is
+    // v2's: provenance describes the observation FORMAT, and Phase 2B changed it
+    // (runway_coverage added, recorder 16 → 17 parameters). A v2 row claiming the
+    // v1 marker would be decoded by a reader that does not know the new column.
     expect(call({ project: P_S, to: 'CRITICAL' })).toBe('baseline_recorded')
     const row = query(dsn, `select actor_principal, provenance, autonomy_level
                               from public.survival_state_events where project_id='${P_S}'`)[0]
     expect(row[0]).toBe('atlas.survival_recorder')
-    expect(row[1]).toBe('atlas.survival.observation.v1')
+    expect(row[1]).toBe('atlas.survival.observation.v2')
     // …and the ceiling is the DERIVED one for the state, not a caller's L1.
     expect(row[2]).toBe('L1')
+  })
+
+  it('derives provenance from the version, and refuses every mismatched pair', () => {
+    // Provenance and coverage are both functions of the derivation version, and
+    // the table pins all three together. A caller that could supply provenance
+    // could label a v2 envelope as v1 and send a later reader down a schema that
+    // predates runway_coverage.
+    const direct = (project: string, version: number, provenance: string, coverage: string | null) =>
+      `insert into public.survival_state_events
+        (project_id, event_type, to_state, autonomy_level, funding_state,
+         threshold_status, derivation_version, runway_coverage,
+         actor_principal, provenance, occurred_at)
+       values ('${project}','BASELINE_OBSERVED','NORMAL','L6','UNDECLARED',
+               'provisional',${version},${coverage === null ? 'null' : `'${coverage}'`},
+               'atlas.survival_recorder','${provenance}', now())`
+
+    // The paired halves are ACCEPTED — one stream each, because the guard
+    // refuses a direct INSERT into a project that already has history.
+    for (const [project, version, provenance, coverage] of [
+      [P_H, 1, 'atlas.survival.observation.v1', null],
+      [P_I, 2, 'atlas.survival.observation.v2', 'PLATFORM_COMPLETE'],
+    ] as const) {
+      expect(expectFailure(dsn, direct(project, version, provenance, coverage)),
+        `v${version} + ${provenance} should be accepted`).toBe('')
+      expect(one(dsn, `select provenance from public.survival_state_events
+                        where project_id='${project}' order by event_seq desc limit 1`))
+        .toBe(provenance)
+    }
+
+    const mismatches: Array<[number, string, string | null]> = [
+      [1, 'atlas.survival.observation.v2', null],                 // v1 claiming v2's format
+      [2, 'atlas.survival.observation.v1', 'PLATFORM_COMPLETE'],  // v2 claiming v1's format
+      [2, 'atlas.survival.observation.v2', null],                 // v2 without coverage
+      [1, 'atlas.survival.observation.v1', 'PLATFORM_COMPLETE'],  // v1 with coverage
+    ]
+    for (const [version, provenance, coverage] of mismatches) {
+      // All four fail, so P_J stays empty and every probe reaches its CHECK.
+      expect(expectFailure(dsn, direct(P_J, version, provenance, coverage)),
+        `v${version} / ${provenance} / coverage=${coverage}`)
+        .toMatch(/policy_identity_valid|violates check constraint|23514/i)
+    }
+    expect(count(P_J), 'a refused probe must write nothing').toBe(0)
+  })
+
+  it('the RPC takes no provenance argument at all', () => {
+    // Structural, not behavioural: there is nothing to forge because there is
+    // nothing to send. If provenance were a parameter, a caller could choose the
+    // envelope its row is recorded under.
+    expect(one(dsn, `select pg_get_function_arguments(p.oid)
+                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname='public'
+                        and p.proname='survival_record_observation'`))
+      .not.toMatch(/provenance/i)
   })
 
   it('refuses an impossible state/ceiling pair on a direct INSERT', () => {
@@ -429,7 +523,7 @@ describe('survival history · the recording boundary is hardened', () => {
     }
     // The RPC fails closed on the same skew, BEFORE touching the table, so a v2
     // application against this schema errors loudly instead of mislabelling.
-    for (const [version, status] of [[999, 'canonical'], [2, 'provisional'], [1, 'canonical']] as Array<[number, string]>) {
+    for (const [version, status] of [[999, 'canonical'], [3, 'provisional'], [2, 'canonical'], [0, 'provisional']] as Array<[number, string]>) {
       const err = expectFailure(dsn, `select * from ${rpc({ project: P_B, to: 'CONSERVE', version, threshold: status })}`)
       expect(err, `rpc v${version}/${status}`)
         .toMatch(/unsupported derivation version|unsupported threshold status/i)
@@ -606,10 +700,19 @@ describe('survival history · closed vocabularies', () => {
         "to_state = 'CONSERVE'", "autonomy_level = 'L3'",
         "to_state = 'HIBERNATE'", "autonomy_level = 'L0'")
     has('survival_events_funding_state_valid', 'KNOWN', 'UNDECLARED', 'UNAVAILABLE')
-    // The policy identity is the PAIRING, not two independent ranges.
-    has('survival_events_policy_identity_valid', 'derivation_version = 1', "threshold_status = 'provisional'")
+    // The policy identity is the PAIRING, not two independent ranges — and as of
+    // v2 it pairs the version with the coverage that version requires: a v1 row
+    // predates the concept (null coverage), a v2 row must state it.
+    // As of v2 the pairing covers THREE derived facts at once: the version, the
+    // coverage it requires, and the envelope marker it writes. They are one
+    // policy identity, so they are constrained as one.
+    has('survival_events_policy_identity_valid', 'derivation_version = 1', 'derivation_version = 2',
+        "threshold_status = 'provisional'", 'runway_coverage IS NULL', 'runway_coverage IS NOT NULL',
+        'atlas.survival.observation.v1', 'atlas.survival.observation.v2')
+    has('survival_events_runway_coverage_valid', 'PLATFORM_COMPLETE', 'PARTIAL_SCOPE')
     has('survival_events_reasons_valid', 'funding_undeclared', 'funding_unavailable', 'funding_depleted')
-    has('survival_events_gaps_valid', 'runway_unknown', 'infrastructure_cost_untracked')
+    has('survival_events_gaps_valid', 'runway_unknown', 'infrastructure_cost_untracked',
+        'runway_scope_incomplete')
     // BOTH directions of the funding implication, asserted on the rendered
     // definition: the positive form proves the amount is required, the negative
     // form proves it is forbidden elsewhere. One without the other is the gap
@@ -623,7 +726,8 @@ describe('survival history · closed vocabularies', () => {
       .not.toContain('binding_remaining_sek')
     has('survival_events_shape', 'BASELINE_OBSERVED')
     has('survival_events_actor_machine_identity', 'atlas.survival_recorder')
-    has('survival_events_provenance_machine_identity', 'atlas.survival.observation.v1')
+    has('survival_events_provenance_machine_identity',
+        'atlas.survival.observation.v1', 'atlas.survival.observation.v2')
     // The weaker standalone checks are GONE, not merely joined by stronger ones:
     // a `>= 1` range beside the exact pairing would be a claim that is not true.
     expect(definitions.has('survival_events_derivation_version_valid')).toBe(false)
@@ -913,5 +1017,65 @@ describe('survival history · recording changes neither spend nor the stop', () 
     expect(one(dsn, `select automation_paused from public.platform_config where id=1`)).toBe(pausedBefore)
     expect(one(dsn, `select count(*) from public.spend_reservations`)).toBe(spendBefore)
     expect(one(dsn, `select execution_paused from public.projects where id='${G}'`)).toBe('f')
+  })
+})
+
+// ── The coverage rule is a property of the ledger, not of its caller ────────
+
+d('survival history · a partial scope can never carry a positive runway', () => {
+  // `derive.ts` withholds the figure. This proves the TABLE refuses one, so the
+  // rule holds even against a direct RPC call that assembles its own arguments —
+  // which is the only thing that makes it a property of the ledger rather than a
+  // convention the current implementation happens to follow.
+  const rowOf = (project: string) =>
+    one(dsn, `select coalesce(runway_coverage, '<null>') || '|' || coalesce(runway_days::text, '<null>')
+                from public.survival_state_events where project_id = '${project}'
+               order by event_seq desc limit 1`)
+
+  it('REFUSES a partial scope with a positive runway, writing nothing', () => {
+    const err = expectFailure(dsn, `select result from ${rpc({
+      project: P_F, to: 'NORMAL', funding: 'KNOWN', declared: '120000',
+      runway: '14457.8313', coverage: 'PARTIAL_SCOPE',
+    })}`)
+    expect(err).toMatch(/survival_events_coverage_runway_valid/)
+    // The boundary is one transaction, so a refused row leaves the stream exactly
+    // as it was: no event, and no half-written observation.
+    expect(count(P_F)).toBe(0)
+  })
+
+  it('ACCEPTS the truthful shape: a partial scope with NO runway', () => {
+    expect(call({ project: P_G, to: 'CRITICAL', funding: 'KNOWN', declared: '120000',
+                  runway: null, coverage: 'PARTIAL_SCOPE',
+                  gaps: ['runway_scope_incomplete'] })).toBe('baseline_recorded')
+    expect(rowOf(P_G)).toBe('PARTIAL_SCOPE|<null>')
+  })
+
+  it('ACCEPTS runway 0 on a partial scope — depletion is not a scope claim', () => {
+    // The depleted branch runs BEFORE the coverage check, and "there is nothing
+    // to spend" does not become less true by looking at less of the platform. A
+    // constraint written as "partial implies null" would have refused this
+    // legitimate row, which is why the bound is `> 0` and not `is not null`.
+    expect(call({ project: P_G, to: 'HIBERNATE', funding: 'KNOWN', declared: '0',
+                  runway: '0', coverage: 'PARTIAL_SCOPE' })).toBe('transition_recorded')
+  })
+
+  it('still ACCEPTS a positive runway when the scope is complete', () => {
+    expect(call({ project: P_G, to: 'NORMAL', funding: 'KNOWN', declared: '120000',
+                  runway: '14457.8313', coverage: 'PLATFORM_COMPLETE' }))
+      .toBe('transition_recorded')
+  })
+
+  it('refuses a v2 row stating no coverage, and a v1 row stating one', () => {
+    // The policy identity is a PAIRING: the version decides whether coverage is
+    // required or forbidden, so neither can be recorded on its own. This is what
+    // stops a v1 row from being back-filled with a coverage fact that v1 never
+    // observed.
+    expect(expectFailure(dsn, `select result from ${rpc({
+      project: P_F, to: 'NORMAL', version: 2, coverage: null,
+    })}`)).toMatch(/p_runway_coverage/)
+    expect(expectFailure(dsn, `select result from ${rpc({
+      project: P_F, to: 'NORMAL', version: 1, coverage: 'PLATFORM_COMPLETE',
+    })}`)).toMatch(/survival_events_policy_identity_valid/)
+    expect(count(P_F)).toBe(0)
   })
 })

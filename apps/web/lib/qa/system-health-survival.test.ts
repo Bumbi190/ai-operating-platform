@@ -78,12 +78,16 @@ function survival(state: SurvivalState, over: Partial<SurvivalSection> = {}): Su
     ceilingLabel: describeCeiling(state),
     ceilingEffect: SURVIVAL_CEILING_EFFECT[state],
     fundingState: 'KNOWN',
+    runwayCoverage: 'PLATFORM_COMPLETE',
     bindingScope: 'global_monthly',
     bindingRemainingSek: 1301.53,
     bindingLimitSek: 1500,
     burnSekPerDay: 8.3,
     declaredFundingSek: 120_000,
     runwayDays: 1445.78,
+    // The default fixture is the OPERATOR's view: the only one in which the two
+    // figures above can carry a value. The redacted case is exercised explicitly.
+    fundingVisibility: 'operator',
     revenueTrendSek: 12,
     reasons: ['headroom_healthy'],
     gaps: ['infrastructure_cost_untracked'],

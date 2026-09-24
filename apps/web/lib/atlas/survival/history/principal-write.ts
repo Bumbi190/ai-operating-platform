@@ -83,8 +83,9 @@ export async function recordSurvivalTransition(
     toState: snapshot.state,
     // NOTE what is NOT passed here. The autonomy ceiling, the actor and the
     // provenance are all derived inside the database boundary: `autonomy_level`
-    // from `to_state` under v1's mapping, and the other two as the recorder's
-    // fixed machine identity. This module holds `input.observation.ceiling` and
+    // from `to_state` (one mapping, not one per derivation version), and the
+    // other two as the recorder's fixed machine identity. This module holds
+    // `input.observation.ceiling` and
     // still does not send it — the boundary would refuse it, and sending a value
     // the boundary ignores is how a reader comes to believe it matters.
     reasons: snapshot.reasons,
@@ -96,6 +97,10 @@ export async function recordSurvivalTransition(
     fundingState: snapshot.fundingState,
     declaredFundingSek: snapshot.declaredFundingSek,
     runwayDays: snapshot.runwayDays,
+    // The observation's own coverage, copied through. Phase 2A rows left this
+    // null because the concept did not exist; v2 rows always state it, which is
+    // what lets a later reader tell a withheld runway from an unmeasurable one.
+    runwayCoverage: snapshot.runwayCoverage,
     revenueTrendSek: snapshot.revenueTrendSek,
     operatingPaused: snapshot.operatingPaused,
     thresholdStatus: SURVIVAL_THRESHOLD_STATUS,
@@ -125,9 +130,15 @@ export async function observeProjectSurvival(
   projectId: string,
   options: Omit<SnapshotOptions, 'db'> & { db?: SnapshotOptions['db'] } = {},
 ): Promise<SurvivalRecordResult> {
-  const observation = await readSurvivalSnapshot([projectId], {
-    ...options,
-    funding: options.funding ?? { kind: 'UNDECLARED' },
-  })
+  // Funding and coverage are NOT passed: Phase 2B made both canonical reads
+  // inside `readSurvivalSnapshot`. Passing them here would be this recorder
+  // choosing the inputs that govern the ceiling it is recording.
+  //
+  // The single-element scope means this observation is PARTIAL whenever the
+  // platform holds more than one project, so the derived snapshot withholds
+  // runway and caps at CRITICAL. That is the truthful outcome — see the
+  // coverage rule in `derive.ts` — and it is why a stored v2 row records
+  // `runway_coverage` rather than leaving a reader to guess.
+  const observation = await readSurvivalSnapshot([projectId], options)
   return recordSurvivalTransition({ projectId, observation })
 }

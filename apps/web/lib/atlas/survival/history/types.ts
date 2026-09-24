@@ -17,6 +17,7 @@ import type { BudgetScope } from '@/lib/cost/budget-gate'
 import type {
   AutonomyLicenseLevel,
   FundingState,
+  RunwayCoverage,
   SurvivalGap,
   SurvivalReason,
   SurvivalState,
@@ -31,8 +32,21 @@ import type {
  * content-addressed contracts (`workflow_defs.def_hash`), and reusing it here
  * would imply a content guarantee this row does not make. A row says "produced
  * by derivation v1", which is exactly what a reader needs and no more.
+ *
+ * ── v2 ─────────────────────────────────────────────────────────────────────
+ * Phase 2B introduced the runway coverage rule, which CHANGES what the same
+ * `SurvivalInput` derives: a positive known declaration observed over a partial
+ * project set now yields no runway and a CONSERVE cap, where v1 would have
+ * divided a platform figure by a partial burn. Rows written before that change
+ * were produced under different semantics, so they keep saying v1 and remain
+ * interpretable. They are never rewritten.
  */
-export const SURVIVAL_DERIVATION_VERSION = 1
+export const SURVIVAL_DERIVATION_VERSION = 2
+
+/** Every version the deployed schema and recorder understand. */
+export const SURVIVAL_KNOWN_DERIVATION_VERSIONS = [1, 2] as const
+
+export type SurvivalDerivationVersion = (typeof SURVIVAL_KNOWN_DERIVATION_VERSIONS)[number]
 
 /**
  * The closed event vocabulary. Two members, and the shape constraint in the
@@ -85,6 +99,15 @@ export interface SurvivalStateEvent {
   declaredFundingSek: number | null
   /** Null means not established. Never zero. */
   runwayDays: number | null
+  /**
+   * Whether the observation covered the whole platform burn population.
+   *
+   * NULL on v1 rows, which predate the concept. On v2 rows it is always stated,
+   * and it is what lets a later reader tell "no runway because no burn was
+   * measured" from "runway withheld because the scope was partial" — a
+   * distinction a null `runwayDays` alone cannot carry.
+   */
+  runwayCoverage: RunwayCoverage | null
   /** A performance signal. Never cash, never runway. */
   revenueTrendSek: number | null
   operatingPaused: boolean | null
@@ -152,5 +175,29 @@ export const SURVIVAL_HISTORY_MAX_LIMIT = 200
 /** The actor the Phase 2A recorder writes as. A constant, like `atlas.manager`. */
 export const SURVIVAL_RECORDER_PRINCIPAL = 'atlas.survival_recorder'
 
-/** Default provenance for a recorded observation. */
-export const SURVIVAL_OBSERVATION_PROVENANCE = 'atlas.survival.observation.v1'
+/**
+ * The observation FORMAT marker, one per derivation version.
+ *
+ * Provenance describes the ENVELOPE a row was written in, not a policy: it is
+ * how a later reader decides which schema to decode the row with. Phase 2B
+ * changed that envelope — it added `runway_coverage` and moved the recorder from
+ * 16 to 17 parameters — so a v2 row carrying the v1 marker would be decoded by a
+ * reader that does not know the column exists.
+ *
+ * The versions are therefore named individually rather than as one "current"
+ * provenance constant, because there is no such thing: the marker is a function
+ * of the row's derivation version. The database enforces the same pairing in
+ * `survival_events_policy_identity_valid`, and derives the value itself — a
+ * caller cannot supply it.
+ *
+ * There is deliberately no bare `SURVIVAL_OBSERVATION_PROVENANCE`: a single
+ * unversioned constant is precisely the ambiguity that let a v2 row claim v1.
+ */
+export const SURVIVAL_OBSERVATION_PROVENANCE_V1 = 'atlas.survival.observation.v1'
+export const SURVIVAL_OBSERVATION_PROVENANCE_V2 = 'atlas.survival.observation.v2'
+
+/** The envelope marker each derivation version writes. */
+export const SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION: Record<SurvivalDerivationVersion, string> = {
+  1: SURVIVAL_OBSERVATION_PROVENANCE_V1,
+  2: SURVIVAL_OBSERVATION_PROVENANCE_V2,
+}

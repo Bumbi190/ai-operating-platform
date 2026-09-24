@@ -20,9 +20,11 @@ import {
   SURVIVAL_DERIVATION_VERSION,
   SURVIVAL_HISTORY_MAX_LIMIT,
   SURVIVAL_RECORDER_PRINCIPAL,
-  SURVIVAL_OBSERVATION_PROVENANCE,
+  SURVIVAL_OBSERVATION_PROVENANCE_V1,
+  SURVIVAL_OBSERVATION_PROVENANCE_V2,
+  SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION,
 } from '@/lib/atlas/survival/history'
-import { SURVIVAL_STATES, FUNDING_STATES } from '@/lib/atlas/survival/types'
+import { SURVIVAL_STATES, FUNDING_STATES, RUNWAY_COVERAGES } from '@/lib/atlas/survival/types'
 import {
   PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
   PROVISIONAL_CONSERVE_HEADROOM_FRACTION,
@@ -34,6 +36,7 @@ import {
   FUNDING_DEPLETED_FLOOR,
   FUNDING_UNAVAILABLE_FLOOR,
   allCeilings,
+  deriveSurvivalState,
 } from '@/lib/atlas/survival'
 
 const WEB_ROOT = resolve(__dirname, '../..')
@@ -85,6 +88,7 @@ describe('history is evidence, never the current-state source', () => {
       resolve(WEB_ROOT, 'lib/atlas/survival'),           // the module itself
       resolve(WEB_ROOT, 'lib/qa/survival-history.test.ts'),
       resolve(WEB_ROOT, 'lib/qa/survival-history-sql.test.ts'),
+      resolve(WEB_ROOT, 'lib/qa/survival-funding.test.ts'),
     ]
     const offenders: string[] = []
     const walk = (dir: string) => {
@@ -271,7 +275,28 @@ describe('the migration matches the contract the code assumes', () => {
     // TypeScript for readers. Two representations of one fact drift silently, so
     // the pair is asserted rather than assumed.
     expect(EXEC).toContain(`'${SURVIVAL_RECORDER_PRINCIPAL}'`)
-    expect(EXEC).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE}'`)
+    expect(EXEC).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+  })
+
+  it('names one provenance per derivation version, and pairs them', () => {
+    // Phase 2B changed the observation FORMAT, so there is no single "current"
+    // provenance constant — the marker is a function of the row's derivation
+    // version. The Phase 2B migration must therefore carry BOTH strings, and the
+    // TypeScript map must agree with what it writes.
+    const sql2b = readFileSync(
+      resolve(WEB_ROOT, 'supabase/migrations/20260924120000_survival_funding_phase2b.sql'), 'utf8',
+    ).split('\n').filter(l => !l.trim().startsWith('--')).join('\n').toLowerCase()
+
+    expect(sql2b).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+    expect(sql2b).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V2}'`)
+    // Derived in the recorder, not written as a literal in either INSERT branch:
+    // a literal there is exactly how a v2 row would come to claim v1's envelope.
+    expect(sql2b).toContain(`when 1 then '${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+    expect(sql2b).toContain(`when 2 then '${SURVIVAL_OBSERVATION_PROVENANCE_V2}'`)
+
+    expect(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION[1]).toBe(SURVIVAL_OBSERVATION_PROVENANCE_V1)
+    expect(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION[2]).toBe(SURVIVAL_OBSERVATION_PROVENANCE_V2)
+    expect(Object.keys(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION)).toHaveLength(2)
   })
 })
 
@@ -317,12 +342,81 @@ const FROZEN_POLICY_V1 = {
   fundingStates: ['KNOWN', 'UNDECLARED', 'UNAVAILABLE'],
 } as const
 
+/**
+ * ── v2 ──────────────────────────────────────────────────────────────────────
+ *
+ * The six thresholds, the three floors, the five ceilings and the funding
+ * vocabulary are UNCHANGED from v1 — and they are repeated here rather than
+ * referenced, because v2's whole claim is "these same values, plus a rule about
+ * when they may be applied". If a threshold moves, this record must move too,
+ * which is exactly the review the frozen record exists to force.
+ *
+ * What v2 ADDS is the runway coverage rule, and it is load-bearing in the
+ * strict sense: it changes what the same `SurvivalInput` derives. Under v1 a
+ * positive declaration observed over a partial project set produced a runway
+ * figure; under v2 it produces none and caps the state. Rows written before
+ * that change stay v1 and are never rewritten.
+ */
+const FROZEN_POLICY_V2 = {
+  thresholds: {
+    criticalHeadroomFraction: 0.1,
+    conserveHeadroomFraction: 0.35,
+    expandMinHeadroomFraction: 0.5,
+    criticalRunwayDays: 3,
+    conserveRunwayDays: 14,
+    expandMinRunwayDays: 60,
+  },
+  floors: {
+    undeclared: 'CONSERVE',
+    depleted: 'HIBERNATE',
+    unavailable: 'HIBERNATE',
+  },
+  ceilings: { EXPAND: 'L6', NORMAL: 'L6', CONSERVE: 'L3', CRITICAL: 'L1', HIBERNATE: 'L0' },
+  fundingStates: ['KNOWN', 'UNDECLARED', 'UNAVAILABLE'],
+  coverages: ['PLATFORM_COMPLETE', 'PARTIAL_SCOPE'],
+  // The rule itself, stated as the three facts v2 adds.
+  runwayRule: {
+    /** A partial scope never yields a runway figure, whatever the declaration. */
+    partialScopeRunwayDays: null,
+    /**
+     * …and it caps the state, so the absence of evidence cannot read as good news.
+     *
+     * CRITICAL, not CONSERVE. This was CONSERVE until the coverage-monotonicity
+     * property test in `survival-derivation.test.ts` covered a short
+     * BURN-derived runway: holding the other inputs equal, a complete
+     * observation whose runway falls under the critical threshold is CRITICAL,
+     * so a CONSERVE cap sat a level ABOVE it — a ceiling raised by losing runway
+     * information. CRITICAL is the exact bound for runway uncertainty, because
+     * HIBERNATE is not reachable from the same inputs via a coverage change.
+     *
+     * NOT a version bump. v2 has never produced a row — Phase 2B is uncommitted
+     * and its migration is unapplied, and the Phase 2A recorder is dormant — so
+     * no recorded row means anything different today than it did yesterday.
+     * Bumping would assert that a CONSERVE-capped v2 was ever live, which is
+     * false. v1 IS preserved verbatim above, because v1 rows DO exist.
+     */
+    partialScopeStateCap: 'CRITICAL',
+    /** A complete scope with a positive declaration and measured burn calculates normally. */
+    completeScopePositiveCalculates: true,
+  },
+} as const
+
 const BUMP_HINT =
   'Survival policy changed. If that is intended, bump SURVIVAL_DERIVATION_VERSION ' +
-  'and update FROZEN_POLICY_V1 together — already-recorded rows name the old version.'
+  'and update the matching FROZEN_POLICY record together — already-recorded rows ' +
+  'name the version they were produced under.'
 
 describe('the derivation version is load-bearing', () => {
-  it('freezes every value that derivation_version 1 describes', () => {
+  it('v1 is preserved verbatim, and still describes what v1 rows meant', () => {
+    // FROZEN_POLICY_V1 is deliberately NOT edited by Phase 2B. Rows in
+    // production were produced under it, and a record that drifts to match
+    // today's code would stop explaining them.
+    expect(FROZEN_POLICY_V1.thresholds.conserveHeadroomFraction).toBe(0.35)
+    expect(FROZEN_POLICY_V1.floors.unavailable).toBe('HIBERNATE')
+    expect(FROZEN_POLICY_V1).not.toHaveProperty('coverages')
+  })
+
+  it('freezes every value that derivation_version 2 describes', () => {
     const live = {
       thresholds: {
         criticalHeadroomFraction: PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
@@ -339,8 +433,44 @@ describe('the derivation version is load-bearing', () => {
       },
       ceilings: allCeilings(),
       fundingStates: [...FUNDING_STATES],
+      coverages: [...RUNWAY_COVERAGES],
+      runwayRule: {
+        // Derived, not restated: these come out of the real derivation, so this
+        // record fails if the RULE changes — not merely if a constant does.
+        partialScopeRunwayDays: deriveSurvivalState(
+          { scopes: [], reads: { budgets: true, burn: true, revenue: true },
+            burnSekPerDay: 8.3, funding: { kind: 'KNOWN', declaredFundingSek: 120_000 },
+            runwayCoverage: 'PARTIAL_SCOPE', revenueTrendSek: 12, operatingPaused: false },
+          { at: '2026-09-24T00:00:00.000Z' },
+        ).runwayDays,
+        partialScopeStateCap: (() => {
+          const s = deriveSurvivalState(
+            { scopes: [{ projectId: 'p', slug: 's', scope: 'global_monthly', limitSek: 1500,
+                         spentSek: 0, heldSek: 0, remainingSek: 1500 }],
+              reads: { budgets: true, burn: true, revenue: true },
+              burnSekPerDay: 8.3, funding: { kind: 'KNOWN', declaredFundingSek: 120_000 },
+              runwayCoverage: 'PARTIAL_SCOPE', revenueTrendSek: 12, operatingPaused: false },
+            { at: '2026-09-24T00:00:00.000Z' },
+          )
+          // The rule is "no more permissive than CRITICAL" — with ample headroom
+          // the cap is what decides, which is the case v1 would have called
+          // EXPAND and a CONSERVE cap would have called CONSERVE.
+          return s.state
+        })(),
+        completeScopePositiveCalculates: (() => {
+          const s = deriveSurvivalState(
+            { scopes: [{ projectId: 'p', slug: 's', scope: 'global_monthly', limitSek: 1500,
+                         spentSek: 0, heldSek: 0, remainingSek: 1500 }],
+              reads: { budgets: true, burn: true, revenue: true },
+              burnSekPerDay: 8.3, funding: { kind: 'KNOWN', declaredFundingSek: 120_000 },
+              runwayCoverage: 'PLATFORM_COMPLETE', revenueTrendSek: 12, operatingPaused: false },
+            { at: '2026-09-24T00:00:00.000Z' },
+          )
+          return s.runwayDays !== null
+        })(),
+      },
     }
-    expect(live, BUMP_HINT).toEqual(FROZEN_POLICY_V1)
+    expect(live, BUMP_HINT).toEqual(FROZEN_POLICY_V2)
   })
 
   it('records the version and the threshold status on EVERY branch of the writer', () => {
@@ -360,7 +490,7 @@ describe('the derivation version is load-bearing', () => {
     // pretending otherwise would imply the ledger can detect a policy change on
     // its own — it cannot; this suite is what does that.
     expect(Number.isInteger(SURVIVAL_DERIVATION_VERSION)).toBe(true)
-    expect(SURVIVAL_DERIVATION_VERSION).toBe(1)   // bump WITH FROZEN_POLICY_V1
+    expect(SURVIVAL_DERIVATION_VERSION).toBe(2)   // bump WITH the matching FROZEN_POLICY record
     for (const f of HISTORY) {
       expect(codeOnly(read(historyPath(f))), f).not.toMatch(/sha256|createHash|\bhash\b/i)
     }

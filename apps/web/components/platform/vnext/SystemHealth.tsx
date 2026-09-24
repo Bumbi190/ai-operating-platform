@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { PauseToggle } from '@/components/platform/PauseToggle'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
+import { FundingDeclarationControl } from '@/components/platform/FundingDeclarationControl'
 import type {
   SurvivalSection,
   SystemAutomation,
@@ -17,6 +18,7 @@ import {
   AUTOMATION_LIVENESS_NOTE,
   COMPONENT_STATE_LABELS,
   DREAM_SEVERITY_LABELS,
+  FUNDING_EVIDENCE_OPERATOR_ONLY_NOTE,
   FUNDING_STATE_LABELS,
   MEMORY_OBSERVABILITY_NOTE,
   SURVIVAL_CEILING_NOTE,
@@ -189,13 +191,19 @@ function ExecutionPanel({ model }: { model: SystemHealthModel }) {
 }
 
 /**
- * Atlas Survival — the read-only economic observation, displayed.
+ * Atlas Survival — the economic observation, displayed, with its one input.
  *
- * DISPLAY ONLY, and structurally so. Nothing here computes a state, a ceiling, a
- * threshold or an amount: every value is carried from `readSurvivalSnapshot()`,
- * the same reader `GET /api/system/survival` calls, and this panel offers no
- * control of any kind. There is no path from this surface to a change in the
- * survival state, and no second reader that could disagree with the API.
+ * NO SURVIVAL VALUE IS COMPUTED HERE. Every state, ceiling, threshold and amount
+ * is carried from `readSurvivalSnapshot()` — the same reader `GET
+ * /api/system/survival` calls — so there is no client-side arithmetic to drift
+ * from the server's, and no second reader that could disagree with the API.
+ *
+ * The panel offers exactly ONE control, and it is an INPUT rather than a
+ * survival value: the declared operating capital. Setting it changes what the
+ * NEXT observation derives. It changes no state on this page, and it grants no
+ * authority — `effectiveAutonomy = min(licensedAutonomy, survivalCeiling)` is
+ * untouched. Authority belongs to the server action, which re-derives
+ * platform-operator identity from the verified session on every call.
  *
  * The ceiling always arrives fully qualified — the model carries no bare level
  * token — so "Autonomy License L3" cannot degrade into "L3".
@@ -222,6 +230,11 @@ const sek = (value: number) =>
 
 function SurvivalBody({ survival }: { survival: SurvivalSection }) {
   const { state, fundingState } = survival
+  // The panel's presentation authorization, resolved SERVER-side from the
+  // verified session and carried on the model. It decides what is drawn; it is
+  // not the authority for anything — `declareOperatingCapital` re-derives
+  // operator identity on every call whatever this says.
+  const isOperator = survival.fundingVisibility === 'operator'
   const unknown = <span className={styles.absent}>{UNKNOWN_LABEL.toLowerCase()}</span>
 
   const headroom =
@@ -266,17 +279,23 @@ function SurvivalBody({ survival }: { survival: SurvivalSection }) {
           tone={fundingState === 'UNAVAILABLE' ? 'attention' : undefined}
           value={FUNDING_STATE_LABELS[fundingState]}
         />
+        {/* The AMOUNT is drawn only when the reader may be shown it. The
+            funding STATE word is not itself sensitive — it says whether a
+            declaration exists, not what it is — so it stays. */}
         <TextFact
           label="Deklarerat driftkapital"
           value={
-            fundingState === 'KNOWN' && survival.declaredFundingSek !== null ? (
+            isOperator && fundingState === 'KNOWN' && survival.declaredFundingSek !== null ? (
               <>{sek(survival.declaredFundingSek)} SEK</>
             ) : (
               FUNDING_STATE_LABELS[fundingState]
             )
           }
         />
-        {/* Null means NOT ESTABLISHED. It is never rendered as 0. */}
+        {/* Null means NOT ESTABLISHED — or, for a non-operator, withheld. Both
+            are rendered as unknown, and neither is ever rendered as 0: the
+            runway is withheld precisely because it reconstructs the
+            declaration when multiplied by the burn above. */}
         <TextFact
           label="Räckvidd"
           value={survival.runwayDays === null ? unknown : <>{sek(survival.runwayDays)} dygn</>}
@@ -295,6 +314,28 @@ function SurvivalBody({ survival }: { survival: SurvivalSection }) {
           }
         />
       </dl>
+
+      {/* The one input on this panel, and it is platform-operator functionality.
+          It changes what the NEXT observation derives — never a value already
+          rendered above, and never a licence.
+
+          Not rendering it for a non-operator is a PRESENTATION choice, not a
+          boundary: `declareOperatingCapital` and `clearOperatingCapital` both
+          re-derive operator identity from the session on every call, so the
+          control's absence changes what can be SEEN and nothing about what can
+          be DONE.
+
+          `readable` is false only for UNAVAILABLE — the case where the current
+          declaration could not be established — so the field is then blank and
+          disabled rather than pre-filled with a guess. */}
+      {isOperator ? (
+        <FundingDeclarationControl
+          declaredSek={fundingState === 'KNOWN' ? survival.declaredFundingSek : null}
+          readable={fundingState !== 'UNAVAILABLE'}
+        />
+      ) : (
+        <p className={styles.meta}>{FUNDING_EVIDENCE_OPERATOR_ONLY_NOTE}</p>
+      )}
 
       <p className={styles.meta}>{SURVIVAL_CEILING_NOTE}</p>
       <p className={styles.meta}>{SURVIVAL_REVENUE_SIGNAL_NOTE}</p>

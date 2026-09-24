@@ -36,6 +36,7 @@ export {
   FUNDING_STATES,
   AUTONOMY_LICENSE_LEVELS,
   AUTONOMY_LICENSE_LABELS,
+  RUNWAY_COVERAGES,
   type SurvivalState,
   type SurvivalReason,
   type SurvivalGap,
@@ -47,6 +48,7 @@ export {
   type AutonomyLicenseLevel,
   type FundingState,
   type FundingReading,
+  type RunwayCoverage,
 } from './types'
 
 export {
@@ -82,6 +84,19 @@ export {
   BURN_WINDOW_DAYS,
   type SnapshotOptions,
 } from './snapshot'
+
+// Phase 2B — the canonical funding source, the scope check that decides whether
+// a runway figure derived from it would be truthful, and the presentation
+// authorization that keeps the declaration off non-operator surfaces.
+export {
+  readDeclaredOperatingCapital,
+  readRunwayCoverage,
+  presentFundingEvidence,
+  FUNDING_VISIBILITIES,
+  type FundingVisibility,
+  type FundingEvidence,
+  type PresentedFundingEvidence,
+} from './funding'
 
 // Phase 2A — durable transition history. History only: nothing here is read to
 // determine the CURRENT state.

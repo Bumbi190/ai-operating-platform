@@ -4412,6 +4412,54 @@ export type Database = {
         }
         Relationships: []
       }
+      survival_funding_config: {
+        Row: {
+          declared_operating_capital_sek: number | null
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          declared_operating_capital_sek?: number | null
+          id: number
+          updated_at?: string
+        }
+        Update: {
+          declared_operating_capital_sek?: number | null
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      survival_funding_events: {
+        Row: {
+          actor: string
+          created_at: string
+          declared_sek: number | null
+          event: string
+          event_seq: number
+          id: string
+          previous_declared_sek: number | null
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          declared_sek?: number | null
+          event: string
+          event_seq?: never
+          id?: string
+          previous_declared_sek?: number | null
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          declared_sek?: number | null
+          event?: string
+          event_seq?: never
+          id?: string
+          previous_declared_sek?: number | null
+        }
+        Relationships: []
+      }
       survival_state_events: {
         Row: {
           actor_principal: string
@@ -4435,6 +4483,7 @@ export type Database = {
           reasons: string[]
           recorded_at: string
           revenue_trend_sek: number | null
+          runway_coverage: string | null
           runway_days: number | null
           threshold_status: string
           to_state: string
@@ -4461,6 +4510,7 @@ export type Database = {
           reasons?: string[]
           recorded_at?: string
           revenue_trend_sek?: number | null
+          runway_coverage?: string | null
           runway_days?: number | null
           threshold_status: string
           to_state: string
@@ -4487,6 +4537,7 @@ export type Database = {
           reasons?: string[]
           recorded_at?: string
           revenue_trend_sek?: number | null
+          runway_coverage?: string | null
           runway_days?: number | null
           threshold_status?: string
           to_state?: string
@@ -6313,6 +6364,7 @@ export type Database = {
           p_project_id: string
           p_reasons: string[]
           p_revenue_trend_sek: number
+          p_runway_coverage: string
           p_runway_days: number
           p_threshold_status: string
           p_to_state: string
@@ -6323,6 +6375,18 @@ export type Database = {
           from_state: string
           result: string
           to_state: string
+        }[]
+      }
+      survival_scope_is_platform_complete: {
+        Args: { p_project_ids: string[] }
+        Returns: boolean
+      }
+      survival_set_declared_operating_capital: {
+        Args: { p_actor: string; p_declared_sek: number }
+        Returns: {
+          declared_sek: number
+          previous_sek: number
+          result: string
         }[]
       }
       workflow_append_transition: {

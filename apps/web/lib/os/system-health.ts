@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import { executionSafetyFlags, unsafeExecutionFlags } from '@/lib/ai/execution-flags'
 import { normSeverity } from '@/lib/atlas/dream'
@@ -16,11 +17,15 @@ import {
   SURVIVAL_CEILING_EFFECT,
   SURVIVAL_THRESHOLD_STATUS,
   describeCeiling,
+  presentFundingEvidence,
   readSurvivalSnapshot,
+  type FundingVisibility,
+  type PresentedFundingEvidence,
   type SurvivalObservation,
 } from '@/lib/atlas/survival'
 import type {
   FundingState,
+  RunwayCoverage,
   SurvivalGap,
   SurvivalReason,
   SurvivalState,
@@ -137,10 +142,39 @@ export interface SurvivalSection {
   bindingRemainingSek: number | null
   bindingLimitSek: number | null
   burnSekPerDay: number | null
-  /** Present only when funding is KNOWN. */
+  /**
+   * The declaration, present only when funding is KNOWN AND this reader may be
+   * shown it. Null means either "not established" or "not shown" — and
+   * `fundingVisibility` below is what says which.
+   */
   declaredFundingSek: number | null
-  /** Null means not established — never zero. */
+  /**
+   * Null means not established — never zero — or withheld; see
+   * `fundingVisibility`.
+   *
+   * Withheld is not a cosmetic distinction here: for a complete observation
+   * `runwayDays × burnSekPerDay` reconstructs the declaration, so publishing the
+   * runway beside the burn would disclose the platform owner's operating capital
+   * to anyone who can multiply.
+   */
   runwayDays: number | null
+  /**
+   * Whether the funding evidence above was DISCLOSED or withheld from this
+   * reader. Server-derived from `resolvePlatformOperator()`.
+   *
+   * This is the panel's presentation authorization: it decides both whether the
+   * figures are shown and whether the SET/CLEAR control is rendered. The control
+   * is never the authority — `declareOperatingCapital` re-derives operator
+   * identity server-side on every call regardless of what is drawn.
+   */
+  fundingVisibility: FundingVisibility
+  /**
+   * Whether this surface's project set covered the whole platform burn
+   * population. When it did not, `runwayDays` is deliberately null even though a
+   * declaration exists — carried explicitly so the panel can say WHICH reason
+   * applies rather than showing an unexplained blank.
+   */
+  runwayCoverage: RunwayCoverage
   /** A performance signal. Never cash, never runway. */
   revenueTrendSek: number | null
   reasons: SurvivalReason[]
@@ -560,7 +594,13 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
     // this list holds exactly one project, and neither is derived from the other.
     // Recording this aggregate into a per-project stream would attribute a
     // set-wide condition to one project.
-    readSurvivalSnapshot(access.allowedProjectIds, { db, funding: { kind: 'UNDECLARED' } }),
+    //
+    // PHASE 2B: funding and runway coverage are not passed. Both are canonical
+    // reads inside the snapshot — the declaration comes from
+    // `survival_funding_config`, and coverage is decided by whether THIS
+    // caller's set is the whole platform. The surface therefore cannot choose
+    // its own funding, and cannot claim a scope is complete.
+    readSurvivalSnapshot(access.allowedProjectIds, { db }),
   ])
 
   const platform: Value<RawPlatformStop> =
@@ -589,9 +629,23 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
 
   // A survival observation that threw is UNREADABLE, never a default state and
   // never zeroes — the same rule `platform.readable` follows for the stop.
+  //
+  // PHASE 2B: the funding EVIDENCE is operator-only, decided here from the
+  // verified session. The observation itself is unchanged — the state and ceiling
+  // above are still derived from the true declaration — and only the two figures
+  // that reconstruct it are withheld from a non-operator.
+  const survivalOperator = await resolvePlatformOperator()
   const survival: Value<SurvivalSection> =
     survivalRes.status === 'fulfilled'
-      ? { ok: true, value: toSurvivalSection(survivalRes.value) }
+      ? {
+          ok: true,
+          value: toSurvivalSection(
+            survivalRes.value,
+            presentFundingEvidence(survivalRes.value.snapshot, {
+              isPlatformOperator: survivalOperator.ok,
+            }),
+          ),
+        }
       : { ok: false }
 
   const flags = executionSafetyFlags()
@@ -622,7 +676,10 @@ export async function loadSystemHealth(): Promise<SystemHealthModel | null> {
  * qualified, so the bare token never enters the model and the view has nothing
  * unqualified it could print.
  */
-function toSurvivalSection(observation: SurvivalObservation): SurvivalSection {
+function toSurvivalSection(
+  observation: SurvivalObservation,
+  evidence: PresentedFundingEvidence,
+): SurvivalSection {
   const snapshot = observation.snapshot
   return {
     state: snapshot.state,
@@ -633,8 +690,13 @@ function toSurvivalSection(observation: SurvivalObservation): SurvivalSection {
     bindingRemainingSek: snapshot.bindingRemainingSek,
     bindingLimitSek: snapshot.bindingLimitSek,
     burnSekPerDay: snapshot.burnSekPerDay,
-    declaredFundingSek: snapshot.declaredFundingSek,
-    runwayDays: snapshot.runwayDays,
+    // Redacted values come from the presentation decision, never from a second
+    // reading of the snapshot — the state above is still derived from the true
+    // ones.
+    declaredFundingSek: evidence.declaredFundingSek,
+    runwayDays: evidence.runwayDays,
+    fundingVisibility: evidence.fundingVisibility,
+    runwayCoverage: snapshot.runwayCoverage,
     revenueTrendSek: snapshot.revenueTrendSek,
     reasons: snapshot.reasons,
     gaps: snapshot.gaps,

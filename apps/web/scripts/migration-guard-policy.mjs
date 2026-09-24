@@ -13,8 +13,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Enforced trips together: 96 = 14 grandfathered + 82 enforced.
 // 96 + 20260923150000_sdf1c1_trusted_broker_identity.sql (Phase 1C1A, broker identity
 // and enrollment only): 97 = 14 grandfathered + 83 enforced.
-export const EXPECTED_CANONICAL_SQL_COUNT = 97
-export const EXPECTED_ENFORCED_COUNT = 83
+// 97 + 20260924080000_sdf1c1b_broker_claim_credentials.sql (Phase 1C1B, claim-scoped
+// credential foundation only): 98 = 14 grandfathered + 84 enforced.
+export const EXPECTED_CANONICAL_SQL_COUNT = 98
+export const EXPECTED_ENFORCED_COUNT = 84
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

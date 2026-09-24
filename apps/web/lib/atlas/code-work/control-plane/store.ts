@@ -106,7 +106,8 @@ export interface CodeWorkControlPlaneStore {
   receiptsByWorkId(workId: string, limit?: number): Promise<StoredCodeWorkReceipt[]>
   workPackageObjectives(projectId: string, workPackageIds: string[]): Promise<Map<string, string>>
   synchronizeAuthorization(workId: string): Promise<StoredCodeWorkRun>
-  claim(workId: string, brokerId: string, brokerHostId: string): Promise<StoredCodeWorkRun>
+  /** `brokerTokenHash` is the SHA-256 storage form only; the raw claim token never enters the store. */
+  claim(workId: string, brokerId: string, brokerHostId: string, brokerTokenHash: string): Promise<StoredCodeWorkRun>
   heartbeat(workId: string, claimId: string, fence: number): Promise<StoredCodeWorkRun>
   appendEvidence(workId: string, admissionHash: string, claimId: string, fence: number, expectedSequence: number, expectedPreviousHash: string | null, receipt: CodeWorkReceiptV1, producerType: string, producerId: string): Promise<StoredCodeWorkRun>
   transition(workId: string, expectedState: CodeWorkState, expectedVersion: number, toState: CodeWorkState, claimId: string, fence: number, reasonCode?: string): Promise<StoredCodeWorkRun>
@@ -184,8 +185,12 @@ class PostgresCodeWorkControlPlaneStore implements CodeWorkControlPlaneStore {
   }
 
   synchronizeAuthorization(workId: string) { return this.rpc('atlas_code_work_sync_authorization', { p_work_id: workId }) }
-  claim(workId: string, brokerId: string, brokerHostId: string) {
-    return this.rpc('atlas_code_work_claim', { p_work_id: workId, p_broker_id: brokerId, p_broker_host_id: brokerHostId })
+  claim(workId: string, brokerId: string, brokerHostId: string, brokerTokenHash: string) {
+    if (!/^[a-f0-9]{64}$/.test(brokerTokenHash)) throw new Error('[atlas-code-work] claim requires a SHA-256 credential hash')
+    return this.rpc('atlas_code_work_claim', {
+      p_work_id: workId, p_broker_id: brokerId, p_broker_host_id: brokerHostId,
+      p_broker_token_hash: brokerTokenHash,
+    })
   }
   heartbeat(workId: string, claimId: string, fence: number) {
     return this.rpc('atlas_code_work_heartbeat', { p_work_id: workId, p_claim_id: claimId, p_fence: fence })

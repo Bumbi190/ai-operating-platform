@@ -20,7 +20,9 @@ import {
   SURVIVAL_DERIVATION_VERSION,
   SURVIVAL_HISTORY_MAX_LIMIT,
   SURVIVAL_RECORDER_PRINCIPAL,
-  SURVIVAL_OBSERVATION_PROVENANCE,
+  SURVIVAL_OBSERVATION_PROVENANCE_V1,
+  SURVIVAL_OBSERVATION_PROVENANCE_V2,
+  SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION,
 } from '@/lib/atlas/survival/history'
 import { SURVIVAL_STATES, FUNDING_STATES, RUNWAY_COVERAGES } from '@/lib/atlas/survival/types'
 import {
@@ -273,7 +275,28 @@ describe('the migration matches the contract the code assumes', () => {
     // TypeScript for readers. Two representations of one fact drift silently, so
     // the pair is asserted rather than assumed.
     expect(EXEC).toContain(`'${SURVIVAL_RECORDER_PRINCIPAL}'`)
-    expect(EXEC).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE}'`)
+    expect(EXEC).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+  })
+
+  it('names one provenance per derivation version, and pairs them', () => {
+    // Phase 2B changed the observation FORMAT, so there is no single "current"
+    // provenance constant — the marker is a function of the row's derivation
+    // version. The Phase 2B migration must therefore carry BOTH strings, and the
+    // TypeScript map must agree with what it writes.
+    const sql2b = readFileSync(
+      resolve(WEB_ROOT, 'supabase/migrations/20260924120000_survival_funding_phase2b.sql'), 'utf8',
+    ).split('\n').filter(l => !l.trim().startsWith('--')).join('\n').toLowerCase()
+
+    expect(sql2b).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+    expect(sql2b).toContain(`'${SURVIVAL_OBSERVATION_PROVENANCE_V2}'`)
+    // Derived in the recorder, not written as a literal in either INSERT branch:
+    // a literal there is exactly how a v2 row would come to claim v1's envelope.
+    expect(sql2b).toContain(`when 1 then '${SURVIVAL_OBSERVATION_PROVENANCE_V1}'`)
+    expect(sql2b).toContain(`when 2 then '${SURVIVAL_OBSERVATION_PROVENANCE_V2}'`)
+
+    expect(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION[1]).toBe(SURVIVAL_OBSERVATION_PROVENANCE_V1)
+    expect(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION[2]).toBe(SURVIVAL_OBSERVATION_PROVENANCE_V2)
+    expect(Object.keys(SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION)).toHaveLength(2)
   })
 })
 

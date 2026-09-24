@@ -131,7 +131,16 @@ afterAll(() => {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const SET = (sek: string | null, actor = 'user:operator-1') =>
+/**
+ * Canonical authenticated human actors. The ledger constrains the actor to
+ * exactly this shape, so a fixture like `user:operator-1` is no longer a valid
+ * stand-in — which is the point: a machine-shaped token must not be recordable
+ * as the person who changed the declaration.
+ */
+const ACTOR = 'user:7c9e6679-7425-40de-944b-e07fc1f90ae7'
+const ACTOR_2 = 'user:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+
+const SET = (sek: string | null, actor = ACTOR) =>
   `select * from public.survival_set_declared_operating_capital(${sek ?? 'null'}, '${actor}')`
 
 const capital = () =>
@@ -144,8 +153,17 @@ const latestEvent = () =>
                    coalesce(declared_sek::text,'<null>') || '|' || actor
               from public.survival_funding_events order by event_seq desc limit 1`)
 
-const call = (sek: string | null, actor = 'user:operator-1') =>
+const call = (sek: string | null, actor = ACTOR) =>
   one(dsn, `${SET(sek, actor)}`)
+
+/**
+ * The declared component of an RPC result row (`result|previous|declared`).
+ *
+ * Asserting on this rather than the whole row keeps a test from also encoding
+ * whatever the PREVIOUS declaration happened to be, which makes it depend on
+ * which tests ran before it.
+ */
+const declaredOf = (row: string) => row.split('|')[2] ?? ''
 
 
 // ── The declaration itself ──────────────────────────────────────────────────
@@ -156,35 +174,50 @@ describe('funding · the declaration and its reader semantics', () => {
     expect(one(dsn, `select count(*) from public.survival_funding_events`)).toBe('0')
   })
 
+  // NOTE the returned `declared_sek` is `120000.0000`, not `120000`. The RPC
+  // returns the value AS PERSISTED (numeric(12,4)), not the argument it received,
+  // so the mutation's own response can never describe a figure the table does
+  // not hold. That is asserted directly below.
   it('a positive declaration is stored exactly, and audits one SET', () => {
-    expect(call('120000')).toBe('recorded||120000')
+    expect(call('120000')).toBe('recorded||120000.0000')
     expect(capital()).toBe('120000.0000')
     expect(eventCount()).toBe(1)
-    expect(latestEvent()).toBe('DECLARATION_SET|<null>|120000.0000|user:operator-1')
+    expect(latestEvent()).toBe(`DECLARATION_SET|<null>|120000.0000|${ACTOR}`)
   })
 
   it('ZERO is a KNOWN declaration, never a clear', () => {
-    expect(call('0')).toBe('recorded|120000.0000|0')
+    expect(call('0')).toBe('recorded|120000.0000|0.0000')
     expect(capital()).toBe('0.0000')
-    expect(latestEvent()).toBe('DECLARATION_SET|120000.0000|0.0000|user:operator-1')
+    expect(latestEvent()).toBe(`DECLARATION_SET|120000.0000|0.0000|${ACTOR}`)
   })
 
   it('NEGATIVE is a KNOWN declaration — the sign is not this schema\'s policy', () => {
-    expect(call('-125.50')).toBe('recorded|0.0000|-125.50')
+    expect(call('-125.50')).toBe('recorded|0.0000|-125.5000')
     expect(capital()).toBe('-125.5000')
-    expect(latestEvent()).toBe('DECLARATION_SET|0.0000|-125.5000|user:operator-1')
+    expect(latestEvent()).toBe(`DECLARATION_SET|0.0000|-125.5000|${ACTOR}`)
   })
 
   it('CLEAR persists NULL, and is distinguishable from a zero declaration', () => {
     expect(call(null)).toBe('recorded|-125.5000|')
     expect(capital()).toBe('<null>')
-    expect(latestEvent()).toBe('DECLARATION_CLEARED|-125.5000|<null>|user:operator-1')
+    expect(latestEvent()).toBe(`DECLARATION_CLEARED|-125.5000|<null>|${ACTOR}`)
   })
 
   it('re-setting the SAME value writes nothing — no audit trail of non-events', () => {
     const before = eventCount()
     expect(call(null)).toBe('unchanged||')
     expect(eventCount()).toBe(before)
+  })
+
+  it('the RESPONSE equals current truth and the audit row, exactly', () => {
+    // The three must agree literally, not approximately: the returned value, the
+    // stored column and the recorded amount are one fact in three places, and a
+    // caller that trusted a higher-precision response would be reading a number
+    // the system does not hold.
+    expect(call('1.2345')).toBe('recorded||1.2345')
+    expect(capital()).toBe('1.2345')
+    expect(one(dsn, `select declared_sek::text from public.survival_funding_events
+                      order by event_seq desc limit 1`)).toBe('1.2345')
   })
 })
 
@@ -193,24 +226,217 @@ describe('funding · the declaration and its reader semantics', () => {
 describe('funding · invalid input is refused at the boundary', () => {
   it('refuses NaN and both infinities', () => {
     for (const bad of ["'NaN'::numeric", "'Infinity'::numeric", "'-Infinity'::numeric"]) {
-      const err = expectFailure(dsn, `select * from public.survival_set_declared_operating_capital(${bad}, 'user:op')`)
+      const err = expectFailure(dsn, `select * from public.survival_set_declared_operating_capital(${bad}, '${ACTOR}')`)
       expect(err, bad).toMatch(/finite number/i)
     }
   })
 
-  it('refuses a missing actor — the ledger cannot record an anonymous change', () => {
-    expect(expectFailure(dsn, `select * from public.survival_set_declared_operating_capital(1000, null)`))
-      .toMatch(/p_actor is required/i)
-    expect(expectFailure(dsn, `select * from public.survival_set_declared_operating_capital(1000, '  ')`))
-      .toMatch(/p_actor is required/i)
+  it('refuses an absent actor — the ledger cannot record an anonymous change', () => {
+    for (const bad of ['null', "''", "'  '"]) {
+      expect(expectFailure(dsn, `select * from public.survival_set_declared_operating_capital(1000, ${bad})`), bad)
+        .toMatch(/canonical human actor shape/i)
+    }
   })
 
   it('none of those probes changed the declaration or wrote an audit row', () => {
+    // Compared against the CURRENT value rather than a hardcoded one, so the
+    // assertion cannot pass merely because an earlier test happened to leave
+    // the column null.
+    const beforeCapital = capital()
     const before = eventCount()
-    expect(expectFailure(dsn, `select * from public.survival_set_declared_operating_capital('NaN'::numeric, 'user:op')`))
+    expect(expectFailure(dsn, `select * from public.survival_set_declared_operating_capital('NaN'::numeric, '${ACTOR}')`))
       .toMatch(/finite/i)
-    expect(capital()).toBe('<null>')
+    expect(capital()).toBe(beforeCapital)
     expect(eventCount()).toBe(before)
+  })
+})
+
+// ── §2 Exact numeric(12,4) semantics ────────────────────────────────────────
+
+describe('funding · the declaration is persisted EXACTLY, never rounded', () => {
+  it('ACCEPTS every exactly-representable shape', () => {
+    // Zero, negatives, the full fractional precision, and the largest magnitude
+    // numeric(12,4) can hold — in both directions.
+    for (const [input, stored] of [
+      ['0', '0.0000'],
+      ['-125.50', '-125.5000'],
+      ['1.2345', '1.2345'],
+      ['99999999.9999', '99999999.9999'],
+      ['-99999999.9999', '-99999999.9999'],
+    ] as const) {
+      // The RPC's own answer carries the PERSISTED form, so the response and
+      // current truth cannot disagree. Asserted on the declared component rather
+      // than the whole row, so the test does not also encode whatever the
+      // previous declaration happened to be.
+      const declared = stored.replace('.', '\\.')
+      expect(call(input), input).toMatch(new RegExp(`^recorded\\|.*\\|${declared}$`))
+      expect(capital(), input).toBe(stored)
+    }
+  })
+
+  it('REFUSES anything that would be silently rounded', () => {
+    // 1.23456 -> numeric(12,4) would store 1.2346, so the mutation's response
+    // (1.23456) would disagree with current truth (1.2346). Refused instead.
+    for (const bad of ['1.23456', '-1.23456', '0.00001']) {
+      expect(expectFailure(dsn, `${SET(bad)}`), bad).toMatch(/at most 4 decimal places/i)
+    }
+  })
+
+  it('REFUSES anything outside the numeric(12,4) range', () => {
+    for (const bad of ['100000000', '-100000000', '999999999']) {
+      expect(expectFailure(dsn, `${SET(bad)}`), bad).toMatch(/outside the numeric\(12,4\) range/i)
+    }
+  })
+
+  it('ACCEPTS trailing zeros, which is not precision loss', () => {
+    // 1.23000 and 1.23 are the same numeric VALUE; storing either loses nothing,
+    // so the boundary accepts both and treats them as the same declaration.
+    expect(declaredOf(call('1.23000'))).toBe('1.2300')
+    expect(capital()).toBe('1.2300')
+    const before = eventCount()
+    expect(declaredOf(call('1.23'))).toBe('1.2300')
+    expect(eventCount(), 'a trailing-zero form must not write a second event').toBe(before)
+  })
+
+  it('the no-op comparison uses the CANONICAL stored value', () => {
+    // The regression this guards: with silent rounding, a stored 1.2346
+    // re-submitted as 1.23456 is DISTINCT while persisting the same value, so a
+    // non-event would manufacture an audit row. Now the finer form is refused
+    // before it can be compared at all.
+    expect(declaredOf(call('1.2345'))).toBe('1.2345')
+    const before = eventCount()
+    expect(declaredOf(call('1.2345'))).toBe('1.2345')
+    expect(expectFailure(dsn, `${SET('1.23450')}`)).toBe('')   // 1.23450 == 1.2345, accepted
+    expect(declaredOf(call('1.2345'))).toBe('1.2345')
+    expect(eventCount()).toBe(before)
+    expect(capital()).toBe('1.2345')
+  })
+})
+
+// ── §4 The ledger cannot claim a machine actor ──────────────────────────────
+
+describe('funding · the actor must be a canonical authenticated human', () => {
+  it('ACCEPTS the canonical user:<uuid> shape', () => {
+    expect(declaredOf(call('42', ACTOR))).toBe('42.0000')
+    expect(latestEvent()).toContain('42.0000')
+    expect(latestEvent()).toContain(ACTOR)
+  })
+
+  it('REFUSES machine-shaped and malformed actors through the RPC', () => {
+    for (const bad of ['cron', 'atlas', 'atlas.survival_recorder', 'user:not-a-uuid',
+                       'system:123', 'user:', 'User:7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                       'user:7C9E6679-7425-40DE-944B-E07FC1F90AE7']) {
+      expect(expectFailure(dsn, `${SET('7', bad)}`), bad)
+        .toMatch(/canonical human actor shape/i)
+    }
+  })
+
+  it('REFUSES the same shapes at the TABLE, not only at the RPC', () => {
+    // The RPC is not the only possible writer path, so the constraint has to
+    // hold on its own. Written as the table owner so the funding guard (which
+    // only covers the capital column) is not what refuses this.
+    for (const bad of ['cron', 'atlas.survival_recorder', 'user:not-a-uuid']) {
+      expect(expectFailure(dsn, `insert into public.survival_funding_events
+                                   (event, declared_sek, actor) values ('DECLARATION_SET', 1, '${bad}')`), bad)
+        .toMatch(/survival_funding_events_actor_human_identity/)
+    }
+  })
+
+  it('a refused actor leaves the declaration and the ledger untouched', () => {
+    const beforeCapital = capital()
+    const before = eventCount()
+    expect(expectFailure(dsn, `${SET('999', 'cron')}`)).toMatch(/canonical human actor shape/i)
+    expect(capital()).toBe(beforeCapital)
+    expect(eventCount()).toBe(before)
+  })
+})
+
+// ── §1 The source-of-truth column is not directly writable ──────────────────
+
+describe('funding · current truth is writable ONLY through the canonical RPC', () => {
+  // The previous suite tested direct INSERT into the LEDGER, which is evidence.
+  // It did not test direct UPDATE of the SOURCE OF TRUTH — and production grants
+  // service_role table-level UPDATE on platform_config, so that path existed:
+  // any server-side code holding the key could have changed the figure that
+  // governs the autonomy ceiling with no operator, no setter and no audit row.
+  const as = (role: string, sql: string) => expectFailure(dsn, `set role ${role}; ${sql}; reset role;`)
+
+  it('refuses a direct service_role UPDATE of the declaration', () => {
+    const before = capital()
+    expect(as('service_role',
+      `update public.platform_config set declared_operating_capital_sek = 999999 where id = 1`))
+      .toMatch(/writable only through survival_set_declared_operating_capital/)
+    expect(capital(), 'the refused write must not have landed').toBe(before)
+  })
+
+  it('refuses a direct anon and authenticated UPDATE of the declaration', () => {
+    for (const role of ['anon', 'authenticated']) {
+      expect(as(role, `update public.platform_config set declared_operating_capital_sek = 1 where id = 1`), role)
+        .toMatch(/writable only through survival_set_declared_operating_capital/)
+    }
+  })
+
+  it('refuses a direct UPDATE even when it is paired with permitted columns', () => {
+    // The guard must not be evadable by writing the declaration alongside a
+    // field the caller is allowed to touch.
+    expect(as('service_role',
+      `update public.platform_config set max_daily_renders = 9, declared_operating_capital_sek = 5 where id = 1`))
+      .toMatch(/writable only through survival_set_declared_operating_capital/)
+    expect(one(dsn, `select max_daily_renders::text from public.platform_config where id = 1`))
+      .not.toBe('9')
+  })
+
+  it('does NOT block an unrelated permitted platform_config field', () => {
+    // The guard is scoped to the funding column. If it were written as an
+    // unconditional "only the owner may UPDATE this table" rule it would break
+    // every other legitimate writer, so this is the counterweight to the tests
+    // above: a different column still updates normally.
+    expect(as('service_role', `update public.platform_config set max_daily_renders = 7 where id = 1`)).toBe('')
+    expect(one(dsn, `select max_daily_renders::text from public.platform_config where id = 1`)).toBe('7')
+  })
+
+  it('a re-send of the SAME declaration is a harmless no-op, not a refusal', () => {
+    // IS DISTINCT FROM, not "the column appeared in the SET clause": writers that
+    // re-send a whole row unchanged must keep working.
+    const current = capital()
+    expect(as('service_role',
+      `update public.platform_config set declared_operating_capital_sek = ${current} where id = 1`)).toBe('')
+  })
+
+  it('the canonical RPC still writes it — that is the whole point of the guard', () => {
+    expect(call('777')).toMatch(/^recorded\|.*\|777\.0000$/)
+    expect(capital()).toBe('777.0000')
+  })
+
+  it('is SECURITY INVOKER with an empty search_path, like the stop guard', () => {
+    const row = one(dsn, `select case when p.prosecdef then 'DEFINER' else 'INVOKER' end || '|' ||
+                                 coalesce(array_to_string(p.proconfig, ','), '')
+                            from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                           where n.nspname = 'public' and p.proname = 'survival_guard_platform_funding'`)
+    const [security, config] = row.split('|')
+    // INVOKER is load-bearing: as DEFINER it would run as the owner and the
+    // current_user check would always pass, silently disabling the guard.
+    expect(security).toBe('INVOKER')
+    expect(config).toMatch(/search_path=/)
+    expect(config).not.toMatch(/search_path=[^,]*\w/)
+  })
+
+  it('no client role can execute the trigger function directly', () => {
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      expect(one(dsn, `select has_function_privilege('${role}',
+        'public.survival_guard_platform_funding()', 'EXECUTE')`), role).toBe('f')
+    }
+  })
+
+  it('the guard is installed as a BEFORE UPDATE trigger on platform_config', () => {
+    const row = one(dsn, `select tgtype::text || '|' || (tgtype & 2 <> 0)::text || '|' || (tgtype & 16 <> 0)::text
+                            from pg_trigger
+                           where tgrelid = 'public.platform_config'::regclass
+                             and tgname = 'survival_guard_platform_funding'`)
+    expect(row).not.toBe('')
+    // Row-level BEFORE UPDATE: a statement-level or AFTER trigger could not
+    // refuse the write.
+    expect(row.split('|')[1]).toBe('true')
   })
 })
 
@@ -273,17 +499,17 @@ describe('funding · the audit ledger cannot be rewritten', () => {
 
   it('refuses a direct INSERT by service_role, and by anon', () => {
     expect(expectFailure(dsn, `set role service_role; insert into public.survival_funding_events (event, actor)
-                               values ('DECLARATION_SET','user:op')`))
+                               values ('DECLARATION_SET','${ACTOR}')`))
       .toMatch(/permission denied|42501/i)
     expect(expectFailure(dsn, `set role anon; insert into public.survival_funding_events (event, actor)
-                               values ('DECLARATION_SET','user:op')`))
+                               values ('DECLARATION_SET','${ACTOR}')`))
       .toMatch(/permission denied|42501/i)
   })
 
   it('closes the event vocabulary, so a row cannot name an event no reader interprets', () => {
     for (const [event, declared] of [['DECLARATION_MUTATED', '100'], ['DECLARATION_SET', 'null']]) {
       const err = expectFailure(dsn, `insert into public.survival_funding_events (event, declared_sek, actor)
-        values ('${event}', ${declared}, 'user:op')`)
+        values ('${event}', ${declared}, '${ACTOR}')`)
       expect(err, event).toMatch(/violates check constraint|permission denied|42501|23514/i)
     }
   })

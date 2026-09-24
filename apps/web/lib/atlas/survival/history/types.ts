@@ -175,5 +175,29 @@ export const SURVIVAL_HISTORY_MAX_LIMIT = 200
 /** The actor the Phase 2A recorder writes as. A constant, like `atlas.manager`. */
 export const SURVIVAL_RECORDER_PRINCIPAL = 'atlas.survival_recorder'
 
-/** Default provenance for a recorded observation. */
-export const SURVIVAL_OBSERVATION_PROVENANCE = 'atlas.survival.observation.v1'
+/**
+ * The observation FORMAT marker, one per derivation version.
+ *
+ * Provenance describes the ENVELOPE a row was written in, not a policy: it is
+ * how a later reader decides which schema to decode the row with. Phase 2B
+ * changed that envelope — it added `runway_coverage` and moved the recorder from
+ * 16 to 17 parameters — so a v2 row carrying the v1 marker would be decoded by a
+ * reader that does not know the column exists.
+ *
+ * The versions are therefore named individually rather than as one "current"
+ * provenance constant, because there is no such thing: the marker is a function
+ * of the row's derivation version. The database enforces the same pairing in
+ * `survival_events_policy_identity_valid`, and derives the value itself — a
+ * caller cannot supply it.
+ *
+ * There is deliberately no bare `SURVIVAL_OBSERVATION_PROVENANCE`: a single
+ * unversioned constant is precisely the ambiguity that let a v2 row claim v1.
+ */
+export const SURVIVAL_OBSERVATION_PROVENANCE_V1 = 'atlas.survival.observation.v1'
+export const SURVIVAL_OBSERVATION_PROVENANCE_V2 = 'atlas.survival.observation.v2'
+
+/** The envelope marker each derivation version writes. */
+export const SURVIVAL_OBSERVATION_PROVENANCE_BY_VERSION: Record<SurvivalDerivationVersion, string> = {
+  1: SURVIVAL_OBSERVATION_PROVENANCE_V1,
+  2: SURVIVAL_OBSERVATION_PROVENANCE_V2,
+}

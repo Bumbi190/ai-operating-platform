@@ -136,7 +136,7 @@ export async function observeProjectSurvival(
   //
   // The single-element scope means this observation is PARTIAL whenever the
   // platform holds more than one project, so the derived snapshot withholds
-  // runway and caps at CONSERVE. That is the truthful outcome — see the
+  // runway and caps at CRITICAL. That is the truthful outcome — see the
   // coverage rule in `derive.ts` — and it is why a stored v2 row records
   // `runway_coverage` rather than leaving a reader to guess.
   const observation = await readSurvivalSnapshot([projectId], options)

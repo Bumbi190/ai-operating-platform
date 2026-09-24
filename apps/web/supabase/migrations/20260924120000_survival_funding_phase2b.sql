@@ -47,6 +47,75 @@ comment on column public.platform_config.declared_operating_capital_sek is
   'and is a different fact. Not a budget, not spend authority, not cash, not revenue. '
   'Writable only through survival_set_declared_operating_capital().';
 
+-- ── 1b. …and the column is STRUCTURALLY writable only through that RPC ──────
+--
+-- The comment above would be a promise, not a property. `service_role` holds
+-- table-level UPDATE on `public.platform_config` in production, so any
+-- server-side code holding that key could have done:
+--
+--     update public.platform_config set declared_operating_capital_sek = …
+--
+-- and changed the figure that governs the autonomy ceiling while bypassing
+-- `resolvePlatformOperator()`, the audited setter and the append-only ledger —
+-- leaving no row explaining who declared it.
+--
+-- The existing `stop_guard_platform_config()` does NOT cover this column: it
+-- protects `automation_paused`, `paused_at` and `paused_reason` only. The
+-- concern is deliberately kept separate rather than folded into that historical
+-- guard, so the stop authority's audit story and the funding authority's remain
+-- independently readable.
+--
+-- ── WHY THE OWNER CHECK WORKS ───────────────────────────────────────────────
+-- SECURITY INVOKER (the default — deliberately NOT definer). The rule is
+-- "only the table's owning role may change this column", exactly as the stop
+-- guard states it:
+--
+--   service_role → direct UPDATE
+--     → current_user = service_role ≠ table owner → REFUSED (42501)
+--
+--   service_role → survival_set_declared_operating_capital()
+--     → SECURITY DEFINER, so it executes as the function owner (the migration
+--       role, which owns the table) → current_user = table owner → ALLOWED
+--     → and the config write and its audit row stay one transaction
+--
+-- `IS DISTINCT FROM`, not "was the column named in the SET clause": a writer
+-- that re-sends the whole row unchanged is a no-op and must stay harmless, or
+-- ordinary code breaks for no safety gain. That is also why a no-op SET through
+-- the RPC remains a no-op here.
+
+create or replace function public.survival_guard_platform_funding()
+returns trigger
+language plpgsql
+set search_path to ''
+as $$
+declare
+  v_owner name;
+begin
+  if new.declared_operating_capital_sek is distinct from old.declared_operating_capital_sek then
+    select pg_catalog.pg_get_userbyid(c.relowner) into v_owner
+      from pg_catalog.pg_class c where c.oid = tg_relid;
+
+    if current_user <> v_owner then
+      raise exception
+        'declared operating capital is writable only through '
+        'survival_set_declared_operating_capital() (current_user=%, required=%)',
+        current_user, v_owner
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists survival_guard_platform_funding on public.platform_config;
+create trigger survival_guard_platform_funding
+  before update on public.platform_config
+  for each row execute function public.survival_guard_platform_funding();
+
+comment on function public.survival_guard_platform_funding() is
+  'Refuses any change to platform_config.declared_operating_capital_sek unless the '
+  'statement runs as the table owner — i.e. from inside the SECURITY DEFINER setter. '
+  'Closes the direct service_role UPDATE path around the audited mutation boundary.';
+
 -- ── 2. The audit ledger ────────────────────────────────────────────────────
 --
 -- ONE NARROW LEDGER, because no existing one has the right semantics. This is
@@ -93,8 +162,19 @@ create table if not exists public.survival_funding_events (
       or
       (event = 'DECLARATION_CLEARED' and declared_sek is null)
     ),
-  constraint survival_funding_events_actor_present
-    check (length(btrim(actor)) between 3 and 200)
+  -- The ledger is an audit of a HUMAN platform-owner mutation, so the actor is
+  -- constrained to the canonical authenticated human shape — `user:<uuid>` —
+  -- rather than to any trimmed text of a plausible length. Without this the
+  -- immutable ledger could record `cron`, `atlas.survival_recorder` or
+  -- `system:123` as the person who changed the declaration, which is a machine
+  -- token laundered into a human authority record and is exactly what an
+  -- append-only ledger must not be able to say.
+  --
+  -- This does NOT replace `resolvePlatformOperator()`; the server action remains
+  -- the authority boundary. It removes the ledger's ABILITY to claim a
+  -- machine-shaped actor even if some future caller tried.
+  constraint survival_funding_events_actor_human_identity
+    check (actor ~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 );
 
 create index if not exists survival_funding_events_seq_idx
@@ -153,21 +233,66 @@ set search_path to ''
 as $$
 declare
   v_previous numeric;
+  v_declared numeric(12,4);
   v_event    text;
 begin
-  if p_actor is null or length(btrim(p_actor)) < 3 then
-    raise exception 'p_actor is required' using errcode = '22023';
+  -- ── The actor must be the canonical authenticated human shape ─────────────
+  -- Not "some text of plausible length": this row is the ONLY record that a
+  -- person changed the declaration, so a machine token here would be a human
+  -- authority claim that no human made. The table carries the same rule as a
+  -- CHECK, so this holds even against a direct call.
+  if p_actor is null
+     or p_actor !~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  then
+    raise exception 'p_actor must be the canonical human actor shape user:<uuid>' using errcode = '22023';
   end if;
 
-  -- NaN and the infinities are rejected HERE rather than by a CHECK, because
-  -- numeric can hold 'NaN' and a comparison-based constraint would silently
-  -- treat it as neither null nor a number. PostgreSQL 14+ also accepts
-  -- 'Infinity'::numeric. Neither is a capital figure.
-  if p_declared_sek is not null
-     and (p_declared_sek = 'NaN'::numeric or p_declared_sek in ('Infinity'::numeric, '-Infinity'::numeric))
-  then
-    raise exception 'declared operating capital must be a finite number' using errcode = '22023';
+  -- ── The declaration must be EXACTLY representable in numeric(12,4) ────────
+  --
+  -- The column and the audit amounts are numeric(12,4), and PostgreSQL ROUNDS
+  -- on assignment. Accepting extra precision would mean the RPC returns a
+  -- number the table does not hold — 1.23456 in, 1.2346 stored — so the
+  -- mutation's own response could disagree with current truth. It would also
+  -- corrupt no-op detection: a stored 1.2346 re-submitted as 1.23456 is
+  -- DISTINCT while persisting the same value, manufacturing an audit row for a
+  -- change that never happened.
+  --
+  -- So a non-representable value is REFUSED rather than silently rounded. The
+  -- owner's declaration is recorded as declared, or not at all.
+  if p_declared_sek is not null then
+    -- NaN and the infinities first: numeric can hold 'NaN', and a
+    -- comparison-based check would treat it as neither null nor a number.
+    -- PostgreSQL 14+ also accepts 'Infinity'::numeric. Neither is a figure.
+    if p_declared_sek = 'NaN'::numeric
+       or p_declared_sek in ('Infinity'::numeric, '-Infinity'::numeric)
+    then
+      raise exception 'declared operating capital must be a finite number' using errcode = '22023';
+    end if;
+
+    -- More than four decimal places is precision loss. `round(x, 4)` returns a
+    -- different VALUE for such an input, so equality is the exactness test.
+    -- Trailing zeros are fine: 1.23000 and 1.23 are the same numeric value, and
+    -- no information is lost storing either.
+    if p_declared_sek <> pg_catalog.round(p_declared_sek, 4) then
+      raise exception
+        'declared operating capital must have at most 4 decimal places; % would be rounded',
+        p_declared_sek using errcode = '22023';
+    end if;
+
+    -- numeric(12,4) is 8 integer digits and 4 fractional digits. Checking here
+    -- rather than letting the assignment raise keeps the failure a clear
+    -- refusal instead of a numeric field overflow.
+    if p_declared_sek < -99999999.9999 or p_declared_sek > 99999999.9999 then
+      raise exception
+        'declared operating capital is outside the numeric(12,4) range: %',
+        p_declared_sek using errcode = '22023';
+    end if;
   end if;
+
+  -- The canonical value, and the ONLY one this function compares, writes, audits
+  -- or returns. It is byte-for-byte what the column and the ledger will hold, so
+  -- the response cannot describe a value different from the stored truth.
+  v_declared := p_declared_sek::numeric(12,4);
 
   -- Lock the singleton BEFORE reading it, so two concurrent operators cannot
   -- both read the same predecessor and write two audit rows that disagree about
@@ -183,24 +308,28 @@ begin
   -- A no-op is answered as such and writes NOTHING, so an operator pressing
   -- "set" twice does not manufacture an audit trail of changes that never
   -- happened. The declaration is still returned, so the caller can render it.
-  if v_previous is not distinct from p_declared_sek then
+  --
+  -- Compared against `v_declared`, the value that would actually be persisted —
+  -- so "same value" means "the table would not change", not "the argument
+  -- looked similar".
+  if v_previous is not distinct from v_declared then
     return query select 'unchanged'::text, v_previous, v_previous;
     return;
   end if;
 
   update public.platform_config pc
-     set declared_operating_capital_sek = p_declared_sek,
+     set declared_operating_capital_sek = v_declared,
          updated_at = now()
    where pc.id = 1;
 
-  v_event := case when p_declared_sek is null then 'DECLARATION_CLEARED' else 'DECLARATION_SET' end;
+  v_event := case when v_declared is null then 'DECLARATION_CLEARED' else 'DECLARATION_SET' end;
 
   insert into public.survival_funding_events
     (event, previous_declared_sek, declared_sek, actor)
   values
-    (v_event, v_previous, p_declared_sek, btrim(p_actor));
+    (v_event, v_previous, v_declared, p_actor);
 
-  return query select 'recorded'::text, v_previous, p_declared_sek;
+  return query select 'recorded'::text, v_previous, v_declared;
 end;
 $$;
 
@@ -260,15 +389,43 @@ comment on column public.survival_state_events.runway_coverage is
   'lets a later reader distinguish "runway unknown because no burn was measured" from "runway '
   'deliberately suppressed because the observation scope was partial".';
 
+-- `provenance` records the observation FORMAT the recorder implements, and
+-- Phase 2B changed that format: it added `runway_coverage`, moved the recorder
+-- from 16 to 17 parameters, and introduced the v2 coverage semantics. A v2 row
+-- therefore cannot honestly carry the v1 provenance string — a reader that uses
+-- provenance to decide how to decode the envelope would decode a v2 row with a
+-- schema that predates its own column.
+--
+-- So the pairing is pinned HERE, beside the coverage pairing, and the two
+-- derived facts (which format, which semantics) can never disagree:
+--
+--   derivation v1  →  atlas.survival.observation.v1  →  runway_coverage IS NULL
+--   derivation v2  →  atlas.survival.observation.v2  →  runway_coverage NOT NULL
+--
+-- v1 rows are untouched and remain valid and interpretable under this rule.
 alter table public.survival_state_events
   drop constraint if exists survival_events_policy_identity_valid;
 alter table public.survival_state_events
   add constraint survival_events_policy_identity_valid
   check (
-    (derivation_version = 1 and threshold_status = 'provisional' and runway_coverage is null)
+    (derivation_version = 1 and threshold_status = 'provisional'
+       and runway_coverage is null
+       and provenance = 'atlas.survival.observation.v1')
     or
-    (derivation_version = 2 and threshold_status = 'provisional' and runway_coverage is not null)
+    (derivation_version = 2 and threshold_status = 'provisional'
+       and runway_coverage is not null
+       and provenance = 'atlas.survival.observation.v2')
   );
+
+-- The vocabulary widens to admit the new format string. Kept as its own
+-- constraint rather than folded away: it still states the closed set on its own,
+-- so a row can never carry an arbitrary provenance that the pairing happens not
+-- to mention.
+alter table public.survival_state_events
+  drop constraint if exists survival_events_provenance_machine_identity;
+alter table public.survival_state_events
+  add constraint survival_events_provenance_machine_identity
+  check (provenance in ('atlas.survival.observation.v1', 'atlas.survival.observation.v2'));
 
 alter table public.survival_state_events
   drop constraint if exists survival_events_runway_coverage_valid;
@@ -350,6 +507,7 @@ declare
   v_event_id uuid;
   v_event_seq bigint;
   v_autonomy_level text;
+  v_provenance text;
 begin
   if p_project_id is null then
     raise exception 'p_project_id is required' using errcode = '22023';
@@ -394,6 +552,17 @@ begin
     raise exception 'unsupported to_state %', p_to_state using errcode = '22023';
   end if;
 
+  -- Provenance describes the observation FORMAT, and Phase 2B changed it. It is
+  -- derived from the version for the same reason the ceiling is derived from the
+  -- state: a caller that could name it could label a v2 envelope as v1, and a
+  -- later reader would decode it with a schema that has no `runway_coverage`.
+  -- `survival_events_policy_identity_valid` pins the same pairing in the table,
+  -- so this holds even against a direct WITH CHECK OPTION-less insert.
+  v_provenance := case p_derivation_version
+    when 1 then 'atlas.survival.observation.v1'
+    when 2 then 'atlas.survival.observation.v2'
+  end;
+
   perform 1 from public.projects p where p.id = p_project_id for update;
   if not found then
     raise exception 'project % does not exist', p_project_id using errcode = 'P0002';
@@ -418,7 +587,7 @@ begin
       p_burn_sek_per_day, p_funding_state, p_declared_funding_sek, p_runway_days,
       p_revenue_trend_sek, p_operating_paused, p_threshold_status, p_derivation_version,
       p_runway_coverage,
-      'atlas.survival_recorder', 'atlas.survival.observation.v1', p_occurred_at)
+      'atlas.survival_recorder', v_provenance, p_occurred_at)
     returning survival_state_events.event_id, survival_state_events.event_seq
       into v_event_id, v_event_seq;
 
@@ -443,7 +612,7 @@ begin
     p_burn_sek_per_day, p_funding_state, p_declared_funding_sek, p_runway_days,
     p_revenue_trend_sek, p_operating_paused, p_threshold_status, p_derivation_version,
     p_runway_coverage,
-    'atlas.survival_recorder', 'atlas.survival.observation.v1', p_occurred_at)
+    'atlas.survival_recorder', v_provenance, p_occurred_at)
   returning survival_state_events.event_id, survival_state_events.event_seq
     into v_event_id, v_event_seq;
 
@@ -461,6 +630,12 @@ revoke all on table public.survival_funding_events from public, anon, authentica
 grant select on table public.survival_funding_events to service_role;
 
 revoke all on function public.survival_funding_events_append_only()
+  from public, anon, authenticated, service_role;
+
+-- A trigger function is invoked by the trigger machinery, not by a caller, so no
+-- role needs EXECUTE on it. Revoking is the same treatment Phase 2A's guard
+-- function gets; the guard still fires, because firing does not consult grants.
+revoke all on function public.survival_guard_platform_funding()
   from public, anon, authenticated, service_role;
 
 revoke all on function public.survival_set_declared_operating_capital(numeric, text)

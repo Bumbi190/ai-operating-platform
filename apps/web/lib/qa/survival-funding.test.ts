@@ -191,8 +191,16 @@ describe('only the platform operator may change the declaration', () => {
     expect(src).toContain('Number.isFinite(value)')
     // Blank must not become a declaration of zero.
     expect(src).toMatch(/if \(trimmed === ''\) return undefined/)
-    // A strict decimal form, so '0x10', 'Infinity' and friends never parse.
-    expect(src).toContain('/^-?\\d+(\\.\\d+)?$/')
+    // A strict decimal form, so '0x10', 'Infinity', '1e5' and friends never parse.
+    expect(src).toContain('/^-?(\\d+)(?:\\.(\\d+))?$/')
+    // …and the action mirrors the DATABASE's numeric(12,4) exactness rule
+    // rather than letting the boundary refuse it, so a bad keystroke answers
+    // `invalid_amount` instead of surfacing as a database error.
+    expect(src).toContain('MAX_DECIMALS = 4')
+    expect(src).toContain('MAX_ABS_SEK = 99_999_999.9999')
+    // Trailing zeros are stripped before the precision test: 1.23000 is 1.23 as
+    // a numeric and loses nothing, so both boundaries must agree it is valid.
+    expect(src).toMatch(/replace\(\/0\+\$\/, ''\)/)
   })
 
   it('CLEAR takes no amount at all, so it cannot be expressed as a zero', () => {
@@ -226,6 +234,38 @@ describe('the declaration enables no enforcement', () => {
   it('the migration adds no scheduler and no cron', () => {
     const sql = read(MIGRATION).replace(/--[^\n]*/g, '').toLowerCase()
     expect(sql).not.toMatch(/cron\.schedule|pg_cron|schedule\s*\(/)
+  })
+
+  it('the migration installs the funding guard as SECURITY INVOKER, not DEFINER', () => {
+    // Load-bearing, and asserted on the SOURCE because it is the kind of thing
+    // that gets "helpfully" added later: as SECURITY DEFINER the guard would run
+    // as the table owner, `current_user` would always equal the owner, and the
+    // check would pass for everyone — silently disabling the whole boundary.
+    const sql = read(MIGRATION)
+    const fn = sql.slice(sql.indexOf('function public.survival_guard_platform_funding()'))
+    expect(fn.slice(0, fn.indexOf('$$'))).not.toMatch(/security\s+definer/i)
+    expect(sql).toContain('before update on public.platform_config')
+    // And it is its own concern, not folded into the historical stop guard.
+    expect(sql).not.toMatch(/create or replace function public\.stop_guard_platform_config/)
+  })
+
+  it('the migration constrains the ledger actor to the canonical human shape', () => {
+    const sql = read(MIGRATION)
+    expect(sql).toContain('survival_funding_events_actor_human_identity')
+    expect(sql).toContain('^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    // The weaker "some trimmed text" rule is REPLACED, not merely joined by a
+    // stronger one — a length range beside the exact shape would be a claim that
+    // is not true.
+    expect(sql).not.toContain('survival_funding_events_actor_present')
+  })
+
+  it('the migration pairs provenance with the derivation version', () => {
+    const sql = read(MIGRATION)
+    expect(sql).toContain('atlas.survival.observation.v1')
+    expect(sql).toContain('atlas.survival.observation.v2')
+    // Derived in the recorder, never written as a literal in an INSERT branch.
+    expect(sql).toContain("when 1 then 'atlas.survival.observation.v1'")
+    expect(sql).toContain("when 2 then 'atlas.survival.observation.v2'")
   })
 
   it('the migration touches no budget, spend or stop object', () => {

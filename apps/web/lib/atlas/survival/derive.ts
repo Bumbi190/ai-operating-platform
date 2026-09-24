@@ -9,12 +9,22 @@
  * clock or a socket.
  *
  * ── THE DIRECTION OF EVERY RULE HERE ────────────────────────────────────────
- * New information can only ever move the state TOWARD HIBERNATE. Both levers do
- * this:
+ * New adverse or MISSING information can only ever move the state TOWARD
+ * HIBERNATE; no rule here can raise the autonomy ceiling. Both levers do this:
  *
- *   • `mostRestrictive()` takes the MAXIMUM state index, so adding a source can
- *     only pull the result down.
- *   • Every cap is `at most CONSERVE`, never "at least".
+ *   • `mostRestrictive()` takes the MAXIMUM state index, so adding a source — a
+ *     failed read, a lost funding reading, an observation that does not cover
+ *     the whole platform — can only pull the result down.
+ *   • Every cap states how restrictive the result must be AT LEAST, never at
+ *     most. The strongest currently floors at HIBERNATE (a lost funding reading,
+ *     and a declaration at or below zero); the weakest floors at CONSERVE
+ *     (funding never declared, reads incomplete, a partial observation scope
+ *     withholding runway).
+ *
+ * The individual values are POLICY and live beside the rules that apply them, so
+ * they can be reviewed and changed on their own. The DIRECTION is the invariant,
+ * and it does not depend on which value happens to be strongest today — which is
+ * why this paragraph names no single number.
  *
  * So an unreadable database cannot make the platform look healthier than it is,
  * and an unreadable database also cannot stop anything — this module decides a

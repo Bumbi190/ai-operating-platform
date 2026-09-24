@@ -59,15 +59,33 @@ export interface FundingActionResult {
  * Zero and negatives are ACCEPTED. They are real declarations, and the
  * derivation already decides their effect (<= 0 floors at HIBERNATE).
  */
+/** `numeric(12,4)`: 8 integer digits and 4 fractional digits. Mirrors the column. */
+const MAX_DECIMALS = 4
+const MAX_ABS_SEK = 99_999_999.9999
+
 function parseAmount(raw: FormDataEntryValue | null): number | undefined {
   if (typeof raw !== 'string') return undefined
   const trimmed = raw.trim()
   if (trimmed === '') return undefined
-  // Number() accepts 'Infinity', '-Infinity', '0x10' and exponents; the finite
-  // check removes the first two, and a plain decimal parse removes the rest.
-  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return undefined
+  // Number() accepts 'Infinity', '-Infinity', '0x10' and exponents; a plain
+  // decimal parse removes all of them.
+  const match = /^-?(\d+)(?:\.(\d+))?$/.exec(trimmed)
+  if (!match) return undefined
+
+  // The database stores `numeric(12,4)` and REFUSES a value it cannot hold
+  // exactly rather than rounding it, so the two boundaries apply one rule. This
+  // mirrors it exactly: trailing zeros are not precision (1.23000 IS 1.23 as a
+  // numeric and loses nothing), but a genuinely finer value is refused here as
+  // `invalid_amount` instead of surfacing as a database error.
+  const significantFraction = (match[2] ?? '').replace(/0+$/, '')
+  if (significantFraction.length > MAX_DECIMALS) return undefined
+
   const value = Number(trimmed)
-  return Number.isFinite(value) ? value : undefined
+  if (!Number.isFinite(value)) return undefined
+  // Outside numeric(12,4)'s range. Checked before the database would raise a
+  // numeric field overflow.
+  if (Math.abs(value) > MAX_ABS_SEK) return undefined
+  return value
 }
 
 /** The one mutation path. Both actions below go through it, and nothing else does. */

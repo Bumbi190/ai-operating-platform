@@ -105,8 +105,9 @@ export async function readDeclaredOperatingCapital(db?: AnyDb): Promise<FundingR
  * row is a live project and the population needs no filter.
  *
  * FAILURE IS RESTRICTIVE. If the check cannot be completed, the answer is
- * `PARTIAL_SCOPE`, which suppresses runway and caps the state at CONSERVE. An
- * unreadable scope must never be read as "we see everything".
+ * `PARTIAL_SCOPE`, which suppresses runway and caps the state at `CRITICAL` —
+ * the final approved v2 rule. An unreadable scope must never be read as
+ * "we see everything".
  */
 export async function readRunwayCoverage(
   allowedProjectIds: readonly string[],

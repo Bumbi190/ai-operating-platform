@@ -726,7 +726,14 @@ describe('youtube connection · the codebase, read', () => {
     const out: string[] = []
     for (const entry of readdirSync(dir)) {
       const full = join(dir, entry)
-      if (entry === 'node_modules' || entry === '.next' || entry === 'qa') continue
+      // `database.types.ts` is GENERATED database-schema metadata, not runtime
+      // source. It names every table and RPC the schema has, so a scan that
+      // enumerates runtime files by identifier would read it as a consumer of
+      // every table in the database — including social_oauth_states, which it
+      // merely declares the shape of. Excluded for the same reason (and by the
+      // same convention) as `stop-authority-authorization.test.ts`.
+      if (entry === 'node_modules' || entry === '.next' || entry === 'qa'
+          || entry === 'database.types.ts') continue
       if (statSync(full).isDirectory()) out.push(...sourceFiles(full))
       else if (/\.(ts|tsx)$/.test(entry) && !/\.test\.tsx?$/.test(entry)) out.push(full)
     }

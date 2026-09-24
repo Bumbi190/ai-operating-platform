@@ -44,3 +44,29 @@ export async function claimCodeWorkRun(
   if (!run.claimId) return { status: 'not_claimed', run }
   return { status: 'claimed', run, claimToken: credential.token }
 }
+
+export type CodeWorkRecoveryResult =
+  | {
+      status: 'recovered'
+      run: StoredCodeWorkRun
+      /** FRESH raw token for the SAME claim. The previous token is now dead. */
+      claimToken: string
+    }
+  /** SQL refused or settled the run instead; nothing was reissued. */
+  | { status: 'not_recovered'; run: StoredCodeWorkRun | null }
+
+/**
+ * SDF-1C2 — handshake-only recovery of a claim whose response (carrying the raw token) was
+ * lost. Only the HASH of the fresh token reaches the store. SQL keeps claim id, fence, lease,
+ * repository and authority untouched and refuses once the first heartbeat has been receipted.
+ */
+export async function recoverCodeWorkClaimCredential(
+  store: Pick<CodeWorkControlPlaneStore, 'recoverClaimCredential'>,
+  input: CodeWorkClaimInput,
+  random?: (size: number) => Buffer,
+): Promise<CodeWorkRecoveryResult> {
+  const credential = issueBrokerClaimCredential(input.workId, random)
+  const run = await store.recoverClaimCredential(input.workId, input.brokerId, input.brokerHostId, credential.tokenHash)
+  if (!run.claimId || run.state !== 'claimed') return { status: 'not_recovered', run }
+  return { status: 'recovered', run, claimToken: credential.token }
+}

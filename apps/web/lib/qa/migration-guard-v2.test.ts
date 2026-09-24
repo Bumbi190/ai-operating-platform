@@ -44,21 +44,20 @@ const runtimeHarness = {
 }
 
 describe('Migration Guard v2 — frozen policy and repository set', () => {
-  // 99/85, not 98/84: Phase 1C1A, Phase 1C1B and Atlas Survival Phase 2B each
-  // arrived on their own branch, and each moved the enforced count by one. The
+  // 100/86, not 99/85: Phase 1C1A, Phase 1C1B, Atlas Survival Phase 2B and Phase 1C2
+  // each arrived on their own branch, and each moved the enforced count by one. The
   // reconciled total is the sum of all four additions.
   //
-  // 98 → 99: `survival_funding_phase2b` (Phase 2B). 1C1A's `sdf1c1_trusted_broker_
-  // identity` and 1C1B's `sdf1c1b_broker_claim_credentials` are already counted in
-  // main's 98 and must not be re-added.
-  it('pins policy v2 and the current 99/85/14/30 counts', () => {
+  // 99 → 100: `sdf1c2_broker_control_channel` (Phase 1C2). 1C1A, 1C1B and 2B are already
+  // counted in main's 99 and must not be re-added.
+  it('pins policy v2 and the current 100/86/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(99)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(85)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(100)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(86)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(99)
-    expect(repositoryState.enforcedNames).toHaveLength(85)
+    expect(repositoryState.sqlFiles).toHaveLength(100)
+    expect(repositoryState.enforcedNames).toHaveLength(86)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -97,13 +96,13 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 describe('Migration Guard v2 — production ledger set integrity', () => {
   it('passes the exact current synthetic known history', () => {
     const result = evaluateAppliedMigrationLedger(exactVerifiedKnownLedger, repositoryState)
-    // 122 = main's 121 (which already contains sdf1c1b_broker_claim_credentials)
-    // + survival_funding_phase2b. The fixture is built FROM
+    // 123 = main's 122 (which already contains sdf1c1b_broker_claim_credentials and
+    // survival_funding_phase2b) + sdf1c2_broker_control_channel. The fixture is built FROM
     // `repositoryState.enforcedNames`, so it models the post-apply world — the
     // world this branch must be merged in, because the guard's contract is
     // apply-before-PR and `check-migrations.mjs` refuses an enforced migration
     // that production has not applied yet.
-    expect(result.appliedLedgerCount).toBe(122)
+    expect(result.appliedLedgerCount).toBe(123)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -215,9 +214,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 99,
-      enforcedCount: 85,
-      appliedLedgerCount: 122,
+      canonicalSqlCount: 100,
+      enforcedCount: 86,
+      appliedLedgerCount: 123,
     })
   })
 })

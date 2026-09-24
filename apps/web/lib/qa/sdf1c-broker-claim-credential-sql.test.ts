@@ -207,6 +207,8 @@ beforeAll(() => {
   run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260918095827_sdf1b1_code_work_control_plane.sql')])
   // Apply exactly the migration under test, on top of canonical SDF-1B1 history.
   run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260924080000_sdf1c1b_broker_claim_credentials.sql')])
+  // SDF-1C2 makes heartbeat credential-bearing and adds same-broker claim recovery; these suites run against the schema as it ships.
+  run(dsn, ['--single-transaction', '-f', join(process.cwd(), 'supabase/migrations/20260924140000_sdf1c2_broker_control_channel.sql')])
   // SDF-1C1B replaces the credential-less claim; the B1 suite exercises the schema as it now ships.
   run(ADMIN_URL, ['-c', `create role "${SVC}" nologin bypassrls in role service_role`])
 }, 120_000)
@@ -217,6 +219,9 @@ afterAll(() => {
   try { run(ADMIN_URL, ['-c', `drop role if exists "${SVC}"`]) } catch { /* best effort */ }
 })
 
+// SDF-1C2: heartbeat requires the full claim proof; the credential HASH is the real one issued at claim.
+const hb = (c: { workId: string; claimId: string; fence: number; tokenHash: string }, o: { claimId?: string; fence?: number; broker?: string; host?: string; hash?: string } = {}) =>
+  `public.atlas_code_work_heartbeat('${c.workId}','${o.claimId ?? c.claimId}',${o.fence ?? c.fence},'${o.broker ?? 'fixture-broker'}','${o.host ?? 'fixture-host'}','${o.hash ?? c.tokenHash}')`
 const dumpRuns = () => one(`select coalesce(string_agg(to_jsonb(r)::text,'|'),'') from public.atlas_code_work_runs r`)
 const dumpReceipts = () => one(`select coalesce(string_agg(to_jsonb(r)::text,'|'),'') from public.atlas_code_work_receipts r`)
 const expireLease = (workId: string) => one(`begin; select set_config('omnira.code_work_control','on',true); update public.atlas_code_work_runs set lease_until=now()-interval '1 second',broker_token_expires_at=now()-interval '1 second' where work_id=${q(workId)}::uuid; commit`)
@@ -241,9 +246,9 @@ d('SDF-1C1B credential shape and function surface', () => {
     expect(one(`select has_function_privilege('service_role','public.atlas_code_work_claim(uuid,text,text,text)','EXECUTE')`)).toBe('t')
     expect(one(`select prosecdef::text||':'||proconfig[1] from pg_proc where proname='atlas_code_work_claim'`)).toBe('true:search_path=""')
     for (const role of ['anon', 'authenticated', 'public']) {
-      expect(one(`select has_function_privilege('${role}','public.atlas_code_work_heartbeat(uuid,uuid,bigint)','EXECUTE')`), `heartbeat ${role}`).toBe('f')
+      expect(one(`select has_function_privilege('${role}','public.atlas_code_work_heartbeat(uuid,uuid,bigint,text,text,text)','EXECUTE')`), `heartbeat ${role}`).toBe('f')
     }
-    expect(one(`select has_function_privilege('service_role','public.atlas_code_work_heartbeat(uuid,uuid,bigint)','EXECUTE')`)).toBe('t')
+    expect(one(`select has_function_privilege('service_role','public.atlas_code_work_heartbeat(uuid,uuid,bigint,text,text,text)','EXECUTE')`)).toBe('t')
   })
 
   it('3/18 makes the old credential-less claim signature impossible to call', () => {
@@ -340,8 +345,8 @@ d('SDF-1C1B credential-bearing claim', () => {
   it('11/18 keeps fence semantics: claim fences at one and stale fences are rejected', () => {
     const claimed = grantAndClaim()
     expect(claimed.fence).toBe(1)
-    expect(txn(`select public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence + 1})`).err).toMatch(/stale code-work fence/)
-    expect(txn(`select public.atlas_code_work_heartbeat('${claimed.workId}','${uuid('9')}',${claimed.fence})`).err).toMatch(/stale code-work fence/)
+    expect(txn(`select ${hb(claimed, { fence: claimed.fence + 1 })}`).err).toMatch(/stale code-work fence/)
+    expect(txn(`select ${hb(claimed, { claimId: uuid('9') })}`).err).toMatch(/stale code-work fence/)
   })
 })
 
@@ -350,7 +355,7 @@ d('SDF-1C1B lease-bound credential lifetime', () => {
     const claimed = grantAndClaim()
     one(`begin; select set_config('omnira.code_work_control','on',true); update public.atlas_code_work_runs set lease_until=now()+interval '10 seconds',broker_token_expires_at=now()+interval '10 seconds' where work_id='${claimed.workId}'; commit`)
     const before = one(`select broker_token_expires_at from public.atlas_code_work_runs where work_id='${claimed.workId}'`)
-    expect(rpc(`select (public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence})).state`)).toBe('claimed')
+    expect(rpc(`select (${hb(claimed)}).state`)).toBe('claimed')
     expect(one(`select broker_token_expires_at = lease_until from public.atlas_code_work_runs where work_id='${claimed.workId}'`)).toBe('t')
     expect(one(`select broker_token_expires_at > '${before}'::timestamptz from public.atlas_code_work_runs where work_id='${claimed.workId}'`)).toBe('t')
     expect(runCol(claimed.workId, 'broker_token_hash')).toBe(claimed.tokenHash)
@@ -362,7 +367,7 @@ d('SDF-1C1B lease-bound credential lifetime', () => {
     const claimed = grantAndClaim({ expiresIn: '3 seconds' })
     expect(one(`select broker_token_expires_at = lease_until and lease_until <= authorization_expires_at from public.atlas_code_work_runs where work_id='${claimed.workId}'`)).toBe('t')
     one('select pg_sleep(3.5)')
-    const state = rpc(`select (public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence})).state`)
+    const state = rpc(`select (${hb(claimed)}).state`)
     expect(['timeout', 'cancelled']).toContain(state)
     expect(tokenState(claimed.workId)).toBe('∅|∅|∅')
   })
@@ -370,10 +375,10 @@ d('SDF-1C1B lease-bound credential lifetime', () => {
   it('14/18 rejects an expired lease on heartbeat, closing the run and clearing the credential', () => {
     const claimed = grantAndClaim()
     expireLease(claimed.workId)
-    expect(rpc(`select (public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence})).state`)).toBe('timeout')
+    expect(rpc(`select (${hb(claimed)}).state`)).toBe('timeout')
     expect(tokenState(claimed.workId)).toBe('∅|∅|∅')
     expect(runCol(claimed.workId, 'fence')).toBe(String(claimed.fence + 1))
-    expect(txn(`select public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence})`).err).toMatch(/stale code-work fence/)
+    expect(txn(`select ${hb(claimed)}`).err).toMatch(/stale code-work fence/)
   })
 
   it('15/18 keeps hash and lease-bound expiry through non-terminal transitions', () => {
@@ -390,7 +395,7 @@ d('SDF-1C1B credential destruction and invariants', () => {
     expect(rpc(`select (public.atlas_code_work_cancel('${claimed.workId}','${PROJECT}','${REQUESTER}','owner_cancel')).state`)).toBe('cancelled')
     expect(tokenState(claimed.workId)).toBe('∅|∅|∅')
     expect(runCol(claimed.workId, 'fence')).toBe(String(claimed.fence + 1))
-    expect(txn(`select public.atlas_code_work_heartbeat('${claimed.workId}','${claimed.claimId}',${claimed.fence})`).err).toMatch(/stale code-work fence|not heartbeat eligible/)
+    expect(txn(`select ${hb(claimed)}`).err).toMatch(/stale code-work fence|not heartbeat eligible/)
   })
 
   it('17/18 clears the credential when a claimed run reaches a terminal lifecycle state', () => {

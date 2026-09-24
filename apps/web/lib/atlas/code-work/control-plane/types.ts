@@ -13,6 +13,19 @@ export interface DerivedCodeWorkProposal {
   requestedBy: string
 }
 
+/**
+ * SDF-1C2: the ONLY shape broker discovery may return. Deliberately no admission JSON,
+ * project data, authority ids, receipts or credential material. Discovery is advisory:
+ * appearing here is not proof the run is still claimable.
+ */
+export interface BrokerDiscoverableWork {
+  workId: string
+  repositoryId: string
+  pinnedBaseSha: string
+}
+
+export const BROKER_DISCOVERY_MAX_RESULTS = 20 as const
+
 export interface StoredCodeWorkRun {
   workId: string
   projectId: string

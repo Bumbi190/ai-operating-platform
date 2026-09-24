@@ -252,14 +252,20 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // declarations, plus a server-side scope-completeness boolean. It grants no
     // authority, enables no enforcement and adds no scheduler.
     //
-    // 1C1A, 1C1B and 2B each arrived on their own branch and each moved this count
-    // by one, so the reconciled value is 85 and none may be dropped to make
+    // 86: Phase 1C2's `sdf1c2_broker_control_channel` — the database side of the
+    // authenticated broker control channel: a credential-bearing heartbeat (the
+    // credential-less signature is dropped), handshake-only same-broker credential
+    // recovery, a `claim_credential_reissued` control receipt and a bounded closed-shape
+    // discovery read. No table, no execution.
+    //
+    // 1C1A, 1C1B, 2B and 1C2 each arrived on their own branch and each moved this count
+    // by one, so the reconciled value is 86 and none may be dropped to make
     // another fit.
-    // Migration Guard v2 owns the repository-wide 99/85 count contract. This
+    // Migration Guard v2 owns the repository-wide 100/86 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(85)
+    expect(enforced).toBe(86)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

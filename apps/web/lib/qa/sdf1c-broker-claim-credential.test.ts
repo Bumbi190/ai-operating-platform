@@ -198,9 +198,13 @@ describe('SDF-1C1B migration and structural boundary', () => {
 
   it('adds no route, no broker CLI command and no execution/model code', () => {
     const api = resolve(ROOT, 'apps/web/app/api/atlas/code-work')
-    expect(readdirSync(join(api, 'broker')).sort()).toEqual(['enroll', 'identity'])
+    // SDF-1C2 later added the authenticated control channel under broker/; the operational surface
+    // that must still not exist is everything BEYOND it (and any unauthenticated claim/heartbeat).
+    expect(readdirSync(join(api, 'broker')).sort()).toEqual(['claim', 'discover', 'enroll', 'heartbeat', 'identity'])
     for (const name of ['claim', 'heartbeat', 'discover', 'context', 'evidence', 'transition', 'execute', 'preflight']) {
       expect(existsSync(join(api, name)), name).toBe(false)
+    }
+    for (const name of ['context', 'evidence', 'transition', 'execute', 'preflight', 'patch', 'command']) {
       expect(existsSync(join(api, 'broker', name)), `broker/${name}`).toBe(false)
     }
     const cli = readFileSync(resolve(ROOT, 'apps/code-broker/src/cli.ts'), 'utf8')
@@ -213,7 +217,7 @@ describe('SDF-1C1B migration and structural boundary', () => {
     expect(source).not.toMatch(/child_process|\b(?:spawn|exec|execFile|fork)\s*\(|from ['"](?:node:)?fs['"]|\bfetch\s*\(|@anthropic-ai|from ['"]openai['"]/)
     expect(source).not.toMatch(/git\s+(?:worktree|commit|push|merge)|gh\s+pr|vercel\s+(?:deploy|promote)|apply[_-]?patch|command[_-]?runner/i)
     expect(source).not.toMatch(/console\.|logger|process\.env/)
-    // Nothing else in the application imports the helper: it has no caller yet (Phase 1C2).
+    // Only the SDF-1C2 broker control channel imports the helper, from its own directory.
     const importers: string[] = []
     const walk = (directory: string) => {
       for (const name of readdirSync(directory)) {
@@ -224,7 +228,10 @@ describe('SDF-1C1B migration and structural boundary', () => {
       }
     }
     for (const part of ['app', 'lib', 'components']) walk(resolve(ROOT, 'apps/web', part))
-    expect(importers).toEqual([])
+    expect(importers.map(path => path.slice(ROOT.length + 1)).sort()).toEqual([
+      'apps/web/lib/atlas/code-broker/control-channel/dto.ts',
+      'apps/web/lib/atlas/code-broker/control-channel/operations.ts',
+    ])
   })
 
   it('stays wired into the SDF-1C workflow with explicit anti-skip floors', () => {

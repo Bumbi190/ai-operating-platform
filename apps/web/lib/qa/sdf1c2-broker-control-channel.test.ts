@@ -16,8 +16,9 @@ import { publicJwkThumbprint } from '@/lib/atlas/code-broker/crypto'
 import type { BrokerBuildPolicy } from '@/lib/atlas/code-broker/policy'
 import type { AcceptRequestInput, BrokerStore } from '@/lib/atlas/code-broker/store'
 import type { BrokerPublicJwk, StoredBroker } from '@/lib/atlas/code-broker/types'
+import { CODE_WORK_NON_TERMINAL_STATES, CODE_WORK_TERMINAL_STATES } from '@/lib/atlas/code-work/lifecycle'
 import type { StoredCodeWorkRun } from '@/lib/atlas/code-work/control-plane/types'
-import { assertOperationalOrigin, claimWork, discoverWork, heartbeat, OPERATIONAL_PATHS, recoverClaim, type OperationalContext } from '../../../code-broker/src/protocol/operational-client'
+import { assertOperationalOrigin, claimWork, CODE_WORK_RESPONSE_STATES, discoverWork, DISCOVERY_MAX_ITEMS, heartbeat, isCanonicalClaimToken, OPERATIONAL_PATHS, recoverClaim, type OperationalContext } from '../../../code-broker/src/protocol/operational-client'
 import { ClaimHandleTracker, type ClaimHandle } from '../../../code-broker/src/protocol/response-order'
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => { throw new Error('the control channel test must never reach a real database') } }))
@@ -414,6 +415,118 @@ describe('SDF-1C2 local protocol client', () => {
   })
 })
 
+describe('SDF-1C2 hostile server responses are refused by the local broker (fail closed)', () => {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW) })
+  afterEach(() => { vi.useRealTimers() })
+
+  const LEASE = '2026-09-24T12:01:30.000Z'
+  const LETTERED = 'abcdef00-0000-4000-8000-00000000000a'   // has hex letters, so upper-casing really changes it
+  const item = (over: Record<string, unknown> = {}) => ({ workId: WORK, repositoryId: REPO, pinnedBaseSha: BASE_SHA, ...over })
+  const claimPayload = (over: Record<string, unknown> = {}) => ({ ok: true, workId: WORK, claimId: CLAIM, fence: 1, leaseUntil: LEASE, claimToken: TOKEN, ...over })
+  const beatPayload = (over: Record<string, unknown> = {}) => ({ ok: true, workId: WORK, claimId: CLAIM, fence: 1, leaseUntil: LEASE, state: 'claimed', ...over })
+  const respond = (payload: unknown) => clientFor(async () => new Response(JSON.stringify(payload), { status: 200 })).ctx
+  const invalid = { ok: false, error: 'invalid_response' }
+
+  // A non-canonical alias of a valid token: same 43 chars, same bytes, but the last symbol carries
+  // non-zero padding bits, so decode → re-encode does not reproduce it.
+  const alias = (() => {
+    const canonical = Buffer.alloc(32, 9).toString('base64url')
+    const last = canonical[42]; const other = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'.split('').find(c => c !== last && Buffer.from(canonical.slice(0, 42) + c, 'base64url').equals(Buffer.alloc(32, 9)))!
+    return canonical.slice(0, 42) + other
+  })()
+
+  it('accepts the well-formed shape of every operation (so the refusals below are meaningful)', async () => {
+    expect((await discoverWork(respond({ ok: true, work: [item()] }), 1)).body).toEqual({ ok: true, work: [item()] })
+    expect((await claimWork(respond(claimPayload()), 2, WORK)).body.ok).toBe(true)
+    expect((await recoverClaim(respond(claimPayload()), 3, WORK)).body.ok).toBe(true)
+    for (const state of CODE_WORK_RESPONSE_STATES) expect((await heartbeat(respond(beatPayload({ state })), 4, { workId: WORK, claimId: CLAIM, fence: 1, claimToken: TOKEN })).body.ok, state).toBe(true)
+    expect((await discoverWork(respond({ ok: true, work: Array.from({ length: DISCOVERY_MAX_ITEMS }, () => item())}), 5)).body.ok).toBe(true)
+    expect((await discoverWork(respond({ ok: true, work: [] }), 6)).body.ok).toBe(true)
+  })
+
+  it('DISCOVER: refuses invalid uuid, hostile/empty repository, bad SHA (upper, 39, 41, non-hex) and more than 20 items', async () => {
+    const bad: Array<[string, unknown]> = [
+      ['invalid uuid', item({ workId: 'not-a-uuid' })], ['uppercase uuid', item({ workId: LETTERED.toUpperCase() })], ['non-string uuid', item({ workId: 7 })],
+      ['empty repository', item({ repositoryId: '' })], ['newline repository', item({ repositoryId: 'github.com/a/b\ngithub.com/c/d' })],
+      ['carriage return repository', item({ repositoryId: 'github.com/a/b\r' })], ['NUL repository', item({ repositoryId: 'github.com/a\u0000b' })],
+      ['tab repository', item({ repositoryId: 'github.com/a\tb' })], ['space repository', item({ repositoryId: 'github.com/a b' })],
+      ['DEL repository', item({ repositoryId: 'github.com/a\u007fb' })], ['oversized repository', item({ repositoryId: 'r'.repeat(201) })], ['non-string repository', item({ repositoryId: 5 })],
+      ['uppercase sha', item({ pinnedBaseSha: BASE_SHA.toUpperCase() })], ['39-char sha', item({ pinnedBaseSha: BASE_SHA.slice(0, 39) })],
+      ['41-char sha', item({ pinnedBaseSha: `${BASE_SHA}a` })], ['non-hex sha', item({ pinnedBaseSha: `${BASE_SHA.slice(0, 39)}g` })], ['missing sha', { workId: WORK, repositoryId: REPO }],
+      ['64-char sha', item({ pinnedBaseSha: 'a'.repeat(64) })], ['non-object item', 'x'],
+    ]
+    for (const [name, entry] of bad) expect((await discoverWork(respond({ ok: true, work: [entry] }), 1)).body, name).toEqual(invalid)
+    // one bad item poisons the whole page
+    expect((await discoverWork(respond({ ok: true, work: [item(), item({ pinnedBaseSha: 'zz' })] }), 1)).body).toEqual(invalid)
+    expect((await discoverWork(respond({ ok: true, work: Array.from({ length: DISCOVERY_MAX_ITEMS + 1 }, () => item()) }), 1)).body).toEqual(invalid)
+    expect((await discoverWork(respond({ ok: true, work: Array.from({ length: 500 }, () => item()) }), 1)).body).toEqual(invalid)
+    expect((await discoverWork(respond({ ok: true, work: 'x' }), 1)).body).toEqual(invalid)
+    expect((await discoverWork(respond({ ok: true }), 1)).body).toEqual(invalid)
+  })
+
+  it('CLAIM and RECOVERY: refuse invalid uuids, fence 0/fractional/unsafe, bad leaseUntil and every non-canonical token', async () => {
+    const bad: Array<[string, Record<string, unknown>]> = [
+      ['invalid workId', { workId: 'x' }], ['invalid claimId', { claimId: 'x' }], ['uppercase claimId', { claimId: LETTERED.toUpperCase() }], ['missing claimId', { claimId: undefined }],
+      ['fence 0', { fence: 0 }], ['negative fence', { fence: -1 }], ['fractional fence', { fence: 1.5 }], ['string fence', { fence: '1' }],
+      ['unsafe fence', { fence: Number.MAX_SAFE_INTEGER + 2 }], ['NaN-ish fence', { fence: null }],
+      ['invalid leaseUntil', { leaseUntil: 'not-a-time' }], ['empty leaseUntil', { leaseUntil: '' }], ['numeric leaseUntil', { leaseUntil: 1790000000000 }], ['null leaseUntil', { leaseUntil: null }],
+      ['month 13 leaseUntil', { leaseUntil: '2026-13-45T25:61:61.000Z' }],
+      ['short token', { claimToken: TOKEN.slice(1) }], ['long token', { claimToken: `${TOKEN}A` }], ['padded token', { claimToken: `${TOKEN.slice(0, 42)}=` }],
+      ['padded 44-char token', { claimToken: `${TOKEN}=` }], ['standard-alphabet token', { claimToken: Buffer.alloc(32, 0xfb).toString('base64').replace(/=+$/, '') }],
+      ['non-canonical base64url alias', { claimToken: alias }], ['empty token', { claimToken: '' }], ['numeric token', { claimToken: 5 }], ['missing token', { claimToken: undefined }],
+      ['token with whitespace', { claimToken: `${TOKEN.slice(0, 42)} ` }],
+    ]
+    for (const [name, over] of bad) {
+      expect((await claimWork(respond(claimPayload(over)), 1, WORK)).body, `claim: ${name}`).toEqual(invalid)
+      expect((await recoverClaim(respond(claimPayload(over)), 2, WORK)).body, `recover: ${name}`).toEqual(invalid)
+    }
+    expect((await claimWork(respond({ ok: true }), 1, WORK)).body).toEqual(invalid)
+  })
+
+  it('token validation is decode → 32 bytes → re-encode, not a length/alphabet regex', () => {
+    expect(alias).not.toBe(Buffer.alloc(32, 9).toString('base64url'))
+    expect(/^[A-Za-z0-9_-]{43}$/.test(alias)).toBe(true)        // the weak check would accept it …
+    expect(Buffer.from(alias, 'base64url').length).toBe(32)      // … it even decodes to 32 bytes …
+    expect(isCanonicalClaimToken(alias)).toBe(false)             // … but it is not the canonical encoding
+    expect(isCanonicalClaimToken(Buffer.alloc(32, 9).toString('base64url'))).toBe(true)
+    expect(isCanonicalClaimToken(Buffer.alloc(31, 9).toString('base64url'))).toBe(false)
+    expect(isCanonicalClaimToken(Buffer.alloc(33, 9).toString('base64url'))).toBe(false)
+  })
+
+  it('HEARTBEAT: refuses invalid uuids, fence 0/fractional, invalid leaseUntil and any state outside the closed vocabulary', async () => {
+    const bad: Array<[string, Record<string, unknown>]> = [
+      ['invalid workId', { workId: 'x' }], ['invalid claimId', { claimId: 'x' }], ['fence 0', { fence: 0 }], ['fractional fence', { fence: 2.5 }], ['string fence', { fence: '1' }],
+      ['invalid leaseUntil', { leaseUntil: 'soon' }], ['empty leaseUntil', { leaseUntil: '' }], ['null leaseUntil', { leaseUntil: null }],
+      ['unknown state', { state: 'exploded' }], ['empty state', { state: '' }], ['uppercase state', { state: 'CLAIMED' }], ['numeric state', { state: 3 }], ['missing state', { state: undefined }],
+      ['state with newline', { state: 'claimed\n' }], ['prototype-ish state', { state: 'constructor' }],
+    ]
+    for (const [name, over] of bad) {
+      expect((await heartbeat(respond(beatPayload(over)), 1, { workId: WORK, claimId: CLAIM, fence: 1, claimToken: TOKEN })).body, name).toEqual(invalid)
+    }
+  })
+
+  it('malformed refusals never surface hostile server text (error codes are a closed lowercase token or invalid_response)', async () => {
+    for (const error of ['<script>x</script>', 'a'.repeat(300), 'Bad Value', 'line\nbreak', '']) {
+      const result = await claimWork(respond({ ok: false, error }), 1, WORK)
+      expect(result.body).toEqual(invalid)
+    }
+    expect((await claimWork(respond({ ok: false, error: 'not_available' }), 1, WORK)).body).toEqual({ ok: false, error: 'not_available' })
+  })
+
+  it('the client state vocabulary is exactly the canonical CodeWork lifecycle (no drift)', () => {
+    expect([...CODE_WORK_RESPONSE_STATES].sort()).toEqual([...CODE_WORK_NON_TERMINAL_STATES, ...CODE_WORK_TERMINAL_STATES].sort())
+    expect(Object.isFrozen(CODE_WORK_RESPONSE_STATES)).toBe(true)
+  })
+
+  it('a refused claim response never yields a claim handle for the ordering tracker', async () => {
+    const tracker = new ClaimHandleTracker()
+    const result = await claimWork(respond(claimPayload({ claimToken: alias })), 9, WORK)
+    expect(result.body.ok).toBe(false)
+    if (result.body.ok) tracker.offer({ requestCounter: result.requestCounter, ...result.body })
+    expect(tracker.handle).toBeNull()
+  })
+})
+
 describe('SDF-1C2 response ordering (newer broker request counter wins)', () => {
   beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW) })
   afterEach(() => { vi.useRealTimers() })
@@ -440,7 +553,7 @@ describe('SDF-1C2 response ordering (newer broker request counter wins)', () => 
   })
 
   it('every client result carries the counter that produced it so the rule is decidable', async () => {
-    const { ctx } = clientFor(async () => new Response(JSON.stringify({ ok: true, workId: WORK, claimId: CLAIM, fence: 1, leaseUntil: 'x', claimToken: TOKEN }), { status: 200 }))
+    const { ctx } = clientFor(async () => new Response(JSON.stringify({ ok: true, workId: WORK, claimId: CLAIM, fence: 1, leaseUntil: '2026-09-24T12:01:30.000Z', claimToken: TOKEN }), { status: 200 }))
     const claim = await claimWork(ctx, 6, WORK); const recovery = await recoverClaim(ctx, 7, WORK)
     expect([claim.requestCounter, recovery.requestCounter]).toEqual([6, 7])
   })

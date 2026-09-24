@@ -32,7 +32,6 @@ export type OperationalOperation = keyof typeof OPERATIONAL_PATHS
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-const TOKEN = /^[A-Za-z0-9_-]{43}$/
 
 /** https: always; http: only for an explicit loopback development origin. Returns the parsed origin. */
 export function assertOperationalOrigin(origin: string): URL {
@@ -107,15 +106,48 @@ async function send<T>(ctx: OperationalContext, operation: OperationalOperation,
 
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const refusal = (value: unknown): { ok: false; error: string } =>
-  ({ ok: false, error: isRecord(value) && typeof value.error === 'string' ? value.error.slice(0, 64) : 'invalid_response' })
+  ({ ok: false, error: isRecord(value) && typeof value.error === 'string' && /^[a-z_]{1,64}$/.test(value.error) ? value.error : 'invalid_response' })
+const INVALID: { ok: false; error: string } = { ok: false, error: 'invalid_response' }
+
+/** A discovery page can never exceed this, and a longer one is refused rather than truncated. */
+export const DISCOVERY_MAX_ITEMS = 20
+const REPOSITORY_ID_MAX = 200
+const SHA1_HEX = /^[a-f0-9]{40}$/
+const REPOSITORY_ID = /^[^\u0000-\u001f\u007f\s]+$/
+
+/**
+ * Closed CodeWork state vocabulary. The broker package cannot import the web app, so this is a
+ * frozen mirror of lib/atlas/code-work/lifecycle.ts; a parity test fails if the two drift.
+ */
+export const CODE_WORK_RESPONSE_STATES = Object.freeze([
+  'proposed', 'authorized', 'claimed', 'preparing', 'working', 'testing',
+  'ready_for_human_review', 'tests_failed', 'scope_violation', 'stale_base',
+  'worker_failed', 'cancelled', 'timeout', 'policy_denied',
+] as const)
+
+/** Canonical unpadded base64url of EXACTLY 32 bytes: decode, check length, re-encode, compare. */
+export function isCanonicalClaimToken(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length !== 43 || !/^[A-Za-z0-9_-]+$/.test(value)) return false
+  const bytes = Buffer.from(value, 'base64url')
+  return bytes.length === 32 && bytes.toString('base64url') === value
+}
+
+const isFence = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value)
+/** A finite instant. Strings that Date cannot parse to a finite time are refused. */
+const isInstant = (value: unknown): value is string =>
+  typeof value === 'string' && value.length >= 20 && value.length <= 40 && Number.isFinite(Date.parse(value))
 
 function parseDiscover(value: unknown): DiscoverBody {
-  if (!isRecord(value) || value.ok !== true || !Array.isArray(value.work)) return refusal(value)
+  if (!isRecord(value) || value.ok !== true) return refusal(value)
+  if (!Array.isArray(value.work) || value.work.length > DISCOVERY_MAX_ITEMS) return INVALID
   const work: Array<{ workId: string; repositoryId: string; pinnedBaseSha: string }> = []
   for (const item of value.work) {
-    if (!isRecord(item) || typeof item.workId !== 'string' || !UUID.test(item.workId)
-        || typeof item.repositoryId !== 'string' || typeof item.pinnedBaseSha !== 'string') return refusal(null)
-    work.push({ workId: item.workId, repositoryId: item.repositoryId, pinnedBaseSha: item.pinnedBaseSha })
+    if (!isRecord(item) || !isUuid(item.workId)) return INVALID
+    const { repositoryId, pinnedBaseSha } = item
+    if (typeof repositoryId !== 'string' || repositoryId.length < 1 || repositoryId.length > REPOSITORY_ID_MAX || !REPOSITORY_ID.test(repositoryId)) return INVALID
+    if (typeof pinnedBaseSha !== 'string' || !SHA1_HEX.test(pinnedBaseSha)) return INVALID
+    work.push({ workId: item.workId, repositoryId, pinnedBaseSha })
   }
   return { ok: true, work }
 }
@@ -123,17 +155,15 @@ function parseDiscover(value: unknown): DiscoverBody {
 function parseClaim(value: unknown): ClaimBody {
   if (!isRecord(value) || value.ok !== true) return refusal(value)
   const { workId, claimId, fence, leaseUntil, claimToken } = value
-  if (typeof workId !== 'string' || !UUID.test(workId) || typeof claimId !== 'string' || !UUID.test(claimId)
-      || typeof fence !== 'number' || !Number.isSafeInteger(fence) || typeof leaseUntil !== 'string'
-      || typeof claimToken !== 'string' || !TOKEN.test(claimToken)) return refusal(null)
+  if (!isUuid(workId) || !isUuid(claimId) || !isFence(fence) || !isInstant(leaseUntil) || !isCanonicalClaimToken(claimToken)) return INVALID
   return { ok: true, workId, claimId, fence, leaseUntil, claimToken }
 }
 
 function parseHeartbeat(value: unknown): HeartbeatBody {
   if (!isRecord(value) || value.ok !== true) return refusal(value)
   const { workId, claimId, fence, leaseUntil, state } = value
-  if (typeof workId !== 'string' || typeof claimId !== 'string' || typeof fence !== 'number'
-      || typeof leaseUntil !== 'string' || typeof state !== 'string') return refusal(null)
+  if (!isUuid(workId) || !isUuid(claimId) || !isFence(fence) || !isInstant(leaseUntil)
+      || typeof state !== 'string' || !(CODE_WORK_RESPONSE_STATES as readonly string[]).includes(state)) return INVALID
   return { ok: true, workId, claimId, fence, leaseUntil, state }
 }
 
@@ -146,7 +176,7 @@ export const claimWork = async (ctx: OperationalContext, counter: number, workId
 export const recoverClaim = async (ctx: OperationalContext, counter: number, workId: string) =>
   send(ctx, 'recover', counter, { workId: requireUuid(workId, 'workId') }, parseClaim)
 export async function heartbeat(ctx: OperationalContext, counter: number, claim: { workId: string; claimId: string; fence: number; claimToken: string }) {
-  if (!TOKEN.test(claim.claimToken) || !Number.isSafeInteger(claim.fence) || claim.fence < 1) throw new Error('invalid claim handle')
+  if (!isCanonicalClaimToken(claim.claimToken) || !isFence(claim.fence)) throw new Error('invalid claim handle')
   return send(ctx, 'heartbeat', counter, {
     workId: requireUuid(claim.workId, 'workId'), claimId: requireUuid(claim.claimId, 'claimId'),
     fence: claim.fence, claimToken: claim.claimToken,

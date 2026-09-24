@@ -66,7 +66,7 @@ jobs:
             ['sdf1c-broker-identity-id.test.ts', 13],
             ['sdf1c-broker-claim-credential.test.ts', 16],
             ['sdf1c-broker-claim-credential-sql.test.ts', 18],
-            ['sdf1c2-broker-control-channel.test.ts', 41],
+            ['sdf1c2-broker-control-channel.test.ts', 49],
             ['sdf1c2-broker-control-channel-sql.test.ts', 22],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))

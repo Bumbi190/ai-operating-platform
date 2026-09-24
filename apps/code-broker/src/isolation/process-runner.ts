@@ -21,6 +21,7 @@ import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GIT_HARDENING_PREFIX, matchGitOperation } from './git-grammar.js'
 import { isTrustedTool, type ToolName, type TrustedTool } from './toolchain.js'
 
 export const INFRA_DEFAULT_TIMEOUT_MS = 30_000
@@ -31,25 +32,11 @@ const KILL_GRACE_MS = 1_000
 
 // ── Git: the closed vocabulary ────────────────────────────────────────────────────────────────
 
-/** Global `-c key=value` overrides Git may receive, and the only value each may carry. */
-export const GIT_ALLOWED_CONFIG_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
-  'core.hooksPath': '/dev/null',
-  'core.fsmonitor': 'false',
-  'credential.helper': '',
-  'core.sshCommand': '/usr/bin/false',
-  'core.askPass': '/usr/bin/false',
-  'protocol.allow': 'never',
-  'gc.auto': '0',
-  'maintenance.auto': 'false',
-  'core.untrackedCache': 'false',
-  'advice.detachedHead': 'false',
-  'submodule.recurse': 'false',
-})
+export { GIT_ALLOWED_CONFIG_OVERRIDES, GIT_HARDENING_PREFIX } from './git-grammar.js'
 
 export const GIT_ALLOWED_SUBCOMMANDS: readonly string[] = Object.freeze([
   'rev-parse', 'cat-file', 'show-ref', 'config', 'worktree', 'status', 'symbolic-ref',
 ])
-const GIT_ALLOWED_WORKTREE_ACTIONS: readonly string[] = Object.freeze(['add', 'list'])
 
 /** Named so the refusal is explicit and testable; anything not in the allowlist is refused anyway. */
 export const GIT_FORBIDDEN_SUBCOMMANDS: readonly string[] = Object.freeze([
@@ -57,8 +44,6 @@ export const GIT_FORBIDDEN_SUBCOMMANDS: readonly string[] = Object.freeze([
   'remote', 'submodule', 'gc', 'am', 'apply', 'cherry-pick', 'revert', 'tag', 'branch', 'stash', 'init',
   'update-ref', 'symbolic-ref-write', 'filter-branch', 'lfs', 'daemon', 'send-pack', 'fetch-pack',
 ])
-
-const GIT_GLOBAL_FLAGS: readonly string[] = Object.freeze(['--no-pager', '--no-optional-locks'])
 
 // ── Docker: the closed vocabulary ─────────────────────────────────────────────────────────────
 
@@ -100,36 +85,23 @@ function validateCommonArgv(argv: readonly string[]): void {
   }
 }
 
+/**
+ * A Git command is valid only as GIT_HARDENING_PREFIX + ONE exact canonical operation
+ * (see git-grammar.ts). The named checks give precise refusal codes; `matchGitOperation` is the
+ * gate: an allowed subcommand with any other arguments is still refused.
+ */
 function validateGitArgv(argv: readonly string[]): void {
-  let i = 0
-  while (i < argv.length) {
-    const token = argv[i]
-    if (GIT_GLOBAL_FLAGS.includes(token)) { i += 1; continue }
-    if (token === '-c') {
-      const pair = argv[i + 1]
-      const eq = typeof pair === 'string' ? pair.indexOf('=') : -1
-      if (eq <= 0) throw new InfraCommandRefused('git_config_override_shape')
-      const key = pair.slice(0, eq)
-      if (!Object.prototype.hasOwnProperty.call(GIT_ALLOWED_CONFIG_OVERRIDES, key) || pair.slice(eq + 1) !== GIT_ALLOWED_CONFIG_OVERRIDES[key]) {
-        throw new InfraCommandRefused('git_config_override_not_allowed')
-      }
-      i += 2
-      continue
-    }
-    break
-  }
-  const subcommand = argv[i]
-  if (typeof subcommand !== 'string' || subcommand.startsWith('-')) throw new InfraCommandRefused('git_global_option_not_allowed')
+  const prefixed = argv.length >= GIT_HARDENING_PREFIX.length && GIT_HARDENING_PREFIX.every((token, i) => argv[i] === token)
+  if (!prefixed) throw new InfraCommandRefused('git_hardening_prefix_required')
+  const rest = argv.slice(GIT_HARDENING_PREFIX.length)
+  const subcommand = rest[0]
+  if (typeof subcommand !== 'string') throw new InfraCommandRefused('git_operation_not_canonical')
+  if (subcommand.startsWith('-')) throw new InfraCommandRefused('git_global_option_not_allowed')
   if (GIT_FORBIDDEN_SUBCOMMANDS.includes(subcommand)) throw new InfraCommandRefused('git_subcommand_forbidden')
   if (!GIT_ALLOWED_SUBCOMMANDS.includes(subcommand)) throw new InfraCommandRefused('git_subcommand_not_allowed')
-  if (subcommand === 'worktree' && !GIT_ALLOWED_WORKTREE_ACTIONS.includes(argv[i + 1] ?? '')) throw new InfraCommandRefused('git_worktree_action_not_allowed')
-  if (subcommand === 'config') {
-    const rest = argv.slice(i + 1).join(' ')
-    if (rest !== '--local --list -z') throw new InfraCommandRefused('git_config_mode_not_allowed')
-  }
-  for (const arg of argv.slice(i + 1)) {
-    if (/^--(?:upload-pack|receive-pack|exec-path|git-dir|work-tree|namespace|super-prefix|config-env)(?:=|$)/.test(arg)) throw new InfraCommandRefused('git_option_not_allowed')
-  }
+  if (subcommand === 'worktree' && !['add', 'list'].includes(rest[1] ?? '')) throw new InfraCommandRefused('git_worktree_action_not_allowed')
+  if (subcommand === 'config' && rest.join(' ') !== 'config --local --list -z') throw new InfraCommandRefused('git_config_mode_not_allowed')
+  if (matchGitOperation(argv) === null) throw new InfraCommandRefused('git_operation_not_canonical')
 }
 
 /** Value rules for every flag `docker create` may carry. Anything else is refused. */

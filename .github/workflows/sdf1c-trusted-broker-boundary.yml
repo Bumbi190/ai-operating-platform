@@ -77,7 +77,7 @@ jobs:
             ['sdf1c2-broker-control-channel.test.ts', 49],
             ['sdf1c2-broker-control-channel-sql.test.ts', 22],
             ['sql-test-role-bootstrap-race.test.ts', 4],
-            ['sdf1c3-isolation-substrate.test.ts', 180],
+            ['sdf1c3-isolation-substrate.test.ts', 195],
             ['sdf1c3-isolation-integration.test.ts', 10],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))

@@ -20,10 +20,11 @@ import { OMNIRA_LOCAL_REPOSITORY, lookupLocalRepository, type LocalTrustedReposi
 import { normalizeGitHubRemote } from '../../../code-broker/src/isolation/remote-identity'
 import { TRUSTED_TOOL_CANDIDATES, explainToolCandidates, isTrustedTool, resolveTrustedTool } from '../../../code-broker/src/isolation/toolchain'
 import {
-  DOCKER_FORBIDDEN_SUBCOMMANDS, GIT_ALLOWED_CONFIG_OVERRIDES, GIT_FORBIDDEN_SUBCOMMANDS, InfraCommandRefused, brokerCommand,
+  DOCKER_FORBIDDEN_SUBCOMMANDS, GIT_ALLOWED_CONFIG_OVERRIDES, GIT_FORBIDDEN_SUBCOMMANDS, GIT_HARDENING_PREFIX, InfraCommandRefused, brokerCommand,
   buildDockerEnv, buildGitEnv, createInfraRunner, createIsolatedHome, disposeIsolatedHome, isBrokerCommand,
 } from '../../../code-broker/src/isolation/process-runner'
 import { gitCommands } from '../../../code-broker/src/isolation/git-commands'
+import { GIT_OPERATIONS, isPlainRef, isWorktreeTargetFor, matchGitOperation, worktreeBranchUuid } from '../../../code-broker/src/isolation/git-grammar'
 import { auditGitConfig, parseGitConfigZ } from '../../../code-broker/src/isolation/git-config-audit'
 import * as containment from '../../../code-broker/src/isolation/fs-containment'
 import {
@@ -40,6 +41,9 @@ import type { InfraCommand, InfraResult, InfraRunner } from '../../../code-broke
 const ROOT = resolve(__dirname, '../../../..')
 /** Source with comments removed, so scans judge CODE, not the prose that explains what the code forbids. */
 const code = (path: string) => readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(line => line.replace(/(^|[^:'"`\\])\/\/.*$/, '$1')).join('\n')
+/** A properly hardened Git argv: the mandatory prefix + one operation's arguments. */
+const hg = (...rest: string[]) => [...GIT_HARDENING_PREFIX, ...rest]
+const HEAD_ARGV = hg('rev-parse', '--verify', '--quiet', 'HEAD^{commit}')
 const LETTERED = 'abcdef00-0000-4000-8000-00000000000a'      // has hex letters, so upper-casing really changes it
 const ISO = resolve(ROOT, 'apps/code-broker/src/isolation')
 const WORK = '50000000-0000-4000-8000-000000000001'
@@ -202,31 +206,33 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
   afterEach(() => { vi.unstubAllEnvs() })
 
   it('the closed git vocabulary refuses every forbidden subcommand and everything not allowlisted', () => {
-    for (const sub of GIT_FORBIDDEN_SUBCOMMANDS) expect(() => brokerCommand({ tool: 'git', argv: [sub, 'x'] }), sub).toThrow(InfraCommandRefused)
+    for (const sub of GIT_FORBIDDEN_SUBCOMMANDS) expect(() => brokerCommand({ tool: 'git', argv: hg(sub, 'x') }), sub).toThrow(InfraCommandRefused)
     for (const sub of ['fetch', 'pull', 'push', 'commit', 'merge', 'rebase', 'clone', 'checkout', 'remote', 'reset', 'submodule']) {
-      expect(() => brokerCommand({ tool: 'git', argv: [sub] })).toThrow(/git_subcommand_forbidden/)
+      expect(() => brokerCommand({ tool: 'git', argv: hg(sub) })).toThrow(/git_subcommand_forbidden/)
     }
-    for (const sub of ['log', 'diff', 'grep', 'blame', 'archive', 'bundle', 'hash-object', 'ls-tree', 'unknown']) expect(() => brokerCommand({ tool: 'git', argv: [sub] }), sub).toThrow(/git_subcommand_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['worktree', 'remove', '--force', '/x'] })).toThrow(/worktree_action_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['worktree', 'prune'] })).toThrow(/worktree_action_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['config', '--global', '--list'] })).toThrow(/git_config_mode_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['config', 'core.hooksPath', '/tmp/x'] })).toThrow(/git_config_mode_not_allowed/)
+    for (const sub of ['log', 'diff', 'grep', 'blame', 'archive', 'bundle', 'hash-object', 'ls-tree', 'unknown']) expect(() => brokerCommand({ tool: 'git', argv: hg(sub) }), sub).toThrow(/git_subcommand_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('worktree', 'remove', '--force', '/x') })).toThrow(/worktree_action_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('worktree', 'prune') })).toThrow(/worktree_action_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('config', '--global', '--list') })).toThrow(/git_config_mode_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('config', 'core.hooksPath', '/tmp/x') })).toThrow(/git_config_mode_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('rev-parse', 'HEAD') })).toThrow(/git_operation_not_canonical/)     // allowed subcommand, non-canonical arguments
+    for (const sub of GIT_FORBIDDEN_SUBCOMMANDS) expect(() => brokerCommand({ tool: 'git', argv: [sub] }), `bare ${sub}`).toThrow(/git_hardening_prefix_required/)
   })
 
   it('rejects unlisted global options, unlisted -c overrides and injected option-like arguments', () => {
-    expect(() => brokerCommand({ tool: 'git', argv: ['--git-dir=/etc', 'rev-parse'] })).toThrow(/git_global_option_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['--exec-path=/tmp', 'rev-parse'] })).toThrow(InfraCommandRefused)
-    expect(() => brokerCommand({ tool: 'git', argv: ['-c', 'core.hooksPath=/tmp/evil', 'rev-parse', 'HEAD'] })).toThrow(/git_config_override_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['-c', 'core.fsmonitor=/tmp/evil', 'rev-parse', 'HEAD'] })).toThrow(/git_config_override_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['-c', 'alias.x=!sh', 'rev-parse'] })).toThrow(/git_config_override_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse', '--git-dir=/etc'] })).toThrow(/git_option_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse', '--work-tree=/'] })).toThrow(/git_option_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: ['--git-dir=/etc', 'rev-parse'] })).toThrow(/git_hardening_prefix_required/)
+    expect(() => brokerCommand({ tool: 'git', argv: [...GIT_HARDENING_PREFIX, '--git-dir=/etc', 'rev-parse'] })).toThrow(/git_global_option_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: [...GIT_HARDENING_PREFIX, '--exec-path=/tmp', 'rev-parse'] })).toThrow(InfraCommandRefused)
+    expect(() => brokerCommand({ tool: 'git', argv: [...GIT_HARDENING_PREFIX, '-c', 'core.hooksPath=/tmp/evil', 'rev-parse', 'HEAD'] })).toThrow(/git_global_option_not_allowed/)
+    expect(() => brokerCommand({ tool: 'git', argv: ['-c', 'core.hooksPath=/tmp/evil', 'rev-parse', 'HEAD'] })).toThrow(/git_hardening_prefix_required/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('rev-parse', '--git-dir=/etc') })).toThrow(/git_operation_not_canonical/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('rev-parse', '--work-tree=/') })).toThrow(/git_operation_not_canonical/)
     expect(() => brokerCommand({ tool: 'git', argv: [] })).toThrow(/argv_shape/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse', 'a\0b'] })).toThrow(/argv_element/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse', 'x'.repeat(5000)] })).toThrow(/argv_element/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('rev-parse', 'a\0b') })).toThrow(/argv_element/)
+    expect(() => brokerCommand({ tool: 'git', argv: hg('rev-parse', 'x'.repeat(5000)) })).toThrow(/argv_element/)
     expect(() => brokerCommand({ tool: 'sh' as never, argv: ['-c', 'id'] })).toThrow(/tool_not_allowed/)
     expect(() => brokerCommand({ tool: 'bash' as never, argv: ['-c', 'id'] })).toThrow(/tool_not_allowed/)
-    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse'], cwd: 'relative/dir' })).toThrow(/cwd_not_absolute/)
+    expect(() => brokerCommand({ tool: 'git', argv: HEAD_ARGV, cwd: 'relative/dir' })).toThrow(/cwd_not_absolute/)
   })
 
   it('caller-supplied git values cannot inject argv through the closed builders', () => {
@@ -234,18 +240,18 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     for (const bad of ['--upload-pack=evil', '-c', 'HEAD', 'a'.repeat(39), 'A'.repeat(40), `${'a'.repeat(40)} `, `${'a'.repeat(40)}\n`, `${'a'.repeat(39)}g`, '-'.repeat(40)]) {
       expect(() => gitCommands.objectType(root, bad), bad).toThrow()
       expect(() => gitCommands.resolveCommit(root, bad), bad).toThrow()
-      expect(() => gitCommands.worktreeAdd(root, `sdf1/${WORK}`, '/tmp/wt', bad), bad).toThrow()
+      expect(() => gitCommands.worktreeAdd(root, `sdf1/${WORK}`, `/tmp/wt/${WORK}`, bad), bad).toThrow()
     }
     for (const bad of ['main', 'refs/../x', 'refs/heads/', 'refs/heads/x.lock', '-refs/heads/x', 'refs/tags/v1', 'refs/remotes/origin/main --exec']) expect(() => gitCommands.refExists(root, bad), bad).toThrow()
-    for (const branch of ['main', 'sdf1/not-a-uuid', 'sdf1/../x', `sdf2/${WORK}`, `sdf1/${WORK}/x`, '-b', `sdf1/${LETTERED.toUpperCase()}`]) expect(() => gitCommands.worktreeAdd(root, branch, '/tmp/wt', 'a'.repeat(40)), branch).toThrow()
-    for (const target of ['relative', '-x', '/tmp/a\0b']) expect(() => gitCommands.worktreeAdd(root, `sdf1/${WORK}`, target, 'a'.repeat(40)), target).toThrow()
+    for (const branch of ['main', 'sdf1/not-a-uuid', 'sdf1/../x', `sdf2/${WORK}`, `sdf1/${WORK}/x`, '-b', `sdf1/${LETTERED.toUpperCase()}`]) expect(() => gitCommands.worktreeAdd(root, branch, `/tmp/wt/${WORK}`, 'a'.repeat(40)), branch).toThrow()
+    for (const target of ['relative', '-x', '/tmp/a\0b', '/tmp/wt', `/tmp/wt/${WORK_2}`, `/tmp/../wt/${WORK}`]) expect(() => gitCommands.worktreeAdd(root, `sdf1/${WORK}`, target, 'a'.repeat(40)), target).toThrow()
   })
 
   it('every emitted git command carries the execution-hardening overrides and no forbidden verb', () => {
     const all: InfraCommand[] = [
       gitCommands.layout('/r'), gitCommands.localConfig('/r'), gitCommands.objectType('/r', 'a'.repeat(40)), gitCommands.resolveCommit('/r', 'a'.repeat(40)),
       gitCommands.resolveCommit('/r', 'refs/remotes/origin/main'), gitCommands.refExists('/r', 'refs/heads/x'), gitCommands.worktreeList('/r'),
-      gitCommands.worktreeAdd('/r', `sdf1/${WORK}`, '/w/x', 'a'.repeat(40)), gitCommands.head('/w'), gitCommands.symbolicHead('/w'), gitCommands.status('/w'),
+      gitCommands.worktreeAdd('/r', `sdf1/${WORK}`, `/w/${WORK}`, 'a'.repeat(40)), gitCommands.head('/w'), gitCommands.symbolicHead('/w'), gitCommands.status('/w'),
     ]
     for (const command of all) {
       expect(isBrokerCommand(command)).toBe(true)
@@ -255,8 +261,8 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
       expect(command.tool).toBe('git')
     }
     expect(GIT_ALLOWED_CONFIG_OVERRIDES['core.hooksPath']).toBe('/dev/null')
-    const add = gitCommands.worktreeAdd('/r', `sdf1/${WORK}`, '/w/x', 'a'.repeat(40)).argv
-    expect(add.slice(add.indexOf('worktree'))).toEqual(['worktree', 'add', '--quiet', '--lock', '--reason', 'omnira-sdf explicit-cleanup-only', '-b', `sdf1/${WORK}`, '/w/x', 'a'.repeat(40)])
+    const add = gitCommands.worktreeAdd('/r', `sdf1/${WORK}`, `/w/${WORK}`, 'a'.repeat(40)).argv
+    expect(add.slice(add.indexOf('worktree'))).toEqual(['worktree', 'add', '--quiet', '--lock', '--reason', 'omnira-sdf explicit-cleanup-only', '-b', `sdf1/${WORK}`, `/w/${WORK}`, 'a'.repeat(40)])
   })
 
   it('only a broker-made command can run, and run() takes nothing but the command (no env, args or executable)', async () => {
@@ -340,11 +346,11 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     const big = Buffer.alloc(2000, 0x61)
     const { impl } = fakeSpawn(child => { child.stdout.emit('data', big); child.stdout.emit('data', big); child.stderr.emit('data', big); child.emit('close', 0, null) })
     const runner = createInfraRunner({ isolatedHome: home, git: trusted, docker: null, dockerSocketPath: null, spawnImpl: impl })
-    const result = await runner.run(brokerCommand({ tool: 'git', argv: ['rev-parse', 'HEAD'], cwd: '/tmp', maxOutputBytes: 1000 }))
+    const result = await runner.run(brokerCommand({ tool: 'git', argv: HEAD_ARGV, cwd: '/tmp', maxOutputBytes: 1000 }))
     expect(result.stdout.length).toBe(1000)
     expect(result.stderr.length).toBe(1000)
     expect(result.truncated).toBe(true)
-    const capped = brokerCommand({ tool: 'git', argv: ['rev-parse', 'HEAD'], maxOutputBytes: 10 ** 9 })
+    const capped = brokerCommand({ tool: 'git', argv: HEAD_ARGV, maxOutputBytes: 10 ** 9 })
     expect(capped.maxOutputBytes).toBeLessThanOrEqual(1024 * 1024)
   })
 
@@ -355,7 +361,7 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
       let killed: any
       const wrapped = ((...args: Parameters<typeof impl>) => { killed = (impl as any)(...args); return killed }) as typeof impl
       const runner = createInfraRunner({ isolatedHome: home, git: trusted, docker: null, dockerSocketPath: null, spawnImpl: wrapped })
-      const pending = runner.run(brokerCommand({ tool: 'git', argv: ['rev-parse', 'HEAD'], cwd: '/tmp', timeoutMs: 500 }))
+      const pending = runner.run(brokerCommand({ tool: 'git', argv: HEAD_ARGV, cwd: '/tmp', timeoutMs: 500 }))
       await vi.advanceTimersByTimeAsync(499)
       expect(killed.kill).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(2)
@@ -367,7 +373,7 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
       expect(result.timedOut).toBe(true)
       expect(result.exitCode).toBeNull()
     } finally { vi.useRealTimers() }
-    expect(brokerCommand({ tool: 'git', argv: ['rev-parse', 'HEAD'], timeoutMs: 10 ** 9 }).timeoutMs).toBeLessThanOrEqual(120_000)
+    expect(brokerCommand({ tool: 'git', argv: HEAD_ARGV, timeoutMs: 10 ** 9 }).timeoutMs).toBeLessThanOrEqual(120_000)
   })
 
   it('logs nothing and never puts a command line or secret in a result or thrown message', async () => {
@@ -378,7 +384,7 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     const runner = createInfraRunner({ isolatedHome: home, git: trusted, docker: null, dockerSocketPath: null, spawnImpl: impl })
     const result = await runner.run(gitCommands.head('/tmp'))
     let thrown = ''
-    try { brokerCommand({ tool: 'git', argv: ['fetch', secret] }) } catch (error) { thrown = String(error) }
+    try { brokerCommand({ tool: 'git', argv: hg('fetch', secret) }) } catch (error) { thrown = String(error) }
     expect(JSON.stringify(result) + thrown).not.toContain(secret)
     for (const spy of spies) { expect(spy).not.toHaveBeenCalled(); spy.mockRestore() }
     for (const file of readdirSync(ISO)) expect(code(join(ISO, file)), file).not.toMatch(/\bconsole\.|\blogger\b/)
@@ -400,6 +406,198 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     expect(result.status).toBe('prepared')
     expect(existsSync(marker)).toBe(false)                         // no hook, filter, fsmonitor or credential helper ever ran
     expect(existsSync(join(fx.parent, WORK, 'a.txt'))).toBe(true)
+  })
+})
+
+describe('SDF-1C3A low-level Git command grammar: the issuer boundary ITSELF fails closed (not only the builders)', () => {
+  // The canonical hardening prefix, derived from the broker-owned override table (independent of the builders).
+  const PREFIX = ['--no-pager', '--no-optional-locks', ...Object.entries(GIT_ALLOWED_CONFIG_OVERRIDES).flatMap(([key, value]) => ['-c', `${key}=${value}`])]
+  const SHA = 'a'.repeat(40)
+  const BRANCH = `sdf1/${WORK}`
+  const TARGET = `/tmp/worktrees/${WORK}`
+  const REASON = 'omnira-sdf explicit-cleanup-only'
+  const hardened = (...rest: string[]) => [...PREFIX, ...rest]
+  const accepts = (argv: string[]) => { try { brokerCommand({ tool: 'git', argv }); return true } catch (error) { if (error instanceof InfraCommandRefused) return false; throw error } }
+
+  /** The EXACT operations Phase 1C3A needs — and the only ones that may become a Git InfraCommand. */
+  const CANONICAL: Record<string, string[]> = {
+    layout: hardened('rev-parse', '--show-toplevel', '--absolute-git-dir', '--git-common-dir', '--is-inside-work-tree'),
+    localConfig: hardened('config', '--local', '--list', '-z'),
+    objectType: hardened('cat-file', '-t', SHA),
+    resolveSha: hardened('rev-parse', '--verify', '--quiet', `${SHA}^{commit}`),
+    resolveRef: hardened('rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main^{commit}'),
+    refExistsRemote: hardened('show-ref', '--verify', '--quiet', 'refs/remotes/origin/main'),
+    refExistsHeads: hardened('show-ref', '--verify', '--quiet', `refs/heads/${BRANCH}`),
+    worktreeList: hardened('worktree', 'list', '--porcelain', '-z'),
+    worktreeAdd: hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, '-b', BRANCH, TARGET, SHA),
+    head: hardened('rev-parse', '--verify', '--quiet', 'HEAD^{commit}'),
+    symbolicHead: hardened('symbolic-ref', '--quiet', 'HEAD'),
+    status: hardened('status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none'),
+  }
+
+  it('accepts each exact canonical operation (sanity: the grammar is not vacuous)', () => {
+    for (const [name, argv] of Object.entries(CANONICAL)) expect(accepts(argv), name).toBe(true)
+  })
+
+  it('every production gitCommands builder emits exactly a canonical shape', () => {
+    const made = [
+      gitCommands.layout('/r'), gitCommands.localConfig('/r'), gitCommands.objectType('/r', SHA), gitCommands.resolveCommit('/r', SHA), gitCommands.resolveCommit('/r', 'refs/remotes/origin/main'),
+      gitCommands.refExists('/r', 'refs/remotes/origin/main'), gitCommands.worktreeList('/r'), gitCommands.worktreeAdd('/r', BRANCH, TARGET, SHA), gitCommands.head('/w'), gitCommands.symbolicHead('/w'), gitCommands.status('/w'),
+    ].map(command => JSON.stringify(command.argv))
+    const canonical = new Set(Object.values(CANONICAL).map(argv => JSON.stringify(argv)))
+    for (const argv of made) expect(canonical.has(argv), argv).toBe(true)
+  })
+
+  it('refuses EVERY canonical operation issued without the complete hardening prefix', () => {
+    for (const [name, argv] of Object.entries(CANONICAL)) {
+      const bare = argv.slice(PREFIX.length)
+      expect(accepts(bare), `${name}: no prefix at all`).toBe(false)
+      expect(accepts(['--no-pager', '--no-optional-locks', ...bare]), `${name}: flags only`).toBe(false)
+    }
+  })
+
+  it('refuses a prefix with ANY protection removed, altered, duplicated, reordered or supplemented', () => {
+    const op = ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']
+    // drop each element of the prefix (a flag or a whole `-c key=value` pair)
+    for (let i = 0; i < PREFIX.length; i += 1) {
+      const dropped = PREFIX[i] === '-c' ? [...PREFIX.slice(0, i), ...PREFIX.slice(i + 2)] : [...PREFIX.slice(0, i), ...PREFIX.slice(i + 1)]
+      if (PREFIX[i - 1] === '-c') continue                                                    // the value slot was handled with its `-c`
+      expect(accepts([...dropped, ...op]), `dropped @${i} ${PREFIX[i]} ${PREFIX[i + 1] ?? ''}`).toBe(false)
+    }
+    for (const [key, value] of Object.entries(GIT_ALLOWED_CONFIG_OVERRIDES)) {
+      const altered = PREFIX.map(token => (token === `${key}=${value}` ? `${key}=tampered` : token))
+      expect(accepts([...altered, ...op]), `altered ${key}`).toBe(false)
+      expect(accepts([...PREFIX, '-c', `${key}=${value}`, ...op]), `duplicate ${key}`).toBe(false)
+    }
+    expect(accepts([...PREFIX, '-c', 'core.hooksPath=/tmp/evil', ...op]), 'caller-added -c').toBe(false)
+    expect(accepts([...PREFIX, '-c', 'alias.x=!id', ...op]), 'caller-added alias').toBe(false)
+    expect(accepts([...PREFIX, '--no-pager', ...op]), 'duplicate flag').toBe(false)
+    expect(accepts([...PREFIX, '--git-dir=/etc', ...op]), 'caller global option').toBe(false)
+    expect(accepts([...PREFIX, '-C', '/etc', ...op]), 'caller -C').toBe(false)
+    expect(accepts([PREFIX[1], PREFIX[0], ...PREFIX.slice(2), ...op]), 'reordered flags').toBe(false)
+    expect(accepts([...PREFIX.slice(0, 2), ...PREFIX.slice(4, 6), ...PREFIX.slice(2, 4), ...PREFIX.slice(6), ...op]), 'reordered -c pairs').toBe(false)
+    expect(accepts([...PREFIX]), 'prefix with no operation').toBe(false)
+    expect(accepts([]), 'empty').toBe(false)
+  })
+
+  it('symbolic-ref can only READ HEAD: every mutating or alternate form is refused', () => {
+    for (const rest of [
+      ['symbolic-ref', 'HEAD', 'refs/heads/evil'], ['symbolic-ref', '--quiet', 'HEAD', 'refs/heads/evil'], ['symbolic-ref', 'HEAD', 'refs/heads/main'], ['symbolic-ref', '-d', 'HEAD'], ['symbolic-ref', '--delete', 'HEAD'],
+      ['symbolic-ref', '--quiet', '-d', 'HEAD'], ['symbolic-ref', '-m', 'reason', 'HEAD', 'refs/heads/evil'], ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'], ['symbolic-ref', '--short', 'HEAD'],
+      ['symbolic-ref', '--recurse', 'HEAD'], ['symbolic-ref', '--no-recurse', 'HEAD'], ['symbolic-ref', 'HEAD'], ['symbolic-ref', '--quiet', 'refs/heads/main'], ['symbolic-ref', '--quiet', 'HEAD', '--'], ['symbolic-ref'],
+    ]) {
+      expect(accepts(hardened(...rest)), `hardened ${rest.join(' ')}`).toBe(false)
+      expect(accepts(rest), `bare ${rest.join(' ')}`).toBe(false)
+    }
+  })
+
+  it('worktree add has ONE grammar: fixed flags, fixed reason, a sdf1/<uuid> branch, a target tied to that uuid, a full lowercase SHA', () => {
+    const add = (over: Partial<Record<'reason' | 'branch' | 'target' | 'sha', string>> = {}) =>
+      hardened('worktree', 'add', '--quiet', '--lock', '--reason', over.reason ?? REASON, '-b', over.branch ?? BRANCH, over.target ?? TARGET, over.sha ?? SHA)
+    expect(accepts(add())).toBe(true)
+    const bad: Record<string, string[]> = {
+      'arbitrary branch': add({ branch: 'arbitrary' }), 'main as branch': add({ branch: 'main' }), 'branch outside prefix': add({ branch: `sdf2/${WORK}` }), 'non-uuid branch': add({ branch: 'sdf1/not-a-uuid' }),
+      'branch traversal': add({ branch: 'sdf1/../x' }), 'uppercase uuid branch': add({ branch: `sdf1/${LETTERED.toUpperCase()}`, target: `/tmp/worktrees/${LETTERED.toUpperCase()}` }),
+      'branch/target uuid mismatch': add({ target: `/tmp/worktrees/${WORK_2}` }), 'target without uuid leaf': add({ target: '/tmp/worktrees/other' }), 'relative target': add({ target: `worktrees/${WORK}` }),
+      'target with traversal': add({ target: `/tmp/../etc/${WORK}` }), 'target dot segment': add({ target: `/tmp/./x/${WORK}` }), 'option-like target': add({ target: '-f' }), 'target with double slash': add({ target: `/tmp//x/${WORK}` }),
+      'target with newline': add({ target: `/tmp/x\n/${WORK}` }), 'target with space': add({ target: `/tmp/a b/${WORK}` }), 'target with shell metachar': add({ target: `/tmp/$(id)/${WORK}` }), 'target trailing slash': add({ target: `${TARGET}/` }),
+      'ref instead of sha (HEAD)': add({ sha: 'HEAD' }), 'branch name as start point': add({ sha: 'main' }), 'abbreviated sha': add({ sha: SHA.slice(0, 7) }), 'uppercase sha': add({ sha: SHA.toUpperCase() }), '41-char sha': add({ sha: `${SHA}a` }),
+      'sha with revision suffix': add({ sha: `${SHA}~1` }), 'sha^{commit}': add({ sha: `${SHA}^{commit}` }), 'different reason': add({ reason: 'anything else' }), 'empty reason': add({ reason: '' }),
+      'detach': hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, '--detach', BRANCH, TARGET, SHA), 'force': hardened('worktree', 'add', '--force', '--quiet', '--lock', '--reason', REASON, '-b', BRANCH, TARGET, SHA),
+      'capital -B (reset branch)': hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, '-B', BRANCH, TARGET, SHA), 'no-checkout': hardened('worktree', 'add', '--no-checkout', '--quiet', '--lock', '--reason', REASON, '-b', BRANCH, TARGET, SHA),
+      'orphan': hardened('worktree', 'add', '--orphan', '-b', BRANCH, TARGET), 'no lock': hardened('worktree', 'add', '--quiet', '-b', BRANCH, TARGET, SHA), 'no quiet': hardened('worktree', 'add', '--lock', '--reason', REASON, '-b', BRANCH, TARGET, SHA),
+      'no branch flag': hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, BRANCH, TARGET, SHA), 'no start point': hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, '-b', BRANCH, TARGET),
+      'existing ref checkout': hardened('worktree', 'add', TARGET, 'main'), 'bare path only': hardened('worktree', 'add', TARGET), 'reordered flags': hardened('worktree', 'add', '--lock', '--quiet', '--reason', REASON, '-b', BRANCH, TARGET, SHA),
+      'reordered tail': hardened('worktree', 'add', '--quiet', '--lock', '--reason', REASON, '-b', BRANCH, SHA, TARGET), 'extra trailing arg': [...add(), '--'], 'extra pathspec': [...add(), 'a.txt'], 'second target': [...add(), '/tmp/other'],
+      'worktree remove': hardened('worktree', 'remove', '--force', TARGET), 'worktree prune': hardened('worktree', 'prune'), 'worktree move': hardened('worktree', 'move', TARGET, '/tmp/x'), 'worktree lock': hardened('worktree', 'lock', TARGET),
+      'worktree unlock': hardened('worktree', 'unlock', TARGET), 'worktree repair': hardened('worktree', 'repair'), 'worktree alone': hardened('worktree'),
+    }
+    for (const [name, argv] of Object.entries(bad)) expect(accepts(argv), name).toBe(false)
+  })
+
+  it('cat-file has ONE mode (-t <sha>): no --filters/--textconv/batch/content modes, no refs, no paths', () => {
+    for (const rest of [
+      ['cat-file', '-p', SHA], ['cat-file', '-s', SHA], ['cat-file', '-e', SHA], ['cat-file', 'commit', SHA], ['cat-file', 'blob', `${SHA}:a.txt`], ['cat-file', '--filters', 'HEAD:a.txt'], ['cat-file', '--filters', `${SHA}:a.txt`],
+      ['cat-file', '--textconv', `${SHA}:a.txt`], ['cat-file', '--batch'], ['cat-file', '--batch-check'], ['cat-file', '--batch-command'], ['cat-file', '--batch-all-objects'], ['cat-file', '--allow-unknown-type', '-t', SHA],
+      ['cat-file', '--follow-symlinks', '-t', SHA], ['cat-file', '--buffer', '-t', SHA], ['cat-file', '-t'], ['cat-file', '-t', 'HEAD'], ['cat-file', '-t', 'main'], ['cat-file', '-t', `${SHA}:a.txt`], ['cat-file', '-t', SHA.toUpperCase()],
+      ['cat-file', '-t', SHA.slice(0, 39)], ['cat-file', '-t', `${SHA}a`], ['cat-file', '-t', SHA, SHA], ['cat-file', '-t', SHA, '--'], ['cat-file', '-t', '--', SHA], ['cat-file', '--mailmap', '-t', SHA], ['cat-file'],
+    ]) expect(accepts(hardened(...rest)), rest.join(' ')).toBe(false)
+  })
+
+  it('rev-parse has exactly THREE shapes: layout, commit resolution (sha/ref), and HEAD commit', () => {
+    for (const rest of [
+      ['rev-parse', 'HEAD'], ['rev-parse', '--verify', 'HEAD'], ['rev-parse', '--verify', '--quiet', 'HEAD'], ['rev-parse', '--quiet', '--verify', 'HEAD^{commit}'], ['rev-parse', '--verify', '--quiet', 'HEAD^{tree}'],
+      ['rev-parse', '--verify', '--quiet', `${SHA}^{tree}`], ['rev-parse', '--verify', '--quiet', `${SHA}^{blob}`], ['rev-parse', '--verify', '--quiet', `${SHA}~1^{commit}`], ['rev-parse', '--verify', '--quiet', 'refs/tags/v1^{commit}'],
+      ['rev-parse', '--verify', '--quiet', 'refs/heads/../x^{commit}'], ['rev-parse', '--verify', '--quiet', 'main^{commit}'], ['rev-parse', '--verify', '--quiet', `${SHA.toUpperCase()}^{commit}`], ['rev-parse', '--verify', '--quiet', `${SHA.slice(0, 39)}^{commit}`],
+      ['rev-parse', '--verify', '--quiet', `HEAD:a.txt^{commit}`], ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}', '--'], ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}', 'HEAD^{commit}'], ['rev-parse', '--git-path', 'hooks/post-checkout'],
+      ['rev-parse', '--resolve-git-dir', '/etc'], ['rev-parse', '--show-cdup'], ['rev-parse', '--show-prefix'], ['rev-parse', '--abbrev-ref', 'HEAD'], ['rev-parse', '--git-dir'], ['rev-parse', '--show-toplevel'],
+      ['rev-parse', '--show-superproject-working-tree'], ['rev-parse', '--parseopt'], ['rev-parse', '--sq-quote', 'x'], ['rev-parse', '--path-format=absolute', '--git-dir'], ['rev-parse', '--local-env-vars'], ['rev-parse', '--is-bare-repository'],
+      ['rev-parse', '--show-toplevel', '--absolute-git-dir', '--git-common-dir'], ['rev-parse', '--absolute-git-dir', '--show-toplevel', '--git-common-dir', '--is-inside-work-tree'],
+      ['rev-parse', '--show-toplevel', '--absolute-git-dir', '--git-common-dir', '--is-inside-work-tree', '--git-dir'], ['rev-parse'],
+    ]) expect(accepts(hardened(...rest)), rest.join(' ')).toBe(false)
+  })
+
+  it('status has ONE argument list: no other flag, format, ignore mode, branch info or pathspec', () => {
+    for (const rest of [
+      ['status'], ['status', '--porcelain=v1', '-z'], ['status', '--porcelain=v2', '-z', '--untracked-files=all', '--ignore-submodules=none'], ['status', '--porcelain=v1', '-z', '--untracked-files=no', '--ignore-submodules=none'],
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all'], ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none', '--ignored'],
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none', '--branch'], ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none', '--', '/etc'],
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none', 'a.txt'], ['status', '--ignored', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none'],
+      ['status', '-z', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'], ['status', '--porcelain=v1', '-z', '--ignore-submodules=none', '--untracked-files=all'], ['status', '-s'], ['status', '--short'], ['status', '--long'],
+      ['status', '--renames'], ['status', '--find-renames=1'], ['status', '--column'], ['status', '--no-optional-locks'], ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none', '--ahead-behind'],
+    ]) expect(accepts(hardened(...rest)), rest.join(' ')).toBe(false)
+  })
+
+  it('show-ref and worktree list and config each have ONE argument list', () => {
+    for (const rest of [
+      ['show-ref'], ['show-ref', '--head'], ['show-ref', '--tags'], ['show-ref', '--heads'], ['show-ref', '--hash', 'refs/heads/main'], ['show-ref', '--dereference'], ['show-ref', '--verify', 'refs/heads/main'], ['show-ref', '--quiet', '--verify', 'refs/heads/main'],
+      ['show-ref', '--verify', '--quiet', 'refs/tags/v1'], ['show-ref', '--verify', '--quiet', 'HEAD'], ['show-ref', '--verify', '--quiet', 'refs/heads/../x'], ['show-ref', '--verify', '--quiet', 'refs/heads/x.lock'], ['show-ref', '--verify', '--quiet', 'refs/heads/x/'],
+      ['show-ref', '--verify', '--quiet', 'refs/heads/main', 'refs/heads/other'], ['show-ref', '--verify', '--quiet', '-d', 'refs/heads/main'], ['show-ref', '--exists', 'refs/heads/main'],
+      ['worktree', 'list'], ['worktree', 'list', '--porcelain'], ['worktree', 'list', '-z'], ['worktree', 'list', '-v'], ['worktree', 'list', '--verbose'], ['worktree', 'list', '--porcelain', '-z', '-v'], ['worktree', 'list', '-z', '--porcelain'],
+      ['worktree', 'list', '--porcelain', '-z', '/tmp'], ['config', '--local', '--list'], ['config', '--local', '--list', '-z', '--show-origin'], ['config', '--local', '--list', '-z', '--show-scope'], ['config', '--global', '--list', '-z'],
+      ['config', '--system', '--list', '-z'], ['config', '--list', '-z'], ['config', '--local', '-l', '-z'], ['config', '--local', '--get', 'remote.origin.url'], ['config', '--local', 'core.hooksPath', '/tmp/evil'], ['config', '--local', '--unset', 'x'],
+      ['config', '--file', '/etc/gitconfig', '--list', '-z'], ['config', '--local', '--list', '-z', '--includes'], ['config', '--worktree', '--list', '-z'], ['config', '-e'], ['config', '--edit'], ['config', '--local', '--list', '-z', '--type=path'],
+    ]) expect(accepts(hardened(...rest)), rest.join(' ')).toBe(false)
+  })
+
+  it('the named forbidden and unlisted subcommands stay refused even when properly hardened', () => {
+    for (const sub of [...GIT_FORBIDDEN_SUBCOMMANDS, 'log', 'diff', 'grep', 'blame', 'archive', 'bundle', 'hash-object', 'ls-tree', 'ls-files', 'for-each-ref', 'update-index', 'read-tree', 'write-tree', 'commit-tree', 'mktag', 'unpack-objects']) {
+      expect(accepts(hardened(sub)), sub).toBe(false)
+      expect(accepts(hardened(sub, SHA)), `${sub} <sha>`).toBe(false)
+    }
+  })
+
+  it('the grammar is a FINITE closed set: eleven operations, each canonical argv maps to its own operation and nothing else matches', () => {
+    expect([...GIT_OPERATIONS].sort()).toEqual(['head', 'layout', 'localConfig', 'objectType', 'refExists', 'resolveRef', 'resolveSha', 'status', 'symbolicHead', 'worktreeAdd', 'worktreeList'])
+    const expected: Record<string, string> = {
+      layout: 'layout', localConfig: 'localConfig', objectType: 'objectType', resolveSha: 'resolveSha', resolveRef: 'resolveRef', refExistsRemote: 'refExists', refExistsHeads: 'refExists',
+      worktreeList: 'worktreeList', worktreeAdd: 'worktreeAdd', head: 'head', symbolicHead: 'symbolicHead', status: 'status',
+    }
+    for (const [name, argv] of Object.entries(CANONICAL)) expect(matchGitOperation(argv), name).toBe(expected[name])
+    expect(new Set(Object.values(expected))).toEqual(new Set(GIT_OPERATIONS))
+    expect(matchGitOperation(['rev-parse', 'HEAD'])).toBeNull()
+    expect(matchGitOperation([])).toBeNull()
+  })
+
+  it('the grammar validators are strict about refs, branches and targets', () => {
+    for (const ref of ['refs/remotes/origin/main', 'refs/heads/sdf1/x', 'refs/heads/feat/a-b_c.d']) expect(isPlainRef(ref), ref).toBe(true)
+    for (const ref of ['main', 'HEAD', 'refs/tags/v1', 'refs/heads/', 'refs/heads/a..b', 'refs/heads/a//b', 'refs/heads/.hidden', 'refs/heads/x.lock', 'refs/heads/x/', 'refs/heads/x.', 'refs/heads/a b', 'refs/heads/a\nb', '--upload-pack=x', '', 5, null]) expect(isPlainRef(ref), String(ref)).toBe(false)
+    expect(worktreeBranchUuid(BRANCH)).toBe(WORK)
+    for (const branch of ['sdf1/', 'sdf1/x', `sdf1/${WORK}/x`, `sdf1/${LETTERED.toUpperCase()}`, `sdf2/${WORK}`, `x/sdf1/${WORK}`, WORK, 5, null]) expect(worktreeBranchUuid(branch), String(branch)).toBeNull()
+    expect(isWorktreeTargetFor(`/Users/u/Projects/Omnira/.worktrees/sdf1/${WORK}`, WORK)).toBe(true)        // a leading-dot directory is fine; `.`/`..` segments are not
+    expect(isWorktreeTargetFor(`/private/var/folders/t7/x_y-z/T/sdf1c3-fx-Ab1/worktrees/${WORK}`, WORK)).toBe(true)
+    for (const target of [`/${WORK}`, WORK, `/a/${WORK_2}`, `/a/../${WORK}`, `/a/./${WORK}`, `/a//${WORK}`, `/a/${WORK}/`, `/a b/${WORK}`, `/a/\n/${WORK}`, `/a/$(id)/${WORK}`, `/a/${WORK}/b`, `/${'x/'.repeat(600)}${WORK}`, 5, null]) {
+      expect(isWorktreeTargetFor(target, WORK), String(target)).toBe(false)
+    }
+  })
+
+  it('the refusal is decided by the low-level boundary alone, not by which module called it', () => {
+    // brokerCommand is what a "future internal caller that bypasses gitCommands.ts" would call.
+    expect(() => brokerCommand({ tool: 'git', argv: ['symbolic-ref', 'HEAD', 'refs/heads/something'] })).toThrow(InfraCommandRefused)
+    expect(() => brokerCommand({ tool: 'git', argv: hardened('symbolic-ref', 'HEAD', 'refs/heads/something') })).toThrow(InfraCommandRefused)
+    expect(() => brokerCommand({ tool: 'git', argv: ['rev-parse', 'HEAD'], cwd: '/tmp' })).toThrow(InfraCommandRefused)
+    expect(() => brokerCommand({ tool: 'git', argv: ['worktree', 'add', '--detach', '/tmp/x', 'HEAD'] })).toThrow(InfraCommandRefused)
+    expect(isBrokerCommand({ tool: 'git', argv: CANONICAL.head, cwd: null, timeoutMs: 1, maxOutputBytes: 1 })).toBe(false)
   })
 })
 
@@ -1158,6 +1356,24 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
       expect(source, file).not.toMatch(/docker cp|docker exec|docker run\b|\btar\b.*-[cx]|type=bind/)
       expect(source, file).not.toMatch(/readFileSync\([^)]*(?:worktree|workspace)/)
     }
+  })
+
+  it('only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module', () => {
+    const production = [...walk(resolve(ROOT, 'apps/code-broker/src')), ...walk(resolve(ROOT, 'apps/web/app')), ...walk(resolve(ROOT, 'apps/web/lib')), ...walk(resolve(ROOT, 'apps/web/components')), ...walk(resolve(ROOT, 'apps/web/scripts'))]
+      .filter(file => !file.includes('/lib/qa/') && !/\.test\.tsx?$/.test(file))
+    const users = production.filter(file => /\bbrokerCommand\b/.test(code(file))).map(file => file.slice(ROOT.length + 1)).sort()
+    expect(users).toEqual([
+      'apps/code-broker/src/isolation/docker-host.ts', 'apps/code-broker/src/isolation/git-commands.ts', 'apps/code-broker/src/isolation/process-runner.ts', 'apps/code-broker/src/isolation/sandbox-spec.ts',
+    ])
+    // …and nothing outside the isolation directory imports the runner module at all (protocol, CLI, HTTP, routes, model, WorkPackage code).
+    const importers = production.filter(file => !file.includes('/code-broker/src/isolation/') && /process-runner|git-grammar|git-commands|sandbox-spec|docker-host/.test(code(file)))
+    expect(importers.map(file => file.slice(ROOT.length + 1))).toEqual([])
+    // Git commands can only be made through the grammar: the runner takes its rules from git-grammar and has no second Git validator.
+    const runner = code(join(ISO, 'process-runner.ts'))
+    expect(runner).toMatch(/matchGitOperation\(argv\)/)
+    expect(runner).toMatch(/git_hardening_prefix_required/)
+    expect(code(join(ISO, 'git-grammar.ts'))).not.toMatch(/from ['"]\.\/process-runner/)
+    expect(code(join(ISO, 'git-commands.ts'))).not.toMatch(/GIT_ALLOWED_CONFIG_OVERRIDES\)\.flatMap/)   // the prefix has ONE definition (git-grammar), not a second copy in the builders
   })
 
   it('confines child_process to the single runner module', () => {

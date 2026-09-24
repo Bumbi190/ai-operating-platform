@@ -10,23 +10,15 @@
  * fsmonitor, credential helpers, ssh/askpass, protocols (no network of any kind) and gc.
  */
 
-import { brokerCommand, GIT_ALLOWED_CONFIG_OVERRIDES, type InfraCommand } from './process-runner.js'
-
-const SHA1 = /^[a-f0-9]{40}$/
-const REF = /^refs\/(?:remotes|heads)\/[A-Za-z0-9._\/-]{1,200}$/
-const BRANCH = /^sdf1\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-
-const HARDENING: readonly string[] = Object.freeze([
-  '--no-pager', '--no-optional-locks',
-  ...Object.entries(GIT_ALLOWED_CONFIG_OVERRIDES).flatMap(([key, value]) => ['-c', `${key}=${value}`]),
-])
+import { GIT_HARDENING_PREFIX, WORKTREE_LOCK_REASON, isFullSha, isPlainRef, isWorktreeTargetFor, worktreeBranchUuid } from './git-grammar.js'
+import { brokerCommand, type InfraCommand } from './process-runner.js'
 
 function git(cwd: string, args: readonly string[], timeoutMs?: number): InfraCommand {
-  return brokerCommand({ tool: 'git', argv: [...HARDENING, ...args], cwd, timeoutMs })
+  return brokerCommand({ tool: 'git', argv: [...GIT_HARDENING_PREFIX, ...args], cwd, timeoutMs })
 }
 
-const requireSha = (sha: string) => { if (!SHA1.test(sha)) throw new Error('git command needs a lowercase 40-hex SHA'); return sha }
-const requireRef = (ref: string) => { if (!REF.test(ref) || ref.includes('..') || ref.endsWith('/') || ref.endsWith('.lock')) throw new Error('git command needs a plain refs/… name'); return ref }
+const requireSha = (sha: string) => { if (!isFullSha(sha)) throw new Error('git command needs a lowercase 40-hex SHA'); return sha }
+const requireRef = (ref: string) => { if (!isPlainRef(ref)) throw new Error('git command needs a plain refs/… name'); return ref }
 
 export const gitCommands = Object.freeze({
   /** Toplevel, git dir and common dir of the checkout at `root`. */
@@ -37,7 +29,7 @@ export const gitCommands = Object.freeze({
   objectType: (root: string, sha: string) => git(root, ['cat-file', '-t', requireSha(sha)]),
   /** Resolves a full SHA, or a plain ref, to the COMMIT it names. */
   resolveCommit: (root: string, revision: string) => {
-    const spec = SHA1.test(revision) ? revision : requireRef(revision)
+    const spec = isFullSha(revision) ? revision : requireRef(revision)
     return git(root, ['rev-parse', '--verify', '--quiet', `${spec}^{commit}`])
   },
   refExists: (root: string, ref: string) => git(root, ['show-ref', '--verify', '--quiet', requireRef(ref)]),
@@ -47,9 +39,10 @@ export const gitCommands = Object.freeze({
    * `--lock` marks it retained (explicit-cleanup-only): worktree pruning cannot reap it.
    */
   worktreeAdd: (root: string, branch: string, target: string, sha: string) => {
-    if (!BRANCH.test(branch)) throw new Error('worktree branch must be sdf1/<uuid>')
-    if (!target.startsWith('/') || target.includes('\0') || target.startsWith('-')) throw new Error('worktree target must be an absolute path')
-    return git(root, ['worktree', 'add', '--quiet', '--lock', '--reason', 'omnira-sdf explicit-cleanup-only', '-b', branch, target, requireSha(sha)], 60_000)
+    const uuid = worktreeBranchUuid(branch)
+    if (!uuid) throw new Error('worktree branch must be sdf1/<uuid>')
+    if (!isWorktreeTargetFor(target, uuid)) throw new Error('worktree target must be an absolute path ending in the same uuid')
+    return git(root, ['worktree', 'add', '--quiet', '--lock', '--reason', WORKTREE_LOCK_REASON, '-b', branch, target, requireSha(sha)], 60_000)
   },
   head: (worktree: string) => git(worktree, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']),
   symbolicHead: (worktree: string) => git(worktree, ['symbolic-ref', '--quiet', 'HEAD']),

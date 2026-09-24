@@ -507,6 +507,238 @@ export type Database = {
           },
         ]
       }
+      atlas_code_work_receipts: {
+        Row: {
+          admission_hash: string
+          claim_id: string | null
+          event_type: string
+          fence: number | null
+          observed_at: string
+          payload: Json
+          payload_hash: string
+          previous_receipt_hash: string | null
+          producer_id: string
+          producer_type: string
+          receipt_class: string
+          receipt_hash: string
+          receipt_id: string
+          recorded_at: string
+          sequence: number
+          work_id: string
+        }
+        Insert: {
+          admission_hash: string
+          claim_id?: string | null
+          event_type: string
+          fence?: number | null
+          observed_at: string
+          payload: Json
+          payload_hash: string
+          previous_receipt_hash?: string | null
+          producer_id: string
+          producer_type: string
+          receipt_class: string
+          receipt_hash: string
+          receipt_id?: string
+          recorded_at?: string
+          sequence: number
+          work_id: string
+        }
+        Update: {
+          admission_hash?: string
+          claim_id?: string | null
+          event_type?: string
+          fence?: number | null
+          observed_at?: string
+          payload?: Json
+          payload_hash?: string
+          previous_receipt_hash?: string | null
+          producer_id?: string
+          producer_type?: string
+          receipt_class?: string
+          receipt_hash?: string
+          receipt_id?: string
+          recorded_at?: string
+          sequence?: number
+          work_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_code_work_receipts_run_fk"
+            columns: ["work_id", "admission_hash"]
+            isOneToOne: false
+            referencedRelation: "atlas_code_work_runs"
+            referencedColumns: ["work_id", "admission_hash"]
+          },
+        ]
+      }
+      atlas_code_work_runs: {
+        Row: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        Insert: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at?: string | null
+          authorization_id: string
+          authorized_at?: string | null
+          broker_host_id?: string | null
+          broker_id?: string | null
+          broker_token_expires_at?: string | null
+          broker_token_hash?: string | null
+          cancel_reason_code?: string | null
+          cancel_requested?: boolean
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          capability_id: string
+          capability_version: number
+          claim_id?: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at?: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence?: number
+          last_heartbeat_at?: string | null
+          last_receipt_sequence?: number
+          lease_until?: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head?: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state?: string
+          state_version?: number
+          terminal_at?: string | null
+          terminal_reason_code?: string | null
+          updated_at?: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        Update: {
+          admission?: Json
+          admission_hash?: string
+          authorization_expires_at?: string | null
+          authorization_id?: string
+          authorized_at?: string | null
+          broker_host_id?: string | null
+          broker_id?: string | null
+          broker_token_expires_at?: string | null
+          broker_token_hash?: string | null
+          cancel_reason_code?: string | null
+          cancel_requested?: boolean
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          capability_id?: string
+          capability_version?: number
+          claim_id?: string | null
+          command_registry_hash?: string
+          command_registry_version?: string
+          created_at?: string
+          delegation_envelope_id?: string
+          delegation_hash?: string
+          fence?: number
+          last_heartbeat_at?: string | null
+          last_receipt_sequence?: number
+          lease_until?: string | null
+          mission_hash?: string
+          mission_id?: string
+          mission_version?: number
+          pinned_base_sha?: string
+          project_id?: string
+          proposal_fingerprint_hash?: string
+          proposal_key_hash?: string
+          receipt_chain_head?: string | null
+          repository_id?: string
+          repository_name?: string
+          repository_owner?: string
+          requested_by?: string
+          state?: string
+          state_version?: number
+          terminal_at?: string | null
+          terminal_reason_code?: string | null
+          updated_at?: string
+          work_id?: string
+          work_package_hash?: string
+          work_package_id?: string
+          worker_adapter_id?: string
+          worker_adapter_version?: number
+          worker_model_id?: string
+          worker_output_protocol?: string
+          worker_provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_code_work_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atlas_decision_ledger: {
         Row: {
           alternatives: Json
@@ -1815,6 +2047,85 @@ export type Database = {
           },
         ]
       }
+      dream_issue_reconciliation_events: {
+        Row: {
+          actor_principal: string
+          event_id: string
+          event_seq: number
+          event_type: string
+          evidence_digest: string | null
+          evidence_kind: string | null
+          evidence_locator: string | null
+          finding_id: string
+          finding_identity: string
+          occurred_at: string
+          project_id: string
+          provenance: string
+          recorded_at: string
+          source_key: string
+          superseding_finding_id: string | null
+          superseding_finding_identity: string | null
+        }
+        Insert: {
+          actor_principal: string
+          event_id?: string
+          event_seq?: never
+          event_type: string
+          evidence_digest?: string | null
+          evidence_kind?: string | null
+          evidence_locator?: string | null
+          finding_id: string
+          finding_identity: string
+          occurred_at?: string
+          project_id: string
+          provenance: string
+          recorded_at?: string
+          source_key: string
+          superseding_finding_id?: string | null
+          superseding_finding_identity?: string | null
+        }
+        Update: {
+          actor_principal?: string
+          event_id?: string
+          event_seq?: never
+          event_type?: string
+          evidence_digest?: string | null
+          evidence_kind?: string | null
+          evidence_locator?: string | null
+          finding_id?: string
+          finding_identity?: string
+          occurred_at?: string
+          project_id?: string
+          provenance?: string
+          recorded_at?: string
+          source_key?: string
+          superseding_finding_id?: string | null
+          superseding_finding_identity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dream_issue_reconciliation_events_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "dream_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dream_issue_reconciliation_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dream_issue_reconciliation_events_superseding_finding_id_fkey"
+            columns: ["superseding_finding_id"]
+            isOneToOne: false
+            referencedRelation: "dream_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dream_issues: {
         Row: {
           created_at: string
@@ -2970,6 +3281,59 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_credential_events: {
+        Row: {
+          actor: string
+          binding_action: string | null
+          credential_type: string
+          detail: Json
+          event_id: string
+          event_version: number
+          external_account_id: string | null
+          occurred_at: string
+          operation_id: string
+          outcome: string
+          platform: string
+          project_id: string
+        }
+        Insert: {
+          actor: string
+          binding_action?: string | null
+          credential_type: string
+          detail?: Json
+          event_id?: string
+          event_version: number
+          external_account_id?: string | null
+          occurred_at?: string
+          operation_id: string
+          outcome: string
+          platform: string
+          project_id: string
+        }
+        Update: {
+          actor?: string
+          binding_action?: string | null
+          credential_type?: string
+          detail?: Json
+          event_id?: string
+          event_version?: number
+          external_account_id?: string | null
+          occurred_at?: string
+          operation_id?: string
+          outcome?: string
+          platform?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_credential_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_memory: {
         Row: {
           audit_events: Json
@@ -3037,7 +3401,7 @@ export type Database = {
           expires_at: string | null
           id: string
           platform: string
-          project_id: string | null
+          project_id: string
           refreshed_at: string
           token_type: string
         }
@@ -3048,7 +3412,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           platform: string
-          project_id?: string | null
+          project_id: string
           refreshed_at?: string
           token_type?: string
         }
@@ -3059,7 +3423,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           platform?: string
-          project_id?: string | null
+          project_id?: string
           refreshed_at?: string
           token_type?: string
         }
@@ -3542,6 +3906,216 @@ export type Database = {
           },
         ]
       }
+      social_account_bindings: {
+        Row: {
+          account_label: string | null
+          binding_id: string
+          blocked_at: string | null
+          blocked_reason: string | null
+          bound_at: string
+          bound_by: string
+          credential_source: string
+          external_account_id: string
+          platform: string
+          project_id: string
+          superseded_at: string | null
+          verification: string
+          verified_at: string
+        }
+        Insert: {
+          account_label?: string | null
+          binding_id?: string
+          blocked_at?: string | null
+          blocked_reason?: string | null
+          bound_at?: string
+          bound_by: string
+          credential_source: string
+          external_account_id: string
+          platform: string
+          project_id: string
+          superseded_at?: string | null
+          verification: string
+          verified_at: string
+        }
+        Update: {
+          account_label?: string | null
+          binding_id?: string
+          blocked_at?: string | null
+          blocked_reason?: string | null
+          bound_at?: string
+          bound_by?: string
+          credential_source?: string
+          external_account_id?: string
+          platform?: string
+          project_id?: string
+          superseded_at?: string | null
+          verification?: string
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_account_bindings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_credential_health: {
+        Row: {
+          binding_id: string
+          checked_at: string
+          days_left: number | null
+          expires_at: string | null
+          identity_verified: boolean
+          last_refreshed_at: string | null
+          last_warned_threshold: number | null
+          platform: string
+          project_id: string
+          status: string
+          verified_account_id: string | null
+        }
+        Insert: {
+          binding_id: string
+          checked_at: string
+          days_left?: number | null
+          expires_at?: string | null
+          identity_verified: boolean
+          last_refreshed_at?: string | null
+          last_warned_threshold?: number | null
+          platform: string
+          project_id: string
+          status: string
+          verified_account_id?: string | null
+        }
+        Update: {
+          binding_id?: string
+          checked_at?: string
+          days_left?: number | null
+          expires_at?: string | null
+          identity_verified?: boolean
+          last_refreshed_at?: string | null
+          last_warned_threshold?: number | null
+          platform?: string
+          project_id?: string
+          status?: string
+          verified_account_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_credential_health_binding_id_fkey"
+            columns: ["binding_id"]
+            isOneToOne: false
+            referencedRelation: "social_account_bindings"
+            referencedColumns: ["binding_id"]
+          },
+          {
+            foreignKeyName: "social_credential_health_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_oauth_states: {
+        Row: {
+          actor: string
+          change_account: boolean
+          code_verifier: string | null
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          platform: string
+          project_id: string
+          state_hash: string
+        }
+        Insert: {
+          actor: string
+          change_account: boolean
+          code_verifier?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          platform: string
+          project_id: string
+          state_hash: string
+        }
+        Update: {
+          actor?: string
+          change_account?: boolean
+          code_verifier?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          platform?: string
+          project_id?: string
+          state_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_oauth_states_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      spend_advisory_overrides: {
+        Row: {
+          binding_scope: string | null
+          budget_sek: number | null
+          created_at: string
+          estimated_sek: number
+          headroom_sek: number | null
+          id: string
+          idempotency_key: string | null
+          operation: string | null
+          project_id: string
+          provider: string | null
+          reason: string
+          reservation_id: string | null
+        }
+        Insert: {
+          binding_scope?: string | null
+          budget_sek?: number | null
+          created_at?: string
+          estimated_sek: number
+          headroom_sek?: number | null
+          id?: string
+          idempotency_key?: string | null
+          operation?: string | null
+          project_id: string
+          provider?: string | null
+          reason: string
+          reservation_id?: string | null
+        }
+        Update: {
+          binding_scope?: string | null
+          budget_sek?: number | null
+          created_at?: string
+          estimated_sek?: number
+          headroom_sek?: number | null
+          id?: string
+          idempotency_key?: string | null
+          operation?: string | null
+          project_id?: string
+          provider?: string | null
+          reason?: string
+          reservation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spend_advisory_overrides_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       spend_reservations: {
         Row: {
           actual_sek: number | null
@@ -3665,6 +4239,95 @@ export type Database = {
           scope_type?: string
         }
         Relationships: []
+      }
+      survival_state_events: {
+        Row: {
+          actor_principal: string
+          autonomy_level: string
+          binding_limit_sek: number | null
+          binding_remaining_sek: number | null
+          binding_scope: string | null
+          burn_sek_per_day: number | null
+          declared_funding_sek: number | null
+          derivation_version: number
+          event_id: string
+          event_seq: number
+          event_type: string
+          from_state: string | null
+          funding_state: string
+          gaps: string[]
+          occurred_at: string
+          operating_paused: boolean | null
+          project_id: string
+          provenance: string
+          reasons: string[]
+          recorded_at: string
+          revenue_trend_sek: number | null
+          runway_days: number | null
+          threshold_status: string
+          to_state: string
+        }
+        Insert: {
+          actor_principal: string
+          autonomy_level: string
+          binding_limit_sek?: number | null
+          binding_remaining_sek?: number | null
+          binding_scope?: string | null
+          burn_sek_per_day?: number | null
+          declared_funding_sek?: number | null
+          derivation_version: number
+          event_id?: string
+          event_seq?: never
+          event_type: string
+          from_state?: string | null
+          funding_state: string
+          gaps?: string[]
+          occurred_at: string
+          operating_paused?: boolean | null
+          project_id: string
+          provenance: string
+          reasons?: string[]
+          recorded_at?: string
+          revenue_trend_sek?: number | null
+          runway_days?: number | null
+          threshold_status: string
+          to_state: string
+        }
+        Update: {
+          actor_principal?: string
+          autonomy_level?: string
+          binding_limit_sek?: number | null
+          binding_remaining_sek?: number | null
+          binding_scope?: string | null
+          burn_sek_per_day?: number | null
+          declared_funding_sek?: number | null
+          derivation_version?: number
+          event_id?: string
+          event_seq?: never
+          event_type?: string
+          from_state?: string | null
+          funding_state?: string
+          gaps?: string[]
+          occurred_at?: string
+          operating_paused?: boolean | null
+          project_id?: string
+          provenance?: string
+          reasons?: string[]
+          recorded_at?: string
+          revenue_trend_sek?: number | null
+          runway_days?: number | null
+          threshold_status?: string
+          to_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survival_state_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       token_health: {
         Row: {
@@ -4052,6 +4715,72 @@ export type Database = {
           },
         ]
       }
+      workflow_stories: {
+        Row: {
+          created_at: string
+          generated_from_brief_hash: string
+          id: string
+          model: string
+          month_key: string
+          prompt_contract_version: string
+          provider: string
+          revision_number: number
+          run_id: string | null
+          status: string
+          story: Json
+          story_content_hash: string
+          story_contract_version: string
+          workflow_instance_id: string
+        }
+        Insert: {
+          created_at?: string
+          generated_from_brief_hash: string
+          id?: string
+          model: string
+          month_key: string
+          prompt_contract_version: string
+          provider: string
+          revision_number?: number
+          run_id?: string | null
+          status?: string
+          story: Json
+          story_content_hash: string
+          story_contract_version: string
+          workflow_instance_id: string
+        }
+        Update: {
+          created_at?: string
+          generated_from_brief_hash?: string
+          id?: string
+          model?: string
+          month_key?: string
+          prompt_contract_version?: string
+          provider?: string
+          revision_number?: number
+          run_id?: string | null
+          status?: string
+          story?: Json
+          story_content_hash?: string
+          story_contract_version?: string
+          workflow_instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_stories_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_stories_workflow_instance_id_fkey"
+            columns: ["workflow_instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_transitions: {
         Row: {
           actor: string
@@ -4152,6 +4881,748 @@ export type Database = {
     }
     Functions: {
       action_phase_rank: { Args: { p: string }; Returns: number }
+      atlas_code_work_admission_hash: {
+        Args: { p_admission: Json }
+        Returns: string
+      }
+      atlas_code_work_append_control_locked: {
+        Args: {
+          p_event_type: string
+          p_payload: Json
+          p_producer_id: string
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+        }
+        Returns: {
+          admission_hash: string
+          claim_id: string | null
+          event_type: string
+          fence: number | null
+          observed_at: string
+          payload: Json
+          payload_hash: string
+          previous_receipt_hash: string | null
+          producer_id: string
+          producer_type: string
+          receipt_class: string
+          receipt_hash: string
+          receipt_id: string
+          recorded_at: string
+          sequence: number
+          work_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_receipts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_append_evidence: {
+        Args: {
+          p_admission_hash: string
+          p_claim_id: string
+          p_expected_previous_hash: string
+          p_expected_sequence: number
+          p_fence: number
+          p_observed_at: string
+          p_payload: Json
+          p_producer_id: string
+          p_producer_type: string
+          p_receipt_class: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_append_receipt_locked: {
+        Args: {
+          p_admission_hash: string
+          p_claim_id: string
+          p_event_type: string
+          p_expected_previous_hash: string
+          p_expected_sequence: number
+          p_fence: number
+          p_observed_at: string
+          p_payload: Json
+          p_producer_id: string
+          p_producer_type: string
+          p_receipt_class: string
+          p_work_id: string
+        }
+        Returns: {
+          admission_hash: string
+          claim_id: string | null
+          event_type: string
+          fence: number | null
+          observed_at: string
+          payload: Json
+          payload_hash: string
+          previous_receipt_hash: string | null
+          producer_id: string
+          producer_type: string
+          receipt_class: string
+          receipt_hash: string
+          receipt_id: string
+          recorded_at: string
+          sequence: number
+          work_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_receipts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_append_system_evidence_locked: {
+        Args: {
+          p_payload: Json
+          p_producer_id: string
+          p_receipt_class: string
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+        }
+        Returns: {
+          admission_hash: string
+          claim_id: string | null
+          event_type: string
+          fence: number | null
+          observed_at: string
+          payload: Json
+          payload_hash: string
+          previous_receipt_hash: string | null
+          producer_id: string
+          producer_type: string
+          receipt_class: string
+          receipt_hash: string
+          receipt_id: string
+          recorded_at: string
+          sequence: number
+          work_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_receipts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_authorization_expiry: {
+        Args: {
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+        }
+        Returns: string
+      }
+      atlas_code_work_cancel: {
+        Args: {
+          p_project_id: string
+          p_reason_code: string
+          p_requested_by: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_cancel_locked: {
+        Args: {
+          p_reason: string
+          p_requested_by: string
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_canonical_json: {
+        Args: { p_value: Json }
+        Returns: string
+      }
+      atlas_code_work_claim: {
+        Args: {
+          p_broker_host_id: string
+          p_broker_id: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_heartbeat: {
+        Args: { p_claim_id: string; p_fence: number; p_work_id: string }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_normalized_admission: {
+        Args: { p_admission: Json }
+        Returns: Json
+      }
+      atlas_code_work_propose: {
+        Args: {
+          p_admission: Json
+          p_admission_hash: string
+          p_authorization_event_id: string
+          p_authorization_id: string
+          p_project_id: string
+          p_proposal_fingerprint_hash: string
+          p_proposal_key_hash: string
+          p_requested_by: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_resource_covers: {
+        Args: {
+          p_access: string
+          p_data_scope: Json
+          p_out_of_scope: Json
+          p_path: string
+          p_repository_id: string
+        }
+        Returns: boolean
+      }
+      atlas_code_work_sorted_text_array: {
+        Args: { p_value: Json }
+        Returns: Json
+      }
+      atlas_code_work_sync_authorization: {
+        Args: { p_work_id: string }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_terminal_evidence_complete: {
+        Args: {
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+          p_terminal_state: string
+        }
+        Returns: boolean
+      }
+      atlas_code_work_timeout_locked: {
+        Args: {
+          p_reason: string
+          p_run: Database["public"]["Tables"]["atlas_code_work_runs"]["Row"]
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_transition: {
+        Args: {
+          p_claim_id: string
+          p_expected_state: string
+          p_expected_version: number
+          p_fence: number
+          p_reason_code?: string
+          p_to_state: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_transition_allowed: {
+        Args: { p_from: string; p_to: string }
+        Returns: boolean
+      }
       atlas_memory_health: {
         Args: never
         Returns: {
@@ -4380,6 +5851,27 @@ export type Database = {
         }
         Returns: string
       }
+      social_account_rebind: {
+        Args: {
+          p_account_label: string
+          p_bound_by: string
+          p_expected_binding_id: string
+          p_external_account_id: string
+          p_platform: string
+          p_project_id: string
+        }
+        Returns: string
+      }
+      social_oauth_state_consume: {
+        Args: { p_state_hash: string }
+        Returns: {
+          actor: string
+          change_account: boolean
+          code_verifier: string
+          platform: string
+          project_id: string
+        }[]
+      }
       stop_set_platform_automation: {
         Args: { p_actor: string; p_paused: boolean; p_reason?: string }
         Returns: {
@@ -4414,6 +5906,33 @@ export type Database = {
           project_paused_at: string
           project_paused_reason: string
           project_requested: boolean
+        }[]
+      }
+      survival_record_observation: {
+        Args: {
+          p_binding_limit_sek: number
+          p_binding_remaining_sek: number
+          p_binding_scope: string
+          p_burn_sek_per_day: number
+          p_declared_funding_sek: number
+          p_derivation_version: number
+          p_funding_state: string
+          p_gaps: string[]
+          p_occurred_at: string
+          p_operating_paused: boolean
+          p_project_id: string
+          p_reasons: string[]
+          p_revenue_trend_sek: number
+          p_runway_days: number
+          p_threshold_status: string
+          p_to_state: string
+        }
+        Returns: {
+          event_id: string
+          event_seq: number
+          from_state: string
+          result: string
+          to_state: string
         }[]
       }
       workflow_append_transition: {

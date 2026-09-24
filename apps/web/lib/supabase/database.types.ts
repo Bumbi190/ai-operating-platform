@@ -5596,6 +5596,7 @@ export type Database = {
         Args: {
           p_broker_host_id: string
           p_broker_id: string
+          p_broker_token_hash: string
           p_work_id: string
         }
         Returns: {

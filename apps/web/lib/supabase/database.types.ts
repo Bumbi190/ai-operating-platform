@@ -5709,8 +5709,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      atlas_code_work_discover_claimable: {
+        Args: { p_limit?: number; p_repository_ids: string[] }
+        Returns: {
+          pinned_base_sha: string
+          repository_id: string
+          work_id: string
+        }[]
+      }
       atlas_code_work_heartbeat: {
-        Args: { p_claim_id: string; p_fence: number; p_work_id: string }
+        Args: {
+          p_broker_host_id: string
+          p_broker_id: string
+          p_broker_token_hash: string
+          p_claim_id: string
+          p_fence: number
+          p_work_id: string
+        }
         Returns: {
           admission: Json
           admission_hash: string
@@ -5784,6 +5799,72 @@ export type Database = {
           p_proposal_fingerprint_hash: string
           p_proposal_key_hash: string
           p_requested_by: string
+          p_work_id: string
+        }
+        Returns: {
+          admission: Json
+          admission_hash: string
+          authorization_expires_at: string | null
+          authorization_id: string
+          authorized_at: string | null
+          broker_host_id: string | null
+          broker_id: string | null
+          broker_token_expires_at: string | null
+          broker_token_hash: string | null
+          cancel_reason_code: string | null
+          cancel_requested: boolean
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          capability_id: string
+          capability_version: number
+          claim_id: string | null
+          command_registry_hash: string
+          command_registry_version: string
+          created_at: string
+          delegation_envelope_id: string
+          delegation_hash: string
+          fence: number
+          last_heartbeat_at: string | null
+          last_receipt_sequence: number
+          lease_until: string | null
+          mission_hash: string
+          mission_id: string
+          mission_version: number
+          pinned_base_sha: string
+          project_id: string
+          proposal_fingerprint_hash: string
+          proposal_key_hash: string
+          receipt_chain_head: string | null
+          repository_id: string
+          repository_name: string
+          repository_owner: string
+          requested_by: string
+          state: string
+          state_version: number
+          terminal_at: string | null
+          terminal_reason_code: string | null
+          updated_at: string
+          work_id: string
+          work_package_hash: string
+          work_package_id: string
+          worker_adapter_id: string
+          worker_adapter_version: number
+          worker_model_id: string
+          worker_output_protocol: string
+          worker_provider: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_code_work_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atlas_code_work_recover_claim_credential: {
+        Args: {
+          p_broker_host_id: string
+          p_broker_id: string
+          p_broker_token_hash: string
           p_work_id: string
         }
         Returns: {

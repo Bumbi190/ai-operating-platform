@@ -27,6 +27,7 @@ jobs:
           --health-retries 12
     env:
       ATLAS_SQL_TEST_REQUIRED: 1
+      SDF1C3_DOCKER_REQUIRED: 1
       ATLAS_SQL_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +36,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Identity, enrollment, replay, claim-credential, control-channel, isolation and no-execution proofs
+      # Explicit setup, OUTSIDE any CodeWork run: the broker itself never pulls (--pull=never). The
+      # sandbox health-probe image is provisioned here by its immutable digest, never by a tag.
+      - name: Provision the pinned sandbox probe image (setup only)
+        run: docker pull docker.io/library/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+      - name: Identity, enrollment, replay, claim-credential, control-channel, isolation substrate and no-execution proofs
         working-directory: apps/web
         run: >-
           ../../node_modules/.bin/vitest run
@@ -48,6 +53,8 @@ jobs:
           lib/qa/sdf1c2-broker-control-channel.test.ts
           lib/qa/sdf1c2-broker-control-channel-sql.test.ts
           lib/qa/sql-test-role-bootstrap-race.test.ts
+          lib/qa/sdf1c3-isolation-substrate.test.ts
+          lib/qa/sdf1c3-isolation-integration.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -70,6 +77,8 @@ jobs:
             ['sdf1c2-broker-control-channel.test.ts', 49],
             ['sdf1c2-broker-control-channel-sql.test.ts', 22],
             ['sql-test-role-bootstrap-race.test.ts', 4],
+            ['sdf1c3-isolation-substrate.test.ts', 180],
+            ['sdf1c3-isolation-integration.test.ts', 10],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {

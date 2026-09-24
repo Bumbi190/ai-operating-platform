@@ -3,8 +3,9 @@
  *
  * ── ONE SOURCE OF FUNDING TRUTH ────────────────────────────────────────────
  * `readDeclaredOperatingCapital()` is the only place the platform's available
- * operating capital is read. It reads the singleton `platform_config` row and
- * converts it into the discriminated `FundingReading` the derivation consumes:
+ * operating capital is read. It reads the `survival_funding_config` singleton
+ * and converts it into the discriminated `FundingReading` the derivation
+ * consumes:
  *
  *     a numeric value   → { kind: 'KNOWN', declaredFundingSek }
  *     NULL              → { kind: 'UNDECLARED' }
@@ -30,6 +31,14 @@
  * mistake the survival subsystem exists to avoid.
  *
  * ── SERVER ONLY ────────────────────────────────────────────────────────────
+ * ── WHY ITS OWN TABLE, NOT A COLUMN ON platform_config ─────────────────────
+ * The declaration was originally a column on `platform_config`. Production
+ * grants `authenticated` SELECT on that table through a policy whose qual is
+ * `true`, so the owner's operating capital would have been readable by every
+ * authenticated user. RLS protects rows, not columns. It now lives in
+ * `survival_funding_config`, a SERVER-ONLY singleton with no client grant of any
+ * kind — which is also why nothing here reads `platform_config` any more.
+ *
  * `server-only` plus a service-role client: the table is not readable by any
  * client role, and this module is never imported by a component.
  */
@@ -41,7 +50,14 @@ import type { FundingReading, RunwayCoverage } from './types'
 
 type AnyDb = any
 
-/** The one column that carries the declaration. Named here once. */
+/**
+ * The one table and column that carry the declaration. Named here once.
+ *
+ * `SURVIVAL_FUNDING_CONFIG_TABLE` is deliberately NOT `platform_config`: the
+ * only place funding truth lives is the SERVER-ONLY singleton, and a reader that
+ * could reach the old table would be reading a source that no longer exists.
+ */
+const SURVIVAL_FUNDING_CONFIG_TABLE = 'survival_funding_config'
 const CAPITAL_COLUMN = 'declared_operating_capital_sek'
 
 /**
@@ -59,7 +75,7 @@ export async function readDeclaredOperatingCapital(db?: AnyDb): Promise<FundingR
   try {
     const client: AnyDb = db ?? createAdminClient()
     const { data, error } = await client
-      .from('platform_config')
+      .from(SURVIVAL_FUNDING_CONFIG_TABLE)
       .select(CAPITAL_COLUMN)
       .eq('id', 1)
       .maybeSingle()
@@ -128,4 +144,61 @@ export async function readRunwayCoverage(
   } catch {
     return 'PARTIAL_SCOPE'
   }
+}
+
+// ─── Presentation authorization ─────────────────────────────────────────────
+
+/**
+ * Who may be shown the funding EVIDENCE.
+ *
+ * The declaration is platform-owner financial information, and storage
+ * confidentiality alone is not enough to protect it: the survival snapshot
+ * carries enough to RECONSTRUCT it, because for a complete observation
+ *
+ *     declaredFundingSek ≈ runwayDays × burnSekPerDay
+ *
+ * Withholding the amount while publishing the runway and the burn would leak the
+ * same fact to anyone who can multiply. So the two figures travel under ONE
+ * decision, taken once, server-side.
+ */
+export const FUNDING_VISIBILITIES = ['operator', 'redacted'] as const
+export type FundingVisibility = (typeof FUNDING_VISIBILITIES)[number]
+
+/** The two snapshot fields that together reveal the declaration. */
+export interface FundingEvidence {
+  declaredFundingSek: number | null
+  runwayDays: number | null
+}
+
+export interface PresentedFundingEvidence extends FundingEvidence {
+  fundingVisibility: FundingVisibility
+}
+
+/**
+ * Decide what funding evidence a reader may be shown.
+ *
+ * Authority is `resolvePlatformOperator()`, resolved server-side from the
+ * verified session — never client state, never project ownership, never UI
+ * visibility. An unconfigured operator allowlist denies everyone, so a
+ * misconfigured deployment redacts rather than discloses.
+ *
+ * ── WHAT THIS DELIBERATELY DOES NOT DO ──────────────────────────────────────
+ * It does not touch the derivation. The state and the ceiling are still computed
+ * from the TRUE values and are reported unchanged; only the two figures that
+ * reconstruct the declaration are withheld. Recomputing a survival state from
+ * redacted inputs would be a second answer to one question, and the reader would
+ * be looking at it.
+ *
+ * Redaction writes `null`, which is this schema's "not established" value — so
+ * `fundingVisibility` is what keeps "we did not establish it" distinct from "we
+ * are not showing it to you". Zero would be a third claim, and a false one.
+ */
+export function presentFundingEvidence(
+  evidence: FundingEvidence,
+  options: { isPlatformOperator: boolean },
+): PresentedFundingEvidence {
+  if (options.isPlatformOperator) {
+    return { ...evidence, fundingVisibility: 'operator' }
+  }
+  return { declaredFundingSek: null, runwayDays: null, fundingVisibility: 'redacted' }
 }

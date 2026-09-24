@@ -1,9 +1,20 @@
 -- Phase 2B — owner-declared operating capital, and derivation v2 in history.
 --
--- THREE THINGS, ONE PURPOSE. This migration adds (1) one nullable column on the
--- existing platform_config singleton, (2) one narrow append-only ledger that
--- audits changes to it, and (3) the minimum history-schema widening needed for
--- Phase 2A to record derivation v2 observations truthfully.
+-- THREE THINGS, ONE PURPOSE. This migration adds (1) one SERVER-ONLY singleton
+-- holding the declaration, (2) one narrow append-only ledger that audits changes
+-- to it, and (3) the minimum history-schema widening needed for Phase 2A to
+-- record derivation v2 observations truthfully.
+--
+-- ── WHERE THE DECLARATION LIVES, AND WHY NOT ON platform_config ─────────────
+-- The first design put the column on `platform_config`. It was withdrawn:
+-- production grants `authenticated` SELECT on that table through the
+-- `authenticated_read_platform_config` policy whose qual is literally `true`, so
+-- the platform owner's operating capital would have been published to every
+-- authenticated user. RLS protects ROWS, not columns, and a policy that reads
+-- `true` cannot be narrowed by adding a field to its table.
+--
+-- The declaration therefore lives in its own singleton with no client grant of
+-- any kind. See §1.
 --
 -- ── THE FIGURE IS RUNWAY INPUT ONLY ────────────────────────────────────────
 -- `declared_operating_capital_sek` is NOT a budget, NOT a spend authorization,
@@ -27,94 +38,64 @@
 -- Funding state is deliberately NOT a column. It is derivable from "did the read
 -- succeed" + "is the value null", and storing it would be the same truth twice.
 
--- ── 1. The declaration itself ──────────────────────────────────────────────
+-- ── 1. The declaration itself: one SERVER-ONLY singleton ───────────────────
 --
--- numeric(12,4) matches the existing platform-wide money columns on this table
--- (`global_daily_sek`, `global_weekly_sek`, `global_monthly_sek`). Nullable is
--- the point: NULL means UNDECLARED, so there is no default and no sentinel.
+-- This is NOT a second general configuration authority. Its scope is exactly one
+-- fact, and it holds exactly one row.
+--
+-- numeric(12,4) matches the platform's existing money columns. Nullable is the
+-- point: NULL means UNDECLARED, so there is no default and no sentinel.
 --
 -- A CHECK is deliberately NOT added to forbid negatives. The canonical
--- `FundingReading` permits zero and negative KNOWN values, and the existing
--- derivation already decides their survival effect (<= 0 -> HIBERNATE floor).
--- Constraining the sign here would be a second, disagreeing policy.
+-- `FundingReading` permits zero and negative KNOWN values, and the derivation
+-- already decides their survival effect (<= 0 floors at HIBERNATE). Constraining
+-- the sign here would be a second, disagreeing policy.
 
-alter table public.platform_config
-  add column if not exists declared_operating_capital_sek numeric(12,4);
+create table if not exists public.survival_funding_config (
+  id                             integer primary key,
+  declared_operating_capital_sek numeric(12,4),
+  updated_at                     timestamptz not null default now(),
 
-comment on column public.platform_config.declared_operating_capital_sek is
-  'Owner-declared available operating capital (SEK) used ONLY as a survival/runway input. '
-  'NULL = UNDECLARED (never declared, or deliberately cleared); a read FAILURE is UNAVAILABLE '
-  'and is a different fact. Not a budget, not spend authority, not cash, not revenue. '
-  'Writable only through survival_set_declared_operating_capital().';
+  -- The singleton invariant, stated structurally rather than described. `id = 1`
+  -- is the only admissible row, so "the current declaration" is never a question
+  -- with more than one answer, and a second row cannot be created by accident.
+  constraint survival_funding_config_singleton check (id = 1)
+);
 
--- ── 1b. …and the column is STRUCTURALLY writable only through that RPC ──────
---
--- The comment above would be a promise, not a property. `service_role` holds
--- table-level UPDATE on `public.platform_config` in production, so any
--- server-side code holding that key could have done:
---
---     update public.platform_config set declared_operating_capital_sek = …
---
--- and changed the figure that governs the autonomy ceiling while bypassing
--- `resolvePlatformOperator()`, the audited setter and the append-only ledger —
--- leaving no row explaining who declared it.
---
--- The existing `stop_guard_platform_config()` does NOT cover this column: it
--- protects `automation_paused`, `paused_at` and `paused_reason` only. The
--- concern is deliberately kept separate rather than folded into that historical
--- guard, so the stop authority's audit story and the funding authority's remain
--- independently readable.
---
--- ── WHY THE OWNER CHECK WORKS ───────────────────────────────────────────────
--- SECURITY INVOKER (the default — deliberately NOT definer). The rule is
--- "only the table's owning role may change this column", exactly as the stop
--- guard states it:
---
---   service_role → direct UPDATE
---     → current_user = service_role ≠ table owner → REFUSED (42501)
---
---   service_role → survival_set_declared_operating_capital()
---     → SECURITY DEFINER, so it executes as the function owner (the migration
---       role, which owns the table) → current_user = table owner → ALLOWED
---     → and the config write and its audit row stay one transaction
---
--- `IS DISTINCT FROM`, not "was the column named in the SET clause": a writer
--- that re-sends the whole row unchanged is a no-op and must stay harmless, or
--- ordinary code breaks for no safety gain. That is also why a no-op SET through
--- the RPC remains a no-op here.
+-- Seeded NULL, idempotently: a re-run must never disturb a declaration that
+-- already exists. NULL is the truthful initial state — the owner has not
+-- declared anything yet, which is UNDECLARED, not zero.
+insert into public.survival_funding_config (id, declared_operating_capital_sek)
+values (1, null)
+on conflict (id) do nothing;
 
-create or replace function public.survival_guard_platform_funding()
-returns trigger
-language plpgsql
-set search_path to ''
-as $$
-declare
-  v_owner name;
-begin
-  if new.declared_operating_capital_sek is distinct from old.declared_operating_capital_sek then
-    select pg_catalog.pg_get_userbyid(c.relowner) into v_owner
-      from pg_catalog.pg_class c where c.oid = tg_relid;
+comment on table public.survival_funding_config is
+  'CURRENT TRUTH for the owner-declared operating capital used ONLY as a survival/runway '
+  'input. Exactly one row (id = 1). NULL = UNDECLARED; a read FAILURE is UNAVAILABLE and is '
+  'a different fact. Not a budget, not spend authority, not cash, not revenue. SERVER_ONLY: '
+  'no client role holds any grant on it, and the sole writer is '
+  'survival_set_declared_operating_capital().';
 
-    if current_user <> v_owner then
-      raise exception
-        'declared operating capital is writable only through '
-        'survival_set_declared_operating_capital() (current_user=%, required=%)',
-        current_user, v_owner
-        using errcode = '42501';
-    end if;
-  end if;
-  return new;
-end $$;
+comment on column public.survival_funding_config.declared_operating_capital_sek is
+  'The owner''s declaration, or NULL for UNDECLARED. Written only by the SECURITY DEFINER '
+  'setter, which appends the matching survival_funding_events row in the same transaction.';
 
-drop trigger if exists survival_guard_platform_funding on public.platform_config;
-create trigger survival_guard_platform_funding
-  before update on public.platform_config
-  for each row execute function public.survival_guard_platform_funding();
-
-comment on function public.survival_guard_platform_funding() is
-  'Refuses any change to platform_config.declared_operating_capital_sek unless the '
-  'statement runs as the table owner — i.e. from inside the SECURITY DEFINER setter. '
-  'Closes the direct service_role UPDATE path around the audited mutation boundary.';
+-- ── 1b. …and no separate trigger guard is needed ────────────────────────────
+--
+-- An earlier revision of this migration kept the column on `platform_config` and
+-- defended it with an owner-check trigger, because `service_role` may UPDATE that
+-- table and the value would otherwise be directly writable around the audited
+-- setter.
+--
+-- Here there is nothing to guard. No role but the owner holds INSERT, UPDATE,
+-- DELETE or TRUNCATE on this table at all — see §5 — so the ACL IS the boundary,
+-- and the SECURITY DEFINER setter is the only writer that can exist.
+--
+-- ACL closure is preferred over a trigger workaround whenever the table exists
+-- solely for this concern: one mechanism, stated exactly where a reviewer looks
+-- for privileges, instead of two that must be kept in agreement. The historical
+-- `stop_guard_platform_config()` is untouched and still protects the pause
+-- columns on `platform_config`, which is a different concern.
 
 -- ── 2. The audit ledger ────────────────────────────────────────────────────
 --
@@ -173,8 +154,13 @@ create table if not exists public.survival_funding_events (
   -- This does NOT replace `resolvePlatformOperator()`; the server action remains
   -- the authority boundary. It removes the ledger's ABILITY to claim a
   -- machine-shaped actor even if some future caller tried.
+  -- The shape is the repository's CANONICAL UUID family, not merely
+  -- "8-4-4-4-12 hex": the version nibble must be 1–5 and the variant nibble must
+  -- be 8, 9, a or b. A loose hex pattern would accept the nil UUID and other
+  -- bit patterns no generator in this repository can produce, so a row could look
+  -- like a real authenticated actor while naming one that cannot exist.
   constraint survival_funding_events_actor_human_identity
-    check (actor ~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    check (actor ~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
 );
 
 create index if not exists survival_funding_events_seq_idx
@@ -241,8 +227,12 @@ begin
   -- person changed the declaration, so a machine token here would be a human
   -- authority claim that no human made. The table carries the same rule as a
   -- CHECK, so this holds even against a direct call.
+  -- Version nibble 1–5, variant nibble 8/9/a/b: the canonical UUID family this
+  -- repository actually generates. A loose 8-4-4-4-12 hex pattern would admit
+  -- the nil UUID and other patterns no generator here produces, so the immutable
+  -- ledger could name a human-shaped actor that cannot exist.
   if p_actor is null
-     or p_actor !~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or p_actor !~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   then
     raise exception 'p_actor must be the canonical human actor shape user:<uuid>' using errcode = '22023';
   end if;
@@ -297,13 +287,18 @@ begin
   -- Lock the singleton BEFORE reading it, so two concurrent operators cannot
   -- both read the same predecessor and write two audit rows that disagree about
   -- what the previous declaration was.
-  perform 1 from public.platform_config pc where pc.id = 1 for update;
+  --
+  -- This table, not `platform_config`: the declaration lives in its own
+  -- SERVER-ONLY singleton, precisely so that a broadly-readable table cannot
+  -- publish the owner's operating capital. Nothing about the funding truth is
+  -- read from or written to `platform_config` anywhere in Phase 2B.
+  perform 1 from public.survival_funding_config fc where fc.id = 1 for update;
   if not found then
-    raise exception 'platform_config singleton (id=1) does not exist' using errcode = 'P0002';
+    raise exception 'survival_funding_config singleton (id=1) does not exist' using errcode = 'P0002';
   end if;
 
-  select pc.declared_operating_capital_sek into v_previous
-    from public.platform_config pc where pc.id = 1;
+  select fc.declared_operating_capital_sek into v_previous
+    from public.survival_funding_config fc where fc.id = 1;
 
   -- A no-op is answered as such and writes NOTHING, so an operator pressing
   -- "set" twice does not manufacture an audit trail of changes that never
@@ -317,10 +312,10 @@ begin
     return;
   end if;
 
-  update public.platform_config pc
+  update public.survival_funding_config fc
      set declared_operating_capital_sek = v_declared,
          updated_at = now()
-   where pc.id = 1;
+   where fc.id = 1;
 
   v_event := case when v_declared is null then 'DECLARATION_CLEARED' else 'DECLARATION_SET' end;
 
@@ -629,13 +624,24 @@ alter table public.survival_funding_events enable row level security;
 revoke all on table public.survival_funding_events from public, anon, authenticated, service_role;
 grant select on table public.survival_funding_events to service_role;
 
-revoke all on function public.survival_funding_events_append_only()
-  from public, anon, authenticated, service_role;
+-- ── The current-truth singleton: SELECT for the service role, and NOTHING else
+--
+-- The whole reason this value has its own table is that `platform_config` is
+-- readable by `authenticated`. Here there is no such surface to inherit: RLS is
+-- on with no policy, every grant is revoked from every role including
+-- service_role, and exactly one privilege is handed back — SELECT.
+--
+-- No INSERT, no UPDATE, no DELETE, no TRUNCATE for anyone. That is what makes
+-- the SECURITY DEFINER setter the ONLY writer that can exist, and it is why this
+-- migration needs no owner-check trigger (§1b): the ACL already says it.
+--
+-- `id integer primary key` has no default and no identity, so there is no
+-- sequence behind this table and therefore no second write surface to close.
+alter table public.survival_funding_config enable row level security;
+revoke all on table public.survival_funding_config from public, anon, authenticated, service_role;
+grant select on table public.survival_funding_config to service_role;
 
--- A trigger function is invoked by the trigger machinery, not by a caller, so no
--- role needs EXECUTE on it. Revoking is the same treatment Phase 2A's guard
--- function gets; the guard still fires, because firing does not consult grants.
-revoke all on function public.survival_guard_platform_funding()
+revoke all on function public.survival_funding_events_append_only()
   from public, anon, authenticated, service_role;
 
 revoke all on function public.survival_set_declared_operating_capital(numeric, text)

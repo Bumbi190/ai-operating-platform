@@ -86,6 +86,9 @@ const SURVIVAL_FIXTURE = {
   burnSekPerDay: 8.3,
   declaredFundingSek: null,
   runwayDays: null,
+  // This fixture models the OPERATOR's view, which is the only view in which
+  // those two fields can carry a value at all.
+  fundingVisibility: 'operator' as const,
   runwayCoverage: 'PLATFORM_COMPLETE' as const,
   revenueTrendSek: 12,
   reasons: ['headroom_healthy' as const, 'funding_undeclared' as const],
@@ -448,6 +451,13 @@ describe('phase 12 · the loader reads inside the operator boundary', () => {
   let queries: Recorded[]
   let allowed: string[]
   let accessOk: boolean
+  /**
+   * Whether the caller is the platform operator. The loader resolves this from
+   * the session to decide whether the funding EVIDENCE may be shown, so it is
+   * mocked here for the same reason `resolveProjectAccess` is: it reads cookies,
+   * and these tests exercise the loader rather than the session.
+   */
+  let platformOperator: boolean
 
   function fakeQuery(table: string) {
     const rec: Recorded = { table, select: '', filters: [] }
@@ -474,10 +484,17 @@ describe('phase 12 · the loader reads inside the operator boundary', () => {
     queries = []
     allowed = ['proj-a', 'proj-b']
     accessOk = true
+    platformOperator = true
     vi.doMock('@/lib/auth/project-access', () => ({
       resolveProjectAccess: async () => (accessOk
         ? { ok: true, userId: 'u1', allowedProjectIds: allowed }
         : { ok: false, response: null }),
+    }))
+    vi.doMock('@/lib/auth/platform-operator', () => ({
+      resolvePlatformOperator: async () => (platformOperator
+        ? { ok: true, userId: 'u1', email: 'operator@example.com',
+            actor: 'user:7c9e6679-7425-40de-944b-e07fc1f90ae7' }
+        : { ok: false, reason: 'not_platform_operator' }),
     }))
     vi.doMock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: fakeQuery }) }))
   })

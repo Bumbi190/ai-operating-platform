@@ -16,10 +16,16 @@
  *     failed read, a lost funding reading, an observation that does not cover
  *     the whole platform — can only pull the result down.
  *   • Every cap states how restrictive the result must be AT LEAST, never at
- *     most. The strongest currently floors at HIBERNATE (a lost funding reading,
- *     and a declaration at or below zero); the weakest floors at CONSERVE
- *     (funding never declared, reads incomplete, a partial observation scope
- *     withholding runway).
+ *     most. The strongest currently floors at HIBERNATE — a lost funding
+ *     reading, and a declaration at or below zero.
+ *
+ *     CONSERVE is NOT the universal floor. It applies where the missing thing
+ *     is a statement the owner has not made (funding never declared) or a read
+ *     that did not complete. A PARTIAL observation scope is a different case and
+ *     floors at CRITICAL: holding every other measurement equal, a complete
+ *     observation with a short runway could legitimately be critical, and a
+ *     partial one cannot establish that it isn't. Grouping the two would be the
+ *     claim this phase exists to stop making.
  *
  * The individual values are POLICY and live beside the rules that apply them, so
  * they can be reviewed and changed on their own. The DIRECTION is the invariant,

@@ -175,6 +175,18 @@ export const SURVIVAL_REVENUE_SIGNAL_NOTE =
   'Intäktstrenden är en prestationssignal. Den är inte tillgängliga medel och räknas aldrig som räckvidd.'
 
 /** Stated under the ceiling. The level itself always arrives fully qualified. */
+/**
+ * Shown when the funding evidence is withheld from this reader.
+ *
+ * Stated rather than left as an unexplained blank: the capital and the runway
+ * are the platform owner's financial information, and a reader who sees two
+ * empty fields should learn that they are withheld, not that nobody declared
+ * anything. The state and the ceiling above remain real — they are derived from
+ * the true figures server-side.
+ */
+export const FUNDING_EVIDENCE_OPERATOR_ONLY_NOTE =
+  'Driftkapital och räckvidd visas bara för plattformsoperatören.'
+
 export const SURVIVAL_CEILING_NOTE =
   'Taket begränsar vad ett redan beviljat mandat får göra. Det beviljar ingenting.'
 

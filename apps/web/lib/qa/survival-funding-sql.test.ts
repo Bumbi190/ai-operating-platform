@@ -143,8 +143,17 @@ const ACTOR_2 = 'user:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
 const SET = (sek: string | null, actor = ACTOR) =>
   `select * from public.survival_set_declared_operating_capital(${sek ?? 'null'}, '${actor}')`
 
+/**
+ * CURRENT TRUTH — the SERVER-ONLY singleton, never `platform_config`.
+ *
+ * The original design put this column on `platform_config`, which production
+ * grants `authenticated` SELECT through a policy whose qual is `true`; the
+ * declaration would have been readable by every authenticated user. Reading it
+ * from the wrong table here would hide exactly the regression these tests exist
+ * to catch.
+ */
 const capital = () =>
-  one(dsn, `select coalesce(declared_operating_capital_sek::text, '<null>') from public.platform_config where id = 1`)
+  one(dsn, `select coalesce(declared_operating_capital_sek::text, '<null>') from public.survival_funding_config where id = 1`)
 
 const eventCount = () => Number(one(dsn, `select count(*) from public.survival_funding_events`))
 
@@ -351,92 +360,105 @@ describe('funding · the actor must be a canonical authenticated human', () => {
   })
 })
 
-// ── §1 The source-of-truth column is not directly writable ──────────────────
+// ── §1 Current truth is a SERVER-ONLY singleton ─────────────────────────────
 
-describe('funding · current truth is writable ONLY through the canonical RPC', () => {
-  // The previous suite tested direct INSERT into the LEDGER, which is evidence.
-  // It did not test direct UPDATE of the SOURCE OF TRUTH — and production grants
-  // service_role table-level UPDATE on platform_config, so that path existed:
-  // any server-side code holding the key could have changed the figure that
-  // governs the autonomy ceiling with no operator, no setter and no audit row.
+describe('funding · current truth is a SERVER-ONLY singleton', () => {
+  // The declaration was originally a COLUMN on `platform_config`. Production
+  // grants `authenticated` SELECT on that table through a policy whose qual is
+  // `true`, so the owner's operating capital would have been readable by every
+  // authenticated user — RLS protects ROWS, and no policy can be narrowed by
+  // adding a field to its table.
+  //
+  // It now lives in its own table with no client grant of any kind, which is
+  // also why no owner-check trigger is needed: the ACL already says it, and one
+  // mechanism stated in one place beats two that must agree.
   const as = (role: string, sql: string) => expectFailure(dsn, `set role ${role}; ${sql}; reset role;`)
+  const denied = /permission denied|42501|row-level security/i
 
-  it('refuses a direct service_role UPDATE of the declaration', () => {
-    const before = capital()
-    expect(as('service_role',
-      `update public.platform_config set declared_operating_capital_sek = 999999 where id = 1`))
-      .toMatch(/writable only through survival_set_declared_operating_capital/)
-    expect(capital(), 'the refused write must not have landed').toBe(before)
+  it('exists, and holds exactly the singleton row', () => {
+    expect(one(dsn, `select count(*) from information_schema.tables
+                      where table_schema = 'public' and table_name = 'survival_funding_config'`)).toBe('1')
+    // Exactly one row, and it is id = 1: "the current declaration" must never be
+    // a question with more than one answer.
+    expect(one(dsn, `select id::text from public.survival_funding_config`)).toBe('1')
+    expect(one(dsn, `select count(*) from public.survival_funding_config`)).toBe('1')
+    // The SEEDED NULL is proven by the FIRST test in this file
+    // ('starts UNDECLARED — NULL is the absence of a declaration'), which runs
+    // before anything mutates the singleton. Asserting it again here would be
+    // asserting whatever the preceding tests left behind, not the seed.
   })
 
-  it('refuses a direct anon and authenticated UPDATE of the declaration', () => {
+  it('is the ONLY place the declaration lives — platform_config does not carry it', () => {
+    expect(one(dsn, `select count(*) from information_schema.columns
+                      where table_schema = 'public' and table_name = 'platform_config'
+                        and column_name = 'declared_operating_capital_sek'`),
+      'the withdrawn column must not exist on the broadly-readable table').toBe('0')
+  })
+
+  it('has RLS on and ZERO policies, so no client can read it through a policy', () => {
+    expect(one(dsn, `select relrowsecurity from pg_class
+                      where oid = 'public.survival_funding_config'::regclass`)).toBe('t')
+    expect(one(dsn, `select count(*) from pg_policies
+                      where schemaname = 'public' and tablename = 'survival_funding_config'`)).toBe('0')
+  })
+
+  it('grants anon and authenticated NOTHING', () => {
     for (const role of ['anon', 'authenticated']) {
-      expect(as(role, `update public.platform_config set declared_operating_capital_sek = 1 where id = 1`), role)
-        .toMatch(/writable only through survival_set_declared_operating_capital/)
+      for (const priv of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        expect(one(dsn, `select has_table_privilege('${role}',
+          'public.survival_funding_config', '${priv}')`), `${role} ${priv}`).toBe('f')
+      }
     }
   })
 
-  it('refuses a direct UPDATE even when it is paired with permitted columns', () => {
-    // The guard must not be evadable by writing the declaration alongside a
-    // field the caller is allowed to touch.
+  it('grants service_role SELECT and nothing else', () => {
+    expect(one(dsn, `select has_table_privilege('service_role',
+      'public.survival_funding_config', 'SELECT')`)).toBe('t')
+    for (const priv of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+      expect(one(dsn, `select has_table_privilege('service_role',
+        'public.survival_funding_config', '${priv}')`), `service_role ${priv}`).toBe('f')
+    }
+  })
+
+  it('refuses every direct write by service_role', () => {
+    const before = capital()
     expect(as('service_role',
-      `update public.platform_config set max_daily_renders = 9, declared_operating_capital_sek = 5 where id = 1`))
-      .toMatch(/writable only through survival_set_declared_operating_capital/)
-    expect(one(dsn, `select max_daily_renders::text from public.platform_config where id = 1`))
-      .not.toBe('9')
-  })
-
-  it('does NOT block an unrelated permitted platform_config field', () => {
-    // The guard is scoped to the funding column. If it were written as an
-    // unconditional "only the owner may UPDATE this table" rule it would break
-    // every other legitimate writer, so this is the counterweight to the tests
-    // above: a different column still updates normally.
-    expect(as('service_role', `update public.platform_config set max_daily_renders = 7 where id = 1`)).toBe('')
-    expect(one(dsn, `select max_daily_renders::text from public.platform_config where id = 1`)).toBe('7')
-  })
-
-  it('a re-send of the SAME declaration is a harmless no-op, not a refusal', () => {
-    // IS DISTINCT FROM, not "the column appeared in the SET clause": writers that
-    // re-send a whole row unchanged must keep working.
-    const current = capital()
+      `update public.survival_funding_config set declared_operating_capital_sek = 999999 where id = 1`),
+      'direct UPDATE').toMatch(denied)
     expect(as('service_role',
-      `update public.platform_config set declared_operating_capital_sek = ${current} where id = 1`)).toBe('')
+      `insert into public.survival_funding_config (id, declared_operating_capital_sek) values (2, 5)`),
+      'direct INSERT').toMatch(denied)
+    expect(as('service_role', `delete from public.survival_funding_config where id = 1`),
+      'direct DELETE').toMatch(denied)
+    expect(as('service_role', `truncate public.survival_funding_config`),
+      'direct TRUNCATE').toMatch(denied)
+
+    expect(capital(), 'no refused write may have landed').toBe(before)
+    expect(one(dsn, `select count(*) from public.survival_funding_config`), 'and no second row').toBe('1')
   })
 
-  it('the canonical RPC still writes it — that is the whole point of the guard', () => {
+  it('refuses every direct write by anon and authenticated', () => {
+    for (const role of ['anon', 'authenticated']) {
+      expect(as(role, `update public.survival_funding_config
+                          set declared_operating_capital_sek = 1 where id = 1`), `${role} UPDATE`).toMatch(denied)
+      expect(as(role, `insert into public.survival_funding_config
+                          (id, declared_operating_capital_sek) values (3, 1)`), `${role} INSERT`).toMatch(denied)
+    }
+    expect(one(dsn, `select count(*) from public.survival_funding_config`)).toBe('1')
+  })
+
+  it('the canonical RPC is the ONLY writer that can exist — and it works', () => {
     expect(call('777')).toMatch(/^recorded\|.*\|777\.0000$/)
     expect(capital()).toBe('777.0000')
   })
 
-  it('is SECURITY INVOKER with an empty search_path, like the stop guard', () => {
-    const row = one(dsn, `select case when p.prosecdef then 'DEFINER' else 'INVOKER' end || '|' ||
-                                 coalesce(array_to_string(p.proconfig, ','), '')
-                            from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                           where n.nspname = 'public' and p.proname = 'survival_guard_platform_funding'`)
-    const [security, config] = row.split('|')
-    // INVOKER is load-bearing: as DEFINER it would run as the owner and the
-    // current_user check would always pass, silently disabling the guard.
-    expect(security).toBe('INVOKER')
-    expect(config).toMatch(/search_path=/)
-    expect(config).not.toMatch(/search_path=[^,]*\w/)
-  })
-
-  it('no client role can execute the trigger function directly', () => {
-    for (const role of ['anon', 'authenticated', 'service_role']) {
-      expect(one(dsn, `select has_function_privilege('${role}',
-        'public.survival_guard_platform_funding()', 'EXECUTE')`), role).toBe('f')
-    }
-  })
-
-  it('the guard is installed as a BEFORE UPDATE trigger on platform_config', () => {
-    const row = one(dsn, `select tgtype::text || '|' || (tgtype & 2 <> 0)::text || '|' || (tgtype & 16 <> 0)::text
-                            from pg_trigger
-                           where tgrelid = 'public.platform_config'::regclass
-                             and tgname = 'survival_guard_platform_funding'`)
-    expect(row).not.toBe('')
-    // Row-level BEFORE UPDATE: a statement-level or AFTER trigger could not
-    // refuse the write.
-    expect(row.split('|')[1]).toBe('true')
+  it('the singleton constraint refuses a second row even from the owner', () => {
+    // The ACL stops client roles; this stops everyone, so "exactly one" is a
+    // property of the table rather than of who happens to be asking.
+    expect(expectFailure(dsn, `insert into public.survival_funding_config
+                                 (id, declared_operating_capital_sek) values (2, 5)`))
+      .toMatch(/survival_funding_config_singleton|violates check constraint|23514/i)
+    expect(one(dsn, `select count(*) from public.survival_funding_config`)).toBe('1')
   })
 })
 
@@ -457,8 +479,8 @@ describe('funding · the change and its evidence are atomic', () => {
   })
 
   it('the ledger is NOT the current truth — clearing it would not change the declaration', () => {
-    // Proven by construction rather than by mutation: the reader and the setter
-    // both target platform_config, and the ledger is never selected from by any
+    // Proven by construction rather than by mutation: the setter targets
+    // `survival_funding_config`, and the ledger is never selected from by any
     // function that answers "what is declared now".
     const uses = one(dsn, `select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                             where n.nspname='public' and p.proname='survival_set_declared_operating_capital'
@@ -512,6 +534,62 @@ describe('funding · the audit ledger cannot be rewritten', () => {
         values ('${event}', ${declared}, '${ACTOR}')`)
       expect(err, event).toMatch(/violates check constraint|permission denied|42501|23514/i)
     }
+  })
+})
+
+// ── One current source, and the ledger is not it ────────────────────────────
+
+describe('funding · exactly one current source, and history is never it', () => {
+  const defOf = (fn: string) =>
+    // COMMENTS STRIPPED, then newlines collapsed — both are load-bearing:
+    //   • the body's comments explain what it deliberately does NOT do, and
+    //     `pg_get_functiondef` returns them verbatim, so an un-stripped
+    //     assertion would fail on the word a comment exists to rule out;
+    //   • the harness reads psql output LINE BY LINE, so a multi-line
+    //     definition would otherwise arrive as only its first line.
+    one(dsn, `select replace(
+                 regexp_replace(coalesce(pg_get_functiondef(p.oid), ''), '--[^' || chr(10) || ']*', '', 'g'),
+                 chr(10), ' ')
+                from pg_proc p
+                join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname = 'public' and p.proname = '${fn}'`)
+
+  it('the setter reads and writes the singleton, and never platform_config', () => {
+    const def = defOf('survival_set_declared_operating_capital')
+    expect(def).toContain('survival_funding_config')
+    expect(def, 'funding truth must not be read from or written to platform_config')
+      .not.toContain('platform_config')
+  })
+
+  it('the setter never reads the ledger to decide what is declared now', () => {
+    // The direction that must not reverse: history is EVIDENCE of what changed,
+    // never the answer to "what is declared". A setter that read it would make
+    // the ledger load-bearing for current truth.
+    const def = defOf('survival_set_declared_operating_capital')
+    expect(def).not.toMatch(/from\s+public\.survival_funding_events/i)
+    // It appends to it, and only appends.
+    expect(def).toMatch(/insert into public\.survival_funding_events/i)
+    expect(def).not.toMatch(/(update|delete from)\s+public\.survival_funding_events/i)
+  })
+
+  it('no function anywhere reads the ledger as current funding truth', () => {
+    // Repo-wide over the public schema, not just the known functions: a helper
+    // added later that answered "what is declared" from history would be the
+    // same defect wearing a different name.
+    expect(one(dsn, `select count(*) from pg_proc p
+                       join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname = 'public'
+                        and p.prokind = 'f'
+                        and pg_get_functiondef(p.oid) ilike '%from public.survival_funding_events%'`))
+      .toBe('0')
+  })
+
+  it('the declaration column exists on exactly ONE table in the schema', () => {
+    expect(one(dsn, `select string_agg(table_name, ',' order by table_name)
+                       from information_schema.columns
+                      where table_schema = 'public'
+                        and column_name = 'declared_operating_capital_sek'`))
+      .toBe('survival_funding_config')
   })
 })
 

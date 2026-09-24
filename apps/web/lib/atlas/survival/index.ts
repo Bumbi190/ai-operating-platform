@@ -85,11 +85,17 @@ export {
   type SnapshotOptions,
 } from './snapshot'
 
-// Phase 2B — the canonical funding source and the scope check that decides
-// whether a runway figure derived from it would be truthful.
+// Phase 2B — the canonical funding source, the scope check that decides whether
+// a runway figure derived from it would be truthful, and the presentation
+// authorization that keeps the declaration off non-operator surfaces.
 export {
   readDeclaredOperatingCapital,
   readRunwayCoverage,
+  presentFundingEvidence,
+  FUNDING_VISIBILITIES,
+  type FundingVisibility,
+  type FundingEvidence,
+  type PresentedFundingEvidence,
 } from './funding'
 
 // Phase 2A — durable transition history. History only: nothing here is read to

@@ -18,6 +18,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { presentFundingEvidence } from '@/lib/atlas/survival/funding'
+
 const WEB_ROOT = resolve(__dirname, '../..')
 const read = (rel: string) => readFileSync(resolve(WEB_ROOT, rel), 'utf8')
 /** Comments name what a file deliberately does NOT do; scans read code. */
@@ -236,23 +238,62 @@ describe('the declaration enables no enforcement', () => {
     expect(sql).not.toMatch(/cron\.schedule|pg_cron|schedule\s*\(/)
   })
 
-  it('the migration installs the funding guard as SECURITY INVOKER, not DEFINER', () => {
-    // Load-bearing, and asserted on the SOURCE because it is the kind of thing
-    // that gets "helpfully" added later: as SECURITY DEFINER the guard would run
-    // as the table owner, `current_user` would always equal the owner, and the
-    // check would pass for everyone — silently disabling the whole boundary.
+  it('the migration never puts the declaration on platform_config', () => {
+    // The WITHDRAWN design, asserted as an absence so it cannot come back by
+    // accident. Production grants `authenticated` SELECT on `platform_config`
+    // through a policy whose qual is literally `true`, so a column there would
+    // publish the owner's operating capital to every authenticated user — RLS
+    // protects rows, and no policy can be narrowed by adding a field.
     const sql = read(MIGRATION)
-    const fn = sql.slice(sql.indexOf('function public.survival_guard_platform_funding()'))
-    expect(fn.slice(0, fn.indexOf('$$'))).not.toMatch(/security\s+definer/i)
-    expect(sql).toContain('before update on public.platform_config')
-    // And it is its own concern, not folded into the historical stop guard.
+    expect(sql).not.toMatch(/alter table public\.platform_config[\s\S]{0,300}declared_operating_capital_sek/)
+    // …nor the owner-check trigger that design needed, since the new table's ACL
+    // is already the boundary.
+    expect(sql).not.toContain('survival_guard_platform_funding')
+    // And the historical stop guard is untouched.
     expect(sql).not.toMatch(/create or replace function public\.stop_guard_platform_config/)
+  })
+
+  it('the migration creates the singleton SERVER-ONLY, with no write grant to anyone', () => {
+    const sql = read(MIGRATION)
+    expect(sql).toContain('create table if not exists public.survival_funding_config')
+    expect(sql).toContain('constraint survival_funding_config_singleton check (id = 1)')
+    expect(sql).toContain('alter table public.survival_funding_config enable row level security')
+    expect(sql).toMatch(/revoke all on table public\.survival_funding_config\s+from public, anon, authenticated, service_role/)
+    expect(sql).toMatch(/grant select on table public\.survival_funding_config\s+to service_role/)
+    // The absence of a write grant IS the boundary, so it is asserted rather
+    // than assumed: one `grant update` here would silently reopen the bypass the
+    // whole redesign exists to close.
+    expect(sql).not.toMatch(/grant\s+(insert|update|delete|truncate)[^;]*survival_funding_config/i)
+  })
+
+  it('the reader reads the singleton and NOT platform_config', () => {
+    const src = codeOnly(read(READER))
+    expect(src).toContain("const SURVIVAL_FUNDING_CONFIG_TABLE = 'survival_funding_config'")
+    expect(src).toMatch(/\.from\(SURVIVAL_FUNDING_CONFIG_TABLE\)/)
+    // Comments are stripped, so any occurrence here is real code. A reader that
+    // still consulted the old table would be reading a source that no longer
+    // holds the declaration — and would reintroduce the disclosure.
+    expect(src).not.toContain('platform_config')
+  })
+
+  it('the presentation authorization is server-derived and fails closed', () => {
+    const src = codeOnly(read(READER))
+    // Operator status is an argument, resolved by the caller from the session —
+    // never read from a request, a project, or anything client-supplied.
+    expect(src).toContain('isPlatformOperator: boolean')
+    expect(src).not.toMatch(/request|headers\(|cookies\(|searchParams/)
+    // Both figures move together: withholding the amount while publishing the
+    // runway would leak the same fact to anyone who can also see the burn.
+    expect(src).toMatch(/return \{ declaredFundingSek: null, runwayDays: null, fundingVisibility: 'redacted' \}/)
   })
 
   it('the migration constrains the ledger actor to the canonical human shape', () => {
     const sql = read(MIGRATION)
     expect(sql).toContain('survival_funding_events_actor_human_identity')
-    expect(sql).toContain('^user:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    // The CANONICAL UUID family, not merely "8-4-4-4-12 hex": version nibble
+    // 1–5 and variant nibble 8/9/a/b. The loose pattern would admit the nil UUID
+    // and other shapes no generator in this repository produces.
+    expect(sql).toContain('^user:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
     // The weaker "some trimmed text" rule is REPLACED, not merely joined by a
     // stronger one — a length range beside the exact shape would be a claim that
     // is not true.
@@ -333,5 +374,99 @@ describe('the declaration control is an input, not a survival surface', () => {
     expect(panel).toMatch(/declaredSek=\{fundingState === 'KNOWN' \? survival\.declaredFundingSek : null\}/)
     // A failed read disables the control rather than pre-filling a guess.
     expect(panel).toMatch(/readable=\{fundingState !== 'UNAVAILABLE'\}/)
+  })
+})
+
+// ── §9/§10 Presentation disclosure — the decision itself ────────────────────
+
+describe('presentFundingEvidence', () => {
+  const evidence = { declaredFundingSek: 120_000, runwayDays: 1445.78 }
+
+  it('discloses BOTH figures to the platform operator', () => {
+    expect(presentFundingEvidence(evidence, { isPlatformOperator: true }))
+      .toEqual({ declaredFundingSek: 120_000, runwayDays: 1445.78, fundingVisibility: 'operator' })
+  })
+
+  it('withholds BOTH figures from anyone else, and says which of the two nulls this is', () => {
+    const shown = presentFundingEvidence(evidence, { isPlatformOperator: false })
+    expect(shown.declaredFundingSek).toBeNull()
+    expect(shown.runwayDays).toBeNull()
+    // The flag is what keeps "we did not establish it" distinct from "we are not
+    // showing it to you" — both are null on the wire, and only one of them is a
+    // statement about the platform.
+    expect(shown.fundingVisibility).toBe('redacted')
+  })
+
+  it('leaves NOTHING in the serialized result from which the declaration could be recovered', () => {
+    // The runway is withheld for this exact reason: for a complete observation
+    // `runwayDays × burnSekPerDay` IS the declaration, so publishing the runway
+    // beside the burn would disclose the same fact one multiplication away.
+    const serialized = JSON.stringify(presentFundingEvidence(evidence, { isPlatformOperator: false }))
+    expect(serialized).not.toContain('120000')
+    expect(serialized).not.toContain('120,000')
+    expect(serialized).not.toContain('1445')
+  })
+
+  it('redaction is NEVER zero — zero is a declaration, and a false one', () => {
+    const shown = presentFundingEvidence(evidence, { isPlatformOperator: false })
+    expect(shown.declaredFundingSek).not.toBe(0)
+    expect(shown.runwayDays).not.toBe(0)
+  })
+})
+
+// ── §9/§10 Presentation disclosure ──────────────────────────────────────────
+
+describe('the funding evidence is operator-only at every serialization boundary', () => {
+  const PANEL = 'components/platform/vnext/SystemHealth.tsx'
+
+  it('the API redacts from the WORKING SESSION, and the decision wins the spread', () => {
+    const src = codeOnly(read(ROUTE))
+    expect(src).toContain('resolvePlatformOperator')
+    expect(src).toMatch(/presentFundingEvidence\(snapshot, \{ isPlatformOperator: operator\.ok \}\)/)
+    // The redacted fields are applied AFTER the snapshot spread, so the spread
+    // cannot re-expose what the decision removed.
+    expect(src).toMatch(/snapshot: \{ \.\.\.snapshot, \.\.\.evidence \}/)
+  })
+
+  it('the loader redacts the same way, and the panel reads the decision', () => {
+    const loader = codeOnly(read(LOADER))
+    expect(loader).toContain('resolvePlatformOperator')
+    expect(loader).toContain('presentFundingEvidence(')
+    expect(codeOnly(read(PANEL))).toContain("survival.fundingVisibility === 'operator'")
+  })
+
+  it('the panel gates BOTH the amount and the control on that one decision', () => {
+    const panel = codeOnly(read(PANEL))
+    // The amount…
+    expect(panel).toMatch(/isOperator && fundingState === 'KNOWN' && survival\.declaredFundingSek !== null/)
+    // …and the input, which is platform-operator functionality.
+    expect(panel).toMatch(/\{isOperator \? \(\s*<FundingDeclarationControl/)
+  })
+
+  it('withholds the RUNWAY as well as the amount, because one multiplication recovers it', () => {
+    // For a complete observation `runwayDays × burnSekPerDay` IS the declaration.
+    // Redacting only the amount would publish the same fact to anyone who can
+    // multiply, which is why the two figures move under one decision.
+    expect(codeOnly(read(READER)))
+      .toMatch(/declaredFundingSek: null, runwayDays: null, fundingVisibility: 'redacted'/)
+  })
+
+  it('hiding the control is presentation, not the boundary', () => {
+    // The control's absence changes what can be SEEN. The action re-derives
+    // operator identity from the session on every call whatever is drawn, so it
+    // is still the thing that refuses.
+    const action = codeOnly(read(ACTION))
+    expect(action).toContain('resolvePlatformOperator')
+    expect(action).toMatch(/if \(!operator\.ok\)/)
+  })
+
+  it('the derivation is untouched — state and ceiling still come from the true values', () => {
+    // Redaction happens at SERIALIZATION. A second survival state computed from
+    // redacted inputs would be a different answer to the same question, and the
+    // reader would be looking at it.
+    for (const f of [READER, ROUTE, LOADER]) {
+      const src = codeOnly(read(f))
+      expect(src, f).not.toMatch(/deriveSurvivalState|mostRestrictive/)
+    }
   })
 })

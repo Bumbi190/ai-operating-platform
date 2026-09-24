@@ -18,6 +18,7 @@ import {
   AUTOMATION_LIVENESS_NOTE,
   COMPONENT_STATE_LABELS,
   DREAM_SEVERITY_LABELS,
+  FUNDING_EVIDENCE_OPERATOR_ONLY_NOTE,
   FUNDING_STATE_LABELS,
   MEMORY_OBSERVABILITY_NOTE,
   SURVIVAL_CEILING_NOTE,
@@ -229,6 +230,11 @@ const sek = (value: number) =>
 
 function SurvivalBody({ survival }: { survival: SurvivalSection }) {
   const { state, fundingState } = survival
+  // The panel's presentation authorization, resolved SERVER-side from the
+  // verified session and carried on the model. It decides what is drawn; it is
+  // not the authority for anything — `declareOperatingCapital` re-derives
+  // operator identity on every call whatever this says.
+  const isOperator = survival.fundingVisibility === 'operator'
   const unknown = <span className={styles.absent}>{UNKNOWN_LABEL.toLowerCase()}</span>
 
   const headroom =
@@ -273,17 +279,23 @@ function SurvivalBody({ survival }: { survival: SurvivalSection }) {
           tone={fundingState === 'UNAVAILABLE' ? 'attention' : undefined}
           value={FUNDING_STATE_LABELS[fundingState]}
         />
+        {/* The AMOUNT is drawn only when the reader may be shown it. The
+            funding STATE word is not itself sensitive — it says whether a
+            declaration exists, not what it is — so it stays. */}
         <TextFact
           label="Deklarerat driftkapital"
           value={
-            fundingState === 'KNOWN' && survival.declaredFundingSek !== null ? (
+            isOperator && fundingState === 'KNOWN' && survival.declaredFundingSek !== null ? (
               <>{sek(survival.declaredFundingSek)} SEK</>
             ) : (
               FUNDING_STATE_LABELS[fundingState]
             )
           }
         />
-        {/* Null means NOT ESTABLISHED. It is never rendered as 0. */}
+        {/* Null means NOT ESTABLISHED — or, for a non-operator, withheld. Both
+            are rendered as unknown, and neither is ever rendered as 0: the
+            runway is withheld precisely because it reconstructs the
+            declaration when multiplied by the burn above. */}
         <TextFact
           label="Räckvidd"
           value={survival.runwayDays === null ? unknown : <>{sek(survival.runwayDays)} dygn</>}
@@ -303,15 +315,27 @@ function SurvivalBody({ survival }: { survival: SurvivalSection }) {
         />
       </dl>
 
-      {/* The one input on this panel. It changes what the NEXT observation
-          derives — never a value already rendered above, and never a licence.
-          `readable` is false only for UNAVAILABLE, the case where the current
-          declaration could not be established: the field is then blank and
+      {/* The one input on this panel, and it is platform-operator functionality.
+          It changes what the NEXT observation derives — never a value already
+          rendered above, and never a licence.
+
+          Not rendering it for a non-operator is a PRESENTATION choice, not a
+          boundary: `declareOperatingCapital` and `clearOperatingCapital` both
+          re-derive operator identity from the session on every call, so the
+          control's absence changes what can be SEEN and nothing about what can
+          be DONE.
+
+          `readable` is false only for UNAVAILABLE — the case where the current
+          declaration could not be established — so the field is then blank and
           disabled rather than pre-filled with a guess. */}
-      <FundingDeclarationControl
-        declaredSek={fundingState === 'KNOWN' ? survival.declaredFundingSek : null}
-        readable={fundingState !== 'UNAVAILABLE'}
-      />
+      {isOperator ? (
+        <FundingDeclarationControl
+          declaredSek={fundingState === 'KNOWN' ? survival.declaredFundingSek : null}
+          readable={fundingState !== 'UNAVAILABLE'}
+        />
+      ) : (
+        <p className={styles.meta}>{FUNDING_EVIDENCE_OPERATOR_ONLY_NOTE}</p>
+      )}
 
       <p className={styles.meta}>{SURVIVAL_CEILING_NOTE}</p>
       <p className={styles.meta}>{SURVIVAL_REVENUE_SIGNAL_NOTE}</p>

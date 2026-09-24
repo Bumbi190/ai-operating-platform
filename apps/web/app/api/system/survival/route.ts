@@ -37,9 +37,11 @@
 
 import { NextResponse } from 'next/server'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
+import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import {
   allCeilings,
   describeCeiling,
+  presentFundingEvidence,
   readSurvivalSnapshot,
   PROVISIONAL_POLICY_NOTICE,
   SURVIVAL_CEILING_EFFECT,
@@ -79,8 +81,8 @@ export async function GET() {
 
   // ── PHASE 2B: FUNDING AND COVERAGE ARE SERVER-DERIVED ────────────────────
   // The route passes neither. The funding reading comes from the canonical
-  // persisted source (`platform_config`), and runway coverage is derived from
-  // this caller's actual project set — so a request can choose neither the
+  // persisted source (`survival_funding_config`), and runway coverage is derived
+  // from this caller's actual project set — so a request can choose neither the
   // figure that governs expansion nor the claim that its scope is complete.
   //
   // UNDECLARED, UNAVAILABLE and KNOWN are now all reachable, and they floor
@@ -88,9 +90,26 @@ export async function GET() {
   // here can name one of those states by hand.
   const { snapshot, ceiling } = await readSurvivalSnapshot(access.allowedProjectIds)
 
+  // ── PHASE 2B: FUNDING EVIDENCE IS OPERATOR-ONLY ──────────────────────────
+  // The declaration is platform-owner financial information, and this payload
+  // carries enough to reconstruct it — `runwayDays × burnSekPerDay` is the
+  // declared capital for a complete observation. So the two figures are withheld
+  // together for anyone but the platform operator.
+  //
+  // The STATE, the CEILING and the reasons are unchanged: they are still derived
+  // server-side from the true values, and redacting the display would be a
+  // different thing entirely if it also changed the answer. This is the smallest
+  // serialization boundary that closes the disclosure — one function, applied
+  // where the snapshot leaves the server.
+  const operator = await resolvePlatformOperator()
+  const evidence = presentFundingEvidence(snapshot, { isPlatformOperator: operator.ok })
+
   return NextResponse.json({
     ...policy,
-    snapshot,
+    snapshot: { ...snapshot, ...evidence },
+    // Stated at the top level too, so a client does not have to infer from two
+    // nulls whether they mean "not established" or "not shown to you".
+    fundingVisibility: evidence.fundingVisibility,
     ceiling,
     ceilingDescription: describeCeiling(snapshot.state),
     ceilingEffect: SURVIVAL_CEILING_EFFECT[snapshot.state],

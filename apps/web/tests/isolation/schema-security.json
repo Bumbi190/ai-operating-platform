@@ -2,8 +2,8 @@
   "_meta": {
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
-    "captured_at": "2026-09-24",
-    "total_tables": 82,
+    "captured_at": "2026-09-25",
+    "total_tables": 83,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -36,7 +36,6 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "atlas_autonomy_license_events",
         "memory_refs"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
@@ -44,7 +43,6 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "atlas_autonomy_license_events": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
@@ -52,7 +50,7 @@
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",
     "atlas_code_broker_note": "Phase 1C1A trusted broker identity (supabase/migrations/20260923150000_sdf1c1_trusted_broker_identity.sql). APPLIED to production 2026-09-24 (ledger name sdf1c1_trusted_broker_identity) and observed live at capture time; the rows above are as-observed, not inferred from migration text. Both tables: RLS enabled, zero policies, anon and authenticated hold no table grants, service_role holds SELECT only (no INSERT, UPDATE, DELETE or TRUNCATE for any role). The `service_role: true` boolean records REACHABILITY only. All mutation goes through five SECURITY DEFINER functions (atlas_code_broker_begin_enrollment, _complete_enrollment, _approve, _revoke, _accept_request) that only service_role may EXECUTE, guarded by BEFORE UPDATE triggers and BEFORE DELETE/TRUNCATE reject triggers. Both tables were empty at apply time. Identity and enrollment only: the dormant broker_token_* seam on atlas_code_work_runs is untouched, and no claim, heartbeat, evidence or transition path references these tables. Generated type file synced in the same PR.",
-    "autonomy_license_phase2c_note": "Atlas Autonomy Licensing Phase 2C (supabase/migrations/20260924180000_autonomy_license_phase2c.sql). NOT APPLIED to production: this branch deliberately stops before the production apply, so the table does not exist in the production catalog and is listed under created_not_live rather than in the live table map. The migration itself declares RLS, so a rebuild creates it protected and it is not a fresh-deploy hazard — which is exactly the condition created_not_live requires. Intended shape once applied: RLS enabled with ZERO policies, anon and authenticated holding no grant at all, service_role holding SELECT and nothing else; no role at all holds INSERT, UPDATE, DELETE or TRUNCATE, and the identity sequence atlas_autonomy_license_events_event_seq_seq is revoked from every role, so the single SECURITY DEFINER writer autonomy_license_append is the only write path that can exist. Two triggers enforce append-only structurally (BEFORE UPDATE OR DELETE per row, BEFORE TRUNCATE per statement, both raising 42501). Chapter 18 licence truth only: nothing executes against this table in Phase 2C, and no executor, gate, provider, spend boundary or scheduler reads it."
+    "autonomy_license_phase2c_note": "Atlas Autonomy Licensing Phase 2C (supabase/migrations/20260924180000_autonomy_license_phase2c.sql). APPLIED to production on 2026-09-25 (ledger name autonomy_license_phase2c, Supabase ledger version 20260925102918) and observed live at capture time; the row above is as-observed, not inferred from migration text. The table exists and held ZERO rows at evidence capture — no licence has been issued, and nothing in this note should be read as one having been. SERVER_ONLY: RLS enabled with ZERO policies, anon and authenticated hold no grant at all, and service_role holds SELECT and nothing else, so no role anywhere has direct INSERT, UPDATE, DELETE or TRUNCATE. The identity sequence atlas_autonomy_license_events_event_seq_seq is revoked from every role, and two triggers enforce append-only structurally (BEFORE UPDATE OR DELETE per row, BEFORE TRUNCATE per statement, both raising 42501), which makes the SECURITY DEFINER function autonomy_license_append the single reviewed write path that can exist. That writer has an EMPTY search_path, is executable only by postgres and service_role (not PUBLIC, anon or authenticated), and carries p_expected_generation — the caller's observed lineage generation, compared against the locked truth before any insert and refused with SQLSTATE 40001 when stale. The previous 17-parameter writer signature is absent, leaving exactly one overload. The `service_role: true` boolean records REACHABILITY only and cannot express privilege breadth — production grants SELECT and nothing more. Chapter 18 licence truth only: Phase 2C still has NO runtime execution consumer, and no executor, gate, provider, spend boundary or scheduler reads this table."
   },
   "tables": {
     "account_snapshots": {
@@ -126,6 +124,16 @@
       "created_by_migration": true
     },
     "atlas_authorizations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_autonomy_license_events": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

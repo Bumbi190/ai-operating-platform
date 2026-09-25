@@ -507,6 +507,93 @@ export type Database = {
           },
         ]
       }
+      atlas_autonomy_license_events: {
+        Row: {
+          act: string
+          action_scope_fingerprint: string
+          actor: string
+          allowed_action_kinds: string[]
+          bound_def_hash: string
+          bound_def_key: string
+          decision_id: string
+          decision_record_id: string
+          decision_version: number
+          effective_at: string
+          event_id: string
+          event_seq: number
+          expires_at: string
+          license_generation: number
+          license_id: string
+          licensed_level: string
+          occurred_at: string
+          project_id: string
+          reason: string | null
+          superseded_by_license_id: string | null
+          workflow_instance_id: string
+        }
+        Insert: {
+          act: string
+          action_scope_fingerprint: string
+          actor: string
+          allowed_action_kinds: string[]
+          bound_def_hash: string
+          bound_def_key: string
+          decision_id: string
+          decision_record_id: string
+          decision_version: number
+          effective_at: string
+          event_id?: string
+          event_seq?: never
+          expires_at: string
+          license_generation: number
+          license_id: string
+          licensed_level: string
+          occurred_at?: string
+          project_id: string
+          reason?: string | null
+          superseded_by_license_id?: string | null
+          workflow_instance_id: string
+        }
+        Update: {
+          act?: string
+          action_scope_fingerprint?: string
+          actor?: string
+          allowed_action_kinds?: string[]
+          bound_def_hash?: string
+          bound_def_key?: string
+          decision_id?: string
+          decision_record_id?: string
+          decision_version?: number
+          effective_at?: string
+          event_id?: string
+          event_seq?: never
+          expires_at?: string
+          license_generation?: number
+          license_id?: string
+          licensed_level?: string
+          occurred_at?: string
+          project_id?: string
+          reason?: string | null
+          superseded_by_license_id?: string | null
+          workflow_instance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atlas_autonomy_license_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atlas_autonomy_license_events_workflow_instance_id_fkey"
+            columns: ["workflow_instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       atlas_code_broker_enrollments: {
         Row: {
           allowed_repository_ids: string[]
@@ -6200,6 +6287,57 @@ export type Database = {
           p_subject?: string
         }
         Returns: string
+      }
+      autonomy_license_append: {
+        Args: {
+          p_act: string
+          p_action_scope_fingerprint: string
+          p_actor: string
+          p_allowed_action_kinds: string[]
+          p_bound_def_hash: string
+          p_bound_def_key: string
+          p_decision_id: string
+          p_decision_record_id: string
+          p_decision_version: number
+          p_effective_at: string
+          p_expected_generation: number
+          p_expires_at: string
+          p_license_id: string
+          p_licensed_level: string
+          p_project_id: string
+          p_reason: string
+          p_superseded_by_license_id: string
+          p_workflow_instance_id: string
+        }
+        Returns: {
+          act: string
+          action_scope_fingerprint: string
+          actor: string
+          allowed_action_kinds: string[]
+          bound_def_hash: string
+          bound_def_key: string
+          decision_id: string
+          decision_record_id: string
+          decision_version: number
+          effective_at: string
+          event_id: string
+          event_seq: number
+          expires_at: string
+          license_generation: number
+          license_id: string
+          licensed_level: string
+          occurred_at: string
+          project_id: string
+          reason: string | null
+          superseded_by_license_id: string | null
+          workflow_instance_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atlas_autonomy_license_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       budget_headroom: {
         Args: { p_stale_minutes?: number }

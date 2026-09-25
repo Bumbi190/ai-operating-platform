@@ -1564,8 +1564,24 @@ describe('Phase 2C — review #2 proofs', () => {
     }
   })
 
-  it('§9. no production file outside this module names the RPC or drives the store', () => {
+  it('§9. no production runtime outside this module calls the RPC or drives the store', () => {
     const APP_ROOT = resolve(__dirname, '..', '..')
+    // ── THE ONE EXEMPTION, AND WHY IT IS NOT A LOOPHOLE ──────────────────────
+    // The LIVE generated type surface necessarily DECLARES the writer RPC,
+    // because the function exists in the production database. A key in the
+    // generated `Functions` map is production EVIDENCE — metadata describing
+    // what exists — not an invocation, a caller, or authority reach.
+    //
+    // The scan below is a literal `code.includes`, so it cannot tell a type key
+    // from a call site; hence this exemption. It is EXACT-PATH ONLY. It is
+    // deliberately not `lib/supabase/**`, not `*.types.ts`, and not "generated
+    // files" — none of those can widen by accident or by a future filename.
+    //
+    // Exempting the file from the NAME scan does not exempt it from the RUNTIME
+    // scan: `driving` is still checked for every file, this one included, and
+    // the positive assertions after the loop prove the generated file declares
+    // without ever calling.
+    const GENERATED_TYPES = join(APP_ROOT, 'lib', 'supabase', 'database.types.ts')
     const naming: string[] = []
     const driving: string[] = []
     for (const root of ['lib', 'app', 'components']) {
@@ -1574,12 +1590,25 @@ describe('Phase 2C — review #2 proofs', () => {
         if (/\.test\.tsx?$/.test(file)) continue
         if (file.includes('/autonomy-license/')) continue
         const code = codeOnly(readFileSync(file, 'utf8'))
-        if (code.includes('autonomy_license_append')) naming.push(file)
+        // Repo-wide and unconditional: nothing outside this module may construct
+        // the licence store. Checked BEFORE the name-scan exemption so the
+        // generated file cannot slip past this half of the invariant.
         if (code.includes('createAutonomyLicenseStore')) driving.push(file)
+        if (file === GENERATED_TYPES) continue
+        if (code.includes('autonomy_license_append')) naming.push(file)
       }
     }
     expect(naming, `production files naming the RPC:\n${naming.join('\n')}`).toEqual([])
     expect(driving, `production files driving the licence store:\n${driving.join('\n')}`).toEqual([])
+
+    // ── DECLARES, NEVER CALLS ───────────────────────────────────────────────
+    const generated = readFileSync(GENERATED_TYPES, 'utf8')
+    expect(generated).toContain('autonomy_license_append')
+    expect(generated).not.toContain('createAutonomyLicenseStore')
+    for (const invocation of [`.rpc('autonomy_license_append'`, `.rpc("autonomy_license_append"`]) {
+      expect(generated, `generated types must not invoke the writer: ${invocation}`)
+        .not.toContain(invocation)
+    }
   })
 })
 

@@ -354,7 +354,15 @@ describe('an action can exempt only its OWN check', () => {
 
   it('MUTATION — the exemption cannot be supplied by the caller', () => {
     const src = readFileSync(join(process.cwd(), 'lib/workflows/action-run.ts'), 'utf8')
-    const gate = src.slice(src.indexOf('// 7) required evidence'), src.indexOf('// 8) a FINANCIAL'))
+    // The end of the slice is found by STEP NUMBER, not by quoting the step's
+    // current wording. Naming the wording made this guard silently widen to the
+    // whole rest of the file the moment that comment was reworded — and a
+    // too-wide slice does not fail, it just makes the count below meaningless.
+    const from = src.indexOf('// 7) required evidence')
+    const end = src.slice(from).search(/\n\s*\/\/ 8\)/)
+    expect(from, 'step 7 must exist').toBeGreaterThan(-1)
+    expect(end, 'step 8 must bound the slice').toBeGreaterThan(-1)
+    const gate = src.slice(from, from + end)
     // Exactly one source of the exemption, and it takes the action kind.
     expect(gate).toMatch(/checkAnsweredBy\(input\.actionKind\)/)
     expect(gate.match(/checkAnsweredBy\(/g)).toHaveLength(1)
@@ -368,7 +376,15 @@ describe('an action can exempt only its OWN check', () => {
 
   it('MUTATION — exempting every check would make the gate dead code', () => {
     const src = readFileSync(join(process.cwd(), 'lib/workflows/action-run.ts'), 'utf8')
-    const gate = src.slice(src.indexOf('// 7) required evidence'), src.indexOf('// 8) a FINANCIAL'))
+    // The end of the slice is found by STEP NUMBER, not by quoting the step's
+    // current wording. Naming the wording made this guard silently widen to the
+    // whole rest of the file the moment that comment was reworded — and a
+    // too-wide slice does not fail, it just makes the count below meaningless.
+    const from = src.indexOf('// 7) required evidence')
+    const end = src.slice(from).search(/\n\s*\/\/ 8\)/)
+    expect(from, 'step 7 must exist').toBeGreaterThan(-1)
+    expect(end, 'step 8 must bound the slice').toBeGreaterThan(-1)
+    const gate = src.slice(from, from + end)
     // The blocking list is unmet MINUS the single self-answered key, and the
     // refusal is still driven by it being non-empty.
     expect(gate).toMatch(/const blocking = unmet\.filter\(v => v\.check_key !== selfAnswered\)/)

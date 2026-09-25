@@ -55,6 +55,26 @@ export interface ActionClassPolicy {
   cancellation: 'any_time' | 'step_boundary' | 'before_commit_only'
   /** Spend enforcement must be ACTIVE, not advisory, for this class to execute. */
   requiresSpendEnforcement: boolean
+  /**
+   * The rollout gate `H1_FINANCIAL_EXECUTION` must be ON for this class to
+   * enter the execution lifecycle.
+   *
+   * Deliberately a SEPARATE fact from `requiresSpendEnforcement`, because they
+   * are separate questions and were previously conflated into one flag:
+   *
+   *   • `requiresSpendEnforcement` asks "is the budget verdict HONOURED?"
+   *   • this asks "is this class switched ON for deployment at all?"
+   *
+   * A class must satisfy BOTH. Neither implies the other, and neither may be
+   * substituted for the other — financial execution being on must never excuse
+   * an advisory budget, and an enforcing budget must never by itself activate
+   * a class whose rollout gate is closed.
+   *
+   * This is a rollout control, NOT authority: it grants nothing and is not a
+   * substitute for authorization, a Decision Ledger record, an Autonomy
+   * License, project authority or a budget decision.
+   */
+  requiresFinancialExecutionEnablement: boolean
 }
 
 /**
@@ -67,31 +87,37 @@ export const ACTION_CLASS_POLICY: Record<ActionClass, ActionClassPolicy> = {
     requiresAuthorization: false, maxAttempts: 5,
     requiresPreCommitRevalidation: false, requiresIdempotency: false,
     cancellation: 'any_time', requiresSpendEnforcement: false,
+    requiresFinancialExecutionEnablement: false,
   },
   REVERSIBLE_WRITE: {
     requiresAuthorization: true, maxAttempts: 3,
     requiresPreCommitRevalidation: false, requiresIdempotency: true,
     cancellation: 'step_boundary', requiresSpendEnforcement: false,
+    requiresFinancialExecutionEnablement: false,
   },
   MATERIAL_WRITE: {
     requiresAuthorization: true, maxAttempts: 1,
     requiresPreCommitRevalidation: true, requiresIdempotency: true,
     cancellation: 'before_commit_only', requiresSpendEnforcement: false,
+    requiresFinancialExecutionEnablement: false,
   },
   FINANCIAL: {
     requiresAuthorization: true, maxAttempts: 1,
     requiresPreCommitRevalidation: true, requiresIdempotency: true,
     cancellation: 'before_commit_only', requiresSpendEnforcement: true,
+    requiresFinancialExecutionEnablement: true,
   },
   EXTERNAL_COMMUNICATION: {
     requiresAuthorization: true, maxAttempts: 1,
     requiresPreCommitRevalidation: true, requiresIdempotency: true,
     cancellation: 'before_commit_only', requiresSpendEnforcement: false,
+    requiresFinancialExecutionEnablement: false,
   },
   DESTRUCTIVE: {
     requiresAuthorization: true, maxAttempts: 1,
     requiresPreCommitRevalidation: true, requiresIdempotency: true,
     cancellation: 'before_commit_only', requiresSpendEnforcement: false,
+    requiresFinancialExecutionEnablement: false,
   },
 }
 

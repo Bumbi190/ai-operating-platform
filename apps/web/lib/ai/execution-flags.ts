@@ -23,6 +23,7 @@
 import { isFencingEnabled } from './fencing'
 import { isCancelEnabled } from './cancel'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
+import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
 
 export interface ExecutionSafetyFlags {
   /** Writes from an executing run are conditioned on its claim_id. */
@@ -35,11 +36,24 @@ export interface ExecutionSafetyFlags {
   unified_executor: boolean
   /** PR9b: a budget refusal is HONOURED rather than merely recorded. */
   spend_gate: boolean
+  /**
+   * Phase 3A rollout gate: the FINANCIAL action class may enter the execution
+   * lifecycle. Reported SEPARATELY from `spend_gate` and never inferred from it —
+   * they are independent requirements and a FINANCIAL action needs both.
+   */
+  financial_execution: boolean
 }
 
 /**
- * Booleans only, derived at call time so a flag flip is visible without a
- * redeploy — the same read semantics the runtime itself uses.
+ * Booleans only, read through the runtime's own predicates — the same read
+ * semantics the runtime itself uses, so this surface cannot report a fiction.
+ *
+ * WITHIN one deployment the predicates read that deployment's `process.env` at
+ * INVOCATION time. Across Vercel project configuration that is not the case:
+ * deployments are IMMUTABLE, so changing an environment variable does NOT
+ * affect a deployment that already exists. The new value becomes effective only
+ * after a NEW deployment, and until then this surface reports the OLD state —
+ * correctly, because that is what the running code is using.
  */
 export function executionSafetyFlags(): ExecutionSafetyFlags {
   return {
@@ -48,6 +62,7 @@ export function executionSafetyFlags(): ExecutionSafetyFlags {
     policy_gate:      process.env.H1_POLICY_GATE === '1',
     unified_executor: process.env.H1_UNIFIED_EXECUTOR === '1',
     spend_gate:       isSpendGateEnforced(),
+    financial_execution: isFinancialExecutionEnabled(),
   }
 }
 
@@ -63,5 +78,17 @@ export function unsafeExecutionFlags(f: ExecutionSafetyFlags = executionSafetyFl
   // Advisory-by-design for now, but it must be VISIBLE that spend is only being
   // observed rather than limited — an unenforced budget reads as a budget.
   if (!f.spend_gate) unsafe.push('spend_gate_advisory_only')
+  // Phase 3A configuration drift, NOT a safety fault: the FINANCIAL class is
+  // switched on for execution while the budget verdict is still only recorded.
+  // `action-run` still refuses to bind in this state (both requirements are
+  // checked independently, so `spend_enforcement_required` fires first), which is
+  // exactly why this is reported as DRIFT an operator should resolve rather than
+  // as an unsafe condition — the system is failing closed, and loudly.
+  if (f.financial_execution && !f.spend_gate) {
+    unsafe.push('financial_execution_without_spend_enforcement')
+  }
+  // `financial_execution === false` is deliberately NOT reported. A closed
+  // rollout gate is the SAFE default and the fail-closed state; flagging it would
+  // train operators to treat "not switched on yet" as a problem to clear.
   return unsafe
 }

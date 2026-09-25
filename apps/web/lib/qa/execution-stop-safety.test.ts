@@ -242,10 +242,22 @@ describe('effective flag state is observable without leaking secrets', () => {
       process.env.H1_FENCING = '1'; process.env.H1_CANCEL = '1'
       process.env.H1_POLICY_GATE = '0'; delete process.env.H1_UNIFIED_EXECUTOR
       process.env.H1_SPEND_GATE = '1'
+      // Phase 3A: the rollout gate is reported as its OWN boolean, never folded
+      // into `spend_gate`. Cleared explicitly so this asserts the default rather
+      // than inheriting whatever a neighbouring test left behind.
+      delete process.env.H1_FINANCIAL_EXECUTION
       const f = executionSafetyFlags()
       expect(f).toEqual({ fencing: true, cancel: true, policy_gate: false,
-                          unified_executor: false, spend_gate: true })
+                          unified_executor: false, spend_gate: true,
+                          financial_execution: false })
       for (const v of Object.values(f)) expect(typeof v).toBe('boolean')
+      // …and it really tracks its own env var, independently of spend.
+      process.env.H1_FINANCIAL_EXECUTION = '1'
+      expect(executionSafetyFlags().financial_execution).toBe(true)
+      expect(executionSafetyFlags().spend_gate).toBe(true)
+      process.env.H1_SPEND_GATE = '0'
+      expect(executionSafetyFlags().financial_execution,
+        'an advisory budget must not close the rollout gate').toBe(true)
     } finally { process.env = prev }
   })
 
@@ -270,7 +282,11 @@ describe('effective flag state is observable without leaking secrets', () => {
 
   it('flags fencing/cancel off as unsafe, and treats behaviour flags separately', async () => {
     const { unsafeExecutionFlags } = await import('../ai/execution-flags')
-    const base = { policy_gate: true, unified_executor: true, spend_gate: true }
+    // `financial_execution: false` is the SAFE default and contributes nothing to
+    // the unsafe list — a closed rollout gate must not read as a defect. The
+    // drift case (financial_execution on while spend is advisory) is proven
+    // separately below.
+    const base = { policy_gate: true, unified_executor: true, spend_gate: true, financial_execution: false }
     expect(unsafeExecutionFlags({ ...base, fencing: false, cancel: true }))
       .toEqual(['fencing_disabled'])
     expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: false }))
@@ -279,10 +295,26 @@ describe('effective flag state is observable without leaking secrets', () => {
     // defect. spend_gate off IS surfaced (PR9b) — an unenforced budget reads as
     // a budget, so "we are only observing" has to be visible.
     expect(unsafeExecutionFlags({ fencing: true, cancel: true, policy_gate: false,
-                                  unified_executor: false, spend_gate: true }))
+                                  unified_executor: false, spend_gate: true,
+                                  financial_execution: false }))
       .toEqual([])
     expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: true, spend_gate: false }))
       .toEqual(['spend_gate_advisory_only'])
+
+    // ── Phase 3A: the drift case is reported, the safe default is not ────────
+    // Financial execution switched on while the budget verdict is only RECORDED
+    // is genuine configuration drift. The system still fails closed — action-run
+    // checks both requirements independently and refuses — so this is surfaced as
+    // drift to resolve, not as an unsafe condition.
+    expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: true,
+                                  spend_gate: false, financial_execution: true }))
+      .toEqual(['spend_gate_advisory_only', 'financial_execution_without_spend_enforcement'])
+
+    // A closed rollout gate is the fail-closed default. Reporting it would teach
+    // operators to clear a state that is working as designed.
+    expect(unsafeExecutionFlags({ ...base, fencing: true, cancel: true,
+                                  spend_gate: true, financial_execution: false }))
+      .toEqual([])
   })
 })
 

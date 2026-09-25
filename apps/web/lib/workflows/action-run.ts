@@ -35,6 +35,7 @@ import { findAdapter } from './adapters/registry'
 import { checkAnsweredBy } from './action-discovery'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
+import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
 import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
   policyClassForActionClass, WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
@@ -53,6 +54,8 @@ export type ActionBindingRefusal =
   | 'target_hash_mismatch'
   | 'evidence_not_satisfied'
   | 'spend_enforcement_required'
+  /** The rollout gate for this class is off — a different fact from the budget. */
+  | 'financial_execution_disabled'
   | 'duplicate_action_identity'
   | 'insert_rejected'
   /** The kind is not in the canonical registry, so it has no class. */
@@ -231,13 +234,31 @@ export async function createWorkflowActionRun(
     }
   }
 
-  // 8) a FINANCIAL action must not become executable while spend is advisory.
-  //    PR9b records refusals but does not honour them, so "budget checked" would
-  //    be a claim we cannot back.
+  // 8) TWO INDEPENDENT REQUIREMENTS, checked separately and never conflated.
+  //
+  //    These were one flag until the Phase 3A decoupling. `H1_SPEND_GATE` decided
+  //    both whether the budget verdict was HONOURED and whether FINANCIAL could
+  //    bind at all, so enabling budget enforcement silently unlocked the first
+  //    real-money effect. They answer different questions and each has its own
+  //    refusal, so an operator can always tell WHICH prerequisite is absent.
+  //
+  //    Order matters and is deliberate: the budget requirement is reported first,
+  //    because an advisory budget is the more dangerous configuration — it means
+  //    a refusal was computed and overridden, not merely that a rollout is off.
   if (policy.requiresSpendEnforcement && !isSpendGateEnforced()) {
     return {
       ok: false, refusal: 'spend_enforcement_required',
       detail: 'H1_SPEND_GATE is advisory; a FINANCIAL action may not be bound as executable',
+    }
+  }
+
+  //    The rollout gate. OFF means this class is deliberately not switched on for
+  //    this deployment yet — the safe default, and NOT a statement about consent,
+  //    authority or budget. It cannot be satisfied by turning spend enforcement on.
+  if (policy.requiresFinancialExecutionEnablement && !isFinancialExecutionEnabled()) {
+    return {
+      ok: false, refusal: 'financial_execution_disabled',
+      detail: 'H1_FINANCIAL_EXECUTION is off; a FINANCIAL action may not enter the execution lifecycle',
     }
   }
 
@@ -317,6 +338,12 @@ export type ActionReadinessBlocker =
   | 'target_drifted'
   | 'evidence_drifted'
   | 'spend_enforcement_required'
+  /**
+   * Rollout configuration blocker, never authority/target drift. Executor
+   * disposition for an already-claimed run is TERMINAL via
+   * CONFIG_TERMINAL_BLOCKERS; it is NOT a TEMPORARY_BLOCKERS requeue.
+   */
+  | 'financial_execution_disabled'
   | 'cancel_requested'
 
 export interface ActionReadiness {
@@ -367,9 +394,25 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
     .select('execution_paused').eq('id', instance.project_id).maybeSingle()
   if (project?.execution_paused === true) blockers.push('project_paused')
 
+  // The same TWO independent requirements as bind time, re-checked HERE because an
+  // already-bound run must not become runnable merely because one of the two
+  // changed. Spend enforcement is reported first for the same reason as at bind:
+  // an advisory budget is the more dangerous state.
+  //
+  // Neither is DRIFT: the approved act still exists and the pinned target is
+  // unchanged. `terminal` below is about canonical target/authority drift, and a
+  // rollout configuration blocker is not that.
+  //
+  // `terminal === false` is a statement about the READINESS DATA, and NOT an
+  // instruction to requeue this durable run. Executor disposition is a separate
+  // decision, and for these two it is the opposite one: a config blocker cannot
+  // be requeued without stranding the run, so the executor REJECTS it. See
+  // `CONFIG_TERMINAL_BLOCKERS` in action-executor.ts.
   const policy = ACTION_CLASS_POLICY[run.action_class as ActionClass]
   if (policy?.requiresSpendEnforcement && !isSpendGateEnforced()) {
     blockers.push('spend_enforcement_required')
+  } else if (policy?.requiresFinancialExecutionEnablement && !isFinancialExecutionEnabled()) {
+    blockers.push('financial_execution_disabled')
   }
 
   if (policy?.requiresAuthorization) {

@@ -1652,13 +1652,74 @@ describe('Phase 2C — inertness', () => {
     // is shared vocabulary, not licence authority — `issue`, `resolve`, `store`,
     // `derive`, `scope`, `compose` and `types` remain unreachable from outside.
     const ALLOWED_VOCABULARY_REFERENCE = 'atlas/autonomy-license/levels'
+    // Phase 3B0 — the reviewed runtime sibling, added DELIBERATELY.
+    //
+    // `lib/atlas/autonomy-runtime/` is the layer this module was always going to
+    // acquire: the pure admission core reads the licence's RESOLVED shape and
+    // the composition, and nothing else. A reviewed consumer, not a quiet one.
+    //
+    // Widened to the directory because the three modules there are one reviewed
+    // unit (policy / admission / platform-survival); enumerating them would go
+    // stale silently.
+    //
+    // What this guard protects — that no EXECUTOR, scheduler, drain, spend
+    // boundary or provider path consumes autonomy — is NOT relaxed: those roots
+    // are `lib/workflows`, `lib/cost`, `lib/media`, `lib/os` and `app/api`, none
+    // of which is under `lib/atlas`. The autonomy-runtime suite now asserts that
+    // absence directly, so the property is enforced rather than assumed.
+    // ── EXACT per-file import authority ─────────────────────────────────────
+    //
+    // NOT a directory exemption. A directory exemption would defeat the whole
+    // property this guard exists for: a future file under `autonomy-runtime/`
+    // could import `store`, `issue`, `derive` or `resolve` — everything that
+    // CREATES licence authority — and the guard would never see it.
+    //
+    // So each reviewed sibling names the EXACT module specifiers it may use, and
+    // a file under `autonomy-runtime/` that is not listed here inherits NOTHING.
+    // Adding a consumer, or widening one, requires an edit to this map.
+    const REVIEWED_RUNTIME_IMPORTS: Record<string, readonly string[]> = {
+      // The shared canonical level vocabulary, and nothing else.
+      'lib/atlas/autonomy-runtime/policy.ts': ['levels'],
+      // The minimum PURE surfaces the foundation needs: the composition rule,
+      // the resolved shape it reads, and the vocabulary. Note what is absent —
+      // no `issue`, no `resolve`, no `store`, no `derive`, no `errors`. The
+      // runtime layer must never be able to create, mutate or re-resolve a
+      // licence; it only reads what resolution already produced.
+      'lib/atlas/autonomy-runtime/admission.ts': ['levels', 'types', 'compose'],
+      // NONE. The platform-reader layer has no business touching licence
+      // machinery at all.
+      'lib/atlas/autonomy-runtime/platform-survival.ts': [],
+    }
+
+    /** The `autonomy-license/<name>` specifiers a file actually imports. */
+    const licenceSpecifiersIn = (code: string): string[] =>
+      [...code.matchAll(/autonomy-license\/([a-z0-9-]+)/g)].map(m => m[1])
+
     const offenders: string[] = []
     for (const file of walk(resolve(__dirname, '..', 'atlas'))) {
       if (!/\.ts$/.test(file) || file.includes('autonomy-license')) continue
       // codeOnly, not raw text: a comment that NAMES this module is not a
       // consumer of it — the principle `survival-history.test.ts` states for the
       // same reason. Survival's header comment legitimately explains the split.
-      const machineryLines = codeOnly(readFileSync(file, 'utf8'))
+      const code = codeOnly(readFileSync(file, 'utf8'))
+
+      const key = Object.keys(REVIEWED_RUNTIME_IMPORTS)
+        .find(rel => file.endsWith(rel))
+      if (key) {
+        // A reviewed sibling: every licence module it names must be on ITS list.
+        const allowed = REVIEWED_RUNTIME_IMPORTS[key]
+        for (const spec of new Set(licenceSpecifiersIn(code))) {
+          if (!allowed.includes(spec)) {
+            offenders.push(`${file}: '${spec}' is not in its reviewed allowlist [${allowed.join(', ')}]`)
+          }
+        }
+        continue
+      }
+
+      // Anything under autonomy-runtime that is NOT listed inherits nothing, and
+      // is judged by the ordinary vocabulary rule below — which is to say, a new
+      // import of licence machinery fails until it is reviewed into the map.
+      const machineryLines = code
         .split('\n')
         .filter(line => line.includes('autonomy-license'))
         .filter(line => !line.includes(ALLOWED_VOCABULARY_REFERENCE))

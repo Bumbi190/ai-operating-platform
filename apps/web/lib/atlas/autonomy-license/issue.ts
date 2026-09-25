@@ -77,6 +77,8 @@ export const LICENSE_REFUSALS = [
   'license_terminal',
   /** A suspended licence is stopped; only revocation or supersession may follow. */
   'license_suspended',
+  /** Stopping something already stopped is outside the approved lifecycle. */
+  'license_already_suspended',
   'restriction_raises_level',
   'restriction_adds_action',
   'restriction_extends_window',
@@ -126,20 +128,31 @@ export interface SupersedeLicenseRequest extends LicenseIdRequest {
   readonly supersededByLicenseId: string
 }
 
-export interface IssueArgs {
-  store?: AutonomyLicenseStore
-  /** Injected in tests so the boundary can be proven without a session. */
-  operator?: { ok: true; actor: string } | { ok: false; reason: string }
-  instance?: { project_id: string; def_key: string; def_hash: string } | null
-  decisionLineage?: (decisionId: string) => Promise<unknown[]>
-  now?: string
-}
-
 // ── Shared preconditions ──────────────────────────────────────────────────────
+//
+// ── THERE IS NO DEPENDENCY-INJECTION PARAMETER, DELIBERATELY ───────────────
+// An earlier revision accepted an optional `args` object carrying `operator`,
+// `store`, `instance`, `decisionLineage` and `now`. That made the authority
+// boundary overridable by any future caller:
+//
+//     issueAutonomyLicense(request, {
+//       operator: { ok: true, actor: 'user:…' },   // no session at all
+//       instance: …, decisionLineage: …, store: …, now: …,
+//     })
+//
+// — which bypasses resolvePlatformOperator(), the real workflow-instance read,
+// the real Decision Ledger read, the governing check and the server clock. The
+// whole point of this module is that the PUBLIC boundary proves authority, so
+// the public boundary takes the human request and nothing else.
+//
+// Tests reach the same coverage by mocking the imported dependencies
+// (`vi.mock`), which cannot be reached from production code. A pure helper may
+// prepare or evaluate DATA, but the function that can cause `store.append(...)`
+// sits behind these checks and has no way to skip them.
 
 /** The issuer, or the reason there is none. Never a caller-supplied actor. */
-async function authorize(args: IssueArgs): Promise<{ ok: true; actor: string } | { ok: false; reason: LicenseRefusal }> {
-  const operator = args.operator ?? await resolvePlatformOperator()
+async function authorize(): Promise<{ ok: true; actor: string } | { ok: false; reason: LicenseRefusal }> {
+  const operator = await resolvePlatformOperator()
   if (operator.ok) return { ok: true, actor: operator.actor }
   switch (operator.reason) {
     case 'unauthenticated':        return { ok: false, reason: 'unauthenticated' }
@@ -160,13 +173,7 @@ interface Subject { project_id: string; def_key: string; def_hash: string }
  */
 async function loadSubject(
   workflowInstanceId: string,
-  args: IssueArgs,
 ): Promise<{ ok: true; subject: Subject } | { ok: false; reason: LicenseRefusal }> {
-  if (args.instance !== undefined) {
-    return args.instance
-      ? { ok: true, subject: args.instance }
-      : { ok: false, reason: 'instance_not_found' }
-  }
   try {
     const instance = await readInstance(createAdminClient() as never, workflowInstanceId)
     if (!instance) return { ok: false, reason: 'instance_not_found' }
@@ -194,13 +201,10 @@ async function proveDecision(
   decisionId: string,
   projectId: string,
   at: string,
-  args: IssueArgs,
 ): Promise<{ ok: true; pin: DecisionPin } | { ok: false; reason: LicenseRefusal }> {
   let lineage: unknown[]
   try {
-    lineage = args.decisionLineage
-      ? await args.decisionLineage(decisionId)
-      : await createDecisionLedgerStore().lineage(decisionId)
+    lineage = await createDecisionLedgerStore().lineage(decisionId)
   } catch {
     return { ok: false, reason: 'decision_unavailable' }
   }
@@ -255,14 +259,20 @@ function validateWindow(effectiveAt: string, expiresAt: string): LicenseRefusal 
 
 // ── ISSUE ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Issue a licence.
+ *
+ * Takes the human request and NOTHING ELSE. The operator, the workflow subject,
+ * the decision lineage, the issue-time clock and the store are all resolved by
+ * the boundary itself — see the note above `authorize`.
+ */
 export async function issueAutonomyLicense(
   request: IssueLicenseRequest,
-  args: IssueArgs = {},
 ): Promise<LicenseWriteResult> {
-  const auth = await authorize(args)
+  const auth = await authorize()
   if (!auth.ok) return deny(auth.reason)
 
-  const subject = await loadSubject(request.workflowInstanceId, args)
+  const subject = await loadSubject(request.workflowInstanceId)
   if (!subject.ok) return deny(subject.reason)
 
   const requestedLevel = request.licensedLevel
@@ -273,15 +283,17 @@ export async function issueAutonomyLicense(
   const scope = resolveActionScope(request.allowedActionKinds, subject.subject.def_key)
   if (!scope.ok) return deny(scope.reason, scope.detail)
 
+  // The issue-time clock is the SERVER's. "Is this decision currently
+  // governing?" is evaluated as of now, and a caller must not be able to
+  // backdate that evaluation to a moment when a lapsed decision still stood.
   const decision = await proveDecision(
     request.decisionId,
     subject.subject.project_id,
-    args.now ?? new Date().toISOString(),
-    args,
+    new Date().toISOString(),
   )
   if (!decision.ok) return deny(decision.reason)
 
-  const store = args.store ?? createAutonomyLicenseStore()
+  const store = createAutonomyLicenseStore()
   try {
     const event = await store.append({
       licenseId: crypto.randomUUID(),
@@ -320,12 +332,11 @@ export async function issueAutonomyLicense(
  */
 export async function restrictAutonomyLicense(
   request: RestrictLicenseRequest,
-  args: IssueArgs = {},
 ): Promise<LicenseWriteResult> {
-  const current = await loadCurrent(request.licenseId, args)
+  const current = await loadCurrent(request.licenseId)
   if (!current.ok) return deny(current.reason)
 
-  const auth = await authorize(args)
+  const auth = await authorize()
   if (!auth.ok) return deny(auth.reason)
 
   const requestedLevel = request.licensedLevel
@@ -372,41 +383,49 @@ export async function restrictAutonomyLicense(
     effectiveAt: request.effectiveAt,
     expiresAt: request.expiresAt,
     reason: request.reason ?? null,
-  }, args)
+  })
 }
 
 // ── SUSPEND / REVOKE / SUPERSEDE ──────────────────────────────────────────────
 
 export async function suspendAutonomyLicense(
   request: LicenseIdRequest,
-  args: IssueArgs = {},
 ): Promise<LicenseWriteResult> {
-  return lifecycle('LICENSE_SUSPENDED', request, args)
+  const current = await loadCurrent(request.licenseId)
+  if (!current.ok) return deny(current.reason)
+  // A suspension is a STOP, and stopping something already stopped is not a
+  // narrowing act of any kind. The approved lifecycle admits exactly two acts
+  // after a suspension — revocation and supersession — so a second suspension is
+  // outside it. Refused here, by the RPC, and by the pure fold: "suspended"
+  // means stopped, and a redundant stop is how a lifecycle vocabulary starts
+  // growing meanings nobody agreed to.
+  if (current.state.status === 'suspended') return deny('license_already_suspended')
+  return finishLifecycle(current, 'LICENSE_SUSPENDED', request)
 }
 
 /** §18.57 — terminal for this licence lineage. */
 export async function revokeAutonomyLicense(
   request: LicenseIdRequest,
-  args: IssueArgs = {},
 ): Promise<LicenseWriteResult> {
-  return lifecycle('LICENSE_REVOKED', request, args)
+  const current = await loadCurrent(request.licenseId)
+  if (!current.ok) return deny(current.reason)
+  return finishLifecycle(current, 'LICENSE_REVOKED', request)
 }
 
 /** §18.56 — a replacement licence lineage exists. */
 export async function supersedeAutonomyLicense(
   request: SupersedeLicenseRequest,
-  args: IssueArgs = {},
 ): Promise<LicenseWriteResult> {
-  const current = await loadCurrent(request.licenseId, args)
+  const current = await loadCurrent(request.licenseId)
   if (!current.ok) return deny(current.reason)
-  const replacement = await loadCurrent(request.supersededByLicenseId, args)
+  const replacement = await loadCurrent(request.supersededByLicenseId)
   if (!replacement.ok) return deny('supersession_target_not_found')
   // §18.243 — autonomy is not transferable between unrelated contexts. A
   // supersession may not point a licence at another project's instance.
   if (replacement.state.workflowInstanceId !== current.state.workflowInstanceId) {
     return deny('supersession_target_not_found', 'subject-mismatch')
   }
-  const auth = await authorize(args)
+  const auth = await authorize()
   if (!auth.ok) return deny(auth.reason)
   return append(current, auth.actor, {
     act: 'LICENSE_SUPERSEDED',
@@ -417,17 +436,16 @@ export async function supersedeAutonomyLicense(
     expiresAt: current.state.expiresAt,
     reason: request.reason ?? null,
     supersededByLicenseId: request.supersededByLicenseId,
-  }, args)
+  })
 }
 
-async function lifecycle(
+/** Authorize, then append — shared by the two acts that carry no new terms. */
+async function finishLifecycle(
+  current: CurrentLicense,
   act: Extract<LicenseAct, 'LICENSE_SUSPENDED' | 'LICENSE_REVOKED'>,
   request: LicenseIdRequest,
-  args: IssueArgs,
 ): Promise<LicenseWriteResult> {
-  const current = await loadCurrent(request.licenseId, args)
-  if (!current.ok) return deny(current.reason)
-  const auth = await authorize(args)
+  const auth = await authorize()
   if (!auth.ok) return deny(auth.reason)
   return append(current, auth.actor, {
     act,
@@ -437,10 +455,8 @@ async function lifecycle(
     effectiveAt: current.state.effectiveAt,
     expiresAt: current.state.expiresAt,
     reason: request.reason ?? null,
-  }, args)
+  })
 }
-
-// ── Shared internals ──────────────────────────────────────────────────────────
 
 interface CurrentLicense {
   ok: true
@@ -456,9 +472,8 @@ interface CurrentLicense {
  */
 async function loadCurrent(
   licenseId: string,
-  args: IssueArgs,
 ): Promise<CurrentLicense | { ok: false; reason: LicenseRefusal }> {
-  const store = args.store ?? createAutonomyLicenseStore()
+  const store = createAutonomyLicenseStore()
   let lineage: LicenseEvent[]
   try {
     lineage = await store.lineage(licenseId)
@@ -502,12 +517,11 @@ async function append(
     reason: string | null
     supersededByLicenseId?: string | null
   },
-  args: IssueArgs,
 ): Promise<LicenseWriteResult> {
   if (!LICENSE_ACTS.includes(fields.act)) return deny('license_malformed', fields.act)
   const generation = licenseGenerationOf(current.lineage)
 
-  const store = args.store ?? createAutonomyLicenseStore()
+  const store = createAutonomyLicenseStore()
   try {
     const event = await store.append({
       licenseId: current.state.licenseId,

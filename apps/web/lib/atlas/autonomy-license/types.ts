@@ -154,6 +154,14 @@ export const LICENSE_REASONS = [
   'decision_not_governing',
   /** The workflow instance's `def_hash` moved off the issued binding (§18.61). */
   'workflow_definition_drifted',
+  /**
+   * The workflow instance's project binding moved off the issued one (§18.21).
+   *
+   * Should be impossible — a licence is project-specific and the database
+   * proves the binding at issue time — which is exactly why observing it is
+   * treated as a serious fail-closed invariant rather than a curiosity.
+   */
+  'workflow_project_drifted',
   /** The action registry reclassified a licensed ActionKind (§18.60). */
   'scope_drifted',
 ] as const

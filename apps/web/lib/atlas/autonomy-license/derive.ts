@@ -126,22 +126,50 @@ export function deriveLicenseState(events: readonly LicenseEvent[]): DerivedLice
   }
 
   const licenseId = first.licenseId
-  for (const event of ordered) {
+  ordered.forEach((event, index) => {
     if (event.licenseId !== licenseId) {
       throw new MalformedLicenseLineageError('license-id-drift', event.licenseId)
     }
-    // The subject is fixed at issue and may never move. A restriction naming a
-    // different instance would be a second grant smuggled into a narrowing act.
-    if (event.workflowInstanceId !== first.workflowInstanceId) {
-      throw new MalformedLicenseLineageError('subject-drift', event.eventId)
-    }
+
+    // ── Immutable provenance, checked on EVERY event ──────────────────────
+    // The database freezes these on continuing acts, but the fold must not
+    // depend on the writer having done so: a forgotten clause there, or a
+    // lineage forged around the RPC entirely, would otherwise let a chain carry
+    // drifted provenance while the fold silently keeps using the FIRST event's
+    // values. That is repair-by-ignoring, and this module fails closed instead.
+    //
+    // `actor` is deliberately NOT immutable: different authorized humans may
+    // legitimately perform later acts. Scope, level and the window are also
+    // absent here, because they are allowed to NARROW under their own rules
+    // below.
     if (event.projectId !== first.projectId) {
       throw new MalformedLicenseLineageError('project-drift', event.eventId)
+    }
+    if (event.workflowInstanceId !== first.workflowInstanceId) {
+      throw new MalformedLicenseLineageError('subject-drift', event.eventId)
     }
     if (event.boundDefKey !== first.boundDefKey) {
       throw new MalformedLicenseLineageError('definition-key-drift', event.eventId)
     }
-  }
+    if (event.boundDefHash !== first.boundDefHash) {
+      throw new MalformedLicenseLineageError('definition-hash-drift', event.eventId)
+    }
+    if (event.decisionId !== first.decisionId) {
+      throw new MalformedLicenseLineageError('decision-id-drift', event.eventId)
+    }
+    if (event.decisionVersion !== first.decisionVersion) {
+      throw new MalformedLicenseLineageError('decision-version-drift', event.eventId)
+    }
+    if (event.decisionRecordId !== first.decisionRecordId) {
+      throw new MalformedLicenseLineageError('decision-record-drift', event.eventId)
+    }
+
+    // A lineage has exactly one issuing act, and by definition it is the first.
+    // A later ISSUED would be a second grant hiding inside the first.
+    if (index > 0 && event.act === 'LICENSE_ISSUED') {
+      throw new MalformedLicenseLineageError('issue-not-at-generation-zero', event.eventId)
+    }
+  })
 
   // Contiguity from zero: a gap means an act was lost or hidden, and every
   // later act was derived from a state this chain cannot show.
@@ -168,11 +196,15 @@ export function deriveLicenseState(events: readonly LicenseEvent[]): DerivedLice
   // The write boundary and the RPC both refuse this on the real chain. The fold
   // refuses it as well, so a future writer that bypasses both still cannot
   // resurrect a suspended licence. Fail closed, never repair.
+  // The approved lifecycle admits EXACTLY two acts after a suspension:
+  // LICENSE_REVOKED and LICENSE_SUPERSEDED. Everything else is outside it —
+  // including a second LICENSE_SUSPENDED, because stopping something already
+  // stopped is not a narrowing act and the vocabulary has no meaning for it.
   const suspendedAt = ordered.findIndex(e => e.act === 'LICENSE_SUSPENDED')
   if (suspendedAt !== -1) {
-    const resurrection = ordered.slice(suspendedAt + 1).find(e => e.act === 'LICENSE_RESTRICTED')
-    if (resurrection) {
-      throw new MalformedLicenseLineageError('restriction-after-suspension', resurrection.eventId)
+    const illegal = ordered.slice(suspendedAt + 1).find(e => !TERMINAL_ACTS.has(e.act))
+    if (illegal) {
+      throw new MalformedLicenseLineageError('act-after-suspension', illegal.act)
     }
   }
 
@@ -268,6 +300,7 @@ export function effectivenessOf(
   state: DerivedLicenseState,
   at: string,
   external: {
+    projectMatches: boolean
     defHashMatches: boolean
     scopeMatches: boolean
     decisionGoverning: boolean
@@ -286,8 +319,10 @@ export function effectivenessOf(
   if (now >= Date.parse(state.expiresAt)) return deny('expired')
 
   // A licence cannot outlive the institution that granted it (Ruling 2), outlive
-  // its own subject (§18.61), or survive a reclassification of what it permits
-  // (§18.60). All three are DERIVED — the ledger is never touched.
+  // its own subject (§18.61), belong to a project its instance has left
+  // (§18.21), or survive a reclassification of what it permits (§18.60). All
+  // four are DERIVED — the ledger is never touched.
+  if (!external.projectMatches) return deny('workflow_project_drifted')
   if (!external.defHashMatches) return deny('workflow_definition_drifted')
   if (!external.scopeMatches) return deny('scope_drifted')
   if (!external.decisionGoverning) {

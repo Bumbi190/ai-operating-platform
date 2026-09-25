@@ -44,8 +44,11 @@
 
 create table if not exists public.atlas_autonomy_license_events (
   event_id                 uuid primary key default gen_random_uuid(),
-  -- Database-assigned total order. The ledger is read by time, but a monotonic
-  -- cursor is what makes two same-instant events orderable at all.
+  -- The database's monotonic cursor and the deterministic TOTAL order across
+  -- every event. It is NOT the authority on lineage order — `license_generation`
+  -- is — but it breaks the only tie generation can leave and makes two
+  -- same-instant events orderable at all. `occurred_at` is audit evidence and
+  -- never decides order.
   event_seq                bigint generated always as identity unique,
 
   -- The licence aggregate. NOT supplied by a caller for an existing licence —
@@ -53,10 +56,14 @@ create table if not exists public.atlas_autonomy_license_events (
   -- own; every authority fact below is derived or proven server-side.
   license_id               uuid not null,
 
-  -- Lineage position. Contiguous from 0, and unique per licence: a second act
-  -- claiming the same generation FAILS rather than both becoming canonical.
-  -- This is the concurrency mechanism (Ruling 7) — never timestamp ordering,
-  -- which cannot distinguish two acts stamped in the same millisecond.
+  -- Lineage position, and the CAUSAL order the reader folds in: generation 1
+  -- was derived from generation 0 and can be nothing else.
+  --
+  -- Contiguous from 0, and unique per licence: a second act claiming the same
+  -- generation FAILS rather than both becoming canonical. This is the
+  -- concurrency mechanism (Ruling 7) — never timestamp ordering, which cannot
+  -- distinguish two acts stamped in the same millisecond, and which a clock
+  -- correction could reorder against the acts it was derived from.
   license_generation       integer not null,
 
   act                      text not null,
@@ -101,8 +108,8 @@ create table if not exists public.atlas_autonomy_license_events (
   -- When the event happened. Named `occurred_at` — the vocabulary
   -- `LicenseEvent.occurredAt` and the rest of the repo's event ledgers use — so
   -- the column the TypeScript store selects is the column this table has.
-  -- Audit evidence only: it is NOT the authority ordering (see the generation
-  -- index below).
+  -- Audit evidence only: it is NOT the authority ordering, which is
+  -- `license_generation` (the column above), not any index and not the clock.
   occurred_at              timestamptz not null default now(),
 
   constraint atlas_autonomy_license_events_act_valid
@@ -342,19 +349,20 @@ begin
         using errcode = '22023';
     end if;
   else
-    -- ── A suspended licence may only be revoked or superseded ────────────
-    -- There is no RESUMED act, and a restriction must not become a hidden
-    -- resume path. After a suspension the only admissible acts are the two
-    -- terminal ones; restoring autonomy requires a NEW reviewed licensing
-    -- lineage, not another act on this one. Checked here, refused again by the
-    -- pure fold, and re-derived as ineffective at read time — three independent
-    -- mechanisms, because "suspended means stopped" is the whole point of
-    -- suspension.
-    if p_act = 'LICENSE_RESTRICTED' and exists (
+    -- ── After a suspension, ONLY revocation and supersession ─────────────
+    -- There is no RESUMED act. A restriction must not become a hidden resume
+    -- path, and a SECOND suspension is not a narrowing act either — stopping
+    -- something already stopped is outside the approved lifecycle. Restoring
+    -- autonomy requires a NEW reviewed licensing lineage, not another act on
+    -- this one. Refused here, refused again by the pure fold, and re-derived as
+    -- ineffective at read time: three independent mechanisms, because
+    -- "suspended means stopped" is the whole point of a suspension.
+    if exists (
       select 1 from public.atlas_autonomy_license_events
        where license_id = p_license_id and act = 'LICENSE_SUSPENDED'
-    ) then
-      raise exception 'a suspended licence cannot be restricted back into effect'
+    ) and p_act not in ('LICENSE_REVOKED', 'LICENSE_SUPERSEDED') then
+      raise exception
+        'after a suspension the only admissible acts are revocation and supersession (got %)', p_act
         using errcode = '22023';
     end if;
 
@@ -441,8 +449,8 @@ comment on function public.autonomy_license_append(
   timestamptz, timestamptz, uuid, text, text
 ) is
   'The ONLY write path for the autonomy licence ledger. Serializes the lineage by generation, '
-  'refuses an act after a terminal one, refuses a restriction that would resume a suspended '
-  'licence, refuses any continuing act that widens level, actions or window, and proves on issue '
+  'refuses an act after a terminal one, admits ONLY revocation or supersession after a '
+  'suspension, refuses any continuing act that widens level, actions or window, and proves on issue '
   'that the licence subject is the workflow instance''s OWN project/def_key/def_hash and that the '
   'pinned decision record says exactly what the licence claims. Whether that decision is '
   'CURRENTLY governing is proven in TypeScript against Chapter 11''s own fold, which this function '

@@ -110,9 +110,9 @@ const SEED = '01010101-0101-4101-8101-010101010101'
 const FIXTURE = `
 create extension if not exists pgcrypto;
 do $do$ begin
-  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
-  if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
-  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role') then begin create role service_role; exception when duplicate_object or unique_violation then null; end; end if;
+  if not exists (select 1 from pg_roles where rolname='anon') then begin create role anon; exception when duplicate_object or unique_violation then null; end; end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated') then begin create role authenticated; exception when duplicate_object or unique_violation then null; end; end if;
 end $do$;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
@@ -395,10 +395,11 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
   // ── Suspension is a dead end (no hidden resume) ───────────────────────────
 
   const issueFor = (l: string) => run(dsn, ['-c', append({ p_license_id: `'${l}'` })])
-  const suspendFor = (l: string) => run(dsn, ['-c', append({
+  const suspendSql = (l: string) => append({
     p_license_id: `'${l}'`, p_act: `'LICENSE_SUSPENDED'`,
     p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
-  })])
+  })
+  const suspendFor = (l: string) => run(dsn, ['-c', suspendSql(l)])
   const restrictFor = (l: string) => append({
     p_license_id: `'${l}'`, p_act: `'LICENSE_RESTRICTED'`, p_licensed_level: `'L1'`,
     p_allowed_action_kinds: `array['validate_monthly_story']`,
@@ -409,8 +410,18 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
     const l = 'e1'.repeat(16)
     issueFor(l); suspendFor(l)
     expect(expectFailure(dsn, restrictFor(l)))
-      .toMatch(/cannot be restricted back into effect|22023/i)
+      .toMatch(/only admissible acts are revocation and supersession|22023/i)
     expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('2')
+  })
+
+  it('refuses a SECOND suspension — stopping something stopped is outside the lifecycle', () => {
+    const l = 'e2'.repeat(16)
+    issueFor(l); suspendFor(l)
+    expect(expectFailure(dsn, suspendSql(l)))
+      .toMatch(/only admissible acts are revocation and supersession|22023/i)
+    expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('2')
+    expect(one(dsn, `select act from public.atlas_autonomy_license_events
+      where license_id = '${l}' order by license_generation desc limit 1`)).toBe('LICENSE_SUSPENDED')
   })
 
   it('still allows revocation after a suspension', () => {

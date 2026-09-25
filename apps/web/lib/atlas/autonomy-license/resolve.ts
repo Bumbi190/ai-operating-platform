@@ -43,13 +43,6 @@ import { createAutonomyLicenseStore, type AutonomyLicenseStore } from './store'
 import { noLicense } from './types'
 import type { LicenseEvent, LicenseReason, ResolvedAutonomyLicense } from './types'
 
-export interface ResolveArgs {
-  store?: AutonomyLicenseStore
-  /** Injected for tests; production reads the workflow instance server-side. */
-  instance?: { project_id: string; def_key: string; def_hash: string } | null
-  /** Injected for tests; the Decision Ledger lineage loader. */
-  decisionLineage?: (decisionId: string) => Promise<unknown[]>
-}
 
 /** Statuses that END a lineage, so it cannot compete for current authority. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['revoked', 'superseded'])
@@ -121,7 +114,16 @@ function selectCurrentLineage(events: readonly LicenseEvent[]): LineageSelection
     }
   }
 
-  if (derived.length === 0) return sawMalformed ? { kind: 'malformed' } : { kind: 'none' }
+  // ── ANY malformed lineage fails the whole resolution ──────────────────────
+  // Checked BEFORE any healthy lineage is considered. A chain that cannot be
+  // folded is UNKNOWN authority history, and unknown history must not buy
+  // operational freedom: we cannot tell whether it was a competing grant, a
+  // replacement, or a terminal act that ended something real. Resolving a
+  // healthy sibling beside it would be assuming the missing history was
+  // harmless — which is a guess, and this module does not guess about authority.
+  if (sawMalformed) return { kind: 'malformed' }
+
+  if (derived.length === 0) return { kind: 'none' }
 
   const live = derived.filter(d => !TERMINAL_STATUSES.has(d.status))
   if (live.length === 1) return { kind: 'resolved', lineage: live[0].lineage }
@@ -131,22 +133,47 @@ function selectCurrentLineage(events: readonly LicenseEvent[]): LineageSelection
   const latest = derived.reduce((a, b) => (b.lastSeq > a.lastSeq ? b : a))
   return { kind: 'resolved', lineage: latest.lineage }
 }
+// ── NO INJECTION SEAM, DELIBERATELY ────────────────────────────────────────
+// An earlier revision accepted `ResolveArgs` carrying a store, a workflow
+// instance and a decision-lineage loader. Read-only today, but this resolver is
+// intended to become an execution-governance truth source, and a production API
+// where a future gate could call
+//
+//     resolveAutonomyLicense(instance, at, { instance: fake, store: fake, … })
+//
+// and receive a MANUFACTURED effective licence is not one to leave lying around.
+// The public resolver reads the real canonical sources; the pure logic it calls
+// stays directly testable, and tests mock the imported dependencies instead.
+
+/**
+ * The canonical read.
+ *
+ * `at` is the EVALUATION INSTANT — the moment "is this licence effective?" is
+ * asked as of. It is deliberately part of the read contract because an audit
+ * must be able to ask the question at a past instant, and because the pure fold
+ * takes its clock as a parameter rather than reading a global one.
+ *
+ * It is NOT an authority input and it does not come from a client: nothing a
+ * caller passes here can grant, widen or revive anything. It can only move the
+ * question in time, and every answer it produces is a DERIVED ineffectiveness
+ * (expiry, not-yet-effective) that fails closed to L0. Future runtime
+ * enforcement must pass the server's current instant.
+ */
+
+
 
 export async function resolveAutonomyLicense(
   workflowInstanceId: string,
   at: string,
-  args: ResolveArgs = {},
 ): Promise<ResolvedAutonomyLicense> {
-  const store = args.store ?? createAutonomyLicenseStore()
+  const store = createAutonomyLicenseStore()
 
   // ── The subject ───────────────────────────────────────────────────────────
-  // Resolved server-side. A caller names an instance and nothing else; the
-  // project and definition it belongs to are facts, not arguments.
-  const instance = args.instance !== undefined
-    ? args.instance
-    : await readInstance(createAdminClient() as never, workflowInstanceId)
-        .then(i => (i ? { project_id: i.project_id, def_key: i.def_key, def_hash: i.def_hash } : null))
-        .catch(() => null)
+  // Read from the real workflow store. A caller names an instance and nothing
+  // else; the project and definition it belongs to are facts, not arguments.
+  const instance = await readInstance(createAdminClient() as never, workflowInstanceId)
+    .then(i => (i ? { project_id: i.project_id, def_key: i.def_key, def_hash: i.def_hash } : null))
+    .catch(() => null)
 
   if (!instance) return noLicense(workflowInstanceId, 'unknown_workflow_instance')
 
@@ -182,15 +209,25 @@ export async function resolveAutonomyLicense(
     throw error
   }
 
-  // ── The three derived facts a pure fold cannot know ───────────────────────
+  // ── The four derived facts a pure fold cannot know ────────────────────────
+  //
+  // The subject is project-specific (§18.21), so a licence must not outlive its
+  // workflow instance's project binding. The database proves this at issue time;
+  // re-checking it here matters because "the project moved" is exactly the kind
+  // of change that must never be absorbed into a still-effective licence. It
+  // should be impossible in normal operation — which is why observing it is
+  // treated as a serious fail-closed invariant rather than a curiosity.
+  const projectMatches = state.projectId === instance.project_id
+
   const defHashMatches =
     state.boundDefKey === instance.def_key && state.boundDefHash === instance.def_hash
 
   const scopeMatches = !scopeDrifted(state.actionKinds, state.boundDefKey, state.recordedFingerprint)
 
-  const decision = await evaluateDecision(state.decision, instance.project_id, at, args)
+  const decision = await evaluateDecision(state.decision, instance.project_id, at)
 
   const { effective, reason, decisionReason } = effectivenessOf(state, at, {
+    projectMatches,
     defHashMatches,
     scopeMatches,
     decisionGoverning: decision.governing,
@@ -233,13 +270,10 @@ async function evaluateDecision(
   pin: { decisionId: string; version: number; recordId: string },
   projectId: string,
   at: string,
-  args: ResolveArgs,
 ): Promise<{ governing: boolean; reason: string | null }> {
   let lineage: unknown[]
   try {
-    lineage = args.decisionLineage
-      ? await args.decisionLineage(pin.decisionId)
-      : await createDecisionLedgerStore().lineage(pin.decisionId)
+    lineage = await createDecisionLedgerStore().lineage(pin.decisionId)
   } catch {
     return { governing: false, reason: 'unavailable' }
   }

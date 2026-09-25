@@ -338,7 +338,11 @@ export type ActionReadinessBlocker =
   | 'target_drifted'
   | 'evidence_drifted'
   | 'spend_enforcement_required'
-  /** Rollout gate off. Temporary config, never drift — see TEMPORARY_BLOCKERS. */
+  /**
+   * Rollout configuration blocker, never authority/target drift. Executor
+   * disposition for an already-claimed run is TERMINAL via
+   * CONFIG_TERMINAL_BLOCKERS; it is NOT a TEMPORARY_BLOCKERS requeue.
+   */
   | 'financial_execution_disabled'
   | 'cancel_requested'
 

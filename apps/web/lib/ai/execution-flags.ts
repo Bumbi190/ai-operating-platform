@@ -45,8 +45,15 @@ export interface ExecutionSafetyFlags {
 }
 
 /**
- * Booleans only, derived at call time so a flag flip is visible without a
- * redeploy — the same read semantics the runtime itself uses.
+ * Booleans only, read through the runtime's own predicates — the same read
+ * semantics the runtime itself uses, so this surface cannot report a fiction.
+ *
+ * WITHIN one deployment the predicates read that deployment's `process.env` at
+ * INVOCATION time. Across Vercel project configuration that is not the case:
+ * deployments are IMMUTABLE, so changing an environment variable does NOT
+ * affect a deployment that already exists. The new value becomes effective only
+ * after a NEW deployment, and until then this surface reports the OLD state —
+ * correctly, because that is what the running code is using.
  */
 export function executionSafetyFlags(): ExecutionSafetyFlags {
   return {

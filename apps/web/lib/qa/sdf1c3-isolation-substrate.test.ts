@@ -1343,10 +1343,33 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
     for (const name of ['context', 'evidence', 'transition', 'execute', 'command', 'patch', 'prepare', 'worktree', 'sandbox']) expect(existsSync(join(api, name)), name).toBe(false)
   })
 
-  it('adds no migration: the canonical set still ends at the 1C2 migration', () => {
-    const migrations = readdirSync(resolve(ROOT, 'apps/web/supabase/migrations')).filter(name => name.endsWith('.sql')).sort()
-    expect(migrations.length).toBe(100)
-    expect(migrations[migrations.length - 1]).toBe('20260924140000_sdf1c2_broker_control_channel.sql')
+  it('adds no migration: 1C3A owns no canonical migration surface', () => {
+    // Phase 1C3A's merged property was: "1C3A itself added no migration."
+    //
+    // The original assertion tested that historical fact INDIRECTLY — by freezing
+    // the whole repository's migration count at 100 and pinning the globally last
+    // migration to 1C2's. Both were true when 1C3A merged, and as a merge-time
+    // tripwire it was correct. It stopped expressing the phase-local property the
+    // moment a later phase legitimately added a canonical migration, at which
+    // point it read as "no later phase may ever add another migration" — which
+    // was never the intent.
+    //
+    // Narrowed here to the invariant it was written to protect, so it stays valid
+    // as the repository grows. It deliberately makes NO claim about the migration
+    // count, the globally last migration, or any later phase.
+    const migrations = readdirSync(resolve(ROOT, 'apps/web/supabase/migrations'))
+      .filter(name => name.endsWith('.sql'))
+
+    // The 1C2 migration this test was written alongside must still exist.
+    expect(migrations).toContain('20260924140000_sdf1c2_broker_control_channel.sql')
+
+    // And nothing in the canonical set belongs to Phase 1C3A itself. The `1C<N>`
+    // phase number is part of this repository's migration filename convention —
+    // `sdf1c1`, `sdf1c1b`, `sdf1c2` — so `sdf1c3a` is the narrow, phase-specific
+    // marker. NOT a broad `/sdf1c3/`, which a future 1C3B or 1C3C may
+    // legitimately use for a migration of its own, and not a scan for generic
+    // words like `isolation`, which unrelated future database work could use.
+    expect(migrations.filter(name => /sdf1c3a/i.test(name))).toEqual([])
   })
 
   it('contains no model/provider, HTTP, database, credential or repository-content code', () => {

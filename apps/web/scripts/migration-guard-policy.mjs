@@ -17,16 +17,32 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 //    + 20260924120000_survival_funding_phase2b.sql (Atlas Survival Phase 2B —
 //      owner-declared operating capital, its audit ledger, and derivation v2 coverage)
 //    + 20260924140000_sdf1c2_broker_control_channel.sql (Phase 1C2 — broker control
-//      channel, database side only).
-// Enforced trips together: 100 = 14 grandfathered + 86 enforced.
+//      channel, database side only. MERGED to main and APPLIED to production.)
+//    + 20260924180000_autonomy_license_phase2c.sql (Atlas Autonomy Licensing Phase 2C —
+//      the Chapter 18 licence ledger, its narrowing write boundary, and the derived
+//      read model. APPLIED to production 2026-09-25 — see the note below.)
+// Enforced trips together: 101 = 14 grandfathered + 87 enforced.
 //
-// 1C1A, 1C1B, 2B and 1C2 each arrived on their own branch and each moved this tripwire by
-// one, so the reconciled total is the sum of all five additions rather than any one
-// branch's value. Phase 2B is ENFORCED, not grandfathered: it is a live repository
-// migration whose absence from the production ledger must fail the guard until the
-// approved apply happens.
-export const EXPECTED_CANONICAL_SQL_COUNT = 100
-export const EXPECTED_ENFORCED_COUNT = 86
+// 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
+// tripwire by one, so the reconciled total is the sum of all five arrivals rather than
+// any one branch's value.
+//
+// 1C2 and 2C both computed 100/86 independently — each was written against main's 99/85 —
+// which is exactly why the number alone could not distinguish them and why merging them
+// is 101/87 rather than either branch's figure. The tripwire is doing its job: it notices
+// that two branches each moved the same count.
+//
+// Phase 2C is ENFORCED, not grandfathered, and that has not changed now that it is
+// applied. `autonomy_license_phase2c` (ledger version 20260925102918) was APPLIED to
+// production on 2026-09-25 and the production ledger contains it EXACTLY ONCE, which
+// is why the guard is GREEN on this branch. The enforce-not-grandfather decision is
+// what keeps it honest in both directions: while it was unapplied its absence failed
+// the guard (that is the apply-before-PR contract working as designed), and if it were
+// ever absent again — or present TWICE — the guard must fail just as hard. Neither
+// absence nor duplication is tolerated, and the current production ledger satisfies
+// the guard.
+export const EXPECTED_CANONICAL_SQL_COUNT = 101
+export const EXPECTED_ENFORCED_COUNT = 87
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

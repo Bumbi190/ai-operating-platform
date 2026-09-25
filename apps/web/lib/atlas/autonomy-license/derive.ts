@@ -100,10 +100,16 @@ export function orderLicenseEvents(events: readonly LicenseEvent[]): LicenseEven
  * The generation an act derived from this chain belongs to: the chain's current
  * length, because generations are contiguous from zero.
  *
- * The database enforces contiguity independently via a unique index on
- * `(license_id, license_generation)`, so two human acts derived from the same
- * state claim the same number and the second is rejected. Timestamps are never
- * the serialization mechanism.
+ * This value is the caller's OBSERVATION, and it is sent to the database as
+ * `expectedGeneration` — that is what makes it load-bearing. The writer compares
+ * it against the committed truth under its lock and refuses the act when another
+ * one landed in between (SQLSTATE 40001, nothing written). Timestamps are never
+ * the mechanism: they cannot distinguish two acts stamped in the same
+ * millisecond.
+ *
+ * The unique index on `(license_id, license_generation)` enforces structural
+ * contiguity but does NOT catch this race — a stale caller claims the FOLLOWING
+ * generation, never one that already exists, so the index is never consulted.
  */
 export function licenseGenerationOf(events: readonly LicenseEvent[]): LicenseGeneration {
   return events.length

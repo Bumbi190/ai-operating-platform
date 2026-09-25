@@ -2,8 +2,9 @@
  * lib/atlas/autonomy-license/resolve.ts — the canonical autonomy-licence read.
  *
  * Answers §18.275's question — "What may this workflow do, for which project,
- * for how long, who approved it, what stops it?" — for one workflow instance at
- * one read clock.
+ * for how long, who approved it, what stops it?" — for one workflow instance,
+ * as of the server's current moment. Not a historical resolver; see the note on
+ * the exported function.
  *
  * ── WHY THIS IS NOT A PRINCIPAL-SCOPED READ ────────────────────────────────
  * The Decision Ledger's read boundary (`principal-read.ts`) resolves the caller's
@@ -139,33 +140,54 @@ function selectCurrentLineage(events: readonly LicenseEvent[]): LineageSelection
 // intended to become an execution-governance truth source, and a production API
 // where a future gate could call
 //
-//     resolveAutonomyLicense(instance, at, { instance: fake, store: fake, … })
+//     resolveAutonomyLicense(instance, { instance: fake, store: fake, … })
 //
 // and receive a MANUFACTURED effective licence is not one to leave lying around.
+// The same reasoning removed the `at` parameter: a caller-chosen evaluation
+// instant is a caller-chosen authority. There is deliberately no
+// `resolveAutonomyLicenseAt`, no `resolveWithClock` and no `unsafeResolve` — if
+// a historical read is ever built it must be a separately reviewed design, not
+// an escape hatch bolted onto the canonical one.
+//
 // The public resolver reads the real canonical sources; the pure logic it calls
 // stays directly testable, and tests mock the imported dependencies instead.
 
 /**
- * The canonical read.
+ * The canonical read: CURRENT autonomy truth, at the SERVER's present moment.
  *
- * `at` is the EVALUATION INSTANT — the moment "is this licence effective?" is
- * asked as of. It is deliberately part of the read contract because an audit
- * must be able to ask the question at a past instant, and because the pure fold
- * takes its clock as a parameter rather than reading a global one.
+ * ── WHY THERE IS NO `at` PARAMETER ─────────────────────────────────────────
+ * An earlier revision took `(workflowInstanceId, at)`. The comment above it
+ * claimed `at` "is not an authority input" and that "nothing a caller passes
+ * can grant, widen or revive anything". That was false, and provably so: `at`
+ * drives `effectiveAt`/`expiresAt` evaluation and the Decision Ledger's
+ * effectiveness window, so a caller supplying a timestamp from last week makes
+ * an EXPIRED licence read as effective, and one from tomorrow activates a
+ * licence that has not started. Moving the question in time is exactly as
+ * powerful as answering it, so a caller-supplied clock is a caller-supplied
+ * authority — and this resolver is intended to become an execution-governance
+ * truth source, where that would be the whole ballgame.
  *
- * It is NOT an authority input and it does not come from a client: nothing a
- * caller passes here can grant, widen or revive anything. It can only move the
- * question in time, and every answer it produces is a DERIVED ineffectiveness
- * (expiry, not-yet-effective) that fails closed to L0. Future runtime
- * enforcement must pass the server's current instant.
+ * The canonical answer therefore always uses `new Date()`. Tests drive time
+ * with `vi.useFakeTimers()` / `vi.setSystemTime()`, which substitutes the
+ * SERVER clock rather than passing one in; the PURE helpers (`effectivenessOf`)
+ * stay clock-parameterized because they compute on data and hold no authority.
+ *
+ * ── THIS IS NOT A HISTORICAL RESOLVER ──────────────────────────────────────
+ * Phase 2C answers what is true NOW. It reads the COMPLETE current licence
+ * lineage and the COMPLETE Decision Ledger lineage, so asking it about a past
+ * instant would still see events that happened afterwards — an `ISSUED at T1`,
+ * `REVOKED at T3` lineage read "at T2" would observe the T3 revocation. Correct
+ * point-in-time reconstruction would have to cut BOTH histories at the
+ * requested instant; that is a separately designed resolver and is OUT OF SCOPE
+ * here. No historical audit is claimed or implemented in Phase 2C.
  */
-
 
 
 export async function resolveAutonomyLicense(
   workflowInstanceId: string,
-  at: string,
 ): Promise<ResolvedAutonomyLicense> {
+  // The server's instant. Never a caller's.
+  const at = new Date().toISOString()
   const store = createAutonomyLicenseStore()
 
   // ── The subject ───────────────────────────────────────────────────────────

@@ -12,17 +12,25 @@
  * module is server-side.
  *
  * ── WHY `append` GOES THROUGH AN RPC RATHER THAN A TABLE INSERT ────────────
- * The generation that serializes concurrent human acts (Ruling 7: "Concurrency
- * must be structurally serialized so two human acts derived from the same
- * licence generation cannot both become canonical") is derived INSIDE the
- * database, under the same lock that reads the current chain. An insert built
- * here from a value this process computed would be exactly the timestamp-
- * ordering race the requirement forbids.
+ * Ruling 7: "Concurrency must be structurally serialized so two human acts
+ * derived from the same licence generation cannot both become canonical." Two
+ * facts make that true, and both live inside the database rather than here:
+ *
+ *   • the next generation is DERIVED there, under `for update` on the chain, so
+ *     no process can name a position it has not locked; and
+ *   • the caller's observation is checked against that locked truth BEFORE the
+ *     insert, and a mismatch is refused with SQLSTATE 40001 and no row written.
+ *
+ * The second is what actually catches a stale read. An insert built here from a
+ * value this process computed could express neither, and a unique index alone
+ * could not either — a stale caller asks for the following generation and never
+ * collides.
  */
 
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { LicenseStoreError } from './errors'
 import type { LicenseEvent } from './types'
 import type { AutonomyLicenseLevel } from './levels'
 
@@ -30,6 +38,21 @@ type AnyDb = any
 
 export interface AppendLicenseEventArgs {
   readonly licenseId: string
+  /**
+   * The lineage generation this act was DERIVED FROM — the caller's observation,
+   * sent to the database so it can refuse a stale one.
+   *
+   * This is the whole optimistic-concurrency contract. The RPC derives the next
+   * generation from committed truth under a lock; without this value a caller
+   * that read the chain before another act committed simply receives the next
+   * generation and appends a second act built from a view that no longer exists.
+   * The unique index cannot catch that, because the stale caller never asks for
+   * a generation that already exists.
+   *
+   * `0` for a fresh `LICENSE_ISSUED` (a lineage that does not exist yet); the
+   * derived generation of the chain the caller just read for every other act.
+   */
+  readonly expectedGeneration: number
   readonly act: LicenseEvent['act']
   readonly projectId: string
   readonly workflowInstanceId: string
@@ -145,6 +168,7 @@ class PostgresAutonomyLicenseStore implements AutonomyLicenseStore {
     // the one it asked for.
     const { data, error } = await (createAdminClient() as AnyDb).rpc('autonomy_license_append', {
       p_license_id: args.licenseId,
+      p_expected_generation: args.expectedGeneration,
       p_act: args.act,
       p_project_id: args.projectId,
       p_workflow_instance_id: args.workflowInstanceId,
@@ -162,9 +186,17 @@ class PostgresAutonomyLicenseStore implements AutonomyLicenseStore {
       p_reason: args.reason,
       p_actor: args.actor,
     })
-    if (error) throw new Error(`[autonomy-license] append failed: ${error.message}`)
+    // The SQLSTATE is carried out rather than flattened into prose: it is the
+    // only thing the boundary may base a refusal on, and a stale generation
+    // (40001) must arrive distinguishable from a malformed write.
+    if (error) {
+      throw new LicenseStoreError(
+        `[autonomy-license] append failed: ${error.message}`,
+        typeof error.code === 'string' && error.code ? error.code : null,
+      )
+    }
     const row = Array.isArray(data) ? data[0] : data
-    if (!row) throw new Error('[autonomy-license] append returned no row')
+    if (!row) throw new LicenseStoreError('[autonomy-license] append returned no row')
     return rowToEvent(row as Row)
   }
 

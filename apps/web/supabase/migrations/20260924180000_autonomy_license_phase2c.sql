@@ -60,10 +60,19 @@ create table if not exists public.atlas_autonomy_license_events (
   -- was derived from generation 0 and can be nothing else.
   --
   -- Contiguous from 0, and unique per licence: a second act claiming the same
-  -- generation FAILS rather than both becoming canonical. This is the
-  -- concurrency mechanism (Ruling 7) — never timestamp ordering, which cannot
-  -- distinguish two acts stamped in the same millisecond, and which a clock
-  -- correction could reorder against the acts it was derived from.
+  -- generation FAILS rather than both becoming canonical.
+  --
+  -- That uniqueness is DEFENCE IN DEPTH, not the concurrency authority. It
+  -- cannot see a stale read: a caller that read the chain before another act
+  -- committed asks for the NEXT generation, never one that already exists, so
+  -- the index is never given the chance to fire. What actually serializes two
+  -- humans on one licence state is the writer's comparison of the caller's
+  -- OBSERVED generation against the locked truth (SQLSTATE 40001, nothing
+  -- written) — see `autonomy_license_append` below.
+  --
+  -- Ordering is never by timestamp (Ruling 7), which cannot distinguish two
+  -- acts stamped in the same millisecond and which a clock correction could
+  -- reorder against the acts it was derived from.
   license_generation       integer not null,
 
   act                      text not null,
@@ -176,8 +185,11 @@ create table if not exists public.atlas_autonomy_license_events (
     check (actor ~ '^user:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
 );
 
--- The serialization index. Two acts derived from the same lineage state claim
--- the same generation, and one of them loses here rather than both landing.
+-- Structural uniqueness of a lineage position, and defence in depth against a
+-- duplicate literal generation. This index is NOT what serializes two humans on
+-- one licence state: a caller whose read went stale claims the FOLLOWING
+-- generation, so nothing here ever collides and no error is raised. That race is
+-- refused by `autonomy_license_append`'s observed-generation comparison instead.
 create unique index if not exists atlas_autonomy_license_events_generation_idx
   on public.atlas_autonomy_license_events (license_id, license_generation);
 
@@ -221,6 +233,7 @@ create trigger atlas_autonomy_license_events_no_truncate
 
 create or replace function public.autonomy_license_append(
   p_license_id               uuid,
+  p_expected_generation      integer,
   p_act                      text,
   p_project_id               uuid,
   p_workflow_instance_id     uuid,
@@ -279,9 +292,13 @@ begin
     raise exception 'the licence window must be a non-empty forward interval' using errcode = '22023';
   end if;
 
+  if p_expected_generation is null or p_expected_generation < 0 then
+    raise exception 'p_expected_generation must be the caller''s observed generation, >= 0'
+      using errcode = '22023';
+  end if;
+
   -- The lineage is serialized here. `for update` on the existing chain, then the
-  -- max generation read under that lock; the unique index is what actually
-  -- decides, so two concurrent acts on the same state cannot both commit.
+  -- max generation read under that lock.
   perform 1 from public.atlas_autonomy_license_events
    where license_id = p_license_id
    for update;
@@ -289,6 +306,34 @@ begin
   select coalesce(max(license_generation) + 1, 0) into v_generation
     from public.atlas_autonomy_license_events
    where license_id = p_license_id;
+
+  -- ── Optimistic concurrency: the caller's OBSERVED generation ──────────────
+  -- This is what actually serializes two humans acting on the same licence
+  -- state, and the unique index alone does NOT do it.
+  --
+  -- Without this check the generation is derived purely from committed database
+  -- truth, so a caller that read the chain BEFORE another act committed simply
+  -- receives the NEXT generation and inserts a second, later act built from a
+  -- view that no longer exists:
+  --
+  --     A reads generation 1   B reads generation 1
+  --     A calls RPC → lock → derives 1 → inserts 1 → commits
+  --     B waits on the lock, then derives 2 and inserts 2 — no conflict, because
+  --     B never asked for 1. The unique index is never given the chance to fire.
+  --
+  -- Comparing the caller's observation against the locked truth BEFORE inserting
+  -- turns that into a refusal, and nothing is written. Fail closed: the stale
+  -- caller must re-read and re-decide, never have its stale decision absorbed.
+  --
+  -- 40001 (serialization_failure) is the canonical PostgreSQL concurrency
+  -- conflict code. A stale human decision is a CONFLICT, never malformed data,
+  -- so it must not be reported as a 22023 data error.
+  if p_expected_generation <> v_generation then
+    raise exception
+      'stale licence generation: caller expected %, lineage is at %',
+      p_expected_generation, v_generation
+      using errcode = '40001';
+  end if;
 
   -- An ISSUED act starts a lineage and nothing else may; every other act
   -- continues one and may not be the first.
@@ -445,10 +490,13 @@ end;
 $$;
 
 comment on function public.autonomy_license_append(
-  uuid, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
+  uuid, integer, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
   timestamptz, timestamptz, uuid, text, text
 ) is
-  'The ONLY write path for the autonomy licence ledger. Serializes the lineage by generation, '
+  'The ONLY write path for the autonomy licence ledger. Serializes the lineage by generation and '
+  'refuses any act whose caller-observed p_expected_generation no longer matches the locked truth '
+  '(SQLSTATE 40001, nothing written) — that optimistic-concurrency check, not the unique index, is '
+  'what stops two humans acting on the same licence state from both committing. It also '
   'refuses an act after a terminal one, admits ONLY revocation or supersession after a '
   'suspension, refuses any continuing act that widens level, actions or window, and proves on issue '
   'that the licence subject is the workflow instance''s OWN project/def_key/def_hash and that the '
@@ -470,12 +518,12 @@ revoke all on table public.atlas_autonomy_license_events from public, anon, auth
 grant select on table public.atlas_autonomy_license_events to service_role;
 
 revoke all on function public.autonomy_license_append(
-  uuid, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
+  uuid, integer, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
   timestamptz, timestamptz, uuid, text, text
 ) from public, anon, authenticated;
 
 grant execute on function public.autonomy_license_append(
-  uuid, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
+  uuid, integer, text, uuid, uuid, text, text, text, text[], text, uuid, integer, uuid,
   timestamptz, timestamptz, uuid, text, text
 ) to service_role;
 

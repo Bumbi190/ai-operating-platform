@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -65,6 +65,25 @@ function expectFailure(dsn: string, sql: string): string {
     const err = e as { stderr?: Buffer | string }
     return String(err.stderr ?? '')
   }
+}
+
+/**
+ * Run a statement in its OWN psql process and report the outcome, so two
+ * statements can genuinely be in flight at once.
+ *
+ * `execFileSync` cannot express this — it blocks — and the concurrency proof is
+ * worthless if the two acts are serialized by the test harness rather than by
+ * the database.
+ */
+function runAsync(dsn: string, sql: string): Promise<{ ok: boolean; stderr: string }> {
+  return new Promise(resolveOutcome => {
+    const child = spawn(PSQL!, ['-v', 'ON_ERROR_STOP=1', '-X', '-q', '-d', dsn, '-c', sql],
+      { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', chunk => { stderr += String(chunk) })
+    child.on('error', error => resolveOutcome({ ok: false, stderr: String(error) }))
+    child.on('close', code => resolveOutcome({ ok: code === 0, stderr }))
+  })
 }
 
 const AVAILABLE = (() => {
@@ -141,6 +160,11 @@ insert into public.atlas_decision_ledger (record_id, decision_id, version, proje
 const append = (overrides: Record<string, string> = {}) => {
   const args: Record<string, string> = {
     p_license_id: `'${LICENSE}'`,
+    // The caller's OBSERVED lineage generation. 0 is correct for a fresh issue
+    // and for every refusal test whose act never reaches the generation check;
+    // any call that continues an existing chain must say which generation it
+    // read, or the RPC refuses it as stale (SQLSTATE 40001).
+    p_expected_generation: '0',
     p_act: `'LICENSE_ISSUED'`,
     p_project_id: `'${P_A}'`,
     p_workflow_instance_id: `'${INSTANCE_A}'`,
@@ -395,29 +419,32 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
   // ── Suspension is a dead end (no hidden resume) ───────────────────────────
 
   const issueFor = (l: string) => run(dsn, ['-c', append({ p_license_id: `'${l}'` })])
-  const suspendSql = (l: string) => append({
-    p_license_id: `'${l}'`, p_act: `'LICENSE_SUSPENDED'`,
+  // `gen` is the generation the caller observed — the whole chain below is
+  // order-dependent, so each continuing act must name the position it read.
+  const suspendSql = (l: string, gen: number) => append({
+    p_license_id: `'${l}'`, p_expected_generation: String(gen), p_act: `'LICENSE_SUSPENDED'`,
     p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
   })
-  const suspendFor = (l: string) => run(dsn, ['-c', suspendSql(l)])
-  const restrictFor = (l: string) => append({
-    p_license_id: `'${l}'`, p_act: `'LICENSE_RESTRICTED'`, p_licensed_level: `'L1'`,
+  const suspendFor = (l: string, gen: number) => run(dsn, ['-c', suspendSql(l, gen)])
+  const restrictFor = (l: string, gen: number) => append({
+    p_license_id: `'${l}'`, p_expected_generation: String(gen), p_act: `'LICENSE_RESTRICTED'`,
+    p_licensed_level: `'L1'`,
     p_allowed_action_kinds: `array['validate_monthly_story']`,
     p_expires_at: `'2026-10-01T00:00:00Z'`,
   })
 
   it('refuses a restriction that would resume a suspended licence', () => {
     const l = 'e1'.repeat(16)
-    issueFor(l); suspendFor(l)
-    expect(expectFailure(dsn, restrictFor(l)))
+    issueFor(l); suspendFor(l, 1)
+    expect(expectFailure(dsn, restrictFor(l, 2)))
       .toMatch(/only admissible acts are revocation and supersession|22023/i)
     expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('2')
   })
 
   it('refuses a SECOND suspension — stopping something stopped is outside the lifecycle', () => {
     const l = 'e2'.repeat(16)
-    issueFor(l); suspendFor(l)
-    expect(expectFailure(dsn, suspendSql(l)))
+    issueFor(l); suspendFor(l, 1)
+    expect(expectFailure(dsn, suspendSql(l, 2)))
       .toMatch(/only admissible acts are revocation and supersession|22023/i)
     expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('2')
     expect(one(dsn, `select act from public.atlas_autonomy_license_events
@@ -426,9 +453,9 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
 
   it('still allows revocation after a suspension', () => {
     const l = 'f2'.repeat(16)
-    issueFor(l); suspendFor(l)
+    issueFor(l); suspendFor(l, 1)
     run(dsn, ['-c', append({
-      p_license_id: `'${l}'`, p_act: `'LICENSE_REVOKED'`,
+      p_license_id: `'${l}'`, p_expected_generation: '2', p_act: `'LICENSE_REVOKED'`,
       p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
     })])
     expect(one(dsn, `select act from public.atlas_autonomy_license_events
@@ -519,7 +546,10 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
   })
 
   it('refuses a second ISSUED act on the same licence', () => {
-    expect(expectFailure(dsn, append({ p_license_id: `'${LICENSE}'` })))
+    // expected_generation 1 is the truthful observation (the lineage exists at
+    // generation 0), so the refusal that fires is the POSITIONAL rule rather
+    // than the stale-generation conflict.
+    expect(expectFailure(dsn, append({ p_license_id: `'${LICENSE}'`, p_expected_generation: '1' })))
       .toMatch(/inconsistent with lineage position|22023/i)
   })
 
@@ -555,14 +585,14 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
 
   it('refuses a continuing act that moves the subject or its provenance', () => {
     expect(expectFailure(dsn, append({
-      p_license_id: `'${LICENSE}'`, p_act: `'LICENSE_SUSPENDED'`,
+      p_license_id: `'${LICENSE}'`, p_expected_generation: '1', p_act: `'LICENSE_SUSPENDED'`,
       p_bound_def_hash: `repeat('a',64)`,
     }))).toMatch(/may not move the licence subject|22023/i)
   })
 
   it('refuses any continuing act that widens level, actions or window', () => {
     const base = {
-      p_license_id: `'${LICENSE}'`, p_act: `'LICENSE_RESTRICTED'`,
+      p_license_id: `'${LICENSE}'`, p_expected_generation: '1', p_act: `'LICENSE_RESTRICTED'`,
       p_allowed_action_kinds: `array['generate_monthly_story']`,
     }
     expect(expectFailure(dsn, append({ ...base, p_licensed_level: `'L5'` })))
@@ -577,7 +607,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
 
   it('accepts a genuine narrowing restriction', () => {
     const row = one(dsn, `select license_generation from (${append({
-      p_license_id: `'${LICENSE}'`, p_act: `'LICENSE_RESTRICTED'`,
+      p_license_id: `'${LICENSE}'`, p_expected_generation: '1', p_act: `'LICENSE_RESTRICTED'`,
       p_licensed_level: `'L1'`, p_allowed_action_kinds: `array['validate_monthly_story']`,
       p_expires_at: `'2026-10-01T00:00:00Z'`,
     })}) t`)
@@ -587,7 +617,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
   it('is terminal after a revocation — no further act is accepted', () => {
     const revoked = 'ab'.repeat(16)
     run(dsn, ['-c', `select * from public.autonomy_license_append(
-      p_license_id => '${revoked}', p_act => 'LICENSE_ISSUED', p_project_id => '${P_A}',
+      p_license_id => '${revoked}', p_expected_generation => 0, p_act => 'LICENSE_ISSUED', p_project_id => '${P_A}',
       p_workflow_instance_id => '${INSTANCE_A}', p_bound_def_key => 'familje-stunden.monthly-release',
       p_bound_def_hash => repeat('f',64), p_licensed_level => 'L3',
       p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => repeat('a',64),
@@ -595,7 +625,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
       p_effective_at => '2026-09-20T09:30:00Z', p_expires_at => '2026-10-20T08:00:00Z',
       p_superseded_by_license_id => null, p_reason => null, p_actor => '${ACTOR}')`])
     run(dsn, ['-c', `select * from public.autonomy_license_append(
-      p_license_id => '${revoked}', p_act => 'LICENSE_REVOKED', p_project_id => '${P_A}',
+      p_license_id => '${revoked}', p_expected_generation => 1, p_act => 'LICENSE_REVOKED', p_project_id => '${P_A}',
       p_workflow_instance_id => '${INSTANCE_A}', p_bound_def_key => 'familje-stunden.monthly-release',
       p_bound_def_hash => repeat('f',64), p_licensed_level => 'L3',
       p_allowed_action_kinds => array['generate_monthly_story'], p_action_scope_fingerprint => repeat('a',64),
@@ -603,15 +633,17 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
       p_effective_at => '2026-09-20T09:30:00Z', p_expires_at => '2026-10-20T08:00:00Z',
       p_superseded_by_license_id => null, p_reason => 'incident', p_actor => '${ACTOR}')`])
     const after = expectFailure(dsn, append({
-      p_license_id: `'${revoked}'`, p_act: `'LICENSE_SUSPENDED'`,
+      p_license_id: `'${revoked}'`, p_expected_generation: '2', p_act: `'LICENSE_SUSPENDED'`,
       p_allowed_action_kinds: `array['generate_monthly_story']`,
     }))
     expect(after).toMatch(/terminal and accepts no further act|22023/i)
   })
 
   it('refuses a supersession that names another instance or no replacement', () => {
+    // The chain is at generation 1 (issued, then restricted), so 2 is the
+    // truthful observation and the supersession-shape rule is what fires.
     const shape = {
-      p_license_id: `'${LICENSE}'`, p_act: `'LICENSE_SUPERSEDED'`,
+      p_license_id: `'${LICENSE}'`, p_expected_generation: '2', p_act: `'LICENSE_SUPERSEDED'`,
       p_allowed_action_kinds: `array['validate_monthly_story']`, p_licensed_level: `'L1'`,
       p_expires_at: `'2026-10-01T00:00:00Z'`,
     }
@@ -623,7 +655,7 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
 
   it('accepts a same-instance supersession', () => {
     const row = one(dsn, `select license_generation from (${append({
-      p_license_id: `'${LICENSE}'`, p_act: `'LICENSE_SUPERSEDED'`,
+      p_license_id: `'${LICENSE}'`, p_expected_generation: '2', p_act: `'LICENSE_SUPERSEDED'`,
       p_allowed_action_kinds: `array['validate_monthly_story']`, p_licensed_level: `'L1'`,
       p_expires_at: `'2026-10-01T00:00:00Z'`,
       p_superseded_by_license_id: `'${'cd'.repeat(16)}'`,
@@ -635,5 +667,107 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
     const rows = query(dsn, `select license_generation, act from public.atlas_autonomy_license_events
       where license_id = '${LICENSE}' order by license_generation`)
     expect(rows.map(r => r.join(':')).join(' ')).toBe('0:LICENSE_ISSUED 1:LICENSE_RESTRICTED 2:LICENSE_SUPERSEDED')
+  })
+
+  // ── Optimistic concurrency: the OBSERVED generation ───────────────────────
+  //
+  // The unique index proves only that two RAW inserts of the SAME literal
+  // generation collide — which is not the RPC race. The real race is two humans
+  // acting on one licence STATE: both read generation 1, both call the RPC, and
+  // because the generation is derived from committed truth under the lock, the
+  // second caller simply receives generation 2 and inserts without any conflict
+  // ever firing. These tests are what prove the RPC actually refuses that.
+
+  /** A continuing act on a fresh lineage, carrying the caller's observation. */
+  const staleProbe = (l: string, expected: number) => append({
+    p_license_id: `'${l}'`, p_expected_generation: String(expected),
+    p_act: `'LICENSE_SUSPENDED'`,
+    p_allowed_action_kinds: `array['generate_monthly_story','validate_monthly_story']`,
+  })
+
+  it('refuses a STALE expected generation and writes NOTHING', () => {
+    const l = 'c1'.repeat(16)
+    issueFor(l)
+    // The first continuing act observed generation 1, and lands.
+    run(dsn, ['-c', staleProbe(l, 1)])
+    expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events
+      where license_id = '${l}'`)).toBe('2')
+
+    // A second caller still holding the SAME stale observation is refused —
+    // this is the case the unique index cannot see.
+    const stale = expectFailure(dsn, staleProbe(l, 1))
+    expect(stale).toMatch(/stale licence generation|40001/i)
+
+    // Nothing was written: the lineage is still 0,1 and no generation 2 exists.
+    expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events
+      where license_id = '${l}'`)).toBe('2')
+    expect(one(dsn, `select max(license_generation) from public.atlas_autonomy_license_events
+      where license_id = '${l}'`)).toBe('1')
+  })
+
+  it('refuses an ISSUED act that carries a non-zero observation', () => {
+    const fresh = 'c2'.repeat(16)
+    const refused = expectFailure(dsn, append({
+      p_license_id: `'${fresh}'`, p_expected_generation: '1',
+    }))
+    expect(refused).toMatch(/stale licence generation|40001/i)
+    expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events
+      where license_id = '${fresh}'`)).toBe('0')
+  })
+
+  it('reports a malformed observation as malformed, never as a conflict', () => {
+    // A conflict must mean "your view was stale", so bad input cannot wear it.
+    expect(expectFailure(dsn, append({ p_license_id: 'gen_random_uuid()', p_expected_generation: '-1' })))
+      .toMatch(/observed generation|22023/i)
+    expect(expectFailure(dsn, append({ p_license_id: 'gen_random_uuid()', p_expected_generation: 'null' })))
+      .toMatch(/observed generation|22023/i)
+  })
+
+  it('REAL COMPETING RPC ACTS: exactly one commits and the stale one never lands', async () => {
+    const l = 'c3'.repeat(16)
+    issueFor(l)
+
+    // Two callers, both having read generation 1, in flight at the same time.
+    const outcomes = await Promise.all([runAsync(dsn, staleProbe(l, 1)), runAsync(dsn, staleProbe(l, 1))])
+
+    const committed = outcomes.filter(o => o.ok)
+    const refused = outcomes.filter(o => !o.ok)
+    expect(committed).toHaveLength(1)
+    expect(refused).toHaveLength(1)
+    expect(refused[0].stderr).toMatch(/stale licence generation|40001/i)
+
+    // The lineage is EXACTLY 0,1 — generation 2 from a stale caller is
+    // unreachable, which is the whole property.
+    expect(one(dsn, `select string_agg(license_generation::text, ',' order by license_generation)
+      from public.atlas_autonomy_license_events where license_id = '${l}'`)).toBe('0,1')
+  })
+
+  // ── The write contract's signature and reachability ───────────────────────
+
+  it('has EXACTLY ONE writer overload, and it carries the expected generation', () => {
+    const sigs = query(dsn, `select pg_get_function_identity_arguments(p.oid)
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'autonomy_license_append'`)
+    expect(sigs).toHaveLength(1)
+    const args = sigs[0][0]
+    expect(args).toMatch(/^p_license_id uuid, p_expected_generation integer, /)
+    // The OLD argument list — the one with no concurrency contract — is gone.
+    expect(args).not.toMatch(/^p_license_id uuid, p_act text/)
+  })
+
+  it('the writer is executable by service_role and by NO client role', () => {
+    const newSig = 'public.autonomy_license_append(' +
+      'uuid,integer,text,uuid,uuid,text,text,text,text[],text,uuid,integer,uuid,' +
+      'timestamptz,timestamptz,uuid,text,text)'
+    expect(one(dsn, `select has_function_privilege('service_role', '${newSig}', 'EXECUTE')::text`)).toBe('true')
+    for (const role of ['anon', 'authenticated']) {
+      expect(one(dsn, `select has_function_privilege('${role}', '${newSig}', 'EXECUTE')::text`),
+        `${role} must not execute the writer`).toBe('false')
+    }
+    // And PUBLIC holds nothing: no row in the ACL grants it EXECUTE.
+    expect(one(dsn, `select count(*)::text from information_schema.routine_privileges
+      where routine_schema = 'public' and routine_name = 'autonomy_license_append'
+        and privilege_type = 'EXECUTE' and grantee in ('PUBLIC','public','anon','authenticated')`))
+      .toBe('0')
   })
 })

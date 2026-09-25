@@ -43,8 +43,9 @@ import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { readInstance } from '@/lib/workflows/store'
 
 import { licenseGenerationOf, deriveLicenseState, MalformedLicenseLineageError } from './derive'
+import { isStaleGenerationConflict } from './errors'
 import { compareLevels, INEFFECTIVE_LEVEL, isAutonomyLicenseLevel } from './levels'
-import { resolveActionScope } from './scope'
+import { resolveActionScope, scopeDrifted } from './scope'
 import { createAutonomyLicenseStore, type AutonomyLicenseStore } from './store'
 import { LICENSE_ACTS } from './types'
 import type { DecisionRecord } from '@/lib/atlas/decision-ledger/types'
@@ -75,6 +76,18 @@ export const LICENSE_REFUSALS = [
   'license_not_found',
   'license_malformed',
   'license_terminal',
+  /**
+   * The licence's recorded scope no longer describes the registry it was
+   * granted against (Ruling 4's `scope_drifted`). Only a NEW reviewed licence
+   * lineage may re-establish scope; a restriction must not rebind this one.
+   */
+  'license_scope_drifted',
+  /**
+   * Another human act landed between this caller's read and its write. The
+   * database refused it (SQLSTATE 40001) and nothing was written — the caller
+   * must re-read and re-decide. Never reported as malformed input.
+   */
+  'license_conflict',
   /** A suspended licence is stopped; only revocation or supersession may follow. */
   'license_suspended',
   /** Stopping something already stopped is outside the approved lifecycle. */
@@ -149,6 +162,27 @@ export interface SupersedeLicenseRequest extends LicenseIdRequest {
 // (`vi.mock`), which cannot be reached from production code. A pure helper may
 // prepare or evaluate DATA, but the function that can cause `store.append(...)`
 // sits behind these checks and has no way to skip them.
+
+/**
+ * ── AUTHORITY IS ESTABLISHED BEFORE ANYTHING IS READ ───────────────────────
+ * Every exported mutation calls `authorize()` FIRST and returns on refusal,
+ * before it touches the licence ledger, the workflow store or the Decision
+ * Ledger. This is an ordering requirement, not a style preference.
+ *
+ * An earlier revision loaded the licence first in `restrict`, `suspend`,
+ * `revoke` and `supersede`, so an unauthenticated or non-operator caller caused a
+ * service-role read of a SERVER_ONLY table before authority existed — and
+ * received back `license_not_found` / `license_malformed` / `license_terminal` /
+ * `license_suspended` / `supersession_target_not_found`. That is an EXISTENCE
+ * ORACLE: a caller who has proven nothing learns whether a licence id is real
+ * and what state it is in, which is precisely the reconnaissance this module's
+ * closed refusal vocabulary exists to deny.
+ *
+ * So the order is fixed: authorize → deny, or authorize → read → act. The
+ * already-proven actor is then passed DOWN to the helpers rather than being
+ * re-proved later, so `finishLifecycle` cannot authorize a second time against a
+ * different session state than the one that opened the request.
+ */
 
 /** The issuer, or the reason there is none. Never a caller-supplied actor. */
 async function authorize(): Promise<{ ok: true; actor: string } | { ok: false; reason: LicenseRefusal }> {
@@ -297,6 +331,10 @@ export async function issueAutonomyLicense(
   try {
     const event = await store.append({
       licenseId: crypto.randomUUID(),
+      // A fresh lineage: the caller's observation is that generation 0 does not
+      // exist yet, which is exactly what the RPC will also derive. Issue is the
+      // only act that legitimately expects 0.
+      expectedGeneration: 0,
       act: 'LICENSE_ISSUED',
       projectId: subject.subject.project_id,
       workflowInstanceId: request.workflowInstanceId,
@@ -316,6 +354,9 @@ export async function issueAutonomyLicense(
     })
     return { ok: true, event }
   } catch (error) {
+    if (isStaleGenerationConflict(error)) {
+      return deny('license_conflict', 'a licence already exists at this generation; nothing was written')
+    }
     return deny('license_malformed', String((error as Error).message))
   }
 }
@@ -333,11 +374,11 @@ export async function issueAutonomyLicense(
 export async function restrictAutonomyLicense(
   request: RestrictLicenseRequest,
 ): Promise<LicenseWriteResult> {
-  const current = await loadCurrent(request.licenseId)
-  if (!current.ok) return deny(current.reason)
-
   const auth = await authorize()
   if (!auth.ok) return deny(auth.reason)
+
+  const current = await loadCurrent(request.licenseId)
+  if (!current.ok) return deny(current.reason)
 
   const requestedLevel = request.licensedLevel
   if (!isAutonomyLicenseLevel(requestedLevel)) return deny('invalid_level', String(requestedLevel))
@@ -366,6 +407,31 @@ export async function restrictAutonomyLicense(
     return deny('restriction_extends_window', 'end-moved-later')
   }
 
+  // ── A DRIFTED GRANT MAY NOT BE REBOUND BY RESTRICTION ─────────────────────
+  // The fingerprint recorded on this licence was produced by the registry as it
+  // stood when the grant was made. If recomputing it against TODAY's registry
+  // gives a different answer, the registry moved under the grant — an action's
+  // executor family, its governed-effect enablement, its class or its placement
+  // changed — and the resolver already reports `scope_drifted` / L0.
+  //
+  // The scope below is resolved against the CURRENT registry, so appending it
+  // would store today's fingerprint and make the resolver match again. That
+  // would REBIND a materially invalidated grant to changed action semantics
+  // without a new licence decision — the silent widening §18.60 forbids, dressed
+  // up as a narrowing act. A restriction may only narrow the scope that was
+  // granted; it cannot restate what the grant means.
+  //
+  // Refused here, at the only writer's boundary. Recovery from drift is a NEW
+  // reviewed licence lineage — deliberately not something a narrowing act can
+  // perform. Suspension, revocation and supersession remain available, because
+  // they only reduce or end authority and never refresh it.
+  if (scopeDrifted(current.state.actionKinds, current.state.boundDefKey, current.state.recordedFingerprint)) {
+    return deny(
+      'license_scope_drifted',
+      'the bound definition changed since this licence was granted; a restriction may not rebind it',
+    )
+  }
+
   // Re-resolved against the CURRENT registry, so a restriction cannot smuggle
   // in a kind the registry no longer declares under a class it used to have.
   const scope = resolveActionScope(request.allowedActionKinds, current.state.boundDefKey)
@@ -391,6 +457,9 @@ export async function restrictAutonomyLicense(
 export async function suspendAutonomyLicense(
   request: LicenseIdRequest,
 ): Promise<LicenseWriteResult> {
+  const auth = await authorize()
+  if (!auth.ok) return deny(auth.reason)
+
   const current = await loadCurrent(request.licenseId)
   if (!current.ok) return deny(current.reason)
   // A suspension is a STOP, and stopping something already stopped is not a
@@ -400,22 +469,31 @@ export async function suspendAutonomyLicense(
   // means stopped, and a redundant stop is how a lifecycle vocabulary starts
   // growing meanings nobody agreed to.
   if (current.state.status === 'suspended') return deny('license_already_suspended')
-  return finishLifecycle(current, 'LICENSE_SUSPENDED', request)
+  return finishLifecycle(current, 'LICENSE_SUSPENDED', request, auth.actor)
 }
 
 /** §18.57 — terminal for this licence lineage. */
 export async function revokeAutonomyLicense(
   request: LicenseIdRequest,
 ): Promise<LicenseWriteResult> {
+  const auth = await authorize()
+  if (!auth.ok) return deny(auth.reason)
+
   const current = await loadCurrent(request.licenseId)
   if (!current.ok) return deny(current.reason)
-  return finishLifecycle(current, 'LICENSE_REVOKED', request)
+  return finishLifecycle(current, 'LICENSE_REVOKED', request, auth.actor)
 }
 
 /** §18.56 — a replacement licence lineage exists. */
 export async function supersedeAutonomyLicense(
   request: SupersedeLicenseRequest,
 ): Promise<LicenseWriteResult> {
+  const auth = await authorize()
+  if (!auth.ok) return deny(auth.reason)
+
+  // Both the source and the replacement are resolved only after authority
+  // succeeds. Loading either one first would let a non-operator probe whether a
+  // licence id — or a candidate replacement id — exists at all.
   const current = await loadCurrent(request.licenseId)
   if (!current.ok) return deny(current.reason)
   const replacement = await loadCurrent(request.supersededByLicenseId)
@@ -425,8 +503,6 @@ export async function supersedeAutonomyLicense(
   if (replacement.state.workflowInstanceId !== current.state.workflowInstanceId) {
     return deny('supersession_target_not_found', 'subject-mismatch')
   }
-  const auth = await authorize()
-  if (!auth.ok) return deny(auth.reason)
   return append(current, auth.actor, {
     act: 'LICENSE_SUPERSEDED',
     licensedLevel: current.state.licensedLevel,
@@ -439,15 +515,22 @@ export async function supersedeAutonomyLicense(
   })
 }
 
-/** Authorize, then append — shared by the two acts that carry no new terms. */
+/**
+ * Append a lifecycle act — shared by the two acts that carry no new terms.
+ *
+ * The ALREADY-PROVEN actor is passed in rather than proved again here. Authority
+ * is established once, at the top of the exported boundary, and the proof is
+ * carried down: re-authorizing inside a helper would re-resolve the session at a
+ * later moment and could succeed against a different state than the one the
+ * request was admitted under.
+ */
 async function finishLifecycle(
   current: CurrentLicense,
   act: Extract<LicenseAct, 'LICENSE_SUSPENDED' | 'LICENSE_REVOKED'>,
   request: LicenseIdRequest,
+  actor: string,
 ): Promise<LicenseWriteResult> {
-  const auth = await authorize()
-  if (!auth.ok) return deny(auth.reason)
-  return append(current, auth.actor, {
+  return append(current, actor, {
     act,
     licensedLevel: current.state.licensedLevel,
     allowedActionKinds: current.state.actionKinds,
@@ -499,10 +582,23 @@ async function loadCurrent(
 /**
  * Append the next act.
  *
- * `generation` is derived from the chain this process just read, and the
- * database independently rejects a duplicate `(license_id, license_generation)`
- * — so if two humans act on the same licence state at once, exactly one row
- * lands and the other caller gets a refusal rather than a second canonicity.
+ * ── WHAT ACTUALLY SERIALIZES TWO HUMANS ────────────────────────────────────
+ * The generation derived here is the chain THIS process just read — it is the
+ * caller's OBSERVATION, and it is sent to the database as
+ * `expectedGeneration` so the RPC can compare it against the committed truth
+ * under its lock and refuse the write if another act landed in between.
+ *
+ * The unique index `(license_id, license_generation)` is NOT what proves this.
+ * Without the expected-generation check the RPC simply derives the next
+ * generation from committed state, so a stale caller receives the FOLLOWING
+ * generation and appends a second act built from a view that no longer exists —
+ * no conflict is ever raised, because the stale caller never asks for a
+ * generation that already exists. The index remains useful defence in depth
+ * against a duplicate literal generation; it cannot see a stale read.
+ *
+ * A stale refusal is a CONFLICT, not bad input: the caller must re-read and
+ * re-decide. It is reported as `license_conflict` and never as
+ * `license_malformed`.
  */
 async function append(
   current: CurrentLicense,
@@ -525,6 +621,7 @@ async function append(
   try {
     const event = await store.append({
       licenseId: current.state.licenseId,
+      expectedGeneration: generation,
       act: fields.act,
       projectId: current.state.projectId,
       workflowInstanceId: current.state.workflowInstanceId,
@@ -542,14 +639,27 @@ async function append(
       reason: fields.reason,
       actor,
     })
-    // `generation` is passed for the caller's benefit only if the store needs
-    // it; the RPC derives it under the lock. Assert the invariant so a future
-    // store that stops deriving it cannot silently break serialization.
+    // Defence in depth, and now UNREACHABLE by construction: the RPC refuses a
+    // stale generation (40001) before inserting, so a returned row is always the
+    // one this caller's observation predicted. It is kept as an assertion
+    // because a future store that stopped honouring the contract must fail
+    // loudly here rather than let a caller believe a stale act landed.
+    //
+    // This is deliberately NOT the concurrency guard. A check that runs after
+    // the RPC has committed cannot undo the row it just wrote.
     if (event.generation !== generation) {
       throw new Error(`generation mismatch: expected ${generation}, stored ${event.generation}`)
     }
     return { ok: true, event }
   } catch (error) {
+    // A stale generation is a conflict between two humans, not malformed data.
+    // Classified from the database's own SQLSTATE rather than from prose.
+    if (isStaleGenerationConflict(error)) {
+      return deny(
+        'license_conflict',
+        'another licensing act landed between this read and this write; nothing was written',
+      )
+    }
     return deny('license_malformed', String((error as Error).message))
   }
 }

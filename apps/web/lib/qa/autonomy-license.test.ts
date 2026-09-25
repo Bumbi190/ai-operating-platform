@@ -50,6 +50,7 @@ import {
   supersedeAutonomyLicense,
 } from '@/lib/atlas/autonomy-license/issue'
 import { createAutonomyLicenseStore } from '@/lib/atlas/autonomy-license/store'
+import { LICENSE_SQLSTATE, LicenseStoreError } from '@/lib/atlas/autonomy-license/errors'
 import { resolveAutonomyLicense } from '@/lib/atlas/autonomy-license/resolve'
 import { fingerprintFor, resolveActionScope, scopeDrifted } from '@/lib/atlas/autonomy-license/scope'
 import type { AutonomyLicenseStore, AppendLicenseEventArgs } from '@/lib/atlas/autonomy-license/store'
@@ -132,9 +133,29 @@ function autonomyDecision(overrides: { projectId?: string; materiality?: string[
 /** An in-memory store faithful to the RPC's generation derivation. */
 class FakeStore implements AutonomyLicenseStore {
   events: LicenseEvent[] = []
+  /**
+   * How many times the ledger was READ. The auth-first proofs count this: a
+   * refused caller must not have caused a service-role read of a SERVER_ONLY
+   * table, and must not have learned whether a licence id exists.
+   */
+  lineageCalls = 0
+  /** Every append argument set this store was handed, in order. */
+  appendedArgs: AppendLicenseEventArgs[] = []
+  /**
+   * When set, the next append fails the way the real RPC would — carrying the
+   * PostgreSQL SQLSTATE. Lets the boundary's conflict classification be proved
+   * against the same signal production receives.
+   */
+  appendRefusal: { code?: string | null; message?: string } | null = null
   private cursor = 0
 
   async append(args: AppendLicenseEventArgs): Promise<LicenseEvent> {
+    this.appendedArgs.push(args)
+    if (this.appendRefusal) {
+      const refusal = this.appendRefusal
+      this.appendRefusal = null
+      throw new LicenseStoreError(refusal.message ?? 'refused', refusal.code ?? null)
+    }
     const existing = this.events.filter(e => e.licenseId === args.licenseId)
     const n = ++this.cursor
     const event: LicenseEvent = {
@@ -165,6 +186,7 @@ class FakeStore implements AutonomyLicenseStore {
   }
 
   async lineage(licenseId: string): Promise<LicenseEvent[]> {
+    this.lineageCalls++
     return this.events.filter(e => e.licenseId === licenseId)
   }
 
@@ -216,7 +238,29 @@ const restrictLicense = <R,>(request: R, o: Wire = {}) => { wire(o); return rest
 const suspendLicense = <R,>(request: R, o: Wire = {}) => { wire(o); return suspendAutonomyLicense(request as never) }
 const revokeLicense = <R,>(request: R, o: Wire = {}) => { wire(o); return revokeAutonomyLicense(request as never) }
 const supersedeLicense = <R,>(request: R, o: Wire = {}) => { wire(o); return supersedeAutonomyLicense(request as never) }
-const resolveLicense = (id: string, at: string, o: Wire = {}) => { wire(o); return resolveAutonomyLicense(id, at) }
+/**
+ * Resolve, with the SERVER clock set to `at`.
+ *
+ * The canonical resolver takes ONE argument and reads `new Date()` itself — a
+ * caller-supplied instant would be a caller-supplied authority, able to revive
+ * an expired licence or activate a future one. So the instant this suite names
+ * is installed as the system time rather than passed in: the call sites still
+ * read "at IN_WINDOW", but the code under test gets the clock the way
+ * production gives it to it.
+ *
+ * `toFake: ['Date']` only — the resolver schedules nothing, and faking timers
+ * broadly would risk interfering with the promise scheduling around it.
+ */
+const resolveLicense = async (id: string, at: string, o: Wire = {}) => {
+  wire(o)
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(at))
+  try {
+    return await resolveAutonomyLicense(id)
+  } finally {
+    vi.useRealTimers()
+  }
+}
 
 const REQUEST = {
   workflowInstanceId: '99999999-9999-4999-8999-999999999999',
@@ -1302,7 +1346,7 @@ describe('Phase 2C — the production authority API', () => {
     }
   })
 
-  it('3/4/5/6/7. no injection type survives, and the resolver takes only (instance, at)', () => {
+  it('3/4/5/6/7. no injection type survives, and the resolver takes only the instance', () => {
     for (const src of [issueSource, resolveSource]) {
       // codeOnly: the prose explaining WHY the seam was removed legitimately
       // names the types it removed. A comment that names a concept is not a
@@ -1311,10 +1355,33 @@ describe('Phase 2C — the production authority API', () => {
       expect(code).not.toMatch(/interface IssueArgs\b|interface ResolveArgs\b/)
       expect(code).not.toMatch(/IssueArgs\b|ResolveArgs\b/)
     }
+    // ── The canonical resolver takes EXACTLY ONE argument ───────────────────
+    // `at` used to be the second. A caller-supplied evaluation instant is a
+    // caller-supplied authority: it decides whether an expired licence reads as
+    // effective and whether a future one has started. The canonical answer uses
+    // the server clock, so no clock, `now`, `options` or `args` parameter may
+    // reappear here — and no exported alternate resolver may supply one.
     const params = declaredParams(resolveSource, 'resolveAutonomyLicense', '): Promise<ResolvedAutonomyLicense>')
-    expect(params).toHaveLength(2)
+    expect(params).toHaveLength(1)
     expect(params[0]).toMatch(/workflowInstanceId/)
-    expect(params[1]).toMatch(/^at/)
+    for (const forbidden of ['at', 'now', 'clock', 'options', 'args', 'instant', 'asOf']) {
+      expect(params[0], `the resolver must not accept ${forbidden}`).not.toMatch(
+        new RegExp(`\\b${forbidden}\\b`),
+      )
+    }
+  })
+
+  it('10. no exported alternate resolver provides a caller-controlled authority clock', async () => {
+    const mod: Record<string, unknown> = await import('@/lib/atlas/autonomy-license/resolve')
+    const exported = Object.keys(mod)
+    expect(exported).toContain('resolveAutonomyLicense')
+    for (const name of exported) {
+      expect(name, `${name} looks like a caller-clock resolver`).not.toMatch(
+        /At$|WithClock|unsafeResolve|resolveAt|resolveAsOf|Historical|PointInTime/i,
+      )
+    }
+    // And the canonical one really does read the server clock.
+    expect(codeOnly(resolveSource)).toMatch(/new Date\(\)\.toISOString\(\)/)
   })
 
   it('3/4/5/6. the request shapes carry only what a human may decide', () => {
@@ -1619,3 +1686,288 @@ function walk(dir: string): string[] {
 function codeOnly(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
 }
+
+// ── FINAL REMOTE REVIEW — the four authority blockers ─────────────────────────
+//
+// Each block below is the permanent proof for one blocker found in the final
+// remote review. They are grouped by the property, not by the file that changed.
+
+describe('Phase 2C — authority is established BEFORE anything is read', () => {
+  const DENIALS = [
+    { reason: 'unauthenticated',        operator: { ok: false, reason: 'unauthenticated' } },
+    { reason: 'not_platform_operator',  operator: { ok: false, reason: 'not_platform_operator' } },
+    { reason: 'no_operator_configured', operator: { ok: false, reason: 'no_operator_configured' } },
+  ] as const
+
+  type Run = (id: string, o: Wire) => Promise<{ ok: boolean; reason?: string }>
+
+  const ACTS: readonly { name: string; run: Run }[] = [
+    { name: 'restrict', run: (id, o) => restrictLicense({
+        licenseId: id, licensedLevel: 'L2', allowedActionKinds: REQUEST.allowedActionKinds,
+        effectiveAt: EFFECTIVE, expiresAt: EXPIRES }, o) },
+    { name: 'suspend', run: (id, o) => suspendLicense({ licenseId: id }, o) },
+    { name: 'revoke', run: (id, o) => revokeLicense({ licenseId: id }, o) },
+    { name: 'supersede', run: (id, o) => supersedeLicense({
+        licenseId: id, supersededByLicenseId: '11111111-2222-4333-8444-555555555555' }, o) },
+  ]
+
+  for (const denial of DENIALS) {
+    for (const act of ACTS) {
+      it(`${act.name} by ${denial.reason}: auth refusal and ZERO licence reads`, async () => {
+        const store = new FakeStore()
+        const issued = await issueLicense(REQUEST, { store })
+        expect(issued.ok).toBe(true)
+        if (!issued.ok) return
+
+        store.lineageCalls = 0
+        const result = await act.run(issued.event.licenseId, { store, operator: denial.operator })
+
+        expect(result).toMatchObject({ ok: false, reason: denial.reason })
+        // The load-bearing assertion: an unauthorized caller caused no
+        // service-role read of the SERVER_ONLY ledger.
+        expect(store.lineageCalls).toBe(0)
+        expect(store.events).toHaveLength(1)
+      })
+    }
+  }
+
+  for (const denial of DENIALS) {
+    it(`an unknown licence id is not an existence oracle for ${denial.reason}`, async () => {
+      const store = new FakeStore()
+      const result = await suspendLicense(
+        { licenseId: '00000000-0000-4000-8000-000000000000' },
+        { store, operator: denial.operator },
+      )
+      // Not `license_not_found`: a caller that has proved nothing learns nothing
+      // about whether the id exists.
+      expect(result).toMatchObject({ ok: false, reason: denial.reason })
+      expect(store.lineageCalls).toBe(0)
+    })
+  }
+
+  it('a supersession does not resolve its replacement before authority succeeds', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+
+    store.lineageCalls = 0
+    const result = await supersedeLicense(
+      { licenseId: issued.event.licenseId, supersededByLicenseId: '11111111-2222-4333-8444-555555555555' },
+      { store, operator: { ok: false, reason: 'not_platform_operator' } },
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'not_platform_operator' })
+    // Neither the source NOR the candidate replacement was read.
+    expect(store.lineageCalls).toBe(0)
+  })
+})
+
+describe('Phase 2C — the write contract carries the observed generation', () => {
+  it('5. issue sends expectedGeneration 0', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    expect(store.appendedArgs).toHaveLength(1)
+    expect(store.appendedArgs[0].expectedGeneration).toBe(0)
+  })
+
+  it('6. a continuing act sends the generation derived from the chain it read', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+
+    const restricted = await restrictLicense(
+      { licenseId: issued.event.licenseId, licensedLevel: 'L2', allowedActionKinds: REQUEST.allowedActionKinds,
+        effectiveAt: EFFECTIVE, expiresAt: EXPIRES },
+      { store },
+    )
+    expect(restricted.ok).toBe(true)
+    // The chain had one event, so the next generation is 1 — and that is what
+    // the caller tells the database it observed.
+    expect(store.appendedArgs[1].expectedGeneration).toBe(1)
+
+    const revoked = await revokeLicense({ licenseId: issued.event.licenseId }, { store })
+    expect(revoked.ok).toBe(true)
+    expect(store.appendedArgs[2].expectedGeneration).toBe(2)
+  })
+
+  it('7/10. a stale generation is reported as a CONFLICT, never as malformed data', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+
+    // The exact signal the RPC raises when another act landed first.
+    store.appendRefusal = { code: LICENSE_SQLSTATE.SERIALIZATION_FAILURE, message: 'stale licence generation' }
+    const result = await revokeLicense({ licenseId: issued.event.licenseId }, { store })
+
+    expect(result).toMatchObject({ ok: false, reason: 'license_conflict' })
+    expect(result).not.toMatchObject({ reason: 'license_malformed' })
+    // Nothing was written: the refusal happened before the insert.
+    expect(store.events).toHaveLength(1)
+  })
+
+  it('any other SQLSTATE still reports as malformed, not as a conflict', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+
+    store.appendRefusal = { code: '22023', message: 'unsupported act' }
+    const result = await revokeLicense({ licenseId: issued.event.licenseId }, { store })
+    expect(result).toMatchObject({ ok: false, reason: 'license_malformed' })
+  })
+
+  it('9. a returned row always matches the generation the caller predicted', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+    const revoked = await revokeLicense({ licenseId: issued.event.licenseId }, { store })
+    expect(revoked.ok).toBe(true)
+    if (!revoked.ok) return
+    // The RPC refuses stale writes before inserting, so a committed row whose
+    // generation disagreed with the observation is unreachable by construction.
+    expect(revoked.event.generation).toBe(store.appendedArgs[1].expectedGeneration)
+  })
+})
+
+describe('Phase 2C — a drifted grant may not be rebound by restriction', () => {
+  /** A licence whose recorded fingerprint no longer matches today's registry. */
+  async function drifted(store: FakeStore) {
+    const issued = await issueLicense(REQUEST, { store })
+    if (!issued.ok) throw new Error('seed failed: ' + issued.reason)
+    store.events[0] = {
+      ...issued.event,
+      actionScopeFingerprint: fingerprintFor(['some_kind_that_changed'], DEF_KEY),
+    }
+    return issued.event
+  }
+
+  it('11. restriction is refused and writes nothing', async () => {
+    const store = new FakeStore()
+    const licence = await drifted(store)
+
+    const result = await restrictLicense(
+      { licenseId: licence.licenseId, licensedLevel: 'L2', allowedActionKinds: REQUEST.allowedActionKinds,
+        effectiveAt: EFFECTIVE, expiresAt: EXPIRES },
+      { store },
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'license_scope_drifted' })
+    expect(store.events).toHaveLength(1)
+  })
+
+  it('the resolver agrees the same licence is drifted, so the two cannot disagree', async () => {
+    const store = new FakeStore()
+    const licence = await drifted(store)
+    // `IN` the window: drift is the ONLY reason this can fail to be effective.
+    const resolved = await resolveLicense(REQUEST.workflowInstanceId, IN_WINDOW, { store })
+    expect(resolved.effective).toBe(false)
+    expect(resolved.reason).toBe('scope_drifted')
+    expect(resolved.resolvedLevel).toBe(INEFFECTIVE_LEVEL)
+    void licence
+  })
+
+  it('12. a drifted licence can still be revoked, suspended and superseded', async () => {
+    for (const act of ['revoke', 'suspend'] as const) {
+      const store = new FakeStore()
+      const licence = await drifted(store)
+      const result = act === 'revoke'
+        ? await revokeLicense({ licenseId: licence.licenseId }, { store })
+        : await suspendLicense({ licenseId: licence.licenseId }, { store })
+      expect(result.ok, `${act} must remain available on a drifted licence`).toBe(true)
+    }
+  })
+
+  it('13. a normal, non-drifted restriction is still valid', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+    if (!issued.ok) return
+
+    const result = await restrictLicense(
+      { licenseId: issued.event.licenseId, licensedLevel: 'L2', allowedActionKinds: ['generate_monthly_story'],
+        effectiveAt: EFFECTIVE, expiresAt: EXPIRES },
+      { store },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.event.act).toBe('LICENSE_RESTRICTED')
+      expect(result.event.licensedLevel).toBe('L2')
+    }
+  })
+})
+
+describe('Phase 2C — the canonical resolver runs on the server clock', () => {
+  /**
+   * Resolve with the SERVER clock at `systemTime`, while smuggling `smuggled`
+   * as a hypothetical second argument.
+   *
+   * The smuggled value must be ignored — it is precisely what a future caller
+   * would pass in order to move the question in time, and the whole point is
+   * that there is no longer any argument through which to do it.
+   */
+  async function resolveWithSmuggledClock(store: FakeStore, systemTime: string, smuggled: string) {
+    wire({ store })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(systemTime))
+    try {
+      const smuggledCall = resolveAutonomyLicense as unknown as
+        (id: string, second?: string) => Promise<{ effective: boolean; reason: string; resolvedLevel: string }>
+      return await smuggledCall(REQUEST.workflowInstanceId, smuggled)
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  it('15. an expired licence cannot be revived by a caller-supplied clock', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })   // window EFFECTIVE..EXPIRES
+    expect(issued.ok).toBe(true)
+
+    // Server time is AFTER_EXPIRY, so the licence has lapsed. The smuggled
+    // instant sits INSIDE the closed window — honoured, it would read as
+    // effective. It must have no effect at all.
+    const resolved = await resolveWithSmuggledClock(store, AFTER_EXPIRY, IN_WINDOW)
+    expect(resolved.effective).toBe(false)
+    expect(resolved.reason).toBe('expired')
+    expect(resolved.resolvedLevel).toBe(INEFFECTIVE_LEVEL)
+  })
+
+  it('16. a future licence cannot be activated early by a caller-supplied clock', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(
+      { ...REQUEST, effectiveAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-11-01T00:00:00.000Z' },
+      { store },
+    )
+    expect(issued.ok).toBe(true)
+
+    // Server time is IN_WINDOW — before this licence starts. The smuggled
+    // instant is after it starts; it must not activate anything.
+    const resolved = await resolveWithSmuggledClock(store, IN_WINDOW, '2026-10-05T00:00:00.000Z')
+    expect(resolved.effective).toBe(false)
+    expect(resolved.reason).toBe('not_yet_effective')
+    expect(resolved.resolvedLevel).toBe(INEFFECTIVE_LEVEL)
+  })
+
+  it('17. fake system time drives the resolved answer deterministically', async () => {
+    const store = new FakeStore()
+    const issued = await issueLicense(REQUEST, { store })
+    expect(issued.ok).toBe(true)
+
+    const inside = await resolveLicense(REQUEST.workflowInstanceId, IN_WINDOW, { store })
+    expect(inside.effective).toBe(true)
+
+    const before = await resolveLicense(REQUEST.workflowInstanceId, T1, { store })
+    expect(before.effective).toBe(false)
+    expect(before.reason).toBe('not_yet_effective')
+
+    const after = await resolveLicense(REQUEST.workflowInstanceId, AFTER_EXPIRY, { store })
+    expect(after.effective).toBe(false)
+    expect(after.reason).toBe('expired')
+
+    // The clock is restored: real time is not left faked for other suites.
+    expect(vi.isFakeTimers()).toBe(false)
+  })
+})

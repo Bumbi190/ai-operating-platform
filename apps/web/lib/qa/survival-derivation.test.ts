@@ -793,6 +793,23 @@ describe('read-only, with a closed consumer set', () => {
       // system-health model, and the Systemhälsa view renders it.
       resolve(process.cwd(), 'lib/os/system-health'),
       resolve(process.cwd(), 'components/platform/vnext/SystemHealth'),
+      // Phase 3B0 — the platform-runtime adapter, added DELIBERATELY.
+      //
+      // This is the first consumer that exists to feed an autonomy decision
+      // rather than to display one, which is precisely the kind of change this
+      // list is designed to make visible. It is added as a single FILE rather
+      // than the `autonomy-runtime` directory so that any further consumer —
+      // and in particular anything on an execution path — has to be added here
+      // by hand too.
+      //
+      // The adapter itself is still INERT: a separate guard (autonomy-runtime
+      // suite) proves no execution module imports it, so adding it here does
+      // not make the ceiling reachable from execution.
+      resolve(process.cwd(), 'lib/atlas/autonomy-runtime/platform-survival.ts'),
+      // Phase 3B0's own suite: it drives the adapter and asserts the pure
+      // ceiling rules (null → L0, hostile state → L0), which requires importing
+      // the backend rather than copying its constants.
+      resolve(process.cwd(), 'lib/qa/autonomy-runtime-foundation.test.ts'),
     ]
     const offenders: string[] = []
 

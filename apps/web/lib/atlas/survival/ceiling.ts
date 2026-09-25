@@ -49,19 +49,27 @@ import {
   type SurvivalState,
 } from './types'
 
+import { INEFFECTIVE_LEVEL, isAutonomyLicenseLevel } from '@/lib/atlas/autonomy-license/levels'
+
 /**
  * The ceiling each survival state implies.
  *
  * Read as "at most this". EXPAND and NORMAL deliberately map to L6 rather than
  * being special-cased, so the table stays total and the meet stays uniform.
+ *
+ * FROZEN, and read only through `survivalCeiling()`. The declared type is total,
+ * but a plain object literal is NOT total at runtime: it inherits
+ * `Object.prototype`, so `SURVIVAL_CEILING['constructor']` answers `Object` and
+ * `['toString']` answers a function. The accessor below is what makes those
+ * fail closed; freezing stops them being installable in the first place.
  */
-export const SURVIVAL_CEILING: Record<SurvivalState, AutonomyLicenseLevel> = {
+export const SURVIVAL_CEILING: Record<SurvivalState, AutonomyLicenseLevel> = Object.freeze({
   EXPAND: 'L6',
   NORMAL: 'L6',
   CONSERVE: 'L3',
   CRITICAL: 'L1',
   HIBERNATE: 'L0',
-}
+})
 
 /** Position in §18.10's order. L0 = 0 … L6 = 6. */
 const LEVEL_INDEX: Record<AutonomyLicenseLevel, number> = Object.freeze(
@@ -71,16 +79,39 @@ const LEVEL_INDEX: Record<AutonomyLicenseLevel, number> = Object.freeze(
   ),
 )
 
-/** The lower of two Chapter 18 levels. Never raises either operand. */
+/**
+ * The lower of two Chapter 18 levels. Never raises either operand.
+ *
+ * Fail-closed on a non-level: if EITHER argument is not a canonical L0–L6 level
+ * the answer is L0, not the other operand. The comparison below would otherwise
+ * fall through — `LEVEL_INDEX[undefined]` is `undefined`, and `6 <= undefined`
+ * is `false`, so it returns `b`, i.e. the UNRECOGNISED value is handed back as
+ * if it were a level.
+ */
 export function lowestAutonomy(
   a: AutonomyLicenseLevel,
   b: AutonomyLicenseLevel,
 ): AutonomyLicenseLevel {
+  if (!isAutonomyLicenseLevel(a) || !isAutonomyLicenseLevel(b)) return INEFFECTIVE_LEVEL
   return LEVEL_INDEX[a] <= LEVEL_INDEX[b] ? a : b
 }
 
-/** The ceiling a survival state implies. A ceiling only — it grants nothing. */
+/**
+ * The ceiling a survival state implies. A ceiling only — it grants nothing.
+ *
+ * Runtime-total by an OWN-PROPERTY check, deliberately not by an ordinary
+ * lookup. `state` is typed to the five-value vocabulary so every internal call
+ * is already safe, but the guard is what makes a hostile or corrupted string
+ * fail closed instead of answering from `Object.prototype` or returning
+ * `undefined`. `"constructor"`, `"toString"` and `"NOT_A_STATE"` all answer L0.
+ *
+ * L0 is the correct failure: it is the most restrictive level, so an
+ * unrecognised survival state can never widen autonomy.
+ */
 export function survivalCeiling(state: SurvivalState): AutonomyLicenseLevel {
+  if (!Object.prototype.hasOwnProperty.call(SURVIVAL_CEILING, state)) {
+    return INEFFECTIVE_LEVEL
+  }
   return SURVIVAL_CEILING[state]
 }
 

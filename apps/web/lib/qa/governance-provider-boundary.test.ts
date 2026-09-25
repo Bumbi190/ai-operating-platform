@@ -163,6 +163,9 @@ describe('idempotency identity is minted, never hand-rolled', () => {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
+/** Lets one test drive the G3C-1 final stop check into its refusing branch. */
+const stopState = { refuse: false }
+
 const reserveSpend = vi.fn()
 const settleSpend = vi.fn()
 const releaseSpend = vi.fn()
@@ -183,10 +186,11 @@ vi.mock('@/lib/governance/execution-stop', async (orig) => {
   return {
     ...actual,
     resolveExecutionStopForContract: async () => ({
-      allowed: true, context: 'AUTONOMOUS' as const,
+      allowed: !stopState.refuse, context: 'AUTONOMOUS' as const,
       scopesEvaluated: ['PLATFORM_AUTOMATION' as const],
       resolution: 'RESOLVED' as const,
-      globalPaused: false, projectPaused: null, reason: null, observed: null,
+      globalPaused: stopState.refuse, projectPaused: null,
+      reason: stopState.refuse ? 'global_automation_paused' : null, observed: null,
     }),
   }
 })
@@ -360,6 +364,89 @@ describe('withGovernedSpend lifecycle', () => {
     )).rejects.toBe(refusal)
     expect(releaseSpend, 'the release was attempted').toHaveBeenCalledWith('res-1')
     expect(settleSpend, 'and the estimate was never counted').not.toHaveBeenCalled()
+  })
+
+  // ── G3C-3C-B PRE-1 · REPLAY RESERVATION OWNERSHIP ──────────────────────────
+  //
+  // `budget_reserve` refuses a replay and returns the EXISTING reservation id —
+  // the one belonging to the FIRST caller, which for `replay_in_flight` is still
+  // OPEN on purpose because that dispatch may still be running. The refusing
+  // caller owns none of it and may not touch its lifecycle.
+
+  /** A refusal verdict shaped exactly as `reserveSpend` builds one. */
+  const replay = (reason: string, id = 'res-first-caller') => ({
+    allowed: false, wouldAllow: false, advisoryOverride: false, reason,
+    reservationId: id, budgetSek: 700, committedSek: 0, reservedSek: 0,
+    headroomSek: 700, bindingScope: 'project',
+  })
+
+  const REPLAY_REASONS = [
+    'replay_in_flight', 'replay_stale', 'replay_settled',
+    'replay_released', 'replay_identity_mismatch',
+  ] as const
+
+  for (const reason of REPLAY_REASONS) {
+    it(`R3/R4/R10 — ${reason} refuses without touching the other caller's reservation`, async () => {
+      const { withGovernedSpend, SpendRefusedError } = await boundary()
+      reserveSpend.mockResolvedValue(replay(reason))
+      let providerCalls = 0
+      await expect(withGovernedSpend(
+        { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL,
+          provider: 'anthropic', operation: 'op', estimatedSek: 3,
+          idempotencyKey: 'logical-key-1' },
+        async () => { providerCalls += 1; return 'x' },
+      )).rejects.toBeInstanceOf(SpendRefusedError)
+
+      expect(releaseSpend, `${reason}: the refusing caller owns no reservation`)
+        .not.toHaveBeenCalled()
+      expect(settleSpend, `${reason}: and may not settle one either`)
+        .not.toHaveBeenCalled()
+      expect(providerCalls, 'R6 — no provider dispatch on a refusal').toBe(0)
+    })
+  }
+
+  it('R11 — a budget_exceeded refusal needs no release: SQL inserted it already RELEASED', async () => {
+    const { withGovernedSpend, SpendRefusedError } = await boundary()
+    reserveSpend.mockResolvedValue({ ...replay('budget_exceeded', 'res-2'), reason: 'budget_exceeded' })
+    await expect(withGovernedSpend(
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+      async () => 'x',
+    )).rejects.toBeInstanceOf(SpendRefusedError)
+    expect(releaseSpend, 'budget_reserve set status=released in the INSERT itself')
+      .not.toHaveBeenCalled()
+  })
+
+  it('R12 — a canonical pre-dispatch STOP releases THIS caller\'s reservation', async () => {
+    // The refusal boundary above owns nothing; this one owns everything. The
+    // reservation was ALLOWED and is held by this caller, the provider was never
+    // reached, so the headroom must come straight back. Nothing asserted this
+    // before — the mutation that deleted the release passed every suite.
+    const { withGovernedSpend } = await boundary()
+    reserveSpend.mockResolvedValue(allowed)
+    stopState.refuse = true
+    let providerCalls = 0
+    try {
+      await expect(withGovernedSpend(
+        { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+        async () => { providerCalls += 1; return 'x' },
+      )).rejects.toThrow()
+    } finally { stopState.refuse = false }
+
+    expect(providerCalls, 'the provider was never reached').toBe(0)
+    expect(releaseSpend, 'so the headroom is returned immediately')
+      .toHaveBeenCalledWith('res-1')
+    expect(settleSpend, 'and nothing was counted as spend').not.toHaveBeenCalled()
+  })
+
+  it('R1 — an ALLOWED reservation still settles on success', async () => {
+    const { withGovernedSpend } = await boundary()
+    reserveSpend.mockResolvedValue(allowed)
+    await withGovernedSpend(
+      { project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL, provider: 'openai', operation: 'op', estimatedSek: 3 },
+      async () => 'ok',
+    )
+    expect(settleSpend).toHaveBeenCalledWith('res-1', 3)
+    expect(releaseSpend).not.toHaveBeenCalled()
   })
 
   // ── Project attribution ────────────────────────────────────────────────────

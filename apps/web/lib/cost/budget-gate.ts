@@ -27,8 +27,9 @@
  * in this file computes a limit — it forwards a verdict, which is what keeps
  * exactly one budget authority.
  *
- * ── ADVISORY BY DEFAULT ────────────────────────────────────────────────────
- * `H1_SPEND_GATE` (default OFF) decides whether a refusal is HONOURED. SQL always
+ * ── ADVISORY BY DEFAULT — FOR BUDGET POLICY ────────────────────────────────
+ * `H1_SPEND_GATE` (default OFF) decides whether a BUDGET-POLICY refusal is
+ * HONOURED: `budget_exceeded` and the unconfigured-ceiling refusals. SQL always
  * returns the honest verdict and always records the reservation, so advisory mode
  * produces real accounting instead of a guess about what would have happened, and
  * enforcement is later a flag flip with no schema or code change. This matters
@@ -36,10 +37,24 @@
  * already at ~33% of its budget, so switching straight to hard refusal would risk
  * breaking working automation on a number nobody has validated yet.
  *
+ * ── BUT DISPATCH SAFETY IS NEVER ADVISORY ──────────────────────────────────
+ * A replay verdict is not a budget opinion. It says this logical spend identity
+ * has already been consumed, or may still be live on another worker, and
+ * downgrading one would return `allowed: true` carrying THAT worker's reservation
+ * id — so the second caller would dispatch the provider again and settle a row it
+ * does not own. The cost of a wrong ceiling call is money; the cost of a wrong
+ * replay call is a duplicate external effect. Only the first is a rollout risk
+ * worth taking, so every replay verdict is hard whatever the flag says. See
+ * `isReplayRefusal`.
+ *
+ * This says nothing about the other refusal classes: `unavailable` and the
+ * unconfigured-budget refusals keep exactly the behaviour they had.
+ *
  * ── NEVER THROWS ───────────────────────────────────────────────────────────
  * Same contract as the rest of lib/cost. A gate that crashes the pipeline it
  * guards is worse than the problem. A DB failure is reported as `unavailable`;
- * whether that blocks is the caller's decision, and in advisory mode it never does.
+ * whether that blocks is the caller's decision, and advisory mode does not block
+ * it.
  */
 
 import 'server-only'
@@ -101,12 +116,46 @@ export interface SpendVerdict {
   bindingScope: BudgetScope | null
 }
 
+/**
+ * Refusals that are DISPATCH SAFETY, not budget policy.
+ *
+ * ── WHY THESE MAY NEVER BE ADVISORY ────────────────────────────────────────
+ * `H1_SPEND_GATE` exists so a budget CEILING can be rolled out gradually: while
+ * it is advisory, "you are over budget" is downgraded to a warning and the call
+ * proceeds. That is a deliberate, bounded risk — the worst case is money.
+ *
+ * A replay refusal is a different sentence. It says this logical spend identity
+ * has already been consumed, or may still be live on another worker. Downgrading
+ * it would return `allowed: true` carrying THE OTHER CALLER'S reservation id, and
+ * the second caller would then dispatch the provider a second time and settle a
+ * row it does not own. The worst case there is not money — it is a duplicate
+ * external effect, which is the exact outcome `budget_reserve`'s replay state
+ * machine was built to make impossible ("NO EXISTING IDEMPOTENCY KEY AUTHORIZES
+ * ANOTHER PROVIDER DISPATCH").
+ *
+ * ── BACKWARD COMPATIBILITY, EXACTLY ────────────────────────────────────────
+ * `budget_reserve` returns a replay reason ONLY inside its `p_idempotency_key is
+ * not null` branch. Every unkeyed caller — which today is every generic provider
+ * retry — can therefore never observe one, and its advisory behaviour is
+ * unchanged to the letter.
+ */
+const REPLAY_REFUSALS: readonly SpendRefusal[] = [
+  'replay_in_flight', 'replay_stale', 'replay_settled',
+  'replay_released', 'replay_identity_mismatch',
+]
+
+export function isReplayRefusal(reason: SpendVerdict['reason']): boolean {
+  return (REPLAY_REFUSALS as readonly string[]).includes(reason)
+}
+
 function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: SpendVerdict['reason'] }): SpendVerdict {
   const enforced = isSpendGateEnforced()
+  // A dispatch-safety refusal stands whether or not the ceiling is enforced.
+  const hardRefusal = !p.wouldAllow && isReplayRefusal(p.reason)
   return {
-    allowed: p.wouldAllow || !enforced,
+    allowed: p.wouldAllow || (!enforced && !hardRefusal),
     wouldAllow: p.wouldAllow,
-    advisoryOverride: !p.wouldAllow && !enforced,
+    advisoryOverride: !p.wouldAllow && !enforced && !hardRefusal,
     reason: p.reason,
     reservationId: p.reservationId ?? null,
     budgetSek: p.budgetSek ?? null,
@@ -120,7 +169,21 @@ function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: Spend
 export interface ReserveInput {
   projectId: string
   estimatedSek: number
-  /** Two retries of the same logical spend must reserve once, not twice. */
+  /**
+   * Names ONE logical spend.
+   *
+   * If the key already exists, the call is a REPLAY and cannot authorize another
+   * physical dispatch — every existing-key state refuses, including a still-open
+   * one. A genuinely new spend therefore needs a new logical key, not a reuse of
+   * this one.
+   *
+   * Generic provider retry wrappers OMIT it, deliberately: they sit outside this
+   * boundary, so attempt 2 arrives after attempt 1 has already settled or
+   * released, and a key would refuse the retry rather than let it through. Each
+   * physical attempt takes its own reservation instead.
+   *
+   * Says nothing about PROVIDER-side idempotency, which nothing here relies on.
+   */
   idempotencyKey?: string
   provider?: string
   operation?: string
@@ -206,7 +269,16 @@ export async function withSpendGate<T>(
 ): Promise<T> {
   const v = await reserveSpend(input)
   if (!v.allowed) {
-    await releaseSpend(v.reservationId)
+    // ── A REFUSAL GRANTS NO RESERVATION OWNERSHIP ───────────────────────────
+    // `budget_reserve` already left every refused reservation in the state its
+    // refusal requires: `budget_exceeded` inserts the row already RELEASED,
+    // `replay_stale` releases the stale row itself, and `replay_in_flight`
+    // deliberately leaves the OTHER caller's row OPEN because that dispatch may
+    // still be running. Releasing here reached across into that row.
+    //
+    // This helper has no runtime callers today, but the rule is the same one
+    // `withGovernedSpend` follows — two different replay-ownership semantics in
+    // one codebase is how the wrong one gets copied.
     return onRefused(v)
   }
   try {

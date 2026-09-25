@@ -621,3 +621,239 @@ describe('P · no provider or model selection is introduced', () => {
     }
   })
 })
+
+// ── SINGLE VOCABULARY ───────────────────────────────────────────────────────
+
+describe('the Chapter 18 scale has exactly ONE declaration', () => {
+  /**
+   * The invariant is REPO-WIDE, not module-scoped.
+   *
+   * Phase 2C's rule is not "no second vocabulary inside autonomy-license" — it
+   * is that production code has exactly ONE canonical L0–L6 vocabulary AND
+   * ordering, in `levels.ts`. The pre-existing guard in `autonomy-license.test.ts`
+   * is scoped to that module's own files, which is precisely why the duplicate
+   * this suite now pins was invisible to it: `admission.ts` lives one directory
+   * away. A sibling module must not be able to redeclare the scale just by being
+   * somewhere else.
+   */
+  const PRODUCTION_ROOTS = ['lib', 'app', 'components', 'scripts']
+
+  /**
+   * Root-level production runtime files, outside any of those roots.
+   *
+   * `middleware.ts` is the one that exists: it is real runtime TypeScript that
+   * runs on every request, and scanning only the four directories above would
+   * leave it unguarded purely because of where it sits on disk. Listed
+   * EXPLICITLY rather than by globbing `apps/web/*.ts`, because the other
+   * root-level files are `next-env.d.ts` (generated), `tailwind.config.ts` and
+   * `vitest.config.ts` (build config) — none of which is an application runtime
+   * surface for this invariant.
+   */
+  const PRODUCTION_ROOT_FILES = ['middleware.ts']
+
+  const CANONICAL = join(APP, 'lib/atlas/autonomy-license/levels.ts')
+
+  /**
+   * Comment-stripped source: a comment that NAMES a concept is not a
+   * declaration of one. Copied EXACTLY from the established repository helper
+   * (`autonomy-license.test.ts`, `activity-stream.test.ts`), not re-invented —
+   * and specifically its inline form, which requires the `//` to start the line
+   * or follow a character that cannot end a URL or close a quote. A whole-line
+   * -only strip would leave a trailing `// L0 … L6` in the scanned text and
+   * produce a false positive.
+   */
+  function codeOnly(src: string): string {
+    return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  }
+
+  function walk(dir: string): string[] {
+    return readdirSync(dir).flatMap(entry => {
+      if (['node_modules', '.next', '.turbo', '.git'].includes(entry)) return []
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) return walk(full)
+      return /\.(ts|tsx)$/.test(entry) ? [full] : []
+    })
+  }
+
+  /** Every production file either rule below is responsible for. */
+  function productionFiles(): string[] {
+    const files = PRODUCTION_ROOTS.flatMap(root => walk(join(APP, root)))
+    for (const name of PRODUCTION_ROOT_FILES) files.push(join(APP, name))
+    return files
+  }
+
+  it('no production file outside levels.ts manually names ALL seven levels', () => {
+    // Detects a COMPLETE redeclaration in ANY form, not one syntax. A level
+    // counts as named when the token appears as a word in executable source,
+    // which covers all of:
+    //
+    //   ['L0', … 'L6']            { L0: 0, … }        new Map([['L0', 0], …])
+    //   switch (l) { case 'L0': }  L0: 'Observe'       [L0, L1, …]
+    //
+    // Individual policy values such as `minimumLevel: 'L3'` or `return 'L0'`
+    // are decisions, not a vocabulary, and are deliberately not flagged — only a
+    // file naming EVERY canonical level is.
+    //
+    // The expected set is DERIVED from `levels.ts`. A hardcoded copy inside the
+    // guard would be the very defect it exists to catch, and would need editing
+    // by hand if an L7 were ever added.
+    const offenders: Array<{ file: string; named: string[] }> = []
+    for (const file of productionFiles()) {
+      if (file === CANONICAL) continue
+      if (/\.test\.tsx?$/.test(file)) continue
+      const code = codeOnly(readFileSync(file, 'utf8'))
+      const named = AUTONOMY_LICENSE_LEVELS.filter(l =>
+        new RegExp(`\\b${l}\\b`).test(code))
+      if (named.length === AUTONOMY_LICENSE_LEVELS.length) {
+        offenders.push({ file: file.replace(`${APP}/`, ''), named })
+      }
+    }
+    expect(
+      offenders.map(o => o.file),
+      `a second complete Chapter 18 scale was declared in:\n`
+      + offenders.map(o => `  ${o.file}  [${o.named.join(', ')}]`).join('\n'),
+    ).toEqual([])
+  })
+
+  it('a partial mention is NOT a redeclaration (the guard is not over-broad)', () => {
+    // Positive control for the rule above, so "no offenders" cannot be satisfied
+    // by a detector that rejects everything. `policy.ts` legitimately carries
+    // individual policy levels and must keep doing so.
+    const policy = codeOnly(readFileSync(join(APP, 'lib/atlas/autonomy-runtime/policy.ts'), 'utf8'))
+    const named = AUTONOMY_LICENSE_LEVELS.filter(l => new RegExp(`\\b${l}\\b`).test(policy))
+    expect(named.length, 'policy.ts names individual levels, not the whole scale')
+      .toBeLessThan(AUTONOMY_LICENSE_LEVELS.length)
+    expect(named.length, 'and it names at least one, or this control proves nothing')
+      .toBeGreaterThan(0)
+  })
+
+  it('the scan actually reaches middleware.ts', () => {
+    // Coverage stated in a comment is coverage nobody checks. `middleware.ts`
+    // runs on every request but sits directly under `apps/web/`, outside all
+    // four scanned roots, so it would have been silently unguarded — the same
+    // "the guard looks somewhere else" shape as the module-scoped original.
+    // Asserting membership makes the coverage itself the tested fact.
+    const files = productionFiles().map(f => f.replace(`${APP}/`, ''))
+    expect(files).toContain('middleware.ts')
+    // …and the files deliberately NOT scanned, so the exclusions are pinned too.
+    expect(files).not.toContain('next-env.d.ts')
+    expect(files).not.toContain('tailwind.config.ts')
+    expect(files).not.toContain('vitest.config.ts')
+  })
+
+  it('comment stripping removes INLINE level mentions, not just whole-line ones', () => {
+    // The two rules read executable source, so a comment naming the scale must
+    // not register. A whole-line-only strip leaves a trailing comment in the
+    // text and reports a false positive; this pins the inline form.
+    const inline = 'const bounds = 7 // L0 L1 L2 L3 L4 L5 L6\n'
+    expect(codeOnly(inline)).not.toMatch(/\bL6\b/)
+    // …while a real declaration on the same line survives.
+    expect(codeOnly("const SCALE = ['L6'] // L6\n")).toMatch(/\bL6\b/)
+  })
+
+  it('no production file declares an ascending RUN of four or more levels', () => {
+    // The set-based rule above catches a redeclaration that is complete and
+    // CURRENT. It has one blind spot: a STALE truncation. If the canonical scale
+    // ever grows to L7, `['L0' … 'L6']` in a sibling file names seven of eight
+    // and would pass — yet it is exactly the drift this invariant exists to
+    // prevent, because the file would silently be missing a level.
+    //
+    // So this second rule ignores completeness and looks at ORDER: four or more
+    // consecutive canonical levels appearing in ascending sequence. Half the
+    // scale in order has no legitimate reason to exist outside `levels.ts`, and
+    // a truncated copy is caught wherever it was truncated.
+    //
+    // Threshold 4, not 2: `minimumLevel: 'L3'` and a bare `return 'L0'` are
+    // policy decisions, and two adjacent levels in one file is not a scale.
+    // Measured against the whole production tree before being installed: zero
+    // offenders. `policy.ts` — the file most likely to be caught wrongly — names
+    // levels that are NOT in ascending order, so it is unaffected.
+    const ASCENDING: readonly string[] = AUTONOMY_LICENSE_LEVELS
+    const MIN_RUN = 4
+    const offenders: string[] = []
+
+    for (const file of productionFiles()) {
+      if (file === CANONICAL) continue
+      if (/\.test\.tsx?$/.test(file)) continue
+      const code = codeOnly(readFileSync(file, 'utf8'))
+      const tokens = [...code.matchAll(/\bL[0-9]\b/g)].map(m => m[0])
+      let run = 0
+      let longest = 0
+      for (const token of tokens) {
+        run = token === ASCENDING[run] ? run + 1 : (token === ASCENDING[0] ? 1 : 0)
+        if (run > longest) longest = run
+      }
+      if (longest >= MIN_RUN) {
+        offenders.push(`${file.replace(`${APP}/`, '')}  (ascending run of ${longest})`)
+      }
+    }
+    expect(offenders, `an ascending Chapter 18 run was declared in:\n${offenders.join('\n')}`)
+      .toEqual([])
+  })
+
+  it('and the CANONICAL one still lives in levels.ts, intact', () => {
+    const levels = readFileSync(join(APP, 'lib/atlas/autonomy-license/levels.ts'), 'utf8')
+    expect(levels).toMatch(/AUTONOMY_LICENSE_LEVELS = \[/)
+    expect(levels).toMatch(/export function levelIndex/)
+    expect(levels).toMatch(/export function compareLevels/)
+    expect(levels).toMatch(/export function isAutonomyLicenseLevel/)
+  })
+
+  it('admission.ts uses the canonical comparator, not its own ordering', () => {
+    const src = readFileSync(join(APP, 'lib/atlas/autonomy-runtime/admission.ts'), 'utf8')
+    expect(src).toContain('compareLevels')
+    expect(src).toContain('isAutonomyLicenseLevel')
+    // The specific regression this pins.
+    expect(src).not.toMatch(/order\s*=\s*\[\s*'L0'/)
+    expect(src).not.toMatch(/indexOf\(/)
+  })
+})
+
+// ── COMPARATOR BOUNDARIES ───────────────────────────────────────────────────
+
+describe('the level comparison is canonical at every boundary', () => {
+  const K = 'proof_governed_effect' // required level: L3
+
+  const atEffective = (level: AutonomyLicenseLevel) =>
+    admitAutonomyAction({
+      actionKind: K,
+      licence: effectiveLicence({
+        licensedLevel: level, resolvedLevel: level, allowedActionKinds: [K],
+      }),
+      survivalCeiling: 'L6',
+    })
+
+  it('effective L0 refuses', () => {
+    expect(atEffective('L0').allowed).toBe(false)
+    expect(atEffective('L0').reason).toBe('effective_level_below_required')
+  })
+
+  it('effective L2 refuses — one below the requirement', () => {
+    expect(atEffective('L2').allowed).toBe(false)
+    expect(atEffective('L2').reason).toBe('effective_level_below_required')
+  })
+
+  it('effective L3 is the exact floor and is ALLOWED', () => {
+    const r = atEffective('L3')
+    expect(r.allowed).toBe(true)
+    expect(r.reason).toBe('allowed')
+    expect(r.requiredLevel).toBe('L3')
+  })
+
+  it('effective L4 is allowed', () => {
+    expect(atEffective('L4').allowed).toBe(true)
+  })
+
+  it('effective L6 is allowed', () => {
+    expect(atEffective('L6').allowed).toBe(true)
+  })
+
+  it('the boundary is exactly at the required level, not one either side', () => {
+    const below = atEffective('L2')
+    const at = atEffective('L3')
+    expect(below.allowed).toBe(false)
+    expect(at.allowed).toBe(true)
+    expect(below.effectiveLevel).toBe('L2')
+    expect(at.effectiveLevel).toBe('L3')
+  })
+})

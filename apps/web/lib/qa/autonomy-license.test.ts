@@ -1658,15 +1658,17 @@ describe('Phase 2C — inertness', () => {
     // acquire: the pure admission core reads the licence's RESOLVED shape and
     // the composition, and nothing else. A reviewed consumer, not a quiet one.
     //
-    // Widened to the directory because the three modules there are one reviewed
-    // unit (policy / admission / platform-survival); enumerating them would go
-    // stale silently.
+    // There is NO directory exemption. A file under `autonomy-runtime/` that is
+    // not named in the exact allowlist below inherits NOTHING — so a future
+    // sibling cannot quietly reach `issue`, `resolve`, `store`, `derive` or
+    // `errors` by being placed in a directory that already had access.
     //
     // What this guard protects — that no EXECUTOR, scheduler, drain, spend
     // boundary or provider path consumes autonomy — is NOT relaxed: those roots
     // are `lib/workflows`, `lib/cost`, `lib/media`, `lib/os` and `app/api`, none
-    // of which is under `lib/atlas`. The autonomy-runtime suite now asserts that
-    // absence directly, so the property is enforced rather than assumed.
+    // of which is under `lib/atlas`. EXECUTION INERTNESS IS A SEPARATE GUARD in
+    // the autonomy-runtime suite, asserted directly against those roots rather
+    // than inferred from this one.
     // ── EXACT per-file import authority ─────────────────────────────────────
     //
     // NOT a directory exemption. A directory exemption would defeat the whole

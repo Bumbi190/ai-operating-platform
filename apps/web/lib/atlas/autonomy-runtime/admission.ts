@@ -45,7 +45,8 @@
  * that are no longer in force. There is a permanent regression for this.
  */
 
-import type { AutonomyLicenseLevel } from '@/lib/atlas/autonomy-license/levels'
+import { compareLevels, isAutonomyLicenseLevel, type AutonomyLicenseLevel }
+  from '@/lib/atlas/autonomy-license/levels'
 import type { ResolvedAutonomyLicense, LicenseReason } from '@/lib/atlas/autonomy-license/types'
 import { observeEffectiveAutonomy } from '@/lib/atlas/autonomy-license/compose'
 import { autonomyPolicyFor, type UnsupportedReason } from './policy'
@@ -232,15 +233,17 @@ export function admitAutonomyAction(input: AutonomyAdmissionInput): AutonomyAdmi
 /**
  * `a >= b` over the Chapter 18 scale.
  *
- * Local and total: it compares two values that have already been validated by
- * the composition (`observeEffectiveAutonomy` returns canonical levels or L0).
- * It deliberately does not use the throwing `levelIndex` — a refusal path must
- * never raise.
+ * Uses the CANONICAL ordering. `levels.ts` owns both the vocabulary and its
+ * order; a second literal `['L0' … 'L6']` here would be a second declaration of
+ * the same fact, and adding an L7 would leave this comparison silently missing
+ * an entry — the exact drift the single-vocabulary invariant forbids.
+ *
+ * Guarded before comparing because `compareLevels`/`levelIndex` deliberately
+ * THROW on a non-level: that is the right response to a broken internal
+ * invariant, but a refusal path must never raise. Both values here have already
+ * been validated by the composition, so the guard is defence in depth.
  */
 function levelAtLeast(a: AutonomyLicenseLevel, b: AutonomyLicenseLevel): boolean {
-  const order: readonly string[] = ['L0', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6']
-  const ai = order.indexOf(a)
-  const bi = order.indexOf(b)
-  if (ai === -1 || bi === -1) return false // unknown on either side → refuses
-  return ai >= bi
+  if (!isAutonomyLicenseLevel(a) || !isAutonomyLicenseLevel(b)) return false // unknown on either side → refuses
+  return compareLevels(a, b) >= 0
 }

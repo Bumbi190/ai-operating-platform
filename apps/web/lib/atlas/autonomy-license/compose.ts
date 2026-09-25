@@ -54,7 +54,11 @@ import type { ResolvedAutonomyLicense } from './types'
 export interface EffectiveAutonomyObservation {
   /** What the licence alone permits, after every derived ineffectiveness. */
   readonly licensedLevel: AutonomyLicenseLevel
-  /** What Survival allows, or null when Survival has expressed no opinion. */
+  /**
+   * What Survival allows, or null when the ceiling could NOT be established.
+   * Null is fail-closed and composes to L0 — it is not "Survival has no
+   * opinion", and it never returns the licensed level unreduced.
+   */
   readonly survivalCeiling: AutonomyLicenseLevel | null
   /** `min(licensed, ceiling)`. Never above either input. */
   readonly effectiveLevel: AutonomyLicenseLevel

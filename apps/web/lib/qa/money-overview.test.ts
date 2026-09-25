@@ -750,6 +750,10 @@ describe('pengar · the loader', () => {
     vi.doMock('@/lib/ai/execution-flags', () => ({
       executionSafetyFlags: () => ({
         fencing: true, cancel: true, policy_gate: true, unified_executor: true, spend_gate: o.spendGate ?? false,
+        // Phase 3A: reported separately and OFF here — the safe default, and the
+        // state production is actually in. An advisory budget must not be read as
+        // an open rollout gate.
+        financial_execution: false,
       }),
       unsafeExecutionFlags: () => [],
     }))

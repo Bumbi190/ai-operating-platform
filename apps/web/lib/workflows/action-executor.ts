@@ -98,8 +98,10 @@ export type ExecutorRefusal =
  *               corrected attempt needs a NEW action identity, which is the
  *               honest way to say "this is a different act now".
  *   cancelled — asked to stop before the irreversible boundary.
- *   temporary — a condition outside the run changed and may change back
- *               (project paused, spend enforcement not yet active). Requeued.
+ *   temporary — a condition outside the run changed and may change back.
+ *               Requeued, and ONLY for blockers that carry an admission
+ *               compensation. See TEMPORARY_BLOCKERS below for why the Phase 3A
+ *               configuration blockers deliberately do NOT qualify.
  *
  * Target drift is deliberately PERMANENT. It is not a transient failure: the
  * approval no longer describes the world, and retrying the same pinned run would
@@ -121,11 +123,56 @@ export const REFUSAL_DISPOSITION: Record<ExecutorRefusal, RefusalDisposition> = 
 }
 
 /**
- * Readiness blockers that may legitimately clear on their own. Everything else —
- * drift, a closed instance, a project mismatch, a revoked authorization — is
- * permanent for THIS pinned run.
+ * Readiness blockers whose run may return to the queue. Everything else — drift,
+ * a closed instance, a project mismatch, a revoked authorization — is permanent
+ * for THIS pinned run.
+ *
+ * ── WHY THE PHASE 3A CONFIG BLOCKERS ARE NOT HERE ───────────────────────────
+ * `spend_enforcement_required` and `financial_execution_disabled` were briefly
+ * members of this list, on the reasoning that "configuration may be turned on
+ * later". That reasoning is WRONG under the durable-run admission contract, and
+ * wrong in a way that strands rows:
+ *
+ *   claim_runs admits only `pending` rows with `attempts < max_attempts`, and
+ *   increments `attempts` on admission. It does NOT decrement on requeue.
+ *
+ * A FINANCIAL action has `maxAttempts = 1`. So the requeue path is:
+ *
+ *   pending attempts=0/max=1 → claim → running attempts=1
+ *     → config blocker → back to pending attempts=1/max=1
+ *     → `1 < 1` is false → NEVER CLAIMABLE AGAIN
+ *
+ * The row is stranded: not running, not rejected, and invisible to the drain
+ * forever. This is the same R7 violation the G3C-3B comment below records for
+ * project pause — where it was fixed by routing the pause through
+ * `checkpointClaimedRun` + `settleRefusal`, which DO compensate the attempt.
+ * A config blocker has no such compensation and must not borrow this path.
+ *
+ * So configuration OFF terminates THIS claimed run: it is REJECTED before
+ * dispatch — no provider call, no spend, no evidence write. When configuration
+ * is safe again a NEW run is bound through the normal authority path; a refused
+ * run carries no authority of its own, and the canonical partial unique index
+ * excludes `rejected`, so the old identity is free for that deliberate rebind.
+ *
+ * Do NOT re-add either blocker here without an admission-compensation design.
  */
-const TEMPORARY_BLOCKERS = ['project_paused', 'spend_enforcement_required']
+const TEMPORARY_BLOCKERS = [
+  'project_paused',
+]
+
+/**
+ * Readiness blockers that TERMINATE the claimed run, whatever `TEMPORARY_BLOCKERS`
+ * says. Checked unconditionally and first, so re-adding one of these to the list
+ * above cannot reintroduce the stranding described there — the list is where the
+ * reasoning lives, this is where it is enforced.
+ *
+ * Phase 3A. Non-empty by design: an empty list here would mean the guard had been
+ * quietly dropped.
+ */
+const CONFIG_TERMINAL_BLOCKERS = [
+  'spend_enforcement_required',
+  'financial_execution_disabled',
+]
 
 export interface ExecuteResult {
   executed: boolean
@@ -179,6 +226,15 @@ async function finalizeRefusal(
   let disposition: RefusalDisposition = REFUSAL_DISPOSITION[refusal]
   if (refusal === 'not_ready') {
     if (blockers.includes('cancel_requested')) disposition = 'cancelled'
+    // Phase 3A, and FIRST: a closed configuration prerequisite terminates this
+    // claimed run unconditionally. `claim_runs` increments `attempts` on
+    // admission and nothing here compensates it, so returning a maxAttempts=1
+    // row to `pending` would leave `attempts == max_attempts` — claimable never
+    // again, and silent. Checked before the temporary branch so that branch can
+    // never claim a config blocker, whatever the list contains.
+    else if (blockers.some(b => CONFIG_TERMINAL_BLOCKERS.includes(b))) {
+      disposition = 'permanent'
+    }
     else if (blockers.length > 0 && blockers.every(b => TEMPORARY_BLOCKERS.includes(b))) {
       disposition = 'temporary'
     }

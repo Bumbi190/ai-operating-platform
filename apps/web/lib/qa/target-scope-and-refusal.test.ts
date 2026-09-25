@@ -195,8 +195,27 @@ describe('a refusal never leaves a claimed run running', () => {
 
   it('target drift is PERMANENT, never transient', () => {
     // Retrying a drifted pin attempts something nobody approved.
-    expect(exec).toMatch(/const TEMPORARY_BLOCKERS = \['project_paused', 'spend_enforcement_required'\]/)
+    //
+    // Phase 3A: the list is now exactly `project_paused`. The two configuration
+    // blockers were briefly here and are deliberately NOT any more — `claim_runs`
+    // increments `attempts` on admission and the requeue path does not compensate
+    // it, so returning a maxAttempts=1 FINANCIAL row to `pending` leaves it at
+    // `attempts == max_attempts` and permanently unclaimable. They are declared
+    // terminal in CONFIG_TERMINAL_BLOCKERS instead. Re-adding either here without
+    // an admission-compensation design is the stranding defect restored silently,
+    // so the SET is pinned rather than a substring.
+    //
+    // Stripped once up front so the index and the slice come from the SAME
+    // string — stripping between the two would shift the offset.
+    const bare = exec.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const from = bare.indexOf('const TEMPORARY_BLOCKERS = [')
+    expect(from, 'the temporary-blocker list must exist').toBeGreaterThan(-1)
+    const body = bare.slice(from, bare.indexOf(']', from))
+    const values = [...body.matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+    expect(values).toEqual(['project_paused'])
     expect(exec).not.toMatch(/TEMPORARY_BLOCKERS[^\n]*target_drifted/)
+    // …and the config blockers are declared terminal rather than dropped.
+    expect(exec).toMatch(/CONFIG_TERMINAL_BLOCKERS = \[\s*'spend_enforcement_required',\s*'financial_execution_disabled',\s*\]/)
   })
 
   it('permanent refusals go terminal and clear the claim', () => {

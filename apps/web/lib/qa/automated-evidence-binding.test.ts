@@ -380,7 +380,14 @@ describe('MUTATION — the evidence pin and the action pin stay distinct', () =>
       expect(src).toMatch(/evidenceTargetHashFor\(/)
     }
     const run = readFileSync(join(process.cwd(), 'lib/workflows/action-run.ts'), 'utf8')
-    const gate = run.slice(run.indexOf('// 7) required evidence'), run.indexOf('// 8) a FINANCIAL'))
+    // Bounded by STEP NUMBER, not by the step's current wording: quoting the
+    // wording silently widened this to the whole rest of the file when that
+    // comment was reworded, and a too-wide slice makes the assertion vacuous.
+    const from = run.indexOf('// 7) required evidence')
+    const end = run.slice(from).search(/\n\s*\/\/ 8\)/)
+    expect(from, 'step 7 must exist').toBeGreaterThan(-1)
+    expect(end, 'step 8 must bound the slice').toBeGreaterThan(-1)
+    const gate = run.slice(from, from + end)
     expect(gate).not.toMatch(/\(\) => target\.versionHash/)
   })
 

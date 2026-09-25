@@ -68,7 +68,7 @@ const PROJECT_B: RawProject = {
   color: '#a855f7', execution_paused: true, paused_at: '2026-09-11T10:00:00.000Z',
   paused_reason: 'Incident i releasen',
 }
-const ALL_FLAGS = { fencing: true, cancel: true, policy_gate: true, unified_executor: true, spend_gate: true }
+const ALL_FLAGS = { fencing: true, cancel: true, policy_gate: true, unified_executor: true, spend_gate: true, financial_execution: false }
 
 /**
  * A minimal survival observation for the panels that are not about survival.

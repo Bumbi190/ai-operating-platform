@@ -297,6 +297,24 @@ describe('a bound action is not a permission to execute', () => {
     expect(runSrc).toMatch(/spend_enforcement_required/)
   })
 
+  it('FINANCIAL needs a SECOND, independent rollout gate — the two are not interchangeable', () => {
+    // Phase 3A. Until the decoupling, `H1_SPEND_GATE` decided BOTH whether the
+    // budget verdict was honoured AND whether FINANCIAL could bind at all, so
+    // turning on enforcement silently unlocked the first real-money effect.
+    // The seam gives the rollout question its own flag, its own predicate and
+    // its own refusal, so an operator can always tell WHICH is missing.
+    expect(runSrc).toMatch(
+      /policy\.requiresFinancialExecutionEnablement && !isFinancialExecutionEnabled\(\)/)
+    expect(runSrc).toMatch(/financial_execution_disabled/)
+    // Read through the ONE canonical predicate, from its own module.
+    expect(runSrc).toMatch(
+      /import \{ isFinancialExecutionEnabled \} from '@\/lib\/governance\/financial-execution-flag'/)
+    expect(runSrc).not.toMatch(/process\.env\.H1_FINANCIAL_EXECUTION/)
+    // …and it did not REPLACE the budget requirement — both remain, checked
+    // independently, so neither flag can stand in for the other.
+    expect(runSrc).toMatch(/policy\.requiresSpendEnforcement && !isSpendGateEnforced\(\)/)
+  })
+
   it('does not treat PR2 authorization as a replacement for the policy gate', () => {
     // action_class maps INTO policy_class; it does not bypass it, and this PR
     // does not touch H1_POLICY_GATE.

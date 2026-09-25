@@ -9,7 +9,18 @@
  * exist to prevent.
  */
 
-/** Read at call time so a flag flip needs no restart (and tests can toggle). */
+/**
+ * Read from `process.env` at INVOCATION time, so whatever value this deployment's
+ * environment already holds is used without a restart. That is what lets a test
+ * toggle it, and what keeps the effective-state surface reporting what the runtime
+ * is actually using rather than a value captured at import.
+ *
+ * That is NOT the same as editing it taking effect. Vercel deployments are
+ * IMMUTABLE: changing project environment configuration requires a NEW deployment
+ * before the new value is ever read here. Editing the variable does nothing to a
+ * deployment that is already running, so a flag change and its effect are always
+ * separated by a deploy — never by a restart, and never instantly.
+ */
 export function isSpendGateEnforced(): boolean {
   return process.env.H1_SPEND_GATE === '1'
 }

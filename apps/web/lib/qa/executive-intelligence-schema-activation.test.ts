@@ -262,9 +262,11 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // discovery read. No table, no execution. Merged to main and applied to production.
     //
     // Atlas Autonomy Licensing Phase 2C `autonomy_license_phase2c` — the Chapter 18
-    // licence ledger, its narrowing write boundary and the derived read model. It grants
-    // no authority, enables no enforcement, adds no scheduler, and is not applied to
-    // production on this branch.
+    // licence ledger, its narrowing write boundary and the derived read model. APPLIED
+    // to production on 2026-09-25, so it now establishes Chapter 18 licence truth there.
+    // That apply changed only the database: it still grants no authority by itself,
+    // enables no runtime enforcement, adds no scheduler, and Phase 3B has NOT been
+    // started by it.
     //
     // 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
     // count by one, so the reconciled value is 87 and none may be dropped to make

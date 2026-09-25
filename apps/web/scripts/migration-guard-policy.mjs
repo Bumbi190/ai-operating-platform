@@ -20,7 +20,7 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 //      channel, database side only. MERGED to main and APPLIED to production.)
 //    + 20260924180000_autonomy_license_phase2c.sql (Atlas Autonomy Licensing Phase 2C —
 //      the Chapter 18 licence ledger, its narrowing write boundary, and the derived
-//      read model. NOT YET APPLIED to production.)
+//      read model. APPLIED to production 2026-09-25 — see the note below.)
 // Enforced trips together: 101 = 14 grandfathered + 87 enforced.
 //
 // 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
@@ -32,11 +32,15 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // is 101/87 rather than either branch's figure. The tripwire is doing its job: it notices
 // that two branches each moved the same count.
 //
-// Phase 2C is ENFORCED, not grandfathered: it is a live repository migration whose
-// absence from the production ledger must fail the guard until the approved apply
-// happens. That is the apply-before-PR contract working as designed — the guard is
-// expected to be RED for exactly this one migration on this branch, and GREEN again
-// once the apply is approved and 1C2's now-known name is no longer unknown.
+// Phase 2C is ENFORCED, not grandfathered, and that has not changed now that it is
+// applied. `autonomy_license_phase2c` (ledger version 20260925102918) was APPLIED to
+// production on 2026-09-25 and the production ledger contains it EXACTLY ONCE, which
+// is why the guard is GREEN on this branch. The enforce-not-grandfather decision is
+// what keeps it honest in both directions: while it was unapplied its absence failed
+// the guard (that is the apply-before-PR contract working as designed), and if it were
+// ever absent again — or present TWICE — the guard must fail just as hard. Neither
+// absence nor duplication is tolerated, and the current production ledger satisfies
+// the guard.
 export const EXPECTED_CANONICAL_SQL_COUNT = 101
 export const EXPECTED_ENFORCED_COUNT = 87
 

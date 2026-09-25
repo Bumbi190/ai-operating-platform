@@ -907,9 +907,19 @@ describe('Phase 2C — lifecycle', () => {
     expect(actVocabularyInMigration()).toEqual([...LICENSE_ACTS])
   })
 
-  it('41. conflicting same-generation acts are structurally serializable', () => {
-    // Two acts derived from one state claim the same generation, and the
-    // database's unique index is what decides — not a timestamp.
+  it('41. generation position keeps structural uniqueness defence-in-depth', () => {
+    // What this asserts is STRUCTURE, in three parts that support each other:
+    // the unique index rejects two duplicate LITERAL lineage positions, and the
+    // row lock plus the database-derived generation are the machinery that makes
+    // a position meaningful at all.
+    //
+    // It is deliberately NOT a claim about the stale-human race. The unique
+    // index cannot detect one: a caller whose read went stale claims the
+    // FOLLOWING generation, so nothing ever collides. What refuses that race is
+    // the `expectedGeneration` comparison under the lineage lock, proven by the
+    // dedicated final-hardening tests in this file and against real PostgreSQL
+    // in `autonomy-license-sql.test.ts` — see the "write contract carries the
+    // observed generation" block below.
     const sql = migrationSql()
     expect(sql).toMatch(/create unique index[\s\S]{0,200}\(license_id, license_generation\)/)
     expect(sql).toMatch(/perform 1 from public\.atlas_autonomy_license_events[\s\S]{0,80}for update/)

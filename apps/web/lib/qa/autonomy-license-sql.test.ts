@@ -559,9 +559,16 @@ d('Phase 2C autonomy licence — real PostgreSQL', () => {
     }))).toMatch(/inconsistent with lineage position|22023/i)
   })
 
-  it('refuses a duplicate generation — the serialization is structural', () => {
-    // Two acts derived from the same state claim the same generation, and the
-    // unique index is what decides.
+  it('refuses a duplicate literal generation — unique index remains defence in depth', () => {
+    // A RAW structural-uniqueness proof: two bare inserts claiming the same
+    // LITERAL generation, with the unique index deciding.
+    //
+    // It deliberately does NOT model the stale-RPC race, and must not be read as
+    // covering it — these inserts bypass the writer entirely, so no
+    // `expectedGeneration` is involved. The stale-human race is proven by the
+    // expected-generation tests further down this file, which drive the real RPC
+    // concurrently. The unique index stays valuable as defence in depth; it is
+    // simply not the stale-read mechanism.
     run(dsn, ['-c', `insert into public.atlas_autonomy_license_events
       (license_id, license_generation, act, project_id, workflow_instance_id,
        bound_def_key, bound_def_hash, licensed_level, allowed_action_kinds,

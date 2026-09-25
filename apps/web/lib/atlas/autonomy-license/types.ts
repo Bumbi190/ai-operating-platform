@@ -59,13 +59,26 @@ export type AutonomyLicenseId = string
 export type AutonomyLicenseEventId = string
 
 /**
- * The licence lineage position an act belongs to (§18.59).
+ * The licence lineage position an act belongs to (§18.59): the CAUSAL order the
+ * reader folds in, where generation 1 was derived from generation 0 and can be
+ * nothing else.
  *
- * Same mechanism as `atlas_decision_ledger.lifecycle_generation`: two acts
- * derived from the same lineage state necessarily claim the same generation,
- * and a unique index on `(license_id, license_generation)` makes the second
- * one fail. That is what stops two concurrent human acts from both becoming
- * canonical — never timestamp ordering, which cannot distinguish them.
+ * ── WHAT ACTUALLY STOPS TWO STALE HUMAN DECISIONS ──────────────────────────
+ * The application derives the caller's OBSERVED next generation from the
+ * lineage that caller just read, and sends it as `expectedGeneration`. The RPC
+ * compares that observation against committed truth under the lineage lock, and
+ * refuses a mismatch with **SQLSTATE 40001 before any insert**. That comparison
+ * is what prevents two stale human decisions from both becoming canonical.
+ *
+ * The unique index on `(license_id, license_generation)` is NOT that mechanism.
+ * It cannot see a stale read: a caller whose view is out of date claims the
+ * FOLLOWING generation — never one that already exists — so nothing collides and
+ * no error is raised. It remains **structural defence in depth** against two
+ * duplicate literal lineage positions, which is a different failure.
+ *
+ * Ordering is never by timestamp, which cannot distinguish two acts stamped in
+ * the same millisecond and which a clock correction could reorder against the
+ * acts it was derived from.
  */
 export type LicenseGeneration = number
 

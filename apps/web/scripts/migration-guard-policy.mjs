@@ -41,8 +41,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // ever absent again — or present TWICE — the guard must fail just as hard. Neither
 // absence nor duplication is tolerated, and the current production ledger satisfies
 // the guard.
-export const EXPECTED_CANONICAL_SQL_COUNT = 101
-export const EXPECTED_ENFORCED_COUNT = 87
+export const EXPECTED_CANONICAL_SQL_COUNT = 102
+export const EXPECTED_ENFORCED_COUNT = 88
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

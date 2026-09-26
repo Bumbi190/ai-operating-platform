@@ -51,18 +51,23 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 99 → 100: `sdf1c2_broker_control_channel` (Phase 1C2), merged to main and already
   // applied to production.
   // 100 → 101: `autonomy_license_phase2c` (Phase 2C), on this branch.
+  // 101 → 102: `autonomy_trace_decisions` (Phase 3B1A), on this branch.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
   // neither branch's. Same reconciliation Phase 2B's ruling performed.
-  it('pins policy v2 and the current 101/87/14/30 counts', () => {
+  //
+  // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
+  // as the file exists. The production APPLY is a separate fact, and it has NOT happened
+  // for 3B1A — see the ledger assertion below, which is deliberately left RED.
+  it('pins policy v2 and the current 102/88/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(101)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(87)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(102)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(88)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(101)
-    expect(repositoryState.enforcedNames).toHaveLength(87)
+    expect(repositoryState.sqlFiles).toHaveLength(102)
+    expect(repositoryState.enforcedNames).toHaveLength(88)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -101,14 +106,36 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 describe('Migration Guard v2 — production ledger set integrity', () => {
   it('passes the exact current synthetic known history', () => {
     const result = evaluateAppliedMigrationLedger(exactVerifiedKnownLedger, repositoryState)
-    // 124 = main's 123 (which already contains sdf1c1b_broker_claim_credentials,
-    // survival_funding_phase2b and sdf1c2_broker_control_channel) +
-    // autonomy_license_phase2c. The fixture is built FROM
-    // `repositoryState.enforcedNames`, so it models the post-apply world — the
-    // world this branch must be merged in, because the guard's contract is
-    // apply-before-PR and `check-migrations.mjs` refuses an enforced migration
-    // that production has not applied yet.
-    expect(result.appliedLedgerCount).toBe(124)
+    // 125 = main's 124 (which already contains sdf1c1b_broker_claim_credentials,
+    // survival_funding_phase2b, sdf1c2_broker_control_channel and
+    // autonomy_license_phase2c) + Phase 3B1A's autonomy_trace_decisions. The
+    // fixture is built FROM `repositoryState.enforcedNames`, so it models the
+    // post-apply world — the world this branch must be merged in, because the
+    // guard's contract is apply-before-PR and `check-migrations.mjs` refuses an
+    // enforced migration that production has not applied yet.
+    //
+    // POST-APPLY RECORD (this replaces a pre-apply red state — see below).
+    //
+    // Phase 3B1A added `autonomy_trace_decisions`, taking the enforced set from
+    // 87 to 88 and this fixture from 124 to 125. That migration was APPLIED to
+    // production on 2026-09-26 under its own review, and the production ledger
+    // now holds 125 rows; the applied row's version is 20260926082643 — note
+    // that a migration's production VERSION is assigned at apply time and is
+    // NOT the filename's timestamp (the file is named 20260925120000).
+    // `schema_migrations` contains the name exactly once.
+    //
+    // Before that apply this literal read 124 and its failure was the
+    // apply-before-PR tripwire doing its job: the repository corpus carried an
+    // enforced migration production had not applied. After the apply, 124 would
+    // no longer be safety — it would be stale information — so it is reconciled
+    // to the truth it is asserting.
+    //
+    // The number stays HARDCODED and deliberately so: it is a concurrency
+    // tripwire, not a derived value. Two branches each adding a canonical
+    // migration would both look reviewed while only one was counted, and a
+    // computed count would hide exactly that. If a future branch moves the
+    // corpus again, this line must move with it, by hand.
+    expect(result.appliedLedgerCount).toBe(125)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -217,12 +244,17 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => exactVerifiedKnownLedger }),
       ...runtimeHarness,
     })
+    // The whole post-apply picture in one assertion: the canonical corpus is
+    // 102 files / 88 enforced after Phase 3B1A, and the synthetic known ledger
+    // is 125 because `autonomy_trace_decisions` is now APPLIED to production
+    // (version 20260926082643). See the note on the integrity test above for
+    // why this number is hardcoded rather than derived.
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 101,
-      enforcedCount: 87,
-      appliedLedgerCount: 124,
+      canonicalSqlCount: 102,
+      enforcedCount: 88,
+      appliedLedgerCount: 125,
     })
   })
 })

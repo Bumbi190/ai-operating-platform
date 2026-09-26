@@ -1104,8 +1104,16 @@ describe('Phase 2C — the migration does not collide with the chain it joins', 
 
   it('names itself so it sorts last in the current canonical set', () => {
     const files = readdirSync(MIGRATION_DIR).filter(f => f.endsWith('.sql')).sort()
-    expect(files[files.length - 1]).toBe(MY_FILE)
-    expect(files).toHaveLength(101)
+    // This used to assert `files[files.length - 1] === MY_FILE` — Phase 2C was
+    // the newest migration. Phase 3B1A is a legitimate forward successor, so
+    // "I am last" is no longer the invariant and asserting it would fail every
+    // time a later phase ships. What the test is actually protecting is that
+    // Phase 2C is still placed by its own filename and nothing has been wedged
+    // in ahead of it — so it is still present, still sorts within the chain,
+    // and the file count is pinned so an unexpected addition is noticed.
+    expect(files).toContain(MY_FILE)
+    expect(files[files.length - 1] > MY_FILE).toBe(true)
+    expect(files).toHaveLength(102)
   })
 })
 

@@ -197,7 +197,7 @@ export async function resolveAutonomyLicense(
     .then(i => (i ? { project_id: i.project_id, def_key: i.def_key, def_hash: i.def_hash } : null))
     .catch(() => null)
 
-  if (!instance) return noLicense(workflowInstanceId, 'unknown_workflow_instance')
+  if (!instance) return noLicense(workflowInstanceId, 'unknown_workflow_instance', at)
 
   // ── The licence ───────────────────────────────────────────────────────────
   let events: LicenseEvent[]
@@ -206,18 +206,18 @@ export async function resolveAutonomyLicense(
   } catch {
     // A licence read that failed is not "no licence was granted" — it is a
     // failure to prove one. Both resolve to L0, and both say so.
-    return { ...noLicense(workflowInstanceId, 'unavailable'), projectId: instance.project_id }
+    return { ...noLicense(workflowInstanceId, 'unavailable', at), projectId: instance.project_id }
   }
 
   const selection = selectCurrentLineage(events)
   if (selection.kind === 'none') {
-    return { ...noLicense(workflowInstanceId, 'no_license'), projectId: instance.project_id }
+    return { ...noLicense(workflowInstanceId, 'no_license', at), projectId: instance.project_id }
   }
   if (selection.kind === 'ambiguous') {
-    return { ...noLicense(workflowInstanceId, 'ambiguous_licenses'), projectId: instance.project_id }
+    return { ...noLicense(workflowInstanceId, 'ambiguous_licenses', at), projectId: instance.project_id }
   }
   if (selection.kind === 'malformed') {
-    return { ...noLicense(workflowInstanceId, 'malformed_lineage'), projectId: instance.project_id }
+    return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id }
   }
   const lineage = selection.lineage
 
@@ -226,7 +226,7 @@ export async function resolveAutonomyLicense(
     state = deriveLicenseState(lineage)
   } catch (error) {
     if (error instanceof MalformedLicenseLineageError) {
-      return { ...noLicense(workflowInstanceId, 'malformed_lineage'), projectId: instance.project_id }
+      return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id }
     }
     throw error
   }
@@ -276,6 +276,7 @@ export async function resolveAutonomyLicense(
     expiresAt: state.expiresAt,
     generation: state.generation,
     eventCount: state.eventCount,
+    resolvedAt: at,
   }
 }
 

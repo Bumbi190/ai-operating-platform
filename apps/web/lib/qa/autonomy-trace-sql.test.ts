@@ -370,6 +370,55 @@ d('§26 · malformed rows are rejected by REAL CHECK semantics (SQLSTATE 23514)'
   })
 })
 
+// ── §1–§3 · the mode → reason relation ───────────────────────────────────────
+//
+// The table made `license_exempt_observation → exempt_observation` and
+// `unsupported → unsupported_action` structural, but left `licensed`
+// unconstrained — so `licensed + unsupported_action` satisfied every per-mode
+// matrix and was ACCEPTED. These cases are the fix, and the first two are the
+// exact rows that were swallowed before it.
+
+d('§3 · the mode → reason relation is structural', () => {
+  it('VALID pairs are accepted', () => {
+    expect(insertRow(ALL_COLS, V.exempt)).toBe('')
+    expect(insertRow(ALL_COLS, V.unsupported)).toBe('')
+    expect(insertRow(ALL_COLS, V.notEffective)).toBe('')
+    expect(insertRow(ALL_COLS, V.outOfScope)).toBe('')
+    expect(insertRow(ALL_COLS, V.allowed)).toBe('')
+    expect(insertRow(ALL_COLS, V.survivalUnavailable)).toBe('')
+  })
+
+  it('licensed + unsupported_action is REJECTED (previously ACCEPTED)', () => {
+    expect(insertRow(ALL_COLS,
+      `'licensed',NULL,'unsupported_action','${LICENSE_A}',0,'active','L3',NULL,NULL,NULL,NULL,NULL,'2026-09-26T00:00:00Z',NULL`)).toBe('23514')
+  })
+
+  it('licensed + exempt_observation is REJECTED (previously ACCEPTED)', () => {
+    expect(insertRow(ALL_COLS,
+      `'licensed',NULL,'exempt_observation','${LICENSE_A}',0,'active','L3',NULL,NULL,NULL,NULL,NULL,'2026-09-26T00:00:00Z',NULL`)).toBe('23514')
+  })
+
+  it('unsupported + allowed is REJECTED', () => {
+    expect(insertRow(ALL_COLS,
+      `'unsupported','v1_scope_incomplete','allowed',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL`)).toBe('23514')
+  })
+
+  it('license_exempt_observation + allowed is REJECTED', () => {
+    expect(insertRow(ALL_COLS,
+      `'license_exempt_observation','canonical_read_only_observation','allowed',NULL,NULL,NULL,'L0',NULL,NULL,NULL,NULL,NULL,NULL,NULL`)).toBe('23514')
+  })
+
+  it('the exempt mode cannot borrow a refusal reason', () => {
+    expect(insertRow(ALL_COLS,
+      `'license_exempt_observation','canonical_read_only_observation','licence_not_effective',NULL,NULL,NULL,'L0',NULL,NULL,NULL,NULL,NULL,NULL,NULL`)).toBe('23514')
+  })
+
+  it('the unsupported mode cannot borrow a licensed reason', () => {
+    expect(insertRow(ALL_COLS,
+      `'unsupported','v1_scope_incomplete','effective_level_below_required',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL`)).toBe('23514')
+  })
+})
+
 // ── §19/§27 · append-only and privileges ─────────────────────────────────────
 
 d('§19/§20 · append-only and the privilege closure', () => {
@@ -485,6 +534,56 @@ d('§21/§31 · the claimed-boundary writer', () => {
        p_license_reason := 'no_license', p_required_level := 'L3', p_effective_level := NULL,
        p_survival_state := NULL, p_survival_ceiling := NULL, p_survival_reason := NULL,
        p_bounded_by := NULL, p_license_resolved_at := now(), p_survival_as_of := NULL`)).toBe('')
+  })
+
+  it('§4 · REFUSES an impossible mode/reason pair, and appends NOTHING', () => {
+    // The claim fence is deliberately VALID here, so a refusal can only come
+    // from the new mode/reason validation — not from an earlier boundary.
+    const before = one(dsn, `select count(*) from ${T};`)
+
+    const mismatchA = callWriter(
+      `${A}, p_boundary := 'pre_dispatch', p_policy_mode := 'licensed', p_policy_reason := NULL,
+       p_reason := 'unsupported_action', ${LIC}, p_license_reason := 'active',
+       p_required_level := 'L3', p_effective_level := NULL, p_survival_state := NULL,
+       p_survival_ceiling := NULL, p_survival_reason := NULL, p_bounded_by := NULL,
+       p_license_resolved_at := now(), p_survival_as_of := NULL`)
+    expect(mismatchA, 'licensed + unsupported_action').toBe('22023')
+
+    const mismatchB = callWriter(
+      `${A}, p_boundary := 'pre_dispatch', p_policy_mode := 'licensed', p_policy_reason := NULL,
+       p_reason := 'exempt_observation', ${LIC}, p_license_reason := 'active',
+       p_required_level := 'L3', p_effective_level := NULL, p_survival_state := NULL,
+       p_survival_ceiling := NULL, p_survival_reason := NULL, p_bounded_by := NULL,
+       p_license_resolved_at := now(), p_survival_as_of := NULL`)
+    expect(mismatchB, 'licensed + exempt_observation').toBe('22023')
+
+    // The exempt mode cannot borrow a refusal reason either.
+    expect(callWriter(
+      `${A}, p_boundary := 'readiness', p_policy_mode := 'license_exempt_observation',
+       p_policy_reason := 'canonical_read_only_observation', p_reason := 'licence_not_effective',
+       p_license_id := NULL, p_license_generation := NULL, p_license_reason := NULL,
+       p_required_level := 'L0', p_effective_level := NULL, p_survival_state := NULL,
+       p_survival_ceiling := NULL, p_survival_reason := NULL, p_bounded_by := NULL,
+       p_license_resolved_at := NULL, p_survival_as_of := NULL`)).toBe('22023')
+
+    expect(one(dsn, `select count(*) from ${T};`),
+      'an impossible representation must not be appended').toBe(before)
+  })
+
+  it('§7 · the new validation is not "reject every licensed reason"', () => {
+    // A valid licensed reason MUST still be accepted, or the check above would
+    // be satisfied by a writer that refuses the whole mode.
+    const before = Number(one(dsn, `select count(*) from ${T};`))
+    // `expired`, not `active` — an ineffective licence with an `active` reason
+    // is itself contradictory, and `licensed_not_effective` would reject it for
+    // a reason that has nothing to do with the matrix under test.
+    expect(callWriter(
+      `${A}, p_boundary := 'pre_dispatch', p_policy_mode := 'licensed', p_policy_reason := NULL,
+       p_reason := 'licence_not_effective', ${LIC}, p_license_reason := 'expired',
+       p_required_level := 'L3', p_effective_level := NULL, p_survival_state := NULL,
+       p_survival_ceiling := NULL, p_survival_reason := NULL, p_bounded_by := NULL,
+       p_license_resolved_at := now(), p_survival_as_of := NULL`)).toBe('')
+    expect(Number(one(dsn, `select count(*) from ${T};`))).toBe(before + 1)
   })
 
   it('appends a valid exempt and a valid licensed decision', () => {

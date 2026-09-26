@@ -243,6 +243,34 @@ create table public.run_autonomy_decisions (
             and license_reason is not null
             and license_reason is distinct from 'active')),
 
+  -- THE CROSS-MODE BACKSTOP — which admission reasons a policy mode may record.
+  --
+  -- Every matrix above constrains ONE mode's field shape. None of them
+  -- constrains the RELATION between mode and reason, so a pair the Phase 3B0
+  -- admission core could never produce was representable: `licensed` +
+  -- `unsupported_action` satisfied the licensed matrices (policy_reason NULL,
+  -- required_level present, license_reason present) AND the reason-sensitive
+  -- identity rule (which only singles out three of the six reasons) AND
+  -- `unsupported_matrix` (which only looks at `policy_mode <> 'unsupported'`).
+  -- It was accepted by the frozen draft — proven with a real INSERT, not by
+  -- reading.
+  --
+  -- This is a REPRESENTATION invariant. It does not re-derive authority: it
+  -- says only that a row must describe a decision the runtime can actually
+  -- reach. `policy_mode` and `reason` are both NOT NULL, so this expression is
+  -- two-valued; `IS NOT DISTINCT FROM` and the explicit `IN (...)` are kept for
+  -- consistency with the NULL-total discipline above, so a future edit that
+  -- made either column nullable could not silently turn this into UNKNOWN.
+  constraint run_autonomy_decisions_policy_reason_matrix
+    check ((policy_mode is not distinct from 'license_exempt_observation'
+            and reason is not distinct from 'exempt_observation')
+        or (policy_mode is not distinct from 'unsupported'
+            and reason is not distinct from 'unsupported_action')
+        or (policy_mode is not distinct from 'licensed'
+            and reason in ('allowed', 'licence_not_effective',
+                           'action_not_in_licence_scope',
+                           'effective_level_below_required'))),
+
   -- Survival is consulted ONLY after effectiveness AND scope have passed. A
   -- refusal earlier in the admission order must not claim a Survival reading —
   -- evaluating a later step after an earlier refusal is exactly the
@@ -428,6 +456,28 @@ begin
     raise exception 'unsupported admission reason %', coalesce(p_reason, '<null>')
       using errcode = '22023';
   end if;
+  -- ── MODE + REASON COMPATIBILITY ───────────────────────────────────────────
+  --
+  -- The two checks above validate each field INDEPENDENTLY, which leaves the
+  -- PAIR unconstrained: `licensed` + `unsupported_action` satisfies both. The
+  -- table carries a cross-mode CHECK as a structural backstop, but the
+  -- sanctioned write path must refuse the impossible representation itself —
+  -- a ledger whose only defence is a constraint it never reaches is one
+  -- refactor away from recording provenance the runtime cannot produce.
+  --
+  -- Placed BEFORE licence identity and subject evaluation: there is no reason
+  -- to consult a licence for a pair that cannot mean anything.
+  if not (
+       (p_policy_mode = 'license_exempt_observation' and p_reason = 'exempt_observation')
+    or (p_policy_mode = 'unsupported'              and p_reason = 'unsupported_action')
+    or (p_policy_mode = 'licensed' and p_reason in
+        ('allowed', 'licence_not_effective', 'action_not_in_licence_scope',
+         'effective_level_below_required'))
+  ) then
+    raise exception 'policy mode "%" cannot record admission reason "%"',
+      p_policy_mode, p_reason using errcode = '22023';
+  end if;
+
   if (p_license_id is null) <> (p_license_generation is null) then
     raise exception 'licence identity must be a pair: id and generation, or neither'
       using errcode = '22023';

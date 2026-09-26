@@ -122,6 +122,87 @@ describe('the migration restates no vocabulary of its own', () => {
     expect(sorted(list)).toEqual(sorted(AUTONOMY_ADMISSION_REASONS))
   })
 
+  /**
+   * The mode → reason relation, parsed out of the migration's cross-mode CHECK.
+   *
+   * Returns mode → the set of reasons that mode may record, so the guard pins
+   * the RELATION and not merely the two vocabularies side by side. Comparing
+   * them independently is exactly what let `licensed + unsupported_action`
+   * through: each value was legal, the pair was not.
+   */
+  function policyReasonMatrix(text = migrationText): Map<string, Set<string>> {
+    const at = text.indexOf('constraint run_autonomy_decisions_policy_reason_matrix')
+    if (at === -1) throw new Error('the cross-mode matrix constraint is missing')
+    const rest = text.slice(at)
+    const next = rest.indexOf('constraint ', 10)
+    const body = next === -1 ? rest : rest.slice(0, next)
+
+    // Split by MODE POSITION rather than by one clever alternation: find each
+    // `policy_mode is not distinct from '…'`, and treat the text up to the next
+    // one (or the end of the constraint) as that mode's branch. A single
+    // lookahead covering both `or (...)` and the trailing `),` was fragile and
+    // silently returned no branches at all.
+    const modeHits = [...body.matchAll(/policy_mode\s+is not distinct from\s+'([a-z_]+)'/g)]
+    const out = new Map<string, Set<string>>()
+    for (let i = 0; i < modeHits.length; i++) {
+      const mode = modeHits[i][1]
+      const from = modeHits[i].index! + modeHits[i][0].length
+      const to = i + 1 < modeHits.length ? modeHits[i + 1].index! : body.length
+      const tail = body.slice(from, to)
+
+      const reasons = new Set<string>()
+      for (const m of tail.matchAll(/reason\s+is not distinct from\s+'([a-z_]+)'/g)) reasons.add(m[1])
+      for (const m of tail.matchAll(/reason\s+in\s*\(([^)]*)\)/g)) {
+        for (const r of m[1].split(',')) reasons.add(r.trim().replace(/^'/, '').replace(/'$/, ''))
+      }
+      out.set(mode, reasons)
+    }
+    return out
+  }
+
+  it('the mode → reason relation is pinned, not just the two vocabularies', () => {
+    const matrix = policyReasonMatrix()
+    // Derived from the ADMISSION vocabulary rather than a second hand-kept
+    // list: everything that is not an exempt observation or an unsupported
+    // refusal must belong to `licensed`.
+    const licensedReasons = AUTONOMY_ADMISSION_REASONS.filter(
+      r => r !== 'exempt_observation' && r !== 'unsupported_action')
+
+    expect(matrix.get('license_exempt_observation'), 'exempt may record exactly one reason')
+      .toEqual(new Set(['exempt_observation']))
+    expect(matrix.get('unsupported'), 'unsupported may record exactly one reason')
+      .toEqual(new Set(['unsupported_action']))
+    expect(matrix.get('licensed'), 'licensed owns every remaining reason')
+      .toEqual(new Set(licensedReasons))
+
+    expect([...matrix.keys()].sort()).toEqual([...AUTONOMY_POLICY_MODES].sort())
+
+    // No reason may be orphaned: every admission reason belongs to some mode.
+    const covered = new Set([...matrix.values()].flatMap(s => [...s]))
+    for (const r of AUTONOMY_ADMISSION_REASONS) {
+      expect(covered, `${r} is not reachable from any policy mode`).toContain(r)
+    }
+    expect(covered.size, 'the matrix must not admit a reason outside the vocabulary')
+      .toBe(AUTONOMY_ADMISSION_REASONS.length)
+  })
+
+  it('the impossible pairs are NOT representable', () => {
+    const licensed = policyReasonMatrix().get('licensed')!
+    expect(licensed).not.toContain('unsupported_action')
+    expect(licensed).not.toContain('exempt_observation')
+    expect(policyReasonMatrix().get('unsupported')!).not.toContain('allowed')
+    expect(policyReasonMatrix().get('license_exempt_observation')!).not.toContain('allowed')
+  })
+
+  it('the writer refuses the same pairs it would otherwise append', () => {
+    // The table CHECK is the backstop; the sanctioned write path must also
+    // refuse, so a ledger is never one constraint away from impossible
+    // provenance. The SQL suite proves the behaviour; this pins its presence.
+    expect(migrationText).toMatch(
+      /policy mode "%" cannot record admission reason "%"/)
+    expect(migrationText).toMatch(/if not \(/)
+  })
+
   it('bounded_by and survival-failure vocabularies match the runtime source', () => {
     const [bounded] = inListsOf('run_autonomy_decisions_bounded_by_vocabulary')
     expect(sorted(bounded)).toEqual(sorted(AUTONOMY_BOUNDED_BY))

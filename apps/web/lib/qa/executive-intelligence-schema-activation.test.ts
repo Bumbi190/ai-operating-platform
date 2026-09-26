@@ -270,13 +270,16 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     //
     // 88: Phase 3B1A's `autonomy_trace_decisions` — the append-only, server-only
     // provenance ledger for what the autonomy layer observed at one execution
-    // boundary, plus the single SECURITY DEFINER writer. It authorizes nothing:
-    // no execution module imports it, no rollout flag exists, and the phase is
-    // inert by construction. NOT APPLIED to production — the phase forbids it —
-    // which is why this count moves here (the canonical corpus grew) while
-    // Migration Guard v2's production-ledger pin stays deliberately red until
-    // the apply happens. The two counters disagreeing on purpose is the point:
-    // the corpus is 88, production has applied 124 ledger entries covering 87.
+    // boundary, plus the single SECURITY DEFINER writer.
+    //
+    // APPLIED to production on 2026-09-26 (production ledger version
+    // 20260926082643 — assigned at apply time, and deliberately NOT the
+    // filename's timestamp). The production ledger contains it exactly once and
+    // now totals 125 rows, of which 88 are canonical enforced migrations. The
+    // apply changed database STRUCTURE ONLY: the table holds zero rows, and it
+    // still authorizes nothing. No execution module consumes the trace
+    // substrate, no rollout flag exists, and no runtime wiring exists — the
+    // phase is inert by construction.
     //
     // 1C1A, 1C1B, 2B, 1C2, 2C and 3B1A each arrived on their own branch and each moved this
     // count by one, so the reconciled value is 88 and none may be dropped to make

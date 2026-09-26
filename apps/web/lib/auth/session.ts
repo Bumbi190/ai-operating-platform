@@ -36,6 +36,10 @@ export type UserSessionResult =
   | { ok: true; userId: string }
   | { ok: false; response: NextResponse }
 
+export type UserClaimsResult =
+  | { ok: true; userId: string; email: string | null }
+  | { ok: false; response: NextResponse }
+
 /** Standard 401, matching the shape every other auth helper here returns. */
 const unauthorized = () => NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -53,6 +57,33 @@ export async function requireUserSession(): Promise<UserSessionResult> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { ok: false, response: unauthorized() }
     return { ok: true, userId: user.id }
+  } catch {
+    return { ok: false, response: unauthorized() }
+  }
+}
+
+/**
+ * Verify the cookie session through Supabase's claims API.
+ *
+ * With asymmetric signing keys this verifies the JWT against cached JWKS using
+ * WebCrypto instead of making an Auth-server request for every turn. Supabase
+ * itself falls back to `getUser()` for symmetric tokens or runtimes without
+ * WebCrypto, so the security boundary remains verified and fail-closed.
+ */
+export async function requireUserClaims(): Promise<UserClaimsResult> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.getClaims()
+    const subject = data?.claims?.sub
+    if (error || typeof subject !== 'string' || !subject) {
+      return { ok: false, response: unauthorized() }
+    }
+    const email = data.claims.email
+    return {
+      ok: true,
+      userId: subject,
+      email: typeof email === 'string' ? email : null,
+    }
   } catch {
     return { ok: false, response: unauthorized() }
   }

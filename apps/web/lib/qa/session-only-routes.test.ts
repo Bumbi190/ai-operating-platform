@@ -60,7 +60,10 @@ let selects: { table: string }[] = []
 let openaiCalls: { url: string; body: unknown }[] = []
 
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: sessionUser } }) } }),
+  createClient: async () => ({ auth: {
+    getUser: async () => ({ data: { user: sessionUser } }),
+    getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id } } : null, error: null }),
+  } }),
 }))
 
 function rowsOf(t: string): Record<string, unknown>[] {
@@ -376,7 +379,7 @@ describe('tts never spends before auth', () => {
   it('auth is the first statement in the handler, before any body read', () => {
     const src = read(TTS)
     const fn = src.slice(src.indexOf('export async function POST'))
-    const authAt = fn.indexOf('requireUserSession()')
+    const authAt = fn.indexOf('requireUserClaims()')
     const bodyAt = fn.indexOf('await request.json()')
     // G1 moved the network call into the governed OpenAI adapter, so the thing
     // auth must precede is the governed call, not a raw fetch. The property is
@@ -403,7 +406,7 @@ describe('source invariants', () => {
     }
     expect(src).not.toContain('process.env.AIOPS_API_KEY')
     expect(src).not.toMatch(/import .*from '@\/lib\/api-auth'/)
-    expect(src).toContain('requireUserSession')
+    expect(src).toMatch(/requireUser(?:Session|Claims)/)
   })
 
   it.each([CAMPAIGNS, REVENUE])('%s has no raw legacy branch left', p => {
@@ -432,6 +435,7 @@ describe('source invariants', () => {
     expect(src).not.toContain('Bearer')
     expect(src).not.toContain('createAdminClient')
     expect(src).toContain("import 'server-only'")
+    expect(src).toContain('supabase.auth.getClaims()')
   })
 
   // ── LEADS MUST KEEP ITS LEGACY BRANCH UNTIL 4B3 ──────────────────────────

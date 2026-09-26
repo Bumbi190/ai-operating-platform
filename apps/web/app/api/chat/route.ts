@@ -10,7 +10,6 @@
  *   - get_run_status: poll a run for completion + output
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
@@ -37,11 +36,12 @@ import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/at
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
 import { getAllowedProjectIds, assertProjectAllowed, scopeProjectFilter, scopeToProjects } from '@/lib/atlas/isolation'
 import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
+import { requireUserClaims } from '@/lib/auth/session'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import type { Json } from '@/lib/supabase/database.types'
-import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
+import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope, type NormalizedView } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
 import { RECORD_DOMAINS } from '@/lib/atlas/data-registry'
 import { isRecordAwarenessEnabled, buildRecordsInView } from '@/lib/atlas/view-records'
@@ -53,8 +53,9 @@ import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-know
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
-import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { PLATFORM_COMPAT_PROJECT, warmGovernanceReadCaches } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
+import { readAtlasContextSlices } from '@/lib/atlas/context-slices'
 
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
@@ -203,6 +204,12 @@ export const maxDuration = 120   // cap (sekunder); ger run_media_step plats att
 // Brain, verktyg eller workflows. De går direkt till LLM och streamar omedelbart.
 const FAST_PATH_SYSTEM = `Du är en skicklig copywriter för Omnira. Skriv det som efterfrågas — direkt, färdigt och i rätt ton för kanalen. Ingen meta-text, inga frågor tillbaka, inga verktyg. Svara på operatörens språk (svenska om inget annat anges). Håll det publiceringsklart.`
 
+// Some HTTP intermediaries wait for a non-trivial first body chunk before they
+// switch from response buffering to streaming. This SSE comment has no event
+// semantics and is ignored by consumeAtlasSse, but commits enough body bytes to
+// establish the streaming transport before context/model work completes.
+const SSE_STREAM_OPEN_COMMENT = `: stream-open ${' '.repeat(2_048)}\n\n`
+
 // ── INTENT CLASSIFIER ─────────────────────────────────────────────────────────
 // Avgör FAST PATH (ren skriv-/text-uppgift → direkt LLM) vs EXECUTIVE (verksamhet
 // → Executive Brain + verktyg). FAST PATH vinner bara om inget "systemy" finns med.
@@ -269,6 +276,7 @@ const VOICE_DIRECTIVE = `
 
 VIKTIGT — DETTA ÄR ETT RÖSTSAMTAL (som ChatGPT Voice):
 - Svara med HÖGST 2 meningar. Aldrig en rapport, aldrig en lista, aldrig markdown eller emojis.
+- Börja med en användbar, direkt sak-klausul på högst cirka 10 ord; utveckla först därefter. Ingen hälsningsutfyllnad, metakommentar eller konstgjord pausfras.
 - Prata som en avslappnad kollega — kort, varmt, naturligt.
 - Ge ETT litet svar och fråga sedan om personen vill höra mer. Rabbla aldrig allt på en gång.
 - Hellre flera korta repliker i ett samtal än ett långt svar.
@@ -586,13 +594,14 @@ const TOOLS: Anthropic.Tool[] = [
 ]
 
 export async function POST(request: Request) {
-  // Auth check
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // Capture as local — the `!user` narrowing above doesn't survive into the
-  // streaming closure further down.
-  const userId = user.id
+  const routeStart = Date.now()
+  // Verified cookie claims preserve the same human-session boundary. On an
+  // asymmetric Supabase project they avoid one Auth-server round trip; the SDK
+  // falls back to getUser verification when local verification is unavailable.
+  const auth = await requireUserClaims()
+  if (!auth.ok) return auth.response
+  const userId = auth.userId
+  const authReadyMs = Date.now() - routeStart
 
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
   if (!anthropicApiKey) {
@@ -615,13 +624,21 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view } = await request.json() as {
+  const { messages, conversation_id, create_conversation, voice, mode, view } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
+    create_conversation?: boolean
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
   }
+  const requestParsedMs = Date.now() - routeStart
+
+  // Read-only cache warmup only. Reservation, stop resolution and provider
+  // dispatch remain inside the canonical governed wrapper and are still
+  // fail-closed. Starting after configuration and body validation avoids work
+  // for rejected requests while still overlapping local routing and context.
+  const governanceWarmup = warmGovernanceReadCaches(PLATFORM_COMPAT_PROJECT)
 
   const db = createAdminClient()
   const tStart = Date.now()
@@ -643,17 +660,29 @@ export async function POST(request: Request) {
   // which every write site treats exactly like "no conversation supplied".
   let ownedConversationPromise: Promise<string | null> | null = null
   const resolveOwnedConversationId = (): Promise<string | null> => {
-    if (!conversation_id) return Promise.resolve(null)
-    ownedConversationPromise ??= (db.from('conversations') as any)
-      .select('id')
-      .eq('id', conversation_id)
-      .eq('user_id', userId)
-      .maybeSingle()
-      .then(
-        ({ data }: { data: { id: string } | null }) => (data ? conversation_id : null),
-        // A failed ownership read is NOT permission. Fail closed.
-        () => null,
-      )
+    if (!conversation_id && !create_conversation) return Promise.resolve(null)
+    ownedConversationPromise ??= conversation_id
+      ? (db.from('conversations') as any)
+        .select('id')
+        .eq('id', conversation_id)
+        .eq('user_id', userId)
+        .maybeSingle()
+        .then(
+          ({ data }: { data: { id: string } | null }) => (data ? conversation_id : null),
+          // A failed ownership read is NOT permission. Fail closed.
+          () => null,
+        )
+      : (db.from('conversations') as any)
+        .insert({
+          user_id: userId,
+          title: `🎙 ${lastUserText.slice(0, 56)}`,
+        })
+        .select('id')
+        .single()
+        .then(
+          ({ data }: { data: { id: string } | null }) => data?.id ?? null,
+          () => null,
+        )
     return ownedConversationPromise!
   }
 
@@ -701,7 +730,7 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, userId)
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -732,44 +761,31 @@ export async function POST(request: Request) {
     // ett svar som tappar perioden är precis det som gjorde livstidssiffror till
     // "idag". Ren vägledning — ingen routing ändras, inget innehåll mallas.
     if (statusIntent) systemPrompt += renderStatusDirective(statusIntent)
-    // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
-    // the exact strings appended below, nothing recomputed, zero behavior change.
+    // These four reads are independent. Start them together, then append their
+    // results in the exact historical order so prompt semantics stay unchanged.
     let shadowLive = '', shadowAction = '', shadowView = ''
+    let normalizedView: NormalizedView | null = null
     try {
-      const live = await buildLiveContext(db, allowedProjectIds)
-      shadowLive = live
-      systemPrompt += live
-    } catch { /* icke-kritiskt */ }
-    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
-    // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
-    // across chats/sessions. Also reports whether a delegation is on record, used
-    // to suppress a false-claim correction on truthful recall.
-    try {
-      const am = await buildActionMemory(db, allowedProjectIds)
-      shadowAction = am.text
-      systemPrompt += am.text
-      recentDelegationKnown = am.hasRecentDelegation
-    } catch { /* icke-kritiskt */ }
-    // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
-    // currently looking at. Hint-only — route/project re-resolved via the registry.
-    if (isViewAwarenessEnabled()) {
-      try {
-        const nv = normalizeView(view)
-        if (nv) {
-          const viewBlock = renderViewBlock(nv)
-          shadowView = viewBlock
-          systemPrompt += viewBlock
-          // View → Record bridge (Foundation 2, flag-gated): auto-prefetch the
-          // actual rows on screen so Atlas can reason about them directly.
-          // Project-isolated and PII-free by construction (see view-records.ts).
-          if (isRecordAwarenessEnabled()) {
-            systemPrompt += await buildRecordsInView(db, nv, allowedProjectIds)
-          }
-        }
-      } catch { /* icke-kritiskt */ }
-    }
+      normalizedView = isViewAwarenessEnabled() ? normalizeView(view) : null
+    } catch { /* untrusted view hints are always non-critical */ }
+    const viewBlock = normalizedView ? renderViewBlock(normalizedView) : ''
+    const slices = await readAtlasContextSlices({
+      live: () => buildLiveContext(db, allowedProjectIds),
+      tool: () => buildToolMemory(db, conversation_id, userId),
+      action: () => buildActionMemory(db, allowedProjectIds),
+      records: () => normalizedView && isRecordAwarenessEnabled()
+        ? buildRecordsInView(db, normalizedView, allowedProjectIds)
+        : Promise.resolve(''),
+    })
+    shadowLive = slices.live
+    shadowAction = slices.action
+    shadowView = viewBlock
+    recentDelegationKnown = slices.hasRecentDelegation
+    systemPrompt += slices.live
+    systemPrompt += slices.tool
+    systemPrompt += slices.action
+    systemPrompt += viewBlock
+    systemPrompt += slices.records
     if (voice) systemPrompt += VOICE_DIRECTIVE
 
     // ── CL Commit 5 (Stage 0): context-shadow — INSTRUMENTATION ONLY ──────────
@@ -782,7 +798,7 @@ export async function POST(request: Request) {
         db,
         allowedProjectIds,
         principalId: userId,
-        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
+        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(auth.email),
         query: lastUserText,
         voice: !!voice,
         view: view ?? null,
@@ -849,12 +865,25 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
+      let streamOpen = true
+      controller.enqueue(encoder.encode(SSE_STREAM_OPEN_COMMENT))
       function send(event: string, data: unknown) {
+        if (!streamOpen) return
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\n\n`),
         )
       }
 
+      // First-turn persistence is deliberately concurrent with model work. The
+      // client learns the id when ready, but neither context nor TTFT waits for it.
+      const conversationEvent = create_conversation && !conversation_id
+        ? resolveOwnedConversationId().then(id => {
+          if (id) send('conversation', { id })
+        }).catch(() => undefined)
+        : Promise.resolve()
+
+      let modelStartMs: number | null = null // tid till inträde i FÖRSTA governed Anthropic-streamanrop
+      let streamReadyMs: number | null = null // governed client returned the first stream handle
       let firstTokenMs = 0    // tid (från tStart) till första token — latens-mätning
       // Timing skickas TVÅ gånger. contextMs och firstTokenMs är bevisade redan
       // vid första token; att hålla dem till strömmens slut gjorde dem värdelösa
@@ -885,6 +914,8 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
+          if (modelStartMs === null) modelStartMs = Date.now() - tStart
+          await governanceWarmup
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
@@ -893,13 +924,14 @@ export async function POST(request: Request) {
             ...toolChoice,
             messages: msgs,
           })
+          if (streamReadyMs === null) streamReadyMs = Date.now() - tStart
           llm.on('text', (delta: string) => {
             if (!firstTokenMs) {
               firstTokenMs = Date.now() - tStart
               if (!earlyTimingSent) {
                 earlyTimingSent = true
                 // Diagnostik, inte innehåll: eget event, aldrig 'text'.
-                send('timing', { reqType, contextMs, firstTokenMs })
+                send('timing', { reqType, authReadyMs, requestParsedMs, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs })
               }
             }
             if (delta) send('text', { text: delta })
@@ -1060,10 +1092,14 @@ export async function POST(request: Request) {
         // Latens-sammanfattning från servern: hur lång tid Atlas Brain tog att
         // bygga + tid till första token. Klienten loggar resten (STT, TTS, totalt).
         const serverTotalMs = Date.now() - tStart
+        // Keep TTFT independent from persistence, but do not close the stream
+        // before a successfully-created first conversation id can reach the UI.
+        await conversationEvent
         // Mätbar rad i runtime-loggarna → snitt per typ (fast_path/atlas/workflow_start).
-        console.log(`[chat-latency] type=${reqType} contextMs=${contextMs} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
-        send('timing', { reqType, contextMs, firstTokenMs, serverTotalMs })
+        console.log(`[chat-latency] type=${reqType} authReadyMs=${authReadyMs} requestParsedMs=${requestParsedMs} contextMs=${contextMs} modelStartMs=${modelStartMs ?? 0} streamReadyMs=${streamReadyMs ?? 0} firstTokenMs=${firstTokenMs} totalMs=${serverTotalMs}`)
+        send('timing', { reqType, authReadyMs, requestParsedMs, contextMs, modelStartMs: modelStartMs ?? 0, streamReadyMs: streamReadyMs ?? 0, firstTokenMs, serverTotalMs })
         send('done', {})
+        streamOpen = false
         controller.close()
       }
 
@@ -1078,6 +1114,7 @@ export async function POST(request: Request) {
             : undefined,
         })
         send('error', { code, message: getAtlasServiceErrorMessage(code) })
+        streamOpen = false
         controller.close()
       }
     },
@@ -1086,7 +1123,8 @@ export async function POST(request: Request) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
       Connection: 'keep-alive',
     },
   })

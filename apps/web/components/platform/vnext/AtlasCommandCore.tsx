@@ -99,10 +99,11 @@ export function AtlasCommandCore() {
         />
       </div>
 
-      <div className={styles.runtimeReadout} aria-live="polite">
+      <div className={styles.runtimeReadout} aria-live="polite" data-atlas-progressive-playback={atlas.progressivePlayback}>
         <span className={styles.runtimeDot} data-state={orbState} />
         <span>{stateDescription}</span>
         {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}
+        {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw>{atlas.perfRaw}</span> : null}
       </div>
 
       {atlas.awaitingApproval?.detail ? (
@@ -121,7 +122,7 @@ export function AtlasCommandCore() {
             <MessageSquare size={14} aria-hidden="true" />
             <span>Atlas</span>
           </div>
-          <p>{atlas.response}</p>
+          <p ref={node => { if (node) atlas.reportTextVisible() }}>{atlas.response}</p>
           {atlas.conversationId && atlas.voicePhase === 'idle' ? (
             <button
               type="button"

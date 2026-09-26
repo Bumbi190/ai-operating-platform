@@ -27,7 +27,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
  * cannot be removed without removing the spend ceiling from Atlas chat — a
  * reservation that consults no prices is not a reservation.
  */
-const GOVERNANCE_TABLES = ['cost_rates']
+const GOVERNANCE_TABLES = ['cost_rates', 'projects']
 
 /** Context tables the static path must never touch. */
 const contextTablesFrom = (tables: string[]) => tables.filter(t => !GOVERNANCE_TABLES.includes(t))
@@ -53,7 +53,10 @@ vi.mock('server-only', () => ({}))
 let sessionUser: { id: string; email?: string } | null = null
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: sessionUser } }) },
+    auth: {
+      getUser: async () => ({ data: { user: sessionUser } }),
+      getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id, email: sessionUser.email } } : null, error: null }),
+    },
   }),
 }))
 
@@ -81,6 +84,12 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ── Recording Anthropic client ────────────────────────────────────────────────
 let streamCalls: Array<{ system: string; tools: unknown[]; messages: unknown[] }> = []
+let providerGate: Promise<void> = Promise.resolve()
+let releaseProvider = () => {}
+
+function blockProvider() {
+  providerGate = new Promise<void>(resolve => { releaseProvider = resolve })
+}
 
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
@@ -91,6 +100,7 @@ vi.mock('@anthropic-ai/sdk', () => {
         return {
           on(event: string, cb: (d: any) => void) { handlers[event] = cb; return this },
           async finalMessage() {
+            await providerGate
             handlers.text?.('Hej Andre.')
             return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Hej Andre.' }] }
           },
@@ -120,6 +130,8 @@ const userMsg = (content: string) => ({ messages: [{ role: 'user', content }] })
 beforeEach(() => {
   sessionUser = { id: 'user-1', email: 'owner@example.com' }
   process.env.ANTHROPIC_API_KEY = 'test-key'
+  providerGate = Promise.resolve()
+  releaseProvider = () => {}
 })
 
 describe('authentication is unchanged', () => {
@@ -148,7 +160,7 @@ describe('authentication is unchanged', () => {
 })
 
 describe('STATIC path execution contract', () => {
-  it('performs NO context reads — only the governance price lookup', async () => {
+  it('performs NO context reads — only governed rate/project cache warmup', async () => {
     const { res } = await post(userMsg('Hej'))
     expect(res.status).toBe(200)
     expect(contextTablesFrom(touchedTables)).toEqual([])
@@ -189,6 +201,37 @@ describe('STATIC path execution contract', () => {
     expect(res.headers.get('Content-Type')).toBe('text/event-stream')
     expect(text).toContain('"event":"text"')
     expect(text).toContain('Hej Andre.')
+  })
+
+  it('opens the response stream while the provider is still blocked', async () => {
+    blockProvider()
+    vi.resetModules()
+    touchedTables = []
+    streamCalls = []
+    const { POST } = await import('@/app/api/chat/route')
+    const res = await POST(new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(userMsg('Hej')),
+    }) as any)
+    const reader = res.body!.getReader()
+
+    const first = await reader.read()
+    const firstChunk = new TextDecoder().decode(first.value)
+    expect(first.done).toBe(false)
+    expect(firstChunk).toMatch(/^: stream-open /)
+    expect(firstChunk.length).toBeGreaterThan(2_048)
+    expect(firstChunk).not.toContain('"event":"text"')
+
+    releaseProvider()
+    let remainder = ''
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      remainder += new TextDecoder().decode(next.value)
+    }
+    expect(remainder).toContain('"event":"text"')
+    expect(remainder).toContain('Hej Andre.')
   })
 
   it('reports the static class in telemetry without faking a zero', async () => {

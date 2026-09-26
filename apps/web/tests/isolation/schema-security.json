@@ -36,16 +36,19 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "run_autonomy_decisions"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "run_autonomy_decisions": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class.",
+      "run_autonomy_decisions_note": "Phase 3B1A (20260925120000_autonomy_trace_decisions.sql). NOT YET APPLIED to production — this branch is local and the phase explicitly forbids applying it, so the row cannot be introspected and its class is declared from the migration the same way the other entries are. The migration creates it with RLS enabled, ZERO policies, every client grant revoked, and SELECT granted to service_role alone; the only write path is the SECURITY DEFINER RPC record_run_autonomy_decision, which holds no INSERT grant for any role. SERVER_ONLY is therefore its intended and only correct class. When the migration is eventually applied, this entry should be replaced by an introspected row in `tables`, in the same way platform_credential_events was."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

@@ -810,6 +810,15 @@ describe('read-only, with a closed consumer set', () => {
       // ceiling rules (null → L0, hostile state → L0), which requires importing
       // the backend rather than copying its constants.
       resolve(process.cwd(), 'lib/qa/autonomy-runtime-foundation.test.ts'),
+      // Phase 3B1A's trace guards: they assert the trace migration's
+      // `survival_state` vocabulary is SET-EQUAL to the canonical states, which
+      // means reading `SURVIVAL_STATES` rather than restating it — the whole
+      // point of the guard is that a hand-copied list drifts.
+      //
+      // Like the two entries above, this is added as a single FILE. It imports
+      // only `atlas/survival/types` (a closed vocabulary of string constants);
+      // it does not import `readSurvivalSnapshot` and cannot read Survival.
+      resolve(process.cwd(), 'lib/qa/autonomy-trace-guards.test.ts'),
     ]
     const offenders: string[] = []
 

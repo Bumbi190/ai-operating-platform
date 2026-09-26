@@ -268,14 +268,24 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // enables no runtime enforcement, adds no scheduler, and Phase 3B has NOT been
     // started by it.
     //
-    // 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
-    // count by one, so the reconciled value is 87 and none may be dropped to make
+    // 88: Phase 3B1A's `autonomy_trace_decisions` — the append-only, server-only
+    // provenance ledger for what the autonomy layer observed at one execution
+    // boundary, plus the single SECURITY DEFINER writer. It authorizes nothing:
+    // no execution module imports it, no rollout flag exists, and the phase is
+    // inert by construction. NOT APPLIED to production — the phase forbids it —
+    // which is why this count moves here (the canonical corpus grew) while
+    // Migration Guard v2's production-ledger pin stays deliberately red until
+    // the apply happens. The two counters disagreeing on purpose is the point:
+    // the corpus is 88, production has applied 124 ledger entries covering 87.
+    //
+    // 1C1A, 1C1B, 2B, 1C2, 2C and 3B1A each arrived on their own branch and each moved this
+    // count by one, so the reconciled value is 88 and none may be dropped to make
     // another fit.
-    // Migration Guard v2 owns the repository-wide 101/87 count contract. This
+    // Migration Guard v2 owns the repository-wide 102/88 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(87)
+    expect(enforced).toBe(88)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

@@ -301,10 +301,36 @@ export interface ResolvedAutonomyLicense {
   /** The lineage position of the event that decided this answer. */
   readonly generation: LicenseGeneration | null
   readonly eventCount: number
+
+  /**
+   * The server instant the resolution was evaluated at.
+   *
+   * Not a licence term (`effectiveAt`/`expiresAt` are) — this is the READ CLOCK
+   * the resolver itself chose. Every derived ineffectiveness (`expired`,
+   * `not_yet_effective`, …) is a function of it, so an audit that does not know
+   * it cannot reproduce the answer: re-resolving against a later clock may
+   * legitimately return something different, and "this run was admitted under an
+   * effective licence" would become unprovable.
+   *
+   * The resolver selects this EXACTLY ONCE and reports it. There is deliberately
+   * no `resolveAt` parameter and no caller-supplied clock: a caller who could
+   * choose the time could choose the answer.
+   */
+  readonly resolvedAt: string
 }
 
-/** The always-ineffective answer, so no caller invents its own default. */
-export function noLicense(workflowInstanceId: string, reason: LicenseReason): ResolvedAutonomyLicense {
+/**
+ * The always-ineffective answer, so no caller invents its own default.
+ *
+ * `resolvedAt` is REQUIRED and is never defaulted to `new Date()`: a default
+ * would be a second clock, and a row whose effectiveness was computed at T but
+ * whose `resolvedAt` reads T′ would state two different instants for one
+ * decision. The caller — in practice only `resolveAutonomyLicense`, which
+ * already holds the instant it used — must pass the same one through.
+ */
+export function noLicense(
+  workflowInstanceId: string, reason: LicenseReason, resolvedAt: string,
+): ResolvedAutonomyLicense {
   return {
     status: null,
     effective: false,
@@ -325,5 +351,6 @@ export function noLicense(workflowInstanceId: string, reason: LicenseReason): Re
     expiresAt: null,
     generation: null,
     eventCount: 0,
+    resolvedAt,
   }
 }

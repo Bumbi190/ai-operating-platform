@@ -82,6 +82,9 @@ function effectiveLicence(over: Partial<ResolvedAutonomyLicense> = {}): Resolved
     expiresAt: '2027-09-01T00:00:00.000Z',
     generation: 1,
     eventCount: 1,
+    // The read clock the resolver reports. A fixed instant, so a test that
+    // asserts on it cannot pass by accident of when the suite ran.
+    resolvedAt: '2026-09-01T00:00:00.000Z',
     ...over,
   }
 }
@@ -216,7 +219,7 @@ describe('F/G/H · a licensed action, in order', () => {
 
   it('no licence at all refuses with its own reason, distinct from ineffective', () => {
     const r = admitAutonomyAction({
-      actionKind: K, licence: noLicense('inst-1', 'no_license'), survivalCeiling: 'L6',
+      actionKind: K, licence: noLicense('inst-1', 'no_license', '2026-09-01T00:00:00.000Z'), survivalCeiling: 'L6',
     })
     expect(r.allowed).toBe(false)
     expect(r.reason).toBe('licence_not_effective')
@@ -358,12 +361,26 @@ describe('K · an unrecognised runtime survival state fails closed to L0', () =>
 
 // ── L/M · the platform adapter ──────────────────────────────────────────────
 
+/**
+ * The snapshot instant the mocked Survival reading carries.
+ *
+ * Distinctive on purpose: `asOf` must be COPIED from the observation, so a value
+ * no `new Date()` could plausibly return is what lets the "never a fresh clock"
+ * assertion actually fail when the copy is replaced by a clock read.
+ */
+const FIXTURE_AS_OF = '2026-03-01T04:05:06.789Z'
+
 describe('L/M · the platform Survival adapter', () => {
   beforeEach(() => {
     portfolioReader.mockReset()
     snapshot.mockReset()
     portfolioReader.mockResolvedValue([{ id: 'p1', owner_id: null }, { id: 'p2', owner_id: null }])
-    snapshot.mockResolvedValue({ snapshot: { state: 'CONSERVE' }, ceiling: 'L3' })
+    // A DELIBERATELY distinctive instant. `asOf` must be copied from the
+    // snapshot, so a fixture value that no `new Date()` could produce is what
+    // makes the "no fabricated clock" assertion below able to fail.
+    snapshot.mockResolvedValue({
+      snapshot: { state: 'CONSERVE', asOf: FIXTURE_AS_OF }, ceiling: 'L3',
+    })
   })
 
   afterEach(() => { portfolioReader.mockReset(); snapshot.mockReset() })
@@ -413,7 +430,21 @@ describe('L/M · the platform Survival adapter', () => {
 
   it('the returned object does NOT expose the project population', async () => {
     const r = await readPlatformSurvivalCeiling()
-    expect(Object.keys(r).sort()).toEqual(['ceiling', 'ok', 'state'])
+    // An EXACT key set, so the assertion cannot be satisfied by a superset — a
+    // failure here means the success shape changed, which is worth a deliberate
+    // look. Phase 3B1A added `asOf` (the snapshot's own observation instant, so
+    // the trace can state WHEN Survival was read rather than when it happened to
+    // be recorded). The project population is still absent, which is the point.
+    expect(Object.keys(r).sort()).toEqual(['asOf', 'ceiling', 'ok', 'state'])
+  })
+
+  it('M · `asOf` is the SNAPSHOT instant, never a fresh clock read', async () => {
+    // The distinction matters: a `new Date()` here would stamp a RECORDING time
+    // over an OBSERVATION time, and Survival can move in between.
+    const r = await readPlatformSurvivalCeiling()
+    expect(r.ok).toBe(true)
+    if (!r.ok) throw new Error('unreachable')
+    expect(r.asOf).toBe(FIXTURE_AS_OF)
   })
 
   it('M · an unreadable population is a CLOSED failure at L0', async () => {

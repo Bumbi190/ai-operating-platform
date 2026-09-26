@@ -70,7 +70,23 @@ export type PlatformSurvivalFailure =
  * into every consumer.
  */
 export type PlatformSurvivalResult =
-  | { readonly ok: true; readonly ceiling: AutonomyLicenseLevel; readonly state: SurvivalState }
+  | {
+      readonly ok: true
+      readonly ceiling: AutonomyLicenseLevel
+      readonly state: SurvivalState
+      /**
+       * When Survival observed this, copied VERBATIM from the snapshot's own
+       * `asOf` — never a fresh `new Date()`.
+       *
+       * The ceiling is a function of a measurement taken at an instant. A later
+       * auditor asking "what did Survival permit when this run was admitted?"
+       * cannot answer it from the ceiling alone: Survival moves, and re-reading
+       * it now describes a different world. This is the source's timestamp, so
+       * the trace states when the observation was made rather than when it
+       * happened to be recorded.
+       */
+      readonly asOf: string
+    }
   | { readonly ok: false; readonly ceiling: typeof L0; readonly reason: PlatformSurvivalFailure }
 
 /** L0 by name, so the failure branch's ceiling is a constant and not a lookup. */
@@ -112,7 +128,16 @@ export async function readPlatformSurvivalCeiling(): Promise<PlatformSurvivalRes
 
   try {
     const observation = await readSurvivalSnapshot(projectIds)
-    return { ok: true, ceiling: observation.ceiling, state: observation.snapshot.state }
+    return {
+      ok: true,
+      ceiling: observation.ceiling,
+      state: observation.snapshot.state,
+      // The snapshot's own instant. Calling `new Date()` here would stamp a
+      // RECORDING time over an OBSERVATION time, and the two can differ by the
+      // whole duration of the read — which is exactly the interval in which
+      // Survival can move.
+      asOf: observation.snapshot.asOf,
+    }
   } catch {
     // `readSurvivalSnapshot` is written to degrade rather than throw, so this
     // is defence in depth. It must still be L0: an unexpected throw is an

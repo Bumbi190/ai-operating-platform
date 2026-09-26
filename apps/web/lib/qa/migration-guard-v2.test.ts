@@ -51,18 +51,23 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 99 → 100: `sdf1c2_broker_control_channel` (Phase 1C2), merged to main and already
   // applied to production.
   // 100 → 101: `autonomy_license_phase2c` (Phase 2C), on this branch.
+  // 101 → 102: `autonomy_trace_decisions` (Phase 3B1A), on this branch.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
   // neither branch's. Same reconciliation Phase 2B's ruling performed.
-  it('pins policy v2 and the current 101/87/14/30 counts', () => {
+  //
+  // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
+  // as the file exists. The production APPLY is a separate fact, and it has NOT happened
+  // for 3B1A — see the ledger assertion below, which is deliberately left RED.
+  it('pins policy v2 and the current 102/88/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(101)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(87)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(102)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(88)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(101)
-    expect(repositoryState.enforcedNames).toHaveLength(87)
+    expect(repositoryState.sqlFiles).toHaveLength(102)
+    expect(repositoryState.enforcedNames).toHaveLength(88)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -108,6 +113,19 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // world this branch must be merged in, because the guard's contract is
     // apply-before-PR and `check-migrations.mjs` refuses an enforced migration
     // that production has not applied yet.
+    //
+    // DELIBERATELY RED ON THIS BRANCH — DO NOT "FIX" THIS NUMBER.
+    //
+    // Phase 3B1A adds `autonomy_trace_decisions`, so the fixture now models 125.
+    // Production's ledger is still 124, because the phase explicitly forbids
+    // applying the migration (`NO PRODUCTION APPLY`). 124 is therefore the
+    // TRUE statement about production, and 125 would be a false one. This
+    // assertion failing IS the apply-before-PR contract reporting its own
+    // condition: the branch cannot be green until the migration is applied.
+    //
+    // The remedy is the apply, not an edit here — the same ordering Phase 2C
+    // followed, where `autonomy_license_phase2c` was applied to production
+    // (ledger version 20260925102918) before its PR could pass.
     expect(result.appliedLedgerCount).toBe(124)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
@@ -217,11 +235,15 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => exactVerifiedKnownLedger }),
       ...runtimeHarness,
     })
+    // `appliedLedgerCount` is the same deliberately-red pin as above: the
+    // canonical counts describe the corpus (102/88 after Phase 3B1A), but
+    // production's applied ledger is still 124 because the migration has not
+    // been applied. See the note there before changing anything here.
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 101,
-      enforcedCount: 87,
+      canonicalSqlCount: 102,
+      enforcedCount: 88,
       appliedLedgerCount: 124,
     })
   })
